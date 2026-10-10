@@ -30,6 +30,11 @@ async function fixture(t: TestContext, answer: (body: any, round: number) => any
         held.push(() => res.end(JSON.stringify(reply())));
         return;
       }
+      // a provider refusing the request, as a busy one does
+      if (typeof response?.status === "number") {
+        res.statusCode = response.status;
+        return res.end(JSON.stringify({ error: { message: "busy" } }));
+      }
       res.setHeader("content-type", typeof response === "string" ? "text/event-stream" : "application/json");
       res.end(typeof response === "string" ? response : JSON.stringify(response));
     });
@@ -108,13 +113,16 @@ test("unmeasured fills keep numeric zeroes; real windows or known tables alone p
   }
 });
 
-test("a replay provider still folds after a long measured turn, without summed usage driving the ring", async t => {
-  let turn = 0;
-  let summaries = 0;
+/** Four ordinary turns and a fifth whose request reads 120k, which is past
+ * the fold for a model with no known window, against a fixture whose
+ * summary requests `summary` answers. Answers the fold once it shows on
+ * the lane (null if it never does), and what was asked of the fixture. */
+async function foldAfterLongTurn(t: TestContext, summary: (n: number) => any) {
+  const asked = { turns: 0, summaries: 0 };
   const f = await fixture(t, body => {
-    if (!body.tools) { summaries++; return reply(undefined, "Earlier messages summarised."); }
-    turn++;
-    return reply(turn === 5 ? 120_000 : 30_000, "x".repeat(turn === 5 ? 420_000 : 30_000));
+    if (!body.tools) return summary(++asked.summaries);
+    asked.turns++;
+    return reply(asked.turns === 5 ? 120_000 : 30_000, "x".repeat(asked.turns === 5 ? 420_000 : 30_000));
   });
   const h = await startHarness();
   t.after(() => h.stop());
@@ -123,17 +131,30 @@ test("a replay provider still folds after a long measured turn, without summed u
   await h.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: "grok", model: "grok-4" } }) });
   for (let i = 0; i < 5; i++) {
     await h.fetch(`/api/bots/${bot.id}/messages`, { method: "POST", body: JSON.stringify({ text: `Request ${i}` }) });
+    // Each its own turn: its request reaches the provider before the wait
+    // for the agent to be idle. Read too soon, idle means not started
+    // yet, the next message waits beside this one, and the two go as one
+    // turn, so on a busy machine the long fifth turn never came and there
+    // was nothing to fold.
+    assert.ok(await waitFor(() => asked.turns === i + 1), `turn ${i + 1} never reached the provider: ${h.logs()}`);
     assert.ok(await waitFor(async () => (await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id && !b.busy)), h.logs());
-    if (i < 4) assert.equal(summaries, 0, "the fixture must reach the long turn without pre-turn folding");
+    if (i < 4) assert.equal(asked.summaries, 0, "the fixture must reach the long turn without pre-turn folding");
   }
-  // the fold summarises a long turn after it ends, which a busy machine
-  // can take well past the usual wait for
+  // The fold summarises the long turn after it ends, nobody waiting on
+  // it. A summary request that fails is tried again a few times, the
+  // last about forty seconds on (FOLD_RETRY_MS), so a fold that does not
+  // show by then is not coming.
   const folded = await waitFor(async () => {
     const b = (await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id);
     return b.tasks.find((l: any) => l.id === b.threadId && l.context.summarised);
-  }, 45_000);
+  }, 60_000);
   assert.ok(folded, h.logs());
-  assert.equal(summaries, 1);
+  return { folded, asked };
+}
+
+test("a replay provider still folds after a long measured turn, without summed usage driving the ring", async t => {
+  const { folded, asked } = await foldAfterLongTurn(t, () => reply(undefined, "Earlier messages summarised."));
+  assert.equal(asked.summaries, 1);
   assert.equal(folded.context.used, 120_000);
   assert.equal(folded.context.window, "table");
   assert.equal(folded.context.measured, true);
@@ -168,4 +189,12 @@ test("legacy input supplies neither bot fill nor Activity fill after a no-usage 
   assert.ok(await waitFor(async () => (await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id && !b.busy)));
   assert.equal(f.bodies.filter(b => !b.tools).length, 0, "legacy usage did not trigger a summary");
   assert.equal((await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id).tasks[0].context.measured, false);
+});
+
+test("a fold whose summary request fails tries again, without waiting for another turn", async t => {
+  // the first summary request is refused, the way a busy provider's is
+  const { folded, asked } = await foldAfterLongTurn(t, n => n === 1 ? { status: 503 } : reply(undefined, "Earlier messages summarised."));
+  assert.equal(asked.summaries, 2, "the fold never asked for its summary again");
+  assert.equal(asked.turns, 5, "the fold waited for another turn");
+  assert.equal(folded.context.used, 120_000);
 });

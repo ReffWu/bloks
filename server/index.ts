@@ -2528,7 +2528,7 @@ bus.subscribe((event: RuntimeEvent) => {
       if (guestEnded) {
         // nothing of the owner's to keep from this turn
       } else if (!command && shouldCompact(own?.used ?? 0, own?.window ?? contextLimitFor(bot.modelSelection.model))) {
-        void foldContext(bot.id, event.threadId).catch(() => {});
+        void foldAfterTurn(bot.id, event.threadId);
       } else if (!command) {
         // Otherwise absorb one message into the running summary, if this
         // workspace asked for that. Deliberately in the else: a lane that
@@ -6704,6 +6704,50 @@ function idleCompactionEnded(laneId: string) {
   sweepIdleLanes();
 }
 
+/** How long the fold after a turn waits before each new try when its
+ * summary request fails: three more tries, the last about forty seconds
+ * after the turn ended. */
+const FOLD_RETRY_MS = [2_000, 10_000, 30_000];
+
+/** The latest fold after a turn each lane has going, so an older one
+ * still waiting to try again stands down for it. */
+const foldsAfterTurn = new Map<string, symbol>();
+
+/**
+ * The fold a turn's end asks for, tried again when its summary request
+ * fails. Such a request fails for reasons that pass: the provider busy or
+ * limiting how often it is asked, the network gone for a moment, the
+ * computer short of connections. Nothing used to try again until the
+ * lane's next turn, which then started full and folded on its way in, if
+ * the person came back at all. Not once the lane is working again, since
+ * that turn folds on its way in if it needs to, nor once it is gone or
+ * something else has folded it.
+ */
+async function foldAfterTurn(botId: string, threadId: string): Promise<void> {
+  const mine = Symbol(threadId);
+  foldsAfterTurn.set(threadId, mine);
+  const through = store.bot(botId)?.tasks.find((t) => t.id === threadId)?.context?.through ?? 0;
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await foldContext(botId, threadId);
+        return;
+      } catch (error) {
+        const wait = FOLD_RETRY_MS[attempt];
+        if (wait === undefined) {
+          console.error(`[fold] gave up on folding ${threadId} after ${attempt + 1} tries:`, (error as Error)?.message ?? error);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, wait).unref?.());
+      }
+      const lane = store.bot(botId)?.tasks.find((t) => t.id === threadId);
+      if (foldsAfterTurn.get(threadId) !== mine || !lane || lane.busy || (lane.context?.through ?? 0) !== through) return;
+    }
+  } finally {
+    if (foldsAfterTurn.get(threadId) === mine) foldsAfterTurn.delete(threadId);
+  }
+}
+
 /**
  * Fold the older half of a lane into a summary.
  *
@@ -6711,7 +6755,9 @@ function idleCompactionEnded(laneId: string) {
  * uses the same engine the lane runs on. If the summary cannot be made,
  * nothing changes: the next turn sends a slightly-too-long transcript and
  * the provider says so, which is recoverable. Losing the messages instead
- * would not be.
+ * would not be. A summary request that fails throws, so the fold after a
+ * turn can try it again (foldAfterTurn); every other caller reads that
+ * as no fold.
  *
  * `handoff` is the budget of a story about to be handed to a new session
  * (boundHandoff in server/context.ts), which is much smaller than the
@@ -6742,12 +6788,7 @@ async function foldContext(botId: string, threadId: string, force = false, hando
   const plan = planCompaction(asTurns, budget, force ? 2 : 6);
   if (!plan.fold.length) return false;
 
-  let summary: string;
-  try {
-    summary = (await instance.generateText(summaryPrompt(task.context?.summary ?? null, plan.fold))).trim();
-  } catch {
-    return false;
-  }
+  const summary = (await instance.generateText(summaryPrompt(task.context?.summary ?? null, plan.fold))).trim();
   if (!summary) return false;
 
   store.setTaskContext(threadId, {
