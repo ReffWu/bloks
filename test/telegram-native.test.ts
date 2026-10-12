@@ -2,7 +2,7 @@
 // files sent back, and a word on what a long turn is doing. Every server,
 // engine and Telegram account here is an isolated fixture:
 // Telegram is a stub on loopback and the engine is a script that speaks
-// Codex's protocol.
+// Codex's protocol, or Claude Code's for the question it asks its own way.
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -167,10 +167,42 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   return cli;
 }
 
-async function fixture(t: TestContext) {
+/** A Claude Code whose own question tool asks permission to ask, the way
+ * the real one does: an ask on the turn's socket with no word that it is
+ * a question. It says back what it was told. */
+function fakeClaude(root: string): string {
+  const cli = join(root, "fake-claude.mjs");
+  writeFileSync(cli, `#!${process.execPath}
+import { createConnection } from "node:net";
+import { readFileSync } from "node:fs";
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("9.9.9 (Claude Code)"); process.exit(0); }
+if (args[0] === "auth") { console.log(JSON.stringify({ loggedIn: true })); process.exit(0); }
+const out = (frame) => console.log(JSON.stringify(frame));
+process.stdin.once("data", () => {
+  out({ type: "system", subtype: "init", session_id: "sess-native", model: "claude-sonnet-5" });
+  const config = JSON.parse(readFileSync(args[args.indexOf("--mcp-config") + 1], "utf8"));
+  const socket = createConnection(config.mcpServers.bloks.args[1]);
+  socket.write(JSON.stringify({ t: "ask", id: "ask-db", tool: "AskUserQuestion", input: { questions: [{ question: "Which database?", options: [{ label: "Postgres" }, { label: "SQLite" }] }] } }) + "\\n");
+  socket.once("data", (line) => {
+    const told = JSON.parse(String(line));
+    const text = "TOLD " + told.behavior + " " + told.message;
+    out({ type: "assistant", message: { content: [{ type: "text", text }] } });
+    out({ type: "result", subtype: "success", is_error: false, num_turns: 1, duration_api_ms: 100, total_cost_usd: 0, session_id: "sess-native", result: text });
+    setTimeout(() => process.exit(0), 50);
+  });
+});
+`, { mode: 0o755 });
+  return cli;
+}
+
+async function fixture(t: TestContext, engine: "codex" | "claude" = "codex") {
   const root = mkdtempSync(join(tmpdir(), "bloks-telegram-native-"));
   mkdirSync(join(root, ".bloks"), { recursive: true });
-  writeFileSync(join(root, ".bloks/config.json"), JSON.stringify({ instances: { codex: { driver: "codex", config: { cli: fakeCodex(root) } } } }));
+  writeFileSync(join(root, ".bloks/config.json"), JSON.stringify({ instances: {
+    codex: { driver: "codex", config: { cli: fakeCodex(root) } },
+    claude: { driver: "claudeAgent", config: { cli: fakeClaude(root) } },
+  } }));
   const tg = await telegramStub(t);
   const h = await startHarness({
     HOME: root, NODE_OPTIONS: `--import=${preload}`, BLOKS_TEST_TELEGRAM_URL: tg.url,
@@ -179,7 +211,8 @@ async function fixture(t: TestContext) {
   t.after(async () => { await h.crash(); rmSync(root, { recursive: true, force: true }); });
   const post = (path: string, body: unknown = {}) => h.json(path, { method: "POST", body: JSON.stringify(body) });
   const { bot } = await post("/api/bots", { name: "Rex" });
-  await h.json(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: "codex", model: "gpt-6.1-sol" } }) });
+  const model = engine === "codex" ? "gpt-6.1-sol" : "claude-sonnet-5";
+  await h.json(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: engine, model } }) });
   const paired = await post("/api/telegram", { token: "12345:TEST_ONLY_TOKEN", enabled: true, botId: bot.id, pair: true });
   assert.ok(paired.pairing, JSON.stringify(paired));
   tg.say(paired.pairing);
@@ -238,6 +271,22 @@ test("a question's choices are one button each, and the tapped one is the answer
   await waitFor(() => f.tg.calls("sendMessage").some((c) => c.body.text === "PICKED Blue"), "the choice never reached the agent");
   const edited = f.tg.calls("editMessageText").find((c) => c.body.message_id === card.id);
   assert.equal(edited?.body.text, "Your agent has a question\nWhich colour?\n\nAnswered: Blue");
+});
+
+test("a question an engine asked permission to ask has its own choices, and the tapped one is the answer", async (t) => {
+  // Claude Code's own question reaches Bloks labelled a permission. Read
+  // as one here, the first choice allowed the asking with no answer in
+  // it, and any other choice refused it.
+  const f = await fixture(t, "claude");
+  f.tg.say("which one");
+  const card = await cardIn(f, "Your agent has a question");
+  assert.equal(card.body.text, "Your agent has a question\nWhich database?");
+  const rows = card.body.reply_markup.inline_keyboard;
+  assert.deepEqual(rows.map((row: any[]) => row.map((b) => b.text)), [["Postgres"], ["SQLite"]]);
+  f.tg.press(card.id, rows[1][0].callback_data);
+  await waitFor(() => f.tg.calls("sendMessage").some((c) => c.body.text === "TOLD answer SQLite"), "the choice never reached the agent");
+  const edited = f.tg.calls("editMessageText").find((c) => c.body.message_id === card.id);
+  assert.equal(edited?.body.text, "Your agent has a question\nWhich database?\n\nAnswered: SQLite");
 });
 
 test("a card answered in the app is rewritten on the phone, and its buttons do nothing after", async (t) => {

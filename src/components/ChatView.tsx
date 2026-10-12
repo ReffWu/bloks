@@ -21,6 +21,7 @@ import { lastEditable, quietLine, quietRunAt, shouldLoadEarlier, showTypingDots,
 import { useEarlier } from "@/lib/useEarlier";
 import { useLanesInSidebar } from "@/lib/conversationsView";
 import { findHits, stepHit } from "@/lib/find";
+import { isApproval } from "@/lib/cardAnswer";
 import { dayLine, queuedLine, stamp, timeSaidBelow } from "@/lib/when";
 import { attachmentBasename, splitAttachments } from "@/lib/attachments";
 import { TaskStrip } from "./TaskStrip";
@@ -837,12 +838,13 @@ export function ChatView({ bot }: { bot: Bot }) {
 
   // Approvals stacked up while the user was away. One or two are a
   // conversation; several are a queue, and a queue deserves queue
-  // controls rather than a scroll of identical presses.
+  // controls rather than a scroll of identical presses. Only approvals:
+  // a question waiting beside them is not something "Allow all" answers.
   const pendingApprovals = useMemo(
     () =>
       bot.messages.filter(
         (m) =>
-          m.kind === "options" && m.card?.requestId && !m.card.answered && !m.card.dismissed,
+          m.kind === "options" && m.card && isApproval(m.card) && !m.card.answered && !m.card.dismissed,
       ),
     [bot.messages],
   );

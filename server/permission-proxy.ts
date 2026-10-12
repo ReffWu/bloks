@@ -164,9 +164,41 @@ function proposedRules(args: any): unknown[] | null {
   return null;
 }
 
+/** What a question is told when the person gave it no words. */
+const NO_ANSWER = "No answer was given. Use your best judgment.";
+
+/** For the questions a card did not show. The wording is aimed at the
+ * model, which can put each one to the person by itself. */
+const NOT_SHOWN = "Not shown to the person: Bloks puts one question on a card. Ask this one on its own.";
+
+/** The CLI's own question tool reads the person's reply from `answers`
+ * in its input, each against the question it answers. The card shows the
+ * first question and its choices, so the reply is that one's. Any others
+ * are told they were not asked, where the same words against all of them
+ * would answer questions the person never saw. */
+function withAnswers(input: any, said: string) {
+  const answers: Record<string, string> = {};
+  input.questions.forEach((asked: any, i: number) => {
+    if (typeof asked?.question === "string") answers[asked.question] = i === 0 ? said : NOT_SHOWN;
+  });
+  return { ...input, answers };
+}
+
 /** The `--permission-prompt-tool` reply, as a string, because the contract
  * is a JSON document inside a text content block. */
 function permissionVerdict(reply: any, args: any): string {
+  // A question that came through the checkpoint, answered. Allowing it
+  // with the answers in its input is how the CLI's own tool is told. A
+  // tool with nowhere to put them is refused with the reply as the
+  // reason, the one way left for the words to reach the model.
+  if (reply.behavior === "answer") {
+    const said = reply.message || NO_ANSWER;
+    return JSON.stringify(
+      Array.isArray(args.input?.questions)
+        ? { behavior: "allow", updatedInput: withAnswers(args.input, said) }
+        : { behavior: "deny", message: `Answered in Bloks instead: ${said}` },
+    );
+  }
   if (reply.behavior !== "allow") {
     return JSON.stringify({
       behavior: "deny",
@@ -239,7 +271,7 @@ async function dispatch(message: any) {
 
       const text =
         isQuestion || isConnection || isSecret
-          ? reply.message || "No answer was given. Use your best judgment."
+          ? reply.message || NO_ANSWER
           : permissionVerdict(reply, args);
 
       return writeFrame({

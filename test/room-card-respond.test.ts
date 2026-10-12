@@ -6,6 +6,10 @@
 // delivered, the card was looked for in the lane, not found, and left open
 // in the room, while the note that nothing was run landed in a lane the
 // person was not looking at.
+//
+// The answer that cannot be delivered here is one to a question its turn
+// ended under. The ask closes once the turn is over and the lane has left
+// the room, which is the other place the card was looked for in the lane.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -16,8 +20,8 @@ import { startHarness } from "./helpers/server.ts";
 import { waitFor } from "./helpers/turns.ts";
 
 /** A Claude Code that, asked for ASK-ME, raises a question through the
- * turn's ask socket the way its approval bridge would, and waits a few
- * seconds for the answer before it finishes. */
+ * turn's ask socket the way its approval bridge would, and waits a
+ * moment for the answer before it finishes without one. */
 function claudeHome(): string {
   const home = mkdtempSync(join(tmpdir(), "bloks-room-card-"));
   mkdirSync(join(home, ".bloks"), { recursive: true });
@@ -54,7 +58,7 @@ if (said.includes("ASK-ME")) {
   const socket = createConnection(config.mcpServers.bloks.args[1]);
   socket.on("error", () => {});
   socket.write(JSON.stringify({ t: "ask", id: "ask-ship", kind: "question", tool: "ask_user", input: { question: "Ship it?" } }) + "\\n");
-  await new Promise((r) => setTimeout(r, 4000));
+  await new Promise((r) => setTimeout(r, 1500));
   socket.destroy();
 }
 out({ type: "assistant", message: { content: [{ type: "text", text: "Done." }] } });
@@ -85,18 +89,21 @@ test("an answer to a room's card that cannot be delivered settles the card in th
   const card = await waitFor(async () => (await roomMessages()).find((m) => m.kind === "options" && m.card?.requestId === "ask-ship"));
   assert.ok(card, "the question never reached the room");
 
-  // An answer the ask cannot take: a question is answered, not allowed.
-  // The engine refuses it, which is the path every undeliverable answer
-  // takes.
+  // The turn ends with nobody having answered, and the ask closes after.
+  const settled = await waitFor(async () => {
+    const now = (await roomMessages()).find((m) => m.id === card.id);
+    return now?.card.answered ? now : null;
+  });
+  assert.ok(settled, "the room's card was left open");
+  assert.match(settled.card.closed, /turn ended/);
+  assert.ok(!settled.card.dismissed, "the question vanished from the room");
+
+  // An answer now has nothing to go to, and says so where it was pressed.
   const answered = await h.json(`/api/bots/${kat.id}/respond`, {
     method: "POST",
-    body: JSON.stringify({ requestId: "ask-ship", behavior: "allow" }),
+    body: JSON.stringify({ requestId: "ask-ship", behavior: "answer", message: "Yes" }),
   });
   assert.equal(answered.outcome, "unavailable");
-
-  const settled = (await roomMessages()).find((m) => m.id === card.id);
-  assert.equal(settled.card.answered, "unavailable", "the room's card was left open");
-  assert.equal(settled.card.dismissed, true);
   const closed = (m: any) => m.kind === "activity" && /already closed/.test(m.tool?.name ?? "");
   assert.ok((await roomMessages()).some(closed), "the room was not told nothing was run");
   const lane = (await h.json(`/api/bots/${kat.id}/messages?thread=${kat.threadId}&limit=50`)).messages as any[];

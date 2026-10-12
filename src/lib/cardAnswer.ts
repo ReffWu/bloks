@@ -11,6 +11,15 @@
 
 type Api = (path: string, init?: RequestInit) => Promise<any>;
 
+/** Whether a card asks for a yes or a no on something the agent wants to
+ * do, as opposed to asking a question. A request id does not say which:
+ * an engine's own question tool arrives as a permission request too. The
+ * server tells them apart, leaves the tool off a question's card and
+ * titles it as one, and this reads that. */
+export function isApproval(card: { requestId?: string; tool?: string; title?: string }): boolean {
+  return Boolean(card.requestId) && (Boolean(card.tool) || card.title === "Approval needed");
+}
+
 export interface CardAnswer {
   botId: string;
   messageId: string;

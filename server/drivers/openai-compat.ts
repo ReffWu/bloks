@@ -387,7 +387,7 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
         {
           abort: AbortController;
           turnId: string;
-          asks: Map<string, (answer: string) => void>;
+          asks: Map<string, (answer: string, source?: string) => void>;
         }
       >();
 
@@ -768,7 +768,8 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
           }, ASK_TIMEOUT_MS);
           timer.unref?.();
 
-          entry.asks.set(requestId, (answer) => {
+          // the person's answer, unless the turn's end is what settled it
+          entry.asks.set(requestId, (answer, source = "user") => {
             clearTimeout(timer);
             entry.asks.delete(requestId);
             emit({
@@ -776,7 +777,7 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
               type: "request.resolved",
               requestId,
               behavior: "answer",
-              source: "user",
+              source,
             });
             resolve(answer);
           });
@@ -875,7 +876,7 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
         if (active.has(threadId)) throw new Error("a turn is already running on this thread");
         const turnId = newId();
         const abort = new AbortController();
-        const asks = new Map<string, (answer: string) => void>();
+        const asks = new Map<string, (answer: string, source?: string) => void>();
         active.set(threadId, { abort, turnId, asks });
 
         const messages = [
@@ -934,7 +935,7 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
             emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: null });
           } catch (e) {
             const entry = active.get(threadId);
-            for (const settle of entry?.asks.values() ?? []) settle("The turn ended before you answered.");
+            for (const settle of entry?.asks.values() ?? []) settle("The turn ended before you answered.", "turn-ended");
             active.delete(threadId);
             const aborted = (e as Error).name === "AbortError";
             if (!aborted) {

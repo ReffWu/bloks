@@ -399,7 +399,7 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
         interrupt: () => Promise<void>;
         stop: () => void;
         turnId: string;
-        asks: Map<string, (behavior: string, message?: string) => void>;
+        asks: Map<string, (behavior: string, message?: string, source?: string) => void>;
       }
       const active = new Map<string, Turn>();
       /** Every engine process this instance started, ended on dispose (engine-processes.ts). */
@@ -509,7 +509,7 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
           deciding: false,
         };
         const startedAt = Date.now();
-        const asks = new Map<string, (behavior: string, message?: string) => void>();
+        const asks = new Map<string, (behavior: string, message?: string, source?: string) => void>();
 
         const stop = () => {
           if (process.platform === "win32") {
@@ -556,7 +556,7 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
         void gone.then(() => (exited = true));
         const interrupt = async () => {
           state.stopping = true;
-          for (const finish of [...asks.values()]) finish("deny", "Bloks: the turn was stopped");
+          for (const finish of [...asks.values()]) finish("deny", "Bloks: the turn was stopped", "turn-ended");
           if (exited) return;
           if (sessionId) rpc.notify("session/cancel", { sessionId });
           setTimeout(stop, 2_000).unref?.();
@@ -566,7 +566,7 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
         const settle = (ok: boolean, stopReason: string | null) => {
           if (state.settled) return;
           state.settled = true;
-          for (const finish of [...asks.values()]) finish("deny", "Bloks: the turn ended");
+          for (const finish of [...asks.values()]) finish("deny", "Bloks: the turn ended", "turn-ended");
           rpc.failPending(new Error("turn settled"));
           active.delete(threadId);
           if (state.text.trim()) {
@@ -595,7 +595,10 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
 
           const requestId = newId();
           const call = params.toolCall ?? {};
-          const finish = (behavior: string, message?: string) => {
+          // `source` is who settled it: the person, unless the clock or the
+          // turn's end did, which the card and the record must not put down
+          // as their decision.
+          const finish = (behavior: string, message?: string, source = "user") => {
             if (!asks.delete(requestId)) return;
             clearTimeout(timer);
             // The card shows the agent's own labels ("Allow once", "Always
@@ -618,10 +621,10 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
               type: "request.resolved",
               requestId,
               behavior: denied ? "deny" : "allow",
-              source: "user",
+              source,
             });
           };
-          const timer = setTimeout(() => finish("deny"), 15 * 60_000);
+          const timer = setTimeout(() => finish("deny", undefined, "timeout"), 15 * 60_000);
           timer.unref?.();
           asks.set(requestId, finish);
           emit({

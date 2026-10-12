@@ -1768,9 +1768,61 @@ const askMessageByRequest = new Map<string, string>(); // requestId -> messageId
  * settled for an answer that could not be delivered is settled where it
  * is, or the room's card stays open forever. */
 const askCardThread = new Map<string, string>();
+/** The engine that raised each live ask, which is where its answer goes.
+ * Not always the one the lane reads as running on: a Claude Code turn
+ * that has ended can still ask (a background task), and by then the
+ * lane's engine is forgotten and the agent's own may be another. */
+const askEngineByRequest = new Map<string, string>();
 /** A collaborator who answered an approval, by request, so the record and
  * the card say who decided rather than "you". */
 const decidedByMember = new Map<string, string>();
+/** The asks settled in this run, the latest few hundred, with where each
+ * one's card is. An answer that arrives after (another window, a phone
+ * that had not heard yet) is told so beside the card it was pressed on. */
+const settledAsks = new Map<string, { thread: string; messageId: string }>();
+const MAX_SETTLED_ASKS = 500;
+
+/** An ask is over, however it ended: nothing is waiting on it now. */
+function forgetAsk(requestId: string) {
+  const messageId = askMessageByRequest.get(requestId);
+  const thread = askCardThread.get(requestId);
+  if (messageId && thread) {
+    settledAsks.set(requestId, { thread, messageId });
+    while (settledAsks.size > MAX_SETTLED_ASKS) settledAsks.delete(settledAsks.keys().next().value!);
+  }
+  askMessageByRequest.delete(requestId);
+  askCardThread.delete(requestId);
+  askThreadByRequest.delete(requestId);
+  askEngineByRequest.delete(requestId);
+  decidedByMember.delete(requestId);
+}
+
+/** What a card says under its question once it closed with nobody having
+ * answered it, by what closed it. A card that only vanished read as a
+ * question that was never asked, or one Bloks lost (GitHub 254). The
+ * engine is not named: a shared room's members read this too. */
+function closedWhy(source: string | undefined, card: { tool?: string; title: string }, agent: string): string {
+  const approval = Boolean(card.tool) || card.title === "Approval needed";
+  if (source === "timeout") {
+    return approval
+      ? "Nobody answered in time, so this was not done."
+      : `Nobody answered in time, so ${agent} carried on without an answer.`;
+  }
+  if (source === "turn-ended" || source === "shutdown") {
+    return `The turn ended before this was answered${approval ? ", so it was not done" : ""}. Nothing is waiting on it now.`;
+  }
+  if (source === "engine") return `${agent}'s engine closed this before it was answered. Nothing is waiting on it now.`;
+  return "This closed before it was answered. Nothing is waiting on it now.";
+}
+/** What such a card reads as answered with, for a screen that shows only that. */
+const CLOSED_UNANSWERED = "Closed without an answer";
+
+/** The engine an ask's answer goes to: the one that asked, while it is
+ * still there to hear it. */
+function askInstance(bot: { modelSelection: ModelSelection }, askThread: string | undefined, requestId: string) {
+  const asked = askEngineByRequest.get(requestId);
+  return (asked ? registry.get(asked) : undefined) ?? laneInstance(bot, askThread);
+}
 /** Proposed teams awaiting the user's yes, by card message id. */
 const teamPlans = new Map<string, { plan: TeamPlan; leadId: string }>();
 
@@ -1931,12 +1983,16 @@ bus.subscribe((event: RuntimeEvent) => {
       }
       break;
     case "request.opened": {
+      // The engine that asked, which hears every answer given below. The
+      // lane's own is not always it: a turn that has ended can still ask,
+      // and by then the lane's engine is forgotten (askEngineByRequest).
+      const asker = registry.get(event.providerInstanceId ?? "") ?? laneInstance(bot, event.threadId);
       // An archived agent does nothing more, whatever its rules and mode
       // would have allowed. Its turn is being stopped; an engine that asks
       // in the moment before it goes is refused rather than waved
       // through, so no tool starts after the archive (GitHub 220).
       if (event.requestId && bot.archivedAt) {
-        void laneInstance(bot, event.threadId)
+        void asker
           ?.adapter.respondToRequest(event.threadId, event.requestId, {
             behavior: "deny",
             message: `${bot.name} has been archived, so this was not done.`,
@@ -1958,7 +2014,7 @@ bus.subscribe((event: RuntimeEvent) => {
         event.requestId &&
         laneRequester.get(event.threadId) === MAIL_FROM_ANYONE
       ) {
-        void laneInstance(bot, event.threadId)
+        void asker
           ?.adapter.respondToRequest(event.threadId, event.requestId, {
             behavior: "answer",
             message: "Not for an email from someone the person has not listed: their conversations, notes, keys and apps stay theirs.",
@@ -1974,7 +2030,7 @@ bus.subscribe((event: RuntimeEvent) => {
         const answer = inShared
           ? "Not in a shared room: notes about the person are private to them."
           : suggestNote(bot, (event.input as { fact?: unknown } | undefined)?.fact, event.threadId);
-        void laneInstance(bot, event.threadId)
+        void asker
           ?.adapter.respondToRequest(event.threadId, event.requestId, { behavior: "answer", message: answer })
           .catch(() => {});
         break;
@@ -1983,7 +2039,7 @@ bus.subscribe((event: RuntimeEvent) => {
       if (event.tool === "read_message" && event.requestId) {
         const id = String((event.input as { message_id?: unknown } | undefined)?.message_id ?? "").trim();
         const found = /^[\w-]{1,80}$/.test(id) ? recalledMessage(bot, id, event.threadId) : null;
-        void laneInstance(bot, event.threadId)
+        void asker
           ?.adapter.respondToRequest(event.threadId, event.requestId, {
             behavior: "answer",
             message: found ? `${found.who}${found.by === "agent" ? " (another agent)" : ""}, ${found.where}:\n${found.text}` : "No message with that id in your conversations.",
@@ -1994,7 +2050,7 @@ bus.subscribe((event: RuntimeEvent) => {
       // looking something up in its own past: answered straight away
       if (event.tool === "search_history" && event.requestId) {
         const query = String((event.input as { query?: unknown } | undefined)?.query ?? "").slice(0, 300);
-        void laneInstance(bot, event.threadId)
+        void asker
           ?.adapter.respondToRequest(event.threadId, event.requestId, {
             behavior: "answer",
             message: recallText(recallFor(bot, query, event.threadId), query),
@@ -2020,7 +2076,7 @@ bus.subscribe((event: RuntimeEvent) => {
                 event.requestId,
                 (event.input as { name?: unknown; hint?: unknown } | undefined) ?? {},
               );
-        const instance = laneInstance(bot, event.threadId);
+        const instance = asker;
         void instance?.adapter
           .respondToRequest(event.threadId, event.requestId, { behavior: "answer", message: answer })
           .catch(() => {});
@@ -2067,7 +2123,7 @@ bus.subscribe((event: RuntimeEvent) => {
         // no longer what should happen.
         const hold = wheel.heldBy(bot.id);
         if (hold) {
-          const instance = laneInstance(bot, event.threadId);
+          const instance = asker;
           void instance?.adapter
             .respondToRequest(event.threadId, event.requestId, {
               behavior: "deny",
@@ -2088,7 +2144,7 @@ bus.subscribe((event: RuntimeEvent) => {
         const decision = decideEach(policy.list(), targets);
         if (decision.verdict === "deny" || (decision.verdict === "allow" && !byMember)) {
           const allowed = decision.verdict === "allow";
-          const instance = laneInstance(bot, event.threadId);
+          const instance = asker;
           const delivered = instance
             ? instance.adapter
                 .respondToRequest(event.threadId, event.requestId, {
@@ -2142,7 +2198,7 @@ bus.subscribe((event: RuntimeEvent) => {
           event.tool ?? "",
         );
         if (!byMember && (mode === "auto" || mode === "full" || (mode === "edits" && editish))) {
-          const instance = laneInstance(bot, event.threadId);
+          const instance = asker;
           const delivered = instance
             ? instance.adapter
                 .respondToRequest(event.threadId, event.requestId, { behavior: "allow" })
@@ -2192,6 +2248,7 @@ bus.subscribe((event: RuntimeEvent) => {
         askCardThread.set(event.requestId, roomId);
         // answers must reach the lane that asked, not the active one
         askThreadByRequest.set(event.requestId, event.threadId);
+        if (event.providerInstanceId) askEngineByRequest.set(event.requestId, event.providerInstanceId);
         // A turn that began on a phone should not stall on a card the
         // person cannot see. The card goes to the chat it came from, with
         // its choices as buttons, and the next message from that chat is
@@ -2202,14 +2259,19 @@ bus.subscribe((event: RuntimeEvent) => {
         const token = cfg.telegram?.token;
         if (chatId !== undefined && token) {
           const requestId = event.requestId;
+          // Allow or Deny only for what is really an approval. A question
+          // the engine labelled a permission has its own choices, and a
+          // tap on one is the answer, not a yes to the first and a no to
+          // the rest.
+          const yesOrNo = !asking;
           telegramAsks.set(chatId, {
             requestId,
             botId: bot.id,
             options: message.card?.options ?? [],
-            permission,
+            permission: yesOrNo,
           });
           const { title, subtitle, options } = message.card ?? {};
-          const forwarded = telegramCards.forward({ title, subtitle, options, requestId, botId: bot.id, chatId, permission });
+          const forwarded = telegramCards.forward({ title, subtitle, options, requestId, botId: bot.id, chatId, permission: yesOrNo });
           void telegram
             .post(token, chatId, forwarded.text, forwarded.keyboard)
             .then((messageId) => {
@@ -2232,7 +2294,11 @@ bus.subscribe((event: RuntimeEvent) => {
       }
       const messageId = event.requestId ? askMessageByRequest.get(event.requestId) : null;
       if (messageId) {
-        const existing = store.messagesFor(roomId).find((m) => m.id === messageId);
+        // Where the card is, which is not always where the lane speaks
+        // now: an ask closed after its turn ended finds the lane out of
+        // the room, and the room's card was left open for good.
+        const cardThread = (event.requestId ? askCardThread.get(event.requestId) : undefined) ?? roomId;
+        const existing = store.messagesFor(cardThread).find((m) => m.id === messageId);
         if (existing?.card && !existing.card.answered) {
           // The one thing in the product that is genuinely on your behalf:
           // an agent stopped, asked, and was told yes or no. Recorded with
@@ -2258,22 +2324,21 @@ bus.subscribe((event: RuntimeEvent) => {
             );
           }
           const decider = event.requestId ? decidedByMember.get(event.requestId) : undefined;
-          const patched = store.patchMessage(roomId, messageId, {
-            card: {
-              ...existing.card,
-              answered: event.behavior,
-              dismissed: event.source !== "user",
-              ...(decider ? { answeredBy: decider } : {}),
-            },
+          const patched = store.patchMessage(cardThread, messageId, {
+            card:
+              event.source === "user"
+                ? { ...existing.card, answered: event.behavior, dismissed: false, ...(decider ? { answeredBy: decider } : {}) }
+                : // Nobody answered: a timeout, the turn's end or the engine
+                  // closed it. It stays in the conversation and says which.
+                  {
+                    ...existing.card,
+                    answered: CLOSED_UNANSWERED,
+                    closed: closedWhy(event.source, existing.card, bot.name),
+                  },
           });
-          if (patched) broadcast({ kind: "message.patch", threadId: roomId, message: patched });
+          if (patched) broadcast({ kind: "message.patch", threadId: cardThread, message: patched });
         }
-        if (event.requestId) {
-          askMessageByRequest.delete(event.requestId);
-          askCardThread.delete(event.requestId);
-          askThreadByRequest.delete(event.requestId);
-          decidedByMember.delete(event.requestId);
-        }
+        if (event.requestId) forgetAsk(event.requestId);
       }
       broadcast({ kind: "bot", bot: clientBot(bot) });
       break;
@@ -7620,7 +7685,7 @@ async function answerTelegramAsk(
 ): Promise<boolean> {
   const asked = store.bot(ask.botId);
   const askThread = askThreadByRequest.get(ask.requestId) ?? asked?.threadId ?? "";
-  const instance = asked ? laneInstance(asked, askThread) : null;
+  const instance = asked ? askInstance(asked, askThread, ask.requestId) : null;
   const behavior = ask.permission ? (read.option === ask.options[0] ? "allow" : "deny") : "answer";
   const message = ask.permission ? undefined : (read.option ?? read.free);
   telegramCards.expect(ask.requestId, message);
@@ -8866,12 +8931,17 @@ async function sendUserMessage(
     if (yours && options.steer) {
       const steered = await steerLane(bot, lane, text, { replyTo: options.replyTo, personal: options.personal });
       if (steered) {
+        // A turn stopped on a question or an approval reads nothing until
+        // that is answered, and the step it is on is the person's own.
+        const asked = [...askThreadByRequest.values()].includes(lane.id);
         return {
           ok: true,
           steered: true,
           taskId: lane.id,
           lane: lane.title,
-          note: `${bot.name} is in the middle of a turn and reads this after the step it is on.`,
+          note: asked
+            ? `${bot.name} is waiting on an answer in this conversation and reads this once it has one.`
+            : `${bot.name} is in the middle of a turn and reads this after the step it is on.`,
         };
       }
     }
@@ -9488,13 +9558,12 @@ bus.subscribe((event: RuntimeEvent) => {
  * requests the same way, and an answer to an old card must never reach
  * it as permission, as after a restart. */
 function settleRebuiltAsks(laneId: string) {
-  const threadId = activeRoom.get(laneId) ?? laneId;
   for (const [requestId, lane] of askThreadByRequest) {
     if (lane !== laneId) continue;
-    askThreadByRequest.delete(requestId);
     const messageId = askMessageByRequest.get(requestId);
-    askMessageByRequest.delete(requestId);
-    askCardThread.delete(requestId);
+    // where the card is, as for an ask that closed on its own
+    const threadId = askCardThread.get(requestId) ?? activeRoom.get(laneId) ?? laneId;
+    forgetAsk(requestId);
     const card = store.messagesFor(threadId).find((m) => m.id === messageId)?.card;
     if (!messageId || !card || card.answered || card.dismissed) continue;
     const patched = store.patchMessage(threadId, messageId, {
@@ -9830,7 +9899,7 @@ async function serveMember(
         if (answer !== "Allow" && answer !== "Deny") return json(res, 400, { error: "Allow or Deny" });
         const bot = message.from ? store.bot(message.from) : null;
         const askThread = message.card.requestId ? askThreadByRequest.get(message.card.requestId) : undefined;
-        const instance = bot ? laneInstance(bot, askThread) : null;
+        const instance = bot && message.card.requestId ? askInstance(bot, askThread, message.card.requestId) : null;
         if (!bot || !instance || !askThread || !message.card.requestId) {
           return json(res, 409, { error: "that request has closed" });
         }
@@ -9846,7 +9915,7 @@ async function serveMember(
       if (message.card.requestId) {
         const bot = message.from ? store.bot(message.from) : null;
         const askThread = askThreadByRequest.get(message.card.requestId);
-        const instance = bot ? laneInstance(bot, askThread) : null;
+        const instance = bot ? askInstance(bot, askThread, message.card.requestId) : null;
         if (!bot || !instance || !askThread) return json(res, 409, { error: "that question has closed" });
         await instance.adapter
           .respondToRequest(askThread, message.card.requestId, { behavior: "answer", message: `${who.name} answered: ${answer}` })
@@ -11140,17 +11209,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && method === "PATCH") {
       const bot = store.bot(m[1]);
       if (!bot) return json(res, 404, { error: "no such agent" });
-      const existing = store.messagesFor(bot.threadId).find((msg) => msg.id === m![2]);
-      if (!existing?.card) return json(res, 404, { error: "no such card" });
       const body = await readBody(req);
-      const patched = store.patchMessage(bot.threadId, m[2], {
+      // a named conversation, since a card can be in any of the agent's
+      const thread = typeof body.taskId === "string" && bot.tasks.some((t) => t.id === body.taskId) ? body.taskId : bot.threadId;
+      const existing = store.messagesFor(thread).find((msg) => msg.id === m![2]);
+      if (!existing?.card) return json(res, 404, { error: "no such card" });
+      const patched = store.patchMessage(thread, m[2], {
         card: {
           ...existing.card,
           ...(body.answered !== undefined ? { answered: body.answered } : {}),
           ...(body.dismissed !== undefined ? { dismissed: body.dismissed } : {}),
         },
       });
-      broadcast({ kind: "message.patch", threadId: bot.threadId, message: patched });
+      broadcast({ kind: "message.patch", threadId: thread, message: patched });
       return json(res, 200, { message: patched });
     }
     m = path.match(/^\/api\/bots\/([\w-]+)\/messages$/);
@@ -12665,7 +12736,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // meant for the old card must not reach it as permission.
       const live = askThreadByRequest.has(requestId);
       const askThread = askThreadByRequest.get(requestId) ?? bot.threadId;
-      const instance = laneInstance(bot, askThread);
+      const instance = askInstance(bot, askThread, requestId);
       if (!instance) return json(res, 409, { error: "provider unavailable" });
       try {
         if (!live) throw new Error("not a live ask");
@@ -12682,28 +12753,31 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         withYou(room ? { room } : { bot });
         return json(res, 200, { ok: true, outcome: "delivered" });
       } catch {
-        // The ask is gone: the turn ended, or the engine died. Failing
-        // closed beats a 500 that leaves a dead card open forever, the
-        // card settles as unanswerable, and the action was never run.
-        const messageId = askMessageByRequest.get(requestId);
+        // Nothing is waiting on this ask: it closed before the answer got
+        // here, or its engine went without saying so. Failing closed
+        // beats a 500 that leaves a dead card open forever, and the
+        // action was never run. A card still open settles and says so.
+        // One that had settled already is sent again as it stands, so a
+        // window that showed this press as the answer shows what the
+        // card really says.
+        const settled = settledAsks.get(requestId);
+        const messageId = askMessageByRequest.get(requestId) ?? settled?.messageId;
         // where the card is, which in a room is not the lane that asked
-        const cardThread = askCardThread.get(requestId) ?? askThread;
+        const cardThread = askCardThread.get(requestId) ?? settled?.thread ?? askThread;
         settleTelegramCard(requestId, () => "Closed without an answer.");
-        if (messageId) {
-          const existing = store.messagesFor(cardThread).find((msg) => msg.id === messageId);
-          if (existing?.card && !existing.card.answered) {
-            const patched = store.patchMessage(cardThread, messageId, {
-              card: { ...existing.card, answered: "unavailable", dismissed: true },
-            });
-            if (patched) broadcast({ kind: "message.patch", threadId: cardThread, message: patched });
-          }
-          askMessageByRequest.delete(requestId);
-          askCardThread.delete(requestId);
-          askThreadByRequest.delete(requestId);
+        const existing = messageId ? store.messagesFor(cardThread).find((msg) => msg.id === messageId) : undefined;
+        if (existing?.card) {
+          const shown = existing.card.answered
+            ? existing
+            : store.patchMessage(cardThread, existing.id, {
+                card: { ...existing.card, answered: CLOSED_UNANSWERED, closed: closedWhy(undefined, existing.card, bot.name) },
+              });
+          if (shown) broadcast({ kind: "message.patch", threadId: cardThread, message: shown });
         }
+        forgetAsk(requestId);
         const notice = store.appendMessage(cardThread, {
           role: "bot",
-          ...(cardThread !== askThread ? { from: bot.id } : {}),
+          ...(bloks.get(cardThread) ? { from: bot.id } : {}),
           kind: "activity",
           tool: { name: "that request had already closed, nothing was run", ok: false },
         });

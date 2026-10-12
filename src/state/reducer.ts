@@ -21,6 +21,8 @@ export interface OptionCardData {
   /** Asked by a turn that was cut off when Bloks stopped; it can no
    * longer be answered. */
   cutOff?: boolean;
+  /** Why it closed before anyone answered, in the server's words. */
+  closed?: string;
   dismissed?: boolean;
   /** Set when the agent is genuinely blocked on this card. Its absence
    * means a setup question, which is safe to ignore. */

@@ -75,6 +75,11 @@ export interface OptionCardData {
   /** The turn that asked was cut off when Bloks stopped. Nothing is
    * waiting on an answer any more, and none is ever taken as one. */
   cutOff?: boolean;
+  /** Why it closed with nobody having answered it (a timeout, the turn
+   * ending, the engine closing it), in the words the card shows. Such a
+   * card stays in the conversation, where one only hidden read as a
+   * question that was never asked. */
+  closed?: string;
   /** Present when a lead has proposed hiring a team (server/teams.ts). */
   team?: {
     room: string;

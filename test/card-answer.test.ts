@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { sendCardAnswer } from "../src/lib/cardAnswer.ts";
+import { isApproval, sendCardAnswer } from "../src/lib/cardAnswer.ts";
 import { initialState, reducer, type AppState, type Bot } from "../src/state/reducer.ts";
 
 const withCard = (card: Record<string, unknown>): AppState => ({
@@ -96,6 +96,16 @@ test("a permission answer that did not reach the agent puts the card back", asyn
   );
   assert.equal(errors.length, 1);
   assert.equal(answered(state), undefined);
+});
+
+test("a question an engine is waiting on is not an approval", () => {
+  // "Allow all" counted every card with a request behind it, and allowed
+  // a question waiting beside the approvals, which answers nothing
+  // (GitHub 254). The cards as the server sends them:
+  assert.equal(isApproval({ requestId: "r1", title: "Approval needed", tool: "Bash" }), true);
+  assert.equal(isApproval({ requestId: "r2", title: "Approval needed" }), true);
+  assert.equal(isApproval({ requestId: "r3", title: "Your agent has a question" }), false);
+  assert.equal(isApproval({ title: "Which?" }), false, "a setup question has nothing waiting on it at all");
 });
 
 test("a workflow question that had already closed stays as the server left it", async () => {

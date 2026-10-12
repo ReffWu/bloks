@@ -194,10 +194,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Remembering that a card was dealt with is a nicety, not a
   // correctness requirement, so a failure here is allowed to pass.
     const persistCard = (botId: string, messageId: string, patch: Partial<OptionCardData>) => {
+      // the card is in the conversation on screen, which is not always
+      // the agent's first
+      const bot = stateRef.current.bots.find((b) => b.id === botId);
       fetch(`/api/bots/${botId}/cards/${messageId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(patch),
+        body: JSON.stringify({ ...patch, ...(bot ? { taskId: bot.activeTaskId ?? bot.threadId } : {}) }),
       }).catch(() => {});
     };
 
@@ -284,7 +287,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "dismissCard": {
           const card = findCard(stateRef.current, action);
-          if (card?.requestId) {
+          // Putting aside a card an agent still waits on tells it so. One
+          // that has settled is only being tidied away: nothing is
+          // listening, and telling the server anyway wrote "that request
+          // had already closed" into the conversation.
+          if (card?.requestId && !card.answered) {
             api(`/api/bots/${action.botId}/respond`, {
               method: "POST",
               body: JSON.stringify({ requestId: card.requestId, behavior: "deny", message: "Dismissed by user." }),

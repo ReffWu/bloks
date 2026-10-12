@@ -18,6 +18,8 @@ import { createServer, type Server } from "node:net";
 import { randomUUID } from "node:crypto";
 import { unlinkSync } from "node:fs";
 
+import { isQuestionTool } from "../policy.ts";
+
 export interface PendingAsk {
   id: string;
   kind: "permission" | "question";
@@ -177,13 +179,17 @@ export function createAskBroker(options: AskBrokerOptions): AskBroker {
       const entry = open.get(askId);
       if (!entry) return false;
 
-      // A question cannot be allowed or denied and a permission cannot be
-      // answered with prose. Rejecting the mismatch here keeps a malformed
-      // client from putting the CLI into a state it has no contract for.
-      const permitted = entry.ask.kind === "question" ? ["answer"] : ["allow", "deny"];
-      if (!permitted.includes(behavior)) return false;
-
-      entry.settle(behavior, message, "user");
+      // Whatever the person decided settles the ask, as something its tool
+      // has a contract for. A decision that did not fit used to be refused
+      // here, and the refusal was read as the ask being gone: the card
+      // closed while the CLI went on waiting for it (GitHub 254).
+      // A question takes any decision as its reply, put aside included. A
+      // permission is allowed or refused, and words typed on its card
+      // refuse it with those words. The one exception asks permission to
+      // ask (the CLI's own question tool): its words are the answer, and
+      // the bridge hands them over as one (server/permission-proxy.ts).
+      const asksSomething = entry.ask.kind === "question" || isQuestionTool(entry.ask.tool);
+      entry.settle(asksSomething || behavior === "allow" ? behavior : "deny", message, "user");
       return true;
     },
 

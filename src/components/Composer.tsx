@@ -845,7 +845,10 @@ export function Composer({
                   : `Describe the task for ${bot.name} to rehearse…`
                 : openLaneWorking(bot)
                 ? `${bot.name} is working. Enter tells it without stopping, ${modKey()}Enter stops it first.`
-                : `Message ${bot.name}`
+                : // stopped on a card: words typed here are read after it is answered
+                  lane?.state === "needs-you"
+                  ? `${bot.name} is waiting for your answer above.`
+                  : `Message ${bot.name}`
           }
           className="relative block w-full min-w-0 resize-none bg-transparent px-1 py-1 text-[14.5px] leading-relaxed text-foreground outline-none placeholder:truncate placeholder:text-muted-foreground placeholder-shown:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]"
         />

@@ -4,6 +4,7 @@ import { useStore, type Message, type TeamPlan } from "@/state/store";
 import { BlokAvatar } from "@/components/Avatar";
 import { BLOK_COLOR_NAMES, shapeForBot, type BlokColor } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
+import { isApproval } from "@/lib/cardAnswer";
 import { plural } from "@/lib/plural";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
@@ -55,7 +56,7 @@ export function OptionCard({
               card.requestId || card.runId ? "text-warning" : "text-brand-ink",
             )}
           >
-            {card.requestId ? "Approval" : card.runId ? "Workflow" : "Question"}
+            {isApproval(card) ? "Approval" : card.runId ? "Workflow" : "Question"}
           </div>
           <div className="mt-1 break-words text-[14.5px] font-semibold text-foreground [overflow-wrap:anywhere]">
             {card.title}
@@ -73,6 +74,9 @@ export function OptionCard({
               Cut off when Bloks stopped. Nothing waits on this any more, and an answer here would not be used.
             </div>
           )}
+          {/* Closed with nobody having answered: the card stays and says
+              what closed it, in the server's words. */}
+          {card.closed && <div className="mt-1 text-[12px] text-muted-foreground">{card.closed}</div>}
         </div>
         <button
           onClick={() => dispatch({ type: "dismissCard", botId, roomId, messageId: message.id })}
