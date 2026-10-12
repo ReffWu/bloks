@@ -43,8 +43,9 @@ export function ComposerRing({ bot }: { bot: Bot }) {
   // engine's plan while the new one is asked for
   const [heard, setHeard] = useState<{ instanceId: string; plan: PlanUsage | null } | null>(null);
   // Asked each time the card opens: a read of what the engine last said,
-  // on this Mac, which nothing else brings up to date between turns. A
-  // phone or a remote window is refused, and then the card has no plan.
+  // which nothing else brings up to date between turns. A window on a
+  // paired device is answered too (GitHub 259); an older server refuses
+  // one, and then the card has no plan.
   useEffect(() => {
     if (!open) return;
     let current = true;
