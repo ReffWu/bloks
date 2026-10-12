@@ -340,12 +340,17 @@ function AboutCard() {
               : update.state === "dev"
                 ? "Updates apply to the installed app, not a dev build."
                 : null;
+  // a restart into an update that came back on the same version says so
+  // before whatever the updater is doing now
+  const description = update.notInstalled
+    ? `The update did not install. ${line ?? "You can get the installer from bloks.dev."}`
+    : (line ?? "Updates download on their own and install when you restart.");
 
   return (
     <SettingsGroup title="Version">
       <SettingRow
         label={`Bloks ${version ?? ""}`}
-        description={line ?? "Updates download on their own and install when you restart."}
+        description={description}
         control={
           update.state === "ready" ? (
             <Button size="sm" disabled={Boolean(update.draining)} onClick={() => void window.bloks?.updateInstall?.()}>

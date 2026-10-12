@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("bloks", {
   updateInstall: () => ipcRenderer.invoke("update:install"),
   updateRestartNow: () => ipcRenderer.invoke("update:restart-now"),
   updateLater: () => ipcRenderer.invoke("update:later"),
+  updateNotInstalledSeen: () => ipcRenderer.invoke("update:not-installed-seen"),
   relaunch: () => ipcRenderer.invoke("app:relaunch"),
   // a Bloks on another computer (electron/remote.mjs)
   remoteStatus: () => ipcRenderer.invoke("remote:status"),

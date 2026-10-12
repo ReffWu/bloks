@@ -16,6 +16,9 @@ export interface UpdateState {
   reason?: "offline" | "server" | "install";
   /** Set while an install waits for running turns to finish first. */
   draining?: { running: number; deadline?: number };
+  /** Set when the last restart into an update came back on the version
+   * it left: that version, and the one it was meant to become. */
+  notInstalled?: { from: string; to: string | null };
 }
 
 export interface CuaPermissions {
@@ -97,12 +100,16 @@ declare global {
       relaunch?(): Promise<void>;
       updateState(): Promise<UpdateState>;
       updateCheck(): Promise<UpdateState>;
-      /** Quits and hands over to the installer; only sane on "ready". */
-      updateInstall(): Promise<void>;
+      /** Quits and hands over to the installer; only sane on "ready".
+       * Answers only when the wait for running turns is called off: a
+       * restart that goes ahead ends the app before it can. */
+      updateInstall(): Promise<unknown>;
       /** While an install waits for running turns: stop waiting and
        * install, or call the wait off and update later. */
       updateRestartNow?(): Promise<void>;
       updateLater?(): Promise<void>;
+      /** The card saying an update did not install has been closed. */
+      updateNotInstalledSeen?(): Promise<void>;
       onUpdateState(handler: (state: UpdateState) => void): () => void;
       /** Registers the system-wide hotkey, or clears it with null.
        * Answers with what actually took: another app may own the keys. */

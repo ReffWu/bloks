@@ -12,6 +12,7 @@
 // System Settings at all.
 import {
   app,
+  autoUpdater as nativeUpdater,
   BrowserWindow,
   clipboard,
   desktopCapturer,
@@ -40,6 +41,7 @@ import { normalizeBadgeCount, resolveWindowState } from "./window-state.mjs";
 import { appMenuTemplate } from "./app-menu.mjs";
 import { drainWait } from "./drain-wait.mjs";
 import { mayLookAgain, newestBeforeInstall, updateFrame } from "./update-check.mjs";
+import { markInstall, restartIntoUpdate, takeInstallMark, within } from "./update-restart.mjs";
 import { claimPairLink, startRemoteProxy } from "./remote.mjs";
 import { sameAppOrigin } from "./navigation.mjs";
 import { linkInArgv, teamLink } from "./links.mjs";
@@ -952,16 +954,30 @@ const RECHECK_UPDATES_MS = 4 * 60 * 60 * 1000;
 let updaterState = { state: "idle" };
 /** The wait for a drain before an update installs, while there is one. */
 let drainWaiting = null;
+/** The updater's log, once there is an updater. A restart into an update
+ * writes its own steps there too, so one file tells the whole of it. */
+let updaterLog = null;
+/** Set at start when the last restart into an update came back on the
+ * version it left (electron/update-restart.mjs), until the card that
+ * says so is closed or the restart is tried again. */
+let notInstalled = null;
+
+/** The note of the version a restart is leaving, read at the next start. */
+const INSTALL_MARK_FILE = () => path.join(app.getPath("userData"), "update-restart.json");
+
+/** What the windows are told: the updater's state, and the update that
+ * did not install while that is still to be said. */
+const updateToShow = () => (notInstalled ? { ...updaterState, notInstalled } : updaterState);
 
 function showUpdate(next) {
   updaterState = next;
   for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send("update:state", updaterState);
+    if (!win.isDestroyed()) win.webContents.send("update:state", updateToShow());
   }
 }
 
 handle("app:version", () => app.getVersion());
-handle("update:state", () => updaterState);
+handle("update:state", () => updateToShow());
 handle("update:check", async () => {
   if (!app.isPackaged) return { state: "dev" };
   try {
@@ -969,7 +985,11 @@ handle("update:check", async () => {
   } catch {
     // the error event has already told the windows
   }
-  return updaterState;
+  return updateToShow();
+});
+handle("update:not-installed-seen", () => {
+  notInstalled = null;
+  showUpdate(updaterState);
 });
 /** Before an update restarts Bloks, the harness finishes what is running
  * and starts nothing new, and this waits until it has or until its
@@ -998,30 +1018,79 @@ async function drainBeforeRestart() {
     onProgress: (state) =>
       showUpdate({ ...updaterState, draining: { running: state.running.length, deadline: state.deadline } }),
   });
-  const outcome = await drainWaiting.finished;
-  drainWaiting = null;
-  const { draining: _, ...rest } = updaterState;
-  showUpdate(rest);
-  return outcome;
+  try {
+    return await drainWaiting.finished;
+  } finally {
+    // however it ended: a wait left standing would turn away every later
+    // press of the button
+    drainWaiting = null;
+    const { draining: _, ...rest } = updaterState;
+    showUpdate(rest);
+  }
 }
 
-/** A restart asked for and on its way, through its last look and the
- * drain, so a second press does not start another. */
-let installing = false;
+/** On macOS the updater hands each download to the native installer,
+ * which fetches and unpacks it again before it can install it, a few
+ * seconds after the card already reads ready. A quit asked for in
+ * between installs nothing. So a restart waits for the installer to have
+ * what it was last handed, or to have said that it failed. */
+let staging = false;
+let stagingOver = () => {};
+const nativelyStaged = () =>
+  new Promise((resolve) => {
+    if (!staging) return resolve();
+    stagingOver = resolve;
+  });
 
-handle("update:install", async () => {
-  if (!app.isPackaged || drainWaiting || installing) return;
-  installing = true;
-  try {
-    // a newer release than the one downloaded is the one to restart into
-    // (electron/update-check.mjs)
-    await newestBeforeInstall(electronUpdater.autoUpdater);
-    if ((await drainBeforeRestart()) === "cancel") return;
-    // same teardown as a normal quit, then the installer takes over
-    electronUpdater.autoUpdater.quitAndInstall();
-  } finally {
-    installing = false;
+/** A restart asked for and on its way, so a second press joins it and
+ * does not start another. */
+let restart = null;
+
+/** A line of the restart's own in the updater's log. */
+const restartLog = (line) => updaterLog?.info(line);
+
+// Every step has a time limit and none can stop the next, and once the
+// drain is past the process ends: by an exit, if the quit does not get
+// there (electron/update-restart.mjs).
+handle("update:install", () => {
+  if (!app.isPackaged) return;
+  if (notInstalled) {
+    // trying again is the answer to it
+    notInstalled = null;
+    showUpdate(updaterState);
   }
+  restart ??= restartIntoUpdate(
+    {
+      // a newer release than the one downloaded is the one to restart
+      // into (electron/update-check.mjs)
+      look: () => newestBeforeInstall(electronUpdater.autoUpdater, { waiting: updaterState.version }),
+      drain: drainBeforeRestart,
+      mark: () => markInstall(INSTALL_MARK_FILE(), { from: app.getVersion(), to: updaterState.version }),
+      staged: nativelyStaged,
+      // same teardown as a normal quit, then the installer takes over
+      quit: () => electronUpdater.autoUpdater.quitAndInstall(),
+      // destroyed, not asked: asking is what did not work
+      closeWindows: () => {
+        const open = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed());
+        for (const win of open) win.destroy();
+        return open.length;
+      },
+      // exit skips before-quit, so the server is stopped here, as it is
+      // where pairing restarts the app
+      teardown: () => {
+        quitting = true;
+        return stopServer(serverProcess);
+      },
+      // Not relaunched. The installer starts the new version when the
+      // quit got as far as telling it to, and a copy of this one started
+      // now would be running inside the app it is about to replace.
+      exit: () => app.exit(0),
+    },
+    { log: restartLog, from: app.getVersion(), to: updaterState.version },
+  ).finally(() => {
+    restart = null;
+  });
+  return restart;
 });
 handle("update:restart-now", () => drainWaiting?.stop("now"));
 handle("update:later", () => drainWaiting?.stop("cancel"));
@@ -1200,9 +1269,36 @@ app.whenReady().then(async () => {
       tellWindows("progress", { percent: Math.round(progress?.percent ?? 0) }),
     );
     autoUpdater.on("update-downloaded", (info) => tellWindows("downloaded", { version: info?.version }));
+    if (process.platform === "darwin") {
+      // each download goes to the native installer the moment the updater
+      // has it (nativelyStaged, above)
+      autoUpdater.on("update-downloaded", () => {
+        staging = true;
+      });
+      for (const event of ["update-downloaded", "update-not-available", "error"]) {
+        nativeUpdater.on(event, () => {
+          staging = false;
+          stagingOver();
+        });
+      }
+      // Said when the quit is asked for, and again once every window has
+      // closed and the installer is told: a log with only the first is a
+      // window that would not close.
+      nativeUpdater.on("before-quit-for-update", () => restartLog("restart: the native updater is quitting to install"));
+    }
     // A Finder launch sends stdout to /dev/null, so the updater writes its
     // own log. Without it a failed update leaves nothing to read afterwards.
-    autoUpdater.logger = updaterLogger();
+    updaterLog = updaterLogger();
+    autoUpdater.logger = updaterLog;
+    // A restart into an update that came back on the version it left is
+    // said once, on the update card, with what to do about it.
+    notInstalled = takeInstallMark(INSTALL_MARK_FILE(), app.getVersion());
+    if (notInstalled) {
+      updaterLog.warn(
+        `restart: the install did not take, still on ${notInstalled.from}${notInstalled.to ? `, not ${notInstalled.to}` : ""}`,
+      );
+      showUpdate(updaterState);
+    }
     autoUpdater.on("error", (error) => {
       const message = String(error?.message ?? error);
       console.error("[updater]", message);
@@ -1216,7 +1312,8 @@ app.whenReady().then(async () => {
     // waiting to be installed is looked past: a release since it came
     // down is the one to install (GitHub 247).
     setInterval(() => {
-      if (!mayLookAgain(updaterState)) return;
+      // nor under a restart into one, which has its own look
+      if (!mayLookAgain(updaterState) || restart) return;
       autoUpdater.checkForUpdates().catch(() => {});
     }, RECHECK_UPDATES_MS).unref?.();
   }
@@ -1389,6 +1486,7 @@ handle("remote:disconnect", () => {
 
 // The system keeps handing us these keys until we say otherwise.
 app.on("will-quit", () => {
+  if (restart) restartLog("restart: exiting");
   globalShortcut.unregisterAll();
   stopMeeting();
 });
@@ -1402,12 +1500,20 @@ app.on("window-all-closed", () => {
 // finishes, then allowed through. The server is asked to stop before it
 // is killed, so it ends its engines and gives up the data folder itself
 // (electron/server-life.mjs).
+//
+// Deferred, never dropped. The daemon's stop had no time limit, and one
+// that never answers would mean the second quit never comes: the windows
+// are closed by then, and an update's installer is left waiting for
+// Bloks to go (GitHub 267). The daemon exits with this process anyway.
+const STOP_BEFORE_QUIT_MS = 5_000;
 let daemonStopped = false;
 app.on("before-quit", (event) => {
   quitting = true;
   if (daemonStopped) return;
   event.preventDefault();
-  Promise.allSettled([stopServer(serverProcess), stopCua()]).finally(() => {
+  if (restart) restartLog("restart: quit under way, stopping the server and the computer use helper");
+  within(() => Promise.allSettled([stopServer(serverProcess), stopCua()]), STOP_BEFORE_QUIT_MS).then((went) => {
+    if (restart) restartLog(`restart: ${went.outcome === "late" ? "they had not stopped in time" : "they stopped"}, quitting`);
     daemonStopped = true;
     app.quit();
   });

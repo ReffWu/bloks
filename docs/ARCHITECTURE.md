@@ -401,6 +401,22 @@ long is left, and offers to restart now (what is running is picked up
 after) or to call the drain off and update later
 (`electron/drain-wait.mjs`).
 
+The restart itself is a chain, and every link in it has a time limit
+(`electron/update-restart.mjs`): one more look for a newer release, the
+drain, the native installer having the update, then the quit that hands
+over to it. A link that fails or runs out of time does not stop the
+next. Once the drain is past, nobody can call the restart off and the
+process ends: by the orderly quit when that works, by closing a window
+that stayed open ten seconds later, and by a plain exit ten seconds
+after that. On macOS the installer swaps the app only once the running
+one has gone, so an app that does not exit is an update that never
+installs. Each step is written to the updater's log (`updater.log` in
+the app's log folder), each line starting `restart:`. Before the quit a
+note of the version being left goes into the app's data folder, and a
+start that finds itself still on that version says on the update card
+that the update did not install, once, with the offer to try again or
+to get the installer from bloks.dev.
+
 Nothing that arrives meanwhile is turned away. `startTurn` is where every
 turn starts, so it is where a drain holds them: words for one of an
 agent's lanes wait in that lane's queue, as they would behind a busy

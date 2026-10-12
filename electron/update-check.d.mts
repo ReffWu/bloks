@@ -18,7 +18,20 @@ export function updateFrame(
 
 export function mayLookAgain(current: UpdateState): boolean;
 
+/** What the look needs of the updater: electron-updater's has it. */
+export interface LookingUpdater {
+  autoDownload?: boolean;
+  checkForUpdates(): Promise<{
+    isUpdateAvailable?: boolean;
+    updateInfo?: { version?: string };
+    cancellationToken?: { cancel(): void };
+  } | null>;
+  downloadUpdate(cancellationToken?: { cancel(): void }): Promise<unknown>;
+  on?(event: "download-progress", listener: () => void): unknown;
+  removeListener?(event: "download-progress", listener: () => void): unknown;
+}
+
 export function newestBeforeInstall(
-  updater: { checkForUpdates(): Promise<{ downloadPromise?: Promise<unknown> | null } | null> },
-  options?: { within?: number },
-): Promise<void>;
+  updater: LookingUpdater,
+  options?: { within?: number; quiet?: number; waiting?: string },
+): Promise<string>;

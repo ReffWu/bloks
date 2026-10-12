@@ -11,6 +11,10 @@
 // Relaunching waits for running turns to finish first (server/drain.ts),
 // which can take a while, so meanwhile the card says what it is waiting
 // for and offers to restart now or to call it off and update later.
+//
+// A relaunch that came back on the version it left says so here, once,
+// with the two ways forward, where it would have offered the same button
+// as if it had never been pressed (GitHub 267).
 import { useEffect, useState } from "react";
 import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.mjs";
 import X from "lucide-react/dist/esm/icons/x.mjs";
@@ -46,16 +50,21 @@ export function UpdateCard({ rail }: { rail: boolean }) {
     return window.bloks?.onUpdateState?.(setUpdate);
   }, []);
 
-  if (update.state !== "ready") return null;
+  const ready = update.state === "ready";
+  const missed = update.notInstalled;
+  if (!ready && !missed) return null;
   const version = update.version ?? "";
   const draining = update.draining;
-  // a wait under way shows even on a dismissed card: it is the way out
-  if (hidden !== null && hidden === version && !draining) return null;
+  // a wait under way shows even on a dismissed card: it is the way out,
+  // and so does an update that did not install, whatever was dismissed
+  if (hidden !== null && hidden === version && !draining && !missed) return null;
 
   const relaunch = () => {
     setRestarting(true);
-    // answers without restarting only when the wait is called off
-    void window.bloks?.updateInstall?.().then(() => setRestarting(false));
+    // answers without restarting only when the wait is called off, and a
+    // press the app turned away must not leave the button spinning
+    const back = () => setRestarting(false);
+    void window.bloks?.updateInstall?.().then(back, back);
   };
   const dismiss = () => {
     setHidden(version);
@@ -68,12 +77,20 @@ export function UpdateCard({ rail }: { rail: boolean }) {
 
   // the narrow rail has room for a button and nothing else
   if (rail) {
+    // nothing to press until the update is ready to try again
+    if (!ready) return null;
     return (
       <div className="flex shrink-0 justify-center pb-1">
         <button
           onClick={relaunch}
           disabled={restarting || Boolean(draining)}
-          title={draining ? drainingLine(draining) : `Bloks ${version} is ready. Relaunch to update`}
+          title={
+            draining
+              ? drainingLine(draining)
+              : missed
+                ? "The update did not install. Try again"
+                : `Bloks ${version} is ready. Relaunch to update`
+          }
           aria-label={`Relaunch to update to Bloks ${version}`}
           className="relative flex size-10 items-center justify-center rounded-lg text-brand transition-[background-color,scale] duration-150 ease-out hover:bg-accent active:scale-[0.96]"
         >
@@ -113,6 +130,46 @@ export function UpdateCard({ rail }: { rail: boolean }) {
           <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
             Running turns pick up where they left off after the restart.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (missed) {
+    return (
+      <div className="shrink-0 px-2 pb-2">
+        <div className="relative animate-rise-in rounded-xl border bg-background/60 px-3 py-2.5">
+          <button
+            onClick={() => void window.bloks?.updateNotInstalledSeen?.()}
+            aria-label="Dismiss"
+            title="Dismiss"
+            className="absolute right-1.5 top-1.5 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+          >
+            <X size={12} />
+          </button>
+          <div className="pr-5 text-[12.5px] font-medium text-foreground">The update did not install</div>
+          <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
+            Bloks is still on {missed.from}. {ready ? "Try again, or get" : "Get"} the installer from{" "}
+            <a
+              href="https://bloks.dev"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium underline underline-offset-2 hover:text-foreground"
+            >
+              bloks.dev
+            </a>
+            .
+          </p>
+          {ready && (
+            <button
+              onClick={relaunch}
+              disabled={restarting}
+              className="mt-1.5 flex items-center gap-1.5 rounded-md text-[12.5px] font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80 disabled:opacity-60"
+            >
+              <RefreshCw size={12} className={cn(restarting && "animate-spin motion-reduce:animate-none")} />
+              {restarting ? "Relaunching…" : "Try again"}
+            </button>
+          )}
         </div>
       </div>
     );
