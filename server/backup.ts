@@ -1467,7 +1467,13 @@ export async function stageRestore(
   const target = targetOf(dataDir);
   const stamp = stampOf(opts.now ?? new Date());
   const staging = `${target}.restoring-${stamp}`;
-  const aside = `${target}.before-restore-${stamp}`;
+  // The stamp is to the second, and a second restore inside the same one
+  // (a plain backup, then a sealed one, from a script) would name the
+  // folder the first already left: the move aside then fails on a folder
+  // that is not empty, and the restore with it. So the name is one that
+  // is not taken.
+  let aside = `${target}.before-restore-${stamp}`;
+  for (let n = 2; existsSync(aside); n++) aside = `${target}.before-restore-${stamp}-${n}`;
   rmSync(staging, { recursive: true, force: true });
   mkdirSync(staging, { recursive: true, mode: 0o700 });
   let keys: PendingRestore["keys"];
