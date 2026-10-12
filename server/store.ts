@@ -155,7 +155,8 @@ export interface Message {
   /** A notice that agents stopped at MAX_AGENT_CHAIN (server/index.ts):
    * their next message, or a routine or a watcher one of them filed,
    * waits for the person. Like a goal blocked on them, it marks the
-   * conversation unread and wakes the phone (GitHub 248). */
+   * conversation unread and wakes the phone (GitHub 248). A room mention
+   * held at MAX_AGENT_HOPS (server/room-hops.ts) is said the same way. */
   chainHeld?: boolean;
   /** A notice marking where the engine compacted its own session, and by
    * how much. A line in the conversation, not a warning, and never news:

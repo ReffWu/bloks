@@ -79,6 +79,22 @@ keyed to its own thread id. `activeRoom` redirects that agent's events
 into whichever room it is currently speaking in. That is why an agent
 remembers a room conversation when you DM it afterwards.
 
+Agents pass a room along between themselves three times at most before
+the person has a say (`MAX_AGENT_HOPS` in `server/room-hops.ts`). The
+count travels with the turn, not with the agent (`turnHops` in
+`server/index.ts`, by lane, set as the turn starts): none for a turn
+anything but a room mention started, the person's post in the room
+included, one more than the turn that named it for a mention's, and
+unchanged for a pickup, a backup engine or a retry. So a room chain that
+has ended does not hold what the same agent says from an unrelated turn
+afterwards, in the room or into it with `bloks say`. A mention that
+waits for a busy agent (`server/room-tags.ts`) is delivered at the count
+it was made at. A mention from a turn already at the bound wakes nobody,
+and neither does one still waiting when a round's further rounds run
+out. Either way the room gets one notice saying who named whom and that
+posting there carries on, where the mention used to be stored and
+dropped without a word.
+
 Team formation (`server/teams.ts`) sits on top: a senior agent can emit a
 fenced plan, which becomes an approval card. Only your yes creates the
 agents and the room.
@@ -540,8 +556,9 @@ offered, and the person offering it again clears it. Routines and
 watchers an agent files or changes do the same (`chain` on each): past
 the limit a routine's run is recorded as held and a watcher holds
 without looking, until the person changes it, runs it, or looks by
-hand. Agents cannot file workflows. A round inside one
-room is also bounded by `MAX_AGENT_HOPS`.
+hand. Agents cannot file workflows. A room has a shorter bound of its
+own as well (`MAX_AGENT_HOPS`, see Rooms), carried with the turn the
+same way; a mention past both leaves one notice in the room, not two.
 
 A hold is the person's to lift, so it is said where they will find it
 (`chainNotice`): a notice in the conversation the next turn would have

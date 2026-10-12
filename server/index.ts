@@ -342,6 +342,7 @@ import { MemoryJournal, readMemoryText } from "./memory-journal.ts";
 import { applyImport, detectSetup, ImportRecord, reviewOf, type ImportDeps, type McpEntry } from "./setup-import.ts";
 import { Rehearsals, type Rehearsal } from "./rehearsals.ts";
 import { RoomTagQueues } from "./room-tags.ts";
+import { MAX_AGENT_HOPS, heldMention, hopsNotice } from "./room-hops.ts";
 import { RepeatWatch } from "./repeats.ts";
 import { Drain, DRAIN_GRACE_MS, DRAINING_TEXT, drainWindow } from "./drain.ts";
 import {
@@ -2655,7 +2656,7 @@ bus.subscribe((event: RuntimeEvent) => {
       if (inRoom) {
         const said = store.messagesFor(roomId);
         const last = [...said].reverse().find((m) => m.from === bot.id && m.kind === "text");
-        if (last?.text) void relayMentions(roomId, bot.id, last.text, requester, (agentChain.get(event.threadId) ?? 0) + 1);
+        if (last?.text) void relayMentions(roomId, bot.id, last.text, requester, (agentChain.get(event.threadId) ?? 0) + 1, (turnHops.get(event.threadId) ?? 0) + 1);
         if (bloks.get(roomId)?.sharing) broadcast({ kind: "room.activity", roomId, botId: bot.id, busy: false });
       }
       activeRoom.delete(event.threadId);
@@ -3453,6 +3454,9 @@ async function startClaimedTurn(
   text: string,
   opts: {
     roomId?: string;
+    /** How many times in a row agents had passed the room along when a
+     * mention started this turn (turnHops). Unset is 0, except on a turn
+     * that goes on with another, which keeps that turn's count. */
     hops?: number;
     replyTo?: ReplyRef;
     taskId?: string;
@@ -3958,6 +3962,9 @@ async function startClaimedTurn(
   const goesOn = opts.carriedOn || opts.fallback || opts.retry;
   const inRoomChain = opts.roomId && opts.roomId !== task.id ? (roomChain.get(opts.roomId) ?? 0) : 0;
   agentChain.set(task.id, opts.chain ?? (goesOn ? (agentChain.get(task.id) ?? 0) : inRoomChain));
+  // and its count of the room being passed along, set here for the same
+  // reason: what this turn says in a room is judged by its own count
+  turnHops.set(task.id, opts.hops ?? (goesOn ? (turnHops.get(task.id) ?? 0) : 0));
   if (sharing) broadcast({ kind: "room.activity", roomId: sharedRoom!.id, botId: bot.id, busy: true });
 
   // Mark it busy now, before any of the slow work, so the composer locks
@@ -5713,13 +5720,6 @@ function inviteLink(input: { inviteId: string; secret: string; relayToken: strin
 }
 
 // ── rooms ─────────────────────────────────────────────────────────────
-/**
- * How many agent-triggered turns may follow one human message. Without a
- * ceiling two agents that keep naming each other would talk forever, on
- * the user's tokens and without their attention.
- */
-const MAX_AGENT_HOPS = 3;
-
 /** Post into a room and wake whoever it was addressed to. */
 /** One dispatch loop per room at a time; latecomers chain behind it. */
 const roomPosting = new Map<string, Promise<unknown>>();
@@ -5859,7 +5859,9 @@ async function postToRoomNow(blok: BlokRecord, text: string, author: RoomAuthor,
 }
 
 /** `byYou` is the first round's: whoever the person's message woke is
- * answering them, and whoever those name in turn is answering an agent. */
+ * answering them, and whoever those name in turn is answering an agent.
+ * `hops` is the first round's too, the count its turns start with
+ * (turnHops); whoever is named after that waits with their own. */
 async function dispatchRound(
   roomId: string,
   work: ReadonlyArray<readonly [string, string]>,
@@ -5871,16 +5873,24 @@ async function dispatchRound(
   // lead would be pulled in the moment the first member reported, spend
   // its expensive turn on a third of the work, and get pulled in again for
   // each of the rest.
-  const queue = new Map<string, string>();
+  const queue = new Map<string, RoundTag>();
   dispatching.set(roomId, queue);
   try {
-    await speakInTurn(roomId, work, hops, requester, byYou);
+    await speakInTurn(roomId, work.map(([id, text]) => [id, text, hops] as const), requester, byYou);
     // whoever was named while the room was busy speaks now, and anyone
     // they name in turn goes round again until the chain runs out
     for (let round = 0; round < MAX_AGENT_HOPS && queue.size; round++) {
-      const waiting = [...queue];
+      const waiting = [...queue].map(([id, tag]) => [id, tag.text, tag.hops] as const);
       queue.clear();
-      await speakInTurn(roomId, waiting, hops + round + 1, requester);
+      await speakInTurn(roomId, waiting, requester);
+    }
+    // Someone can still be named when the rounds run out: an agent that
+    // said so into the room from a turn of its own elsewhere, late in the
+    // last one, was inside its own count. Held as a mention past the
+    // bound is, and said, where it used to be dropped without a word.
+    for (const from of new Set([...queue.values()].map((tag) => tag.from))) {
+      const names = [...queue].filter(([, tag]) => tag.from === from).flatMap(([id]) => store.bot(id)?.name ?? []);
+      if (names.length) sayMentionHeld(roomId, hopsNotice(store.bot(from)?.name ?? "An agent", names));
     }
   } finally {
     dispatching.delete(roomId);
@@ -5901,7 +5911,7 @@ const spokeInTurn = new Set<string>();
  * server/agent-cli.ts) starts again in every one of them, so nothing
  * else stops two agents keeping each other going all afternoon. Twelve
  * is longer than any real handoff and far shorter than a loop. Rooms
- * have their own bound (MAX_AGENT_HOPS). */
+ * have their own bound as well (MAX_AGENT_HOPS in server/room-hops.ts). */
 const MAX_AGENT_CHAIN = 12;
 
 /** Where each lane's latest turn sits in a chain of agents' messages: 0
@@ -5922,6 +5932,17 @@ const agentChain = new Map<string, number>();
  * chain ever growing. The latest rather than the highest, so a loop that
  * stopped yesterday does not hold back what is asked today. */
 const roomChain = new Map<string, number>();
+
+/** How many times in a row agents had passed a room along when each
+ * lane's latest turn started: 0 for one anything but a room mention
+ * started (the person, a routine, a watcher, a webhook, an email, an
+ * agent's direct `bloks say`), and one more than the turn that named it
+ * for one a mention started. A pickup, a backup engine or a retry keeps
+ * the count of the turn it continues. Kept with the turn, as agentChain
+ * is, and not with the agent: an agent's count outlived the room chain
+ * it came from, and held what that agent said from an unrelated turn
+ * afterwards (GitHub 268). */
+const turnHops = new Map<string, number>();
 
 /** A message an agent sent with `bloks say`, to another agent or to
  * itself: who sent it, and the place in the chain the turn it starts
@@ -6042,10 +6063,10 @@ function closeIfAsked(laneId: string) {
  * (server/room-tags.ts). On disk, so a restart does not lose them. */
 const roomTags = new RoomTagQueues(join(DATA_DIR, "room-lines.json"));
 
-function queueRoomTag(botId: string, roomId: string, text: string, requester?: string) {
-  // where the chain stood when this agent was named, so a delivery later
+function queueRoomTag(botId: string, roomId: string, text: string, requester: string | undefined, hops: number) {
+  // with the count its turn would have started with, so a delivery later
   // counts against the same hop limit
-  roomTags.add(botId, roomId, text, requester, agentHops.get(botId) ?? 0);
+  roomTags.add(botId, roomId, text, requester, hops);
 }
 
 /** A refusal that means "not now" rather than "no": the agent is busy,
@@ -6077,11 +6098,7 @@ function drainRoomTags(botId: string) {
     const previous = roomPosting.get(roomId);
     const run = (previous ?? Promise.resolve())
       .catch(() => {})
-      .then(() => {
-        if (entry.hops) agentHops.set(botId, entry.hops);
-        else agentHops.delete(botId);
-        return dispatchRound(roomId, [[botId, entry.texts.join("\n")]], entry.hops, entry.requester);
-      });
+      .then(() => dispatchRound(roomId, [[botId, entry.texts.join("\n")]], entry.hops, entry.requester));
     roomPosting.set(roomId, run);
     void run.finally(() => {
       if (roomPosting.get(roomId) === run) roomPosting.delete(roomId);
@@ -6097,8 +6114,7 @@ function drainRoomTags(botId: string) {
  */
 async function speakInTurn(
   roomId: string,
-  work: ReadonlyArray<readonly [string, string]>,
-  hops: number,
+  work: ReadonlyArray<readonly [botId: string, text: string, hops: number]>,
   requester?: string,
   byYou?: boolean,
 ) {
@@ -6107,19 +6123,19 @@ async function speakInTurn(
   const shared = Boolean(bloks.get(roomId)?.sharing);
   const idleHere = (bot: BotRecord) => (shared ? !laneBusy(bot, roomId) : !bot.busy);
   const named = work
-    .map(([id, text]) => [store.bot(id), text] as const)
-    .filter((entry): entry is readonly [BotRecord, string] => entry[0] !== null);
+    .map(([id, text, hops]) => [store.bot(id), text, hops] as const)
+    .filter((entry): entry is readonly [BotRecord, string, number] => entry[0] !== null);
   // a busy agent hears it when its turn ends, rather than never
-  for (const [member, text] of named) if (!idleHere(member)) queueRoomTag(member.id, roomId, text, requester);
+  for (const [member, text, hops] of named) if (!idleHere(member)) queueRoomTag(member.id, roomId, text, requester, hops);
   const ordered = named
     .filter(([member]) => idleHere(member))
     .sort(([a], [b]) => (a.seniority ?? 1) - (b.seniority ?? 1));
 
-  for (const [member, text] of ordered) {
+  for (const [member, text, hops] of ordered) {
     // one agent failing must not silence the rest of the room; one that
     // got busy while it waited its turn to speak hears it later
     await startTurn(member.id, text, { roomId, hops, requester, byYou }).catch((e) =>
-      waitsForTurn(e) ? queueRoomTag(member.id, roomId, text, requester) : sayTurnedAway(roomId, e),
+      waitsForTurn(e) ? queueRoomTag(member.id, roomId, text, requester, hops) : sayTurnedAway(roomId, e),
     );
     await waitForRoomTurn(member.id, roomId);
   }
@@ -6248,46 +6264,50 @@ function waitForIdle(botId: string, timeoutMs = 120_000, signal?: AbortSignal): 
   });
 }
 
-/** After an agent speaks, pass the room to anyone it named. */
-async function relayMentions(roomId: string, fromBotId: string, text: string, requester: string | undefined, chain: number) {
+/** Says in a room that a mention woke nobody (heldMention), marked as a
+ * chain hold is, so the person is told where they are. Once when the
+ * same hold is met twice with nothing said in between: a line an agent
+ * said into the room with `bloks say` is passed on as it is posted, and
+ * again as its turn ends if the turn said nothing there after it. */
+function sayMentionHeld(roomId: string, notice: string) {
+  if (store.messagesFor(roomId).at(-1)?.text === notice) return;
+  const said = store.appendMessage(roomId, { role: "bot", kind: "notice", text: notice, chainHeld: true });
+  broadcast({ kind: "message", threadId: roomId, message: said });
+}
+
+/** After an agent speaks, pass the room to anyone it named. `chain` and
+ * `hops` are the places a turn this starts would take: one more than the
+ * speaking turn's own (agentChain, turnHops). */
+async function relayMentions(roomId: string, fromBotId: string, text: string, requester: string | undefined, chain: number, hops: number) {
   const blok = bloks.get(roomId);
   if (!blok) return;
-  const hops = (agentHops.get(fromBotId) ?? 0) + 1;
-  if (hops > MAX_AGENT_HOPS) return;
 
   const members = blok.memberIds.map((id) => store.bot(id)).filter(Boolean) as BotRecord[];
   const named = members.filter(
     (m) => m.id !== fromBotId && text.toLowerCase().includes(`@${m.name.toLowerCase()}`),
   );
   if (!named.length) return;
-  // as far along as the turn that named them, and no further than any
-  // chain of agents' messages may go before the person has a say
-  if (chain > MAX_AGENT_CHAIN) {
-    const sender = store.bot(fromBotId);
-    const notice = `${sender?.name ?? "An agent"} named ${named.map((m) => m.name).join(", ")} after agents had started ${chain - 1} turns in a row without you, so nobody was woken. Post in the room to carry on.`;
-    if (store.messagesFor(roomId).at(-1)?.text !== notice) {
-      const said = store.appendMessage(roomId, { role: "bot", kind: "notice", text: notice, chainHeld: true });
-      broadcast({ kind: "message", threadId: roomId, message: said });
-    }
-    return;
-  }
+  // no further than a room lets agents pass it along, and no further than
+  // any chain of agents' messages may go, before the person has a say.
+  // Asked once somebody is known to be named, so the room hears of it.
+  const held = heldMention(store.bot(fromBotId)?.name ?? "An agent", named.map((m) => m.name), { hops, chain }, MAX_AGENT_CHAIN);
+  if (held) return sayMentionHeld(roomId, held);
   roomChain.set(roomId, chain);
   const queue = dispatching.get(roomId);
   for (const target of named) {
-    agentHops.set(target.id, hops);
     // the room is mid-round: take a number rather than talk over it
     if (queue) {
-      queue.set(target.id, text);
+      queue.set(target.id, { text, from: fromBotId, hops: Math.max(hops, queue.get(target.id)?.hops ?? 0) });
       continue;
     }
     const bot = store.bot(target.id);
     if (!bot) continue;
     if (blok.sharing ? laneBusy(bot, roomId) : bot.busy) {
-      queueRoomTag(target.id, roomId, text, requester);
+      queueRoomTag(target.id, roomId, text, requester, hops);
       continue;
     }
     await startTurn(target.id, text, { roomId, hops, requester, chain }).catch((e) =>
-      waitsForTurn(e) ? queueRoomTag(target.id, roomId, text, requester) : sayTurnedAway(roomId, e),
+      waitsForTurn(e) ? queueRoomTag(target.id, roomId, text, requester, hops) : sayTurnedAway(roomId, e),
     );
   }
 }
@@ -8554,7 +8574,6 @@ async function onChatMessage(message: ChatMessage) {
   );
   if (decision.kind === "ignore") return;
   if (decision.kind === "post") {
-    for (const id of blok.memberIds) agentHops.delete(id);
     try {
       enqueueRoomPost(blok, decision.text, { personId: decision.personId, via: message.platform, hops: 0 });
     } catch {}
@@ -9011,6 +9030,7 @@ async function steerOne(
   if (!from) {
     turnsForYou.add(lane.id);
     agentChain.delete(lane.id);
+    turnHops.delete(lane.id);
   }
   return message;
 }
@@ -9856,12 +9876,19 @@ function pauseStrandedGoals() {
   }
 }
 
-/** Per-agent hop depth for the current chain of agent-to-agent turns. */
-const agentHops = new Map<string, number>();
+/** Someone named in a room while a round was running there: the line
+ * that named them, who said it, and the count their turn starts with
+ * (turnHops). Named twice in one round, they hear the later line at the
+ * further count. */
+interface RoundTag {
+  text: string;
+  from: string;
+  hops: number;
+}
 
 /** Rooms with a dispatch loop in flight, holding whoever got named while
- * it ran and the line that named them. One room, one speaker at a time. */
-const dispatching = new Map<string, Map<string, string>>();
+ * it ran. One room, one speaker at a time. */
+const dispatching = new Map<string, Map<string, RoundTag>>();
 
 // ── reacting to changed settings ──────────────────────────────────────
 function configStatus() {
@@ -10362,8 +10389,7 @@ async function serveMember(
       const body = await readBody(req);
       const text = clamp(body.text, 8_000);
       if (!text) return json(res, 400, { error: "say something first" });
-      // a human message starts a fresh chain, so hop counters reset
-      for (const id of blok.memberIds) agentHops.delete(id);
+      // a human message starts a fresh chain: whoever it wakes is at no hops
       const { message } = enqueueRoomPost(blok, text, { personId, hops: 0, replyTo: replyRef(body.replyTo) });
       const view = viewOf(personId, blok.id)!;
       return json(res, 202, { message: memberMessage(message, view) });
@@ -13818,12 +13844,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         broadcast({ kind: "message", threadId: blok.id, message });
         // whoever started the turn it said this from is still the one who
         // asked, so a member's chain does not become the owner's
-        void relayMentions(blok.id, asAgent.botId, text, laneRequester.get(asAgent.taskId), (agentChain.get(asAgent.taskId) ?? 0) + 1).catch(() => {});
+        void relayMentions(blok.id, asAgent.botId, text, laneRequester.get(asAgent.taskId), (agentChain.get(asAgent.taskId) ?? 0) + 1, (turnHops.get(asAgent.taskId) ?? 0) + 1).catch(() => {});
         triggersFired({ kind: "message", targetId: blok.id, text, fromUser: false });
         return json(res, 201, { message });
       }
-      // a human message starts a fresh chain, so hop counters reset
-      for (const id of blok.memberIds) agentHops.delete(id);
+      // a human message starts a fresh chain: whoever it wakes is at no hops
       const { message } = enqueueRoomPost(blok, text, {
         hops: 0,
         replyTo: replyRef(roomBody.replyTo),
