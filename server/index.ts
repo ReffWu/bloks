@@ -12778,11 +12778,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       return json(res, 200, { instances: await registry.describe() });
     }
     // What each engine's plan has left, as it last said, for the card on
-    // the composer's ring (server/plan-usage.ts). The person's to read on
-    // this Mac: not a phone's, a remote window's or an agent's, and
-    // never said in a prompt.
+    // the composer's ring (server/plan-usage.ts). The person's to read,
+    // here or on a device they paired: a server on another machine has
+    // no window of its own, and a paired phone already answers approvals,
+    // which is far more than this (GitHub 259). Never an agent's, never
+    // said in a prompt, and somebody in a shared room is not the person:
+    // their requests were answered above and never reach this line.
     if (method === "GET" && path === "/api/plan-usage") {
-      if (!local || asAgent) return json(res, 403, { error: "not from here" });
+      if (asAgent) return json(res, 403, { error: "not from here" });
       const usage: Record<string, PlanUsage> = {};
       for (const instance of registry.instances()) {
         const latest = instance.planUsage?.();

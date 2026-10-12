@@ -34,4 +34,6 @@ export const FEATURES: readonly string[] = [
   "webhooks",
   // what your agents know about you
   "notes",
+  // GET /api/plan-usage for a paired device, not only this machine
+  "plan-usage",
 ];

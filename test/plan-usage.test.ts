@@ -200,13 +200,18 @@ process.stdin.on("data", async function take(c) {
     assert.doesNotMatch(run.said + run.system, /five_hour|seven_day|\b42%|\b81%|plan usage/i, "the plan reached a prompt");
   }
 
-  // and a paired phone is turned away too
+  // the person's own paired phone reads it, as it would here (GitHub 259)
   await h.fetch("/api/pair", { method: "PUT", body: JSON.stringify({ enabled: true }) });
   const started = await h.json("/api/pair/start", { method: "POST" });
   const paired = await h.fetchRemote("/api/pair/claim", { method: "POST", body: JSON.stringify({ code: started.code, device: "Test iPhone" }) });
   assert.ok(paired.body?.token, "the fixture phone did not pair");
   assert.equal((await h.fetchRemote("/api/bots", { token: paired.body.token })).status, 200, "the paired phone is not paired");
-  assert.equal((await h.fetchRemote("/api/plan-usage", { token: paired.body.token })).status, 403);
+  const onPhone = await h.fetchRemote("/api/plan-usage", { token: paired.body.token });
+  assert.equal(onPhone.status, 200);
+  assert.deepEqual(onPhone.body.usage, (await h.json("/api/plan-usage")).usage, "the paired phone read something else");
+  assert.ok(onPhone.body.usage.claude, "the paired phone was told nothing");
+  // a device nobody paired does not
+  assert.equal((await h.fetchRemote("/api/plan-usage", { token: "not-a-token" })).status, 401);
 });
 
 test("Codex's limits, which name no thread, are kept for the engine", async (t) => {
