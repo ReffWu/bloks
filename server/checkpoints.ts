@@ -575,6 +575,34 @@ export class Checkpoints {
       .sort((a, b) => b.at - a.at);
   }
 
+  /**
+   * The files that reverting these records, in this order, would put
+   * back, with nothing touched: what a Redo says it will do before it is
+   * pressed (GitHub 258). Each file is judged the way revert judges it,
+   * against what the record before it in the list would have left there,
+   * so the count is the one the rewind then reports unless the folder
+   * moves in between.
+   */
+  wouldRestore(records: readonly CheckpointRecord[]): string[] {
+    /** What an earlier record in the list would leave at a path. */
+    const left = new Map<string, string | null>();
+    const restored = new Set<string>();
+    for (const record of records) {
+      if (record.rehearsal && !record.appliedAt) continue;
+      for (const change of record.files) {
+        if (change.shared || change.big) continue;
+        const target = join(record.dir, change.path);
+        if (relative(record.dir, target).startsWith("..") || !insideReally(record.dir, target)) continue;
+        const now = left.has(target) ? left.get(target)! : this.hashOf(target);
+        if (now !== (change.after ?? null)) continue;
+        if (change.status !== "added" && !(change.before && existsSync(this.blobPath(change.before)))) continue;
+        left.set(target, change.status === "added" ? null : change.before!);
+        restored.add(change.path);
+      }
+    }
+    return [...restored];
+  }
+
   summary(record: CheckpointRecord, listed = 50): ChangesSummary {
     const own = record.files.filter((f) => !f.shared);
     // none of its own, but it may have written some without saying which:

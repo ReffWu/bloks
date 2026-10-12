@@ -100,6 +100,14 @@ describe("what an agent can do", () => {
     assert.equal(allows(ME, "POST", `/api/bots/${ME}/tasks/lane-1/activate`).ok, false);
   });
 
+  test("rewinding a conversation and redoing a message are the person's alone", () => {
+    // an agent that could take back what it was asked, or rewrite it and
+    // run again, would be editing its own instructions
+    assert.equal(allows(ME, "POST", "/api/threads/lane-1/rewind").ok, false);
+    assert.equal(allows(ME, "GET", "/api/threads/lane-1/messages/m-1/redo").ok, false);
+    assert.equal(allows(ME, "POST", "/api/threads/lane-1/messages/m-1/redo").ok, false);
+  });
+
   test("a query string does not smuggle anything past the rules", () => {
     assert.equal(allows(ME, "GET", "/api/bots?messages=0").ok, true);
     assert.equal(allows(ME, "GET", "/api/config?x=/api/bots").ok, false);

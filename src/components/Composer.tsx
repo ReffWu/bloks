@@ -29,6 +29,7 @@ import { modKey } from "@/lib/thisComputer";
 import { composerCeiling, edgeMask } from "@/lib/composerSize";
 import { boxFor, carryFocus, keepDraft, readDraft, showBox, takeBack, takeFocus, type Draft } from "@/lib/drafts";
 import { insert as insertCommand, matches as matchCommands, segments, slashAt, withBloksCommands, type Command } from "@/lib/slashCommands";
+import { escapeTaken } from "@/lib/useEscape";
 
 /** Fade whichever edges have more text beyond them (see edgeMask). */
 function shadeEdges(el: HTMLTextAreaElement) {
@@ -251,6 +252,9 @@ export function Composer({
   const commandIds = new Set(listed.filter((c) => !c.prefix).map((c) => c.id));
   const dollarIds = new Set(listed.filter((c) => c.prefix === "$").map((c) => c.id));
   const offered = slash ? matchCommands(listed, slash.query, 8, slash.start === 0) : [];
+  // whether the list is on screen: a slash with nothing to offer under it
+  // draws nothing
+  const slashShown = Boolean(slash && (offered.length > 0 || (listed.length === 0 && slash.query === "")));
   const readSlash = (el: HTMLTextAreaElement) => {
     setSlash(slashAt(el.value, el.selectionStart ?? el.value.length));
     setPick(0);
@@ -673,7 +677,7 @@ export function Composer({
           </button>
         </div>
       )}
-      {slash && (offered.length > 0 || (listed.length === 0 && slash.query === "")) && (
+      {slash && slashShown && (
         <div className="mx-auto mb-1.5 max-w-[760px]">
           <div
             role="listbox"
@@ -804,8 +808,14 @@ export function Composer({
               }
             }
             if (slash && e.key === "Escape") {
-              e.preventDefault();
-              return setSlash(null);
+              setSlash(null);
+              // Only a list that was on screen takes the key. A slash with
+              // nothing offered under it had nothing to close, and Esc
+              // goes on to what it means next.
+              if (slashShown) {
+                e.preventDefault();
+                return;
+              }
             }
             // ↑ in an empty box edits the last thing you said, the way
             // chat apps do. With anything in the box, a chip included, it
@@ -834,7 +844,16 @@ export function Composer({
               }
               send();
             }
-            if (e.key === "Escape" && recording) setRecording(false);
+            if (e.key === "Escape" && recording) return setRecording(false);
+            // Esc stops the agent, as the stop button does (GitHub 258).
+            // Last in line: the `/` list and dictation have taken theirs
+            // above, anything open on top of the conversation closes
+            // first, and a keyboard still composing a character cancels
+            // that. The box keeps what is in it.
+            if (e.key === "Escape" && !e.nativeEvent.isComposing && openLaneWorking(bot) && !escapeTaken()) {
+              e.preventDefault();
+              dispatch({ type: "interrupt", botId: bot.id });
+            }
           }}
           placeholder={
             recording
@@ -881,7 +900,7 @@ export function Composer({
           <button
             onClick={() => dispatch({ type: "interrupt", botId: bot.id })}
             className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
-            title="Stop"
+            title="Stop (Esc)"
           >
             <Square size={13} className="fill-current" />
           </button>

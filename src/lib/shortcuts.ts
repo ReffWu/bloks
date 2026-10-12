@@ -112,6 +112,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
     when: "while it is working",
   },
   {
+    id: "stop",
+    group: "composer",
+    keys: [["Esc"]],
+    does: "Stop the agent",
+    when: "with an agent, while it is working and nothing else is open",
+  },
+  {
     id: "skill",
     group: "composer",
     keys: [["/"]],

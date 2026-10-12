@@ -56,6 +56,7 @@ import { useStickToBottom } from "@/lib/useStickToBottom";
 import { useHoldPlace } from "@/lib/useHoldPlace";
 import { foldHolding, foldTurns, lastFoldKey, rowsFrom, turnRunning } from "@/lib/turnFold";
 import { goalNoteForPerson } from "@/lib/goalNote";
+import { redoLine, type RedoPreview } from "@/lib/redo";
 
 /** The line over a goal turn: from Bloks, and which turn of how many. */
 function goalLabel(text: string): string {
@@ -210,6 +211,10 @@ function Bubble({
   onEdit,
   onDelete,
   onRewind,
+  previewRedo,
+  onRedo,
+  redoTick,
+  agentName,
   nameOf,
   highlight = "",
   isHit,
@@ -229,6 +234,14 @@ function Bubble({
   onEdit?: (messageId: string, text: string) => void;
   onDelete?: (messageId: string) => void;
   onRewind?: (messageId: string) => void;
+  /** What redoing this message would take back, or that it is not
+   * offered: asked of the server, which holds the turns and the files. */
+  previewRedo?: (messageId: string) => Promise<RedoPreview>;
+  /** Redo from the new words. Resolves to why it did not happen, or null. */
+  onRedo?: (messageId: string, text: string) => Promise<string | null>;
+  /** Changes as the conversation moves, so an open editor asks again. */
+  redoTick?: string;
+  agentName?: string;
   nameOf?: (id: string) => string;
   highlight?: string;
   isHit?: boolean;
@@ -240,6 +253,18 @@ function Bubble({
   // Opened from the keyboard, it hands the keyboard back when it closes,
   // so the next thing typed lands in the composer again.
   const returnTo = useRef<HTMLElement | null>(null);
+  // A message the agent has already read can be redone from its editor:
+  // the agent stops, the conversation and the folder go back to before
+  // the message, and the new words are sent (GitHub 258). Saving alone
+  // only rewrites the stored words, which the agent never hears. Whether
+  // Redo is offered, and the line that says what it takes back, come
+  // from the server, asked when the editor opens and again as the
+  // conversation moves under it, so the line stays true while the agent
+  // works.
+  const [redo, setRedo] = useState<RedoPreview | null>(null);
+  const [redoing, setRedoing] = useState(false);
+  const [redoError, setRedoError] = useState<string | null>(null);
+  const asked = useRef<Promise<RedoPreview | null> | null>(null);
   const startEditing = () => {
     if (editing !== null) return;
     setEditing(message.text ?? "");
@@ -252,8 +277,51 @@ function Bubble({
   const stopEditing = (text?: string) => {
     if (text) onEdit?.(message.id, text);
     setEditing(null);
+    setRedoError(null);
     returnTo.current?.focus();
     returnTo.current = null;
+  };
+  const editorOpen = editing !== null;
+  useEffect(() => {
+    if (!editorOpen || !user || !previewRedo) {
+      asked.current = null;
+      setRedo(null);
+      return;
+    }
+    let live = true;
+    const ask = previewRedo(message.id).catch(() => null);
+    asked.current = ask;
+    void ask.then((preview) => {
+      if (live) setRedo(preview);
+    });
+    return () => {
+      live = false;
+    };
+  }, [editorOpen, message.id, redoTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const offer = redo?.offered && onRedo ? redo : null;
+  const redoNow = (text: string) => {
+    if (!onRedo || redoing) return;
+    setRedoing(true);
+    setRedoError(null);
+    void onRedo(message.id, text).then((problem) => {
+      setRedoing(false);
+      // refused with nothing taken back: the editor keeps the words
+      if (problem) return setRedoError(problem);
+      // done: the message was rewound, and the keyboard goes back to
+      // the composer it came from
+      stopEditing();
+    });
+  };
+  // Enter presses the editor's main button. Which one that is is the
+  // server's answer, so a quick Enter waits for it rather than saving
+  // words the person meant to redo.
+  const submit = async () => {
+    const text = editing?.trim();
+    if (!text) return stopEditing();
+    if (redoing) return;
+    const preview = redo ?? (await asked.current);
+    if (preview?.offered && onRedo) redoNow(text);
+    else stopEditing(text);
   };
   // where nothing hovers, a tap on the bubble shows the bar
   const tap = useTapToShow();
@@ -319,22 +387,48 @@ function Bubble({
                     if (e.key === "Escape") stopEditing();
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      stopEditing(editing.trim() || undefined);
+                      void submit();
                     }
                   }}
                   rows={Math.min(8, editing.split("\n").length + 1)}
                   className="w-full resize-none rounded-lg bg-black/15 px-2 py-1 text-[14.5px] leading-relaxed outline-none"
                 />
-                <div className="flex items-center gap-2 text-[11.5px] opacity-80">
-                  <button
-                    onClick={() => stopEditing(editing.trim() || undefined)}
-                    className="font-medium underline underline-offset-2"
-                  >
-                    Save
-                  </button>
-                  <button onClick={() => stopEditing()}>Cancel</button>
-                  <span className="opacity-70">Enter saves, Escape cancels</span>
-                </div>
+                {offer ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] opacity-80">
+                      <button
+                        onClick={() => editing.trim() && redoNow(editing.trim())}
+                        disabled={redoing}
+                        className="font-medium underline underline-offset-2 disabled:opacity-60"
+                      >
+                        Redo
+                      </button>
+                      {/* the smaller way out: the words change, and the
+                          agent goes on with the ones it read */}
+                      <button onClick={() => stopEditing(editing.trim() || undefined)} disabled={redoing} className="text-[11px]">
+                        Save words only
+                      </button>
+                      <button onClick={() => stopEditing()} className="text-[11px]">
+                        Cancel
+                      </button>
+                      <span className="opacity-70">{redoing ? "Redoing…" : "Enter redoes, Escape cancels"}</span>
+                    </div>
+                    <div className="text-[11.5px] leading-snug opacity-80" role="status">
+                      {redoError ?? redoLine(offer, agentName ?? "the agent")}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 text-[11.5px] opacity-80">
+                    <button
+                      onClick={() => stopEditing(editing.trim() || undefined)}
+                      className="font-medium underline underline-offset-2"
+                    >
+                      Save
+                    </button>
+                    <button onClick={() => stopEditing()}>Cancel</button>
+                    <span className="opacity-70">Enter saves, Escape cancels</span>
+                  </div>
+                )}
               </div>
             ) : user ? (
               <UserText text={message.via === "goal" ? goalNoteForPerson(message.text ?? "").body : (message.text ?? "")} highlight={highlight} />
@@ -787,6 +881,23 @@ export function ChatView({ bot }: { bot: Bot }) {
       .then((r) => setPrefill({ text: r.text ?? "", nonce: Date.now() }))
       .catch((e) => dispatch({ type: "error", message: e instanceof Error ? e.message : String(e) }));
   };
+  // Redo is one call: the server stops the agent, rewinds and sends, so
+  // nothing here can leave a rewound conversation with nothing sent. A
+  // refusal takes nothing back and is said in the editor. If the rewind
+  // went through and the send did not, the words come back to the box,
+  // as they do after a rewind.
+  const previewRedo = (threadId: string, messageId: string): Promise<RedoPreview> =>
+    api(`/api/threads/${threadId}/messages/${messageId}/redo`);
+  const redoFrom = (threadId: string, messageId: string, text: string): Promise<string | null> =>
+    api(`/api/threads/${threadId}/messages/${messageId}/redo`, { method: "POST", body: JSON.stringify({ text }) })
+      .then((r) => {
+        if (r.sent === false) {
+          setPrefill({ text: r.text ?? text, nonce: Date.now() });
+          dispatch({ type: "error", message: r.error ?? "The conversation was rewound, but your message was not sent." });
+        }
+        return null;
+      })
+      .catch((e) => (e instanceof Error ? e.message : String(e)));
   // The terminal drawer. Only whether it is on screen lives here: the
   // shell itself is on the server and outlives this component, so closing
   // the drawer is closing a window onto it rather than ending it.
@@ -1066,6 +1177,10 @@ export function ChatView({ bot }: { bot: Bot }) {
               onEdit={(messageId, next) => editMessage(bot.threadId, messageId, next)}
               onDelete={(messageId) => deleteMessage(bot.threadId, messageId)}
               onRewind={(messageId) => rewindTo(bot.threadId, messageId)}
+              previewRedo={(messageId) => previewRedo(bot.threadId, messageId)}
+              onRedo={(messageId, next) => redoFrom(bot.threadId, messageId, next)}
+              redoTick={`${bot.messages.length}:${working}`}
+              agentName={bot.name}
               highlight={finding ? query : ""}
               isHit={absolute === currentHit}
               editNow={editAsk?.id === m.id ? editAsk.nonce : undefined}

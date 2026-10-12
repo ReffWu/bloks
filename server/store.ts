@@ -214,12 +214,20 @@ export interface Message {
   /** Taken by the turn already running in its lane (steerLane) rather
    * than starting one. Every other message from the person, another
    * agent, a routine or a watcher is where a turn begins, so this is
-   * what lets a finished turn be read back as one turn (GitHub 257).
-   * Absent on anything written before it was recorded. */
+   * what lets a finished turn be read back as one turn (GitHub 257),
+   * and where a Redo of it goes back to: the nearest earlier message
+   * without this (server/redo.ts). Absent on anything written before it
+   * was recorded, which then reads as having started a turn of its own. */
   midTurn?: boolean;
   /** Server-only return address for a Telegram request queued during
    * drain. Preserved on edits, never accepted from a client body. */
   telegramReply?: TelegramReply;
+  /** The person said this from Telegram rather than typing it here. It
+   * is their own words everywhere else; the one thing it changes is that
+   * the app does not offer to redo it (server/redo.ts), since what was
+   * answered went to the chat that asked. A Telegram message written
+   * before this was recorded reads as one typed here. */
+  fromTelegram?: boolean;
   /** Server-only: the Claude instance that accepted this queued text.
    * Null means it was accepted on another engine; absent is a legacy queue.
    * Derive command dispatch from the current text, including after edits. */

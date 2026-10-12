@@ -62,6 +62,17 @@ describe("the shortcut list", () => {
     assert.deepEqual(keysFor("editLast", "mac"), ["↑"]);
   });
 
+  test("Esc stops the agent, and says where, since it also closes things and ends dictation", () => {
+    assert.deepEqual(keysFor("stop", "mac"), ["esc"]);
+    assert.deepEqual(keysFor("stop", "other"), ["Esc"]);
+    const stop = SHORTCUTS.find((s) => s.id === "stop")!;
+    assert.equal(stop.group, "composer");
+    assert.match(stop.when ?? "", /while it is working/);
+    // the two it shares the key with are still there
+    assert.deepEqual(keysFor("stopDictation", "mac"), ["esc"]);
+    assert.deepEqual(keysFor("close", "mac"), ["esc"]);
+  });
+
   test("an id the list does not have gets no keys rather than a guess", () => {
     assert.deepEqual(keysFor("nothing-by-this-name", "mac"), []);
   });

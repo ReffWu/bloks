@@ -295,6 +295,7 @@ import { describe as describeRoutine, isQuiet as quietRoutine, isQuietReply, las
 import { engineIsFresh, freshTurnText } from "./turn-context.ts";
 import { standingFor, type Standing, type StandingRecord } from "./standing-prompt.ts";
 import { Checkpoints, diffLines, trackable, type CheckpointRecord } from "./checkpoints.ts";
+import { redoCounts, redoPlan, takenBack, type RedoRefusal } from "./redo.ts";
 import { Cooldowns, describeRest, outReason, REASON_WORDS, type Rest } from "./failover.ts";
 import { agentReadiness, engineReadiness, readinessWarning, type Readiness } from "./engine-readiness.ts";
 import { indexMemory, indexMessages, mostOf, recallBlock, recallFrom, recallText, searchableText, termsOf, type IndexedSource, type RecallHit, type RecallMessage, type Speaker } from "./recall.ts";
@@ -3468,6 +3469,8 @@ async function startClaimedTurn(
     byYou?: boolean;
     /** False for generated words relayed on the person's behalf. */
     personal?: boolean;
+    /** The person said this from Telegram (Message.fromTelegram). */
+    fromTelegram?: boolean;
     /** This turn picks up one that was cut off (server/cut-off.ts). */
     carriedOn?: boolean;
     /** This turn asks again what the lane's last turn was asked, after
@@ -3733,6 +3736,7 @@ async function startClaimedTurn(
       ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
       ...(opts.from ? { agent: { dir: "in" as const, peerId: opts.from.botId, peerName: opts.from.name } } : {}),
       ...(opts.routine ? { via: "routine" as const, routine: opts.routine, ...(command ? { commandInstance } : {}) } : {}),
+      ...(opts.fromTelegram ? { fromTelegram: true } : {}),
     });
     broadcast({ kind: "message", threadId: roomId, message: userMessage });
   }
@@ -7780,13 +7784,13 @@ const telegramInbox = new telegram.Inbox({
       // joins that answer when steered, or gets one for its queued turn.
       // Neither path starts the normal busy wait and sends a second copy.
       if (bot && lane?.busy && telegramReturns.answering(lane.id, chatId)) {
-        if (!(await steerLane(bot, lane, text).catch(() => null))) {
-          queueOnLane(bot.id, lane.id, text, { telegramReply: queuedTelegramReply(chatId) });
+        if (!(await steerLane(bot, lane, text, { fromTelegram: true }).catch(() => null))) {
+          queueOnLane(bot.id, lane.id, text, { telegramReply: queuedTelegramReply(chatId), fromTelegram: true });
           drainSteer(lane.id);
         }
         return;
       }
-      if (bot && lane && telegramTurns.has(chatId) && (await steerLane(bot, lane, text).catch(() => null))) return;
+      if (bot && lane && telegramTurns.has(chatId) && (await steerLane(bot, lane, text, { fromTelegram: true }).catch(() => null))) return;
       const turn = (telegramTurns.get(chatId) ?? Promise.resolve()).then(async () => {
         if (!bot) return telegramSay(chatId, "There is no agent here to answer yet, so that did not reach anyone.");
         // The reply goes back to the chat that asked, and the exchange lands
@@ -7851,7 +7855,7 @@ async function answerOverTelegram(botId: string, text: string, chatId: number): 
   // queued message, with the chat that asked saved as its return address.
   if (drain.on) {
     telegramLive.delete(botId);
-    queueOnLane(botId, laneId, text, { telegramReply: queuedTelegramReply(chatId), waitsFor: "restart" });
+    queueOnLane(botId, laneId, text, { telegramReply: queuedTelegramReply(chatId), waitsFor: "restart", fromTelegram: true });
     return {
       text: "Your message is saved. The answer will come here once Bloks is back, and it will also be in the app.",
       files: [],
@@ -7885,8 +7889,8 @@ async function answerOverTelegram(botId: string, text: string, chatId: number): 
   const lane = bot.tasks.find((t) => t.id === laneId);
   if (lane && laneWaits(lane) && !wheel.heldBy(botId) && !bot.archivedAt) {
     try {
-      const steered = await steerLane(bot, lane, text);
-      const sent = steered ?? queueOnLane(botId, laneId, text);
+      const steered = await steerLane(bot, lane, text, { fromTelegram: true });
+      const sent = steered ?? queueOnLane(botId, laneId, text, { fromTelegram: true });
       // the turn may have ended while its engine was asked
       if (!steered) drainSteer(laneId);
       await answeredAfter(botId, laneId, sent.id, 20 * 60_000);
@@ -7898,7 +7902,7 @@ async function answerOverTelegram(botId: string, text: string, chatId: number): 
     }
   }
   try {
-    await startTurn(botId, text, { byYou: true });
+    await startTurn(botId, text, { byYou: true, fromTelegram: true });
     // Longer than an ordinary wait, because a card forwarded to the
     // phone is answered on the phone's schedule, not the app's.
     await waitForIdle(botId, 20 * 60_000);
@@ -8657,6 +8661,8 @@ function queueOnLane(
     via?: "webhook" | "watcher" | "goal";
     routine?: Message["routine"];
     telegramReply?: TelegramReply;
+    /** The person said it from Telegram (Message.fromTelegram). */
+    fromTelegram?: boolean;
     personal?: boolean;
     waitsFor?: Message["waitsFor"];
     /** An agent sent it: the place in a chain of agents' messages the
@@ -8678,6 +8684,7 @@ function queueOnLane(
     ...(options.via ? { via: options.via } : {}),
     ...(options.routine ? { via: "routine" as const, routine: options.routine } : {}),
     ...(options.telegramReply ? { telegramReply: options.telegramReply } : {}),
+    ...(options.fromTelegram ? { fromTelegram: true } : {}),
     ...(!options.from && !options.via && store.bot(botId) ? { commandInstance } : {}),
   });
   broadcast({ kind: "message", threadId: laneId, message });
@@ -8720,7 +8727,7 @@ function steerLane(
   bot: BotRecord,
   lane: TaskRecord,
   text: string,
-  options: { replyTo?: ReplyRef; personal?: boolean; from?: { botId: string; name: string } } = {},
+  options: { replyTo?: ReplyRef; personal?: boolean; from?: { botId: string; name: string }; fromTelegram?: boolean } = {},
 ): Promise<Message | null> {
   const previous = steerAttempts.get(lane.id);
   if (!previous && laneInstance(bot, lane.id)?.driverKind !== "codex") return steerOne(bot, lane, text, options);
@@ -8744,11 +8751,14 @@ async function steerOne(
   bot: BotRecord,
   lane: TaskRecord,
   text: string,
-  options: { replyTo?: ReplyRef; personal?: boolean; from?: { botId: string; name: string } } = {},
+  options: { replyTo?: ReplyRef; personal?: boolean; from?: { botId: string; name: string }; fromTelegram?: boolean } = {},
 ): Promise<Message | null> {
   // an agent's words reach the engine framed, so they are never a command
   if (commandTurns.has(lane.id) || (!options.from && acceptingNative(bot, lane.id) && commandFor(text, acceptingNative(bot, lane.id)!))) return null;
   if (!lane.busy || drain.on || beingEdited.has(lane.id) || wheel.heldBy(bot.id) || bot.archivedAt) return null;
+  // A Redo is stopping this turn to take it back (redoMessage): words
+  // that joined it now would be taken back with it, so they wait instead.
+  if (claimedLanes.has(lane.id)) return null;
   // Bloks compacting a quiet session is not a turn anybody is talking in
   if (idleCompacting.has(lane.id)) return null;
   if ((activeRoom.get(lane.id) ?? lane.id) !== lane.id || (laneRequester.get(lane.id) ?? "owner") !== "owner") return null;
@@ -8775,6 +8785,7 @@ async function steerOne(
     midTurn: true,
     ...(options.replyTo ? { replyTo: options.replyTo } : {}),
     ...(from ? { agent: { dir: "in" as const, peerId: from.botId, peerName: from.name } } : {}),
+    ...(options.fromTelegram ? { fromTelegram: true } : {}),
   });
   broadcast({ kind: "message", threadId: lane.id, message });
   // what the turn says from here on is an answer to the person too, and
@@ -9104,6 +9115,267 @@ function drainSteer(threadId: string) {
       pauseGoal(entry.botId, threadId, goalPausedNotice("unstarted", redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 200)), "its next turn could not start");
     }
   }).finally(() => { queueStarts.delete(threadId); drainSteer(threadId); });
+}
+
+// ── stopping, rewinding, redoing ───────────────────────────────────────
+// Three things the person does to a conversation with one agent, each
+// made of the one before. Stop ends the turn that is running. Rewind
+// takes the conversation and the folder back to before one of their
+// messages. Redo (GitHub 258, server/redo.ts) is what editing a message
+// the agent already read does: stop, rewind to the start of the turn
+// the message was part of, and send the person's words from that turn
+// again with the change.
+
+/** The person stopping a lane's turn: the stop button, Esc in the
+ * composer, and the first step of a Redo. */
+async function stopForYou(bot: BotRecord, laneId: string) {
+  cutOff.stop(laneId);
+  // The person stopping a lane's turn stops its goal too, whichever
+  // turn it was: a goal that started the next one as soon as this
+  // ended would be the Stop not working. Before the interrupt, so
+  // the turn's end finds it paused and says nothing more.
+  if (store.taskByThread(laneId)?.task.goal?.status === "active" && store.taskByThread(laneId)?.task.busy) {
+    pauseGoal(bot.id, laneId, goalPausedNotice("stopped"), "you stopped the turn");
+  }
+  await laneInstance(bot, laneId)?.adapter.interruptTurn(laneId);
+}
+
+/**
+ * Takes a lane back to before the message at `index`: every message from
+ * it on, every file the turns since then changed (newest first, and only
+ * where nobody has changed it since), and the engine's sessions, so the
+ * next turn has heard only what is left. Says so in the conversation and
+ * on the record. `keepWaiting` is a Redo's: what waits above the composer
+ * was never read, so it stays where it is (takenBack).
+ */
+async function rewindLane(found: BotRecord, task: TaskRecord, index: number, keepWaiting = false) {
+  const laneId = task.id;
+  const messages = store.messagesFor(laneId);
+  const target = messages[index];
+  const now = Date.now();
+  const restored = new Set<string>();
+  const skipped = new Map<string, string>();
+  for (const record of checkpoints.undoableSince(laneId, target.at)) {
+    const result = await checkpoints.revert(record.id).catch(() => null);
+    if (!result) continue;
+    for (const path of result.restored) {
+      restored.add(path);
+      skipped.delete(path);
+    }
+    for (const s of result.skipped) if (!restored.has(s.path)) skipped.set(s.path, s.why);
+    patchChangesCard(record);
+  }
+
+  const later = takenBack(messages, index, keepWaiting);
+  for (const msg of later) {
+    const patched = store.patchMessage(laneId, msg.id, { deleted: true, rewound: now });
+    if (patched) broadcast({ kind: "message.patch", threadId: laneId, message: patched });
+  }
+  // A summary that covers part of what was taken back would hand it
+  // straight back to the agent, so it goes; the next turn replays what
+  // is left instead, and summarises again when that fills up.
+  const kept = messages.slice(0, index).filter((msg) => msg.kind === "text" && msg.text && !msg.deleted).length;
+  if (task.context && task.context.through > kept) store.setTaskContext(laneId, null);
+  store.forgetLaneSessions(laneId);
+  undoneSince.delete(laneId);
+
+  const files = [...restored];
+  const left = [...skipped.entries()];
+  const named = (paths: string[]) =>
+    paths.slice(0, 6).join(", ") + (paths.length > 6 ? `, and ${paths.length - 6} more` : "");
+  const parts = [
+    `Rewound to before your message. ${found.name} no longer remembers anything said after it.`,
+    files.length
+      ? `${files.length === 1 ? "1 file is" : `${files.length} files are`} back as they were: ${named(files)}.`
+      : "",
+    left.length
+      ? `Left alone, because they changed since: ${named(left.map(([path]) => path))}.`
+      : "",
+    "Its memory notes are unchanged.",
+  ].filter(Boolean);
+  const notice = store.appendMessage(laneId, { role: "bot", kind: "notice", text: parts.join(" ") });
+  broadcast({ kind: "message", threadId: laneId, message: notice });
+  record({
+    at: now,
+    kind: "conversation.rewound",
+    actor: "you",
+    summary: `Rewound a conversation with ${found.name}`,
+    detail: { agent: found.name, messages: String(later.length), files: String(files.length) },
+  });
+  broadcast({ kind: "bot", bot: clientBot(store.bot(found.id)) });
+  return {
+    text: target.text ?? "",
+    rewound: later.length,
+    restored: files,
+    skipped: left.map(([path, why]) => ({ path, why })),
+  };
+}
+
+const REDO_IN_A_ROOM = "Redo works in a conversation with one agent, not in a room.";
+const REDO_NOT_YOURS = "Redo is for a message you wrote here.";
+const REDO_REFUSED: Record<RedoRefusal, { status: number; error: string }> = {
+  waiting: { status: 409, error: "This message is still waiting for its turn. Edit it where it waits." },
+  "not-yours": { status: 400, error: REDO_NOT_YOURS },
+  "others-turn": {
+    status: 409,
+    error: "This message joined a turn you did not start, so it cannot be redone. Save the words, or send a new message.",
+  },
+};
+
+/** How long a Redo waits for the turn it stopped to end. An engine that
+ * takes longer than this to let go has not stopped in any way the person
+ * would call stopped, and nothing has been taken back yet. */
+const REDO_STOP_MS = 20_000;
+
+/** Why a lane cannot take a Redo right now, or null when it can. What
+ * stops a rewind stops it (a room's turn, a rehearsal), and so does what
+ * would stop the send after it: better refused whole than rewound with
+ * nothing sent. */
+function redoBlocked(bot: BotRecord, laneId: string): { status: number; error: string } | null {
+  const speaking = activeRoom.get(laneId);
+  if (speaking && speaking !== laneId) {
+    return { status: 409, error: `${bot.name} is speaking in a room right now. Try again when it is done.` };
+  }
+  if (rehearsals.forTask(laneId)) {
+    return { status: 409, error: "This is a rehearsal. Discard it instead: nothing in it reached your folder." };
+  }
+  // another Redo of this lane, or a turn still getting ready that cannot
+  // be stopped yet
+  if (claimedLanes.has(laneId)) return { status: 409, error: `${bot.name} is starting a turn. Try again in a moment.` };
+  const hold = wheel.heldBy(bot.id);
+  if (hold) return { status: 409, error: heldRefusal(hold, bot.name) };
+  if (bot.archivedAt) return { status: 409, error: archivedRefusal(bot).message };
+  if (drain.on) return { status: 503, error: "Bloks is finishing what is running before it restarts. Redo this once it is back." };
+  return null;
+}
+
+/**
+ * What a Redo of this message would do, for the line under its editor,
+ * or why it is not offered. Read-only, and decided here rather than in
+ * the app so the line is true: the messages are the ones the rewind
+ * would take back, and the files the ones it would put back as the
+ * folder stands now. While the agent is working the files of the turn
+ * it is in are not known yet (a turn's changes are measured when it
+ * ends), so `working` says so and the count is of the turns before it.
+ */
+function redoPreview(laneId: string, messageId: string) {
+  const no = (why: string) => ({ offered: false as const, why });
+  const found = store.botByThread(laneId);
+  const task = found?.tasks.find((t) => t.id === laneId);
+  if (!found || !task) return no(REDO_IN_A_ROOM);
+  const blocked = redoBlocked(found, laneId);
+  if (blocked) return no(blocked.error);
+  const messages = store.messagesFor(laneId);
+  const plan = redoPlan(messages, messageId);
+  if (!plan) return no(REDO_NOT_YOURS);
+  if (typeof plan === "string") return no(REDO_REFUSED[plan].error);
+  return {
+    offered: true as const,
+    ...redoCounts(takenBack(messages, plan.start, true)),
+    files: checkpoints.wouldRestore(checkpoints.undoableSince(laneId, messages[plan.start].at)).length,
+    working: Boolean(task.busy),
+    /** How many of the person's messages go again: more than one when
+     * the message was part of a turn other words of theirs joined. */
+    resend: plan.resend.length,
+  };
+}
+
+/** Resolves true once a lane's turn has ended, false at the deadline. */
+function laneSettled(laneId: string, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      if (!store.taskByThread(laneId)?.task.busy) return resolve(true);
+      if (Date.now() - started > timeoutMs) return resolve(false);
+      setTimeout(tick, 100);
+    };
+    tick();
+  });
+}
+
+/**
+ * Redo: the agent starts again from the new words, as if the old ones
+ * were never sent. One call rather than a stop, a rewind and a send from
+ * the app, so nothing between them can go ahead on the old words and a
+ * failure cannot leave the app holding the pieces.
+ *
+ * The lane is claimed from the first check to the send, the way a turn
+ * getting ready claims it: nothing else starts there, what is said to it
+ * meanwhile waits in its queue, and nothing joins the turn being taken
+ * back. In order: stop the turn if one is running and wait for it to
+ * end; wait for its change card, since its files are on record only
+ * then; rewind to the start of the message's turn; send. Everything up
+ * to the rewind refuses with nothing taken back. A send that fails
+ * after it leaves what Rewind to here leaves, the conversation rewound
+ * and the words handed back for the box (`sent: false`).
+ */
+async function redoMessage(laneId: string, messageId: string, text: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const refuse = (status: number, error: string) => ({ status, body: { error } });
+  const found = store.botByThread(laneId);
+  const task = found?.tasks.find((t) => t.id === laneId);
+  if (!found || !task) return refuse(400, REDO_IN_A_ROOM);
+  const blocked = redoBlocked(found, laneId);
+  if (blocked) return refuse(blocked.status, blocked.error);
+  // `/goal` is Bloks' own and never reaches an engine (see the send route)
+  if (parseGoalCommand(text)) return refuse(400, "A goal is set from the box below, not by redoing a message.");
+  const asked = redoPlan(store.messagesFor(laneId), messageId);
+  if (!asked) return refuse(400, REDO_NOT_YOURS);
+  if (typeof asked === "string") return refuse(REDO_REFUSED[asked].status, REDO_REFUSED[asked].error);
+
+  const claim: LaneClaim = { lane: laneId };
+  claimedLanes.set(laneId, claim);
+  const release = () => {
+    if (claimedLanes.get(laneId) === claim) claimedLanes.delete(laneId);
+  };
+  try {
+    if (task.busy) {
+      await stopForYou(found, laneId).catch(() => {});
+      if (!(await laneSettled(laneId, REDO_STOP_MS))) {
+        return refuse(409, `${found.name} has not stopped yet. Try Redo again once it has.`);
+      }
+    }
+    const card = cardsPending.get(laneId);
+    if (card) {
+      await Promise.race([card, new Promise((done) => setTimeout(done, CARD_WAIT_MS).unref?.())]);
+      if (cardsPending.get(laneId) === card) {
+        return refuse(409, `Bloks is still reading what ${found.name} changed in its folder. Try Redo again in a moment.`);
+      }
+    }
+    // Read again: the turn went on saying things until it stopped, and
+    // the message may have been taken back meanwhile.
+    const plan = redoPlan(store.messagesFor(laneId), messageId);
+    if (!store.taskByThread(laneId) || !plan || typeof plan === "string" || !plan.resend.some((m) => m.id === messageId)) {
+      return refuse(409, "That message is no longer there to redo. Nothing was taken back.");
+    }
+    const words = plan.resend.map((m) => ({ text: m.id === messageId ? text : (m.text ?? ""), replyTo: m.replyTo }));
+    const { text: _old, ...rewound } = await rewindLane(found, task, plan.start, true);
+
+    // One message and nothing waiting is an ordinary send: the lane is
+    // let go, and the send starts its turn. Several are one turn's worth,
+    // as they were, and go the way a burst does: said to a lane still
+    // claimed, they wait in its queue, and one turn takes them together
+    // once it is let go below. So does one message when something was
+    // already waiting here, which goes with it.
+    const alone = words.length === 1 && !steerQueues.has(laneId);
+    if (alone) release();
+    try {
+      for (const said of words) await sendUserMessage(found.id, said.text, { taskId: laneId, replyTo: said.replyTo, yours: true });
+    } catch (e) {
+      return {
+        status: 200,
+        body: { ...rewound, sent: false, text, error: redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 300) },
+      };
+    }
+    // these were said before whatever was already waiting, so they go first
+    const entry = alone ? undefined : steerQueues.get(laneId);
+    if (entry) entry.items = [...entry.items.slice(-words.length), ...entry.items.slice(0, -words.length)];
+    return { status: 200, body: { ...rewound, sent: true } };
+  } finally {
+    // what waited for the lane goes now, as it would after any turn
+    release();
+    drainSteer(laneId);
+    drainRoomTags(found.id);
+  }
 }
 
 // ── goals ──────────────────────────────────────────────────────────────
@@ -11851,64 +12123,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!target || target.role !== "user" || target.deleted) {
         return json(res, 400, { error: "Rewind to one of your own messages." });
       }
-
-      const now = Date.now();
-      const restored = new Set<string>();
-      const skipped = new Map<string, string>();
-      for (const record of checkpoints.undoableSince(laneId, target.at)) {
-        const result = await checkpoints.revert(record.id).catch(() => null);
-        if (!result) continue;
-        for (const path of result.restored) {
-          restored.add(path);
-          skipped.delete(path);
-        }
-        for (const s of result.skipped) if (!restored.has(s.path)) skipped.set(s.path, s.why);
-        patchChangesCard(record);
-      }
-
-      const later = messages.slice(index).filter((msg) => !msg.deleted);
-      for (const msg of later) {
-        const patched = store.patchMessage(laneId, msg.id, { deleted: true, rewound: now });
-        if (patched) broadcast({ kind: "message.patch", threadId: laneId, message: patched });
-      }
-      // A summary that covers part of what was taken back would hand it
-      // straight back to the agent, so it goes; the next turn replays what
-      // is left instead, and summarises again when that fills up.
-      const kept = messages.slice(0, index).filter((msg) => msg.kind === "text" && msg.text && !msg.deleted).length;
-      if (task.context && task.context.through > kept) store.setTaskContext(laneId, null);
-      store.forgetLaneSessions(laneId);
-      undoneSince.delete(laneId);
-
-      const files = [...restored];
-      const left = [...skipped.entries()];
-      const named = (paths: string[]) =>
-        paths.slice(0, 6).join(", ") + (paths.length > 6 ? `, and ${paths.length - 6} more` : "");
-      const parts = [
-        `Rewound to before your message. ${found.name} no longer remembers anything said after it.`,
-        files.length
-          ? `${files.length === 1 ? "1 file is" : `${files.length} files are`} back as they were: ${named(files)}.`
-          : "",
-        left.length
-          ? `Left alone, because they changed since: ${named(left.map(([path]) => path))}.`
-          : "",
-        "Its memory notes are unchanged.",
-      ].filter(Boolean);
-      const notice = store.appendMessage(laneId, { role: "bot", kind: "notice", text: parts.join(" ") });
-      broadcast({ kind: "message", threadId: laneId, message: notice });
-      record({
-        at: now,
-        kind: "conversation.rewound",
-        actor: "you",
-        summary: `Rewound a conversation with ${found.name}`,
-        detail: { agent: found.name, messages: String(later.length), files: String(files.length) },
-      });
-      broadcast({ kind: "bot", bot: clientBot(store.bot(found.id)) });
-      return json(res, 200, {
-        text: target.text ?? "",
-        rewound: later.length,
-        restored: files,
-        skipped: left.map(([path, why]) => ({ path, why })),
-      });
+      return json(res, 200, await rewindLane(found, task, index));
     }
 
     // ── editing and taking back ──
@@ -11987,6 +12202,26 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       editOpened(m[1], m[2]);
       return json(res, 200, { holding: true });
+    }
+
+    // Redoing a message the agent already read (redoMessage). GET says
+    // what it would take back, for the line under the editor, or why it
+    // is not offered; POST does it, with the new words. The person's, as
+    // a rewind is: an agent that could redo could rewrite what it was
+    // asked.
+    m = path.match(/^\/api\/threads\/([\w-]+)\/messages\/([\w-]+)\/redo$/);
+    if (m && method === "GET") {
+      if (asAgent) return json(res, 403, { error: "redoing a message is for the person, not an agent" });
+      return json(res, 200, redoPreview(m[1], m[2]));
+    }
+    if (m && method === "POST") {
+      if (asAgent) return json(res, 403, { error: "redoing a message is for the person, not an agent" });
+      const body = await readBody(req);
+      const text = typeof body.text === "string" ? body.text.trim() : "";
+      if (!text) return json(res, 400, { error: "a redone message still needs words" });
+      if (text.length > MAX_MESSAGE_CHARS) return json(res, 413, { error: "that message is too long" });
+      const done = await redoMessage(m[1], m[2], text);
+      return json(res, done.status, done.body);
     }
 
     // ── reactions ──
@@ -12822,15 +13057,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         typeof body.taskId === "string" && bot.tasks.some((t) => t.id === body.taskId)
           ? body.taskId
           : bot.threadId;
-      cutOff.stop(laneId);
-      // The person stopping a lane's turn stops its goal too, whichever
-      // turn it was: a goal that started the next one as soon as this
-      // ended would be the Stop not working. Before the interrupt, so
-      // the turn's end finds it paused and says nothing more.
-      if (store.taskByThread(laneId)?.task.goal?.status === "active" && store.taskByThread(laneId)?.task.busy) {
-        pauseGoal(bot.id, laneId, goalPausedNotice("stopped"), "you stopped the turn");
-      }
-      await laneInstance(bot, laneId)?.adapter.interruptTurn(laneId);
+      await stopForYou(bot, laneId);
       return json(res, 200, { ok: true });
     }
 

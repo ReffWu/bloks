@@ -9,9 +9,25 @@ import { useEffect, useRef } from "react";
 
 const stack: Array<{ current: () => void }> = [];
 
+/** A Radix menu, dialog or popover that is open and hears Escape itself. */
+const RADIX_OPEN = '[role=menu], [role=dialog][data-state="open"], [data-radix-popper-content-wrapper]';
+
+/**
+ * Whether Escape already has something to close: a surface on the stack,
+ * or a menu, dialog or popover that hears the key on its own. The
+ * composer asks before it takes Escape to mean "stop the agent" (GitHub
+ * 258), so the key still closes what is on top first and stops nothing
+ * by surprise. The sidebar's menus hear Escape themselves without being
+ * on the stack, and anything drawn as a dialog is on top whether or not
+ * the key closes it, so both are named here.
+ */
+export function escapeTaken(): boolean {
+  return stack.length > 0 || Boolean(document.querySelector(`${RADIX_OPEN}, [role=dialog], [data-bot-menu], [data-lane-menu]`));
+}
+
 function onKey(e: KeyboardEvent) {
   if (e.key !== "Escape" || e.defaultPrevented) return;
-  if (document.querySelector('[role=menu], [role=dialog][data-state="open"], [data-radix-popper-content-wrapper]')) {
+  if (document.querySelector(RADIX_OPEN)) {
     return;
   }
   const top = stack[stack.length - 1];

@@ -185,6 +185,31 @@ a fresh session that is replayed only what is left. Memory notes are not
 touched; the memory journal has its own undo. Rooms and rehearsal lanes
 refuse.
 
+## Redo
+
+Saving an edit to a message only rewrites its stored text; the agent has
+already read the old words. `POST /api/threads/:lane/messages/:id/redo`
+with the new `text` is the edit that reaches it, in one call: the lane is
+claimed, the running turn is stopped and waited for (and its change
+card, since a turn's files are on record only then), the lane is rewound
+with the rewind's own function, and the words are sent. `GET` on the
+same path is read-only and says what that would take back (messages,
+files as the folder stands now, whether a turn sent anything that
+stays), or that it is not offered and why; the app's line under the
+editor is those numbers. A refusal before the rewind takes nothing back.
+A send that fails after it answers `sent: false` with the words, which
+is what a rewind leaves.
+
+Where it rewinds to is in `server/redo.ts`, read from the transcript
+alone. A checkpoint covers a whole turn, so a message said into a
+running turn (`joined`, written when the turn takes it) goes back to the
+message that started that turn, and the person's messages from the turn
+are sent again in order, as one burst through the lane's queue. A
+message still waiting (`queued`, `unsent`) is refused, as are words that
+are not the person's own typed here (`agent`, `via`, `fromTelegram`) and
+a message that joined a turn somebody else started. What waits above the
+composer is not taken back; it goes after the redone words.
+
 ## Backup engines
 
 `server/failover.ts` decides whether a failed turn failed because its

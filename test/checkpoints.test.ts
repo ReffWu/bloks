@@ -217,6 +217,44 @@ describe("checkpoints", () => {
     assert.deepEqual(result!.restored, ["made.bin"]);
     assert.equal(readFileSync(join(dir, "made.bin")).length, MAX_FILE + 1);
   });
+
+  test("what a rewind would put back is known before anything is touched", async () => {
+    const dir = folder("would-restore", { "plan.md": "one\n", "notes.md": "mine\n", "old.md": "bye\n" });
+    const cp = new Checkpoints(join(scratch, "store-would-restore"));
+    await cp.begin("lane", "bot", dir);
+    writeFileSync(join(dir, "plan.md"), "two\n");
+    const first = (await cp.finish("lane"))!;
+    await cp.begin("lane", "bot", dir);
+    writeFileSync(join(dir, "plan.md"), "three\n");
+    writeFileSync(join(dir, "extra.md"), "made by the agent\n");
+    writeFileSync(join(dir, "notes.md"), "agent\n");
+    rmSync(join(dir, "old.md"));
+    const second = (await cp.finish("lane"))!;
+    // the person works on one of them afterwards
+    writeFileSync(join(dir, "notes.md"), "mine again\n");
+
+    // newest first, as a rewind takes them: a file two turns changed
+    // counts once, and the one changed since is left out
+    const since = cp.undoableSince("lane", first.at);
+    assert.deepEqual(since.map((r) => r.id), [second.id, first.id]);
+    assert.deepEqual(cp.wouldRestore(since).sort(), ["extra.md", "old.md", "plan.md"]);
+    assert.deepEqual(cp.wouldRestore([second]).sort(), ["extra.md", "old.md", "plan.md"]);
+    // the older turn alone cannot put plan.md back: the later one changed it since
+    assert.deepEqual(cp.wouldRestore([first]), []);
+    // asking changed nothing
+    assert.equal(readFileSync(join(dir, "plan.md"), "utf8"), "three\n");
+    assert.ok(existsSync(join(dir, "extra.md")) && !existsSync(join(dir, "old.md")));
+    assert.ok(!cp.get(first.id)!.revertedAt && !cp.get(second.id)!.revertedAt);
+
+    // and the rewind then does exactly that
+    const restored = new Set<string>();
+    for (const record of since) for (const path of (await cp.revert(record.id))!.restored) restored.add(path);
+    assert.deepEqual([...restored].sort(), ["extra.md", "old.md", "plan.md"]);
+    assert.equal(readFileSync(join(dir, "plan.md"), "utf8"), "one\n");
+    assert.equal(readFileSync(join(dir, "notes.md"), "utf8"), "mine again\n");
+    // nothing left to put back
+    assert.deepEqual(cp.wouldRestore(cp.undoableSince("lane", first.at)), []);
+  });
 });
 
 // GitHub 153: two agents in one folder. A turn that ran beside another

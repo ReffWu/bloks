@@ -384,6 +384,24 @@ test("a quick turn posts no status line", async (t) => {
   assert.equal(f.tg.calls("deleteMessage").length, 0);
 });
 
+test("words said from Telegram are marked as that, and the app does not offer to redo them", async (t) => {
+  const f = await fixture(t);
+  f.tg.say("hello");
+  await waitFor(() => f.tg.calls("sendMessage").some((c) => c.body.text === "ANSWER"), "the answer never came");
+  const said = (await f.messages()).find((m) => m.role === "user" && m.text === "hello");
+  assert.equal(said.fromTelegram, true, "nothing on the message says it came from Telegram");
+  const redo = (id: string) => f.h.json(`/api/threads/${f.bot.threadId}/messages/${id}/redo`);
+  assert.equal((await redo(said.id)).offered, false);
+  // one typed in the app, in the same conversation, is the person's to redo
+  await f.post(`/api/bots/${f.bot.id}/messages`, { text: "typed here" });
+  const typed = await waitFor(async () => {
+    const list = await f.messages();
+    return list.filter((m) => m.text === "ANSWER").length === 2 && list.find((m) => m.text === "typed here");
+  }, "the typed message was never answered");
+  assert.ok(!typed.fromTelegram);
+  await waitFor(async () => (await redo(typed.id)).offered === true, "a message typed in the app was not offered a redo");
+});
+
 test("a button from before a restart says its card has closed, and loses its buttons", async (t) => {
   const f = await fixture(t);
   f.tg.press(55, "AAAAAAAA:0");

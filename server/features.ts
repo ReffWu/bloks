@@ -36,4 +36,7 @@ export const FEATURES: readonly string[] = [
   "notes",
   // GET /api/plan-usage for a paired device, not only this machine
   "plan-usage",
+  // GET and POST /api/threads/:t/messages/:id/redo: what redoing a
+  // message the agent already read would take back, and doing it
+  "redo",
 ];
