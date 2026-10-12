@@ -7641,24 +7641,56 @@ async function runDueRoutines() {
 const routineTimer = setInterval(() => void runDueRoutines().catch(() => {}), 30_000);
 
 // ── messages arriving from each agent's Telegram bot ──────────────────
+// A bot belongs to one agent (server/telegram-bots.ts), and each bot that
+// is switched on has one of these: its own polling loop and everything
+// that loop is in the middle of. A loop rather than an interval: long
+// polling already blocks for as long as we want to wait, and a timer on
+// top of it would stack calls whenever Telegram was slow.
+//
+// `generation` is the connection's name. It changes whenever the token,
+// the switch or the pairing does, and everything in flight carries the
+// one it began under: a poll, a card's buttons, the rest of a long reply,
+// a message waiting for a turn. Work that belongs to a connection that
+// has since been replaced or removed stops where it is, so a bot taken
+// off an agent, or a new bot put on it, never finishes the old one's
+// business (currentTelegram, telegramConnectionCurrent).
 interface TelegramRuntime {
   botId: string;
   generation: string;
   token: string;
   abort: AbortController;
   inbox: telegram.Inbox;
+  /** Chats refused once, remembered for the life of the connection, so
+   * somebody who found the bot and keeps typing gets one answer rather
+   * than one per message. */
   refused: Set<number>;
+  /** Cards forwarded to a chat and not yet answered, by chat. */
   asks: Map<number, { requestId: string; botId: string; options: string[]; permission: boolean }>;
+  /** "typing" in each chat whose message the agent is working on. */
   typing: Map<number, { now(): void; stop(): Promise<void> }>;
+  /** Turns started from each chat, one after another. Kept off the
+   * polling loop so a turn that is running does not stop the next
+   * message being read: that next message may be the answer to a card
+   * the turn raised, or the rest of an album. */
   turns: Map<number, Promise<void>>;
+  /** Each chat's messages, taken in the order they came: asking an engine
+   * to take one mid-turn is a round trip, and the next must not pass it. */
   intake: Map<number, Promise<void>>;
+  /** This connection's share of telegramWorking, to stop when it goes. */
   working: Map<string, telegram.Progress>;
 }
 const telegramRuntimes = new Map<string, TelegramRuntime>();
+/** Agents currently answering a phone, so a card they raise can follow
+ * the conversation there instead of waiting on a screen nobody is at. */
 const telegramLive = new Map<string, { chatId: number; generation: string }>();
+/** Every card forwarded to a chat, by request, with the buttons it was
+ * sent with (server/telegram-cards.ts). */
 const telegramCards = new CardButtons();
+/** The line saying what a long Telegram turn is doing, by lane, since
+ * that is what a tool starting names. */
 const telegramWorking = new Map<string, telegram.Progress>();
 
+/** Whether the connection a message came in on is still the agent's. */
 function telegramConnectionCurrent(binding: NonNullable<Message["telegramBinding"]>): boolean {
   const state = telegramBinding(binding.botId);
   return Boolean(store.bot(binding.botId) && state?.token && state.enabled && state.generation === binding.generation);
@@ -7668,6 +7700,9 @@ function telegramBinding(botId: string): AgentTelegram | undefined {
   return cfg.telegram?.bots?.[botId];
 }
 
+/** This loop's saved state, while it is still the agent's connection:
+ * not stopped, the agent still here, the bot switched on, and the same
+ * token and generation it started with. Asked before every send. */
 function currentTelegram(runtime: TelegramRuntime): AgentTelegram | undefined {
   const state = telegramBinding(runtime.botId);
   return !runtime.abort.signal.aborted && store.bot(runtime.botId) && state?.enabled && state.token === runtime.token && state.generation === runtime.generation ? state : undefined;
@@ -7714,10 +7749,16 @@ async function identifyTelegramBindings(token: string, me: { id: number; usernam
   }
 }
 
+/** One bot answering for two agents would have both speak under one
+ * name, so a bot some other agent here already has is refused. */
 function duplicateTelegramBot(botId: string, telegramId: number): boolean {
   return Object.entries(cfg.telegram?.bots ?? {}).some(([id, other]) => id !== botId && store.bot(id) && other.telegramId === telegramId);
 }
 
+/** Where an answer held through a restart may still go: the bot of the
+ * agent whose lane it is, and only the connection it was asked on. One
+ * saved before bots had generations goes to the agent the old workspace
+ * bot moved to. */
 function telegramReturnState(laneId: string, reply: TelegramReply): telegram.TelegramState {
   const bot = store.bots.find((item) => item.tasks.some((lane) => lane.id === laneId));
   if (!bot || (reply.botId && reply.botId !== bot.id)) return {};
@@ -7733,6 +7774,7 @@ const telegramReturns = new TelegramReturns(
     const message = store.appendMessage(threadId, { role: "bot", kind: "notice", text });
     broadcast({ kind: "message", threadId, message });
   },
+  // a request held through a restart gets its files back too
   async (laneId, chatId, said, reply) => {
     const owner = store.bots.find((bot) => bot.tasks.some((lane) => lane.id === laneId));
     const runtime = owner ? liveTelegram(owner.id) : undefined;
@@ -7740,10 +7782,15 @@ const telegramReturns = new TelegramReturns(
   },
 );
 
+/** A reply to a chat. A failed send is not worth a crash. Only what an
+ * agent wrote is read as Markdown: the bot's own lines and a card's
+ * summary of a command are shown exactly as they are. */
 async function telegramSay(runtime: TelegramRuntime, chatId: number, text: string, markdown = false): Promise<void> {
   if (currentTelegram(runtime)) await telegram.send(runtime.token, chatId, text, markdown, undefined, () => Boolean(currentTelegram(runtime))).catch(() => {});
 }
 
+/** A status line in this chat, which keeps quiet while a card there
+ * waits on the person. */
 function telegramProgress(runtime: TelegramRuntime, chatId: number): telegram.Progress {
   return new telegram.Progress({
     post: (text) => currentTelegram(runtime) ? telegram.post(runtime.token, chatId, text, undefined, true, () => Boolean(currentTelegram(runtime))) : Promise.resolve(undefined),
@@ -7753,6 +7800,11 @@ function telegramProgress(runtime: TelegramRuntime, chatId: number): telegram.Pr
   }, () => runtime.asks.has(chatId));
 }
 
+/**
+ * Hand an answer given on a phone, typed or tapped, to the ask it is for.
+ * False when nothing was waiting on it any more: the turn ended, or its
+ * engine went. An approval is allowed only by its first choice.
+ */
 async function answerTelegramAsk(
   ask: { requestId: string; botId: string; options: string[]; permission: boolean },
   read: { option?: string; free?: string },
@@ -7767,22 +7819,32 @@ async function answerTelegramAsk(
   return instance.adapter.respondToRequest(askThread, ask.requestId, { behavior, message }).then(() => true, () => false);
 }
 
+/** A forwarded card's message, rewritten to say how it was answered and
+ * without its buttons. Only a nicety: the answer itself has already gone
+ * where it was going, so a failure here is let pass. */
 function rewriteTelegramCard(card: ForwardedCard): void {
   const runtime = liveTelegram(card.botId);
   if (!runtime || card.generation !== runtime.generation || card.messageId === undefined) return;
   void telegram.edit(runtime.token, card.chatId, card.messageId, settledText(card)).catch(() => {});
 }
 
+/** A card answered or closed anywhere. The chat it went to is told, and
+ * its next line is a message again rather than an answer to it. */
 function settleTelegramCard(requestId: string, outcome: (card: ForwardedCard) => string): void {
   const card = telegramCards.settle(requestId, outcome);
   if (card) rewriteTelegramCard(card);
   for (const runtime of telegramRuntimes.values()) for (const [chatId, waiting] of runtime.asks) {
     if (waiting.requestId !== requestId) continue;
     runtime.asks.delete(chatId);
+    // the agent is working again, so the chat says so at once
     runtime.typing.get(chatId)?.now();
   }
 }
 
+/** One connection's inbox. The rules (who is paired, what answers a
+ * card, what happens to a voice message or a photo) are in
+ * server/telegram.ts; these are its hands, and each one checks that the
+ * connection is still the agent's before it touches anything. */
 function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRuntime {
   const runtime: TelegramRuntime = {
     botId, generation: state.generation, token: state.token!, abort: new AbortController(),
@@ -7797,6 +7859,9 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
   runtime.inbox = new telegram.Inbox({
     state: () => { const current = currentTelegram(runtime); return current ? inboxState(current) : {}; },
     send: (chatId, text) => telegramSay(runtime, chatId, text),
+    // The owner is the Telegram account that sent the word in a private
+    // chat (decide), kept by its user id: a chat id or a display name
+    // says where a message came from, not who wrote it.
     async pair(chatId, userId) {
       const current = active();
       if (!Number.isSafeInteger(userId) || userId! <= 0) return;
@@ -7821,6 +7886,8 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
       if (!waiting) return;
       runtime.asks.delete(chatId);
       await answerTelegramAsk(waiting, read);
+      // The turn goes on, so the chat says so again without waiting for
+      // the next tick.
       runtime.typing.get(chatId)?.now();
     },
     async press(chatId, press) {
@@ -7828,6 +7895,9 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
       const found = telegramCards.press(chatId, press.messageId, press.data, Date.now(), { botId, generation: runtime.generation });
       if (found && !('settled' in found) && (found.card.botId !== botId || found.card.generation !== runtime.generation)) return;
       if (!found || "settled" in found) {
+        // Answered already, by this button or some other way, or a card
+        // from before a restart or another connection, which nothing is
+        // waiting on any more.
         await telegram.answerPress(runtime.token, press.id, found ? found.settled : "That card has already closed.").catch(() => {});
         if (!found) await telegram.unbutton(runtime.token, chatId, press.messageId).catch(() => {});
         return;
@@ -7845,6 +7915,12 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
         const bot = store.bot(botId);
         const lane = bot?.tasks.find((task) => task.id === activeLaneOf(bot));
         const binding = { botId, generation: runtime.generation };
+        // A follow-up while this chat waits on an answer goes into the turn
+        // being answered, and that one reply covers it, rather than waiting
+        // for the answer to come back before it is even read (GitHub 213).
+        // A drain request recovered its own return address. A follow-up
+        // joins that answer when steered, or gets one for its queued turn.
+        // Neither path starts the normal busy wait and sends a second copy.
         if (bot && lane?.busy && telegramReturns.answering(lane.id, chatId, binding)) {
           if (!(await steerLane(bot, lane, text, { fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } }).catch(() => null)) && currentTelegram(runtime)) {
             queueOnLane(bot.id, lane.id, text, { telegramReply: queuedTelegramReply(chatId, binding), fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } });
@@ -7856,6 +7932,8 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
         const turn = (runtime.turns.get(chatId) ?? Promise.resolve()).then(async () => {
           if (!currentTelegram(runtime)) return;
           if (!bot) return telegramSay(runtime, chatId, "There is no agent here to answer yet, so that did not reach anyone.");
+          // The reply goes back to the chat that asked, and the exchange lands
+          // in the agent's own thread like any other conversation.
           const answer = await answerOverTelegram(bot.id, text, chatId, runtime).catch(
             (error: unknown): TelegramAnswer => ({ text: `Could not answer: ${(error as Error).message}`, files: [] }),
           );
@@ -7872,6 +7950,10 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
   return runtime;
 }
 
+/** Brings an agent's loop in line with what is saved for it: starts one,
+ * leaves a current one alone, or retires one whose connection changed,
+ * along with everything that one still had in hand. Called at startup
+ * for every agent and after every change to a bot. */
 function startTelegramBot(botId: string): void {
   const previous = telegramRuntimes.get(botId);
   const configured = telegramBinding(botId);
@@ -7934,7 +8016,11 @@ async function telegramRound(runtime: TelegramRuntime): Promise<void> {
   const current = currentTelegram(runtime);
   if (!current) return;
   const offset = telegram.nextOffset(current.offset ?? 0, messages);
-  // Persist before dispatch, as before: a save failure acknowledges nothing.
+  // Saved before anything is acted on. A crash mid-turn should lose
+  // the reply, not replay the message on every restart forever. And
+  // only then kept: a save refused (an unreadable config.json) throws
+  // with the old offset still in place, so the next poll asks for the
+  // same messages again rather than acknowledging ones never handled.
   if (offset !== (current.offset ?? 0)) saveTelegramBinding(runtime.botId, { ...current, offset });
   for (const message of messages) {
     if (!currentTelegram(runtime)) return;
@@ -7946,6 +8032,8 @@ async function telegramLoop(runtime: TelegramRuntime): Promise<void> {
   try {
     while (currentTelegram(runtime)) {
       try { await telegramRound(runtime); }
+      // Telegram unreachable, a bad token, a laptop that just woke.
+      // Wait before asking again rather than spinning on the failure.
       catch { if (currentTelegram(runtime)) await telegramPause(runtime, 15_000); }
       if (currentTelegram(runtime)) await telegramPause(runtime, 500);
     }
@@ -7961,6 +8049,8 @@ async function telegramLoop(runtime: TelegramRuntime): Promise<void> {
   }
 }
 
+/** A wait that ends early when the connection is retired, so a bot that
+ * was removed stops now and not at the end of a quarter minute. */
 function telegramPause(runtime: TelegramRuntime, ms: number): Promise<void> {
   return new Promise((resolve) => {
     const finish = () => { clearTimeout(timer); runtime.abort.signal.removeEventListener("abort", finish); resolve(); };
@@ -15577,6 +15667,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
     if (method === "GET" && path === "/api/telegram") {
       // A pointer for old Settings clients, not a second workspace bot.
+      // A token is a credential and never comes back out; what a screen
+      // needs is whether one is set, whose bot it is and who is paired.
       const botId = cfg.telegram?.migratedBotId ?? null;
       return json(res, 200, {
         ...telegramStatus(botId ? telegramBinding(botId) : undefined), botId,
@@ -15646,6 +15738,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         if (!next.token) return json(res, 400, { error: "Save a bot token first." });
         next = ownerPairing(next);
       }
+      // Unpairing forgets the owner too, and is a new connection: a turn
+      // or a card from before it has nobody left to answer to.
       if (body.unpair === true) next = { ...next, chatIds: [], ownerUserId: undefined, ownerChatId: undefined, pairing: null, generation: randomUUID() };
       if (adoptsPending) saveTelegram({ ...cfg.telegram, version: 1, bots: { ...cfg.telegram?.bots, [botId]: next }, migratedBotId: botId, pending: undefined, migrationError: undefined });
       else saveTelegramBinding(botId, next);

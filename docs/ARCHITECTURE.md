@@ -688,13 +688,45 @@ signature checks out against the app secret, which stays here.
 
 ## Telegram
 
-The person can reach their agents from a Telegram bot of their own
-(`server/telegram.ts` holds the rules, the Telegram parts of
-`server/index.ts` the plumbing). The machine long-polls Telegram, so
-nothing listens on a port. Everything hangs on the pairing: the first
-chat to send the single-use pairing word is the owner's, a chat that is
-not paired is refused once and never reaches an agent, and nothing below
-happens anywhere else. Guest mail and shared rooms never come this way.
+The person can reach an agent from a Telegram bot that is that agent's
+own (`server/telegram.ts` holds the rules, `server/telegram-bots.ts` the
+saved shape, the Telegram parts of `server/index.ts` the plumbing). A
+bot is a BotFather token in the agent's settings
+(`GET`/`POST /api/bots/:id/telegram`, never with an agent's credential,
+and the token never comes back out). An agent without one is not on
+Telegram, and one Telegram bot cannot be given to two agents: the token
+is checked with `getMe` and its bot id compared with every other
+agent's. Each bot that is switched on has its own long-polling loop
+(`TelegramRuntime`), so nothing listens on a port.
+
+Everything hangs on the pairing. The owner is the Telegram account that
+sends the single-use pairing word to the bot in a private chat, kept by
+its user id (`ownerUserId`), since a chat id or a display name says
+where a message came from and not who wrote it. The word is made with
+the system's random source and is good once. A chat that is not paired
+is refused once and never reaches an agent, and nothing below happens
+anywhere else. Guest mail and shared rooms never come this way.
+
+A connection has a `generation`, renewed whenever its token, its switch
+or its pairing changes. A poll, a card's buttons, the rest of a long
+reply and a message waiting for a turn each carry the generation they
+began under, and stop when it is no longer the agent's
+(`currentTelegram`, `telegramConnectionCurrent`): a bot taken off an
+agent, or another put on it, never finishes the old one's business.
+Words that were waiting stay in the conversation as unsent, with a
+notice. Putting a new token on the same bot keeps its owner and its
+place in the queue of updates; a different bot starts with no one
+paired. Deleting an agent removes its bot and token.
+
+The workspace bot from before 2.8.0 moves to the agent it was set to
+answer as (`migrateTelegram`), with its place and its paired chats, and
+asks for the pairing word once more so it learns its owner's user id.
+Until admission of other people exists, chats paired before the move
+keep the reach they had. When the agent it named is gone, or already
+has a bot, nothing is assigned by guesswork: the old bot waits, stopped,
+for the person to choose an agent in Settings. Bot tokens are left out
+of an unsealed backup like every other key (`SECRET_PATHS`), and a
+restore without them keeps this computer's own.
 
 A card a Telegram turn raises goes to the chat it came from
 (`telegramCards`, `server/telegram-cards.ts`). An approval comes with
