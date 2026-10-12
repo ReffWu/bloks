@@ -83,6 +83,9 @@ export interface Message {
   /** The server says this message waits for a restart, rather than a turn. */
   waitsFor?: "restart";
   deliveredAt?: number;
+  /** Went into the turn already running rather than starting one, so a
+   * finished turn's work folds around it (src/lib/turnFold.ts). */
+  midTurn?: boolean;
   /** Queued, but still waiting when Bloks restarted and too old to send
    * on its own (server/index.ts, recoverQueued). */
   unsent?: boolean;

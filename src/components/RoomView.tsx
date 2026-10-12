@@ -38,6 +38,7 @@ import { OptionCard } from "./OptionCard";
 import { Markdownish } from "./Markdown";
 import { ChangesCard } from "./ChangesCard";
 import { ToolRun } from "./ToolRun";
+import { TurnFoldLine } from "./TurnFold";
 import { Button } from "@/components/ui/button";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { ForumLens } from "./ForumLens";
@@ -56,6 +57,8 @@ import { boxFor, carryFocus, keepDraft, readDraft, showBox, takeBack, takeFocus,
 import { queuedLine, stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
 import { useStickToBottom } from "@/lib/useStickToBottom";
+import { useHoldPlace } from "@/lib/useHoldPlace";
+import { foldHolding, foldRoom, lastFoldKey, rowsFrom } from "@/lib/turnFold";
 
 /** A reaction in a room is the cheapest thing anyone can say, and often
  * the right thing: agreeing with a plan should not wake six agents. */
@@ -421,7 +424,20 @@ export function RoomView({ blok }: { blok: Blok }) {
   const start = windowStart(said.length, boundary);
   // which messages have answers hanging off them, for the stream's hint
   const counts = replyCounts(said);
-  const visibleMessages = said.slice(start);
+  // Each agent's finished turn is one line above its reply
+  // (src/lib/turnFold.ts). A room's transcript does not say where a turn
+  // began, so where one seen starting began is kept here: nothing of it
+  // folds while it runs, whoever else speaks meanwhile. One already
+  // running when the room was opened has no such place (null).
+  const liveFrom = useRef<Map<string, number | null> | null>(null);
+  const seen = liveFrom.current;
+  const live = new Map<string, number | null>();
+  for (const m of working) live.set(m.id, seen ? (seen.has(m.id) ? (seen.get(m.id) ?? null) : said.length) : null);
+  liveFrom.current = live;
+  const liveKey = [...live].map(([id, since]) => `${id}:${since}`).join(" ");
+  const folded = useMemo(() => foldRoom(said, live), [said, liveKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const visibleRows = useMemo(() => rowsFrom(folded.rows, start), [folded, start]);
+  const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set());
 
   const pinned = useRef(true);
   useStickToBottom(scrollRef, pinned);
@@ -447,6 +463,28 @@ export function RoomView({ blok }: { blok: Blok }) {
     }
     // a page from the server lands above with start still at 0
   }, [start, said.length]);
+
+  // When a turn ends its work folds, and the reply stays where it is on
+  // screen for a reader who is not at the end. After the effect above:
+  // that one adds to where the reader is, and this one then finds the
+  // reply already in place.
+  useHoldPlace(
+    scrollRef,
+    pinned,
+    blok.id,
+    lastFoldKey(folded.rows),
+    folded.hold ? `[data-room-msg="${folded.hold.message.id}"]` : null,
+  );
+  // Opening a fold leaves its line where it was pressed. At the end of
+  // the room, following the end would scroll the line away instead.
+  const toggleFold = (key: string) => {
+    pinned.current = false;
+    setOpenFolds((open) => {
+      const next = new Set(open);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  };
 
   const earlier = useEarlier("room", { ...blok, threadId: blok.id });
   const showEarlier = () => {
@@ -543,6 +581,57 @@ export function RoomView({ blok }: { blok: Blok }) {
       body: JSON.stringify({ leadOnly: !blok.leadOnly }),
     }).catch(() => {});
   };
+
+  // One stretch of the room as its rows: what stays in the open, or a
+  // fold's work once it is opened. Who spoke last and a run of tool calls
+  // are read within the stretch, since rows with a fold between them are
+  // not next to each other on the page.
+  const rowsOf = (list: readonly Message[]) =>
+    list.map((m, i) => {
+      const prev = list[i - 1];
+      // one member's run of tool calls reads as one line
+      if (m.kind === "activity" && m.tool) {
+        if (prev?.kind === "activity" && prev.from === m.from && !prev.deleted) return null;
+        const run: Message[] = [];
+        for (let j = i; j < list.length; j++) {
+          const next = list[j];
+          if (next.kind !== "activity" || next.from !== m.from || next.deleted || !next.tool) break;
+          run.push(next);
+        }
+        return <ToolRun key={m.id} messages={run} className="pl-11" />;
+      }
+      const showSpeaker = !prev || prev.from !== m.from || prev.role !== m.role;
+      const answers = replyLabel(counts.get(m.id) ?? 0);
+      return (
+        <div
+          key={m.id}
+          data-room-msg={m.id}
+          className={cn(
+            "rounded-2xl transition-colors duration-700",
+            highlightId === m.id && "bg-brand/10",
+          )}
+        >
+          <RoomMessage
+            message={m}
+            members={members}
+            people={roomPeople}
+            ownerName={blok.sharing ? ownerName : undefined}
+            showSpeaker={showSpeaker}
+            roomId={blok.id}
+            onReply={setReplyTo}
+            onForward={(message, author) => setForwarding({ message, author })}
+          />
+          {answers && (
+            <button
+              onClick={() => setLensAnd("forum")}
+              className="ml-11 mt-0.5 rounded-md px-1.5 py-0.5 text-[11.5px] text-brand-ink transition-colors duration-150 hover:bg-accent"
+            >
+              {answers}
+            </button>
+          )}
+        </div>
+      );
+    });
 
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -687,6 +776,12 @@ export function RoomView({ blok }: { blok: Blok }) {
               // the stream may be windowed to its tail, so open the whole
               // thing rather than scrolling to something not rendered
               setBoundary(0);
+              // and a message under a fold is shown by opening the fold
+              const fold = foldHolding(folded.rows, said.findIndex((m) => m.id === messageId));
+              if (fold) {
+                pinned.current = false;
+                setOpenFolds((open) => new Set(open).add(fold));
+              }
               requestAnimationFrame(() => {
                 document
                   .querySelector(`[data-room-msg="${messageId}"]`)
@@ -706,51 +801,21 @@ export function RoomView({ blok }: { blok: Blok }) {
               Show earlier messages ({start + earlier.remaining} more)
             </button>
           )}
-          {visibleMessages.map((m, i) => {
-            const prev = visibleMessages[i - 1];
-            // one member's run of tool calls reads as one line
-            if (m.kind === "activity" && m.tool) {
-              if (prev?.kind === "activity" && prev.from === m.from && !prev.deleted) return null;
-              const run: Message[] = [];
-              for (let j = i; j < visibleMessages.length; j++) {
-                const next = visibleMessages[j];
-                if (next.kind !== "activity" || next.from !== m.from || next.deleted || !next.tool) break;
-                run.push(next);
-              }
-              return <ToolRun key={m.id} messages={run} className="pl-11" />;
-            }
-            const showSpeaker = !prev || prev.from !== m.from || prev.role !== m.role;
-            const answers = replyLabel(counts.get(m.id) ?? 0);
-            return (
-              <div
-                key={m.id}
-                data-room-msg={m.id}
-                className={cn(
-                  "rounded-2xl transition-colors duration-700",
-                  highlightId === m.id && "bg-brand/10",
-                )}
-              >
-                <RoomMessage
-                  message={m}
-                  members={members}
-                  people={roomPeople}
-                  ownerName={blok.sharing ? ownerName : undefined}
-                  showSpeaker={showSpeaker}
-                  roomId={blok.id}
-                  onReply={setReplyTo}
-                  onForward={(message, author) => setForwarding({ message, author })}
-                />
-                {answers && (
-                  <button
-                    onClick={() => setLensAnd("forum")}
-                    className="ml-11 mt-0.5 rounded-md px-1.5 py-0.5 text-[11.5px] text-brand-ink transition-colors duration-150 hover:bg-accent"
+          {visibleRows.flatMap((row) =>
+            row.kind === "said"
+              ? rowsOf(row.items.map((item) => item.message))
+              : [
+                  <TurnFoldLine
+                    key={`fold:${row.fold.key}`}
+                    fold={row.fold}
+                    open={openFolds.has(row.fold.key)}
+                    onToggle={() => toggleFold(row.fold.key)}
+                    className="pl-11"
                   >
-                    {answers}
-                  </button>
-                )}
-              </div>
-            );
-          })}
+                    {openFolds.has(row.fold.key) && rowsOf(row.fold.messages)}
+                  </TurnFoldLine>,
+                ],
+          )}
           {working.map((m) => (
             <div key={m.id} className="flex animate-rise-in items-center gap-2.5 pl-11 text-[12px] text-muted-foreground">
               <Loader2 size={11} className="animate-spin" />

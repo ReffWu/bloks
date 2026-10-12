@@ -126,6 +126,9 @@ else { say("Nothing else came"); done("Nothing else came"); }`,
   const second = now.find((m) => m.text === "SECOND only in the morning");
   assert.ok(second, "it is not in the conversation");
   assert.ok(!second.queued, "it is still flagged as waiting");
+  // and it says it joined a turn, so the turn reads back as one (GitHub 257)
+  assert.equal(second.midTurn, true, "it does not say it went into a running turn");
+  assert.ok(!now.find((m) => m.text?.startsWith("FIRST_ASK"))?.midTurn, "the message that started the turn says it joined one");
 
   assert.ok(await waitFor(async () => !(await busy(h, bot))), "the turn never ended");
   const after = texts(await messages(h, bot));

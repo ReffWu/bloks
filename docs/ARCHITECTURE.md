@@ -603,6 +603,47 @@ shared room's members may see only a tool's kind. Memory is bounded: a
 turn keeps 256 distinct calls, forgetting the one used longest ago (never
 the loop, which is the call it keeps making), and 512 turns at most.
 
+## A finished turn, folded
+
+While a turn runs the chat shows everything it does. Once it has ended,
+what it did on the way folds into one line above its result ("Worked 8
+min · 27 commands · 4 files", then the agents it wrote to), and a click
+opens the work in place. Under the fold go its progress messages, tool
+calls, rows for messages to and from other agents, the message that
+started it when that was not the person's (another agent's, a routine's,
+a watcher's, a webhook's, a goal's note), cards already answered, the
+screen it ended on and the changes card. Left out are the person's own
+words, the turn's last reply, cards that still wait for them, artifacts,
+components and every notice. Quiet check-ins and messages taken back
+keep the rows they have. `src/lib/turnFold.ts` decides all of it from
+the transcript, and no fold is stored.
+
+A turn begins at a message with `role: "user"` and ends where the next
+one begins; the last has ended when its lane is no longer working
+(`turnRunning`, which takes a lane paused on a live approval as still
+going). Its result is the last thing the agent said in its own chat.
+The one thing the transcript could not say afterwards is that a message
+went into a running turn instead of starting one, so `steerOne` marks
+those `midTurn`. The person's words in the middle of a turn stay on the
+page and split its work into a fold on either side. A transcript from
+before the mark takes each such message as the start of a turn, which
+leaves one more progress message showing and never hides a reply.
+
+The line names who asked when it was not the person, and another
+agent's name there opens the exchange, as the "After a message from"
+link above the reply does while the turn runs. A turn that only wrote
+back to the agent that asked is the line alone, ending in "replied".
+The count is of commands when every call was one (`kindOf` in
+`src/lib/tool-summary.ts`) and of steps otherwise, and of files only
+the turn's own.
+
+A room's transcript does not say where an agent's turn began, so there
+a turn is what one agent did until somebody else spoke (`foldRoom`), and
+`RoomView` remembers where a turn it saw start began, so nothing of it
+folds while it runs. When a fold closes over a reader who is not at the
+end, `useHoldPlace` keeps the reply where it was on screen; a find hit
+or a forum link into folded work opens the fold.
+
 ## Chat platforms
 
 A shared room can be carried into Slack, Discord or a WhatsApp group

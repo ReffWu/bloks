@@ -206,6 +206,12 @@ export interface Message {
   /** The server queued the person's words while finishing up to restart.
    * Cleared when delivered; never accepted from a client body. */
   waitsFor?: "restart";
+  /** Taken by the turn already running in its lane (steerLane) rather
+   * than starting one. Every other message from the person, another
+   * agent, a routine or a watcher is where a turn begins, so this is
+   * what lets a finished turn be read back as one turn (GitHub 257).
+   * Absent on anything written before it was recorded. */
+  midTurn?: boolean;
   /** Server-only return address for a Telegram request queued during
    * drain. Preserved on edits, never accepted from a client body. */
   telegramReply?: TelegramReply;

@@ -8705,6 +8705,9 @@ async function steerOne(
     role: "user",
     kind: "text",
     text,
+    // it joined a turn and did not start one, which the transcript could
+    // not otherwise say once the turn is over (Message.midTurn)
+    midTurn: true,
     ...(options.replyTo ? { replyTo: options.replyTo } : {}),
     ...(from ? { agent: { dir: "in" as const, peerId: from.botId, peerName: from.name } } : {}),
   });

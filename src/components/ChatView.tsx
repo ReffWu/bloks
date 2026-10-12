@@ -33,6 +33,7 @@ import { ConnectorCard } from "./ConnectorCard";
 import { SecretCard } from "./SecretCard";
 import { ChangesCard } from "./ChangesCard";
 import { ToolRun } from "./ToolRun";
+import { TurnFoldLine } from "./TurnFold";
 import { RecalledNotes } from "./RecalledNotes";
 import { MeetingPanel } from "./MeetingPanel";
 import AudioLines from "lucide-react/dist/esm/icons/audio-lines.mjs";
@@ -51,6 +52,8 @@ import { Markdownish, withHighlight } from "./Markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { useStickToBottom } from "@/lib/useStickToBottom";
+import { useHoldPlace } from "@/lib/useHoldPlace";
+import { foldHolding, foldTurns, lastFoldKey, rowsFrom, turnRunning } from "@/lib/turnFold";
 import { goalNoteForPerson } from "@/lib/goalNote";
 
 /** The line over a goal turn: from Bloks, and which turn of how many. */
@@ -799,11 +802,15 @@ export function ChatView({ bot }: { bot: Bot }) {
   // index so appends grow the window instead of sliding rows away
   const [boundary, setBoundary] = useState<number | null>(null);
   const preExpand = useRef<number | null>(null);
+  // A finished turn's work is one line above its result
+  // (src/lib/turnFold.ts). These are the ones opened to read the work.
+  const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set());
   const threadKey = `${bot.id}:${bot.threadId}`;
   const lastThreadKey = useRef(threadKey);
   if (lastThreadKey.current !== threadKey) {
     lastThreadKey.current = threadKey;
     setBoundary(null);
+    setOpenFolds(new Set());
     // A quote is of a message in the conversation it was picked in, and a
     // rewind's words belong to theirs: neither goes with you to another.
     setReplyTo(null);
@@ -817,6 +824,16 @@ export function ChatView({ bot }: { bot: Bot }) {
   const [query, setQuery] = useState("");
   const [hitAt, setHitAt] = useState(0);
   const hits = useMemo(() => findHits(said, query), [said, query]);
+  // The last turn folds once it has ended, and not before: this
+  // conversation's turn, whatever the agent's other ones are doing.
+  const openLane = bot.tasks?.find((t) => t.id === (bot.activeTaskId ?? bot.threadId));
+  const running = turnRunning(
+    openLane?.state,
+    Boolean(bot.busy),
+    said,
+    Boolean(bot.tasks?.some((t) => t !== openLane && t.state !== "idle")),
+  );
+  const folded = useMemo(() => foldTurns(said, running), [said, running]);
 
   // Approvals stacked up while the user was away. One or two are a
   // conversation; several are a queue, and a queue deserves queue
@@ -846,7 +863,11 @@ export function ChatView({ bot }: { bot: Bot }) {
   // A hit above the rendered slice would be invisible and unscrollable,
   // so finding one opens the window far enough back to show it.
   const visibleStart = currentHit >= 0 && currentHit < start ? Math.max(0, currentHit - 4) : start;
-  const visibleMessages = said.slice(visibleStart);
+  const visibleRows = useMemo(() => rowsFrom(folded.rows, visibleStart), [folded, visibleStart]);
+  // A hit in folded work would be just as invisible, so its fold opens,
+  // and stays open as the reader steps on to the next.
+  const hitFold = currentHit >= 0 ? foldHolding(folded.rows, currentHit) : null;
+  const hitShown = !hitFold || openFolds.has(hitFold);
 
   // follow the tail only while the reader is actually at the tail
   const pinned = useRef(true);
@@ -882,12 +903,40 @@ export function ChatView({ bot }: { bot: Bot }) {
     // a page from the server lands above with start still at 0
   }, [start, said.length]);
 
+  // When a turn ends its work folds, and the reply stays where it is on
+  // screen for a reader who is not at the end. After the effect above:
+  // that one adds to where the reader is, and this one then finds the
+  // reply already in place.
+  useHoldPlace(
+    scrollRef,
+    pinned,
+    threadKey,
+    lastFoldKey(folded.rows),
+    folded.hold ? `[data-msg-index="${folded.hold.index}"]` : null,
+  );
+
+  // Opening a fold leaves its line where it was pressed. At the end of a
+  // conversation, following the end would scroll the line away instead.
+  const toggleFold = (key: string) => {
+    pinned.current = false;
+    setOpenFolds((open) => {
+      const next = new Set(open);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  };
+  useEffect(() => {
+    if (!hitFold) return;
+    pinned.current = false;
+    setOpenFolds((open) => (open.has(hitFold) ? open : new Set(open).add(hitFold)));
+  }, [hitFold]);
+
   // Walk to a hit: render it, then bring it to the middle of the view.
   useEffect(() => {
     if (currentHit < 0) return;
     const row = document.querySelector(`[data-msg-index="${currentHit}"]`);
     row?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [currentHit, visibleStart]);
+  }, [currentHit, visibleStart, hitShown]);
 
   // the two-agent exchange opened from one of its rows, if any
   const [exchange, setExchange] = useState<{ peerId: string; messageId: string; text: string } | null>(null);
@@ -909,6 +958,122 @@ export function ChatView({ bot }: { bot: Bot }) {
   const first = said[0];
   // this conversation, not the agent: another one may be the one working
   const working = openLaneWorking(bot);
+
+  // One stretch of the conversation as its rows: what stays in the open,
+  // or a fold's work once it is opened. A run (a rewind, quiet check-ins,
+  // tool calls) is counted within its stretch, since rows with a fold
+  // between them are not next to each other on the page.
+  const rowsOf = (list: readonly Message[], indexOf: (offset: number) => number) =>
+    list.map((m, offset) => {
+      const fresh = arrivals.has(m.id);
+      const absolute = indexOf(offset);
+      if (m.deleted && m.rewound) {
+        // a run of one rewind shows once, at its first message
+        const before = list[offset - 1];
+        if (before?.deleted && before.rewound === m.rewound) return null;
+        const run: Message[] = [];
+        for (let i = offset; i < list.length; i++) {
+          const next = list[i];
+          if (!next.deleted || next.rewound !== m.rewound) break;
+          run.push(next);
+        }
+        return <Rewound key={m.id} messages={run} />;
+      }
+      if (m.deleted) return <TakenBack key={m.id} user={m.role === "user"} />;
+      // a run of quiet check-ins shows once, at its first message
+      if (m.quiet) {
+        const run = quietRunAt(list, offset);
+        return run ? <QuietCheckIns key={m.id} messages={run} /> : null;
+      }
+      // to or from another agent: a compact row, not a bubble that
+      // looks like the person's own words
+      // A reply the agent wrote in its own chat is never compacted,
+      // whoever started the turn (older ones were marked dir "reply").
+      if (m.agent && m.agent.dir !== "reply" && (m.kind === "text" || m.kind === "activity")) {
+        return (
+          <div key={m.id} data-msg-index={absolute}>
+            <AgentExchangeRow
+              message={m}
+              botId={bot.id}
+              fresh={fresh}
+              onOpen={(peerId, messageId, text) => setExchange({ peerId, messageId, text })}
+            />
+          </div>
+        );
+      }
+      switch (m.kind) {
+        case "options":
+          return <OptionCard key={m.id} botId={bot.id} message={m} />;
+        case "activity": {
+          // a run of tool calls is one line; it starts at the first
+          const before = list[offset - 1];
+          if (before?.kind === "activity" && !before.deleted && !before.agent && !before.quiet) return null;
+          const run: Message[] = [];
+          for (let i = offset; i < list.length; i++) {
+            const next = list[i];
+            if (next.kind !== "activity" || next.deleted || next.agent || next.quiet) break;
+            run.push(next);
+          }
+          return <ToolRun key={m.id} messages={run} fresh={fresh} />;
+        }
+        case "notice":
+          return <Notice key={m.id} message={m} fresh={fresh} />;
+        case "screen":
+          return m.png ? <ScreenFrame key={m.id} png={m.png} mime={m.mime} /> : null;
+        case "artifact":
+          return m.artifact ? (
+            <div key={m.id} className={cn("flex", fresh && "animate-receive-in")}>
+              <ArtifactCard botId={bot.id} artifact={m.artifact} />
+            </div>
+          ) : null;
+        case "component":
+          return m.component ? (
+            <div key={m.id} className={cn("flex", fresh && "animate-receive-in")}>
+              <MessageComponent message={m} threadId={bot.threadId} />
+            </div>
+          ) : null;
+        case "connector":
+          return <ConnectorCard key={m.id} botId={bot.id} message={m} />;
+        case "secret":
+          return <SecretCard key={m.id} botId={bot.id} message={m} />;
+        case "changes":
+          return <ChangesCard key={m.id} message={m} fresh={fresh} />;
+        default: {
+          // context for a reply in a turn another agent started: what
+          // prompted it, a click from the exchange, and nothing more.
+          // Once its turn has folded, the line above it says who asked.
+          const after = folded.named.has(m.id) ? undefined : (m.afterAgent ?? (m.agent?.dir === "reply" ? m.agent : undefined));
+          return (
+            <div key={m.id} data-msg-index={absolute}>
+            {after && (
+              <AfterAgentLink
+                peerId={after.peerId}
+                peerName={after.peerName}
+                onOpen={() => setExchange({ peerId: after.peerId, messageId: m.id, text: m.text ?? "" })}
+              />
+            )}
+            <Bubble
+              message={m}
+              // a folded check-in below says no time of its own
+              hideTime={list[offset + 1]?.quiet ? false : timeSaidBelow(m, list[offset + 1])}
+              fresh={fresh}
+              author={m.role === "user" ? "You" : bot.name}
+              onReply={setReplyTo}
+              onForward={(message, author) => setForwarding({ message, author })}
+              onReact={(messageId, emoji) => reactTo(bot.threadId, messageId, emoji)}
+              onEdit={(messageId, next) => editMessage(bot.threadId, messageId, next)}
+              onDelete={(messageId) => deleteMessage(bot.threadId, messageId)}
+              onRewind={(messageId) => rewindTo(bot.threadId, messageId)}
+              highlight={finding ? query : ""}
+              isHit={absolute === currentHit}
+              editNow={editAsk?.id === m.id ? editAsk.nonce : undefined}
+              nameOf={(id) => (id === "user" ? "You" : (state.bots.find((b) => b.id === id)?.name ?? bot.name))}
+            />
+            </div>
+          );
+        }
+      }
+    });
 
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -1079,115 +1244,26 @@ export function ChatView({ bot }: { bot: Bot }) {
               </div>
             )
           )}
-          {visibleMessages.map((m, offset) => {
-            const fresh = arrivals.has(m.id);
-            const absolute = visibleStart + offset;
-            if (m.deleted && m.rewound) {
-              // a run of one rewind shows once, at its first message
-              const before = visibleMessages[offset - 1];
-              if (before?.deleted && before.rewound === m.rewound) return null;
-              const run: Message[] = [];
-              for (let i = offset; i < visibleMessages.length; i++) {
-                const next = visibleMessages[i];
-                if (!next.deleted || next.rewound !== m.rewound) break;
-                run.push(next);
-              }
-              return <Rewound key={m.id} messages={run} />;
-            }
-            if (m.deleted) return <TakenBack key={m.id} user={m.role === "user"} />;
-            // a run of quiet check-ins shows once, at its first message
-            if (m.quiet) {
-              const run = quietRunAt(visibleMessages, offset);
-              return run ? <QuietCheckIns key={m.id} messages={run} /> : null;
-            }
-            // to or from another agent: a compact row, not a bubble that
-            // looks like the person's own words
-            // A reply the agent wrote in its own chat is never compacted,
-            // whoever started the turn (older ones were marked dir "reply").
-            if (m.agent && m.agent.dir !== "reply" && (m.kind === "text" || m.kind === "activity")) {
-              return (
-                <div key={m.id} data-msg-index={absolute}>
-                  <AgentExchangeRow
-                    message={m}
-                    botId={bot.id}
-                    fresh={fresh}
-                    onOpen={(peerId, messageId, text) => setExchange({ peerId, messageId, text })}
-                  />
-                </div>
-              );
-            }
-            switch (m.kind) {
-              case "options":
-                return <OptionCard key={m.id} botId={bot.id} message={m} />;
-              case "activity": {
-                // a run of tool calls is one line; it starts at the first
-                const before = visibleMessages[offset - 1];
-                if (before?.kind === "activity" && !before.deleted && !before.agent && !before.quiet) return null;
-                const run: Message[] = [];
-                for (let i = offset; i < visibleMessages.length; i++) {
-                  const next = visibleMessages[i];
-                  if (next.kind !== "activity" || next.deleted || next.agent || next.quiet) break;
-                  run.push(next);
-                }
-                return <ToolRun key={m.id} messages={run} fresh={fresh} />;
-              }
-              case "notice":
-                return <Notice key={m.id} message={m} fresh={fresh} />;
-              case "screen":
-                return m.png ? <ScreenFrame key={m.id} png={m.png} mime={m.mime} /> : null;
-              case "artifact":
-                return m.artifact ? (
-                  <div key={m.id} className={cn("flex", fresh && "animate-receive-in")}>
-                    <ArtifactCard botId={bot.id} artifact={m.artifact} />
-                  </div>
-                ) : null;
-              case "component":
-                return m.component ? (
-                  <div key={m.id} className={cn("flex", fresh && "animate-receive-in")}>
-                    <MessageComponent message={m} threadId={bot.threadId} />
-                  </div>
-                ) : null;
-              case "connector":
-                return <ConnectorCard key={m.id} botId={bot.id} message={m} />;
-              case "secret":
-                return <SecretCard key={m.id} botId={bot.id} message={m} />;
-              case "changes":
-                return <ChangesCard key={m.id} message={m} fresh={fresh} />;
-              default: {
-                // context for a reply in a turn another agent started: what
-                // prompted it, a click from the exchange, and nothing more
-                const after = m.afterAgent ?? (m.agent?.dir === "reply" ? m.agent : undefined);
-                return (
-                  <div key={m.id} data-msg-index={absolute}>
-                  {after && (
-                    <AfterAgentLink
-                      peerId={after.peerId}
-                      peerName={after.peerName}
-                      onOpen={() => setExchange({ peerId: after.peerId, messageId: m.id, text: m.text ?? "" })}
-                    />
-                  )}
-                  <Bubble
-                    message={m}
-                    // a folded check-in below says no time of its own
-                    hideTime={visibleMessages[offset + 1]?.quiet ? false : timeSaidBelow(m, visibleMessages[offset + 1])}
-                    fresh={fresh}
-                    author={m.role === "user" ? "You" : bot.name}
-                    onReply={setReplyTo}
-                    onForward={(message, author) => setForwarding({ message, author })}
-                    onReact={(messageId, emoji) => reactTo(bot.threadId, messageId, emoji)}
-                    onEdit={(messageId, next) => editMessage(bot.threadId, messageId, next)}
-                    onDelete={(messageId) => deleteMessage(bot.threadId, messageId)}
-                    onRewind={(messageId) => rewindTo(bot.threadId, messageId)}
-                    highlight={finding ? query : ""}
-                    isHit={absolute === currentHit}
-                    editNow={editAsk?.id === m.id ? editAsk.nonce : undefined}
-                    nameOf={(id) => (id === "user" ? "You" : (state.bots.find((b) => b.id === id)?.name ?? bot.name))}
-                  />
-                  </div>
-                );
-              }
-            }
-          })}
+          {visibleRows.flatMap((row) =>
+            row.kind === "said"
+              ? rowsOf(
+                  row.items.map((item) => item.message),
+                  (offset) => row.items[offset].index,
+                )
+              : [
+                  <TurnFoldLine
+                    key={`fold:${row.fold.key}`}
+                    fold={row.fold}
+                    open={openFolds.has(row.fold.key)}
+                    onToggle={() => toggleFold(row.fold.key)}
+                    onOpenExchange={(asker) =>
+                      setExchange({ peerId: asker.peerId, messageId: asker.message.id, text: asker.message.text ?? "" })
+                    }
+                  >
+                    {openFolds.has(row.fold.key) && rowsOf(row.fold.messages, (offset) => row.fold.indices[offset])}
+                  </TurnFoldLine>,
+                ],
+          )}
           {provisioning && (
             <div className="flex justify-start">
               <div className="flex items-center gap-2 px-1.5 py-0.5 text-[12px] text-muted-foreground">
