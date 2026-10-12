@@ -508,10 +508,19 @@ export class Checkpoints {
     const turn = this.active.get(threadId);
     if (!turn) return;
     const mine = this.edited.get(threadId) ?? new Set<string>();
+    const within = (base: string, path: string) => {
+      const rel = relative(base, resolve(base, path));
+      return !rel || rel.startsWith("..") || isAbsolute(rel) ? null : rel;
+    };
     for (const path of paths) {
       if (typeof path !== "string" || !path) continue;
-      const rel = relative(turn.dir, resolve(turn.dir, path));
-      if (!rel || rel.startsWith("..") || isAbsolute(rel)) continue;
+      // An engine may name the folder by where it really is: a process
+      // that asks for its working directory is given the path with every
+      // link followed, so a folder reached through one (any temporary
+      // folder on a Mac) comes back under another name, and the turn's
+      // own edits would read as somebody else's.
+      const rel = within(turn.dir, path) ?? within(turn.real, path);
+      if (!rel) continue;
       mine.add(rel.split(sep).join("/"));
     }
     this.edited.set(threadId, mine);
