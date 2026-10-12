@@ -5,7 +5,6 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 import { DRAINING_TEXT } from "../server/drain.ts";
 import { startHarness, type Harness } from "./helpers/server.ts";
 import { agentOn, fakeProvider, idle, messagesOf, waitFor } from "./helpers/turns.ts";
@@ -216,7 +215,8 @@ test("a paired person's Telegram words store the restart reason and clear it bef
   await new Promise<void>((resolve) => telegram.listen(0, "127.0.0.1", resolve));
   t.after(() => { telegram.closeAllConnections(); telegram.close(); });
   const fake = await fakeProvider(t);
-  const preload = fileURLToPath(new URL("./helpers/telegram-fetch.mjs", import.meta.url));
+  // as a URL, so a folder with a space in its name still loads it
+  const preload = new URL("./helpers/telegram-fetch.mjs", import.meta.url).href;
   const h = await startHarness({ NODE_OPTIONS: `--import=${preload}`, BLOKS_TEST_TELEGRAM_URL: `http://127.0.0.1:${(telegram.address() as any).port}` });
   t.after(() => h.stop());
   const bot = await agentOn(h, fake.port, "Ivy");
