@@ -631,6 +631,35 @@ function parseFlags(args) {
   return flags;
 }
 
+/**
+ * Why the workspace could not be reached, in words an agent can act on.
+ *
+ * fetch says only "fetch failed" and keeps the reason in its cause. From
+ * inside a sandbox with no network access, which is how Codex runs
+ * commands unless told otherwise, even this computer's own address is
+ * refused, and the bare message read as Bloks being down: an agent spent
+ * its turns retrying a command that only needed permission (GitHub 251).
+ * The address is safe to say; the credential is never part of it.
+ */
+function unreachable(error) {
+  const cause = error?.cause;
+  const codes = [cause?.code, ...(Array.isArray(cause?.errors) ? cause.errors.map((e) => e?.code) : [])].filter(Boolean);
+  const again = "Run the same command again with network access allowed";
+  if (codes.some((code) => code === "EPERM" || code === "EACCES")) {
+    return (
+      `network access required: this command was not allowed to reach the Bloks workspace at ${BASE}, which is on this computer. ` +
+      `A sandbox is blocking it. ${again}. Bloks is running and the command is fine as written.`
+    );
+  }
+  if (codes.includes("ECONNREFUSED")) {
+    return `nothing is answering at ${BASE}. Bloks may be restarting, or not running; try again in a moment.`;
+  }
+  return (
+    `could not reach the Bloks workspace at ${BASE}${codes.length ? ` (${codes[0]})` : ""}. ` +
+    `If this ran in a sandbox without network access, that is the cause: ${again[0].toLowerCase()}${again.slice(1)}.`
+  );
+}
+
 async function request(method, path, body) {
   const response = await fetch(`${BASE}${path}`, {
     method,
@@ -642,6 +671,8 @@ async function request(method, path, body) {
       origin: BASE,
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }).catch((error) => {
+    throw new Error(unreachable(error));
   });
   const text = await response.text();
   let parsed;
@@ -659,6 +690,11 @@ function help() {
     about:
       "Act on this Bloks workspace as yourself. Every command answers JSON. " +
       "Your credential is in the environment and lasts one turn.",
+    // said here because an agent reads this before its first command, and
+    // a sandbox's refusal otherwise looks like Bloks being down
+    network:
+      "Every command talks to the workspace on this computer, over its own address. " +
+      'In a sandbox without network access a command answers "network access required": run it again with network access allowed.',
     commands: Object.entries(COMMANDS).map(([name, command]) => ({
       use: command.use,
       about: command.about,

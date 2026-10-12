@@ -1044,6 +1044,18 @@ anything in that mode. A shared room never gets `fullAccess`, and nor
 does an email from anyone (see Email your agent): a turn somebody other
 than the owner asked for is held to the owner's yes, whatever the mode.
 
+The agent's command line (`bin/bloks.mjs`) reaches the workspace over
+this computer's own address, so it needs network access even though
+nothing leaves the machine. Outside `full`, Codex runs commands in its
+`workspace-write` sandbox, which has no network access unless Codex asks
+for it and the person allows it, and a `bloks` command run inside it
+cannot connect. The command line says so (`network access required`,
+with the address and "run the same command again with network access
+allowed") rather than `fetch failed`, and `bloks help` carries the same
+note, so the agent asks for the access instead of reading it as Bloks
+being down (GitHub 251). A workspace that is not running answers
+`nothing is answering at <address>` instead.
+
 ## Security checkup
 
 Settings has a Security checkup page (`src/components/SecurityCheckup.tsx`)
