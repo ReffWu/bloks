@@ -393,6 +393,26 @@ test("a second restore in the same second sets the workspace aside under its own
   // both workspaces that were replaced are still there
   assert.ok(readFileSync(join(first.aside, "bots.json"), "utf8").includes("Ivy"));
   assert.ok(readFileSync(join(second.aside, "bots.json"), "utf8").includes("Changed since"));
+
+  // A note from before names were checked points at a folder that is
+  // already there. It is applied beside it, not failed on at every start.
+  put("bots.json", JSON.stringify([{ id: "b7", name: "Third" }]));
+  const third = await backup.stageRestore(made.path, { dataDir: data, now });
+  const marker = readdirSync(dirname(data)).map((n) => join(dirname(data), n)).find((f) => {
+    try {
+      return statSync(f).isFile() && readFileSync(f, "utf8").includes(third.aside);
+    } catch {
+      return false;
+    }
+  });
+  assert.ok(marker, "the fixture could not find the restore's note");
+  writeFileSync(marker, readFileSync(marker, "utf8").replaceAll(third.aside, first.aside));
+  const stuck = backup.applyPendingRestore({ dataDir: data, log: () => {} });
+  assert.ok(stuck, "a note naming a taken folder was not applied");
+  assert.notEqual(stuck.aside, first.aside);
+  assert.ok(readFileSync(join(stuck.aside, "bots.json"), "utf8").includes("Third"));
+  assert.ok(readFileSync(join(first.aside, "bots.json"), "utf8").includes("Ivy"), "the earlier folder was written over");
+  assert.equal(backup.pendingRestore(data), null);
 });
 
 test("a restore puts the backup in place on the next start, keeps what it replaced, and keeps this computer's keys", async (t) => {

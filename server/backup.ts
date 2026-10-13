@@ -1587,10 +1587,16 @@ export function applyPendingRestore(opts: { dataDir?: string; log?: (line: strin
     sweepStaging(target);
     return null;
   }
+  // The name the note chose may have been taken since, or was taken all
+  // along: a note written before names were checked can point at the
+  // folder an earlier restore left, and every start then failed on the
+  // same move (GitHub 271). A free name beside it is as good.
+  let aside = pending.aside;
+  for (let n = 2; existsSync(aside); n++) aside = `${pending.aside}-${n}`;
   const hadWorkspace = existsSync(target);
   if (hadWorkspace) {
     try {
-      renameRetrying(target, pending.aside);
+      renameRetrying(target, aside);
     } catch (error) {
       throw new Error(`could not move the workspace aside to restore ${pending.from} (${(error as NodeJS.ErrnoException).code}); nothing was changed`);
     }
@@ -1601,10 +1607,10 @@ export function applyPendingRestore(opts: { dataDir?: string; log?: (line: strin
     const code = (error as NodeJS.ErrnoException).code;
     if (hadWorkspace) {
       try {
-        renameRetrying(pending.aside, target);
+        renameRetrying(aside, target);
       } catch {
         throw new Error(
-          `could not finish restoring ${pending.from} (${code}). Your workspace is at ${pending.aside}; rename it back to ${target} to use it as it was`,
+          `could not finish restoring ${pending.from} (${code}). Your workspace is at ${aside}; rename it back to ${target} to use it as it was`,
         );
       }
     }
@@ -1612,11 +1618,11 @@ export function applyPendingRestore(opts: { dataDir?: string; log?: (line: strin
   }
   rmSync(marker, { force: true });
   // the lock of the server that stopped for this, which went with it
-  if (hadWorkspace) rmSync(join(pending.aside, "server.lock"), { force: true });
+  if (hadWorkspace) rmSync(join(aside, "server.lock"), { force: true });
   const applied: AppliedRestore = {
     from: pending.from,
     at: Date.now(),
-    aside: hadWorkspace ? pending.aside : "",
+    aside: hadWorkspace ? aside : "",
     safety: pending.safety,
     keys: pending.keys,
   };
