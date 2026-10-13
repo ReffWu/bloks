@@ -502,8 +502,30 @@ export class RoutineStore {
     return this.routines.filter((r) => r.targetId === targetId);
   }
 
+  /** A once routine that has run and is over: it stays on the books,
+   * switched off, so what it did can still be read, and nothing will ever
+   * run it again unless the person switches it back on. One whose run is
+   * still open is not over yet. */
+  private spent(routine: Routine): boolean {
+    return (
+      routine.repeat === "once" &&
+      !routine.enabled &&
+      routine.lastRunAt !== undefined &&
+      !(routine.runs ?? []).some((run) => run.state === "running")
+    );
+  }
+
   create(input: Omit<Routine, "id" | "createdAt">): Routine | null {
-    if (this.routines.length >= MAX_ROUTINES) return null;
+    if (this.routines.length >= MAX_ROUTINES) {
+      // The limit is on what can spend tokens unattended, and a spent
+      // once routine cannot. Fifty of them used to be the whole limit,
+      // with nothing left that could run (GitHub 276). The one that ran
+      // longest ago makes room; anything else at the limit is refused,
+      // as before.
+      const oldest = this.routines.filter((r) => this.spent(r)).sort((a, b) => a.lastRunAt! - b.lastRunAt!)[0];
+      if (!oldest) return null;
+      this.routines = this.routines.filter((r) => r !== oldest);
+    }
     const now = Date.now();
     const routine: Routine = { ...input, id: newId(), createdAt: now, scheduledAt: now };
     this.routines.push(routine);

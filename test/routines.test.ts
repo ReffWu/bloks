@@ -209,3 +209,62 @@ test("changing a routine's time, days or date, or switching it back on, restarts
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("once routines that have run make room at the limit, and nothing else does", async () => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { spawnSync } = await import("node:child_process");
+  // RoutineStore writes under the real data folder, so it runs in a child with its own HOME
+  const home = mkdtempSync(join(tmpdir(), "bloks-routine-limit-"));
+  try {
+    const script = `
+      import { RoutineStore, MAX_ROUTINES } from ${JSON.stringify(new URL("../server/routines.ts", import.meta.url).href)};
+      const store = new RoutineStore();
+      const once = { targetId: "b", targetKind: "agent", prompt: "x", time: "09:00", days: [], repeat: "once", date: "2030-01-01", enabled: true };
+      const weekly = { targetId: "b", targetKind: "agent", prompt: "x", time: "09:00", days: [], enabled: true };
+      const made = [];
+      for (let i = 0; i < MAX_ROUTINES; i++) {
+        const r = store.create(once);
+        made.push(r.id);
+        store.markRan(r.id, 1_000 + i);
+      }
+      // every one of the fifty has run and is switched off (GitHub 276)
+      const next = store.create(weekly);
+      const afterOne = { made: Boolean(next), count: store.routines.length, oldestGone: !store.get(made[0]), secondKept: Boolean(store.get(made[1])) };
+      // the same from a store read back from disk
+      const reread = new RoutineStore();
+      const again = reread.create(weekly);
+      const afterReload = { made: Boolean(again), count: reread.routines.length, secondGone: !reread.get(made[1]) };
+
+      // what can still run is never dropped: fill the rest with weekly ones
+      while (reread.routines.some((r) => r.repeat === "once")) reread.create(weekly);
+      const full = { count: reread.routines.length, refused: reread.create(weekly) === null, stillFull: reread.routines.length };
+      // a once routine that has not run, one switched off by hand, and one whose run is still open all stay
+      const fresh = new RoutineStore();
+      fresh.routines.length = 0;
+      for (let i = 0; i < MAX_ROUTINES - 3; i++) fresh.create(weekly);
+      const waiting = fresh.create(once);
+      const off = fresh.create({ ...once, enabled: false });
+      const running = fresh.create(once);
+      fresh.markRan(running.id, 5);
+      fresh.beginRun(running.id);
+      const kept = { refused: fresh.create(weekly) === null, all: [waiting, off, running].every((r) => fresh.get(r.id)) };
+      console.log(JSON.stringify({ afterOne, afterReload, full, kept }));
+    `;
+    const run = spawnSync(process.execPath, ["--input-type=module", "-e", script], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: "utf8" });
+    const result = JSON.parse(run.stdout.trim().split("\n").pop() ?? "{}");
+    assert.deepEqual(
+      result,
+      {
+        afterOne: { made: true, count: 50, oldestGone: true, secondKept: true },
+        afterReload: { made: true, count: 50, secondGone: true },
+        full: { count: 50, refused: true, stillFull: 50 },
+        kept: { refused: true, all: true },
+      },
+      run.stderr,
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
