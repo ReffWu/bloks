@@ -407,12 +407,38 @@ test("a second restore in the same second sets the workspace aside under its own
   });
   assert.ok(marker, "the fixture could not find the restore's note");
   writeFileSync(marker, readFileSync(marker, "utf8").replaceAll(third.aside, first.aside));
-  const stuck = backup.applyPendingRestore({ dataDir: data, log: () => {} });
+  const said: string[] = [];
+  const stuck = backup.applyPendingRestore({ dataDir: data, log: (line) => said.push(line) });
   assert.ok(stuck, "a note naming a taken folder was not applied");
+  // and the log names where the workspace really went (GitHub 274)
+  assert.ok(said.some((line) => line.includes(`the one it replaced is at ${stuck.aside}`)), said.join("\n"));
+  assert.ok(!said.some((line) => line.endsWith(first.aside)), "the log names the folder that was already taken");
   assert.notEqual(stuck.aside, first.aside);
   assert.ok(readFileSync(join(stuck.aside, "bots.json"), "utf8").includes("Third"));
   assert.ok(readFileSync(join(first.aside, "bots.json"), "utf8").includes("Ivy"), "the earlier folder was written over");
   assert.equal(backup.pendingRestore(data), null);
+});
+
+test("a second restore staged in the same second unpacks beside the first, not over it", async (t) => {
+  // The unpacked copy was named to the second too, and was cleared before
+  // use: staging again inside that second took the folder out from under
+  // the first (GitHub 273).
+  const { root, data } = workspace(t);
+  const made = await backup.createBackup({ dataDir: data });
+  const now = new Date(2026, 9, 13, 8, 0, 0);
+
+  const first = await backup.stageRestore(made.path, { dataDir: data, now });
+  writeFileSync(join(first.staging, "sentinel"), "still here");
+  const second = await backup.stageRestore(made.path, { dataDir: data, now });
+  assert.notEqual(second.staging, first.staging, "the second stage reused the first one's folder");
+  assert.equal(readFileSync(join(first.staging, "sentinel"), "utf8"), "still here", "the first unpacked copy was wiped");
+  assert.ok(existsSync(join(second.staging, "bots.json")));
+  // the note names the newer one, and that is the one put in place
+  assert.equal(backup.pendingRestore(data)?.staging, second.staging);
+  assert.ok(backup.applyPendingRestore({ dataDir: data, log: () => {} }));
+  assert.equal(existsSync(join(data, "sentinel")), false, "the copy that was replaced is the one that was restored");
+  // and the one left behind does not stay on the disk
+  assert.deepEqual(readdirSync(root).filter((n) => n.includes(".restoring-")), []);
 });
 
 test("a restore puts the backup in place on the next start, keeps what it replaced, and keeps this computer's keys", async (t) => {

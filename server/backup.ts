@@ -1466,15 +1466,17 @@ export async function stageRestore(
   const dataDir = opts.dataDir ?? DATA_DIR;
   const target = targetOf(dataDir);
   const stamp = stampOf(opts.now ?? new Date());
-  const staging = `${target}.restoring-${stamp}`;
   // The stamp is to the second, and a second restore inside the same one
   // (a plain backup, then a sealed one, from a script) would name the
   // folder the first already left: the move aside then fails on a folder
   // that is not empty, and the restore with it. So the name is one that
   // is not taken.
-  let aside = `${target}.before-restore-${stamp}`;
-  for (let n = 2; existsSync(aside); n++) aside = `${target}.before-restore-${stamp}-${n}`;
-  rmSync(staging, { recursive: true, force: true });
+  const aside = freeBeside(`${target}.before-restore-${stamp}`);
+  // The unpacked copy too. It used to be cleared and used again, which
+  // took the folder out from under a restore staged in the same second
+  // (GitHub 273). The one left behind is no longer the one the note
+  // names, and goes when a restore is next put in place (sweepStaging).
+  const staging = freeBeside(`${target}.restoring-${stamp}`);
   mkdirSync(staging, { recursive: true, mode: 0o700 });
   let keys: PendingRestore["keys"];
   try {
@@ -1494,6 +1496,14 @@ export async function stageRestore(
   const pending: PendingRestore = { from: basename(file), target, staging, aside, at: Date.now(), safety: opts.safety, keys };
   writeFileAtomic(markerFor(dataDir), JSON.stringify(pending, null, 2), 0o600);
   return pending;
+}
+
+/** `path` when nothing is there, or the first of `path-2`, `path-3` and
+ * so on that is free. */
+function freeBeside(path: string): string {
+  let free = path;
+  for (let n = 2; existsSync(free); n++) free = `${path}-${n}`;
+  return free;
 }
 
 /** The restore waiting for the next start, if one is. */
@@ -1591,8 +1601,7 @@ export function applyPendingRestore(opts: { dataDir?: string; log?: (line: strin
   // along: a note written before names were checked can point at the
   // folder an earlier restore left, and every start then failed on the
   // same move (GitHub 271). A free name beside it is as good.
-  let aside = pending.aside;
-  for (let n = 2; existsSync(aside); n++) aside = `${pending.aside}-${n}`;
+  const aside = freeBeside(pending.aside);
   const hadWorkspace = existsSync(target);
   if (hadWorkspace) {
     try {
@@ -1632,8 +1641,9 @@ export function applyPendingRestore(opts: { dataDir?: string; log?: (line: strin
   } catch {
     /* the restore happened; only the note about it is missing */
   }
-  log(
-    `[bloks] restored the workspace from ${pending.from}${hadWorkspace ? `; the one it replaced is at ${pending.aside}` : ""}`,
-  );
+  // an unpacked copy a later restore took the place of, before it was used
+  sweepStaging(target);
+  // where it really went, which is not always where the note said (GitHub 274)
+  log(`[bloks] restored the workspace from ${pending.from}${hadWorkspace ? `; the one it replaced is at ${aside}` : ""}`);
   return applied;
 }
