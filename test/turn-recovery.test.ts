@@ -206,6 +206,9 @@ describe("a failed turn is asked again", () => {
     assert.match(retried.text, /The conversation so far/, "the new session was not told the conversation");
     assert.match(retried.text, /remember the word heron/);
     assert.match(retried.text, /now plan the trip/);
+    // told what failed, in the turn's own words
+    assert.match(retried.text, /^\(A note from Bloks: an earlier attempt in this conversation failed at .+ on .+, saying: "API Error: Our safeguards flagged/);
+    assert.match(retried.text, /started this new session/);
     const notice = messages.find((m: any) => m.kind === "notice" && /declined this message/.test(m.text));
     assert.ok(notice, "the chat does not say what happened");
     assert.match(notice.text, /Trying again in a new session/);
@@ -254,6 +257,10 @@ describe("a failed turn is asked again", () => {
     assert.equal(retried.session, first.session);
     assert.match(retried.text, /summarise the notes/);
     assert.doesNotMatch(retried.text, /The conversation so far/, "a resumed session was told the story");
+    assert.match(retried.text, /^\(A note from Bloks: an earlier attempt in this conversation failed at .+, saying: "Connection reset by peer/);
+    assert.match(retried.text, /asking again, in the same session/);
+    assert.match(retried.text, /check what is already done before redoing anything/);
+    assert.doesNotMatch(queued.text, /A note from Bloks/, "a turn after a good one was told of a failure");
     assert.match(queued.text, /also the dates/);
     // shown once, in the notice, not again as a raw error
     assert.equal(messages.filter((m: any) => /Connection reset/.test(m.text ?? "")).length, 1);
@@ -287,6 +294,11 @@ describe("a failed turn is asked again", () => {
     assert.ok(after, "the lane did not come free with a word about it");
     await sleep(WAIT_MS + 500);
     assert.equal(calls("t5").length, 1, "the retry ran after Stop");
+    // the next turn is told what failed, and that it was stopped
+    await say(botId, "[t5] once more");
+    assert.ok(await settled(botId, (m) => answers(m).length === 1));
+    const next = calls("t5")[1];
+    assert.match(next.text, /^\(A note from Bloks: .+Connection reset.+it was stopped/s);
   });
 
   test("when asking again fails, the backup takes the message once, with the conversation so far", async () => {
@@ -301,6 +313,7 @@ describe("a failed turn is asked again", () => {
     const heard = spare.asked.find((a) => a.includes("[t7] draft the email"));
     assert.ok(heard, "the backup was not given the message");
     assert.match(heard!, /the budget is forty/, "the backup was not told the conversation so far");
+    assert.match(heard!, /A note from Bloks: an earlier attempt in this conversation failed .+Connection reset.+handed the message to/s);
     const notice = messages.find((m: any) => m.kind === "notice" && /is picking this up/.test(m.text));
     assert.ok(notice, "the chat does not say the backup took over");
     assert.match(notice.text, /failed again: Connection reset/);
@@ -369,6 +382,7 @@ describe("a failed turn is asked again", () => {
     assert.match(back.text, /and the flowers/);
     assert.match(back.text, /Done, from the spare/);
     assert.match(back.text, /what is left\?/);
+    assert.match(back.text, /^\(A note from Bloks: an earlier attempt in this conversation failed/, "the first turn back was not told what failed");
     assert.ok(messages.some((m: any) => m.kind === "notice" && /is back on this conversation, in its own session/.test(m.text)));
   });
 

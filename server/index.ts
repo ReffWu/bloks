@@ -813,13 +813,19 @@ interface Recovery {
   asked: Asked;
   /** The attempt waiting to start or running now. */
   stage: "retry" | "backup";
-  /** Each attempt that failed, on what and with what words. */
-  tried: Array<{ selection: ModelSelection; said: string }>;
+  /** Each attempt that failed, on what, when, and with what words. */
+  tried: Array<{ selection: ModelSelection; at: number; said: string }>;
   timer?: ReturnType<typeof setTimeout>;
 }
 const turnAsked = new Map<string, Asked>();
 const newSessionTurns = new Set<string>();
 const recoveries = new Map<string, Recovery>();
+/** The line each lane's next turn opens with after a failure: what
+ * failed, when, on which engine and model, and what Bloks did about it
+ * (failureLine). In the turn's words, never the system prompt, so the
+ * agent can tell the person, check what the failed attempt already did,
+ * and report it if that is how it works. */
+const failureNotes = new Map<string, string>();
 /** The wait before a failed turn is asked again, shorter in tests. */
 const RETRY_WAIT = Number(process.env.BLOKS_RETRY_WAIT_MS) || RETRY_WAIT_MS;
 
@@ -838,7 +844,7 @@ interface Stay {
 const stays = new Map<string, Stay>();
 /** The own engine's session in each lane another engine has been
  * answering, and from when on (a message's `at`) it missed what was said. */
-const away = new Map<string, { instanceId: string; since: number; by: string }>();
+const away = new Map<string, { instanceId: string; since: number; by: string; note?: string }>();
 /** How long a conversation stays on its backup, shorter in tests. */
 const STAY = Number(process.env.BLOKS_BACKUP_STAY_MS) || STAY_MS;
 
@@ -1588,7 +1594,9 @@ function recoverTurn(
   const said = lastWords(errors, end.stopReason);
   const fresh = store.bot(bot.id);
   const goesOn = Boolean(roomId === laneId && asked && fresh && !fresh.archivedAt && !wheel.heldBy(bot.id));
-  const tried = [...(recovery?.tried ?? []), { selection: used, said }];
+  const at = Date.now();
+  const tried = [...(recovery?.tried ?? []), { selection: used, at, said }];
+  const told = (did: string) => failureNotes.set(laneId, failureLine(used, at, said, did));
   const notice = (text: string) => {
     const shown = store.appendMessage(laneId, { role: "bot", kind: "notice", text });
     broadcast({ kind: "message", threadId: laneId, message: shown });
@@ -1602,6 +1610,11 @@ function recoverTurn(
       kind === "refusal"
         ? `${engineName(used)} declined this message: ${said}. Trying again in a new session, with the conversation so far.`
         : `${engineName(used)} failed: ${said}. Trying again in a minute.`,
+    );
+    told(
+      kind === "refusal"
+        ? "The provider declined it, so Bloks started this new session for the message, told the conversation so far."
+        : "Bloks waited a minute and is asking again, in the same session.",
     );
     askAgain(bot, laneId, { asked: asked!, stage: "retry", tried }, kind === "refusal" ? 0 : RETRY_WAIT);
     return true;
@@ -1620,6 +1633,7 @@ function recoverTurn(
         ? `${engineName(used)} failed again: ${said}.`
         : `${engineName(used)} declined this message: ${said}.`;
     notice(`${why} ${engineName(usable)} is picking this up, with the conversation so far.`);
+    told(`Bloks handed the message to ${engineName(usable)}, this agent's backup engine, with the conversation so far.`);
     askAgain(bot, laneId, { asked: asked!, stage: "backup", tried }, 0);
     return true;
   }
@@ -1628,6 +1642,13 @@ function recoverTurn(
   // nothing else took it, and the conversation waits for the person.
   showHeldErrors(bot, laneId, held);
   explainSilence();
+  told(
+    goesOn
+      ? "Nothing else could take it, so the error was shown and the agent stopped. This is the next message."
+      : roomId !== laneId
+        ? "The error was shown in the room, and it was not asked again."
+        : "The error was shown, and it was not asked again.",
+  );
   if (goesOn) {
     const stopped = `${tried.length > 1 ? "Asking again did not help, so " : ""}${bot.name} has stopped here.`;
     const first = tried[0];
@@ -1642,6 +1663,12 @@ function recoverTurn(
     broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
   }
   return false;
+}
+
+/** The opening line of a turn after a failure (failureNotes). */
+function failureLine(selection: ModelSelection, at: number, said: string, did: string): string {
+  const time = new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `(A note from Bloks: an earlier attempt in this conversation failed at ${time} on ${engineName(selection)}, saying: "${said}". ${did} That attempt may have done part of the work before it failed, so check what is already done before redoing anything, and tell the person what happened if it matters to them.)`;
 }
 
 /** The backup that can take a failed turn: one that is usable and is not
@@ -1737,6 +1764,8 @@ function cancelRecovery(bot: BotRecord, laneId: string, why: string): boolean {
   if (!recovery?.timer) return false;
   clearTimeout(recovery.timer);
   recoveries.delete(laneId);
+  const last = recovery.tried.at(-1);
+  if (last) failureNotes.set(laneId, failureLine(last.selection, last.at, last.said, "Bloks was going to ask again, but it was stopped. This is the next message."));
   store.setTaskBusy(laneId, false);
   const notice = store.appendMessage(laneId, { role: "bot", kind: "notice", text: why });
   broadcast({ kind: "message", threadId: laneId, message: notice });
@@ -4501,7 +4530,8 @@ async function startClaimedTurn(
       // Another engine answering where the agent's own engine served last:
       // from here on, the own engine's stored session misses what is said.
       if (!blok && !command && instanceId !== own.instanceId && !away.has(task.id) && task.lastInstanceId === own.instanceId && typeof task.resumeCursors[own.instanceId] === "string") {
-        away.set(task.id, { instanceId: own.instanceId, since: turnAsked.get(task.id)?.since ?? turnSince, by: engineName(selection) });
+        const note = failureNotes.get(task.id);
+        away.set(task.id, { instanceId: own.instanceId, since: turnAsked.get(task.id)?.since ?? turnSince, by: engineName(selection), ...(note ? { note } : {}) });
       }
       // And the own engine coming back resumes that session, told what it
       // missed, unless it is longer than a new session's story would be:
@@ -4592,6 +4622,9 @@ async function startClaimedTurn(
         turnText = freshTurnText(told.turns, turnText, { left: told.left, why: "session" });
       }
       if (missed) turnText = catchUpText(missed.turns, missed.by, turnText);
+      // the first turn back is told what failed too, unless a newer
+      // failure has its own line waiting
+      if (back?.note && back.instanceId === instanceId && !failureNotes.has(task.id)) failureNotes.set(task.id, back.note);
       const undone = undoneSince.get(task.id);
       if (undone && !command) {
         undoneSince.delete(task.id);
@@ -4602,6 +4635,12 @@ async function startClaimedTurn(
       if (stalledNote && !command) {
         stalledSince.delete(task.id);
         turnText = `${stallPreface(stalledNote)}\n\n${turnText}`;
+      }
+      // what failed before this turn, ahead of everything else it is told
+      const failedNote = command ? undefined : failureNotes.get(task.id);
+      if (failedNote) {
+        failureNotes.delete(task.id);
+        turnText = `${failedNote}\n\n${turnText}`;
       }
 
       // A credential of this agent's own, for this turn only. Given only
