@@ -16,6 +16,8 @@ import { extname, join, resolve, sep } from "node:path";
 
 import * as attachments from "./attachments.ts";
 import { takeBackWaiting } from "./take-back.ts";
+import { telegramReply, type TelegramText } from "./telegram-reply.ts";
+import { TurnProgress } from "./telegram-progress.ts";
 import { inboxState, legacyBinding, migrateTelegram, ownerPairing, pairedChats, replaceTelegramToken, telegramStatus, type AgentTelegram, type TelegramConfig } from "./telegram-bots.ts";
 import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
 import * as box from "./box.ts";
@@ -1879,6 +1881,7 @@ bus.subscribe((event: RuntimeEvent) => {
     // quiet, so the app holds its banner until then (src/lib/notify.ts).
     const checkIn = !inRoom && checkInTurns.has(event.threadId);
     broadcast({ kind: "message", threadId: roomId, message, ...(checkIn ? { checkIn: true } : {}) });
+    if (!inRoom) telegramWorking.get(event.threadId)?.observe();
     return message;
   };
 
@@ -1992,9 +1995,6 @@ bus.subscribe((event: RuntimeEvent) => {
         }
         // named on disk, so a turn cut off mid-call can say which call
         cutOff.tool(event.threadId, event.title ?? "tool");
-        // and on a phone waiting on this lane, once the turn is a long one;
-        // a command line can carry a key, and this one leaves the machine
-        telegramWorking.get(event.threadId)?.using(redactSecrets(event.title ?? "tool"));
         // The browser is watched from its first use in a turn, not from the
         // turn's start: a turn that never touches it should not end with
         // a picture of whatever page an earlier one left open. Cheap to
@@ -2578,10 +2578,11 @@ bus.subscribe((event: RuntimeEvent) => {
         if (said) stalledSince.set(event.threadId, said);
       }
       const handedOver = fallBackIfOut(bot, event.threadId, roomId, event.ok !== false, event.stopReason ?? null);
-      if (!pickingUp && !handedOver) telegramReturns.finish(event.threadId);
       if (event.ok === false && !saidWhy && !handedOver && event.stopReason !== "interrupted" && !rebuilt) {
         pushMessage({ role: "bot", kind: "notice", text: failedTurnNotice(event.stopReason) });
       }
+      if (!pickingUp && !handedOver) telegramReturns.finish(event.threadId);
+      if (!pickingUp && !handedOver && !refolding) telegramWorking.get(event.threadId)?.ended();
       // A check-in that answered QUIET, with nobody else's words in it, is
       // folded away and announces nothing. One the person spoke into is
       // theirs now, and one that failed is something they should see.
@@ -7725,7 +7726,7 @@ interface TelegramRuntime {
    * to take one mid-turn is a round trip, and the next must not pass it. */
   intake: Map<number, Promise<void>>;
   /** This connection's share of telegramWorking, to stop when it goes. */
-  working: Map<string, telegram.Progress>;
+  working: Map<string, TurnProgress>;
 }
 const telegramRuntimes = new Map<string, TelegramRuntime>();
 /** Agents currently answering a phone, so a card they raise can follow
@@ -7734,9 +7735,8 @@ const telegramLive = new Map<string, { chatId: number; generation: string }>();
 /** Every card forwarded to a chat, by request, with the buttons it was
  * sent with (server/telegram-cards.ts). */
 const telegramCards = new CardButtons();
-/** The line saying what a long Telegram turn is doing, by lane, since
- * that is what a tool starting names. */
-const telegramWorking = new Map<string, telegram.Progress>();
+/** Visible notes for a Telegram request, scoped to its consuming lane. */
+const telegramWorking = new Map<string, TurnProgress>();
 
 /** Whether the connection a message came in on is still the agent's. */
 function telegramConnectionCurrent(binding: NonNullable<Message["telegramBinding"]>): boolean {
@@ -7828,6 +7828,7 @@ const telegramReturns = new TelegramReturns(
     const runtime = owner ? liveTelegram(owner.id) : undefined;
     if (runtime && telegramReturnState(laneId, reply).token) await telegramFiles(runtime, chatId, deliverablesIn(runtime.botId, said));
   },
+  redactSecrets,
 );
 
 /** A reply to a chat. A failed send is not worth a crash. Only what an
@@ -7837,12 +7838,10 @@ async function telegramSay(runtime: TelegramRuntime, chatId: number, text: strin
   if (currentTelegram(runtime)) await telegram.send(runtime.token, chatId, text, markdown, undefined, () => Boolean(currentTelegram(runtime))).catch(() => {});
 }
 
-/** A status line in this chat, which keeps quiet while a card there
- * waits on the person. */
+/** Silent notes in this chat, paused while a card waits on the person. */
 function telegramProgress(runtime: TelegramRuntime, chatId: number): telegram.Progress {
   return new telegram.Progress({
     post: (text) => currentTelegram(runtime) ? telegram.post(runtime.token, chatId, text, undefined, true, () => Boolean(currentTelegram(runtime))) : Promise.resolve(undefined),
-    edit: (messageId, text) => currentTelegram(runtime) ? telegram.edit(runtime.token, chatId, messageId, text) : Promise.resolve(),
     // Cleanup uses the captured old token, never a replacement bot's.
     remove: (messageId) => telegram.remove(runtime.token, chatId, messageId),
   }, () => runtime.asks.has(chatId));
@@ -7983,9 +7982,9 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
           // The reply goes back to the chat that asked, and the exchange lands
           // in the agent's own thread like any other conversation.
           const answer = await answerOverTelegram(bot.id, text, chatId, runtime).catch(
-            (error: unknown): TelegramAnswer => ({ text: `Could not answer: ${(error as Error).message}`, files: [] }),
+            (error: unknown): TelegramAnswer => ({ text: `Could not answer: ${redactSecrets((error as Error).message)}`, markdown: false, files: [] }),
           );
-          await telegramSay(runtime, chatId, answer.text, true);
+          await telegramSay(runtime, chatId, answer.text, answer.markdown);
           await telegramFiles(runtime, chatId, answer.files);
         });
         runtime.turns.set(chatId, turn);
@@ -8137,6 +8136,7 @@ async function answerOverTelegram(botId: string, text: string, chatId: number, r
     queueOnLane(botId, laneId, text, { telegramReply: queuedTelegramReply(chatId, { botId, generation: runtime.generation }), waitsFor: "restart", fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } });
     return {
       text: "Your message is saved. The answer will come here once Bloks is back, and it will also be in the app.",
+      markdown: false,
       files: [],
     };
   }
@@ -8148,8 +8148,14 @@ async function answerOverTelegram(botId: string, text: string, chatId: number, r
     () => runtime.asks.has(chatId),
   );
   runtime.typing.set(chatId, typing);
-  // and past twenty seconds or so, a line saying what it is doing
-  const progress = telegramProgress(runtime, chatId);
+  // Completed visible notes belong to the request's consuming turn,
+  // never a turn it waited behind. Resolve the row before engine text
+  // can arrive, also when startTurn has not returned yet.
+  let requestId: string | undefined;
+  const asked = () => requestId ??= store.messagesFor(laneId).slice(before)
+    .find((m) => m.role === "user" && m.kind === "text" && m.fromTelegram)?.id;
+  const progress = new TurnProgress(telegramProgress(runtime, chatId),
+    () => store.messagesFor(laneId), asked, () => turnStarted.get(laneId));
   telegramWorking.set(laneId, progress);
   runtime.working.set(laneId, progress);
   const settled = async () => {
@@ -8173,35 +8179,37 @@ async function answerOverTelegram(botId: string, text: string, chatId: number, r
       const steered = await steerLane(bot, lane, text, { fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } });
       if (!steered && !currentTelegram(runtime)) throw new Error("the Telegram connection changed");
       const sent = steered ?? queueOnLane(botId, laneId, text, { fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } });
+      requestId = sent.id;
+      progress.observe();
       // the turn may have ended while its engine was asked
       if (!steered) drainSteer(laneId);
       await answeredAfter(botId, laneId, sent.id, 20 * 60_000, runtime.abort.signal);
       const list = store.messagesFor(laneId);
       const from = list.findIndex((m) => m.id === sent.id);
-      return replyIn(botId, from >= 0 ? list.slice(from + 1) : []);
+      return replyIn(botId, from >= 0 ? list.slice(from + 1) : [], progress.answerSpan());
     } finally {
       await settled();
     }
   }
   try {
     await startTurn(botId, text, { byYou: true, fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } });
+    progress.observe();
     // Longer than an ordinary wait, because a card forwarded to the
     // phone is answered on the phone's schedule, not the app's.
     await waitForIdle(botId, 20 * 60_000, runtime.abort.signal);
   } finally {
     await settled();
   }
-  return replyIn(botId, store.messagesFor(laneId).slice(before));
+  return replyIn(botId, store.messagesFor(laneId).slice(before), progress.answerSpan());
 }
 
 /** A Telegram turn's reply: what the agent said, and what it left. */
-interface TelegramAnswer {
-  text: string;
+interface TelegramAnswer extends TelegramText {
   files: telegram.Deliverable[];
 }
 
-function replyIn(botId: string, messages: readonly Message[]): TelegramAnswer {
-  return { text: saidIn(messages), files: deliverablesIn(botId, messages) };
+function replyIn(botId: string, messages: readonly Message[], said: readonly Message[]): TelegramAnswer {
+  return { ...telegramReply(said, redactSecrets), files: deliverablesIn(botId, messages) };
 }
 
 /**
@@ -8245,16 +8253,6 @@ async function telegramFiles(runtime: TelegramRuntime, chatId: number, files: te
   if (!files.length || !state || !pairedChats(state).includes(chatId)) return;
   const note = await telegram.sendFiles(runtime.token, chatId, files, telegram.FILES_PER_TURN, () => Boolean(currentTelegram(runtime))).catch(() => "");
   if (note) await telegramSay(runtime, chatId, note);
-}
-
-/** What the agent said in these messages, as one reply for a phone. */
-function saidIn(messages: readonly Message[]): string {
-  const said = messages
-    .filter((message) => message.role === "bot" && message.kind === "text" && message.text)
-    .map((message) => message.text as string)
-    .join("\n\n")
-    .trim();
-  return said || "(the agent finished without saying anything)";
 }
 
 /** Resolves once the turn that took this message has ended: at once
