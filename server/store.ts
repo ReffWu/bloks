@@ -305,7 +305,9 @@ export interface Message {
 export interface TaskRecord {
   /** Which provider instance last dispatched here. A different one next
    * time means that engine missed everything since and needs the story
-   * replayed. Never shipped to clients. */
+   * replayed. Empty when the session that served it was dropped
+   * (dropSession), which every engine counts as different. Never shipped
+   * to clients. */
   lastInstanceId?: string;
   /** The CLI command this lane's engine was last told to run. A resumed
    * session told something else gets a note saying so. Never shipped. */
@@ -1059,6 +1061,22 @@ export class Store {
     found.task.resumeCursors = {};
     delete found.task.reading;
     delete found.task.pendingCompaction;
+    this.saveBots();
+  }
+
+  /** One engine's session in a lane that must never be resumed: a safety
+   * refusal, which the session goes on refusing (GitHub 284). Its cursor
+   * goes, and the lane is marked as served by no engine in particular
+   * (an empty lastInstanceId), so whichever engine takes the next turn
+   * is told the conversation so far rather than starting blank or
+   * resuming a session that missed the last turns. */
+  dropSession(threadId: string, instanceId: string) {
+    const found = this.taskByThread(threadId);
+    if (!found) return;
+    delete found.task.resumeCursors[instanceId];
+    found.task.lastInstanceId = "";
+    if (found.task.reading?.instanceId === instanceId) delete found.task.reading;
+    if (found.task.pendingCompaction?.instanceId === instanceId) delete found.task.pendingCompaction;
     this.saveBots();
   }
 

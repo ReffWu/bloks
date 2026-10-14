@@ -300,7 +300,7 @@ import { engineIsFresh, freshTurnText } from "./turn-context.ts";
 import { standingFor, type Standing, type StandingRecord } from "./standing-prompt.ts";
 import { Checkpoints, diffLines, trackable, type CheckpointRecord } from "./checkpoints.ts";
 import { redoCounts, redoPlan, takenBack, type RedoRefusal } from "./redo.ts";
-import { Cooldowns, describeRest, outReason, REASON_WORDS, type Rest } from "./failover.ts";
+import { Cooldowns, describeRest, failureOf, outReason, REASON_WORDS, RETRY_WAIT_MS, type Rest } from "./failover.ts";
 import { agentReadiness, engineReadiness, readinessWarning, type Readiness } from "./engine-readiness.ts";
 import { indexMemory, indexMessages, mostOf, recallBlock, recallFrom, recallText, searchableText, termsOf, type IndexedSource, type RecallHit, type RecallMessage, type Speaker } from "./recall.ts";
 import { excerpt, IndexCache, rank, type TermIndex } from "./recall-index.ts";
@@ -793,8 +793,34 @@ const laneEngine = new Map<string, ModelSelection>();
 const turnErrors = new Map<string, string[]>();
 const fellBack = new Set<string>();
 const toldOfRest = new Map<string, number>();
-/** Errors kept off the chat while a backup might take over. */
-const heldErrors = new Map<string, string>();
+/** Errors kept off the chat while the turn might be asked again or
+ * taken by a backup, which says them in its own notice. */
+const heldErrors = new Map<string, string[]>();
+
+// A failed turn asked again (GitHub 284). What each running solo turn was
+// asked, as it was asked, so the same words can go again; the lanes whose
+// running turn started a new session rather than resuming one; and the
+// message each lane is recovering, with what has been tried for it, so it
+// is asked again once and handed over once and never more.
+interface Asked {
+  text: string;
+  byYou: boolean;
+  from?: { botId: string; name: string };
+  routine?: Message["routine"];
+  replyTo?: ReplyRef;
+  answering?: { peerId: string; peerName: string };
+}
+interface Recovery {
+  asked: Asked;
+  /** The attempt waiting to start or running now. */
+  stage: "retry" | "backup";
+  timer?: ReturnType<typeof setTimeout>;
+}
+const turnAsked = new Map<string, Asked>();
+const newSessionTurns = new Set<string>();
+const recoveries = new Map<string, Recovery>();
+/** The wait before a failed turn is asked again, shorter in tests. */
+const RETRY_WAIT = Number(process.env.BLOKS_RETRY_WAIT_MS) || RETRY_WAIT_MS;
 
 // ── cloud computers sleep when nobody is using them ──────────────────
 // A box bills while it is awake. Once an agent has not used its computer
@@ -1445,36 +1471,169 @@ for (const inst of registry.instances()) {
 }
 
 /**
- * The end of a turn, read for one question: did the engine run out? If
- * it did, it rests (for every agent on it), and when this agent has a
- * backup the same message goes to the backup once, in this lane, with
- * the conversation replayed to it. Only a solo lane retries: in a room
- * the turn belongs to the room's order of speakers, and the rest simply
- * applies from the next turn on.
+ * The end of a turn, read for what happens to a failed one (GitHub 284).
+ * Not every turn that ends badly failed: a stop, a stalled tool, a
+ * command and a conversation too long for the model (folded and asked
+ * again on its own, see runtime.error) end as they always did. An engine
+ * that ran out rests, for every agent on it, and the message goes to the
+ * backup at once. A safety refusal is asked again at once, in a new
+ * session told the conversation so far, since the refused one refuses
+ * everything after it. Anything else is asked again once in the same
+ * session, after a wait: the engines retry a dropped connection or an
+ * overloaded API themselves before a turn fails, so asking at once would
+ * mostly fail the same way. Only a solo lane goes on: in a room the turn
+ * belongs to the room's order of speakers. True when the turn goes on.
  */
-function fallBackIfOut(bot: BotRecord, laneId: string, roomId: string, ok: boolean, stopReason: string | null): boolean {
+function recoverTurn(
+  bot: BotRecord,
+  laneId: string,
+  roomId: string,
+  end: { ok: boolean; stopReason: string | null; pickingUp: boolean },
+): boolean {
   const used = laneEngine.get(laneId);
   const errors = turnErrors.get(laneId) ?? [];
-  const held = heldErrors.get(laneId);
+  const held = heldErrors.get(laneId) ?? [];
+  const asked = turnAsked.get(laneId);
+  const newSession = newSessionTurns.delete(laneId);
+  const recovery = recoveries.get(laneId);
   laneEngine.delete(laneId);
   turnErrors.delete(laneId);
   heldErrors.delete(laneId);
+  turnAsked.delete(laneId);
+  recoveries.delete(laneId);
   // An engine that just answered is signed in, whatever a refusal said
   // before: the rest it began is over, or other agents would go on being
   // told for hours that this one cannot answer (GitHub 239).
-  if (ok && used && cooldowns.of(used.instanceId)?.reason === "signedOut") cooldowns.clear(used.instanceId);
+  if (end.ok && used && cooldowns.of(used.instanceId)?.reason === "signedOut") cooldowns.clear(used.instanceId);
   // a call that went silent is about the work, not the engine running
   // out, whatever words the stuck command happened to contain
   const command = commandTurns.delete(laneId);
-  const tryBackup = !command && !ok && used && stopReason !== "interrupted" && stopReason !== "tool_stalled";
-  if (tryBackup && handOver(bot, laneId, roomId, used, [...errors, stopReason ?? ""].join("\n"))) return true;
-  // an error kept back for a backup that then did not take over is shown
-  // after all, exactly as it would have been
-  if (held) {
-    const shown = store.appendMessage(laneId, { role: "bot", kind: "notice", text: held });
+  const failed =
+    !end.ok &&
+    !command &&
+    used &&
+    !end.pickingUp &&
+    end.stopReason !== "interrupted" &&
+    end.stopReason !== "tool_stalled" &&
+    !errors.some((said) => isContextError(said));
+  if (!failed) {
+    showHeldErrors(bot, laneId, held);
+    return false;
+  }
+  const evidence = [...errors, end.stopReason ?? ""].join("\n");
+  const kind = failureOf(evidence);
+  // a refused session refuses every message after it, so it is never
+  // resumed: the next turn, here or in a room, is told the conversation
+  if (kind === "refusal") store.dropSession(laneId, used.instanceId);
+  const said = lastWords(errors, end.stopReason);
+  const fresh = store.bot(bot.id);
+  const goesOn = roomId === laneId && asked && fresh && !fresh.archivedAt && !wheel.heldBy(bot.id);
+  // Asked again once per message. Not a refusal in a session that was
+  // already new and told the conversation: that would only repeat it.
+  // Not an engine that is out either, which cannot answer before its reset.
+  if (goesOn && !recovery && kind !== "out" && !(kind === "refusal" && newSession)) {
+    const notice = store.appendMessage(laneId, {
+      role: "bot",
+      kind: "notice",
+      text:
+        kind === "refusal"
+          ? `${engineName(used)} declined this message: ${said}. Trying again in a new session, with the conversation so far.`
+          : `${engineName(used)} failed: ${said}. Trying again in a minute.`,
+    });
+    broadcast({ kind: "message", threadId: laneId, message: notice });
+    askAgain(bot, laneId, { asked, stage: "retry" }, kind === "refusal" ? 0 : RETRY_WAIT);
+    return true;
+  }
+  if (kind === "out" && handOver(bot, laneId, roomId, used, evidence)) return true;
+  showHeldErrors(bot, laneId, held);
+  return false;
+}
+
+/** The words a failed turn ended on, for a notice: its last error, or
+ * the reason it gave, without the full stop a sentence goes on after. */
+function lastWords(errors: string[], stopReason: string | null): string {
+  const said = errors.filter((e) => e.trim()).at(-1) ?? failedTurnNotice(stopReason);
+  return redactSecrets(said).trim().slice(0, 300).replace(/[.\s]+$/, "");
+}
+
+/** Errors held back for a turn that did not go on after all, shown
+ * exactly as they would have been. Out of credit, over a limit, signed
+ * out: nothing in this lane moves until the person does something, so
+ * the lane says so with its dot instead of waiting to be found (the app
+ * also raises a banner). */
+function showHeldErrors(bot: BotRecord, laneId: string, held: string[]) {
+  for (const text of held) {
+    const shown = store.appendMessage(laneId, { role: "bot", kind: "notice", text });
     broadcast({ kind: "message", threadId: laneId, message: shown });
   }
-  return false;
+  if (held.some((text) => outReason(text))) {
+    store.markLane(bot.id, laneId, true);
+    broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
+  }
+}
+
+/**
+ * The message a failed turn was asked, asked again after `delay`, in the
+ * same lane, for whoever asked it (a routine, another agent, a stranger's
+ * mail). The lane stays busy while it waits, so whatever is said to it
+ * meanwhile queues as it would behind any turn, and Stop cancels it
+ * (cancelRecovery).
+ */
+function askAgain(bot: BotRecord, laneId: string, recovery: Recovery, delay: number) {
+  // who asked for the turn that failed, before its end clears that
+  const requester = laneRequester.get(laneId) ?? askedLast.get(laneId);
+  recoveries.set(laneId, recovery);
+  store.setTaskBusy(laneId, true);
+  broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
+  const { asked, stage } = recovery;
+  recovery.timer = setTimeout(() => {
+    if (recoveries.get(laneId) !== recovery) return;
+    recovery.timer = undefined;
+    store.setTaskBusy(laneId, false);
+    void startTurn(bot.id, asked.text, {
+      taskId: laneId,
+      presetMessage: true,
+      ...(stage === "retry" ? { retry: true } : { fallback: true }),
+      recovery: stage,
+      byYou: asked.byYou,
+      ...(asked.from ? { from: asked.from } : {}),
+      ...(asked.routine ? { routine: asked.routine } : {}),
+      ...(asked.replyTo ? { replyTo: asked.replyTo } : {}),
+      ...(asked.answering ? { answering: asked.answering } : {}),
+      ...(requester ? { requester } : {}),
+    }).catch((e) => {
+      if (recoveries.get(laneId) === recovery) recoveries.delete(laneId);
+      const why = redactSecrets(e instanceof Error ? e.message : String(e));
+      telegramReturns.finish(laneId, `Could not answer: ${why}`);
+      telegramWorking.get(laneId)?.ended();
+      const failed = store.appendMessage(laneId, {
+        role: "bot",
+        kind: "notice",
+        text: `It could not be asked again: ${why.slice(0, 300)}`,
+      });
+      broadcast({ kind: "message", threadId: laneId, message: failed });
+    });
+  }, delay);
+}
+
+/** A lane waiting to ask a failed turn again is stopped: nothing is asked,
+ * the lane is free, and whatever waited behind it goes. True when there
+ * was one to stop. */
+function cancelRecovery(bot: BotRecord, laneId: string, why: string): boolean {
+  const recovery = recoveries.get(laneId);
+  if (!recovery?.timer) return false;
+  clearTimeout(recovery.timer);
+  recoveries.delete(laneId);
+  store.setTaskBusy(laneId, false);
+  const notice = store.appendMessage(laneId, { role: "bot", kind: "notice", text: why });
+  broadcast({ kind: "message", threadId: laneId, message: notice });
+  telegramReturns.finish(laneId);
+  telegramWorking.get(laneId)?.ended();
+  broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
+  drainRoomTags(bot.id);
+  drainSteer(laneId);
+  closeIfAsked(laneId);
+  return true;
 }
 
 /** What a failed turn that gave no reason of its own says. A reason
@@ -2435,12 +2594,14 @@ bus.subscribe((event: RuntimeEvent) => {
         })();
         break;
       }
-      // An engine running out, with a backup ready to take the message,
-      // is said once, in plain words, when the backup takes over. The
-      // raw error waits: if the backup cannot take it after all, it is
-      // shown then (see fallBackIfOut).
-      if (!inRoom && outReason(event.message) && engineUsable(bot.backupSelection) && !fellBack.has(event.threadId)) {
-        heldErrors.set(event.threadId, event.message.slice(0, 600));
+      // A solo turn that fails is asked again or handed to the backup,
+      // and that is said once, in plain words, with the error in it. The
+      // raw error waits: if nothing takes the turn after all, it is
+      // shown then, as it would have been (see recoverTurn).
+      if (!inRoom && !commandTurns.has(event.threadId) && store.taskByThread(event.threadId)?.task.busy) {
+        const held = heldErrors.get(event.threadId) ?? [];
+        if (held.length < 8) held.push(event.message.slice(0, 600));
+        heldErrors.set(event.threadId, held);
         break;
       }
       // Not a failed tool call: the turn itself could not run. It gets a
@@ -2577,7 +2738,7 @@ bus.subscribe((event: RuntimeEvent) => {
         const said = turnErrors.get(event.threadId)?.at(-1);
         if (said) stalledSince.set(event.threadId, said);
       }
-      const handedOver = fallBackIfOut(bot, event.threadId, roomId, event.ok !== false, event.stopReason ?? null);
+      const handedOver = recoverTurn(bot, event.threadId, roomId, { ok: event.ok !== false, stopReason: event.stopReason ?? null, pickingUp });
       if (event.ok === false && !saidWhy && !handedOver && event.stopReason !== "interrupted" && !rebuilt) {
         pushMessage({ role: "bot", kind: "notice", text: failedTurnNotice(event.stopReason) });
       }
@@ -3429,6 +3590,8 @@ const stoppedGettingReady = new Set<string>();
 /** Stops a lane's turn, whichever stage it is at: the engine's turn when
  * there is one, and a turn still getting ready by leaving word for it. */
 async function interruptLane(bot: BotRecord, laneId: string) {
+  // a failed turn waiting to be asked again has no engine turn to stop
+  if (cancelRecovery(bot, laneId, "Stopped. It will not be asked again.")) return;
   const adapter = laneInstance(bot, laneId)?.adapter;
   if (store.taskByThread(laneId)?.task.busy && !adapter?.hasSession(laneId)) stoppedGettingReady.add(laneId);
   await adapter?.interruptTurn(laneId);
@@ -3518,8 +3681,12 @@ async function startClaimedTurn(
     /** This turn picks up one that was cut off (server/cut-off.ts). */
     carriedOn?: boolean;
     /** This turn asks again what the lane's last turn was asked, after
-     * the conversation was folded to fit. */
+     * the conversation was folded to fit, or after it failed. */
     retry?: boolean;
+    /** This turn is a failed one's retry or its handover to the backup
+     * (recoverTurn), which keeps the message's place in what has been
+     * tried for it. */
+    recovery?: Recovery["stage"];
     /** Server-created accepting instance for a queued native command. */
     commandInstance?: string;
     /** How many turns in a row agents have started, this one included,
@@ -3794,6 +3961,20 @@ async function startClaimedTurn(
   else replyingTo.delete(task.id);
   // the words as written, for naming the lane; the engine also hears who sent them
   const said = text;
+  // What a solo turn was asked, the way it was asked, so a turn that
+  // fails can be asked again (recoverTurn). A new message starts with a
+  // retry and a handover of its own; a turn going on with a failed one
+  // keeps that message's.
+  if (!opts.recovery) recoveries.delete(task.id);
+  if (!blok && !command && !opts.recovery) {
+    turnAsked.set(task.id, {
+      text: said,
+      byYou: opts.byYou === true,
+      ...(opts.from ? { from: opts.from } : opts.answering ? { answering: opts.answering } : {}),
+      ...(opts.routine ? { routine: opts.routine } : {}),
+      ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
+    });
+  } else if (blok || command) turnAsked.delete(task.id);
   // A named skill injects instructions. Take names from the person's
   // actual words, never from wrappers, notes or background sources.
   const personalWords = opts.personalMessages && !blok
@@ -4052,6 +4233,8 @@ async function startClaimedTurn(
     activeRoom.delete(task.id);
     laneRequester.delete(task.id);
     replyingTo.delete(task.id);
+    turnAsked.delete(task.id);
+    recoveries.delete(task.id);
     // what was got ready for it goes with it: the folder's photograph,
     // the Local VM, and the credential it would have run with
     checkpoints.cancel(task.id);
@@ -4291,7 +4474,9 @@ async function startClaimedTurn(
       const replaceSession = compactNow && !compactHere && !compactInTurn;
       if (!command && engineFresh && !nativeReplay) {
         const told = await story(true);
-        turnText = freshTurnText(told.turns, turnText, { left: told.left });
+        // no engine served it last when its session was dropped
+        // (store.dropSession), which is a new session, not another engine
+        turnText = freshTurnText(told.turns, turnText, { left: told.left, ...(task.lastInstanceId === "" ? { why: "session" as const } : {}) });
       } else if (replaceSession) {
         const told = await story(true);
         turnText = freshTurnText(told.turns, turnText, { left: told.left, why: "session" });
@@ -4325,6 +4510,10 @@ async function startClaimedTurn(
       // itself: an engine that keeps the first system prompt of a session
       // never reads a newer one (GitHub 150).
       const resumeCursor = ((engineFresh || replaceSession) && !command) || guestMail ? undefined : task.resumeCursors[instanceId];
+      // a refusal in a session that is already new is not asked again
+      // in another one: it would only be refused the same way
+      if (!blok && !command && resumeCursor === undefined) newSessionTurns.add(task.id);
+      else newSessionTurns.delete(task.id);
       if (!command && credential && resumeCursor && task.briefedCli !== CLI_COMMAND) {
         turnText = `${cliMovedNote(CLI_COMMAND, task.briefedCli)}\n\n${turnText}`;
       }
@@ -5570,6 +5759,7 @@ async function windDown(bot: BotRecord) {
       .filter((t) => t.busy)
       .map(async (lane) => {
         cutOff.stop(lane.id);
+        if (cancelRecovery(bot, lane.id, "Stopped. It will not be asked again.")) return;
         await laneInstance(bot, lane.id)?.adapter.interruptTurn(lane.id).catch(() => {});
       }),
   );
@@ -15908,6 +16098,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         // back is the person's decision.
         for (const lane of bot.tasks.filter((t) => t.busy)) {
           cutOff.stop(lane.id);
+          if (cancelRecovery(bot, lane.id, "Stopped. It will not be asked again.")) continue;
           await registry
             .get(bot.modelSelection.instanceId)
             ?.adapter.interruptTurn(lane.id)

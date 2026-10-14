@@ -141,6 +141,8 @@ setTimeout(() => process.exit(0), 50);
   const env = {
     HOME: dataRoot, NODE_OPTIONS: `--import=${preload}`, BLOKS_TEST_TELEGRAM_URL: tg.url,
     OPENAI_API_KEY: "", ANTHROPIC_API_KEY: "", ELEVENLABS_API_KEY: "",
+    // a failed turn is asked again after this wait (GitHub 284)
+    BLOKS_RETRY_WAIT_MS: "200",
   };
   let h = await startHarness(env);
   const bot = await agentOn(h, engine.port, "Planning");
@@ -451,14 +453,31 @@ test("a consuming turn stopped by a missing project folder sends why, not an emp
   assert.equal(f.tg.answers().length, 1);
 });
 
-test("a failed consuming turn without a pickup returns its error notice once", async (t) => {
+test("a failed consuming turn keeps its return for the retry, and sends that answer once", async (t) => {
   const f = await fixture(t);
   await f.queue(); await f.h.json("/api/maintenance/drain", { method: "DELETE" });
   assert.ok(await waitFor(() => f.engine.state.held.length === 1));
   f.engine.state.held.shift()!("", 400);
+  assert.ok(await waitFor(() => f.engine.state.held.length === 1), "the failed turn was not asked again");
+  assert.equal(f.tg.answers().length, 0);
+  f.engine.state.held.shift()!("RETRIED_ANSWER");
+  assert.ok(await waitFor(() => f.tg.answers().length === 1));
+  assert.equal(f.tg.answers()[0].text, "RETRIED_ANSWER");
+  assert.equal(f.engine.state.calls.length, 2);
+  await sleep(250);
+  assert.equal(f.tg.answers().length, 1);
+});
+
+test("a failed consuming turn whose retry fails too returns its error notice once", async (t) => {
+  const f = await fixture(t);
+  await f.queue(); await f.h.json("/api/maintenance/drain", { method: "DELETE" });
+  assert.ok(await waitFor(() => f.engine.state.held.length === 1));
+  f.engine.state.held.shift()!("", 400);
+  assert.ok(await waitFor(() => f.engine.state.held.length === 1));
+  f.engine.state.held.shift()!("", 400);
   assert.ok(await waitFor(() => f.tg.answers().length === 1));
   assert.match(f.tg.answers()[0].text, /synthetic failure/);
-  assert.equal(f.engine.state.calls.length, 1);
+  assert.equal(f.engine.state.calls.length, 2);
 });
 
 test("a consuming turn with neither text nor a notice keeps the empty-answer fallback", async (t) => {
