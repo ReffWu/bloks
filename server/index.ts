@@ -1638,10 +1638,9 @@ function recoverTurn(
     return true;
   }
 
-  // 4. Nothing left to try: the error shows as it was, with a word on why
-  // nothing else took it, and the conversation waits for the person.
-  showHeldErrors(bot, laneId, held);
-  explainSilence();
+  // 4. Nothing left to try: the error shows as it was, and the same
+  // notice says why nothing else took it. The conversation waits for the
+  // person.
   told(
     goesOn
       ? "Nothing else could take it, so the error was shown and the agent stopped. This is the next message."
@@ -1649,20 +1648,31 @@ function recoverTurn(
         ? "The error was shown in the room, and it was not asked again."
         : "The error was shown, and it was not asked again.",
   );
-  if (goesOn) {
-    const stopped = `${tried.length > 1 ? "Asking again did not help, so " : ""}${bot.name} has stopped here.`;
-    const first = tried[0];
-    notice(
-      recovery?.stage === "backup"
-        ? `${engineName(used)} could not answer either, so ${bot.name} has stopped here. Before that, ${engineName(first.selection)} said: ${first.said}.`
-        : !backup
-          ? `${stopped} No backup engine is set for it; you can choose one in its settings, under Backup engine.`
-          : `${stopped} Its backup, ${engineName(backup)}, ${whyNotBackup(backup, used, Boolean(out))}.`,
-    );
-    store.markLane(bot.id, laneId, true);
-    broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
+  if (!goesOn) {
+    showHeldErrors(bot, laneId, held);
+    explainSilence();
+    return false;
   }
+  const stopped = `${tried.length > 1 ? "Asking again did not help, so " : ""}${bot.name} has stopped here.`;
+  const first = tried[0];
+  const why =
+    recovery?.stage === "backup"
+      ? `${engineName(used)} could not answer either, so ${bot.name} has stopped here. Before that, ${engineName(first.selection)} said: ${first.said}.`
+      : !backup
+        ? `${stopped} No backup engine is set for it; you can choose one in its settings, under Backup engine.`
+        : `${stopped} Its backup, ${engineName(backup)}, ${whyNotBackup(backup, used, Boolean(out))}.`;
+  if (held.length) showHeldErrors(bot, laneId, [...held.slice(0, -1), sentences(held.at(-1)!, why)]);
+  else if (!errors.length) say(sentences(failedTurnNotice(end.stopReason), why));
+  else notice(why);
+  store.markLane(bot.id, laneId, true);
+  broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
   return false;
+}
+
+/** Two sentences as one notice, the first ending in a full stop. */
+function sentences(first: string, then: string): string {
+  const said = first.trim();
+  return /[.!?)]$/.test(said) ? `${said} ${then}` : `${said}. ${then}`;
 }
 
 /** The opening line of a turn after a failure (failureNotes). */
@@ -1744,6 +1754,8 @@ function askAgain(bot: BotRecord, laneId: string, recovery: Recovery, delay: num
     }).catch((e) => {
       if (recoveries.get(laneId) === recovery) recoveries.delete(laneId);
       const why = redactSecrets(e instanceof Error ? e.message : String(e));
+      const owner = store.bot(bot.id);
+      if (owner) settleOwners(owner, laneId, { ok: false, why, unsent: true });
       telegramReturns.finish(laneId, `Could not answer: ${why}`);
       telegramWorking.get(laneId)?.ended();
       const failed = store.appendMessage(laneId, {
@@ -1766,6 +1778,7 @@ function cancelRecovery(bot: BotRecord, laneId: string, why: string): boolean {
   recoveries.delete(laneId);
   const last = recovery.tried.at(-1);
   if (last) failureNotes.set(laneId, failureLine(last.selection, last.at, last.said, "Bloks was going to ask again, but it was stopped. This is the next message."));
+  settleOwners(bot, laneId, { ok: false, why: last?.said ?? null });
   store.setTaskBusy(laneId, false);
   const notice = store.appendMessage(laneId, { role: "bot", kind: "notice", text: why });
   broadcast({ kind: "message", threadId: laneId, message: notice });
@@ -2851,7 +2864,10 @@ bus.subscribe((event: RuntimeEvent) => {
         checkInTurns.has(event.threadId) && !inRoom && event.ok !== false && !handedOver &&
         !turnsForYou.has(event.threadId) && foldQuietRun(event.threadId);
       checkInTurns.delete(event.threadId);
-      settleOwners(bot, event.threadId, { ok: event.ok !== false, why: event.stopReason ?? null, quiet: quietRun });
+      // a turn asked again or handed to the backup is not over yet, so what
+      // waits on how it ends (a routine's run, a workflow step, a meeting's
+      // write-up, a mail's reply) waits for the attempt that ends it
+      if (!handedOver) settleOwners(bot, event.threadId, { ok: event.ok !== false, why: event.stopReason ?? null, quiet: quietRun });
       if (mailQueue.length) setTimeout(() => void drainMail(), 0);
       // whatever the agent was given to act with is spent
       agentTokens.revokeTask(event.threadId);
