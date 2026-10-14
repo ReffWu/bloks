@@ -17,8 +17,13 @@
 //
 // Deciding "out" is reading error text, which no two providers phrase
 // alike. The patterns are deliberately about capacity and access, never
-// about the work: a failed test or a refused command must stay a failed
-// turn, or the backup would get to repeat whatever went wrong.
+// about the work: only an engine that is out rests, for everyone on it.
+//
+// Any other failed turn is not left there either (GitHub 284): it is
+// asked again once, and then handed to the backup once, each attempt
+// told what failed. The one other thing read from the error is a safety
+// refusal, which is asked again in a new session rather than the same
+// one. Everything else is asked again as it is.
 //
 // Everything here is pure except the cooldown table, which lives in
 // memory: after a restart the first turn simply tries the main engine
