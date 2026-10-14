@@ -223,6 +223,11 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
     say("only-final", "NO NOTE DONE"); await nap(300);
     return finish(null);
   }
+  // the one retry a failed turn gets (GitHub 284) fails again, at once
+  if (text.includes("SLOW_ERROR") && text.includes("A note from Bloks")) {
+    out({ method: "error", params: { threadId: thread, error: { message: "synthetic failure after a note" } } });
+    return finish(null, "synthetic failure after a note");
+  }
   if (text.includes("SLOW")) {
     out({ method: "item/completed", params: { threadId: thread, turnId: turn, item: { type: "reasoning", id: "thought", summary: [{ type: "summary_text", text: "PRIVATE_REASONING" }], content: [{ type: "reasoning_text", text: "PRIVATE_REASONING" }] } } });
     say("n1", "I am checking the parser.");

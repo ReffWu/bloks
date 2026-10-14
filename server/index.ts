@@ -1536,7 +1536,7 @@ function recoverTurn(
   laneId: string,
   roomId: string,
   end: { ok: boolean; stopReason: string | null; pickingUp: boolean; rebuilt: boolean },
-  say: (text: string) => void,
+  say: (text: string, phoneText?: string) => void,
 ): boolean {
   const used = laneEngine.get(laneId);
   const errors = turnErrors.get(laneId) ?? [];
@@ -1661,8 +1661,8 @@ function recoverTurn(
       : !backup
         ? `${stopped} No backup engine is set for it; you can choose one in its settings, under Backup engine.`
         : `${stopped} Its backup, ${engineName(backup)}, ${whyNotBackup(backup, used, Boolean(out))}.`;
-  if (held.length) showHeldErrors(bot, laneId, [...held.slice(0, -1), sentences(held.at(-1)!, why)]);
-  else if (!errors.length) say(sentences(failedTurnNotice(end.stopReason), why));
+  if (held.length) showHeldErrors(bot, laneId, held, why);
+  else if (!errors.length) say(sentences(failedTurnNotice(end.stopReason), why), failedTurnNotice(end.stopReason));
   else notice(why);
   store.markLane(bot.id, laneId, true);
   broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
@@ -1711,11 +1711,12 @@ function lastWords(errors: string[], stopReason: string | null): string {
  * out: nothing in this lane moves until the person does something, so
  * the lane says so with its dot instead of waiting to be found (the app
  * also raises a banner). */
-function showHeldErrors(bot: BotRecord, laneId: string, held: string[]) {
-  for (const text of held) {
-    const shown = store.appendMessage(laneId, { role: "bot", kind: "notice", text });
+function showHeldErrors(bot: BotRecord, laneId: string, held: string[], why?: string) {
+  held.forEach((text, i) => {
+    const last = why && i === held.length - 1;
+    const shown = store.appendMessage(laneId, { role: "bot", kind: "notice", text: last ? sentences(text, why) : text, ...(last ? { phoneText: text } : {}) });
     broadcast({ kind: "message", threadId: laneId, message: shown });
-  }
+  });
   if (held.some((text) => outReason(text))) {
     store.markLane(bot.id, laneId, true);
     broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
@@ -2853,7 +2854,7 @@ bus.subscribe((event: RuntimeEvent) => {
         event.threadId,
         roomId,
         { ok: event.ok !== false, stopReason: event.stopReason ?? null, pickingUp, rebuilt: Boolean(rebuilt) },
-        (text) => pushMessage({ role: "bot", kind: "notice", text }),
+        (text, phoneText) => pushMessage({ role: "bot", kind: "notice", text, ...(phoneText ? { phoneText } : {}) }),
       );
       if (!pickingUp && !handedOver) telegramReturns.finish(event.threadId);
       if (!pickingUp && !handedOver && !refolding) telegramWorking.get(event.threadId)?.ended();
