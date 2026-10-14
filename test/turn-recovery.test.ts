@@ -15,6 +15,7 @@ import { failureOf, isRefusal } from "../server/failover.ts";
 import { startHarness, type Harness } from "./helpers/server.ts";
 
 const WAIT_MS = 1_500;
+const STAY_MS = 4_000;
 
 const FAKE_CLAUDE = `#!${process.execPath}
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -137,6 +138,7 @@ describe("a failed turn is asked again", () => {
         instances: {
           claude: { driver: "claudeAgent", config: { cli, permissionMode: "bypassPermissions" } },
           "claude-limit": { driver: "claudeAgent", config: { cli, permissionMode: "bypassPermissions" } },
+          "claude-b": { driver: "claudeAgent", config: { cli, permissionMode: "bypassPermissions" } },
         },
       }),
     );
@@ -145,7 +147,7 @@ describe("a failed turn is asked again", () => {
       body: { choices: [{ message: { role: "assistant", content: "Done, from the spare." } }] },
     }));
     broken = await fakeEngine(() => ({ status: 500, body: { error: { message: "Internal boom on the spare" } } }));
-    h = await startHarness({ HOME: home, BLOKS_RETRY_WAIT_MS: String(WAIT_MS) });
+    h = await startHarness({ HOME: home, BLOKS_RETRY_WAIT_MS: String(WAIT_MS), BLOKS_BACKUP_STAY_MS: String(STAY_MS) });
     await h.fetch("/api/providers/kimi/connect", { method: "POST", body: JSON.stringify({ key: "sk-test-3333333333", url: spare.url }) });
     await h.fetch("/api/providers/deepseek/connect", { method: "POST", body: JSON.stringify({ key: "sk-test-4444444444", url: broken.url }) });
   });
@@ -337,6 +339,71 @@ describe("a failed turn is asked again", () => {
     const last = messages.find((m: any) => /could not answer either/.test(m.text));
     assert.match(last.text, /Connection reset/, "the own engine's error is not shown");
     assert.equal(calls("t9").length, 2);
+  });
+
+  test("the conversation stays on the backup a while, then the own engine resumes its own session, told what it missed", async () => {
+    const botId = await agent("Returning", { backup: true });
+    plan("t10", ["ok", "fail", "fail", "ok"]);
+    await say(botId, "[t10] the venue is the boathouse");
+    assert.ok(await settled(botId, (m) => answers(m).length === 1));
+    await say(botId, "[t10] book the caterer");
+    assert.ok(await settled(botId, (m) => answers(m).length === 2), "the backup never answered");
+    const handedAt = Date.now();
+    // the next message stays on the backup
+    await say(botId, "[t10] and the flowers");
+    assert.ok(await settled(botId, (m) => answers(m).length === 3));
+    assert.equal(calls("t10").length, 3, "the own engine was tried during the stay");
+    assert.ok(spare.asked.some((a) => a.includes("[t10] and the flowers")));
+    // after the stay, the own engine's own session, with only what it missed
+    await sleep(Math.max(0, STAY_MS - (Date.now() - handedAt)) + 300);
+    await say(botId, "[t10] what is left?");
+    const messages = await settled(botId, (m) => answers(m).length === 4);
+    assert.ok(messages, "the own engine never answered");
+    const [first, , , back] = calls("t10");
+    assert.equal(back.resumed, true, "the own engine started a new session");
+    assert.equal(back.session, first.session);
+    assert.doesNotMatch(back.text, /The conversation so far/);
+    assert.doesNotMatch(back.text, /the venue is the boathouse/, "it was told what its session already has");
+    assert.match(back.text, /answered in your place/);
+    assert.match(back.text, /book the caterer/);
+    assert.match(back.text, /and the flowers/);
+    assert.match(back.text, /Done, from the spare/);
+    assert.match(back.text, /what is left\?/);
+    assert.ok(messages.some((m: any) => m.kind === "notice" && /is back on this conversation, in its own session/.test(m.text)));
+  });
+
+  test("the person changing the engine ends the stay", async () => {
+    const botId = await agent("Switched", { backup: true });
+    plan("t11", ["fail", "fail", "ok"]);
+    await say(botId, "[t11] hello");
+    assert.ok(await settled(botId, (m) => answers(m).includes("Done, from the spare.")));
+    const patched = await h.fetch(`/api/bots/${botId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ modelSelection: { instanceId: "claude-b", model: "claude-sonnet-5" } }),
+    });
+    assert.equal(patched.status, 200);
+    await say(botId, "[t11] again");
+    assert.ok(await settled(botId, (m) => answers(m).some((a) => /^Claude answered/.test(a))), "the stay outlived the person's choice");
+    assert.equal(calls("t11").length, 3);
+  });
+
+  test("after a refusal the own engine comes back in a new session told the conversation", async () => {
+    const botId = await agent("Refused back", { backup: true });
+    plan("t12", ["ok", "refuse", "refuse", "ok"]);
+    await say(botId, "[t12] the code word is lark");
+    assert.ok(await settled(botId, (m) => answers(m).length === 1));
+    await say(botId, "[t12] go on");
+    assert.ok(await settled(botId, (m) => answers(m).includes("Done, from the spare.")), "the backup never answered");
+    assert.equal(calls("t12").length, 3, "a refusal in a new session was asked again");
+    await sleep(STAY_MS + 300);
+    await say(botId, "[t12] next");
+    assert.ok(await settled(botId, (m) => answers(m).length === 3));
+    const [first, , retried, back] = calls("t12");
+    assert.equal(back.resumed, false, "a refused session was resumed");
+    assert.notEqual(back.session, first.session);
+    assert.notEqual(back.session, retried.session);
+    assert.match(back.text, /The conversation so far/);
+    assert.match(back.text, /the code word is lark/);
   });
 
   test("a room's turn is not asked again or handed over", async () => {

@@ -296,11 +296,11 @@ import {
 import { widenPath } from "./path.ts";
 import { claimDataFolder, inUseMessage } from "./data-lock.ts";
 import { describe as describeRoutine, isQuiet as quietRoutine, isQuietReply, lastReportNote, MAX_ROUTINES, normalize as normalizeRoutine, nextScheduledAfter, promptTooLong, QUIET_ASK, type Routine, RoutineStore, scheduleProblem } from "./routines.ts";
-import { engineIsFresh, freshTurnText } from "./turn-context.ts";
+import { catchUpText, engineIsFresh, freshTurnText } from "./turn-context.ts";
 import { standingFor, type Standing, type StandingRecord } from "./standing-prompt.ts";
 import { Checkpoints, diffLines, trackable, type CheckpointRecord } from "./checkpoints.ts";
 import { redoCounts, redoPlan, takenBack, type RedoRefusal } from "./redo.ts";
-import { Cooldowns, describeRest, failureOf, outReason, REASON_WORDS, RETRY_WAIT_MS, type Rest } from "./failover.ts";
+import { Cooldowns, describeRest, failureOf, outReason, REASON_WORDS, RETRY_WAIT_MS, STAY_MS, type Rest } from "./failover.ts";
 import { agentReadiness, engineReadiness, readinessWarning, type Readiness } from "./engine-readiness.ts";
 import { indexMemory, indexMessages, mostOf, recallBlock, recallFrom, recallText, searchableText, termsOf, type IndexedSource, type RecallHit, type RecallMessage, type Speaker } from "./recall.ts";
 import { excerpt, IndexCache, rank, type TermIndex } from "./recall-index.ts";
@@ -801,6 +801,8 @@ const heldErrors = new Map<string, string[]>();
 // is asked again once and handed over once and never more.
 interface Asked {
   text: string;
+  /** When what it answers begins in the conversation (turnSince). */
+  since: number;
   byYou: boolean;
   from?: { botId: string; name: string };
   routine?: Message["routine"];
@@ -820,6 +822,41 @@ const newSessionTurns = new Set<string>();
 const recoveries = new Map<string, Recovery>();
 /** The wait before a failed turn is asked again, shorter in tests. */
 const RETRY_WAIT = Number(process.env.BLOKS_RETRY_WAIT_MS) || RETRY_WAIT_MS;
+
+// After the backup answers, the conversation stays on it for a while
+// (until the own engine's rest ends, when it rests), so the next message
+// does not try an engine that just failed. Then the own engine resumes
+// its own session, which is still stored, and is told what it missed,
+// rather than starting a new one told the story (GitHub 284). Both in
+// memory: after a restart the own engine is simply tried again, and a
+// session it comes back to is told the story as any engine switch is.
+interface Stay {
+  own: ModelSelection;
+  backup: ModelSelection;
+  until: number;
+}
+const stays = new Map<string, Stay>();
+/** The own engine's session in each lane another engine has been
+ * answering, and from when on (a message's `at`) it missed what was said. */
+const away = new Map<string, { instanceId: string; since: number; by: string }>();
+/** How long a conversation stays on its backup, shorter in tests. */
+const STAY = Number(process.env.BLOKS_BACKUP_STAY_MS) || STAY_MS;
+
+const sameSelection = (a: ModelSelection | null | undefined, b: ModelSelection | null | undefined) =>
+  Boolean(a && b && a.instanceId === b.instanceId && (a.model ?? null) === (b.model ?? null));
+
+/** The stay a lane is on, or undefined once it is over: its time is up,
+ * or the person changed the agent's engine or its backup, and their
+ * choice wins. */
+function stayOf(bot: BotRecord, laneId: string, now = Date.now()): Stay | undefined {
+  const stay = stays.get(laneId);
+  if (!stay) return undefined;
+  if (stay.until <= now || !sameSelection(stay.own, bot.modelSelection) || !sameSelection(stay.backup, bot.backupSelection)) {
+    stays.delete(laneId);
+    return undefined;
+  }
+  return stay;
+}
 
 // ── cloud computers sleep when nobody is using them ──────────────────
 // A box bills while it is awake. Once an agent has not used its computer
@@ -862,9 +899,11 @@ function engineUsable(selection: ModelSelection | null | undefined): selection i
  * the webhook receiver both ask here, so they cannot disagree about it. A
  * turn handed to the backup (`fallback`) may also go to another model on
  * the agent's own engine, which cannot stand in while that engine rests. */
-function selectEngine(bot: BotRecord, fallback = false): ModelSelection {
+function selectEngine(bot: BotRecord, fallback = false, laneId?: string): ModelSelection {
   const own = bot.modelSelection;
   if (fallback && engineUsable(bot.backupSelection)) return bot.backupSelection;
+  // a conversation staying on the backup that answered it
+  if (laneId && stayOf(bot, laneId) && engineUsable(bot.backupSelection)) return bot.backupSelection;
   const backup = bot.backupSelection && bot.backupSelection.instanceId !== own.instanceId ? bot.backupSelection : null;
   const ownRest = cooldowns.of(own.instanceId);
   const ownMissing = !registry.get(own.instanceId);
@@ -1527,6 +1566,12 @@ function recoverTurn(
   if (!failed) {
     showHeldErrors(bot, laneId, held);
     explainSilence();
+    // 3. The backup answered: the conversation stays on it. An own engine
+    // that rests is left alone until its rest ends instead.
+    const now = store.bot(bot.id);
+    if (end.ok && recovery?.stage === "backup" && used && now && !cooldowns.of(now.modelSelection.instanceId)) {
+      stays.set(laneId, { own: now.modelSelection, backup: used, until: Date.now() + STAY });
+    }
     return false;
   }
   const evidence = [...errors, end.stopReason ?? ""].join("\n");
@@ -3842,7 +3887,8 @@ async function startClaimedTurn(
   const directCommandAllowed = registry.get(directCommandInstance ?? "")?.driverKind === "claudeAgent" || (opts.byYou && opts.personal !== false && !opts.roomId);
   const commandInstance = opts.commandInstance ?? (directCommandAllowed ? directCommandInstance : undefined);
   const command = Boolean(commandInstance && commandFor(text, commandInstance));
-  const selection = selectEngine(bot, opts.fallback);
+  const staying = !opts.fallback && Boolean(stayOf(bot, task.id));
+  const selection = selectEngine(bot, opts.fallback, task.id);
   if (command && (selection.instanceId !== commandInstance || acceptingNative(bot) !== commandInstance || !engineUsable(selection))) {
     const name = registry.get(commandInstance!)?.driverKind === "codex" ? "Codex" : "Claude Code";
     throw Object.assign(new Error(`This command was queued for ${name}, but that engine is no longer selected or available. Choose it again and send the command again.`), { status: 409 });
@@ -3966,6 +4012,13 @@ async function startClaimedTurn(
   // triggering message is already on the record; only a solo chat writes
   // the user turn here.
   const telegramInputIds = [...(opts.telegramMessages ?? [])];
+  // Where what this turn answers begins in the conversation: before its
+  // own words, or at the first of the waiting ones it takes. What another
+  // engine answered from here on is what the own engine misses (away).
+  const turnSince = Math.min(
+    Date.now(),
+    ...store.messagesFor(roomId).filter((m) => telegramInputIds.includes(m.id)).map((m) => m.at),
+  );
   if (!blok && !opts.presetMessage) {
     const userMessage = store.appendMessage(roomId, {
       role: "user",
@@ -3997,6 +4050,7 @@ async function startClaimedTurn(
   else if (!blok && !command) {
     turnAsked.set(task.id, {
       text: said,
+      since: turnSince,
       byYou: opts.byYou === true,
       ...(opts.from ? { from: opts.from } : opts.answering ? { answering: opts.answering } : {}),
       ...(opts.routine ? { routine: opts.routine } : {}),
@@ -4441,15 +4495,45 @@ async function startClaimedTurn(
       // turns. Session-cursor engines get the story replayed inline;
       // API engines replay the transcript themselves every turn.
       const instanceId = selection.instanceId;
+      const nativeReplay = Boolean(instance.adapter.capabilities.replaysNatively);
+      const ownReading = readingFor(task.reading, selection);
+      const handoffTokens = handoffBudget(ownReading?.window ?? contextLimitFor(selection.model));
+      // Another engine answering where the agent's own engine served last:
+      // from here on, the own engine's stored session misses what is said.
+      if (!blok && !command && instanceId !== own.instanceId && !away.has(task.id) && task.lastInstanceId === own.instanceId && typeof task.resumeCursors[own.instanceId] === "string") {
+        away.set(task.id, { instanceId: own.instanceId, since: turnAsked.get(task.id)?.since ?? turnSince, by: engineName(selection) });
+      }
+      // And the own engine coming back resumes that session, told what it
+      // missed, unless it is longer than a new session's story would be:
+      // then it starts a new session told the conversation, as an engine
+      // switch does (GitHub 284).
+      const back = !blok && !command ? away.get(task.id) : undefined;
+      let missed: { turns: Turn[]; by: string } | null = null;
+      if (back && back.instanceId === instanceId) {
+        away.delete(task.id);
+        const said = store
+          .messagesFor(roomId)
+          .filter((m) => m.kind === "text" && m.text && !m.deleted && !m.queued && !m.unsent && m.at >= back.since && m.at < turnSince)
+          .map((m) => ({ role: m.role === "user" ? ("user" as const) : ("assistant" as const), text: storedPrompt(m) }));
+        const bounded = boundHandoff(said, handoffTokens);
+        const resumes = typeof task.resumeCursors[instanceId] === "string" && !nativeReplay && !guestMail;
+        if (resumes && bounded.left === 0) missed = { turns: bounded.turns, by: back.by };
+        const notice = store.appendMessage(roomId, {
+          role: "bot",
+          kind: "notice",
+          text: missed ? `${engineName(selection)} is back on this conversation, in its own session.` : `${engineName(selection)} is back on this conversation.`,
+        });
+        broadcast({ kind: "message", threadId: roomId, message: notice });
+      }
       const engineFresh =
         !blok &&
+        !missed &&
         engineIsFresh({
           instanceId,
           lastInstanceId: task.lastInstanceId,
           resumeCursors: task.resumeCursors,
           hasUserTurn: transcript.some((m) => m.role === "user"),
         });
-      const nativeReplay = Boolean(instance.adapter.capabilities.replaysNatively);
       let turnText = !command && opts.replyTo
         ? `(Replying to ${opts.replyTo.author}'s earlier message: "${opts.replyTo.excerpt}")\n\n${text}`
         : text;
@@ -4466,8 +4550,6 @@ async function startClaimedTurn(
       // the bound leaves messages out and the lane's engine can
       // summarise, the older part is folded into the running summary
       // first, so what is left out is carried by the summary instead.
-      const ownReading = readingFor(task.reading, selection);
-      const handoffTokens = handoffBudget(ownReading?.window ?? contextLimitFor(selection.model));
       const story = async (fold: boolean) => {
         let bounded = boundHandoff(transcript, handoffTokens);
         if (fold && bounded.left > 0 && (await foldContext(bot.id, task.id, false, handoffTokens).catch(() => false))) {
@@ -4509,6 +4591,7 @@ async function startClaimedTurn(
         const told = await story(true);
         turnText = freshTurnText(told.turns, turnText, { left: told.left, why: "session" });
       }
+      if (missed) turnText = catchUpText(missed.turns, missed.by, turnText);
       const undone = undoneSince.get(task.id);
       if (undone && !command) {
         undoneSince.delete(task.id);
@@ -4593,7 +4676,7 @@ async function startClaimedTurn(
       turnErrors.delete(task.id);
       // Said once per rest, not once per turn: the first turn on the
       // backup explains itself, the rest of the afternoon does not.
-      if (selection !== own && !opts.fallback) {
+      if (selection !== own && !opts.fallback && !staying) {
         const why = ownRest ?? null;
         if (!why || toldOfRest.get(task.id) !== why.until) {
           if (why) toldOfRest.set(task.id, why.until);
