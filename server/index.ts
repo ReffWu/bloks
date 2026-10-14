@@ -785,13 +785,10 @@ const checkpoints = new Checkpoints(join(DATA_DIR, "checkpoints"));
 
 // Backup engines (server/failover.ts). Engines resting after running
 // out, the engine each running lane is on, what went wrong in each
-// lane's turn so far, the lanes whose turn already fell back once (it
-// falls back once: a backup that is also out is reported, not chased),
-// and the rest each lane has already been told about.
+// lane's turn so far, and the rest each lane has already been told about.
 const cooldowns = new Cooldowns();
 const laneEngine = new Map<string, ModelSelection>();
 const turnErrors = new Map<string, string[]>();
-const fellBack = new Set<string>();
 const toldOfRest = new Map<string, number>();
 /** Errors kept off the chat while the turn might be asked again or
  * taken by a backup, which says them in its own notice. */
@@ -814,6 +811,8 @@ interface Recovery {
   asked: Asked;
   /** The attempt waiting to start or running now. */
   stage: "retry" | "backup";
+  /** Each attempt that failed, on what and with what words. */
+  tried: Array<{ selection: ModelSelection; said: string }>;
   timer?: ReturnType<typeof setTimeout>;
 }
 const turnAsked = new Map<string, Asked>();
@@ -860,13 +859,16 @@ function engineUsable(selection: ModelSelection | null | undefined): selection i
 
 /** Which engine a turn on this agent runs on: its own, unless it is resting
  * after running out (or gone) and it has a backup that is not. startTurn and
- * the webhook receiver both ask here, so they cannot disagree about it. */
+ * the webhook receiver both ask here, so they cannot disagree about it. A
+ * turn handed to the backup (`fallback`) may also go to another model on
+ * the agent's own engine, which cannot stand in while that engine rests. */
 function selectEngine(bot: BotRecord, fallback = false): ModelSelection {
   const own = bot.modelSelection;
+  if (fallback && engineUsable(bot.backupSelection)) return bot.backupSelection;
   const backup = bot.backupSelection && bot.backupSelection.instanceId !== own.instanceId ? bot.backupSelection : null;
   const ownRest = cooldowns.of(own.instanceId);
   const ownMissing = !registry.get(own.instanceId);
-  return (fallback || ownRest || ownMissing) && engineUsable(backup) ? backup : own;
+  return (ownRest || ownMissing) && engineUsable(backup) ? backup : own;
 }
 
 function unavailableEngineMessage(instanceId: string): string {
@@ -1488,7 +1490,8 @@ function recoverTurn(
   bot: BotRecord,
   laneId: string,
   roomId: string,
-  end: { ok: boolean; stopReason: string | null; pickingUp: boolean },
+  end: { ok: boolean; stopReason: string | null; pickingUp: boolean; rebuilt: boolean },
+  say: (text: string) => void,
 ): boolean {
   const used = laneEngine.get(laneId);
   const errors = turnErrors.get(laneId) ?? [];
@@ -1516,37 +1519,102 @@ function recoverTurn(
     end.stopReason !== "interrupted" &&
     end.stopReason !== "tool_stalled" &&
     !errors.some((said) => isContextError(said));
+  // a failed turn that gave no reason of its own still says it failed,
+  // or a turn that ends in silence reads as the agent not answering
+  const explainSilence = () => {
+    if (!end.ok && !errors.length && end.stopReason !== "interrupted" && !end.rebuilt) say(failedTurnNotice(end.stopReason));
+  };
   if (!failed) {
     showHeldErrors(bot, laneId, held);
+    explainSilence();
     return false;
   }
   const evidence = [...errors, end.stopReason ?? ""].join("\n");
-  const kind = failureOf(evidence);
+  // an ACP engine says a refusal with its stop reason alone
+  const kind = failureOf(evidence) === "other" && end.stopReason === "refusal" ? "refusal" : failureOf(evidence);
+  // An engine that ran out rests, for every agent on it, since a limit
+  // belongs to the account and not to one agent. A room's turn rests it
+  // too: the agent's next turn there goes to its backup.
+  const out = outReason(evidence);
+  const rest: Rest | null = out ? cooldowns.rest(used.instanceId, out, evidence) : null;
   // a refused session refuses every message after it, so it is never
   // resumed: the next turn, here or in a room, is told the conversation
   if (kind === "refusal") store.dropSession(laneId, used.instanceId);
   const said = lastWords(errors, end.stopReason);
   const fresh = store.bot(bot.id);
-  const goesOn = roomId === laneId && asked && fresh && !fresh.archivedAt && !wheel.heldBy(bot.id);
-  // Asked again once per message. Not a refusal in a session that was
-  // already new and told the conversation: that would only repeat it.
-  // Not an engine that is out either, which cannot answer before its reset.
+  const goesOn = Boolean(roomId === laneId && asked && fresh && !fresh.archivedAt && !wheel.heldBy(bot.id));
+  const tried = [...(recovery?.tried ?? []), { selection: used, said }];
+  const notice = (text: string) => {
+    const shown = store.appendMessage(laneId, { role: "bot", kind: "notice", text });
+    broadcast({ kind: "message", threadId: laneId, message: shown });
+  };
+
+  // 1. Asked again once per message. Not a refusal in a session that was
+  // already new and told the conversation: that would only repeat it. Not
+  // an engine that is out either, which cannot answer before its reset.
   if (goesOn && !recovery && kind !== "out" && !(kind === "refusal" && newSession)) {
-    const notice = store.appendMessage(laneId, {
-      role: "bot",
-      kind: "notice",
-      text:
-        kind === "refusal"
-          ? `${engineName(used)} declined this message: ${said}. Trying again in a new session, with the conversation so far.`
-          : `${engineName(used)} failed: ${said}. Trying again in a minute.`,
-    });
-    broadcast({ kind: "message", threadId: laneId, message: notice });
-    askAgain(bot, laneId, { asked, stage: "retry" }, kind === "refusal" ? 0 : RETRY_WAIT);
+    notice(
+      kind === "refusal"
+        ? `${engineName(used)} declined this message: ${said}. Trying again in a new session, with the conversation so far.`
+        : `${engineName(used)} failed: ${said}. Trying again in a minute.`,
+    );
+    askAgain(bot, laneId, { asked: asked!, stage: "retry", tried }, kind === "refusal" ? 0 : RETRY_WAIT);
     return true;
   }
-  if (kind === "out" && handOver(bot, laneId, roomId, used, evidence)) return true;
+
+  // 2. Then the backup, once, with the conversation so far, for whoever
+  // asked. Whatever the failure was: the backup is an engine the person
+  // chose for this agent, and the turn it takes is told what failed.
+  const backup = fresh?.backupSelection ?? null;
+  const usable = goesOn && recovery?.stage !== "backup" ? backupFor(backup, used, Boolean(out)) : null;
+  if (usable) {
+    if (rest) toldOfRest.set(laneId, rest.until);
+    const why = rest
+      ? `${engineName(used)} ${REASON_WORDS[out!]} ${describeRest(rest)}.`
+      : recovery
+        ? `${engineName(used)} failed again: ${said}.`
+        : `${engineName(used)} declined this message: ${said}.`;
+    notice(`${why} ${engineName(usable)} is picking this up, with the conversation so far.`);
+    askAgain(bot, laneId, { asked: asked!, stage: "backup", tried }, 0);
+    return true;
+  }
+
+  // 4. Nothing left to try: the error shows as it was, with a word on why
+  // nothing else took it, and the conversation waits for the person.
   showHeldErrors(bot, laneId, held);
+  explainSilence();
+  if (goesOn) {
+    const stopped = `${tried.length > 1 ? "Asking again did not help, so " : ""}${bot.name} has stopped here.`;
+    const first = tried[0];
+    notice(
+      recovery?.stage === "backup"
+        ? `${engineName(used)} could not answer either, so ${bot.name} has stopped here. Before that, ${engineName(first.selection)} said: ${first.said}.`
+        : !backup
+          ? `${stopped} No backup engine is set for it; you can choose one in its settings, under Backup engine.`
+          : `${stopped} Its backup, ${engineName(backup)}, ${whyNotBackup(backup, used, Boolean(out))}.`,
+    );
+    store.markLane(bot.id, laneId, true);
+    broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
+  }
   return false;
+}
+
+/** The backup that can take a failed turn: one that is usable and is not
+ * what just failed. Another model on the same engine counts, and resumes
+ * the same session, since sessions are kept per engine; after an engine
+ * that is out it has to be another engine. */
+function backupFor(backup: ModelSelection | null, used: ModelSelection, out: boolean): ModelSelection | null {
+  if (!backup || !engineUsable(backup)) return null;
+  if (backup.instanceId === used.instanceId && (out || (backup.model ?? null) === (used.model ?? null))) return null;
+  return backup;
+}
+
+/** Why a backup that is set could not take the turn, for the notice. */
+function whyNotBackup(backup: ModelSelection, used: ModelSelection, out: boolean): string {
+  const rest = cooldowns.of(backup.instanceId);
+  if (rest) return `${REASON_WORDS[rest.reason]} ${describeRest(rest)}`;
+  if (backup.instanceId === used.instanceId && (out || (backup.model ?? null) === (used.model ?? null))) return "is what just failed";
+  return "is not available";
 }
 
 /** The words a failed turn ended on, for a notice: its last error, or
@@ -1643,50 +1711,6 @@ function failedTurnNotice(stopReason: string | null | undefined): string {
   const reason = (stopReason ?? "").trim();
   if (/\s/.test(reason)) return reason.slice(0, 600);
   return reason ? `The turn did not finish (${reason.slice(0, 80)}).` : "The turn did not finish.";
-}
-
-/** Rests an engine that ran out, and hands the turn to the backup when
- * there is one to hand it to. True when the backup took it. */
-function handOver(bot: BotRecord, laneId: string, roomId: string, used: ModelSelection, evidence: string): boolean {
-  const reason = outReason(evidence);
-  if (!reason) return false;
-  const rest: Rest = cooldowns.rest(used.instanceId, reason, evidence);
-
-  const fresh = store.bot(bot.id);
-  const backup = fresh?.backupSelection;
-  if (!fresh || roomId !== laneId || fellBack.has(laneId) || wheel.heldBy(bot.id) || fresh.archivedAt) return false;
-  if (!backup || backup.instanceId === used.instanceId || !engineUsable(backup)) return false;
-  const asked = [...store.messagesFor(laneId)]
-    .reverse()
-    .find((m) => m.role === "user" && m.kind === "text" && m.text && !m.deleted);
-  if (!asked?.text) return false;
-
-  fellBack.add(laneId);
-  toldOfRest.set(laneId, rest.until);
-  const notice = store.appendMessage(laneId, {
-    role: "bot",
-    kind: "notice",
-    text: `${engineName(used)} ${REASON_WORDS[reason]} ${describeRest(rest)}. ${engineName(backup)} is picking this up, with the conversation so far.`,
-  });
-  broadcast({ kind: "message", threadId: laneId, message: notice });
-  // who asked for the turn that ran out, before its end clears that
-  const requester = laneRequester.get(laneId) ?? askedLast.get(laneId);
-  // after this event has finished settling the lane it ended
-  setTimeout(() => {
-    // A message another agent sent is still that agent's on the backup:
-    // the engine hears who wrote it, and the answer goes back to them.
-    const from = asked.agent?.dir === "in" ? { botId: asked.agent.peerId, name: asked.agent.peerName } : undefined;
-    void startTurn(bot.id, asked.text!, { taskId: laneId, presetMessage: true, fallback: true, byYou: turnsForYou.has(laneId), from, routine: asked.via === "routine" ? asked.routine : undefined, ...(requester ? { requester } : {}) }).catch((e) => {
-      telegramReturns.finish(laneId, `Could not answer: ${redactSecrets(e instanceof Error ? e.message : String(e))}`);
-      const failed = store.appendMessage(laneId, {
-        role: "bot",
-        kind: "notice",
-        text: `${engineName(backup)} could not pick it up either: ${redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 300)}`,
-      });
-      broadcast({ kind: "message", threadId: laneId, message: failed });
-    });
-  }, 0);
-  return true;
 }
 
 // ── the morning brief (server/brief.ts) ────────────────────────────────
@@ -2729,19 +2753,21 @@ bus.subscribe((event: RuntimeEvent) => {
         broadcast({ kind: "message.patch", threadId: roomId, message: settled });
         for (const [item, id] of toolMessageByItem) if (id === settled.id) toolMessageByItem.delete(item);
       }
-      // An engine that fails a turn normally says why with a runtime.error,
-      // shown above as a notice. Some only put the reason on the turn's
-      // end (a Codex turn the provider refused, Antigravity's status), and
-      // a turn that ends in silence reads as the agent not answering.
-      const saidWhy = (turnErrors.get(event.threadId)?.length ?? 0) > 0;
+      // An engine that fails a turn normally says why with a runtime.error.
+      // Some only put the reason on the turn's end (a Codex turn the
+      // provider refused, Antigravity's status), and a turn that ends in
+      // silence reads as the agent not answering, so recoverTurn says it.
       if (event.stopReason === "tool_stalled") {
         const said = turnErrors.get(event.threadId)?.at(-1);
         if (said) stalledSince.set(event.threadId, said);
       }
-      const handedOver = recoverTurn(bot, event.threadId, roomId, { ok: event.ok !== false, stopReason: event.stopReason ?? null, pickingUp });
-      if (event.ok === false && !saidWhy && !handedOver && event.stopReason !== "interrupted" && !rebuilt) {
-        pushMessage({ role: "bot", kind: "notice", text: failedTurnNotice(event.stopReason) });
-      }
+      const handedOver = recoverTurn(
+        bot,
+        event.threadId,
+        roomId,
+        { ok: event.ok !== false, stopReason: event.stopReason ?? null, pickingUp, rebuilt: Boolean(rebuilt) },
+        (text) => pushMessage({ role: "bot", kind: "notice", text }),
+      );
       if (!pickingUp && !handedOver) telegramReturns.finish(event.threadId);
       if (!pickingUp && !handedOver && !refolding) telegramWorking.get(event.threadId)?.ended();
       // A check-in that answered QUIET, with nobody else's words in it, is
@@ -3966,7 +3992,9 @@ async function startClaimedTurn(
   // retry and a handover of its own; a turn going on with a failed one
   // keeps that message's.
   if (!opts.recovery) recoveries.delete(task.id);
-  if (!blok && !command && !opts.recovery) {
+  const recovering = opts.recovery ? recoveries.get(task.id) : undefined;
+  if (!blok && !command && recovering) turnAsked.set(task.id, recovering.asked);
+  else if (!blok && !command) {
     turnAsked.set(task.id, {
       text: said,
       byYou: opts.byYou === true,
@@ -4563,7 +4591,6 @@ async function startClaimedTurn(
       // what this turn runs on, and a fresh slate for what goes wrong in it
       laneEngine.set(task.id, selection);
       turnErrors.delete(task.id);
-      if (!opts.fallback) fellBack.delete(task.id);
       // Said once per rest, not once per turn: the first turn on the
       // backup explains itself, the rest of the afternoon does not.
       if (selection !== own && !opts.fallback) {

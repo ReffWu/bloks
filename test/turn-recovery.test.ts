@@ -124,6 +124,7 @@ describe("a failed turn is asked again", () => {
   let h: Harness;
   let home: string;
   let spare: Awaited<ReturnType<typeof fakeEngine>>;
+  let broken: Awaited<ReturnType<typeof fakeEngine>>;
   before(async () => {
     home = mkdtempSync(join(tmpdir(), "bloks-recovery-"));
     mkdirSync(join(home, ".bloks"), { recursive: true });
@@ -143,12 +144,15 @@ describe("a failed turn is asked again", () => {
       status: 200,
       body: { choices: [{ message: { role: "assistant", content: "Done, from the spare." } }] },
     }));
+    broken = await fakeEngine(() => ({ status: 500, body: { error: { message: "Internal boom on the spare" } } }));
     h = await startHarness({ HOME: home, BLOKS_RETRY_WAIT_MS: String(WAIT_MS) });
     await h.fetch("/api/providers/kimi/connect", { method: "POST", body: JSON.stringify({ key: "sk-test-3333333333", url: spare.url }) });
+    await h.fetch("/api/providers/deepseek/connect", { method: "POST", body: JSON.stringify({ key: "sk-test-4444444444", url: broken.url }) });
   });
   after(async () => {
     await h.stop();
     spare.server.close();
+    broken.server.close();
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -157,13 +161,13 @@ describe("a failed turn is asked again", () => {
     const file = join(home, `calls-${tag}.json`);
     return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : [];
   };
-  const agent = async (name: string, opts: { instanceId?: string; backup?: boolean } = {}) => {
+  const agent = async (name: string, opts: { instanceId?: string; backup?: boolean | "broken" } = {}) => {
     const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name }) });
     const patched = await h.fetch(`/api/bots/${bot.id}`, {
       method: "PATCH",
       body: JSON.stringify({
         modelSelection: { instanceId: opts.instanceId ?? "claude", model: "claude-sonnet-5" },
-        ...(opts.backup ? { backupSelection: { instanceId: "kimi", model: "m-1" } } : {}),
+        ...(opts.backup ? { backupSelection: { instanceId: opts.backup === "broken" ? "deepseek" : "kimi", model: "m-1" } } : {}),
       }),
     });
     assert.equal(patched.status, 200);
@@ -281,6 +285,58 @@ describe("a failed turn is asked again", () => {
     assert.ok(after, "the lane did not come free with a word about it");
     await sleep(WAIT_MS + 500);
     assert.equal(calls("t5").length, 1, "the retry ran after Stop");
+  });
+
+  test("when asking again fails, the backup takes the message once, with the conversation so far", async () => {
+    const botId = await agent("Handed", { backup: true });
+    plan("t7", ["ok", "fail", "fail"]);
+    await say(botId, "[t7] the budget is forty");
+    assert.ok(await settled(botId, (m) => answers(m).length === 1));
+    await say(botId, "[t7] draft the email");
+    const messages = await settled(botId, (m) => answers(m).includes("Done, from the spare."));
+    assert.ok(messages, "the backup never answered");
+    assert.equal(calls("t7").length, 3, "the own engine was asked more than once again");
+    const heard = spare.asked.find((a) => a.includes("[t7] draft the email"));
+    assert.ok(heard, "the backup was not given the message");
+    assert.match(heard!, /the budget is forty/, "the backup was not told the conversation so far");
+    const notice = messages.find((m: any) => m.kind === "notice" && /is picking this up/.test(m.text));
+    assert.ok(notice, "the chat does not say the backup took over");
+    assert.match(notice.text, /failed again: Connection reset/);
+    assert.equal(messages.filter((m: any) => m.role === "user" && m.text === "[t7] draft the email").length, 1);
+  });
+
+  test("with no backup the error shows, says where to set one, and the conversation needs the person", async () => {
+    const botId = await agent("Alone");
+    plan("t8", ["fail", "fail", "ok"]);
+    await say(botId, "[t8] hello");
+    const messages = await settled(botId, (m) => m.some((x: any) => /No backup engine/.test(x.text ?? "")));
+    assert.ok(messages, "the agent did not stop with a word about it");
+    assert.equal(calls("t8").length, 2);
+    assert.ok(messages.some((m: any) => m.kind === "notice" && /^Connection reset/.test(m.text ?? "")), "the last error is not shown");
+    assert.match(messages.find((m: any) => /No backup engine/.test(m.text)).text, /Backup engine/);
+    const found = await me(botId);
+    assert.equal(found.unread, true, "the conversation is not marked for the person");
+    await sleep(WAIT_MS + 300);
+    assert.equal(calls("t8").length, 2, "it went on after stopping");
+    // the next message starts again, in the same session
+    await say(botId, "[t8] again");
+    assert.ok(await settled(botId, (m) => answers(m).length === 1));
+    const [first, , next] = calls("t8");
+    assert.equal(next.resumed, true);
+    assert.equal(next.session, first.session);
+  });
+
+  test("a backup that fails too shows both errors", async () => {
+    const botId = await agent("Both", { backup: "broken" });
+    plan("t9", ["fail", "fail"]);
+    await say(botId, "[t9] hello");
+    const messages = await settled(botId, (m) => m.some((x: any) => /could not answer either/.test(x.text ?? "")));
+    assert.ok(messages, "the agent did not stop with a word about it");
+    assert.ok(broken.asked.some((a) => a.includes("[t9] hello")), "the backup was not asked");
+    assert.ok(messages.some((m: any) => /Internal boom on the spare/.test(m.text ?? "")), "the backup's error is not shown");
+    const last = messages.find((m: any) => /could not answer either/.test(m.text));
+    assert.match(last.text, /Connection reset/, "the own engine's error is not shown");
+    assert.equal(calls("t9").length, 2);
   });
 
   test("a room's turn is not asked again or handed over", async () => {
