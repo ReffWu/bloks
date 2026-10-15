@@ -800,6 +800,28 @@ tick();
     }
   });
 
+  test("an answer already under way when another conversation runs out does not end that rest", async () => {
+    const early = await agent("Hornbeam", { instanceId: "claude-b" });
+    plan("t-under-way", ["held"]);
+    await say(early, "[t-under-way] a long job");
+    assert.ok(await waitFor(async () => existsSync(join(home, "waiting-t-under-way.json"))), "the earlier own-engine turn did not start");
+    const trigger = await agent("Linden", { instanceId: "claude-b", backup: true });
+    plan("t-under-way-rest", ["rest", "ok"]);
+    try {
+      await say(trigger, "[t-under-way-rest] begin");
+      assert.ok(await settled(trigger, (m) => answers(m).length === 1));
+    } finally {
+      writeFileSync(join(home, "release-t-under-way.json"), JSON.stringify({ outcome: "ok" }));
+    }
+    assert.ok(await settled(early, (m) => answers(m).length === 1));
+    assert.equal(calls("t-under-way")[0].outcome, "ok");
+    await say(trigger, "[t-under-way-rest] next");
+    assert.ok(await settled(trigger, (m) => answers(m).length === 2));
+    assert.equal(calls("t-under-way-rest").length, 1, "an answer begun before the rest ended it");
+    assert.ok(spare.inputs.some((text) => text.endsWith("[t-under-way-rest] next")), "the backup did not answer while the engine rests");
+    await sleep(Math.max(0, calls("t-under-way-rest")[0].until! - Date.now()) + 150);
+  });
+
   test("changing the own engine or backup drops a stale switch reason", async () => {
     for (const change of ["own", "backup"] as const) {
       const botId = await agent(change === "own" ? "Rowan" : "Juniper", { instanceId: "claude-b", backup: true });

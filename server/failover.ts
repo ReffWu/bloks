@@ -232,7 +232,7 @@ export interface Rest {
 
 /** Engines resting after running out, by instance id. */
 export class Cooldowns {
-  private resting = new Map<string, { rest: Rest; since: number; lastTry?: number; trying?: object }>();
+  private resting = new Map<string, { rest: Rest; since: number; lastOut: number; lastTry?: number; trying?: object }>();
 
   rest(instanceId: string, reason: OutReason, text: string, now = Date.now()): Rest {
     const previous = this.of(instanceId, now);
@@ -243,8 +243,9 @@ export class Cooldowns {
     const entry = this.resting.get(instanceId);
     if (entry) {
       entry.rest = rest;
+      entry.lastOut = now;
       if (!previous) entry.since = now;
-    } else this.resting.set(instanceId, { rest, since: now });
+    } else this.resting.set(instanceId, { rest, since: now, lastOut: now });
     return rest;
   }
 
@@ -285,6 +286,14 @@ export class Cooldowns {
         return true;
       },
     };
+  }
+
+  /** A turn that answered ends the rest, if it began after the engine
+   * last said it was out. A turn already under way when another
+   * conversation ran out says nothing about the account now. */
+  answered(instanceId: string, startedAt: number) {
+    const entry = this.resting.get(instanceId);
+    if (entry && entry.lastOut < startedAt) this.resting.delete(instanceId);
   }
 
   clear(instanceId: string) {

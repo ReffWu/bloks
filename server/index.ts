@@ -822,6 +822,9 @@ interface Recovery {
 const turnAsked = new Map<string, Asked>();
 const newSessionTurns = new Set<string>();
 const recoveries = new Map<string, Recovery>();
+/** When each lane's running turn was sent on its way, so an answer that
+ * was under way before its engine ran out does not end that rest. */
+const engineAskedAt = new Map<string, number>();
 /** The line each lane's next turn opens with after a failure: what
  * failed, when, on which engine and model, and what Bloks did about it
  * (failureLine). In the turn's words, never the system prompt, so the
@@ -1566,6 +1569,8 @@ function recoverTurn(
   const newSession = newSessionTurns.delete(laneId);
   const recovery = recoveries.get(laneId);
   laneEngine.delete(laneId);
+  const startedAt = engineAskedAt.get(laneId);
+  engineAskedAt.delete(laneId);
   turnErrors.delete(laneId);
   heldErrors.delete(laneId);
   turnAsked.delete(laneId);
@@ -1575,9 +1580,13 @@ function recoverTurn(
   trying?.reservation.finished();
   if (end.ok) trying?.returned?.();
   const command = commandTurns.delete(laneId);
-  // A model that answered can take work again. A local command says
-  // nothing about quota, but keeps the existing signed-in recovery.
-  if (end.ok && used && (!command || cooldowns.of(used.instanceId)?.reason === "signedOut")) cooldowns.clear(used.instanceId);
+  // A model that answered can take work again, if it was asked after
+  // the engine last ran out. A local command says nothing about quota,
+  // but keeps the existing signed-in recovery.
+  if (end.ok && used) {
+    if (cooldowns.of(used.instanceId)?.reason === "signedOut") cooldowns.clear(used.instanceId);
+    else if (!command && startedAt !== undefined) cooldowns.answered(used.instanceId, startedAt);
+  }
   // a call that went silent is about the work, not the engine running
   // out, whatever words the stuck command happened to contain
   const failed =
@@ -4788,6 +4797,7 @@ async function startClaimedTurn(
 
       // what this turn runs on, and a fresh slate for what goes wrong in it
       laneEngine.set(task.id, selection);
+      engineAskedAt.set(task.id, Date.now());
       turnErrors.delete(task.id);
       // Said once per rest, not once per turn: the first turn on the
       // backup explains itself, the rest of the afternoon does not.
