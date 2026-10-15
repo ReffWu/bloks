@@ -1006,7 +1006,6 @@ tick();
       const back = calls(tag).at(-1)!;
       const backupCalls = spare.inputs.filter((input) => input.includes(`[${tag}]`)).length;
       const returns = (await me(botId)).messages.filter((m: any) => m.kind === "notice" && /is back on this conversation/.test(m.text ?? "")).length;
-      console.log("REVIEW_FAILURE_NOTE:" + JSON.stringify({ backupCalls, resumed: back.resumed, sameSession: back.session === calls(tag)[0].session, returns, firstLine: back.text.split("\n")[0], replay: /What was said since/.test(back.text), reason: /^\(A note from Bloks:/.test(back.text) }));
       assert.equal(backupCalls, 0);
       assert.equal(back.resumed, true);
       assert.equal(back.session, calls(tag)[0].session);
