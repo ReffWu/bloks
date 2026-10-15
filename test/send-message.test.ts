@@ -70,3 +70,24 @@ test("plain send leaves steering to the server and keeps reply context", async (
   }, { botId: "river", text: "The revised one", replyTo });
   assert.deepEqual(calls, [{ path: "/api/bots/river/messages", body: { text: "The revised one", replyTo } }]);
 });
+
+test("a plain send while a stop-then-send waits goes after it, not into the turn being stopped", async () => {
+  const stopped = deferred<unknown>();
+  const calls: Array<{ path: string; body: any }> = [];
+  const api = async (path: string, init?: RequestInit) => {
+    calls.push({ path, body: JSON.parse(String(init?.body)) });
+    return path.endsWith("/interrupt") ? stopped.promise : { ok: true };
+  };
+  const first = sendMessage(api, { botId: "river", taskId: "plans", text: "A", stopFirst: true });
+  const second = sendMessage(api, { botId: "river", taskId: "plans", text: "B" });
+  // another conversation is not held up by this one
+  await sendMessage(api, { botId: "river", taskId: "other", text: "C" });
+  await setImmediate();
+  assert.deepEqual(calls.map((c) => c.body.text ?? "stop"), ["stop", "C"]);
+  stopped.resolve({ ok: true });
+  await first;
+  await second;
+  assert.deepEqual(calls.map((c) => c.body.text ?? "stop"), ["stop", "C", "A", "B"]);
+  assert.equal(calls[2]!.body.steer, false);
+  assert.equal(calls[3]!.body.steer, undefined);
+});

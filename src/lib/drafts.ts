@@ -81,7 +81,8 @@ export function recoverDraft(key: string, box: DraftRef, sent: Draft<Attachment>
     return acceptDraft(box, back);
   }
   const item = { id: `recovery-${++recoveryId}`, draft: saved };
-  failed.set(key, [...readRecoveries(key), item]);
+  // the newest few: a send failing over and over must not grow a list nobody reads
+  failed.set(key, [...readRecoveries(key), item].slice(-10));
   return null;
 }
 

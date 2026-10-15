@@ -614,7 +614,7 @@ export function Composer({
             <div key={item.id} role="group" aria-label="Saved submission" className="rounded-xl border bg-card px-3 py-2 text-[12px]">
               <p className="font-medium">Saved submission</p>
               <p className="text-muted-foreground">Check the conversation before sending again.</p>
-              {item.draft.text && <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap break-all">{item.draft.text}</p>}
+              {item.draft.text && <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap break-words">{item.draft.text}</p>}
               {item.draft.attachments.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {item.draft.attachments.map((a) => <AttachmentChip key={a.id} attachment={a} />)}
@@ -882,7 +882,9 @@ export function Composer({
             }
             // Enter sends; Shift+Enter starts a new line. Cmd/Ctrl+Enter
             // stops a running turn first, then sends the same message.
-            if (e.key === "Enter" && !e.shiftKey) {
+            // Not while a keyboard is still composing a character: that
+            // Enter picks the character, and must not stop the turn.
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               send((e.metaKey || e.ctrlKey) && openLaneWorking(bot));
             }
