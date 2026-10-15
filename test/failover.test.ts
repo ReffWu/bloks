@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 
 import { isLimitNotice } from "../server/drivers/claude.ts";
-import { Cooldowns, describeRest, outReason, resetAt, restUntil } from "../server/failover.ts";
+import { clockTime, Cooldowns, describeRest, outReason, resetAt, restUntil } from "../server/failover.ts";
 import { startHarness, type Harness } from "./helpers/server.ts";
 
 const MIN = 60_000;
@@ -109,6 +109,14 @@ describe("when it is usable again", () => {
     assert.equal(describeRest(rest, now), "for about 20 minutes");
     assert.equal(table.of("claude", now + 21 * MIN), undefined);
     assert.deepEqual(table.all(now + 21 * MIN), {});
+  });
+
+  test("a clock time names its day only when it is not today", () => {
+    const noon = new Date(2026, 0, 5, 12, 0).getTime();
+    assert.equal(clockTime(noon + 30 * MIN, noon), new Date(noon + 30 * MIN).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+    assert.doesNotMatch(clockTime(noon, noon), /T|Z|\d{4}/);
+    const later = clockTime(noon + 3 * 24 * 60 * MIN, noon);
+    assert.ok(later.includes(new Date(noon + 3 * 24 * 60 * MIN).toLocaleString([], { month: "short" })), later);
   });
 });
 

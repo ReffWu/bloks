@@ -310,6 +310,15 @@ export async function withFailureNote<T>(notes: Map<string, { text: string }>, l
   return result;
 }
 
+/** A clock time as the failure line gives it ("3:00 PM"), with the day
+ * when it is not today. A line an agent hears again on a later turn
+ * keeps saying the same moment, which "tomorrow" would not. */
+export function clockTime(at: number, now = Date.now()): string {
+  const when = new Date(at);
+  if (when.toDateString() === new Date(now).toDateString()) return when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return when.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 /** "until 3:00 PM", "for about 20 minutes": for the note in the chat. */
 export function describeRest(rest: Rest, now = Date.now()): string {
   const left = rest.until - now;

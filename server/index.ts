@@ -302,7 +302,7 @@ import { catchUpText, engineIsFresh, freshTurnText } from "./turn-context.ts";
 import { standingFor, type Standing, type StandingRecord } from "./standing-prompt.ts";
 import { Checkpoints, diffLines, trackable, type CheckpointRecord } from "./checkpoints.ts";
 import { redoCounts, redoPlan, takenBack, type RedoRefusal } from "./redo.ts";
-import { Cooldowns, describeRest, failureOf, outReason, REASON_WORDS, RETRY_WAIT_MS, RETRY_INTERVAL_MS, STAY_MS, type Rest } from "./failover.ts";
+import { clockTime, Cooldowns, describeRest, failureOf, outReason, REASON_WORDS, RETRY_WAIT_MS, RETRY_INTERVAL_MS, STAY_MS, type Rest } from "./failover.ts";
 import { agentReadiness, engineReadiness, readinessWarning, type Readiness } from "./engine-readiness.ts";
 import { indexMemory, indexMessages, mostOf, recallBlock, recallFrom, recallText, searchableText, termsOf, type IndexedSource, type RecallHit, type RecallMessage, type Speaker } from "./recall.ts";
 import { excerpt, IndexCache, rank, type TermIndex } from "./recall-index.ts";
@@ -1711,9 +1711,9 @@ function failureLine(selection: ModelSelection, at: number, said: string, did: s
 function backupLine(own: ModelSelection, backup: ModelSelection, rest: Rest | undefined, at: number): string {
   const why = rest ? REASON_WORDS[rest.reason].replace(/^is /, "was ") : "was not available";
   const tries = rest
-    ? `Bloks tries ${engineName(own)} again on the first turn after ${new Date(rest.until).toISOString()}`
+    ? `Bloks tries ${engineName(own)} again on the first turn after ${clockTime(rest.until, at)}`
     : `Bloks checks for ${engineName(own)} again on each new turn`;
-  return `(A note from Bloks: ${engineName(own)} ${why}, so at ${new Date(at).toISOString()} Bloks switched this conversation to ${engineName(backup)}, this agent's backup engine. ${tries} and returns to it automatically when it is available.)`;
+  return `(A note from Bloks: ${engineName(own)} ${why}, so at ${clockTime(at, at)} Bloks switched this conversation to ${engineName(backup)}, this agent's backup engine. ${tries} and returns to it automatically when it is available.)`;
 }
 
 /** The backup that can take a failed turn: one that is usable and is not
