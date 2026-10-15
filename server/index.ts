@@ -4965,8 +4965,10 @@ async function startClaimedTurn(
       const failedNote = pendingFailure?.text;
       const chosen = store.bot(bot.id) ?? bot;
       const pending = command ? undefined : awayOf(chosen, awayId);
-      const restNow = cooldowns.of(chosen.modelSelection.instanceId) ?? (sameSelection(chosen.modelSelection, own) ? ownRest : undefined);
-      const changedRest = pending?.rest?.until !== restNow?.until || pending?.rest?.reason !== restNow?.reason;
+      // Fresh, not the rest this turn began with: one that ended while
+      // the turn got ready is not named, and its end is no correction.
+      const restNow = cooldowns.of(chosen.modelSelection.instanceId);
+      const changedRest = Boolean(restNow) && (pending?.rest?.until !== restNow?.until || pending?.rest?.reason !== restNow?.reason);
       const at = pending?.at ?? turnSince;
       const leaving = !command && sameSelection(chosen.modelSelection, own) && sameSelection(selection, chosen.backupSelection) && !sameSelection(selection, chosen.modelSelection) && (!pending || changedRest)
         ? {
