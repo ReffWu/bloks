@@ -80,6 +80,18 @@ describe("bounded usage reservations", () => {
     a.accepted(); a.finished();
     assert.ok(c.reserve("own", 1, NOW + 32 * MINUTE));
   });
+  test("a new rest after an in-flight try waits a full interval from the new rest", () => {
+    const c = resting(); const a = c.reserve("own", 10 * MINUTE, NOW + 10 * MINUTE)!;
+    assert.equal(c.of("own", NOW + 31 * MINUTE), undefined);
+    c.rest("own", "limit", "usage limit reached", NOW + 31 * MINUTE);
+    a.accepted(); a.finished();
+    assert.equal(c.reserve("own", 10 * MINUTE, NOW + 41 * MINUTE - 1), undefined, "the old try's clock carried into the new rest");
+    const b = c.reserve("own", 10 * MINUTE, NOW + 41 * MINUTE)!; assert.ok(b);
+    b.cancel();
+    const d = c.reserve("own", 10 * MINUTE, NOW + 41 * MINUTE)!; assert.ok(d);
+    d.accepted(); d.finished();
+    assert.equal(c.reserve("own", 10 * MINUTE, NOW + 51 * MINUTE - 1), undefined);
+  });
   test("epoch and clock resets within sixty seconds retain one notice key", () => {
     const c = new Cooldowns();
     const epoch = Math.floor((NOW + 40 * MINUTE) / 1000);

@@ -244,7 +244,12 @@ export class Cooldowns {
     if (entry) {
       entry.rest = rest;
       entry.lastOut = now;
-      if (!previous) entry.since = now;
+      // A new rest starts its own interval: the first try comes a full
+      // interval after it, whatever was tried during the one before.
+      if (!previous) {
+        entry.since = now;
+        delete entry.lastTry;
+      }
     } else this.resting.set(instanceId, { rest, since: now, lastOut: now });
     return rest;
   }
@@ -267,6 +272,7 @@ export class Cooldowns {
     const entry = this.resting.get(instanceId)!;
     if (entry.trying || now - (entry.lastTry ?? entry.since) < interval) return undefined;
     const previous = entry.lastTry;
+    const since = entry.since;
     const token = {};
     entry.trying = token;
     entry.lastTry = now;
@@ -280,7 +286,8 @@ export class Cooldowns {
       cancel() {
         if (accepted) return false;
         if (owns()) {
-          entry.lastTry = previous;
+          // a new rest that began meanwhile keeps its own interval
+          if (entry.since === since) entry.lastTry = previous;
           delete entry.trying;
         }
         return true;
