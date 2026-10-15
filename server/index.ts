@@ -857,7 +857,7 @@ const stays = new Map<string, Stay>();
  * even when that preparation is stopped before the backup hears it. */
 const catchups = new Map<string, { instanceId: string; since: number; by: string }>();
 /** A reason is heard only when a turn dispatches, per agent and room. */
-const away = new Map<string, { own: ModelSelection; backup: ModelSelection; at: number; rest?: Told; note: string }>();
+const away = new Map<string, { own: ModelSelection; backup: ModelSelection; at: number; rest?: Told; note: string; switched: boolean }>();
 /** How long a conversation stays on its backup, shorter in tests. */
 const STAY = Number(process.env.BLOKS_BACKUP_STAY_MS) || STAY_MS;
 
@@ -1718,12 +1718,27 @@ function failureLine(selection: ModelSelection, at: number, said: string, did: s
 
 /** A switch without a failed attempt in this conversation still has a
  * cause. Keep it in past tense: the first turn back hears this line too. */
-function backupLine(own: ModelSelection, backup: ModelSelection, rest: Rest | undefined, at: number): string {
+function backupLine(own: ModelSelection, backup: ModelSelection, rest: Rest | undefined, at: number, trying = false): string {
   const why = rest ? REASON_WORDS[rest.reason].replace(/^is /, "was ") : "was not available";
-  const tries = rest
-    ? `Bloks tries ${engineName(own)} again on the first turn after ${clockTime(rest.until, at)}`
-    : `Bloks checks for ${engineName(own)} again on each new turn`;
-  return `(A note from Bloks: ${engineName(own)} ${why}, so at ${clockTime(at, at)} Bloks switched this conversation to ${engineName(backup)}, this agent's backup engine. ${tries} and returns to it automatically when it is available.)`;
+  const switched = `${engineName(own)} ${why}, so at ${clockTime(at, at)} Bloks switched this conversation to ${engineName(backup)}, this agent's backup engine.`;
+  // A try before the reset is not a return yet: it may be turned away.
+  if (trying) {
+    const reset = rest ? `, before its expected reset at ${clockTime(rest.until, at)}` : "";
+    return `(A note from Bloks: ${switched} Bloks is trying ${engineName(own)} again with this message${reset}.)`;
+  }
+  const tries = !rest
+    ? `Bloks checks for ${engineName(own)} again on each new turn`
+    : triesBeforeReset(own, rest)
+      ? `Bloks tries ${engineName(own)} again now and then, at the latest on the first turn after ${clockTime(rest.until, at)},`
+      : `Bloks tries ${engineName(own)} again on the first turn after ${clockTime(rest.until, at)}`;
+  return `(A note from Bloks: ${switched} ${tries} and returns to it automatically when it is available.)`;
+}
+
+/** Whether an ordinary message may try this engine before its reset:
+ * a usage limit on an engine that says plainly when it turns one away. */
+function triesBeforeReset(selection: ModelSelection, rest: Rest | undefined): boolean {
+  const kind = registry.get(selection.instanceId)?.driverKind;
+  return rest?.reason === "limit" && (kind === "claudeAgent" || kind === "codex");
 }
 
 /** The backup that can take a failed turn: one that is usable and is not
@@ -3994,8 +4009,7 @@ async function startClaimedTurn(
   const backup = bot.backupSelection;
   const reservation =
     !command && !opts.fallback && !opts.retry && !opts.carriedOn && !staying &&
-    (!opts.roomId || opts.roomId === task.id) && ownRest?.reason === "limit" &&
-    ownInstance?.enabled !== false && (ownInstance?.driverKind === "claudeAgent" || ownInstance?.driverKind === "codex") &&
+    (!opts.roomId || opts.roomId === task.id) && triesBeforeReset(own, ownRest) && ownInstance?.enabled !== false &&
     backup?.instanceId !== own.instanceId && engineUsable(backup)
       ? cooldowns.reserve(own.instanceId, RETRY_INTERVAL) : undefined;
   const ownTry: PrimaryTry | undefined = reservation ? { reservation } : undefined;
@@ -4993,11 +5007,17 @@ async function startClaimedTurn(
             backup: selection,
             at,
             rest: restNow && toldOf(restNow),
-            note: failedNote ?? (blok && staying && !restNow ? awayOf(chosen, task.id)?.note : undefined) ?? backupLine(chosen.modelSelection, selection, restNow, at),
+            ...(() => {
+              const told = failedNote ?? (blok && staying && !restNow ? awayOf(chosen, task.id)?.note : undefined);
+              return told ? { note: told, switched: false } : { note: backupLine(chosen.modelSelection, selection, restNow, at), switched: true };
+            })(),
           }
         : undefined;
       const returning = !command && sameSelection(pending?.own, selection) ? pending : undefined;
-      const note = failedNote ?? returning?.note ?? leaving?.note;
+      // A try of the resting own engine hears why the conversation moved,
+      // not the return line, which says it is back.
+      const tryNote = ownTry && returning?.switched ? backupLine(returning.own, returning.backup, restNow, returning.at, true) : undefined;
+      const note = failedNote ?? tryNote ?? returning?.note ?? leaving?.note;
       if (note) {
         sending.text = `${note}\n\n${sending.text}`;
         if (sending.handoff) sending.handoff = `${note}\n\n${sending.handoff}`;

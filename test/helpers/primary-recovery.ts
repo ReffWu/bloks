@@ -239,6 +239,19 @@ if (process.argv[1]?.endsWith("/server/index.ts")) {
     assert.equal((await notices(b, /is out of usage/)).length, before, "a creeping relative reset repeated its notice");
     assert.equal((await notices(b, /picking this up/)).length, before, "a rejected try announced a handover again");
   });
+  test("a try of a resting engine is told it is a try, not a return", async () => {
+    const a = await bot("switch"), b = await bot("switch"); plan("switch", ["limit", "ok"]);
+    await send(a, "rest the instance", "switch", true);
+    await send(b, "moved by another lane", "switch", true);
+    const moved = calls("switch", true).at(-1)!.text;
+    assert.match(moved, /Bloks switched this conversation to/);
+    assert.match(moved, /again now and then, at the latest on the first turn after/);
+    await elapsed("switch");
+    await send(b, "try the own engine", "switch", false);
+    const tried = calls("switch").at(-1)!.text;
+    assert.match(tried, /\(A note from Bloks: [^\n]+Bloks is trying [^\n]+ again with this message, before its expected reset/);
+    assert.doesNotMatch(tried, /returns to it automatically/);
+  });
   test("a restored short window cannot clear a fresh weekly rejection and its later reset", async () => {
     const b = await bot("weekly"); plan("weekly", ["limit", "weekly"]);
     await send(b, "short window exhausted", "weekly", true); await elapsed("weekly");
