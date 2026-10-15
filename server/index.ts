@@ -302,7 +302,7 @@ import { catchUpText, engineIsFresh, freshTurnText } from "./turn-context.ts";
 import { standingFor, type Standing, type StandingRecord } from "./standing-prompt.ts";
 import { Checkpoints, diffLines, trackable, type CheckpointRecord } from "./checkpoints.ts";
 import { redoCounts, redoPlan, takenBack, type RedoRefusal } from "./redo.ts";
-import { Cooldowns, describeRest, failureOf, outReason, REASON_WORDS, RETRY_WAIT_MS, STAY_MS, type Rest } from "./failover.ts";
+import { Cooldowns, describeRest, failureOf, outReason, REASON_WORDS, RETRY_WAIT_MS, RETRY_INTERVAL_MS, STAY_MS, type Rest } from "./failover.ts";
 import { agentReadiness, engineReadiness, readinessWarning, type Readiness } from "./engine-readiness.ts";
 import { indexMemory, indexMessages, mostOf, recallBlock, recallFrom, recallText, searchableText, termsOf, type IndexedSource, type RecallHit, type RecallMessage, type Speaker } from "./recall.ts";
 import { excerpt, IndexCache, rank, type TermIndex } from "./recall-index.ts";
@@ -828,8 +828,14 @@ const recoveries = new Map<string, Recovery>();
  * agent can tell the person, check what the failed attempt already did,
  * and report it if that is how it works. */
 const failureNotes = new Map<string, { text: string }>();
+type PrimaryTry = { reservation: NonNullable<ReturnType<Cooldowns["reserve"]>>; returned?: () => void };
+const primaryTries = new Map<string, PrimaryTry>();
+function cancelPrimaryTry(laneId: string, trying = primaryTries.get(laneId)) {
+  if (trying?.reservation.cancel() && primaryTries.get(laneId) === trying) primaryTries.delete(laneId);
+}
 /** The wait before a failed turn is asked again, shorter in tests. */
 const RETRY_WAIT = Number(process.env.BLOKS_RETRY_WAIT_MS) || RETRY_WAIT_MS;
+const RETRY_INTERVAL = Number(process.env.BLOKS_RETRY_INTERVAL_MS) || RETRY_INTERVAL_MS;
 
 // After the backup answers, the conversation stays on it for a while
 // (until the own engine's rest ends, when it rests), so the next message
@@ -1564,13 +1570,16 @@ function recoverTurn(
   heldErrors.delete(laneId);
   turnAsked.delete(laneId);
   recoveries.delete(laneId);
-  // An engine that just answered is signed in, whatever a refusal said
-  // before: the rest it began is over, or other agents would go on being
-  // told for hours that this one cannot answer (GitHub 239).
-  if (end.ok && used && cooldowns.of(used.instanceId)?.reason === "signedOut") cooldowns.clear(used.instanceId);
+  const trying = primaryTries.get(laneId);
+  primaryTries.delete(laneId);
+  trying?.reservation.finished();
+  if (end.ok) trying?.returned?.();
+  const command = commandTurns.delete(laneId);
+  // A model that answered can take work again. A local command says
+  // nothing about quota, but keeps the existing signed-in recovery.
+  if (end.ok && used && (!command || cooldowns.of(used.instanceId)?.reason === "signedOut")) cooldowns.clear(used.instanceId);
   // a call that went silent is about the work, not the engine running
   // out, whatever words the stuck command happened to contain
-  const command = commandTurns.delete(laneId);
   const failed =
     !end.ok &&
     !command &&
@@ -1620,7 +1629,7 @@ function recoverTurn(
   // 1. Asked again once per message. Not a refusal in a session that was
   // already new and told the conversation: that would only repeat it. Not
   // an engine that is out either, which cannot answer before its reset.
-  if (goesOn && !recovery && kind !== "out" && !(kind === "refusal" && newSession)) {
+  if (goesOn && !recovery && !trying && kind !== "out" && !(kind === "refusal" && newSession)) {
     notice(
       kind === "refusal"
         ? `${engineName(used)} declined this message: ${said}. Trying again in a new session, with the conversation so far.`
@@ -1641,13 +1650,14 @@ function recoverTurn(
   const backup = fresh?.backupSelection ?? null;
   const usable = goesOn && recovery?.stage !== "backup" ? backupFor(backup, used, Boolean(out)) : null;
   if (usable) {
+    const alreadyTold = trying && rest?.reason === "limit" && toldOfRest.get(laneId) === rest.until;
     if (rest) toldOfRest.set(laneId, rest.until);
     const why = rest
       ? `${engineName(used)} ${REASON_WORDS[out!]} ${describeRest(rest)}.`
       : recovery
         ? `${engineName(used)} failed again: ${said}.`
-        : `${engineName(used)} declined this message: ${said}.`;
-    notice(`${why} ${engineName(usable)} is picking this up, with the conversation so far.`);
+        : `${engineName(used)} ${kind === "refusal" ? "declined this message" : "failed"}: ${said}.`;
+    if (!alreadyTold) notice(`${why} ${engineName(usable)} is picking this up, with the conversation so far.`);
     told(`Bloks handed the message to ${engineName(usable)}, this agent's backup engine, with the conversation so far.`);
     askAgain(bot, laneId, { asked: asked!, stage: "backup", tried }, 0);
     return true;
@@ -3713,7 +3723,7 @@ function queuedSegment<T extends { messageId?: string; text?: string }>(laneId: 
 
 /** A start's hold on its lane, from its busy check until it marks the
  * lane busy. */
-type LaneClaim = { lane?: string };
+type LaneClaim = { lane?: string; cancelPrimaryTry?: () => void };
 
 /** Lanes a start has found free and not yet marked busy, to the start
  * that holds each. Getting ready awaits (a shared room's plan, a fold of
@@ -3739,7 +3749,10 @@ async function interruptLane(bot: BotRecord, laneId: string) {
   // a failed turn waiting to be asked again has no engine turn to stop
   if (cancelRecovery(bot, laneId, "Stopped. It will not be asked again.")) return;
   const adapter = laneInstance(bot, laneId)?.adapter;
-  if (store.taskByThread(laneId)?.task.busy && !adapter?.hasSession(laneId)) stoppedGettingReady.add(laneId);
+  if (store.taskByThread(laneId)?.task.busy && !adapter?.hasSession(laneId)) {
+    stoppedGettingReady.add(laneId);
+    cancelPrimaryTry(laneId);
+  }
   await adapter?.interruptTurn(laneId);
 }
 
@@ -3768,9 +3781,13 @@ async function startTurn(botId: string, text: string, opts: Parameters<typeof st
   const claim: LaneClaim = {};
   try {
     await startClaimedTurn(botId, text, opts, claim);
+  } catch (error) {
+    claim.cancelPrimaryTry?.();
+    throw error;
   } finally {
     if (claim.lane && claimedLanes.get(claim.lane) === claim) {
       claimedLanes.delete(claim.lane);
+      claim.cancelPrimaryTry?.();
       drainSteer(claim.lane);
       drainRoomTags(botId);
     }
@@ -3963,7 +3980,20 @@ async function startClaimedTurn(
   const commandInstance = opts.commandInstance ?? (directCommandAllowed ? directCommandInstance : undefined);
   const command = Boolean(commandInstance && commandFor(text, commandInstance));
   const staying = !opts.fallback && Boolean(stayOf(bot, task.id));
-  const selection = selectEngine(bot, opts.fallback, task.id);
+  const ownInstance = registry.get(own.instanceId);
+  const backup = bot.backupSelection;
+  const reservation =
+    !command && !opts.fallback && !opts.retry && !opts.carriedOn && !staying &&
+    (!opts.roomId || opts.roomId === task.id) && ownRest?.reason === "limit" &&
+    ownInstance?.enabled !== false && (ownInstance?.driverKind === "claudeAgent" || ownInstance?.driverKind === "codex") &&
+    backup?.instanceId !== own.instanceId && engineUsable(backup)
+      ? cooldowns.reserve(own.instanceId, RETRY_INTERVAL) : undefined;
+  const ownTry: PrimaryTry | undefined = reservation ? { reservation } : undefined;
+  if (ownTry) {
+    primaryTries.set(task.id, ownTry);
+    claim.cancelPrimaryTry = () => cancelPrimaryTry(task.id, ownTry);
+  }
+  const selection = ownTry ? own : selectEngine(bot, opts.fallback, task.id);
   if (command && (selection.instanceId !== commandInstance || acceptingNative(bot) !== commandInstance || !engineUsable(selection))) {
     const name = registry.get(commandInstance!)?.driverKind === "codex" ? "Codex" : "Claude Code";
     throw Object.assign(new Error(`This command was queued for ${name}, but that engine is no longer selected or available. Choose it again and send the command again.`), { status: 409 });
@@ -4388,6 +4418,7 @@ async function startClaimedTurn(
   // reaching its engine. Nothing is listening for a turn.completed that
   // was never going to come.
   const settleUnsent = (failure?: string) => {
+    claim.cancelPrimaryTry?.();
     commandTurns.delete(task.id);
     checkInTurns.delete(task.id);
     activeRoom.delete(task.id);
@@ -4417,6 +4448,7 @@ async function startClaimedTurn(
   };
 
   void (async () => {
+    let tryAccepted = false;
     try {
       const integrations: NonNullable<Parameters<typeof instance.adapter.sendTurn>[0]["integrations"]> = {};
       // A shared room hands the agent nothing of the owner's: no connected
@@ -4586,7 +4618,7 @@ async function startClaimedTurn(
       const back = !blok && !command ? catchups.get(task.id) : undefined;
       let missed: { turns: Turn[]; by: string } | null = null;
       if (back && back.instanceId === instanceId) {
-        catchups.delete(task.id);
+        if (!ownTry) catchups.delete(task.id);
         const said = store
           .messagesFor(roomId)
           .filter((m) => m.kind === "text" && m.text && !m.deleted && !m.queued && !m.unsent && m.at >= back.since && m.at < turnSince)
@@ -4594,12 +4626,19 @@ async function startClaimedTurn(
         const bounded = boundHandoff(said, handoffTokens);
         const resumes = typeof task.resumeCursors[instanceId] === "string" && !nativeReplay && !guestMail;
         if (resumes && bounded.left === 0) missed = { turns: bounded.turns, by: back.by };
-        const notice = store.appendMessage(roomId, {
-          role: "bot",
-          kind: "notice",
-          text: missed ? `${engineName(selection)} is back on this conversation, in its own session.` : `${engineName(selection)} is back on this conversation.`,
-        });
-        broadcast({ kind: "message", threadId: roomId, message: notice });
+        const returned = () => {
+          if (catchups.get(task.id) === back) catchups.delete(task.id);
+          const notice = store.appendMessage(roomId, {
+            role: "bot",
+            kind: "notice",
+            text: missed ? `${engineName(selection)} is back on this conversation, in its own session.` : `${engineName(selection)} is back on this conversation.`,
+          });
+          broadcast({ kind: "message", threadId: roomId, message: notice });
+        };
+        // A bounded try is back only after the model answers. A rejected
+        // try keeps the original blind spot and gives no false return line.
+        if (ownTry) ownTry.returned = returned;
+        else returned();
       }
       const engineFresh =
         !blok &&
@@ -4945,12 +4984,18 @@ async function startClaimedTurn(
         if (sending.handoff) sending.handoff = `${note}\n\n${sending.handoff}`;
       }
       await engine.adapter.sendTurn(sending);
+      tryAccepted = true;
+      ownTry?.reservation.accepted();
       // Keep an undelivered failure line, and never consume a newer failure.
       if (pendingFailure && failureNotes.get(task.id) === pendingFailure) failureNotes.delete(task.id);
       // A stopped preparation or a command did not hear this line. Keep
       // the handover until an engine has actually accepted the turn.
       if (leaving) away.set(awayId, leaving);
-      else if (returning) away.delete(awayId);
+      else if (returning && !ownTry) away.delete(awayId);
+      else if (returning && ownTry) {
+        const heard = ownTry.returned;
+        ownTry.returned = () => { if (away.get(awayId) === returning) away.delete(awayId); heard?.(); };
+      }
       if (standingNext) standing.set(task.id, standingNext);
       if (integrations.computer) startScreenPoller(bot.id);
       // A local command has not heard a pending engine handoff or CLI note.
@@ -4970,6 +5015,8 @@ async function startClaimedTurn(
         return message;
       });
       settleUnsent(`Could not answer: ${message}`);
+    } finally {
+      if (!tryAccepted) claim.cancelPrimaryTry?.();
     }
   })();
 }
