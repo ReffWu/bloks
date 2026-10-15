@@ -616,47 +616,51 @@ That is counted on its own: each lane's latest turn has a place in a
 chain (`agentChain` in `server/index.ts`), 0 when the person, a routine,
 a watcher, a webhook or an email started it, and one more than the
 sender's turn when an agent's message did, an agent writing to itself
-included. A message that would start or wait for a turn past
-the workspace's `agents.turnLimit` is refused, with no message kept for
+included. A message that would start or wait for a turn past the
+workspace's `agents.turnLimit` is refused, with no message kept for
 later delivery. It defaults to twelve (`MAX_AGENT_CHAIN` in
-`server/agent-chain.ts`), and null means Off. Settings, General, Working
-with agents exposes the live setting; malformed stored values use twelve.
-The sender's refusal and recipient notice explain who was not reached,
-the cost bound, how the count starts over and where to change the limit. Whoever the person writes to next starts over at 0, whether
-their words start the turn, join it, or are among what it takes when it
-goes. A burst of waiting messages takes the furthest place among them,
-and a pickup, a backup engine or a retry keeps the place of the turn it
-continues. The places live in memory, with the queue they ride on,
-rather than on the lane record: a restart begins every chain again,
-which lets a loop that spans one run a stretch more at most, and leaves
-nothing on disk to clear when a lane closes.
+`server/agent-chain.ts`) and takes a whole number from 1 to 50; there is
+no Off, because the whole-chain count is the bound on cost. Settings,
+General, Working with agents exposes the live setting. A malformed
+stored value reads as twelve, and one above 50 as 50. The recipient's
+notice explains who was not reached, the cost bound, how the count
+starts over and where the limit is set; the sender is only told to
+finish its turn and say where things stand. Whoever the person writes to
+next starts over at 0, whether their words start the turn, join it, or
+are among what it takes when it goes. A burst of waiting messages takes
+the furthest place among them, and a pickup, a backup engine or a retry
+keeps the place of the turn it continues. The places live in memory,
+with the queue they ride on, rather than on the lane record: a restart
+begins every chain again, which lets a loop that spans one run a stretch
+more at most, and leaves nothing on disk to clear when a lane closes.
 
 Rooms and the job board carry the count too, or an agent could keep
 another going through them. An agent naming someone in a room, from the
-room or from a conversation, hands the turn it wakes a place one past its
-own; past the limit nobody is woken and the room says why. A room also
-keeps the latest such place (`roomChain`) for a turn that waited, behind
-a busy agent or a round, and anyone but an agent posting there clears it
-as the post goes out. A job posted from an agent's turn
+room or from a conversation, hands the turn it wakes a place one past
+its own; past the limit nobody is woken and the room says why. A room
+also keeps the latest such place (`roomChain`) for a turn that waited,
+behind a busy agent or a round, and anyone but an agent posting there
+clears it as the post goes out. A job posted from an agent's turn
 records the place its taker's turn would take; past the limit it is not
 offered, and the person offering it again clears it. Routines and
 watchers an agent files or changes do the same (`chain` on each): past
 the limit a routine's attempt is recorded as held without consuming its
 scheduled slot, and a watcher holds without looking. When the live value
 allows, an enabled routine runs at its next allowed occurrence under its
-existing missed-run grace, and a watcher rechecks on its next arm, clearing
-the stale error on a good look. A once routine disabled by older code is
-not revived. A once slot past grace stays enabled but needs a manual run
-or deletion; it still counts against the routine limit. One latest hold
-record is kept beside the normal run history, so repeated holds cannot
-evict real runs. Agents cannot file workflows. A room has a shorter bound of its
-own as well (`MAX_AGENT_HOPS`, see Rooms), carried with the turn the
-same way; a mention past both leaves one notice in the room, not two.
+existing missed-run grace, and a watcher rechecks on its next arm,
+clearing the stale error on a good look. A once routine disabled by
+older code is not revived. A once slot past grace stays enabled but
+needs a manual run or deletion; it still counts against the routine
+limit. One latest hold record is kept beside the normal run history, so
+repeated holds cannot evict real runs. Agents cannot file workflows. A
+room has a shorter bound of its own as well (`MAX_AGENT_HOPS`, see
+Rooms), carried with the turn the same way; a mention past both leaves
+one notice in the room, not two.
 
-Off starts new turns and handoffs at zero, without rewriting old persisted
-schedule provenance. A running turn keeps its earlier count across Off
-then On; it may be refused at its next handoff. The separate room-hop and
-per-turn budgets remain. The setting API stays unavailable to agents.
+Changing the limit changes where the line is, never the count: a running
+turn keeps its place and is judged by the live value at its next handoff.
+The setting API stays unavailable to agents and to a shared room's
+members.
 
 A refusal is said where the person will find it
 (`chainNotice`): a notice in the conversation the next turn would have

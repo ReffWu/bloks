@@ -165,8 +165,9 @@ export interface AppConfig {
    * said elsewhere that matches. Unset is on; each agent can also turn it
    * off for itself (BotRecord.recallBeforeTurn). */
   recall?: { beforeTurn?: boolean };
-  /** Agent-started turns in a row, default 12; null switches this limit off. */
-  agents?: { turnLimit?: number | null };
+  /** Agent-started turns in a row, 1 to 50, default 12. There is no Off;
+   * anything else stored here is read as 12 (agentTurnLimit). */
+  agents?: { turnLimit?: number };
   /** Show a card for files changed during an overlapping turn even when
    * none are named as its own. On unless turned off; own-file cards stay. */
   changes?: { showShared?: boolean };

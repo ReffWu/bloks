@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { extname, join, resolve, sep } from "node:path";
 
 import * as attachments from "./attachments.ts";
-import { agentTurnLimit, pastAgentLimit, chainName, chainExcerpt, chainLimitText, CHAIN_LIMIT_TITLE } from "./agent-chain.ts";
+import { agentTurnLimit, validTurnLimit, pastAgentLimit, chainName, chainExcerpt, chainLimitText, chainAgentRefusal, CHAIN_LIMIT_TITLE, MIN_AGENT_CHAIN_LIMIT, MAX_AGENT_CHAIN_LIMIT } from "./agent-chain.ts";
 import { takeBackWaiting } from "./take-back.ts";
 import { telegramReply, type TelegramText } from "./telegram-reply.ts";
 import { TurnProgress } from "./telegram-progress.ts";
@@ -2940,7 +2940,7 @@ bus.subscribe((event: RuntimeEvent) => {
       if (inRoom) {
         const said = store.messagesFor(roomId);
         const last = [...said].reverse().find((m) => m.from === bot.id && m.kind === "text");
-        if (last?.text) void relayMentions(roomId, bot.id, last.text, requester, nextAgentChain(event.threadId) ?? 0, (turnHops.get(event.threadId) ?? 0) + 1);
+        if (last?.text) void relayMentions(roomId, bot.id, last.text, requester, nextAgentChain(event.threadId), (turnHops.get(event.threadId) ?? 0) + 1);
         if (bloks.get(roomId)?.sharing) broadcast({ kind: "room.activity", roomId, botId: bot.id, busy: false });
       }
       activeRoom.delete(event.threadId);
@@ -4293,7 +4293,7 @@ async function startClaimedTurn(
   // reads this turn's place and not the last one's
   const goesOn = opts.carriedOn || opts.fallback || opts.retry;
   const inRoomChain = opts.roomId && opts.roomId !== task.id ? (roomChain.get(opts.roomId) ?? 0) : 0;
-  agentChain.set(task.id, agentLimit() === null ? 0 : opts.chain ?? (goesOn ? (agentChain.get(task.id) ?? 0) : inRoomChain));
+  agentChain.set(task.id, opts.chain ?? (goesOn ? (agentChain.get(task.id) ?? 0) : inRoomChain));
   // and its count of the room being passed along, set here for the same
   // reason: what this turn says in a room is judged by its own count
   turnHops.set(task.id, opts.hops ?? (goesOn ? (turnHops.get(task.id) ?? 0) : 0));
@@ -6299,12 +6299,15 @@ const spokeInTurn = new Set<string>();
  * a paid turn, and a turn's own budget (TURN_BUDGET in
  * server/agent-cli.ts) starts again in every one of them, so nothing
  * else stops two agents keeping each other going all afternoon. The
- * workspace limit defaults to twelve and may be switched off. Rooms
- * have their own bound as well (MAX_AGENT_HOPS in server/room-hops.ts). */
-function agentLimit(): number | null { return agentTurnLimit(cfg.agents?.turnLimit); }
+ * workspace limit defaults to twelve, and the person may set it from 1
+ * to 50 (server/agent-chain.ts). Rooms have their own bound as well
+ * (MAX_AGENT_HOPS in server/room-hops.ts). */
+function agentLimit(): number { return agentTurnLimit(cfg.agents?.turnLimit); }
 function chainPastLimit(depth: number): boolean { return pastAgentLimit(depth, agentLimit()); }
-function nextAgentChain(laneId: string): number | undefined {
-  return agentLimit() === null ? undefined : (agentChain.get(laneId) ?? 0) + 1;
+/** The place a message, job, routine or watcher from the turn in
+ * `laneId` takes: one past that turn's own. */
+function nextAgentChain(laneId: string): number {
+  return (agentChain.get(laneId) ?? 0) + 1;
 }
 
 /** Where each lane's latest turn sits in a chain of agents' messages: 0
@@ -6348,7 +6351,7 @@ interface AgentChain {
 /** The place in the chain a message from the agent whose turn runs in
  * `laneId` would take. */
 function chainFrom(sender: { id: string; name: string }, laneId: string): AgentChain {
-  return { depth: nextAgentChain(laneId) ?? 0, sender: { botId: sender.id, name: sender.name } };
+  return { depth: nextAgentChain(laneId), sender: { botId: sender.id, name: sender.name } };
 }
 
 /** The place in the chain for a turn that takes these waiting items,
@@ -6373,7 +6376,7 @@ function burstChain(laneId: string, items: ReadonlyArray<{ messageId?: string; c
 /** Why a routine or a watcher an agent filed did not start its turn:
  * agents had already started too many in a row (MAX_AGENT_CHAIN). */
 function chainHeld(chain: number, subject: string): string {
-  return `Held: ${chainLimitText(subject, chain, agentLimit()!)}`;
+  return `Held: ${chainLimitText(subject, chain, agentLimit())}`;
 }
 
 /** A chain held at MAX_AGENT_CHAIN, said where the person will find it:
@@ -6398,14 +6401,16 @@ function chainNotice(bot: BotRecord, laneId: string, text: string, key?: string)
  * rather than calling it back and forth between the last two. Whoever
  * the person writes to next starts from 0. */
 function chainRefusal(bot: BotRecord, laneId: string, chain: AgentChain, words: string) {
-  const limit = agentLimit()!;
+  const limit = agentLimit();
   const text = redactSecrets(chainLimitText(
     `A message from ${chainName(chain.sender.name)} to ${chainName(bot.name)} was not delivered.`,
     chain.depth, limit, chainExcerpt(words, redactSecrets),
   ));
   const key = JSON.stringify([chain.sender.botId, bot.id, chain.depth, limit]);
   chainNotice(bot, laneId, text, key);
-  return Object.assign(new Error(text), { status: 429 });
+  // the person's notice says where the limit is set; the agent's says to
+  // wrap up, and nothing about lifting it
+  return Object.assign(new Error(chainAgentRefusal(bot.name, chain.depth)), { status: 429 });
 }
 
 /** Conversations an agent asked to close from inside its own turn there.
@@ -6684,7 +6689,7 @@ async function relayMentions(roomId: string, fromBotId: string, text: string, re
   // Asked once somebody is known to be named, so the room hears of it.
   const held = heldMention(store.bot(fromBotId)?.name ?? "An agent", named.map((m) => m.name), { hops, chain }, agentLimit(), chainExcerpt(text, redactSecrets));
   if (held) return sayMentionHeld(roomId, held);
-  roomChain.set(roomId, agentLimit() === null ? 0 : chain);
+  roomChain.set(roomId, chain);
   const queue = dispatching.get(roomId);
   for (const target of named) {
     // the room is mid-round: take a number rather than talk over it
@@ -6836,7 +6841,7 @@ async function offerJob(jobId: string): Promise<Job | null> {
   if (chainPastLimit(job.chain ?? 0)) {
     const held = jobs.finish(job.id, {
       ok: false,
-      result: chainLimitText(`A job offer from the job board to ${chainName(agent?.name ?? "an available agent")} was not delivered.`, job.chain!, agentLimit()!, chainExcerpt(job.title, redactSecrets)),
+      result: chainLimitText(`A job offer from the job board to ${chainName(agent?.name ?? "an available agent")} was not delivered.`, job.chain!, agentLimit(), chainExcerpt(job.title, redactSecrets)),
       now: Date.now(),
     });
     broadcast({ kind: "jobs" });
@@ -14257,7 +14262,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         broadcast({ kind: "message", threadId: blok.id, message });
         // whoever started the turn it said this from is still the one who
         // asked, so a member's chain does not become the owner's
-        void relayMentions(blok.id, asAgent.botId, text, laneRequester.get(asAgent.taskId), nextAgentChain(asAgent.taskId) ?? 0, (turnHops.get(asAgent.taskId) ?? 0) + 1).catch(() => {});
+        void relayMentions(blok.id, asAgent.botId, text, laneRequester.get(asAgent.taskId), nextAgentChain(asAgent.taskId), (turnHops.get(asAgent.taskId) ?? 0) + 1).catch(() => {});
         triggersFired({ kind: "message", targetId: blok.id, text, fromUser: false });
         return json(res, 201, { message });
       }
@@ -16676,12 +16681,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
     if ((method === "PUT" || method === "PATCH") && path === "/api/config") {
       const body = await readBody(req);
-      if (body.agents !== undefined && (
-        !isRecord(body.agents) || !Object.hasOwn(body.agents, "turnLimit") ||
-        (body.agents.turnLimit !== null && (
-          typeof body.agents.turnLimit !== "number" || !Number.isSafeInteger(body.agents.turnLimit) || body.agents.turnLimit < 1
-        ))
-      )) return json(res, 400, { error: "agents.turnLimit must be a whole number of at least 1, or null for Off" });
+      if (body.agents !== undefined && (!isRecord(body.agents) || !validTurnLimit(body.agents.turnLimit))) {
+        return json(res, 400, { error: `agents.turnLimit must be a whole number from ${MIN_AGENT_CHAIN_LIMIT} to ${MAX_AGENT_CHAIN_LIMIT}` });
+      }
       if (body.changes !== undefined && (
         !body.changes || typeof body.changes !== "object" || Array.isArray(body.changes) ||
         typeof (body.changes as Record<string, unknown>).showShared !== "boolean"
@@ -16745,7 +16747,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         }
       }
       if (isRecord(body.agents)) {
-        Object.assign(cfg, saveConfig({ agents: { turnLimit: body.agents.turnLimit as number | null } }));
+        Object.assign(cfg, saveConfig({ agents: { turnLimit: body.agents.turnLimit as number } }));
         wroteSomething = true;
       }
       if (body.recall && typeof body.recall === "object" && !Array.isArray(body.recall)) {

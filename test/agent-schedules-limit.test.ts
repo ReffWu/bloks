@@ -4,18 +4,18 @@ import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { controlledChain } from "./helpers/agent-chain.ts";
 import { waitFor } from "./helpers/turns.ts";
 
 const post = (body: unknown) => ({ method: "POST", body: JSON.stringify(body) });
 
-test("held schedules resume on their own after a higher limit or Off, without consuming once slots", { timeout: 270_000 }, async (t) => {
+test("held schedules resume on their own after a higher limit, without consuming once slots", { timeout: 270_000 }, async (t) => {
   const clockHome = mkdtempSync(join(tmpdir(), "bloks-schedule-clock-"));
   const clockFile = join(clockHome, "offset"); writeFileSync(clockFile, "0");
   const f = await controlledChain(t, {}, {
-    NODE_OPTIONS: `--import=${fileURLToPath(new URL("./helpers/scheduler-clock.mjs", import.meta.url))}`,
+    // a file URL, so a checkout path with a space in it stays one argument
+    NODE_OPTIONS: `--import=${new URL("./helpers/scheduler-clock.mjs", import.meta.url).href}`,
     BLOKS_TEST_CLOCK_FILE: clockFile,
   });
   t.after(() => rmSync(clockHome, { recursive: true, force: true }));
@@ -85,13 +85,13 @@ test("held schedules resume on their own after a higher limit or Off, without co
   assert.equal(w.find((w) => w.id === first.id).lastError, undefined);
   assert.match(w.find((w) => w.id === bad.id).lastError, /the address answered 503/);
   assert.match(w.find((w) => w.id === second.id).lastError, /^Held:/);
-  await f.limit(null);
+  await f.limit(50);
   await tick(5 * 60_000);
   assert.ok(await waitFor(async () => {
     const rows = await routines(); const watches = await watchers();
     return rows.find((r) => r.id === b.id)?.runs?.some((run: any) => run.state === "ok") &&
       watches.find((w) => w.id === second.id)?.fires.length === 1 ? true : null;
-  }, 90_000), "Off did not release the remaining enabled schedules at their next arms");
+  }, 90_000), "the highest limit did not release the remaining enabled schedules at their next arms");
   w = await watchers();
   assert.equal(w.find((w) => w.id === second.id).lastError, undefined);
   const rows = await routines();

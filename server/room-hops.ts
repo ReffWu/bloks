@@ -33,12 +33,12 @@ export function heldMention(
   from: string,
   named: readonly string[],
   at: { hops: number; chain: number },
-  maxChain: number | null,
+  maxChain: number,
   excerpt?: string,
 ): string | null {
   if (at.hops > MAX_AGENT_HOPS) return hopsNotice(from, named);
   if (pastAgentLimit(at.chain, maxChain)) {
-    return chainLimitText(`A mention from ${chainName(from)} to ${named.map(chainName).join(", ")} in this room woke nobody.`, at.chain, maxChain!, excerpt);
+    return chainLimitText(`A mention from ${chainName(from)} to ${named.map(chainName).join(", ")} in this room woke nobody.`, at.chain, maxChain, excerpt);
   }
   return null;
 }

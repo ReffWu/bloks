@@ -96,7 +96,7 @@ setInterval(() => {
   return {
     home, get h() { return h; }, close, turns, turnAfter, hire, begin, agent, finish, depth,
     async restart(beforeStart?: () => void) { await h.stop(); beforeStart?.(); h = await startHarness({ HOME: home, ...extraEnv }); },
-    async limit(value: number | null) {
+    async limit(value: number) {
       const res = await h.fetch("/api/config", { method: "PUT", body: JSON.stringify({ agents: { turnLimit: value } }) });
       assert.equal(res.status, 200);
       assert.equal((await res.json()).agents.turnLimit, value);

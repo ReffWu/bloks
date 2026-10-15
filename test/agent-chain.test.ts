@@ -151,8 +151,11 @@ test("two agents answering each other stop after twelve turns, and the person wr
   assert.ok(all.slice(0, 12).every((line) => !line.said.refused), "a message inside the limit was refused");
   // the turn at twelve was Alpha's, so its message to Bravo is the one refused
   assert.equal(refused.to, bravo.id);
-  assert.match(refused.said.error, /was not delivered/);
+  // the agent is told to wrap up, never where the limit is set
+  assert.match(refused.said.error, /Bravo did not get this/);
   assert.match(refused.said.error, /12 turns in a row/);
+  assert.match(refused.said.error, /Finish this turn and say where things stand; the person carries it on from there/);
+  assert.doesNotMatch(refused.said.error, /Settings|raise|switch off|plan/i);
   // and the person reads why in the conversation it was meant for
   const told = await notices(h, bravo);
   assert.ok(
@@ -241,7 +244,7 @@ test("jobs agents post for each other are a chain, and past it wait for the pers
   const held = (jobs as any[]).find((job) => job.state === "failed" && /A job offer.*was not delivered.*workspace limit of 12/.test(job.result ?? ""));
   assert.ok(held, `no job was held for the person: ${JSON.stringify((jobs as any[]).map((job) => [job.state, job.result]))}`);
   assert.match(held.result, /Nothing is held for delivery/);
-  assert.match(held.result, /Each turn uses your plan/);
+  assert.match(held.result, /Every turn costs usage/);
   assert.match(held.result, /starts the count over/);
   assert.match(held.result, /Settings > General > Working with agents/);
 });
@@ -316,7 +319,7 @@ test("routines and watchers an agent files carry its place, and past the limit w
   for (const text of heldNotices) {
     assert.match(text, /Nothing is held for delivery/);
     assert.match(text, /workspace limit of 12/);
-    assert.match(text, /Each turn uses your plan/);
+    assert.match(text, /Every turn costs usage/);
     assert.match(text, /starts the count over/);
     assert.match(text, /Settings > General > Working with agents/);
   }

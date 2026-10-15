@@ -31,12 +31,12 @@
 //   that waits for the end of its turn (CheckInHold), so the commentary
 //   of a run that turns out quiet is never news either.
 
-/** The parts of a message this decision actually depends on. */
-import { CHAIN_LIMIT_TITLE } from "../../server/agent-chain.ts";
+import { CHAIN_LIMIT_TITLE } from "./turn-limit.ts";
 
 const ENGINE_OUT =
   /credit balance is too low|insufficient[_ ](?:quota|credits|funds|balance)|billing|payment required|\b402\b|out of credits|exceed your available credits|usage limit|limit (?:reached|exceeded)|quota|rate[ _-]?limit|\b429\b|not (?:logged|signed) in|sign in/i;
 
+/** The parts of a message this decision actually depends on. */
 export interface NotifiableMessage {
   role?: string;
   kind?: string;
@@ -47,6 +47,7 @@ export interface NotifiableMessage {
   quiet?: boolean;
   /** A notice about the conversation's goal (server/goals.ts). */
   goal?: string;
+  /** Agents stopped at the workspace turn limit (server/agent-chain.ts). */
   chainHeld?: boolean;
 }
 
