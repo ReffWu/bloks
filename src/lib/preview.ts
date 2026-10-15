@@ -9,6 +9,7 @@
 // for word, so the same
 // conversation reads the same on both.
 import type { Message } from "@/state/reducer";
+import { toolLabel } from "./tool-summary.ts";
 
 /** The newest message that is in the conversation, for the row's line
  * and time. One still waiting to reach the agent, or one that never
@@ -76,7 +77,7 @@ export function previewLine(last: Message | undefined): string {
         const count = last.takeBack.messages.length;
         return `Took back ${count} message${count === 1 ? "" : "s"}`;
       }
-      return last.tool ? last.tool.name : "Working";
+      return last.tool ? toolLabel(last.tool) : "Working";
     case "screen":
       return "Shared a screen frame";
     case "artifact":

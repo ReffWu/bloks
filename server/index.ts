@@ -21,6 +21,7 @@ import { telegramReply, type TelegramText } from "./telegram-reply.ts";
 import { TurnProgress } from "./telegram-progress.ts";
 import { inboxState, legacyBinding, migrateTelegram, ownerPairing, pairedChats, replaceTelegramToken, telegramStatus, type AgentTelegram, type TelegramConfig } from "./telegram-bots.ts";
 import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
+import { legacyToolTitle } from "./tool-command.ts";
 import * as box from "./box.ts";
 import * as diagnostics from "./diagnostics.ts";
 import { ENGINE_SETUP, installEngine, openSignIn, runSetupScript } from "./engine-setup.ts";
@@ -437,7 +438,7 @@ const cfg = loadConfig();
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
 
-const bus = new EventBus();
+const bus = new EventBus(redactSecrets);
 bus.attach(registry.instances());
 
 // What a brand new agent thinks with: whichever engine is actually
@@ -2224,8 +2225,9 @@ bus.subscribe((event: RuntimeEvent) => {
       } else if (event.itemType === "tool" && event.itemId) {
         const messageId = toolMessageByItem.get(event.itemId);
         if (messageId) {
+          const tool = store.messagesFor(roomId).find((m) => m.id === messageId)?.tool;
           const patched = store.patchMessage(roomId, messageId, {
-            tool: { name: store.messagesFor(roomId).find((m) => m.id === messageId)?.tool?.name ?? "tool", ok: event.ok },
+            tool: { ...tool, name: tool?.name ?? "tool", ok: event.ok },
           });
           if (patched) broadcast({ kind: "message.patch", threadId: roomId, message: patched });
           toolMessageByItem.delete(event.itemId);
@@ -2248,7 +2250,7 @@ bus.subscribe((event: RuntimeEvent) => {
         const message = pushMessage({
           role: "bot",
           kind: "activity",
-          tool: { name: event.title ?? "tool" },
+          tool: { name: event.title ?? "tool", ...(event.command ? { command: event.command } : {}) },
           ...(mark ? { repeated: mark.count } : {}),
         });
         if (event.itemId) toolMessageByItem.set(event.itemId, message.id);
@@ -2269,12 +2271,12 @@ bus.subscribe((event: RuntimeEvent) => {
           }
         }
         // named on disk, so a turn cut off mid-call can say which call
-        cutOff.tool(event.threadId, event.title ?? "tool");
+        cutOff.tool(event.threadId, legacyToolTitle(event));
         // The browser is watched from its first use in a turn, not from the
         // turn's start: a turn that never touches it should not end with
         // a picture of whatever page an earlier one left open. Cheap to
         // photograph locally, so it refreshes faster than a cloud box.
-        if (bot.browser === true && /browser/i.test(event.title ?? "")) {
+        if (bot.browser === true && /browser/i.test(legacyToolTitle(event))) {
           startScreenPoller(bot.id, async () => ({ ...(await captureFrame(await browserPortOf(bot.id))), source: "browser" }), 1500);
         }
       }
