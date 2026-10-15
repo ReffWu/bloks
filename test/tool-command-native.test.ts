@@ -286,5 +286,8 @@ test("member history, live messages, patches, replay and sealed relay omit comma
   const setting = await h.fetch("/api/bloks/" + blok.id + "/share", { method: "PATCH", body: JSON.stringify({ activityDetail: true }) });
   assert.equal(setting.status, 200);
   const detailed = await h.fetchRemote("/api/member/rooms/" + blok.id, { token });
-  assert.equal(detailed.body.messages.find((m: any) => m.id === target).tool.command, ownerRows[0].tool.command);
+  // activity detail shares what kind of tool ran, never the command
+  const shared = detailed.body.messages.find((m: any) => m.id === target).tool;
+  assert.equal("command" in shared, false, "activity detail sent a member the command");
+  assert.equal(shared.name, ownerRows[0].tool.name);
 });

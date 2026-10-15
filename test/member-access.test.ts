@@ -101,18 +101,23 @@ test("tool activity shows its kind, never its arguments", () => {
   assert.equal(toolKind("mcp__composio__GMAIL_SEND"), "Used a connected app");
 });
 
-test("command detail follows the existing member activity permission in history and live frames", () => {
+test("members never receive command text, whatever the room's activity setting", () => {
   const row = msg({ kind: "activity", tool: { name: "shell", command: "printf '[redacted]'", ok: false, stopped: true } });
   const hidden = memberMessage(row, view())!;
   assert.deepEqual(hidden.tool, { name: "Ran a command", ok: false, stopped: true });
   assert.equal("command" in hidden.tool!, false);
-  assert.deepEqual(memberMessage(row, view({ activityDetail: true }))!.tool, row.tool);
+  // activity detail shares the tool's name, never the words it ran
+  const detail = memberMessage(row, view({ activityDetail: true }))!;
+  assert.deepEqual(detail.tool, { name: "shell", ok: false, stopped: true });
+  assert.equal("command" in detail.tool!, false);
+  assert.equal(row.tool!.command, "printf '[redacted]'", "the owner's own row lost its command");
   for (const kind of ["message", "message.patch"]) {
     const frame = { kind, threadId: ROOM, message: row };
-    const limited = memberFrame(frame, () => view()) as any;
-    assert.equal("command" in limited.message.tool, false, kind);
-    const detailed = memberFrame(frame, () => view({ activityDetail: true })) as any;
-    assert.deepEqual(detailed.message.tool, row.tool, kind);
+    for (const activityDetail of [false, true]) {
+      const shown = memberFrame(frame, () => view({ activityDetail })) as any;
+      assert.equal("command" in shown.message.tool, false, `${kind} with activity detail ${activityDetail}`);
+      assert.ok(!JSON.stringify(shown).includes("printf"), `${kind} with activity detail ${activityDetail}`);
+    }
   }
 });
 

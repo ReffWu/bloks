@@ -102,8 +102,88 @@ test("every credential shape is fully hidden in direct commands and POSIX shell 
       if (wrapper) assert.ok(shown.startsWith(wrapper + " "), "shell wrapper changed: " + shown);
     }
   }
-  const unchanged = "sort -u data.txt; curl -u demo:fixture_pass --user demo:fixture_pass https://fixture_token@host.invalid/?access_token=fixture_query";
-  assert.equal(toolCommand(unchanged, keep), unchanged, "excluded credential forms changed");
+  // a bare URL user may be a name, so it stays; sort -u is not curl's
+  const shown = "sort -u data.txt; curl -u demo:fixture_pass --user demo:fixture_pass https://fixture_token@host.invalid/?access_token=fixture_query";
+  assert.equal(toolCommand(shown, keep), "sort -u data.txt; curl -u demo:[redacted] --user demo:[redacted] https://fixture_token@host.invalid/?access_token=[redacted]");
+});
+
+test("credentials behind prefixes, short names, CLI conventions, JSON bodies and URLs are hidden", () => {
+  const cases = [
+    // shell wrappers past the first word, and with extra flags
+    "bash -e -c 'curl --token fixture_v https://example.invalid'",
+    "sudo sh -c 'export API_KEY=fixture_v; run'",
+    "sudo -u root bash -lc 'tool --password fixture_v'",
+    "env FOO=1 bash -lc 'tool --password fixture_v'",
+    "nice -n 10 sh -c 'tool --token fixture_v'",
+    "timeout 30 bash -e -o pipefail -c 'tool --api-key fixture_v'",
+    "/bin/bash -lc $'curl --token fixture_v'",
+    // short names as whole parts of a name
+    "MYSQL_PWD=fixture_v mysql",
+    "export AUTH=fixture_v",
+    "heroku config:set STRIPE_KEY=fixture_v",
+    "tool --key fixture_v",
+    // assignments anywhere inside a quoted string
+    "python -c \"import os; os.environ['API_TOKEN']='fixture_v'\"",
+    "ssh host 'cd /srv && DB_PASSWORD=fixture_v ./run'",
+    "printf 'token: fixture_v\\n' > example.yml",
+    // command line conventions
+    "mysql -uroot -pfixture_v",
+    "mysqldump -h db -pfixture_v example",
+    "docker login -u demo -p fixture_v registry.invalid",
+    "docker login --password fixture_v registry.invalid",
+    "aws configure set aws_secret_access_key fixture_v",
+    "npm config set //registry.npmjs.org/:_authToken fixture_v",
+    "npm config set //registry.npmjs.org/:_authToken=fixture_v",
+    "git config user.password fixture_v",
+    "echo fixture_v | gh auth login --with-token",
+    // JSON bodies
+    "curl -d '{\"password\":\"fixture_v\"}' https://example.invalid",
+    "curl -d '{\"token\": \"fixture_v\", \"name\": \"keep\"}' https://example.invalid",
+    "curl --data '{\"secret\":\"fixture_v\"}' https://example.invalid",
+    "curl -d '{\"api_key\":\"fixture_v\"}' https://example.invalid",
+    // user:password and query parameters
+    "curl -u demo:fixture_v https://example.invalid",
+    "curl -udemo:fixture_v https://example.invalid",
+    "curl --user=demo:fixture_v https://example.invalid",
+    "curl 'https://example.invalid/api?token=fixture_v'",
+    "curl 'https://example.invalid/api?q=1&key=fixture_v#top'",
+    "curl https://example.invalid/api?access_token=fixture_v",
+  ];
+  for (const command of cases) {
+    for (const input of commandForms(command)) {
+      const shown = toolCommand(input, keep)!;
+      assert.ok(!shown.includes("fixture_v"), "credential survived in " + shown);
+      assert.match(shown, /\[redacted\]/);
+    }
+  }
+  // only the value goes: the shape of the command stays readable
+  assert.equal(toolCommand("curl -d '{\"token\": \"fixture_v\", \"name\": \"keep\"}' https://example.invalid", keep),
+    "curl -d '{\"token\": \"[redacted]\", \"name\": \"keep\"}' https://example.invalid");
+  assert.equal(toolCommand("mysql -uroot -pfixture_v", keep), "mysql -uroot -p[redacted]");
+  assert.equal(toolCommand("sudo sh -c 'export API_KEY=fixture_v; run'", keep), "sudo sh -c 'export API_KEY=[redacted]; run'");
+});
+
+test("ordinary words that only look like credential names stay as they are", () => {
+  for (const command of [
+    "git log --author fixture_name",
+    "git log --author=fixture_name",
+    "cat keyboard.txt",
+    "export KEYBOARD=us",
+    "tool --key-file ./example.pem --keyring example",
+    "tool --no-auth example.txt",
+    "AUTH_METHOD=basic tool",
+    "redis-cli GET key:1",
+    "curl http://example.invalid:8080/path",
+    "mysql -p example_db",
+    "docker run -p 8080:80 example",
+    "sort -u data.txt",
+    "set -e",
+    "git config user.email example@example.invalid",
+    "echo hello | gh auth status",
+    "docker login --password-stdin -u demo registry.invalid",
+  ]) {
+    for (const input of commandForms(command)) assert.equal(toolCommand(input, keep), input, command);
+  }
 });
 
 test("all masks see the complete input before the 2000-unit cut", () => {

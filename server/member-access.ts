@@ -160,8 +160,11 @@ export function memberMessage(message: Message, view: MemberView): Message | nul
     }
     case "activity": {
       if (!message.tool) return null;
-      if (view.activityDetail) return message;
+      // A command's words are the owner's alone, whatever the room shares:
+      // redaction catches the shapes it knows, and a member's device is
+      // not the place to find out which it missed.
       const { command: _command, ...tool } = message.tool;
+      if (view.activityDetail) return { ...message, tool };
       return { ...message, tool: { ...tool, name: toolKind(message.tool.name) } };
     }
     case "options": {
