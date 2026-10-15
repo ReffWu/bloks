@@ -227,6 +227,18 @@ if (process.argv[1]?.endsWith("/server/index.ts")) {
     assert.match(calls("reject", true).at(-1)!.text, /usage limit reached/);
     assert.equal((await notices(b, /Trying again in a minute/)).length, 0);
   });
+  test("rejected tries with a relative reset give no new notice", async () => {
+    const b = await bot("creep"); plan("creep", ["relative", "relative", "relative"]);
+    await send(b, "initial relative limit", "creep", true);
+    const before = (await notices(b, /is out of usage/)).length;
+    assert.equal(before, 1);
+    for (const words of ["still limited", "limited again"]) {
+      await elapsed("creep"); await send(b, words, "creep", true);
+    }
+    assert.equal(calls("creep").length, 3, "resting instance was never retried");
+    assert.equal((await notices(b, /is out of usage/)).length, before, "a creeping relative reset repeated its notice");
+    assert.equal((await notices(b, /picking this up/)).length, before, "a rejected try announced a handover again");
+  });
   test("a restored short window cannot clear a fresh weekly rejection and its later reset", async () => {
     const b = await bot("weekly"); plan("weekly", ["limit", "weekly"]);
     await send(b, "short window exhausted", "weekly", true); await elapsed("weekly");

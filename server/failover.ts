@@ -230,6 +230,26 @@ export interface Rest {
   reason: OutReason;
 }
 
+/** A rest as someone was told of it, and when. */
+export interface Told extends Rest {
+  at: number;
+}
+
+export const toldOf = (rest: Rest, now = Date.now()): Told => ({ ...rest, at: now });
+
+/** Whether a rest is news to someone who last saw it as `told`; they
+ * keep the latest one they saw, news or not. An engine that gives its
+ * reset relative to each rejected try ("try again in 20m") moves it later
+ * by about the time that passed, and that is the same rest. An earlier
+ * reset, another reason, a reset later than the time passed explains (a
+ * weekly limit after a short one), or a rest after the one they saw had
+ * ended, is news. */
+export function restIsNews(told: Told | undefined, rest: Rest, now = Date.now()): boolean {
+  if (!told || told.reason !== rest.reason || told.until <= now) return true;
+  if (rest.until < told.until - MINUTE) return true;
+  return rest.until - told.until > now - told.at + MINUTE;
+}
+
 /** Engines resting after running out, by instance id. */
 export class Cooldowns {
   private resting = new Map<string, { rest: Rest; since: number; lastOut: number; lastTry?: number; trying?: object }>();

@@ -2,7 +2,7 @@
 // drivers and server. These CLIs are local fixtures, with no credentials.
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Cooldowns, failureOf, RETRY_INTERVAL_MS, withFailureNote } from "../server/failover.ts";
+import { Cooldowns, failureOf, restIsNews, RETRY_INTERVAL_MS, toldOf, withFailureNote } from "../server/failover.ts";
 import { engineReadiness } from "../server/engine-readiness.ts";
 import { primaryRecovery } from "./helpers/primary-recovery.ts";
 
@@ -101,9 +101,26 @@ describe("bounded usage reservations", () => {
     const clock = c.rest("codex", "limit", "You've hit your usage limit. resets 1:00 PM (UTC)", NOW);
     assert.equal(c.rest("codex", "limit", "You've hit your usage limit. resets 1:00 PM (UTC)", NOW + 15 * MINUTE).until, clock.until);
   });
-  test("relative resets beyond sixty seconds intentionally update the notice key", () => {
+  test("a relative reset moves the rest's end on each rejected try, but is not news", () => {
     const c = new Cooldowns(); const first = c.rest("own", "limit", "usage limit, try again in 20m", NOW);
-    assert.equal(c.rest("own", "limit", "usage limit, try again in 20m", NOW + 15 * MINUTE).until, first.until + 15 * MINUTE);
+    // A lane keeps the rest as it last saw it, news or not.
+    let told = toldOf(first, NOW);
+    for (const n of [1, 2, 3, 4]) {
+      const at = NOW + n * 15 * MINUTE;
+      const later = c.rest("own", "limit", "usage limit, try again in 20m", at);
+      assert.equal(later.until, first.until + n * 15 * MINUTE);
+      assert.equal(restIsNews(told, later, at), false, "a creeping relative reset gave a new notice");
+      told = toldOf(later, at);
+    }
+  });
+  test("an earlier reset, another reason, a jump later or a new rest is news", () => {
+    const told = toldOf({ until: NOW + 60 * MINUTE, reason: "limit" }, NOW);
+    assert.equal(restIsNews(undefined, told, NOW), true);
+    assert.equal(restIsNews(told, { until: NOW + 60 * MINUTE, reason: "limit" }, NOW + MINUTE), false);
+    assert.equal(restIsNews(told, { until: NOW + 58 * MINUTE, reason: "limit" }, NOW + MINUTE), true);
+    assert.equal(restIsNews(told, { until: NOW + 60 * MINUTE, reason: "credit" }, NOW + MINUTE), true);
+    assert.equal(restIsNews(told, { until: NOW + 7 * 24 * 60 * MINUTE, reason: "limit" }, NOW + MINUTE), true);
+    assert.equal(restIsNews(told, { until: NOW + 120 * MINUTE, reason: "limit" }, NOW + 61 * MINUTE), true);
   });
   test("readiness follows the cleared instance; a new process starts with no retry history", () => {
     const c = resting(); c.rest("other", "credit", "", NOW);

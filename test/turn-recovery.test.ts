@@ -741,7 +741,7 @@ tick();
     assert.doesNotMatch(calls("t-command")[2].text, /A note from Bloks/);
   });
 
-  test("a changed rest gives one update for its time or reason and returns with absolute facts", async () => {
+  test("an earlier reset or another reason gives one update, and the return keeps the facts", async () => {
     const botId = await agent("Hazel", { instanceId: "claude-b", backup: true });
     plan("t-updated", ["ok", "ok"]);
     await say(botId, "[t-updated] remember the white folder");
@@ -755,9 +755,13 @@ tick();
         await say(busy, `[${tag}] already running`);
         assert.ok(await waitFor(async () => existsSync(join(home, `waiting-${tag}.json`))), "the earlier own-engine turn did not start");
       }
+      // A rest long enough that a reset more than a minute earlier is
+      // still ahead, so the update is news and not the same rest rounded.
       const trigger = await agent("Larch", { instanceId: "claude-b", backup: true });
-      plan("t-update-trigger", ["rest"]);
+      plan("t-update-trigger", ["held"]);
       await say(trigger, "[t-update-trigger] begin");
+      assert.ok(await waitFor(async () => existsSync(join(home, "waiting-t-update-trigger.json"))), "the trigger turn did not start");
+      release("t-update-trigger", "rest", Math.ceil((Date.now() + 100_000) / 1000) * 1000);
       assert.ok(await settled(trigger, (m) => answers(m).length === 1));
       const firstUntil = calls("t-update-trigger")[0].until!;
       const ask = async (label: string, count: number) => {
@@ -771,13 +775,13 @@ tick();
       assert.ok(began, "the backup start clock time is missing");
       assert.ok(first.includes(clockTime(firstUntil)));
       assert.doesNotMatch(await ask("same rest", 3), /A note from Bloks/);
-      const until = firstUntil + 6_000;
+      const until = firstUntil - 75_000;
       release("t-extend", "rest", until);
       assert.ok(await waitFor(async () => calls("t-extend").length === 1));
       assert.ok(await waitFor(async () => (await h.json("/api/bots")).bots.some((b: any) => b.name === "Spruce" && !b.busy)));
       const extended = (await ask("new reset", 4)).split("\n")[0];
       assert.match(extended, /^\(A note from Bloks: .*was out of usage/);
-      assert.ok(extended.includes(clockTime(until)), "the changed reset time was not sent");
+      assert.ok(extended.includes(clockTime(until)), "the earlier reset time was not sent");
       assert.ok(extended.includes(began), "a rest update changed when the backup began");
       assert.doesNotMatch(await ask("same new reset", 5), /A note from Bloks/);
       release("t-credit", "credit", until);

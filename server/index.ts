@@ -302,7 +302,7 @@ import { catchUpText, engineIsFresh, freshTurnText } from "./turn-context.ts";
 import { standingFor, type Standing, type StandingRecord } from "./standing-prompt.ts";
 import { Checkpoints, diffLines, trackable, type CheckpointRecord } from "./checkpoints.ts";
 import { redoCounts, redoPlan, takenBack, type RedoRefusal } from "./redo.ts";
-import { clockTime, Cooldowns, describeRest, failureOf, outReason, REASON_WORDS, RETRY_WAIT_MS, RETRY_INTERVAL_MS, STAY_MS, type Rest } from "./failover.ts";
+import { clockTime, Cooldowns, describeRest, failureOf, outReason, REASON_WORDS, restIsNews, RETRY_WAIT_MS, RETRY_INTERVAL_MS, STAY_MS, toldOf, type Rest, type Told } from "./failover.ts";
 import { agentReadiness, engineReadiness, readinessWarning, type Readiness } from "./engine-readiness.ts";
 import { indexMemory, indexMessages, mostOf, recallBlock, recallFrom, recallText, searchableText, termsOf, type IndexedSource, type RecallHit, type RecallMessage, type Speaker } from "./recall.ts";
 import { excerpt, IndexCache, rank, type TermIndex } from "./recall-index.ts";
@@ -791,7 +791,7 @@ const checkpoints = new Checkpoints(join(DATA_DIR, "checkpoints"));
 const cooldowns = new Cooldowns();
 const laneEngine = new Map<string, ModelSelection>();
 const turnErrors = new Map<string, string[]>();
-const toldOfRest = new Map<string, number>();
+const toldOfRest = new Map<string, Told>();
 /** Errors kept off the chat while the turn might be asked again or
  * taken by a backup, which says them in its own notice. */
 const heldErrors = new Map<string, string[]>();
@@ -857,7 +857,7 @@ const stays = new Map<string, Stay>();
  * even when that preparation is stopped before the backup hears it. */
 const catchups = new Map<string, { instanceId: string; since: number; by: string }>();
 /** A reason is heard only when a turn dispatches, per agent and room. */
-const away = new Map<string, { own: ModelSelection; backup: ModelSelection; at: number; rest?: Rest; note: string }>();
+const away = new Map<string, { own: ModelSelection; backup: ModelSelection; at: number; rest?: Told; note: string }>();
 /** How long a conversation stays on its backup, shorter in tests. */
 const STAY = Number(process.env.BLOKS_BACKUP_STAY_MS) || STAY_MS;
 
@@ -1659,8 +1659,9 @@ function recoverTurn(
   const backup = fresh?.backupSelection ?? null;
   const usable = goesOn && recovery?.stage !== "backup" ? backupFor(backup, used, Boolean(out)) : null;
   if (usable) {
-    const alreadyTold = trying && rest?.reason === "limit" && toldOfRest.get(laneId) === rest.until;
-    if (rest) toldOfRest.set(laneId, rest.until);
+    // a rejected try of a rest this lane was told of says nothing new
+    const alreadyTold = Boolean(trying && rest && !restIsNews(toldOfRest.get(laneId), rest));
+    if (rest) toldOfRest.set(laneId, toldOf(rest));
     const why = rest
       ? `${engineName(used)} ${REASON_WORDS[out!]} ${describeRest(rest)}.`
       : recovery
@@ -4803,8 +4804,11 @@ async function startClaimedTurn(
       // backup explains itself, the rest of the afternoon does not.
       if (selection !== own && !opts.fallback && !staying) {
         const why = ownRest ?? null;
-        if (!why || toldOfRest.get(task.id) !== why.until) {
-          if (why) toldOfRest.set(task.id, why.until);
+        const news = !why || restIsNews(toldOfRest.get(task.id), why);
+        // kept as last seen either way, so a reset that creeps with each
+        // rejected try is never mistaken for one that ended
+        if (why) toldOfRest.set(task.id, toldOf(why));
+        if (news) {
           const notice = store.appendMessage(roomId, {
             role: "bot",
             ...(blok ? { from: bot.id } : {}),
@@ -4978,14 +4982,17 @@ async function startClaimedTurn(
       // Fresh, not the rest this turn began with: one that ended while
       // the turn got ready is not named, and its end is no correction.
       const restNow = cooldowns.of(chosen.modelSelection.instanceId);
-      const changedRest = Boolean(restNow) && (pending?.rest?.until !== restNow?.until || pending?.rest?.reason !== restNow?.reason);
+      const changedRest = Boolean(restNow && pending && restIsNews(pending.rest, restNow));
+      // the rest as this conversation last saw it, so a creeping reset
+      // stays the same rest across many turns
+      if (pending && restNow && !changedRest) pending.rest = toldOf(restNow);
       const at = pending?.at ?? turnSince;
       const leaving = !command && sameSelection(chosen.modelSelection, own) && sameSelection(selection, chosen.backupSelection) && !sameSelection(selection, chosen.modelSelection) && (!pending || changedRest)
         ? {
             own: chosen.modelSelection,
             backup: selection,
             at,
-            rest: restNow,
+            rest: restNow && toldOf(restNow),
             note: failedNote ?? (blok && staying && !restNow ? awayOf(chosen, task.id)?.note : undefined) ?? backupLine(chosen.modelSelection, selection, restNow, at),
           }
         : undefined;
