@@ -23,6 +23,7 @@ import { useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/st
 import { ProviderMark } from "./ProviderIcons";
 import { EngineUpdateNote } from "./EngineSetup";
 import { cn } from "@/lib/cn";
+import { backupOptions, isOwnRun, offersBackup } from "@/lib/backupChoice";
 
 /** Lists this long or shorter are read at a glance, not searched. */
 const SEARCH_ABOVE = 8;
@@ -64,13 +65,14 @@ export function ModelPicker({
    * for something that is not an agent yet (the new-agent default). */
   bot?: Bot;
   className?: string;
-  /** Pick something other than the agent's own engine (its backup).
+  /** Pick something other than what the agent runs on (its backup).
    * `value` null shows `noneLabel`, and the list offers it as a choice. */
   value?: ModelSelection | null;
   onPick?: (selection: ModelSelection | null) => void;
   noneLabel?: string;
-  /** An engine not to offer, such as the one the backup stands in for. */
-  exclude?: string;
+  /** The engine and model not to offer: what the backup stands in for.
+   * Other models on that engine are still offered. */
+  exclude?: ModelSelection;
 }) {
   const { state, dispatch } = useStore();
   const [open, setOpen] = useState(false);
@@ -81,7 +83,8 @@ export function ModelPicker({
 
   const custom = onPick !== undefined;
   const selection: ModelSelection = (custom ? value : bot?.modelSelection) ?? { instanceId: "", model: "" };
-  const instances = state.instances.filter((i) => i.instanceId !== exclude);
+  // an engine whose only model is the excluded one has nothing to offer
+  const instances = exclude ? state.instances.filter((i) => offersBackup(i, exclude)) : state.instances;
   const active = instances.find((i) => i.instanceId === selection.instanceId);
   const railInstance =
     instances.find((i) => i.instanceId === (railId ?? selection.instanceId)) ??
@@ -115,7 +118,7 @@ export function ModelPicker({
   }, [open, railKey]);
 
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const options = (railInstance?.models.options ?? []).filter((o) => {
+  const options = (railInstance ? backupOptions(railInstance, exclude) : []).filter((o) => {
     const text = `${o.label} ${o.id}`.toLowerCase();
     return words.every((w) => text.includes(w));
   });
@@ -137,6 +140,7 @@ export function ModelPicker({
     railInstance?.models.acceptsAnyId &&
     MODEL_ID.test(typed) &&
     typed !== unlisted &&
+    !isOwnRun(railInstance, typed, exclude) &&
     !railInstance.models.options.some((o) => o.id === typed)
       ? typed
       : null;

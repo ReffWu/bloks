@@ -30,6 +30,7 @@ import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
+import { sameEngineBackup } from "@/lib/backupChoice";
 import { EngineSuggestionCard, useEngineReport } from "./EngineReport";
 import { ApprovalsChooser, confirmWidening, RULES_AND_MODES, type ApprovalMode } from "./ApprovalsChooser";
 
@@ -542,13 +543,23 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 a turn fails again after one more try. The conversation carries over, and the agent switches
                 back to its own engine and session once that is usable again.
               </div>
+              {/* every model on an engine is out when the engine is, so a
+                  backup on the same one cannot cover that, and the server
+                  will not try it (backupFor) */}
+              {sameEngineBackup(bot.modelSelection, bot.backupSelection) && (
+                <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground">
+                  This backup is on the same engine, so it answers when a turn fails, but not when the engine
+                  itself is out: over its usage limit, out of credit, or signed out. For that, pick another
+                  engine.
+                </div>
+              )}
             </div>
             <ModelPicker
               bot={bot}
               value={bot.backupSelection ?? null}
               onPick={(selection) => patch({ backupSelection: selection })}
               noneLabel="No backup"
-              exclude={bot.modelSelection.instanceId}
+              exclude={bot.modelSelection}
             />
           </div>
 
