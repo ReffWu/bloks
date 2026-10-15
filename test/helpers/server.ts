@@ -107,6 +107,9 @@ export async function startHarness(extraEnv: Record<string, string> = {}): Promi
         // a failed turn is asked again after a wait (GitHub 284), and a
         // minute is longer than most tests wait for a turn to settle
         BLOKS_RETRY_WAIT_MS: "50",
+        // a test file the runner kills mid-run never calls stop(), so the
+        // server watches this process and goes when it does
+        BLOKS_TEST_PARENT_PID: String(process.pid),
         ...extraEnv,
       },
       stdio: ["ignore", "pipe", "pipe"],

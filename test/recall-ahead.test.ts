@@ -42,9 +42,17 @@ test("the person's turn is told what was said elsewhere, in its words, once, and
   const engine = await fakeProvider(t);
   engine.state.answerAtOnce = true;
   const home = mkdtempSync(join(tmpdir(), "bloks-recall-ahead-"));
-  t.after(() => rmSync(home, { recursive: true, force: true, maxRetries: 5 }));
+  // One hook, the server stopped before its home goes: node:test runs
+  // after hooks in the order they were added, and a removal that fails on
+  // a server still writing skips every hook after it, the stop included,
+  // which left the file waiting on a live server until its timeout.
+  let h!: Harness;
+  t.after(async () => {
+    await h?.stop();
+    rmSync(home, { recursive: true, force: true, maxRetries: 5 });
+  });
 
-  let h: Harness = await startHarness({ HOME: home });
+  h = await startHarness({ HOME: home });
   const bot = await agentOn(h, engine.port, "Scout");
   const { bot: withLane } = await h.json(`/api/bots/${bot.id}/tasks`, { method: "POST", body: JSON.stringify({ title: "Launch plan" }) });
   const launch = withLane.tasks.find((task: any) => task.title === "Launch plan");
@@ -56,7 +64,6 @@ test("the person's turn is told what was said elsewhere, in its words, once, and
   writeFileSync(join(topics, "vendors.md"), "## Vendors\n- Paperwren: launch stickers, net 30 invoices.\n");
 
   h = await startHarness({ HOME: home });
-  t.after(() => h.stop());
   const ask = async (text: string) => {
     const from = engine.state.calls.length;
     await h.fetch(`/api/bots/${bot.id}/messages`, { method: "POST", body: JSON.stringify({ text, taskId: bot.threadId }) });
@@ -132,7 +139,12 @@ test("the person's turn is told what was said elsewhere, in its words, once, and
 
 test("on Claude Code the notes ride in the message, and another agent never sees them", async (t) => {
   const home = mkdtempSync(join(tmpdir(), "bloks-recall-ahead-claude-"));
-  t.after(() => rmSync(home, { recursive: true, force: true, maxRetries: 5 }));
+  // one hook, stop then remove, as above
+  let h!: Harness;
+  t.after(async () => {
+    await h?.stop();
+    rmSync(home, { recursive: true, force: true, maxRetries: 5 });
+  });
   const cli = join(home, "fake-claude.mjs");
   const calls = join(home, "calls.json");
   const answers = join(home, "answers.json");
@@ -175,7 +187,7 @@ let input = "";
   writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ instances: { claude: { driver: "claudeAgent", config: { cli } } } }));
   const claude = { modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } };
 
-  let h: Harness = await startHarness({ HOME: home });
+  h = await startHarness({ HOME: home });
   const make = async (name: string) => {
     const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name }) });
     await h.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify(claude) });
@@ -190,7 +202,6 @@ let input = "";
   seedLaunch(home, launch.id);
 
   h = await startHarness({ HOME: home });
-  t.after(() => h.stop());
   const seen = () => (existsSync(calls) ? (JSON.parse(readFileSync(calls, "utf8")) as Array<{ text: string; system: string }>) : []);
   const before = seen().length;
   await h.fetch(`/api/bots/${scout.id}/messages`, { method: "POST", body: JSON.stringify({ text: QUESTION, taskId: scout.threadId }) });

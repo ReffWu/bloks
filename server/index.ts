@@ -17151,6 +17151,21 @@ process.on("unhandledRejection", (reason) => {
 process.on("uncaughtException", (error) => {
   console.error("[bloks] uncaught exception:", redactSecrets(error?.stack ?? String(error)));
 });
+// Whoever reads this process's output can go away before it does: the
+// app quitting hard, a test runner killing its file. A write after that
+// fails with EPIPE, and the stream reports it as an error event. console
+// only quiets the first one, so the second became an uncaught exception,
+// whose log line failed the same way, and so on. Each round was queued
+// for the very next tick, so the event loop never came back around: a
+// full core, no requests answered, and SIGTERM never delivered. A log
+// with no reader is simply lost.
+for (const stream of [process.stdout, process.stderr]) stream.on("error", () => {});
+
+/** How long a stop may take before the process ends anyway: an engine or
+ * a browser that never answers must not keep the server alive. The
+ * desktop app waits less than this before it kills (electron/server-life.mjs),
+ * so this is for everyone else who asks with a signal. */
+const SHUTDOWN_DEADLINE_MS = 5_000;
 
 let shuttingDown = false;
 /** Stops the way a quit does. Also how a restore ends this process, so
@@ -17159,6 +17174,8 @@ const shutDown = () => {
   // once, however many ways it is asked
   if (shuttingDown) return;
   shuttingDown = true;
+  // first, so nothing below (a throw included) can leave it running
+  setTimeout(() => process.exit(0), SHUTDOWN_DEADLINE_MS).unref();
   // What is running stays on the list as it is: the engines shut down
   // below end their turns, and that is this stop, not them finishing.
   cutOff.close();
@@ -17169,6 +17186,21 @@ const shutDown = () => {
   void Promise.allSettled([registry.disposeAll(), closeBrowsers()]).finally(() => process.exit(0));
 };
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, shutDown);
+// A test that starts a server and is then killed (the test runner's file
+// timeout does it with no after hooks) never stops it, and it lives on
+// with nobody to talk to. Those servers are told which process started
+// them and stop once it is no longer their parent. Told, not read from
+// process.ppid here: a test killed while this file was still loading
+// would leave launchd as the parent from the start. The app has its own
+// way to ask (below), so this is only for them.
+const testParent = Number(process.env.BLOKS_TEST_PARENT_PID);
+// not handed on to what this server starts in turn
+delete process.env.BLOKS_TEST_PARENT_PID;
+if (testParent > 0) {
+  setInterval(() => {
+    if (process.ppid !== testParent) shutDown();
+  }, 500).unref();
+}
 // The desktop app asks this way before it kills the server
 // (electron/server-life.mjs). On Windows killing it ends it outright, with
 // none of the above: its engines kept running, and its lock on the data

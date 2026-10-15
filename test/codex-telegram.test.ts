@@ -38,7 +38,7 @@ async function fixture(t: TestContext) {
     await waitFor(() => sends.slice(before).some((m) => m.text.startsWith("Your message is saved.")));
   }, async stoppedBeforeRecovery() {
     await s.h.crash();
-    const child = spawn(process.execPath, [fileURLToPath(entry)], { env: { ...process.env, ...env, HOME: s.root, USERPROFILE: s.root, BLOKS_PORT: "0", BLOKS_TEST_STOP_BEFORE_RECOVERY: "1", OPENAI_API_KEY: "", ANTHROPIC_API_KEY: "", ELEVENLABS_API_KEY: "", XAI_API_KEY: "", GEMINI_API_KEY: "", COMPOSIO_KEY: "", BOX_TOKEN: "", BLOKS_LOOPBACK_ONLY: "", PATH: "/nonexistent", npm_config_prefix: "", PREFIX: "" }, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [fileURLToPath(entry)], { env: { ...process.env, ...env, HOME: s.root, USERPROFILE: s.root, BLOKS_PORT: "0", BLOKS_TEST_STOP_BEFORE_RECOVERY: "1", BLOKS_TEST_PARENT_PID: String(process.pid), OPENAI_API_KEY: "", ANTHROPIC_API_KEY: "", ELEVENLABS_API_KEY: "", XAI_API_KEY: "", GEMINI_API_KEY: "", COMPOSIO_KEY: "", BOX_TOKEN: "", BLOKS_LOOPBACK_ONLY: "", PATH: "/nonexistent", npm_config_prefix: "", PREFIX: "" }, stdio: ["ignore", "pipe", "pipe"] });
     let output = ""; child.stdout?.on("data", (chunk) => output += chunk); child.stderr?.resume();
     t.after(() => child.kill("SIGKILL"));
     await waitFor(() => output.includes("bloks server on http://"));

@@ -65,7 +65,7 @@ test("a second server on the same home refuses to start, and the first keeps its
 
   const port = 20000 + Math.floor(Math.random() * 20000);
   const second = spawn(process.execPath, [ENTRY], {
-    env: { ...process.env, HOME: home, USERPROFILE: home, BLOKS_PORT: String(port), PATH: "/nonexistent" },
+    env: { ...process.env, HOME: home, USERPROFILE: home, BLOKS_PORT: String(port), PATH: "/nonexistent", BLOKS_TEST_PARENT_PID: String(process.pid) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stderr = "";

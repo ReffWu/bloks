@@ -61,7 +61,7 @@ syncBuiltinESMExports();
 
 async function startup(f: ReturnType<typeof fixture>) {
   const child = spawn(process.execPath, ["--import", f.hook, ENTRY], {
-    env: { HOME: f.home, USERPROFILE: f.home, TMPDIR: tmpdir(), PATH: "/nonexistent", BLOKS_PORT: "0", BLOKS_LOOPBACK_ONLY: "1", TZ: "UTC" },
+    env: { HOME: f.home, USERPROFILE: f.home, TMPDIR: tmpdir(), PATH: "/nonexistent", BLOKS_PORT: "0", BLOKS_LOOPBACK_ONLY: "1", TZ: "UTC", BLOKS_TEST_PARENT_PID: String(process.pid) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "", err = "", exited = false, code: number | null = null;

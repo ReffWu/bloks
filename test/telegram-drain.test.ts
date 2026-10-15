@@ -264,7 +264,7 @@ test("two restarts before queue recovery leave one request and one return", asyn
   for (let n = 0; n < 2; n++) {
     const child = spawn(process.execPath, ["server/index.ts"], { cwd: process.cwd(), env: {
       ...process.env, ...f.env, PATH: "/nonexistent", BLOKS_PORT: String(40000 + Math.floor(Math.random() * 15000)),
-      BLOKS_TEST_STOP_BEFORE_RECOVERY: "1", XAI_API_KEY: "", GEMINI_API_KEY: "", COMPOSIO_KEY: "", BOX_TOKEN: "",
+      BLOKS_TEST_STOP_BEFORE_RECOVERY: "1", BLOKS_TEST_PARENT_PID: String(process.pid), XAI_API_KEY: "", GEMINI_API_KEY: "", COMPOSIO_KEY: "", BOX_TOKEN: "",
     }, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout!.on("data", (c) => output += c);
