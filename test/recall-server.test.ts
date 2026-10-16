@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { startHarness } from "./helpers/server.ts";
+import { startHarness, type Harness } from "./helpers/server.ts";
 import { agentOn, fakeProvider, idle, messagesOf, waitFor } from "./helpers/turns.ts";
 
 test("memory files are searched too, named by file, and a link is never read through", async (t) => {
@@ -45,8 +45,15 @@ test("memory files are searched too, named by file, and a link is never read thr
 
 test("the person's search is ranked the same way, and still finds small words as typed", async (t) => {
   const home = mkdtempSync(join(tmpdir(), "bloks-search-"));
-  t.after(() => rmSync(home, { recursive: true, force: true, maxRetries: 5 }));
-  let h = await startHarness({ HOME: home });
+  // One hook, the server stopped before its home goes: node:test runs
+  // after hooks in the order they were added, and a removal that fails on
+  // a server still writing skips every hook after it, the stop included.
+  let h!: Harness;
+  t.after(async () => {
+    await h?.stop();
+    rmSync(home, { recursive: true, force: true, maxRetries: 5 });
+  });
+  h = await startHarness({ HOME: home });
   const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Scout" }) });
   await h.stop();
   const day = 24 * 60 * 60 * 1000;
@@ -62,7 +69,6 @@ test("the person's search is ranked the same way, and still finds small words as
     ]),
   );
   h = await startHarness({ HOME: home });
-  t.after(() => h.stop());
   const search = async (q: string) => (await h.json(`/api/search?q=${encodeURIComponent(q)}&limit=5`)).hits as any[];
 
   const [party] = await search("launch party zanzibar");

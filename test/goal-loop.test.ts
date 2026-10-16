@@ -280,7 +280,14 @@ test("the person's words go before the goal's next turn, which follows theirs", 
 test("a goal a restart left between turns is paused, not judged again unattended", async (t) => {
   const p = await goalProvider(t);
   const home = mkdtempSync(join(tmpdir(), "bloks-goal-restart-"));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
+  // One hook, the server stopped before its home goes: node:test runs
+  // after hooks in the order they were added, and a removal that fails on
+  // a server still writing skips every hook after it, the stop included.
+  let h!: Harness;
+  t.after(async () => {
+    await h?.stop();
+    rmSync(home, { recursive: true, force: true });
+  });
   const first = await startHarness({ HOME: home });
   const bot = await agentOn(first, p.port, "Kit");
   await first.stop();
@@ -296,8 +303,7 @@ test("a goal a restart left between turns is paused, not judged again unattended
   };
   writeFileSync(file, JSON.stringify(saved));
 
-  const h = await startHarness({ HOME: home });
-  t.after(() => h.stop());
+  h = await startHarness({ HOME: home });
   const paused = await goalIs(h, bot, "paused");
   assert.ok(paused, `the goal was not paused: ${JSON.stringify(await goalOf(h, bot))}`);
   assert.equal(paused.turns, 2);

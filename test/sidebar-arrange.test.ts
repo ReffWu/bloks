@@ -15,10 +15,20 @@ const patch = (h: Harness, path: string, body: unknown) =>
 
 test("pins, their places and the order of the headings outlast a restart", async (t) => {
   const home = mkdtempSync(join(tmpdir(), "bloks-arrange-"));
-  const first = await startHarness({ HOME: home });
-  // stopped below as well; a failure on the way must not leave it running
-  t.after(() => first.stop());
-  t.after(() => rmSync(home, { recursive: true, force: true, maxRetries: 5 }));
+  // The servers go before their home does: node:test runs after hooks in
+  // the order they were added, and a removal that fails on a server still
+  // writing skips every hook after it, the stops included.
+  let first!: Harness;
+  let second!: Harness;
+  let third!: Harness;
+  t.after(async () => {
+    // first is stopped below as well; a failure on the way must not leave it running
+    await first?.stop();
+    await second?.stop();
+    await third?.stop();
+    rmSync(home, { recursive: true, force: true, maxRetries: 5 });
+  });
+  first = await startHarness({ HOME: home });
 
   const hire = async (name: string) => (await first.json("/api/bots", { method: "POST", body: JSON.stringify({ name }) })).bot;
   const ada = await hire("Ada");
@@ -57,8 +67,7 @@ test("pins, their places and the order of the headings outlast a restart", async
   );
   await first.stop();
 
-  const second = await startHarness({ HOME: home });
-  t.after(() => second.stop());
+  second = await startHarness({ HOME: home });
   const after = await second.json("/api/sidebar");
   assert.deepEqual(after.sections, before.sections, "the arrangement did not survive a restart");
   assert.deepEqual(after.sectionOrder, ["Travel", "Admin"]);
@@ -83,17 +92,24 @@ test("pins, their places and the order of the headings outlast a restart", async
   // a room is unpinned the same way, and that choice is not undone on the next start
   assert.equal((await patch(second, `/api/bloks/${room.id}`, { pinned: false })).status, 200);
   await second.stop();
-  const third = await startHarness({ HOME: home });
-  t.after(() => third.stop());
+  third = await startHarness({ HOME: home });
   const { bloks: kept } = await third.json("/api/bloks");
   assert.equal(kept[0].pinned, false, "an unpinned room was pinned again on restart");
 });
 
 test("a workspace from before: rooms pinned in their old order, pinned agents after them, activity read off the transcripts", async (t) => {
   const home = mkdtempSync(join(tmpdir(), "bloks-upgrade-"));
-  const first = await startHarness({ HOME: home });
-  t.after(() => first.stop());
-  t.after(() => rmSync(home, { recursive: true, force: true, maxRetries: 5 }));
+  // one hook, every server stopped and then the home removed, as above
+  let first!: Harness;
+  let second!: Harness;
+  let third!: Harness;
+  t.after(async () => {
+    await first?.stop();
+    await second?.stop();
+    await third?.stop();
+    rmSync(home, { recursive: true, force: true, maxRetries: 5 });
+  });
+  first = await startHarness({ HOME: home });
   const hire = async (name: string) => (await first.json("/api/bots", { method: "POST", body: JSON.stringify({ name }) })).bot;
   const talked = await hire("Talked");
   const told = await hire("Told by an agent");
@@ -144,8 +160,7 @@ test("a workspace from before: rooms pinned in their old order, pinned agents af
   ]);
   append(older.id, [{ id: "o1", role: "user", kind: "text", text: "morning all", at: at + 60 }]);
 
-  const second = await startHarness({ HOME: home });
-  t.after(() => second.stop());
+  second = await startHarness({ HOME: home });
   const { bots: upgraded } = await second.json("/api/bots?messages=0");
   const { bloks: rooms } = await second.json("/api/bloks");
   const agent = (id: string) => upgraded.find((b: any) => b.id === id);
@@ -173,8 +188,7 @@ test("a workspace from before: rooms pinned in their old order, pinned agents af
 
   // and a later start finds nothing left to do
   await second.stop();
-  const third = await startHarness({ HOME: home });
-  t.after(() => third.stop());
+  third = await startHarness({ HOME: home });
   const again = await third.json("/api/bots?messages=0");
   for (const bot of again.bots) {
     const was = agent(bot.id);

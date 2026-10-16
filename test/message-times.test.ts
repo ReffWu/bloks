@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { dayLine, queuedLine, stamp, timeSaidBelow } from "../src/lib/when.ts";
-import { startHarness } from "./helpers/server.ts";
+import { startHarness, type Harness } from "./helpers/server.ts";
 
 // Newer ICU puts a narrow no-break space before AM and PM. Which space
 // it is says nothing about whether the words are right.
@@ -110,18 +110,22 @@ test("a queued message keeps when it went to the agent, through a restart", asyn
     });
   });
   await new Promise<void>((r) => provider.listen(0, "127.0.0.1", () => r()));
+  // The servers go before their home does: node:test runs after hooks in
+  // the order they were added, and a removal that fails on a server still
+  // writing skips every hook after it, the stops included.
+  let first!: Harness;
+  let second!: Harness;
   t.after(async () => {
     held.forEach((f) => f());
     provider.closeAllConnections();
     provider.close();
+    await first?.stop();
+    await second?.stop();
     rmSync(home, { recursive: true, force: true });
   });
   const port = (provider.address() as { port: number }).port;
 
-  const first = await startHarness({ HOME: home });
-  // stopped below as well, before the restart; this is for a test that
-  // fails first, which would otherwise leave the server running
-  t.after(() => first.stop());
+  first = await startHarness({ HOME: home });
   await first.json("/api/providers/grok/connect", { method: "POST", body: JSON.stringify({ key: "test-key", url: `http://127.0.0.1:${port}` }) });
   const { bot } = await first.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Timekeeper" }) });
   await first.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: "grok", model: "grok-4" } }) });
@@ -160,8 +164,7 @@ test("a queued message keeps when it went to the agent, through a restart", asyn
   const disk = JSON.parse(readFileSync(join(home, ".bloks", `messages-${bot.threadId}.json`), "utf8"));
   assert.equal(disk.find((m: any) => m.text === "HAD-TO-WAIT").deliveredAt, went.deliveredAt, "it is written down");
 
-  const second = await startHarness({ HOME: home });
-  t.after(() => second.stop());
+  second = await startHarness({ HOME: home });
   const after = await waitFor(async () => (await read(second))("HAD-TO-WAIT"));
   assert.equal(after.deliveredAt, went.deliveredAt, "a restart lost when it went");
   assert.equal(after.queued, false);

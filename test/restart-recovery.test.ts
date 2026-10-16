@@ -12,12 +12,19 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { startHarness } from "./helpers/server.ts";
+import { startHarness, type Harness } from "./helpers/server.ts";
 import { agentOn, fakeProvider, idle, inFlight, messagesOf, PICKUP, waitFor } from "./helpers/turns.ts";
 
 test("a turn cut off by a crash is picked up once, in its own lane, with what was queued behind it", async (t) => {
   const home = mkdtempSync(join(tmpdir(), "bloks-cutoff-"));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
+  // One hook, the last server stopped before its home goes: node:test runs
+  // after hooks in the order they were added, and a removal that fails on
+  // a server still writing skips every hook after it, the stop included.
+  let third!: Harness;
+  t.after(async () => {
+    await third?.stop();
+    rmSync(home, { recursive: true, force: true });
+  });
   const fake = await fakeProvider(t);
 
   const first = await startHarness({ HOME: home });
@@ -70,8 +77,7 @@ test("a turn cut off by a crash is picked up once, in its own lane, with what wa
   await second.stop();
 
   // and a later start finds nothing to pick up
-  const third = await startHarness({ HOME: home });
-  t.after(() => third.stop());
+  third = await startHarness({ HOME: home });
   await new Promise((r) => setTimeout(r, 1_500));
   assert.equal(fake.sent(PICKUP), 1, "a second start picked the same turn up again");
   const after = await messagesOf(third, bot);

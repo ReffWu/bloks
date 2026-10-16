@@ -13,7 +13,7 @@ import { test, type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { EngineProcesses } from "../server/drivers/engine-processes.ts";
-import { startHarness } from "./helpers/server.ts";
+import { startHarness, type Harness } from "./helpers/server.ts";
 
 const POSIX = process.platform !== "win32";
 
@@ -137,13 +137,17 @@ setInterval(() => {}, 1000);
   );
   let pids: { engine: number; tool: number } | null = null;
   sweep(t, () => (pids ? [pids.engine, pids.tool] : []));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
-
-  const h = await startHarness({ HOME: home });
+  // One hook, the server stopped before its home goes: node:test runs
+  // after hooks in the order they were added, and a removal that fails on
+  // a server still writing skips every hook after it, the stop included.
+  let h!: Harness;
   let stopped = false;
   t.after(async () => {
-    if (!stopped) await h.stop();
+    if (!stopped) await h?.stop();
+    rmSync(home, { recursive: true, force: true });
   });
+
+  h = await startHarness({ HOME: home });
   const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Stuck" }) });
   await h.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } }) });
   await h.fetch(`/api/bots/${bot.id}/messages`, { method: "POST", body: JSON.stringify({ text: "run the long tool" }) });

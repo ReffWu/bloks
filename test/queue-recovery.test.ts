@@ -14,7 +14,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { startHarness } from "./helpers/server.ts";
+import { startHarness, type Harness } from "./helpers/server.ts";
 
 const waitFor = async <T,>(check: () => Promise<T | null | undefined> | T | null | undefined, ms = 15_000): Promise<T | null> => {
   const until = Date.now() + ms;
@@ -44,10 +44,15 @@ test("recent queued work runs once after a restart; old and legacy queued work n
     });
   });
   await new Promise<void>((r) => provider.listen(0, "127.0.0.1", () => r()));
+  // The servers go before their home does: node:test runs after hooks in
+  // the order they were added, and a removal that fails on a server still
+  // writing skips every hook after it, the stops included.
+  let third!: Harness;
   t.after(async () => {
     held.forEach((f) => f());
     provider.closeAllConnections();
     provider.close();
+    await third?.stop();
     rmSync(home, { recursive: true, force: true });
   });
   const port = (provider.address() as { port: number }).port;
@@ -105,8 +110,7 @@ test("recent queued work runs once after a restart; old and legacy queued work n
 
   // a second restart runs none of them: the fresh one was sent, the old
   // ones were settled as not sent
-  const third = await startHarness({ HOME: home });
-  t.after(() => third.stop());
+  third = await startHarness({ HOME: home });
   await waitFor(async () => (await read(third))("FRESH-WAITING"));
   await new Promise((r) => setTimeout(r, 1_500));
   assert.equal(sent("FRESH-WAITING"), 1, "the recovered message ran again on the next restart");

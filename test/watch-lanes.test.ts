@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { laneLimitError, orphanWatcherLanes } from "../server/watchers.ts";
-import { startHarness } from "./helpers/server.ts";
+import { startHarness, type Harness } from "./helpers/server.ts";
 
 const BLOKS = fileURLToPath(new URL("../bin/bloks.mjs", import.meta.url));
 
@@ -105,14 +105,18 @@ test("removing a watcher closes its lane, and lanes left behind close on start",
     });
   });
   await new Promise<void>((r) => provider.listen(0, "127.0.0.1", () => r()));
+  // The server goes before its home does: node:test runs after hooks in
+  // the order they were added, and a removal that fails on a server still
+  // writing skips every hook after it, the stop included.
+  let h!: Harness;
   t.after(async () => {
     held.forEach((f) => f());
     provider.closeAllConnections();
     provider.close();
+    await h?.stop();
     rmSync(home, { recursive: true, force: true });
   });
-  let h = await startHarness({ HOME: home });
-  t.after(() => h.stop());
+  h = await startHarness({ HOME: home });
   await h.json("/api/providers/grok/connect", {
     method: "POST",
     body: JSON.stringify({ key: "test-key", url: `http://127.0.0.1:${(provider.address() as { port: number }).port}` }),

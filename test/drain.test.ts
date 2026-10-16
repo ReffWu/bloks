@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { Drain, DRAIN_DEFAULT_MS, DRAIN_GRACE_MS, DRAIN_MAX_MS, drainWindow } from "../server/drain.ts";
 import { drainWait } from "../electron/drain-wait.mjs";
 import { RoomTagQueues } from "../server/room-tags.ts";
-import { startHarness } from "./helpers/server.ts";
+import { startHarness, type Harness } from "./helpers/server.ts";
 import { agentOn, fakeProvider, idle, inFlight, messagesOf, PICKUP, waitFor } from "./helpers/turns.ts";
 
 test("a drain waits twenty minutes unless asked, and never more than an hour", () => {
@@ -193,12 +193,20 @@ test("during a drain the running turn finishes, and what arrives waits until it 
 
 test("at the deadline what is still running is left for the restart, and what waited goes in its own lane", async (t) => {
   const home = mkdtempSync(join(tmpdir(), "bloks-drain-"));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
+  // One hook, both servers gone before their home is: node:test runs
+  // after hooks in the order they were added, and a removal that fails on
+  // a server still writing skips every hook after it, the stops included.
+  let first!: Harness;
+  let second!: Harness;
+  t.after(async () => {
+    await first?.crash();
+    await second?.stop();
+    rmSync(home, { recursive: true, force: true });
+  });
   const fake = await fakeProvider(t);
   fake.state.askOn = "DECIDE-SHIP";
 
-  const first = await startHarness({ HOME: home });
-  t.after(() => first.crash());
+  first = await startHarness({ HOME: home });
   const ivy = await agentOn(first, fake.port, "Ivy");
   const jo = await agentOn(first, fake.port, "Jo");
   const { blok } = await first.json("/api/bloks", { method: "POST", body: JSON.stringify({ name: "Ops", memberIds: [ivy.id, jo.id] }) });
@@ -235,8 +243,7 @@ test("at the deadline what is still running is left for the restart, and what wa
   await first.crash();
 
   fake.state.answerAtOnce = true;
-  const second = await startHarness({ HOME: home });
-  t.after(() => second.stop());
+  second = await startHarness({ HOME: home });
   assert.equal((await drainState(second)).draining, false, "a restart ends a drain");
   // Ivy picks up where she was, with what was said to her meanwhile in
   // the same turn
