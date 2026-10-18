@@ -6,6 +6,11 @@ import { foldTurns, foldRoom, type Folded } from "../src/lib/turnFold.ts";
 import { towardYou } from "../server/activity.ts";
 import { noticeFor } from "../src/lib/notify.ts";
 import type { Message } from "../src/state/reducer.ts";
+import type { Message as StoredMessage } from "../server/store.ts";
+
+// The client's message is the stored one as the server sends it: a
+// Telegram person, for one, arrives as a projection without the grant.
+const stored = (message: Message) => message as unknown as StoredMessage;
 
 const text = (id: string, phase = "commentary", turnId = "turn-a", extra: Partial<Message> = {}): Message => ({ id, at: 1, role: "bot", kind: "text", text: id, codexText: codexTextFor({ phase, questions: "none" }, turnId, id, "agent"), ...extra });
 const ask: Message = { id: "ask", at: 0, role: "user", kind: "text", text: "Check the sample", agent: { dir: "in", peerId: "peer", peerName: "Peer" } };
@@ -69,7 +74,7 @@ test("room speakers stay isolated and progress uses work while the room is activ
 });
 
 test("progress causes no banner, including a mention; cards and full text retain policy", () => {
-  const ctx = { focused: false, selectedId: "elsewhere", threadId: "lane", bot: { id: "bot", name: "Helper", notifications: true } };
+  const ctx = { replySettled: true, focused: false, selectedId: "elsewhere", threadId: "lane", bot: { id: "bot", name: "Helper", notifications: true } };
   assert.equal(noticeFor(text("@you progress"), ctx), null);
   assert.ok(noticeFor(text("answer", "final_answer"), ctx));
   assert.ok(noticeFor({ ...text("card"), kind: "options", card: { requestId: "question" } }, ctx));
@@ -107,9 +112,9 @@ test("bounded hostile metadata never quiets unknown text or unrelated card/activ
   }
   for (const bad of ["", "id\0", "x".repeat(257), 3, null]) assert.equal(codexTextFor(codexItemText({ phase: "commentary", questions: null }), bad, "item", "agent"), undefined);
   const c = text("narration");
-  assert.equal(towardYou(c, true), false);
+  assert.equal(towardYou(stored(c), true), false);
   for (const kind of ["component", "artifact", "options", "activity"] as const) assert.equal(itemProgress({ ...c, kind }), false);
-  assert.equal(towardYou({ ...c, codexText: undefined }, true), true, "other engines and legacy text retain attention");
+  assert.equal(towardYou(stored({ ...c, codexText: undefined }), true), true, "other engines and legacy text retain attention");
 });
 
 test("large history is immutable and visits each eligible item once without retained transition state", () => {
@@ -206,8 +211,8 @@ test("a question followed by more work stays visible while the work around it is
   const question = stamp("question", "Should I keep the old fixture or replace it?");
   const history = [ask, stamp("p1", "Reading the fixture."), question, stamp("p2", "Checking the other tests meanwhile."), stamp("p3", "Running the suite.")];
   assert.equal(itemProgress(question), false);
-  assert.equal(towardYou(question, true), true, "the question still marks the chat");
-  const ctx = { focused: false, selectedId: "elsewhere", threadId: "lane", bot: { id: "bot", name: "Helper", notifications: true } };
+  assert.equal(towardYou(stored(question), true), true, "the question still marks the chat");
+  const ctx = { replySettled: true, focused: false, selectedId: "elsewhere", threadId: "lane", bot: { id: "bot", name: "Helper", notifications: true } };
   assert.ok(noticeFor(question, ctx), "the question still banners");
   assert.equal(noticeFor(history[1], ctx), null);
   // the work folds into one expandable row; the question stays a line of its own
