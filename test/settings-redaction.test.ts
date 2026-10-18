@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { inspectionRedactor } from "../server/settings-redaction.ts";
+import { SECRET_PATHS } from "../server/backup.ts";
 import { inspectAgentSettings, inspectRoomSettings } from "../server/settings-records.ts";
 import { inspectWorkspaceSettings } from "../server/settings-inspection.ts";
 import { SettingsPages } from "../server/settings-pages.ts";
@@ -54,4 +55,25 @@ test('redaction never invokes credential getters or follows inherited maps and s
 test('saved and environment-resolved credentials both protect permitted text, without reading environment or files',()=>{
   const saved={speech:{openaiKey:'saved-secret'}},runtime={composio:{key:'runtime-secret'}};
   assert.equal(inspectionRedactor(saved,runtime)('saved-secret and runtime-secret'),'[redacted] and [redacted]');
+});
+
+test('every path on the backup secret list protects text, so a key added there is covered here the same day',()=>{
+  const value='fixture-secret-from-backup-list';
+  for(const path of SECRET_PATHS){
+    const steps=path.split('.');
+    const build=(i:number):unknown=>{
+      if(i===steps.length)return value;
+      const step=steps[i]!;const list=step.endsWith('[]');const key=list?step.slice(0,-2):step;
+      const inner=build(i+1);const child=list?[inner]:inner;
+      return {[key==='*'?'opaque':key]:child};
+    };
+    const redact=inspectionRedactor(build(0));
+    assert.equal(redact(`a ${value} b`),'a [redacted] b',path);
+  }
+});
+
+test('a paired device keeps its chosen name readable while its digest and id are protected',()=>{
+  const redact=inspectionRedactor({remote:{devices:[{id:'device-identifier-1',hash:'digest-value-12345',name:'Kitchen iPhone'}]}});
+  assert.equal(redact('Kitchen iPhone'),'Kitchen iPhone');
+  assert.equal(redact('digest-value-12345 device-identifier-1'),'[redacted] [redacted]');
 });
