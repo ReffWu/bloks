@@ -32,7 +32,10 @@
 //   nothing needed you, and what a check-in says on the way to deciding
 //   that waits for the end of its turn (CheckInHold), so the commentary
 //   of a run that turns out quiet is never news either. Reply banners use
-//   the server's settled decision; CheckInHold retains only speech timing.
+//   the server's settled decision (reply.settled); CheckInHold retains
+//   only speech timing. A server too old to send that (no "reply-settled"
+//   in its features, settlesReplies) still has its replies announced as
+//   they land, the way they were before it could say when a turn was over.
 
 const ENGINE_OUT =
   /credit balance is too low|insufficient[_ ](?:quota|credits|funds|balance)|billing|payment required|\b402\b|out of credits|exceed your available credits|usage limit|limit (?:reached|exceeded)|quota|rate[ _-]?limit|\b429\b|not (?:logged|signed) in|sign in/i;
@@ -54,7 +57,8 @@ export interface NotifiableMessage {
 }
 
 export interface NotifyContext {
-  /** A dedicated server decision after recovery and quiet settlement. */
+  /** A reply that is one to announce: the server's decision after recovery
+   * and quiet settlement, or one that landed from a server too old to make it. */
   replySettled?: boolean;
   /** Is the app focused right now? */
   focused: boolean;
@@ -166,7 +170,8 @@ export function noticeFor(message: NotifiableMessage, ctx: NotifyContext): Notic
  * speech is held here, the newest replacing the one before, and the raw
  * end of the turn lets go of the last of them unless it was quiet. This
  * preserves the existing speech behavior, not notification authority:
- * reply banners come only from reply.settled after server recovery decisions.
+ * reply banners come from reply.settled after server recovery decisions,
+ * and only a server too old to send it has the released reply announced.
  */
 export class CheckInHold<M extends NotifiableMessage = NotifiableMessage> {
   private held = new Map<string, M>();
@@ -187,6 +192,20 @@ export class CheckInHold<M extends NotifiableMessage = NotifiableMessage> {
     this.held.delete(threadId);
     return last && !last.quiet ? last : null;
   }
+}
+
+/** What a server lists in its features (server/features.ts) once it says
+ * each turn's reply with reply.settled. */
+export const REPLY_SETTLED_FEATURE = "reply-settled";
+
+/** Whether a server's /api/health says it sends reply.settled. In remote
+ * mode the desktop can be newer than the computer it works with, and an
+ * older one only ever sends the messages. Null when the answer is not a
+ * health reading at all, so what was known before is kept. */
+export function settlesReplies(health: unknown): boolean | null {
+  if (!health || typeof health !== "object" || (health as { app?: unknown }).app !== "bloks") return null;
+  const features = (health as { features?: unknown }).features;
+  return Array.isArray(features) && features.includes(REPLY_SETTLED_FEATURE);
 }
 
 /** Connection-scoped freshness and bounded request-card deduplication.

@@ -26,7 +26,7 @@ for (const [name, result, events, expected] of [
     received.push(e);
     if(e.type==='turn.started')held.start(e.threadId,e.turnId,e.threadId,'helper',false);
     if(e.type==='item.completed'&&e.itemType==='assistant_text')held.text(e.threadId,e.turnId,{id:'saved',at:1,role:'bot',kind:'text',text:e.text},e.replyPhase,e.syntheticText);
-    if(e.type==='turn.completed')delivery.notice=settledReply(held.take(e.threadId,e.turnId),{ok:e.ok,continues:false,quiet:false,maintenance:false});
+    if(e.type==='turn.completed')delivery.notice=settledReply(held.take(e.threadId,e.turnId),{stopReason:e.stopReason,continues:false,quiet:false,maintenance:false});
   });
   await instance.adapter.sendTurn({threadId:'lane',text:'Neutral task',integrations:{computer:{boxId:'synthetic-box',token:'synthetic-token'}}});
   for(let i=0;i<100&&!received.some(e=>e.type==='turn.completed');i++)await pause(10);

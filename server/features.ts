@@ -39,4 +39,8 @@ export const FEATURES: readonly string[] = [
   // GET and POST /api/threads/:t/messages/:id/redo: what redoing a
   // message the agent already read would take back, and doing it
   "redo",
+  // reply.settled on the event stream: a turn's reply, said once when the
+  // turn is over, which a desktop in remote mode waits for before it
+  // stops announcing replies as they land
+  "reply-settled",
 ];

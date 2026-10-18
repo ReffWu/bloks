@@ -20,7 +20,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { CheckInHold, NoticeDelivery, noticeFor } from "@/lib/notify";
+import { CheckInHold, NoticeDelivery, noticeFor, settlesReplies } from "@/lib/notify";
 import { sendBotArchive } from "@/lib/botArchive";
 import { sendCardAnswer } from "@/lib/cardAnswer";
 import { sendMessage } from "@/lib/sendMessage";
@@ -583,14 +583,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const noticeDelivery = useRef(new NoticeDelivery());
   /** A check-in's replies, waiting for its turn to end (CheckInHold). */
   const checkIns = useRef(new CheckInHold<Message>());
+  /** Whether the server says each turn's reply once it is over
+   * (reply.settled). Our own server always does; one on another computer
+   * may be older, and is asked on every hello (settlesReplies). */
+  const settledReplies = useRef(true);
+  /** For an older server only: when each thread last raised a reply
+   * banner, to keep a chatty turn to one. */
+  const lastBanner = useRef(new Map<string, number>());
 
-  const announce = useCallback((threadId: string, message: unknown, replySettled = false) => {
+  const announce = useCallback((threadId: string, message: unknown, replySettled = false): boolean => {
     const bridge = window.bloks;
-    if (!bridge || !message) return;
+    if (!bridge || !message) return false;
     const current = stateRef.current;
     const bot = current.bots.find((b) => b.tasks?.some((t) => t.id === threadId));
     const room = current.bloks.find((r) => r.id === threadId);
-    if (!bot && !room) return;
+    if (!bot && !room) return false;
     const notice = noticeFor(message as never, {
       replySettled,
       focused: document.hasFocus() && document.visibilityState === "visible",
@@ -600,10 +607,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...(room ? { room: { id: room.id, name: room.name } } : {}),
       goalRunning: bot?.tasks?.find((t) => t.id === threadId)?.goal?.status === "active",
     });
-    if (!notice) return;
+    if (!notice) return false;
     if (bot?.avatarAt) notice.avatar = `/api/bots/${bot.id}/avatar?v=${bot.avatarAt}`;
     void bridge.notifyShow(notice).catch(() => {});
+    return true;
   }, []);
+
+  /** A reply as it landed, from a server too old to say when its turn was
+   * over. A single turn can settle several messages: the first one is the
+   * news, and the rest would be the same news again. */
+  const announceLanded = useCallback((threadId: string, message: Message) => {
+    const now = Date.now();
+    if (now - (lastBanner.current.get(threadId) ?? 0) < 4000) return;
+    if (announce(threadId, message, true)) lastBanner.current.set(threadId, now);
+  }, [announce]);
 
   /** Agents that opted in read their settled replies aloud, even when
    * their chat is not the one on screen. Never a quiet check-in's: it
@@ -735,6 +752,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // hour of banners.
           replayUntil.current = typeof frame._seq === "number" ? frame._seq : 0;
           noticeDelivery.current.hello(frame._seq);
+          // the server on the other end may have changed since the last
+          // hello, so whether it says when a turn is over is asked again
+          fetch("/api/health")
+            .then((res) => (res.ok ? res.json() : null))
+            .then((health) => {
+              const settles = settlesReplies(health);
+              if (alive && settles !== null) settledReplies.current = settles;
+            })
+            .catch(() => {});
           if (!frame.resumed) {
             // a server that could not resume may have restarted and begun
             // counting again, so its sequences say nothing about ours
@@ -748,8 +774,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rawDispatch({ type: "messageAdded", threadId: frame.threadId, message: frame.message });
           const msg = frame.message;
           const news = typeof frame._seq !== "number" || frame._seq > replayUntil.current;
-          // a check-in's replies are spoken and announced when its turn
-          // ends, if it was not quiet (src/lib/notify.ts)
+          // a check-in's replies are spoken when its turn ends, if it was
+          // not quiet (src/lib/notify.ts); its banner is reply.settled, or
+          // the release below for an older server
           if (news && msg && checkIns.current.holds(msg, frame.checkIn === true)) {
             checkIns.current.hold(frame.threadId, msg);
             break;
@@ -757,6 +784,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           speak(frame.threadId, msg);
           if (news && msg?.kind !== "text" && noticeDelivery.current.take(frame._seq,
             `message:${frame.threadId}:${msg?.card?.requestId ?? msg?.id}`)) announce(frame.threadId, msg);
+          // a server that sends reply.settled says the reply there instead
+          if (news && msg?.kind === "text" && !settledReplies.current) announceLanded(frame.threadId, msg);
           break;
         }
         case "reply.settled":
@@ -815,6 +844,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const reported = checkIns.current.release(threadId);
             if (reported) {
               speak(threadId, reported);
+              if (!settledReplies.current) announceLanded(threadId, reported);
             }
           }
           break;

@@ -1,4 +1,3 @@
-import { ReplyNotifications, settledReply } from "./reply-notifications.ts";
 // Bloks server: the harness host.
 //
 // The one rule the whole shape follows: clients hold no transports. The
@@ -28,6 +27,7 @@ import * as diagnostics from "./diagnostics.ts";
 import { ENGINE_SETUP, installEngine, openSignIn, runSetupScript } from "./engine-setup.ts";
 import { ENGINE_PACKAGES, engineUpdates } from "./engine-updates.ts";
 import { FEATURES } from "./features.ts";
+import { ReplyNotifications, settledFrame, settledReply } from "./reply-notifications.ts";
 import * as scout from "./scout.ts";
 import {
   ArtifactCommentStore,
@@ -2239,7 +2239,8 @@ bus.subscribe((event: RuntimeEvent) => {
   const pushMessage = (m: Omit<Message, "id" | "at">) => {
     const message = store.appendMessage(roomId, inRoom ? { ...m, from: bot.id } : m);
     // What a check-in says is news only once it has ended and was not
-    // quiet, so the app holds its banner until then (src/lib/notify.ts).
+    // quiet, so the app holds its speech until then (src/lib/notify.ts);
+    // its banner is the reply.settled its end sends, if it has one.
     const checkIn = !inRoom && checkInTurns.has(event.threadId);
     broadcast({ kind: "message", threadId: roomId, message, ...(checkIn ? { checkIn: true } : {}) });
     if (!inRoom) telegramWorking.get(event.threadId)?.observe();
@@ -2960,18 +2961,15 @@ bus.subscribe((event: RuntimeEvent) => {
         endingCheckIn && !inRoom && event.ok !== false && !handedOver &&
         !turnsForYou.has(event.threadId) && foldQuietRun(event.threadId);
       checkInTurns.delete(event.threadId);
+      // The reply this attempt has to say, once, now that it is over,
+      // whether it ended well or not (server/reply-notifications.ts).
       const replyNotice = settledReply(endingReply, {
-        ok: event.ok !== false, stopReason: event.stopReason,
+        stopReason: event.stopReason,
         continues: pickingUp || handedOver || refolding, quiet: quietRun, maintenance: command,
       });
-      if (replyNotice) {
-        // Deletion may have withdrawn these words while the attempt ran.
-        // Revalidate this chosen record only, never fall back to older text.
-        const current = store.messagesFor(replyNotice.threadId).find((m) => m.id === replyNotice.message.id);
-        if (current?.role === "bot" && current.kind === "text" && !current.deleted && !current.quiet && current.text?.trim()) {
-          broadcast({ ...replyNotice, message: { ...replyNotice.message, text: current.text } });
-        }
-      }
+      const replyFrame = replyNotice &&
+        settledFrame(replyNotice, store.messagesFor(replyNotice.threadId).find((m) => m.id === replyNotice.message.id));
+      if (replyFrame) broadcast(replyFrame);
       // a turn asked again or handed to the backup is not over yet, so what
       // waits on how it ends (a routine's run, a workflow step, a meeting's
       // write-up, a mail's reply) waits for the attempt that ends it
@@ -3150,9 +3148,10 @@ const turnsForYou = new Set<string>();
 
 /** Lanes running a quiet routine's turn (server/routines.ts, isQuiet),
  * from its start to its end. What such a turn says is held back from the
- * person's attention until it ends: its banner waits (the frame carries
- * `checkIn`), and an answer of QUIET is marked quiet the moment it is
- * said, so nothing ever announces it. */
+ * person's attention until it ends: its speech waits (the frame carries
+ * `checkIn`), its banner is said only by the end (reply.settled), and an
+ * answer of QUIET is marked quiet the moment it is said, so nothing ever
+ * announces it. */
 const checkInTurns = new Set<string>();
 
 /** An agent or a room just had something to do with the person, which

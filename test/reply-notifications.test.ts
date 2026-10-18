@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ReplyNotifications, settledReply } from "../server/reply-notifications.ts";
+import { clipReply, ReplyNotifications, settledFrame, settledReply } from "../server/reply-notifications.ts";
 import { memberFrame, type MemberView } from "../server/member-access.ts";
-import { NoticeDelivery, noticeFor } from "../src/lib/notify.ts";
+import { NoticeDelivery, noticeFor, settlesReplies } from "../src/lib/notify.ts";
 import type { Message } from "../server/store.ts";
 const m = (id = "m", text = "Report ready"): Message => ({ id, at: 20, role: "bot", kind: "text", text });
-const ok = { ok: true, continues: false, quiet: false, maintenance: false };
+const ok = { continues: false, quiet: false, maintenance: false };
 const ctx = { focused: false, selectedId: "", threadId: "lane", bot: { id: "bot", name: "Helper" } };
 function start(goal = false) { const h = new ReplyNotifications(); h.start("lane", "t", "lane", "bot", goal); return h; }
 
@@ -31,7 +31,11 @@ test("unknown or partial phase uses last unmarked text, not a guessed question",
   const h = start(); h.text("lane", "t", m("q", "Which date?")); h.text("lane", "t", m("p", "Checking later"));
   assert.equal(settledReply(h.take("lane", "t"), ok)?.message.id, "p");
 });
-for (const change of [{ ok: false }, { stopReason: "interrupted" }, { continues: true }, { quiet: true }, { maintenance: true }]) test(`no preview at excluded boundary ${JSON.stringify(change)}`, () => {
+test("a turn that saved a reply and then failed still says it once", () => {
+  const h = start(); h.text("lane", "t", m("said", "Half the report"));
+  assert.equal(settledReply(h.take("lane", "t"), { ...ok, stopReason: "error" })?.message.id, "said");
+});
+for (const change of [{ stopReason: "interrupted" }, { continues: true }, { quiet: true }, { maintenance: true }]) test(`no preview at excluded boundary ${JSON.stringify(change)}`, () => {
   const h = start(); h.text("lane", "t", m(), "final_answer"); assert.equal(settledReply(h.take("lane", "t"), { ...ok, ...change }), null);
 });
 test("goal ownership survives later status changes and quiet/deleted text stays excluded", () => {
@@ -79,4 +83,30 @@ test("two genuine results inside four seconds survive, while dedup state stays b
   for (let i = 3; i < 2000; i++) assert.ok(d.take(i, `t${i}`));
   assert.equal((d as unknown as { keys: Set<string> }).keys.size, 512, "identity retention grew without bound");
   assert.equal(d.take(1, "first"), false, "evicted identity bypassed sequence watermark");
+});
+test("the settled frame carries no more of a reply than a banner shows, and the same words", () => {
+  const h = start(); const long = m("long", "word\n\n ".repeat(400)); h.text("lane", "t", long);
+  const reply = settledReply(h.take("lane", "t"), ok)!;
+  const frame = settledFrame(reply, long)!;
+  assert.ok(frame.message.text!.length <= 180, `carried ${frame.message.text!.length} characters`);
+  assert.equal(noticeFor(frame.message, { ...ctx, replySettled: true })?.body, noticeFor(long, { ...ctx, replySettled: true })?.body);
+  assert.equal(clipReply("  short\n reply "), "short reply");
+  assert.equal(clipReply(frame.message.text!), frame.message.text, "clipping twice changed the words");
+});
+test("the settled frame reads the transcript as it is now", () => {
+  const h = start(); h.text("lane", "t", m("chosen", "First words"));
+  const reply = settledReply(h.take("lane", "t"), ok)!;
+  assert.equal(settledFrame(reply, { ...m("chosen", "Edited words") })?.message.text, "Edited words");
+  assert.equal(settledFrame(reply, { ...m("chosen"), deleted: true, text: "" }), null);
+  assert.equal(settledFrame(reply, { ...m("chosen"), quiet: true }), null);
+  assert.equal(settledFrame(reply, m("other")), null);
+  assert.equal(settledFrame(reply, undefined), null);
+});
+test("a desktop knows a server that says replies when they settle from one that does not", () => {
+  assert.equal(settlesReplies({ app: "bloks", features: ["sections", "reply-settled"] }), true);
+  // an older server: replies are announced as they land, as before
+  assert.equal(settlesReplies({ app: "bloks", features: ["sections"] }), false);
+  assert.equal(settlesReplies({ app: "bloks" }), false);
+  // not a reading at all keeps what was known
+  for (const health of [null, undefined, "nope", { error: "the other computer could not be reached" }]) assert.equal(settlesReplies(health), null);
 });

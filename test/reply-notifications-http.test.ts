@@ -99,6 +99,20 @@ test('failed primary text never leaks: only a successful backup result or no pre
   assert.equal(outcomes(b).length,empty?0:1);if(!empty)assert.equal(outcomes(b)[0].message.text,'Backup answer');
  }
 });
+test('a turn that saves its answer and then fails still says it once',async()=>{
+ plan('codex',[{items:[{text:'Saved before the failure',phase:'final_answer'}],fail:true}]);const b=await bot('codex');const since=frames.length;await send(b);
+ await wait(()=>frames.slice(since).some(x=>x.kind==='runtime'&&x.event?.threadId===b.threadId&&x.event?.type==='turn.completed'&&x.event?.ok===false),'no failure');
+ await idle(b);await wait(()=>outcomes(b).length===1,'a failed turn hid its saved reply');await pause(100);
+ assert.equal(outcomes(b).length,1);assert.equal(outcomes(b)[0].message.text,'Saved before the failure');
+});
+test('a long reply is saved whole but carried only as far as a banner shows',async()=>{
+ const long='A long neutral sentence. '.repeat(200).trim();
+ plan('codex',[{items:[{text:long,phase:'final_answer'}]}]);const b=await bot('codex');await send(b);await idle(b);
+ await wait(()=>outcomes(b).length===1,'no settled snapshot');
+ const carried=outcomes(b)[0].message.text;assert.ok(carried.length<=180,`carried ${carried.length} characters`);assert.match(carried,/…$/);
+ const saved=(await h.json('/api/bots')).bots.find((x:any)=>x.id===b.id).messages.find((m:any)=>m.id===outcomes(b)[0].message.id);
+ assert.equal(saved.text.length,long.length,'the transcript lost the rest of the reply');
+});
 test('goal ownership cannot create a generic result',async()=>{
  // A goal on this lane owns its dedicated result route, even when judging changes status.
  plan('codex',[{items:[{text:'A goal attempt'}]}]);const b=await bot('codex');
@@ -107,7 +121,7 @@ test('goal ownership cannot create a generic result',async()=>{
  assert.ok(r.ok,await r.text());await wait(()=>existsSync(join(home,'ready-codex')),'goal never ran');await idle(b);assert.equal(outcomes(b).length,0);
 });
 
-test('actual quiet routine: nonquiet report announces only settled, QUIET and failed runs do not',async()=>{
+test('actual quiet routine: a report announces once when settled, also when the run then fails; QUIET does not',async()=>{
  for(const mode of ['report','quiet','fail']){
   plan('claudeAgent',[{items:[{text:'Routine progress'},{text:mode==='quiet'?'QUIET':'Routine report'}],fail:mode==='fail'}]);
   const b=await bot('claudeAgent');
@@ -115,7 +129,7 @@ test('actual quiet routine: nonquiet report announces only settled, QUIET and fa
   assert.ok(made.routine?.id,JSON.stringify(made));
   const r=await h.fetch(`/api/routines/${made.routine.id}/run`,{method:'POST'});assert.ok(r.ok,await r.text());
   await wait(()=>existsSync(join(home,'ready-claudeAgent')),'routine never ran');await idle(b);await pause(100);
-  assert.equal(outcomes(b).length,mode==='report'?1:0);if(mode==='report')assert.equal(outcomes(b)[0].message.text,'Routine report');
+  assert.equal(outcomes(b).length,mode==='quiet'?0:1);if(mode!=='quiet')assert.equal(outcomes(b)[0].message.text,'Routine report');
  }
 });
 

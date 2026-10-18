@@ -737,9 +737,11 @@ nothing running or waiting in its lane was between turns when Bloks
 stopped, and is paused rather than judged again unattended.
 
 While a goal runs, its turns' replies raise no banner. Done and out-of-
-turns notices follow the agent's reply switch. A blocked notice alone
-raises no banner and does not wake the phone; an unanswered question or
-approval card, including a workflow gate, does. An agent reads its goal with `bloks goal`
+turns notices follow the agent's reply switch. A goal is judged blocked
+only when it cannot go on without the person, so its notice raises an
+urgent banner past that switch ("needs you") and wakes the owner's phone,
+the same as an unanswered question or approval card, including a
+workflow gate. A chain hold never does, whatever its words. An agent reads its goal with `bloks goal`
 (`GET /api/agent/goal`, which reads the goal of the lane its credential
 was minted for), and nothing on its list reaches the routes that set
 one.
@@ -811,6 +813,30 @@ a turn is what one agent did until somebody else spoke (`foldRoom`), and
 folds while it runs. When a fold closes over a reader who is not at the
 end, `useHoldPlace` keeps the reply where it was on screen; a find hit
 or a forum link into folded work opens the fold.
+
+## Desktop banners
+
+What raises a banner is one pure function, `noticeFor` in
+`src/lib/notify.ts`. An unanswered card, a blocked goal and an engine
+that is out ("could not answer") interrupt as soon as their message
+lands. A reply does not: a turn can save several, some of them running
+commentary, and only its end says which one is the answer and whether
+anything is to be said at all. So the server says it once
+(`server/reply-notifications.ts`): each attempt keeps its last saved
+reply, an explicit final answer before later commentary, and when the
+turn is over, whether it ended well or not, a `reply.settled` frame
+carries that reply, clipped to what a banner shows. Nothing is said for
+an attempt that is asked again or handed to a backup (the next attempt
+speaks for itself), a quiet check-in folded away, a Stop, an engine
+command, or a turn on the way to a goal. The frame inserts nothing into
+the transcript and is read against it first, so words deleted while the
+turn ran are not said. `NoticeDelivery` keeps a replay or a reconnect
+from saying the same thing twice.
+
+The desktop in remote mode can be newer than the computer it works with.
+On every hello it reads that server's features (`/api/health`), and one
+without `reply-settled` has its replies announced as they land, at most
+one every four seconds in a conversation, as before.
 
 ## Chat platforms
 
@@ -967,7 +993,7 @@ prompt, which a resumed session keeps byte for byte, that if nothing
 needs the person it answers with exactly QUIET (`QUIET_ASK`). While it
 runs the lane is in `checkInTurns`: its start leaves the lane's unread
 as it was, its message frames carry `checkIn` so the app holds their
-banner (`CheckInHold` in `src/lib/notify.ts`), and an answer of QUIET
+speech (`CheckInHold` in `src/lib/notify.ts`), and an answer of QUIET
 (trimmed, any case, with a full stop or exclamation) is written with
 `quiet: true` at once. When the turn ends well with QUIET as its last
 words, nothing but words, tool calls, a screen or a compaction marker
@@ -977,8 +1003,8 @@ unread, nothing for a banner, a linked chat or the phone, the run is recorded
 `quiet` in its history (an "ok" run with the flag) and left out of the
 record, whose recent view a check-in every quarter of an hour would
 flood. A check-in that fails, reports anything else, raises a card or
-saves a file is shown like any turn, and its held reply is announced when
-it ends. The chat folds a run of quiet messages into one muted line ("3
+saves a file is shown like any turn, and its reply is said once when it
+ends (`reply.settled`, see Desktop banners). The chat folds a run of quiet messages into one muted line ("3
 quiet check-ins, last at 10:30", `quietRunAt`), which opens to show
 them; the sidebar's line and a lane's `lastAt` read past them.
 
