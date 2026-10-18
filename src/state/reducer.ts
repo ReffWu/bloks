@@ -84,8 +84,11 @@ export interface Message {
   /** When it was queued, and when it stopped waiting and went to the
    * agent. Together they are how long it waited. */
   queuedAt?: number;
-  /** The server says this message waits for a restart, rather than a turn. */
-  waitsFor?: "restart";
+  /** The server says this message waits for a restart, or for an engine
+   * pause to end, rather than for a turn. */
+  waitsFor?: "restart" | "pause";
+  /** When that pause ends. */
+  waitsUntil?: number;
   deliveredAt?: number;
   /** Went into the turn already running rather than starting one, so a
    * finished turn's work folds around it (src/lib/turnFold.ts). */

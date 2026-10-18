@@ -116,6 +116,8 @@ function WaitingRow({
       ? "Queued, waits until you save or cancel"
       : message.waitsFor === "restart"
         ? `Queued at ${stamp(queuedAt)}, sends when Bloks is back from restarting`
+        : message.waitsFor === "pause"
+          ? `Queued at ${stamp(queuedAt)}, sends when its engine's pause ends${message.waitsUntil ? ` at ${stamp(message.waitsUntil)}` : ""}`
         : working
           ? `Queued at ${stamp(queuedAt)}, sends when this turn finishes`
           : `Queued at ${stamp(queuedAt)}`;

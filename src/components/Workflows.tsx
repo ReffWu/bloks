@@ -71,6 +71,8 @@ export interface Run {
   steps: RunStep[];
   waiting?: { stepId: string; until: number; onTimeout: "stop" | "continue" };
   error?: string;
+  /** Why a running run is waiting on an engine pause. */
+  held?: string;
 }
 
 export interface Workflow {
@@ -365,7 +367,7 @@ function WorkflowCard({
 function stateWord(run: Run): string {
   switch (run.state) {
     case "running":
-      return "running";
+      return run.held ?? "running";
     case "waiting":
       return "waiting for you";
     case "done":

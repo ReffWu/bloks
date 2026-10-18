@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { EngineReport } from "./EngineReport";
+import { EnginePauses } from "./EnginePauses";
 import { EngineSetupActions, EngineUpdateNote } from "./EngineSetup";
 
 const AUTH_NOTE: Record<ProviderRow["auth"], string> = {
@@ -260,6 +261,7 @@ export function EnginesPanel() {
           rows={chat}
         />
       </div>
+      <EnginePauses />
       <EngineReport />
       <CustomEndpoints />
     </>

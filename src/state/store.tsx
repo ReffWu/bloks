@@ -808,6 +808,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "brief":
         case "watchers":
         case "meetings":
+        case "enginePauses":
           rawDispatch({ type: "tick", key: frame.kind });
           break;
         case "bot": {
