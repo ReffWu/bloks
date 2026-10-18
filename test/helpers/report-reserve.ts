@@ -38,7 +38,7 @@ rl.createInterface({input:process.stdin}).on('line',line=>{
   const mode=fs.existsSync(path.join(home,'steer-mode'))?fs.readFileSync(path.join(home,'steer-mode'),'utf8'):'';
   if(mode==='drop')return process.exit(0);
   if(mode==='refuse')return out({id:m.id,error:{code:-32600,message:'expected turn has already ended'}});
-  if(mode==='stall'){const timer=setInterval(()=>{if(fs.existsSync(path.join(home,'steer-release'))){clearInterval(timer);reply()}},10);return;}
+  if(mode==='stall'){const timer=setInterval(()=>{if(fs.existsSync(path.join(home,'steer-drop')))process.exit(0);if(fs.existsSync(path.join(home,'steer-release'))){clearInterval(timer);reply()}},10);return;}
   return reply();
  }
  if(m.method==='turn/interrupt'){reply();out({method:'turn/completed',params:{threadId:thread,turn:{id:turn,status:'interrupted'}}});return}

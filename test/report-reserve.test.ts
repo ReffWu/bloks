@@ -254,3 +254,18 @@ test('a Codex refusal of the reserved steer queues the message once and the retr
  assert.equal((await f.say({text:'replacement'})).status,429);
  assert.equal((await f.control('token',{token:f.token})).spent,13);
 });
+
+test('the person\'s words behind an uncertain reserved steer still wait for the turn',async t=>{
+ const f=await reporting(t);await f.request('POST',`/api/bots/${f.target.id}/messages`,{text:'BUSY'});
+ await until(()=>f.calls().some(c=>c.method==='turn/start'));await f.use();
+ writeFileSync(join(f.home,'steer-mode'),'stall');const body={text:'FINAL',now:true};
+ await f.say(body);await until(()=>f.calls().some(c=>c.method==='turn/steer'));
+ const person=f.request('POST',`/api/bots/${f.target.id}/messages`,{text:'PERSON'});
+ await new Promise(r=>setTimeout(r,50));
+ writeFileSync(join(f.home,'steer-drop'),'');
+ const answer=await person;assert.equal(answer.status,202,JSON.stringify(answer.body));assert.equal(answer.body.ok,true);
+ assert.equal((await f.say(body)).body.uncertain,true);
+ await until(async()=>(await f.messages()).some(m=>m.text==='PERSON'));
+ assert.equal((await f.messages()).filter(m=>m.text==='PERSON').length,1);
+ assert.equal((await f.messages()).filter(m=>m.text==='FINAL').length,0);
+});

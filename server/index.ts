@@ -10475,7 +10475,10 @@ function steerLane(
   const previous = steerAttempts.get(lane.id);
   if (!previous && laneInstance(bot, lane.id)?.driverKind !== "codex") return steerOne(bot, lane, text, options);
   const attempt = (async () => {
-    if (previous && !(await previous)) return null;
+    // A reserved report's steer throws when its words may have reached
+    // the engine. That is the report's uncertainty, not this message's:
+    // these words still wait behind it, never overtaking, and never lost.
+    if (previous && !(await previous.catch(() => null))) return null;
     const current = store.bot(bot.id);
     const currentLane = current?.tasks.find((task) => task.id === lane.id);
     return current && currentLane ? steerOne(current, currentLane, text, options) : null;
