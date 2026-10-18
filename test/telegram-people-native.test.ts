@@ -367,6 +367,7 @@ test("a person's session hears only their own exchange, and none of the owner's 
     assert.doesNotMatch(turn.text, /OWNER_SECRET_WORDS|Owner answer/, "the person's session was told the owner's conversation");
     assert.doesNotMatch(turn.system, /OWNER_PROFILE_FACT|About the person you work for/, "the person's session was told about the owner");
     assert.doesNotMatch(turn.system, /AGENT_MEMORY_FACT|persistent memory/, "the person's session was given the agent's memory");
+    assert.doesNotMatch(turn.system, /Deliverables:/, "the person's session was sent to save files in Bloks' own folder");
   }
   // their own exchange, both sides of it, is theirs to be reminded of
   assert.match(second.text, /FIRST_PERSON_WORDS/);

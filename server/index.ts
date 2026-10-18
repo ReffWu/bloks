@@ -4708,7 +4708,9 @@ async function startClaimedTurn(
     sharing && sharedBriefing(sharedRoom!, sharing, roomTools),
     guestMail &&
       "This is an email from someone the person you work for has not listed. Answer it from what you know, in conversation only: you have no tools here, and nothing private of theirs is yours to share.",
-    !guestMail && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, video, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place.${!sharing && runsAProcess(instance.driverKind) ? ` To show the user a file that is already there, or one saved anywhere else on this computer, run \`${cliCommand} share <path>\`: it puts that one file in the chat as a card and answers with a link to it you can write in your reply.` : ""}`,
+    // Not for a Telegram person: that folder is Bloks' own, refused to
+    // their turn, and no file reaches them anyway.
+    !guestMail && !personSource && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, video, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place.${!sharing && runsAProcess(instance.driverKind) ? ` To show the user a file that is already there, or one saved anywhere else on this computer, run \`${cliCommand} share <path>\`: it puts that one file in the chat as a card and answers with a link to it you can write in your reply.` : ""}`,
     HOUSE_STYLE,
     // In a room, who else is here and who decides. Solo chats stay silent
     // about all of it.
