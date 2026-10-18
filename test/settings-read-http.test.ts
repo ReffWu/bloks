@@ -6,6 +6,7 @@ import { once } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { SettingsPages } from "../server/settings-pages.ts";
 import { serveSettingsRead, type SettingsReader } from "../server/settings-read-http.ts";
 import { allows, NEVER } from "../server/agent-cli.ts";
@@ -32,7 +33,7 @@ async function fixture(t: {after:(fn:()=>Promise<void>)=>void}) {
 async function cli(base:string, token:string, args:string[]) {
   const home = mkdtempSync(join(tmpdir(),'bloks-settings-cli-'));
   try {
-    const child = spawn(process.execPath,[new URL('../bin/bloks.mjs',import.meta.url).pathname,...args],
+    const child = spawn(process.execPath,[fileURLToPath(new URL('../bin/bloks.mjs',import.meta.url)),...args],
       {env:{...process.env,HOME:home,BLOKS_URL:base,BLOKS_TOKEN:token},stdio:['ignore','pipe','pipe']});
     let stdout='',stderr=''; child.stdout.on('data',(b)=>stdout+=b);child.stderr.on('data',(b)=>stderr+=b);
     const [code] = await once(child,'close'); return {code,stdout,stderr};

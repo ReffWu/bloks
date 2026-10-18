@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync } from 'no
 import { createServer, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -13,7 +14,7 @@ import { startRemoteProxy } from '../electron/remote.mjs';
 import { keyFromToken, open, peek } from '../server/relay-crypto.ts';
 
 async function command(h: Harness, token: string, args: string[]) {
-  const child = spawn(process.execPath, [new URL('../bin/bloks.mjs', import.meta.url).pathname, ...args], {
+  const child = spawn(process.execPath, [fileURLToPath(new URL('../bin/bloks.mjs', import.meta.url)), ...args], {
     env: { ...process.env, NODE_OPTIONS: '', HOME: h.home, BLOKS_URL: h.url, BLOKS_TOKEN: token },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -49,7 +50,9 @@ test('S1-S5 actual index routes and real CLI use owner metadata without read-tri
     rmSync(files, { recursive: true, force: true });
   });
   h = await startHarness({
-    NODE_OPTIONS: `--import=${new URL('./helpers/settings-app-preload.mjs', import.meta.url).pathname}`,
+    // NODE_OPTIONS splits on spaces and this checkout's path has one; a
+    // file URL has none, where a bare path or a URL's pathname would.
+    NODE_OPTIONS: `--import=${new URL('./helpers/settings-app-preload.mjs', import.meta.url).href}`,
     BLOKS_SETTINGS_TEST_TRACE: tracePath,
   });
   const app = h;
@@ -217,7 +220,7 @@ test('D1 real index and RelayLink with actual Electron proxy keep separate remot
     if (existsSync(tracePath)) t.diagnostic(`fixture trace: ${readFileSync(tracePath, 'utf8')}`);
     rmSync(files, { recursive: true, force: true });
   });
-  h = await startHarness({ NODE_OPTIONS: `--import=${new URL('./helpers/settings-app-preload.mjs', import.meta.url).pathname}`,
+  h = await startHarness({ NODE_OPTIONS: `--import=${new URL('./helpers/settings-app-preload.mjs', import.meta.url).href}`,
     BLOKS_SETTINGS_TEST_TRACE: tracePath, BLOKS_SETTINGS_TEST_RELAY: relayUrl, BLOKS_LOOPBACK_ONLY: '1' });
   await connection;
   proxy = await startRemoteProxy({ relayUrl, relayToken: 'fixture-relay-client', deviceId: 'owner-device', deviceToken: 'fixture-owner' }, { staticDir: files });
