@@ -310,7 +310,7 @@ describe("the credential itself", () => {
     // does
     const tokens = new AgentTokens();
     const minted = tokens.mint(ME, "task-1", 1);
-    for (let i = 0; i < TURN_BUDGET - 1; i++) {
+    for (let i = 0; i < TURN_BUDGET; i++) {
       assert.equal(tokens.spend(minted), true, `change ${i + 1} should be allowed`);
     }
     assert.equal(tokens.spend(minted), false, "the budget should run out");
@@ -319,6 +319,19 @@ describe("the credential itself", () => {
     // and the next turn starts fresh
     const next = tokens.mint(ME, "task-2", 1);
     assert.equal(tokens.spend(next), true);
+  });
+
+  test("past the twelve, one direct message is kept back, and only one", () => {
+    // an agent that spent its twelve on the work must still be able to
+    // say what it did; the thirteenth is that message and nothing else
+    const tokens = new AgentTokens();
+    const minted = tokens.mint(ME, "task-1", 1);
+    assert.throws(() => tokens.claimReport(minted, "early", 2), (e: any) => e.status === 429, "not while general changes remain");
+    for (let i = 0; i < TURN_BUDGET; i++) assert.equal(tokens.spend(minted), true);
+    assert.equal(tokens.spend(minted), false, "no thirteenth general change");
+    const claim = tokens.claimReport(minted, "report", 2);
+    assert.equal(minted.report, claim);
+    assert.throws(() => tokens.claimReport(minted, "another", 2), (e: any) => e.status === 429, "the kept-back slot is one message");
   });
 
   test("expired credentials do not pile up", () => {

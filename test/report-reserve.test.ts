@@ -7,23 +7,23 @@ import { reporting, until } from './helpers/report-reserve.ts';
 import { initialState, reducer } from '../src/state/reducer.ts';
 import { foldTurns } from '../src/lib/turnFold.ts';
 
-test('eleven general mutations leave one ordinary CLI report and bound every subsequent write',async t=>{
+test('twelve general mutations leave one ordinary CLI report and bound every subsequent write',async t=>{
  const f=await reporting(t);await f.use();
  const refused=await f.request('PUT',`/api/bots/${f.sender.id}/memory`,{text:'too far'},f.token);assert.equal(refused.status,429);assert.match(refused.body.error,/One direct message/);
  const cli=await f.command(['say',f.target.id,'FINAL']);assert.equal(cli.code,0,cli.err);assert.equal(JSON.parse(cli.out).ok,true);
  const receipt=await f.accepted();assert.equal(receipt.body.taskId,f.target.threadId);
  assert.equal((await f.messages()).filter(m=>m.text==='FINAL').length,1);
  assert.equal((await f.messages(f.sender)).filter(m=>m.agent?.dir==='out'&&m.text==='FINAL').length,1);
- assert.equal((await f.control('token',{token:f.token})).spent,12);
+ assert.equal((await f.control('token',{token:f.token})).spent,13);
  assert.equal((await f.say({text:'different'})).status,429);
  assert.equal((await f.say({text:'self'},f.sender.id)).status,429);
 });
 
 test('earlier says keep general accounting and do not consume final opportunity',async t=>{
- const f=await reporting(t);assert.equal((await f.say({text:'earlier'})).body.ok,true);await f.use(10);
+ const f=await reporting(t);assert.equal((await f.say({text:'earlier'})).body.ok,true);await f.use(11);
  assert.equal((await f.accepted()).body.queued,true);
  assert.equal((await f.messages()).filter(m=>['earlier','FINAL'].includes(m.text)).length,2);
- assert.equal((await f.control('token',{token:f.token})).spent,12);
+ assert.equal((await f.control('token',{token:f.token})).spent,13);
 });
 
 test('normalization freezes one lane and receipt across ignored fields, later archive and queue take-back',async t=>{
@@ -44,7 +44,7 @@ test('invalid bodies, missing task, archived target, self, room and NEVER refusa
  assert.equal((await f.request('POST',`/api/bloks/${room.id}/messages`,{text:'no fan-out'},f.token)).status,429);
  assert.equal((await f.say({},f.sender.id)).status,429);
  assert.equal((await f.request('PATCH','/api/config',{profile:{about:'forbidden'}},f.token)).status,403);
- assert.equal((await f.control('token',{token:f.token})).spent,11);
+ assert.equal((await f.control('token',{token:f.token})).spent,12);
  assert.equal((await f.accepted()).body.ok,true);
 });
 
@@ -53,19 +53,19 @@ test('parallel identical and distinct reserved submissions store only one admiss
  const results=await Promise.all(Array.from({length:12},(_,i)=>f.say({text:i<8?'FINAL':'OTHER'})));
  assert.ok(results.some(x=>x.body.ok||x.body.pending));assert.equal((await f.accepted()).body.ok,true);
  assert.equal((await f.messages()).filter(m=>m.role==='user').length,1);
- assert.equal((await f.control('token',{token:f.token})).spent,12);
+ assert.equal((await f.control('token',{token:f.token})).spent,13);
 });
 
-test('ten-spent general/direct race and delayed body parsing never debit eleventh request twice',async t=>{
- const f=await reporting(t);await f.use(10);
+test('eleven-spent general/direct race and delayed body parsing never debit twelfth request twice',async t=>{
+ const f=await reporting(t);await f.use(11);
  const delayed=httpRequest(f.url+`/api/bots/${f.target.id}/messages`,{method:'POST',headers:{origin:f.url,authorization:'Bearer '+f.token,'content-type':'application/json','transfer-encoding':'chunked'}});
  const done=new Promise<any>((resolve,reject)=>{delayed.on('response',res=>{let data='';res.on('data',x=>data+=x);res.on('end',()=>resolve(JSON.parse(data)))});delayed.on('error',reject)});
  delayed.write('{"text":');await new Promise(r=>setTimeout(r,30));
- assert.equal((await f.request('PUT',`/api/bots/${f.sender.id}/memory`,{text:'cannot become twelfth general'},f.token)).status,429);
+ assert.equal((await f.request('PUT',`/api/bots/${f.sender.id}/memory`,{text:'cannot become thirteenth general'},f.token)).status,429);
  const reserved=await f.say({text:'RESERVED'});assert.ok(reserved.body.ok||reserved.body.pending);
- delayed.end('"ELEVENTH"}');assert.equal((await done).ok,true);
+ delayed.end('"TWELFTH"}');assert.equal((await done).ok,true);
  await until(async()=> (await f.messages()).filter(m=>m.role==='user').length===2);
- assert.equal((await f.control('token',{token:f.token})).spent,12);
+ assert.equal((await f.control('token',{token:f.token})).spent,13);
 });
 
 test('lost actual HTTP output returns retained receipt without readiness, activity or recipient replay',async t=>{

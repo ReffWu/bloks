@@ -116,7 +116,7 @@ process.on('message',(m:any)=>{
  const minted=await control('mint',{bot:sender.id,task:sender.threadId});
  const token=minted.token as string;
  const say=(body:Record<string,unknown>={text:'FINAL'},to=target.id)=>request('POST',`/api/bots/${to}/messages`,body,token);
- const use=async(n=11)=>{for(let i=0;i<n;i++)assert.equal((await request('PUT',`/api/bots/${sender.id}/memory`,{text:'Synthetic '+i},token)).status,200)};
+ const use=async(n=12)=>{for(let i=0;i<n;i++)assert.equal((await request('PUT',`/api/bots/${sender.id}/memory`,{text:'Synthetic '+i},token)).status,200)};
  const messages=async(bot=target)=> (await request('GET',`/api/bots/${bot.id}/messages?thread=${bot.threadId}&limit=200`)).body.messages as any[];
  const calls=()=>existsSync(join(home,'calls.jsonl'))?readFileSync(join(home,'calls.jsonl'),'utf8').split('\n').filter(Boolean).map(x=>JSON.parse(x)):[];
  const accepted=async(body:Record<string,unknown>={text:'FINAL'})=>until(async()=>{const x=await say(body);return x.body.ok?x:null},'same submission never reached an accepted receipt');

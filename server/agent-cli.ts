@@ -77,13 +77,19 @@ export type TurnAlive = (taskId: string) => boolean;
  * money agreeing with each other. Twelve is more than any real piece of
  * work needs and far less than a loop.
  *
+ * Past the twelve one more is kept back, for one direct message to
+ * another agent and nothing else (claimReport below). A turn handed work
+ * by another agent owes it an answer, and an agent that spent its twelve
+ * on the work itself would otherwise finish having done it and been
+ * unable to say so. The thirteenth cannot feed a loop the twelve could
+ * not: it is one message, and the message still counts along the chain.
+ *
  * It starts again with every turn, so it bounds one turn and not the
  * back and forth. That is counted across turns as well: a turn another
  * agent's message started is one further along a chain than the
  * sender's, and past MAX_AGENT_CHAIN (server/index.ts) the next message
  * waits for the person.
  */
-// Eleven general changes plus one final direct message to another agent.
 export const TURN_BUDGET = 12;
 
 /**
@@ -389,21 +395,25 @@ export class AgentTokens {
   }
 
   /**
-   * Count one change against a credential's budget. Returns false once it
-   * is spent, which the guard turns into a refusal that says so.
+   * Count one change against a credential's budget. Returns false once
+   * the twelve general changes are spent, which the guard turns into a
+   * refusal that says so, or into the kept-back direct message when that
+   * is what was asked for.
    */
   spend(token: AgentToken): boolean {
-    if (this.byToken.get(token.token) !== token || token.spent >= TURN_BUDGET - 1) return false;
+    if (this.byToken.get(token.token) !== token || token.spent >= TURN_BUDGET) return false;
     token.spent++;
     return true;
   }
 
-  /** Called synchronously after delivery guards, before any recipient write. */
+  /** The thirteenth change, the kept-back direct message: only once the
+   * twelve are spent, and only once. Called synchronously after delivery
+   * guards, before any recipient write. */
   claimReport(token: AgentToken, identity: string, now: number, alive?: TurnAlive): ReservedReport {
     if (this.identify(token.token, now, alive) !== token) {
       throw Object.assign(new Error("this request's credential expired or was revoked"), { status: 401 });
     }
-    if (token.spent !== TURN_BUDGET - 1 || token.report) {
+    if (token.spent !== TURN_BUDGET || token.report) {
       throw Object.assign(new Error("this turn's direct reporting slot is already occupied"), { status: 429 });
     }
     return token.report = { identity, dispatched: false, accepted: false, response: REPORT_PENDING };

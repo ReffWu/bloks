@@ -12486,7 +12486,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   // surface than the person at the keyboard, and the narrowing has to
   // happen whatever else the request looks like.
   const asAgent = agentTokens.identify(bearerToken(req), Date.now(), turnAlive);
-  // Chosen once before body parsing. An eleventh general write never becomes
+  // Chosen once before body parsing. A twelfth general write never becomes
   // a second debit merely because another request reaches the reserve first.
   let reservedDirect = false;
   if (asAgent) {
@@ -12510,8 +12510,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (direct && direct[1] !== asAgent.botId) reservedDirect = true;
       else return json(res, 429, {
         error: asAgent.report
-          ? "this turn's general changes are used and its direct reporting slot is occupied."
-          : "this turn's general changes are used. One direct message to another agent remains available.",
+          ? "this turn has made its twelve changes and sent its one kept-back message. Finish up and say what you did in your reply."
+          : "this turn has made its twelve changes. One direct message to another agent remains, kept back so you can say what you did.",
       });
     }
   }
