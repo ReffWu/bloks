@@ -153,6 +153,9 @@ export interface WorkflowRun {
   waiting?: Waiting;
   /** Why it stopped, when it stopped for a reason worth saying. */
   error?: string;
+  /** Why a running run is not moving, when an engine pause holds its
+   * next step (server/engine-pauses.ts). Gone once the step starts. */
+  held?: string;
 }
 
 // ── caps ───────────────────────────────────────────────────────────────

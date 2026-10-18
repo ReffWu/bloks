@@ -218,9 +218,12 @@ export interface Message {
   /** When it was queued. Written since 2.5.19; a queued message without
    * it predates recovery after a restart and is never run by it. */
   queuedAt?: number;
-  /** The server queued the person's words while finishing up to restart.
+  /** The server queued these words while finishing up to restart, or
+   * while the agent's engine is paused (server/engine-pauses.ts).
    * Cleared when delivered; never accepted from a client body. */
-  waitsFor?: "restart";
+  waitsFor?: "restart" | "pause";
+  /** When the pause it waits for ends. */
+  waitsUntil?: number;
   /** Taken by the turn already running in its lane (steerLane) rather
    * than starting one. Every other message from the person, another
    * agent, a routine or a watcher is where a turn begins, so this is

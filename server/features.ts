@@ -48,4 +48,8 @@ export const FEATURES: readonly string[] = [
   // or a paired phone's own settings, also sent as it connects and when
   // one of them changes
   "device-settings",
+  // GET, POST and DELETE /api/engine-pauses: engines and models paused
+  // for a while, and `waitsFor: "pause"` with `waitsUntil` on a message
+  // held for one
+  "engine-pauses",
 ];

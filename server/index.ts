@@ -359,6 +359,7 @@ import { RoomTagQueues } from "./room-tags.ts";
 import { MAX_AGENT_HOPS, heldMention, hopsNotice } from "./room-hops.ts";
 import { RepeatWatch } from "./repeats.ts";
 import { Drain, DRAIN_GRACE_MS, DRAINING_TEXT, drainWindow } from "./drain.ts";
+import { covers, EnginePauses, FAMILY_NAMES, familyOf, PAUSE_MAX_MS, PauseRefusal, SELF_PAUSE_MAX_MS, type EnginePause, type EngineRoute, type PauseActor } from "./engine-pauses.ts";
 import {
   AUTO_KEEP,
   autoBackupDue,
@@ -568,6 +569,9 @@ setInterval(() => cutOff.touch(), 5 * 60_000).unref?.();
 // (server/drain.ts). In memory; a restart ends it, and so does its own
 // deadline long past. Tests shorten that grace through the environment.
 const drain = new Drain(Number(process.env.BLOKS_DRAIN_GRACE_MS) || DRAIN_GRACE_MS);
+// Engines and models paused for a while (server/engine-pauses.ts). Read
+// once here; written only when a pause is added or called off.
+const enginePauses = new EnginePauses(join(DATA_DIR, "engine-pauses.json"));
 // Notes about the person, suggested by agents and kept by them
 // (server/profile-notes.ts), and how many each running turn has offered.
 const profileNotes = new ProfileNotes(join(DATA_DIR, "profile-notes.json"));
@@ -939,6 +943,206 @@ function engineUsable(selection: ModelSelection | null | undefined): selection i
  * turn handed to the backup (`fallback`) may also go to another model on
  * the agent's own engine, which cannot stand in while that engine rests. */
 function selectEngine(bot: BotRecord, fallback = false, laneId?: string): ModelSelection {
+  const chosen = preferredEngine(bot, fallback, laneId);
+  // An engine paused for this agent (server/engine-pauses.ts) is passed
+  // over the way a resting one is, for the agent's other engine when
+  // that one may go. A turn handed to the backup has only the backup.
+  // When neither may, the paused one is the answer, and startTurn holds
+  // the turn until the pause ends.
+  if (!pausedOn(bot, chosen)) return chosen;
+  const others = fallback ? [bot.backupSelection] : [bot.modelSelection, bot.backupSelection];
+  return others.find((other): other is ModelSelection => engineUsable(other) && !pausedOn(bot, other)) ?? chosen;
+}
+
+/** The engine a selection names, as a pause reads it: the model as it
+ * will be asked for, the engine's default when none is chosen. */
+function routeOf(selection: ModelSelection): EngineRoute {
+  const instance = registry.get(selection.instanceId);
+  return { instanceId: selection.instanceId, driver: instance?.driverKind ?? "", model: selection.model || instance?.models.default || "" };
+}
+
+/** The pause on this engine for this agent, or null. With no pauses
+ * at all this is the one length check, and nothing else happens. */
+function pausedOn(bot: { id: string }, selection: ModelSelection | null | undefined): EnginePause | null {
+  if (!selection || !enginePauses.any()) return null;
+  return enginePauses.holding(bot.id, routeOf(selection));
+}
+
+/** The pause holding an agent's next turn: the engine it would run on is
+ * paused for it, and its other engine cannot stand in. */
+function pauseHolding(bot: BotRecord, laneId?: string, fallback = false): EnginePause | null {
+  if (!enginePauses.any()) return null;
+  return pausedOn(bot, selectEngine(bot, fallback, laneId));
+}
+
+/** What a paused engine is called, in a sentence: "Claude Code (Opus)",
+ * "every Codex engine", "every Anthropic model". */
+function pauseLabel(what: EnginePause["what"]): string {
+  const instance = what.instanceId ? registry.get(what.instanceId) : undefined;
+  const engine = what.instanceId ? (instance?.displayName ?? instance?.driverKind ?? what.instanceId) : undefined;
+  const model = what.model
+    ? ([...(instance ? [instance] : []), ...registry.instances()]
+        .flatMap((i) => i.models.options)
+        .find((o) => o.id === what.model)?.label ?? what.model)
+    : undefined;
+  const parts: string[] = [];
+  if (model) parts.push(engine ? `${engine} (${model})` : model);
+  else if (engine) parts.push(engine);
+  if (what.driver) {
+    const kind = registry.instances().find((i) => i.driverKind === what.driver);
+    parts.push(`every ${kind?.displayName ?? what.driver} engine`);
+  }
+  if (what.family) parts.push(`every ${FAMILY_NAMES[what.family] ?? what.family} model`);
+  return parts.join(", ");
+}
+
+/** Why a pause holds an agent's turn, and until when. */
+function pausedWhy(bot: { id: string; name: string }, pause: EnginePause): string {
+  const self = pause.by === bot.id ? " It paused itself." : "";
+  const note = pause.note ? ` (${pause.note})` : "";
+  return `${bot.name} is paused on ${pauseLabel(pause.what)} until ${clockTime(pause.until)}${note}.${self}`;
+}
+
+/** A turn refused for a pause. Callers that hold work rather than drop it
+ * (a room line, a job, a workflow step) know it by `enginePaused`. */
+function pausedRefusal(bot: BotRecord, pause: EnginePause): Error {
+  return Object.assign(new Error(pausedWhy(bot, pause)), { status: 409, enginePaused: true, until: pause.until });
+}
+
+/** Each hold a conversation has been told about, by conversation and what
+ * is held (a pause, or a pause and a routine), so a hold is said once
+ * when it starts and not at every message, look or tick it holds.
+ * Emptied once nothing is paused. */
+const pauseTold = new Set<string>();
+
+/** Says in a conversation that something waits for a pause. */
+function sayPaused(threadId: string, key: string, text: string) {
+  if (pauseTold.has(`${threadId} ${key}`)) return;
+  pauseTold.add(`${threadId} ${key}`);
+  // told already, before a restart
+  if (store.messagesFor(threadId).at(-1)?.text === text) return;
+  const notice = store.appendMessage(threadId, { role: "bot", kind: "notice", text });
+  broadcast({ kind: "message", threadId, message: notice });
+}
+
+/** What waited for a pause goes, wherever it waited, now that something
+ * changed: a pause ended or was called off. Each place asks the door
+ * again, so what is still paused stays where it is. */
+function releasePaused() {
+  enginePauses.prune();
+  if (!enginePauses.any()) pauseTold.clear();
+  for (const laneId of [...steerQueues.keys()]) {
+    // A turn still running there keeps these waiting, but no longer for
+    // the pause; one still paused says until when it is now.
+    const owner = store.taskByThread(laneId)?.bot;
+    const still = owner ? pauseHolding(owner, laneId) : null;
+    for (const m of store.messagesFor(laneId)) {
+      if (!m.queued || m.waitsFor !== "pause" || m.waitsUntil === still?.until) continue;
+      const message = store.patchMessage(laneId, m.id, still ? { waitsUntil: still.until } : { waitsFor: undefined, waitsUntil: undefined });
+      if (message) broadcast({ kind: "message.patch", threadId: laneId, message });
+    }
+    drainSteer(laneId);
+  }
+  for (const botId of roomTags.agents()) drainRoomTags(botId);
+  for (const jobId of [...jobsPaused]) {
+    jobsPaused.delete(jobId);
+    void offerJob(jobId).catch(() => {});
+  }
+}
+
+/** Wakes at the end of the next pause, so what it held goes then rather
+ * than at the next routine tick. */
+let pauseTimer: ReturnType<typeof setTimeout> | null = null;
+function armPauseTimer() {
+  if (pauseTimer) clearTimeout(pauseTimer);
+  pauseTimer = null;
+  const next = enginePauses.nextEnd();
+  if (next === null) return;
+  // a timer holds about 24 days, and a pause lasts a week at most
+  pauseTimer = setTimeout(() => {
+    pauseTimer = null;
+    releasePaused();
+    broadcast({ kind: "enginePauses" });
+    armPauseTimer();
+  }, Math.max(0, next - Date.now()) + 50);
+  pauseTimer.unref?.();
+}
+
+/** Turns running now on an engine a pause covers, for their agents. */
+function runningUnder(pause: EnginePause): Array<{ bot: BotRecord; laneId: string }> {
+  return store.bots.flatMap((bot) =>
+    bot.tasks
+      .filter((task) => task.busy)
+      .filter((task) => covers(pause, bot.id, routeOf(laneEngine.get(task.id) ?? bot.modelSelection)))
+      .map((task) => ({ bot, laneId: task.id })),
+  );
+}
+
+/** Stops a running turn because the owner paused its engine and asked
+ * for that. Not a pickup after a restart, and a goal it was working
+ * toward stops with it, as when the person presses Stop. */
+async function stopForPause(bot: BotRecord, laneId: string, pause: EnginePause) {
+  cutOff.stop(laneId);
+  const why = `${pausedWhy(bot, pause)} The turn running on it was stopped, as you asked when you paused it.`;
+  if (store.taskByThread(laneId)?.task.goal?.status === "active") {
+    pauseGoal(bot.id, laneId, goalPausedNotice("stopped"), "its engine was paused");
+  }
+  const notice = store.appendMessage(laneId, { role: "bot", kind: "notice", text: why });
+  broadcast({ kind: "message", threadId: laneId, message: notice });
+  await interruptLane(bot, laneId);
+}
+
+/** One pause as its viewer gets it: what it covers in words, and for the
+ * owner, who it is for by name. */
+function pauseView(pause: EnginePause, actor: PauseActor) {
+  return {
+    ...pause,
+    label: pauseLabel(pause.what),
+    ...(actor.kind === "owner" && pause.agents !== "all"
+      ? { agentNames: pause.agents.map((id) => store.bot(id)?.name ?? id) }
+      : {}),
+    ...(actor.kind === "owner" && pause.by !== "owner" ? { byName: store.bot(pause.by)?.name ?? pause.by } : {}),
+  };
+}
+
+/** The pauses in force, and for the owner what can be paused (each
+ * family, kind of engine, engine and model there is), what is running
+ * on each pause now, and anything wrong with the saved list. */
+function pausesView(actor: PauseActor) {
+  const pauses = enginePauses.visibleTo(actor).map((p) => ({
+    ...pauseView(p, actor),
+    ...(actor.kind === "owner" ? { running: runningUnder(p).length } : {}),
+  }));
+  if (actor.kind !== "owner") return { pauses, limits: { longest: SELF_PAUSE_MAX_MS } };
+  const instances = registry.instances();
+  const families = new Set<string>();
+  const kinds = new Map<string, number>();
+  const choices: Array<{ what: EnginePause["what"]; label: string; group: string }> = [];
+  for (const instance of instances) {
+    kinds.set(instance.driverKind, (kinds.get(instance.driverKind) ?? 0) + 1);
+    const ids = [instance.models.default, ...instance.models.options.map((o) => o.id)].filter(Boolean);
+    for (const id of ids) {
+      const family = familyOf(instance.driverKind, id);
+      if (family) families.add(family);
+    }
+  }
+  for (const family of [...families].sort()) {
+    choices.push({ what: { family }, label: pauseLabel({ family }), group: "Families" });
+  }
+  for (const [driver, count] of kinds) {
+    if (count > 1) choices.push({ what: { driver }, label: pauseLabel({ driver }), group: "Kinds of engine" });
+  }
+  for (const instance of instances) {
+    choices.push({ what: { instanceId: instance.instanceId }, label: pauseLabel({ instanceId: instance.instanceId }), group: "Engines" });
+    for (const option of instance.models.options) {
+      choices.push({ what: { instanceId: instance.instanceId, model: option.id }, label: pauseLabel({ instanceId: instance.instanceId, model: option.id }), group: "Models" });
+    }
+  }
+  return { pauses, choices, fault: enginePauses.fault, limits: { longest: PAUSE_MAX_MS } };
+}
+
+/** What selectEngine answers when nothing is paused. */
+function preferredEngine(bot: BotRecord, fallback: boolean, laneId?: string): ModelSelection {
   const own = bot.modelSelection;
   if (fallback && engineUsable(bot.backupSelection)) return bot.backupSelection;
   // a conversation staying on the backup that answered it
@@ -4054,6 +4258,32 @@ async function startClaimedTurn(
     return;
   }
 
+  // An engine paused for this agent (server/engine-pauses.ts), with no
+  // other engine of its own that may go. Held the way a drain holds:
+  // words for one of its lanes wait in that lane's queue, on disk and
+  // shown as waiting for the pause, and go on their own when it ends. A
+  // room line, a rehearsal, somebody else's request, or a turn going on
+  // with another (a pickup, a retry, a backup) is refused, and its
+  // caller holds it or says why.
+  const pause = pauseHolding(bot, task.id, opts.fallback);
+  if (pause) {
+    const own = (!opts.roomId || opts.roomId === task.id) && !opts.rehearsal && (!opts.requester || opts.requester === "owner");
+    if (own && !opts.presetMessage && !opts.carriedOn && !opts.fallback && !opts.retry) {
+      queueOnLane(bot.id, task.id, text, {
+        replyTo: opts.replyTo, from: opts.from, routine: opts.routine, personal: opts.byYou === true && opts.personal !== false,
+        chain: opts.chain, fromTelegram: opts.fromTelegram, telegramBinding: opts.telegramBinding, waitsFor: "pause", waitsUntil: pause.until,
+      });
+      sayPaused(task.id, pause.id, `${pausedWhy(bot, pause)} What is said to it here waits, and goes on its own then.`);
+      return;
+    }
+    if (opts.roomId && opts.roomId !== task.id && bloks.get(opts.roomId)) {
+      // a shared room's members are not told which engine, or why
+      const why = sharing ? `${bot.name} is paused until ${clockTime(pause.until)}.` : pausedWhy(bot, pause);
+      sayPaused(opts.roomId, `${pause.id}:${bot.id}`, `${why} It answers here once the pause ends.`);
+    }
+    throw pausedRefusal(bot, pause);
+  }
+
   // A rehearsal lane keeps rehearsing: a follow-up works on the same copy,
   // and its card, still measured from the folder as the copy was made,
   // replaces the last one. Once the copy is gone (applied or discarded),
@@ -4090,7 +4320,9 @@ async function startClaimedTurn(
   const reservation =
     !command && !opts.fallback && !opts.retry && !opts.carriedOn && !staying &&
     (!opts.roomId || opts.roomId === task.id) && triesBeforeReset(own, ownRest) && ownInstance?.enabled !== false &&
-    backup?.instanceId !== own.instanceId && engineUsable(backup)
+    backup?.instanceId !== own.instanceId && engineUsable(backup) &&
+    // a try of a resting engine is a turn on it, and one paused is not tried
+    !pausedOn(bot, own) && !pausedOn(bot, backup)
       ? cooldowns.reserve(own.instanceId, RETRY_INTERVAL) : undefined;
   const ownTry: PrimaryTry | undefined = reservation ? { reservation } : undefined;
   if (ownTry) {
@@ -4106,6 +4338,10 @@ async function startClaimedTurn(
   if (!instance) {
     throw Object.assign(new Error(unavailableEngineMessage(selection.instanceId)), { status: 409 });
   }
+  // The pause door above, asked of the engine actually chosen: no try of
+  // a resting engine and no queued command reaches one that is paused.
+  const pausedHere = pausedOn(bot, selection);
+  if (pausedHere) throw pausedRefusal(bot, pausedHere);
   if (sharing && !sharedSafe(instance.driverKind)) {
     throw Object.assign(
       new Error(
@@ -5683,6 +5919,19 @@ async function checkWatcher(id: string, manual = false): Promise<{ fired: boolea
     // now would only use the change up. The first look after the release
     // finds it instead (GitHub 135).
     if (wheel.heldBy(bot.id)) return { fired: false, note: `${bot.name} is being held right now; it will look again once released` };
+    // Nor is there a look while its engine is paused: the turn it calls
+    // for would only wait, and the change is still there for the first
+    // look after the pause ends. Said once in its conversation.
+    const paused = pauseHolding(bot, lane?.id);
+    if (paused) {
+      const why = `The watcher ${chainName(w.name)} did not look: ${pausedWhy(bot, paused)} It looks again once the pause ends.`;
+      w.lastCheck = Date.now();
+      w.lastError = why;
+      const speaksIn = w.laneId && w.thread ? bot.tasks.find((t) => t.id === w.laneId && t.title === w.thread) : undefined;
+      const told = speaksIn ?? namedLane(bot, w.thread) ?? mainLaneOf(bot);
+      if (told) sayPaused(told.id, `${paused.id}:${w.id}`, why);
+      return { fired: false, note: why };
+    }
     if (!checkAllowed(w, bot.approvals)) {
       w.lastCheck = Date.now();
       w.lastError = `Waiting for approval: its command does not run until ${hostName()} approves it here.`;
@@ -6676,10 +6925,11 @@ function queueRoomTag(botId: string, roomId: string, text: string, requester: st
 }
 
 /** A refusal that means "not now" rather than "no": the agent is busy,
- * or Bloks is finishing up to restart. The line waits for it. */
+ * Bloks is finishing up to restart, or the agent's engine is paused
+ * (server/engine-pauses.ts). The line waits for it. */
 function waitsForTurn(e: unknown): boolean {
-  const refused = e as { busy?: boolean; draining?: boolean } | null;
-  return Boolean(refused?.busy || refused?.draining);
+  const refused = e as { busy?: boolean; draining?: boolean; enginePaused?: boolean } | null;
+  return Boolean(refused?.busy || refused?.draining || refused?.enginePaused);
 }
 
 /** Deliver an agent's waiting room lines once it is free. Called whenever
@@ -6691,6 +6941,9 @@ function drainRoomTags(botId: string) {
   // a message queued in one of its own lanes was there first, and its
   // turn is about to start; the room waits for the settle after it
   if (bot && [...steerQueues.values()].some((q) => q.botId === botId)) return;
+  // its engine paused: the lines wait, on disk, until the pause ends
+  // (releasePaused); the room was told when the first one was held
+  if (bot && pauseHolding(bot)) return;
   for (const entry of waiting) {
     const { roomId } = entry;
     const blok = bloks.get(roomId);
@@ -7027,6 +7280,8 @@ function candidates(): Candidate[] {
 
 /** Jobs posted or passed on during a drain, to offer when it ends. */
 const jobsHeld = new Set<string>();
+/** Jobs whose only takers are paused, to offer when a pause ends. */
+const jobsPaused = new Set<string>();
 
 /**
  * Put a job to whoever looks most suited, and start them on it.
@@ -7046,7 +7301,13 @@ async function offerJob(jobId: string): Promise<Job | null> {
   }
   // Jobs agents post for one another are a chain like their messages
   // are: past the limit the job is left for the person to offer again.
-  const agent = nextFor(job, candidates());
+  // An agent whose engine is paused is not free for one either. With
+  // nobody else, the job waits open on the board for the pause to end
+  // (releasePaused), as one does for a drain.
+  const everyone = candidates();
+  const free = enginePauses.any() ? everyone.filter((c) => !pauseHolding(store.bot(c.id)!)) : everyone;
+  const agent = nextFor(job, free);
+  if (!agent && free.length < everyone.length && nextFor(job, everyone)) jobsPaused.add(job.id);
   if (chainPastLimit(job.chain ?? 0)) {
     const held = jobs.finish(job.id, {
       ok: false,
@@ -7529,7 +7790,8 @@ async function foldContext(botId: string, threadId: string, force = false, hando
   const task = bot?.tasks.find((t) => t.id === threadId);
   if (!bot || !task) return false;
   const instance = registry.get(bot.modelSelection.instanceId);
-  if (!instance?.generateText) return false;
+  // a summary or a review on an engine paused for this agent waits too
+  if (!instance?.generateText || pausedOn(bot, bot.modelSelection)) return false;
 
   const settled = store
     .messagesFor(threadId)
@@ -7586,7 +7848,8 @@ async function microFold(botId: string, threadId: string): Promise<boolean> {
   const task = bot?.tasks.find((t) => t.id === threadId);
   if (!bot || !task) return false;
   const instance = registry.get(bot.modelSelection.instanceId);
-  if (!instance?.generateText) return false;
+  // a summary or a review on an engine paused for this agent waits too
+  if (!instance?.generateText || pausedOn(bot, bot.modelSelection)) return false;
 
   const settled = store
     .messagesFor(threadId)
@@ -7651,7 +7914,8 @@ async function reviewForSkill(botId: string, threadId: string): Promise<boolean>
   const bot = store.bot(botId);
   if (!bot) return false;
   const instance = registry.get(bot.modelSelection.instanceId);
-  if (!instance?.generateText) return false;
+  // a summary or a review on an engine paused for this agent waits too
+  if (!instance?.generateText || pausedOn(bot, bot.modelSelection)) return false;
 
   const turns: Turn[] = store
     .messagesFor(threadId)
@@ -7948,6 +8212,20 @@ async function walkRun(runId: string): Promise<void> {
         // stays running, and the tick finds it again in half a minute.
         // Bloks finishing up to restart is the same wait, and the run is
         // found again the same way once it is back.
+        // So is an engine paused for the agent asked, and the run says
+        // so (`held`) until the pause ends and the tick finds it again.
+        const paused = pauseHolding(bot);
+        if (paused) {
+          const why = `waiting: ${pausedWhy(bot, paused)}`;
+          workflows.update(runId, (r) => {
+            const at = r.steps.findIndex((sp) => sp.stepId === step.id && !sp.endedAt);
+            if (at >= 0) r.steps.splice(at, 1);
+            r.held = why;
+          });
+          broadcast({ kind: "workflows" });
+          return;
+        }
+        if (run.held) workflows.update(runId, (r) => void delete r.held);
         const laneId = drain.on ? undefined : backgroundTaskId(bot.id, "Workflows");
         if (!laneId) {
           workflows.update(runId, (r) => {
@@ -8205,6 +8483,13 @@ async function runDueRoutines() {
   // A routine has no queue to wait in. It stays due instead, unmarked,
   // and fires once Bloks is back, inside the grace window a late routine
   // has anyway (server/drain.ts keeps a drain shorter than that).
+  // Before that, the backstop for the pause timer: a pause that has
+  // ended lets what it held go, here if the timer has not yet.
+  if (enginePauses.any() && enginePauses.prune()) {
+    releasePaused();
+    broadcast({ kind: "enginePauses" });
+    armPauseTimer();
+  }
   if (drain.on) return;
   const now = new Date();
   for (const routine of routines.due(now)) {
@@ -8221,6 +8506,21 @@ async function runDueRoutines() {
       // used to post, mark itself run and report success, which burns a
       // "once" routine on an empty room.
       if (!members.some((m) => !m.archivedAt && !wheel.heldBy(m.id))) continue;
+      // Nor is a room where every agent who could answer is paused: held
+      // as an agent's routine is, without spending the slot. One with
+      // somebody free runs, and a paused member's line waits for it.
+      const awake = members.filter((m) => !m.archivedAt && !wheel.heldBy(m.id));
+      const paused = awake.map((m) => pauseHolding(m));
+      if (paused.every(Boolean)) {
+        const last = paused.reduce((a, b) => (b!.until > a!.until ? b : a))!;
+        const why = `The routine ${chainName(routine.name ?? "without a name")} did not post: every agent here is paused, until ${clockTime(last.until)} at the latest. ` +
+          "It runs once they are free if that is within its missed-run grace, and otherwise at its next time.";
+        if (routines.holdRun(routine.id, lastScheduledBefore(routine, now)!.getTime(), blok.id, why)) {
+          sayPaused(blok.id, `${last.id}:${routine.id}`, why);
+          broadcast({ kind: "routines" });
+        }
+        continue;
+      }
       routines.markRan(routine.id, now.getTime());
       const run = routines.beginRun(routine.id, blok.id);
       if (run) openRuns.set(blok.id, { routineId: routine.id, runId: run.id });
@@ -8264,6 +8564,22 @@ async function runDueRoutines() {
         }
         continue;
       }
+      // An engine paused for this agent holds the routine the same way:
+      // a record of the attempt, not a spent slot. Still due when the
+      // pause ends inside its missed-run grace, it runs then; otherwise
+      // at its next time. Said once in the conversation it runs in.
+      const paused = pauseHolding(bot, laneId);
+      if (paused) {
+        const why = `The routine ${chainName(routine.name ?? "without a name")} did not start: ${pausedWhy(bot, paused)} ` +
+          (routine.repeat === "once"
+            ? "It runs once the pause ends if that is within its missed-run grace; past that, a one-time routine runs only by hand."
+            : "It runs once the pause ends if that is within its missed-run grace, and otherwise at its next time.");
+        if (routines.holdRun(routine.id, lastScheduledBefore(routine, now)!.getTime(), laneId, why)) {
+          sayPaused(laneId, `${paused.id}:${routine.id}`, why);
+          broadcast({ kind: "routines" });
+        }
+        continue;
+      }
       routines.markRan(routine.id, now.getTime());
       const run = routines.beginRun(routine.id, laneId);
       if (run) openRuns.set(laneId, { routineId: routine.id, runId: run.id });
@@ -8287,6 +8603,8 @@ async function runDueRoutines() {
 // Every 30s. The schedule has minute resolution, so this is twice as often
 // as it needs to be and cheap enough not to care.
 const routineTimer = setInterval(() => void runDueRoutines().catch(() => {}), 30_000);
+// The end of the next pause saved before this start, if there is one.
+armPauseTimer();
 
 // ── messages arriving from each agent's Telegram bot ──────────────────
 // A bot belongs to one agent (server/telegram-bots.ts), and each bot that
@@ -8774,7 +9092,7 @@ async function answerOverTelegram(botId: string, text: string, chatId: number, r
   // away lost the message (GitHub 213). A held or archived agent is
   // refused by startTurn below, as it always was.
   const lane = bot.tasks.find((t) => t.id === laneId);
-  if (lane && laneWaits(lane) && !wheel.heldBy(botId) && !bot.archivedAt) {
+  if (lane && (laneWaits(lane) || pauseHolding(bot, laneId)) && !wheel.heldBy(botId) && !bot.archivedAt) {
     try {
       const steered = await steerLane(bot, lane, text, { replyTo, fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } });
       if (!steered && !currentTelegram(runtime)) throw new Error("the Telegram connection changed");
@@ -9077,6 +9395,9 @@ async function drainMail() {
     // splicing at -1 would drop whichever mail is last in the line.
     const at = mailQueue.indexOf(item);
     if (at < 0) continue;
+    // and for an agent whose engine is paused, until the pause ends
+    const recipient = store.bot(item.botId);
+    if (recipient && pauseHolding(recipient)) continue;
     // Mail from someone the owner has not listed has a conversation of its
     // own. The owner's turns in "Email" resume that lane's session, and
     // would read whatever such a mail told the agent with the owner's
@@ -9443,6 +9764,7 @@ function deliverQueued(threadId: string, messageIds: readonly string[]) {
   const moved = store.moveToEnd(threadId, messageIds, (m) => ({
     queued: false,
     waitsFor: undefined,
+    waitsUntil: undefined,
     deliveredAt,
     at: deliveredAt,
     queuedAt: m.queuedAt ?? m.at,
@@ -9525,6 +9847,7 @@ function queueOnLane(
     telegramBinding?: Message["telegramBinding"];
     personal?: boolean;
     waitsFor?: Message["waitsFor"];
+    waitsUntil?: number;
     /** An agent sent it: the place in a chain of agents' messages the
      * turn that takes it would have (agentChain). */
     chain?: number;
@@ -9538,6 +9861,7 @@ function queueOnLane(
   const message = store.appendMessage(laneId, {
     role: "user", kind: "text", text, queued: true, queuedAt: Date.now(),
     ...(options.waitsFor ? { waitsFor: options.waitsFor } : {}),
+    ...(options.waitsUntil ? { waitsUntil: options.waitsUntil } : {}),
     namedSkills: !options.from && !options.via && !options.routine && options.personal !== false,
     ...(options.replyTo ? { replyTo: options.replyTo } : {}),
     ...(options.from ? { agent: { dir: "in" as const, peerId: options.from.botId, peerName: options.from.name } } : {}),
@@ -9803,7 +10127,10 @@ async function sendUserMessage(
     const { lastReason: _answered, ...goal } = lane.goal;
     putGoal(bot.id, lane.id, { ...goal, status: "active" });
   }
-  if (laneWaits(lane)) {
+  // Its engine paused (server/engine-pauses.ts): the words wait in the
+  // lane, shown as waiting for the pause, as they would behind a turn.
+  const paused = pauseHolding(bot, lane.id);
+  if (laneWaits(lane) || paused) {
     if (yours && options.steer) {
       const steered = await steerLane(bot, lane, text, { replyTo: options.replyTo, personal: options.personal });
       if (steered) {
@@ -9844,8 +10171,9 @@ async function sendUserMessage(
     }
     queueOnLane(bot.id, lane.id, text, {
       replyTo: options.replyTo, from: options.from, personal: options.personal, chain: options.chain?.depth,
-      ...(drain.on && yours ? { waitsFor: "restart" as const } : {}),
+      ...(drain.on && yours ? { waitsFor: "restart" as const } : paused ? { waitsFor: "pause" as const, waitsUntil: paused.until } : {}),
     });
+    if (paused) sayPaused(lane.id, paused.id, `${pausedWhy(bot, paused)} What is said to it here waits, and goes on its own then.`);
     // Asking the engine took a moment, and the turn may have ended in it,
     // with nothing coming along after to take what now waits.
     if ((yours && options.steer) || askedEngine) drainSteer(lane.id);
@@ -9853,6 +10181,8 @@ async function sendUserMessage(
     // carry on as if the other had stopped (GitHub 141).
     const waits = drain.on
       ? DRAINING_TEXT
+      : paused
+        ? `${pausedWhy(bot, paused)} This waits, and goes on its own then.`
       : lane.busy
         ? `${bot.name} is in the middle of a turn; this waits until that turn ends.`
         : `Messages said to ${bot.name} before this one are still waiting to go; this goes with them.`;
@@ -9929,6 +10259,20 @@ function drainSteer(threadId: string) {
     }
     drainRoomTags(entry.botId);
     closeIfAsked(threadId);
+    return;
+  }
+  // An engine paused for this agent (server/engine-pauses.ts): the burst
+  // stays where it is, on disk, marked as waiting for the pause, and goes
+  // when it ends (releasePaused). Said once in the conversation.
+  const pause = pauseHolding(bot, threadId);
+  if (pause) {
+    for (const item of entry.items) {
+      const said = item.messageId ? store.messagesFor(threadId).find((m) => m.id === item.messageId) : undefined;
+      if (!said?.queued || (said.waitsFor === "pause" && said.waitsUntil === pause.until)) continue;
+      const patched = store.patchMessage(threadId, said.id, { waitsFor: "pause", waitsUntil: pause.until });
+      if (patched) broadcast({ kind: "message.patch", threadId, message: patched });
+    }
+    sayPaused(threadId, pause.id, `${pausedWhy(bot, pause)} What is said to it here waits, and goes on its own then.`);
     return;
   }
   // Claim only this segment before any async work; a command is a turn
@@ -10446,9 +10790,10 @@ async function judgeGoal(botId: string, laneId: string): Promise<void> {
       };
     }
     // the engine the agent is on, as a fold uses: what the turn said
-    // goes nowhere it was not already going
+    // goes nowhere it was not already going. Not while that engine is
+    // paused for the agent: the check and the reply decide alone then.
     const instance = registry.get(found.bot.modelSelection.instanceId);
-    if (instance?.generateText) {
+    if (instance?.generateText && !pausedOn(found.bot, found.bot.modelSelection)) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise<string>((done) => {
         timer = setTimeout(() => done(""), GOAL_JUDGE_MS);
@@ -11440,7 +11785,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (refusal.retryAfter) res.setHeader("retry-after", refusal.retryAfter);
       return json(res, refusal.status, { error: refusal.error });
     }
-    const laneId = agentId && !drain.on ? claimWebhookLane(agentId, hook.thread) : undefined;
+    // An engine paused for the agent holds the event the way a drain does.
+    const hookAgent = agentId ? store.bot(agentId) : null;
+    const holdHook = drain.on || Boolean(hookAgent && pauseHolding(hookAgent));
+    const laneId = agentId && !holdHook ? claimWebhookLane(agentId, hook.thread) : undefined;
     // Its lane (the agent's first, or the one the hook names) is mid-turn,
     // or another event has just claimed it, or Bloks is finishing up to
     // restart: this one waits in that lane and goes in the next turn, as a
@@ -11452,7 +11800,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const target = store.bot(agentId);
       waitIn =
         (target ? namedLane(target, hook.thread)?.id : undefined) ??
-        (drain.on ? workLaneId(agentId, hook.thread) : undefined);
+        (holdHook ? workLaneId(agentId, hook.thread) : undefined);
       const framed = webhookMessage(hook.name, raw);
       const queued = waitIn ? (steerQueues.get(waitIn)?.items.filter((item) => item.source === "webhook") ?? []) : [];
       const bytes = queued.reduce(
@@ -15170,6 +15518,54 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       });
     }
 
+    // ── engine pauses (server/engine-pauses.ts) ──
+    // The owner, here or on a paired device, sees and changes them all. An
+    // agent, with its turn's credential, sees only the pauses that cover
+    // it, pauses only itself and for a day at most, and calls off only
+    // its own. A member of a shared room never reaches these.
+    if (path === "/api/engine-pauses" && (method === "GET" || method === "POST")) {
+      const actor: PauseActor = asAgent ? { kind: "agent", id: asAgent.botId } : { kind: "owner" };
+      if (method === "GET") return json(res, 200, pausesView(actor));
+      const body = await readBody(req);
+      if (!isRecord(body)) return json(res, 400, { error: "expected a JSON object" });
+      if (asAgent && body.stopRunning !== undefined) {
+        return json(res, 403, { error: "Only the person can stop running work with a pause." });
+      }
+      // an agent pausing itself with nothing named pauses what it runs on
+      const self = asAgent ? store.bot(asAgent.botId) : null;
+      const what = body.what ?? (self ? { instanceId: self.modelSelection.instanceId, model: routeOf(self.modelSelection).model } : undefined);
+      try {
+        const pause = enginePauses.add(actor, { ...body, what }, (id) => Boolean(store.bot(id)));
+        const running = runningUnder(pause);
+        // Only when the owner said so. A running turn otherwise finishes on
+        // the engine it started on, and the pause holds what comes next.
+        const stopping = !asAgent && body.stopRunning === true ? running : [];
+        for (const { bot, laneId } of stopping) void stopForPause(bot, laneId, pause).catch(() => {});
+        armPauseTimer();
+        broadcast({ kind: "enginePauses" });
+        return json(res, 201, { pause: pauseView(pause, actor), running: running.length - stopping.length, stopped: stopping.length });
+      } catch (e) {
+        if (e instanceof PauseRefusal) return json(res, e.status, { error: e.message });
+        throw e;
+      }
+    }
+    m = path.match(/^\/api\/engine-pauses\/([\w-]+)$/);
+    if (m && method === "DELETE") {
+      const actor: PauseActor = asAgent ? { kind: "agent", id: asAgent.botId } : { kind: "owner" };
+      try {
+        const pause = enginePauses.cancel(actor, m[1]);
+        return json(res, 200, { pause: pauseView(pause, actor) });
+      } catch (e) {
+        if (e instanceof PauseRefusal) return json(res, e.status, { error: e.message });
+        throw e;
+      } finally {
+        // what it held goes now, whether or not the change was saved
+        armPauseTimer();
+        releasePaused();
+        broadcast({ kind: "enginePauses" });
+      }
+    }
+
     // ── engine scout: which engine's work you keep ──
     if (method === "GET" && path === "/api/engines/report") {
       const outcomeOf = (t: TurnLog): Outcome => {
@@ -16847,6 +17243,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           const lane = (target && namedLane(target, routine.thread)?.title) ?? routine.thread ?? "General";
           return json(res, 409, { error: `that agent's ${lane} lane is busy. Try again when it settles` });
         }
+        // a run by hand is for now, so a paused engine refuses it rather
+        // than leaving it for later
+        const target = store.bot(routine.targetId);
+        const paused = target ? pauseHolding(target, laneId) : null;
+        if (target && paused) return json(res, 409, { error: `${pausedWhy(target, paused)} Run it again once the pause ends.` });
         const run = routines.beginRun(routine.id, laneId);
         if (run) openRuns.set(laneId, { routineId: routine.id, runId: run.id });
         broadcast({ kind: "routines" });
