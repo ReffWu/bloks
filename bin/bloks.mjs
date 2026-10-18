@@ -445,6 +445,48 @@ const COMMANDS = {
       return request("DELETE", `/api/routines/${encodeURIComponent(args[0])}`);
     },
   },
+  pauses: {
+    use: "pauses",
+    about: "the engine pauses that apply to you: what is paused, until when, and which you made yourself",
+    run: async () => {
+      const { pauses } = await request("GET", "/api/engine-pauses");
+      return (pauses ?? []).map((p) => ({
+        id: p.id,
+        paused: p.label,
+        until: localStamp(new Date(p.until)),
+        ...(p.by === "owner" ? { by: "the person" } : { by: "you" }),
+        ...(p.note ? { note: p.note } : {}),
+      }));
+    },
+  },
+  pause: {
+    use: "pause --for <30m|2h> [--model <id>] [--engine <engine-id>] [--kind <engine-kind>] [--family <anthropic|openai|...>] [--why <note>]",
+    about:
+      "pause an engine or a model for yourself, up to a day: your own work on it waits, and goes on its own when the pause ends. " +
+      "With none of --model, --engine, --kind or --family it pauses the engine and model you are on now. " +
+      "Your turn now carries on. You cannot pause another agent; ask the person for that",
+    run: (args) => {
+      const flags = parseFlags(args);
+      if (flags.for === undefined) throw new Error("a pause needs --for, how long, like 30m or 2h, up to 24h");
+      const what = Object.fromEntries(
+        [["model", flags.model], ["instanceId", flags.engine], ["driver", flags.kind], ["family", flags.family]].filter(([, v]) => v !== undefined),
+      );
+      if (Object.values(what).some((v) => v === "true" || !v)) throw new Error("--model, --engine, --kind and --family each need a value");
+      return request("POST", "/api/engine-pauses", {
+        minutes: duration(flags.for),
+        ...(Object.keys(what).length ? { what } : {}),
+        ...(flags.why && flags.why !== "true" ? { note: flags.why } : {}),
+      });
+    },
+  },
+  unpause: {
+    use: "unpause <pause-id>",
+    about: "call off a pause you made on yourself, from `pauses`; what it held goes now",
+    run: (args) => {
+      if (!args[0]) throw new Error("unpause needs a pause id, from `pauses`");
+      return request("DELETE", `/api/engine-pauses/${encodeURIComponent(args[0])}`);
+    },
+  },
   jobs: {
     use: "jobs",
     about: "the job board",
@@ -615,6 +657,18 @@ function interval(raw) {
   const minutes = match && (match[1] || match[2]) ? Number(match[1] ?? 0) * 60 + Number(match[2] ?? 0) : NaN;
   if (!Number.isInteger(minutes) || minutes < 15 || minutes > 1440) {
     throw new Error(`--every is how often, 15m to 24h, like 30m or 2h, and "${raw}" is not one`);
+  }
+  return minutes;
+}
+
+/** How long a pause lasts, "45m", "2h", "1h30m", in minutes: a minute to
+ * a day, which is as long as an agent may pause itself. */
+function duration(raw) {
+  const text = String(raw ?? "").trim().toLowerCase();
+  const match = /^(?:(\d+)\s*h(?:ours?|rs?)?)?\s*(?:(\d+)\s*(?:m|mins?|minutes?)?)?$/.exec(text);
+  const minutes = match && (match[1] || match[2]) ? Number(match[1] ?? 0) * 60 + Number(match[2] ?? 0) : NaN;
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+    throw new Error(`--for is how long, 1m to 24h, like 45m or 2h, and "${raw}" is not one`);
   }
   return minutes;
 }

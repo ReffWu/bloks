@@ -126,6 +126,11 @@ export const RULES: Rule[] = [
   { method: "POST", path: "/api/watchers", why: "watch a folder, a web page or a feed, or run a cheap check, and act when it finds something" },
   { method: "PATCH", path: "/api/watchers/:id", why: "change one of its own watchers without replacing it" },
   { method: "DELETE", path: "/api/watchers/:id", why: "stop one of its own watchers" },
+  // Pausing an engine for itself, and only for itself: the route refuses
+  // another agent, longer than a day, and stopping what is running.
+  { method: "GET", path: "/api/engine-pauses", why: "see the engine pauses that apply to it, and until when" },
+  { method: "POST", path: "/api/engine-pauses", why: "pause an engine or a model for itself, up to a day, so its own work waits until then" },
+  { method: "DELETE", path: "/api/engine-pauses/:id", why: "call off a pause it made on itself" },
   { method: "GET", path: "/api/jobs", why: "read the job board" },
   { method: "POST", path: "/api/jobs", why: "post work to the board" },
 

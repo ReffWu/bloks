@@ -118,6 +118,7 @@ Plain JSON under `~/.bloks`, written synchronously. No database.
 | `sidebar.json` | The order of the sidebar's section headings |
 | `turns-in-flight.json` | Every turn while it runs, so one cut off by a stop is picked up |
 | `room-lines.json` | Room lines waiting for a busy agent, or for Bloks to be back |
+| `engine-pauses.json` | Engines and models paused for a while, only while any are (see Engine pauses) |
 | `messages-<id>.json` | One transcript per agent or room, same key space |
 | `config.json` | Connected providers and keys, `0600` |
 | `skills/*.md` | Installed skills |
@@ -321,6 +322,64 @@ or unavailable. A message from another agent to one that cannot answer is
 still delivered, and the answer to the sender carries an `engine`
 sentence saying why and who can fix it. No key, path or engine error is
 part of either.
+
+## Engine pauses
+
+The owner can pause an engine or a model for a while
+(`server/engine-pauses.ts`, based on GitHub 305): a family of models
+(every Anthropic one, told from the model's id and the engine serving
+it, `familyOf`), a kind of engine (every Codex), one configured engine,
+or one model, for every agent or for the ones named, until a time. Every
+pause has an end, a week at most. Nothing about any agent's engine or
+backup is changed, so there is nothing to put back when it ends. The
+owner adds, sees and ends pauses in Settings, Engines, Pauses, here or
+from a paired device (`/api/engine-pauses`, feature `engine-pauses`). An
+agent may pause only itself, for a day at most, and sees only the
+pauses that cover it, with no other agent named (`bloks pause`,
+`bloks pauses`, `bloks unpause`); it ends only its own. A shared room's
+members never reach any of it.
+
+One door decides: `selectEngine` passes over an engine paused for the
+agent, as it passes over a resting one, for the agent's other engine
+when that one may go (a turn handed to the backup has only the backup),
+and `startTurn` holds a turn whose engine is still paused. With no pause
+saved, the door is one length check: nothing is read, written or
+recorded per turn, and no turn behaves differently. The list is read
+once at start and written, atomically, only when a pause is added or
+ended; ended pauses are dropped then.
+
+What a pause holds waits where it would wait for a busy lane or a drain,
+and goes on its own when the pause ends (a timer at its end, with the
+routine tick as a backstop, `releasePaused`), or as soon as it is ended
+early. Words for one of the agent's lanes wait in that lane's queue, on
+disk, shown above the composer as waiting for the pause and until when
+(`waitsFor: "pause"`, `waitsUntil`); the conversation says once that it
+is held. Room lines wait as they do for a busy agent, and the room is
+told once (in a shared room, only that the agent is paused and until
+when). A routine is recorded as held without spending its slot, as at
+the chain limit, and runs when the pause ends if that is inside its
+missed-run grace, otherwise at its next time; run by hand it is refused
+with the reason. A watcher holds without looking, so the change is
+still there for the first look after. A job goes to someone free, or
+waits open on the board. A workflow's ask step waits and the run says
+why. A webhook's event waits in the lane, and an email in its line.
+Summaries, skill reviews and a goal's judge are not asked of an engine
+paused for the agent. A retry, a backup handover, a pickup after a
+restart, a rehearsal and a member's request are refused with the
+reason, which shows where they would have run.
+
+A turn already running when a pause starts finishes on its engine,
+unless the owner chose "Also stop what is running on it now": then it
+is stopped as by Stop, with a notice saying why, and not picked up after
+a restart. An agent cannot stop anything with a pause.
+
+A saved file that cannot be read never stops work it does not name. The
+pauses that can be read still hold; the rest are left out, the file is
+copied aside as `engine-pauses.json.corrupt-<time>`, and Settings says
+so. A file that cannot be opened at all holds nothing, and new pauses
+are refused until it can be, rather than written over it. A lane's queue
+after a restart follows the queued-message rule: words older than twelve
+hours are marked not sent rather than run.
 
 ## Compactions
 
