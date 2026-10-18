@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { checkPersonClaudeStatus, checkPersonCodexConfig, checkPersonCodexThread, checkPersonCodexTools, makePersonCodexHome, personReplyText, readPersonClaudeInstructions } from "../server/person-turn.ts";
-import { MAX_PERSON_PROJECT_BYTES } from "../server/limits.ts";
-import { knockTelegram, migrateTelegramPeople, telegramSender, telegramSenderCurrent } from "../server/telegram-people.ts";
+import { checkPersonClaudeStatus, personClaudeDenials, personReplyText, readPersonClaudeInstructions } from "../server/person-turn.ts";
+import { MAX_CLOSED_TELEGRAM_PEOPLE, MAX_PERSON_PROJECT_BYTES, MAX_TELEGRAM_PEOPLE } from "../server/limits.ts";
+import { knockTelegram, migrateTelegramPeople, telegramPersonName, telegramSender, telegramSenderCurrent, type TelegramPerson } from "../server/telegram-people.ts";
+import { decide } from "../server/telegram.ts";
 import type { AgentTelegram } from "../server/telegram-bots.ts";
 import { telegramStatus } from "../server/telegram-bots.ts";
 
@@ -14,40 +15,6 @@ test("a person reply has only text and never truncates", () => {
   assert.equal(personReplyText({ text: "x".repeat(4096) }).length, 4096);
   for (const field of ["chat_id", "to", "agent", "file", "parse_mode", "reply_markup"]) assert.throws(() => personReplyText({ text: "Hello", [field]: "elsewhere" }));
   for (const input of [null, [], {}, { text: "" }, { text: 1 }, { text: "x".repeat(4097) }]) assert.throws(() => personReplyText(input));
-});
-
-test("a fresh Codex home links the file login, strips standing configuration and cleans only the link", () => {
-  const root = mkdtempSync(join(tmpdir(), "bloks-file-login-"));
-  const owner = join(root, "owner"); mkdirSync(owner);
-  const auth = join(owner, "auth.json"); writeFileSync(auth, JSON.stringify({ OPENAI_API_KEY: "synthetic-key" }));
-  writeFileSync(join(owner, "AGENTS.md"), "Synthetic owner-global instruction.\n");
-  const prior = process.env.CODEX_HOME;
-  process.env.CODEX_HOME = owner;
-  let home: ReturnType<typeof makePersonCodexHome> | undefined;
-  try {
-    for (const mode of ["auto", "keyring"]) assert.throws(() => makePersonCodexHome({ config: { cli_auth_credentials_store: mode } }, "proxy.js", process.execPath), /held/);
-    assert.throws(() => makePersonCodexHome({ config: { cli_auth_credentials_store: "file", model_provider: "custom" } }, "proxy.js", process.execPath), /held/);
-    assert.throws(() => makePersonCodexHome({ config: { cli_auth_credentials_store: "file", model_provider: "openai", model_providers: { openai: { base_url: "http://fixture.invalid" } } } }, "proxy.js", process.execPath), /held/);
-    assert.throws(() => makePersonCodexHome({ config: { cli_auth_credentials_store: "file" } }, "proxy.js", process.execPath, tmpdir()), /narrower agent folder/);
-    home = makePersonCodexHome({ config: { cli_auth_credentials_store: "file" } }, "proxy.js", process.execPath);
-    assert.equal(lstatSync(home.path).mode & 0o777, 0o700);
-    assert.equal(lstatSync(join(home.path, "auth.json")).isSymbolicLink(), true);
-    assert.equal(readlinkSync(join(home.path, "auth.json")), auth);
-    assert.equal(existsSync(join(home.path, "AGENTS.md")), false);
-    writeFileSync(join(home.path, "auth.json"), JSON.stringify({ OPENAI_API_KEY: "synthetic-refresh" }));
-    assert.equal(JSON.parse(readFileSync(auth, "utf8")).OPENAI_API_KEY, "synthetic-refresh");
-    const config = readFileSync(home.configFile, "utf8");
-    assert.match(config, /sandbox_mode = "read-only"/);
-    assert.match(config, /cli_auth_credentials_store = "file"/);
-    assert.match(config, /default_tools_approval_mode = "approve"/);
-    assert.doesNotMatch(config, /rules|hooks|bloks_connectors/);
-    home.close(); home = undefined;
-    assert.equal(JSON.parse(readFileSync(auth, "utf8")).OPENAI_API_KEY, "synthetic-refresh");
-  } finally {
-    home?.close();
-    if (prior === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = prior;
-    rmSync(root, { recursive: true, force: true });
-  }
 });
 
 test("a Claude person's project text follows the hidden symlink and is reread without local files or imports", () => {
@@ -85,36 +52,6 @@ test("Claude project instructions hold visibly instead of truncating or reading 
     assert.throws(() => readPersonClaudeInstructions(root), /held:.*could not be read.*regular text file/s);
     rmSync(join(root, "CLAUDE.md"), { recursive: true }); symlinkSync("missing.md", join(root, "CLAUDE.md"));
     assert.throws(() => readPersonClaudeInstructions(root), /held:.*could not be read/s);
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-test("reported Codex permissions, tools and enabled configuration layers are checked", () => {
-  const file = "/fixture/config.toml";
-  const answer = { config: { approval_policy: "on-request", approvals_reviewer: "user", sandbox_mode: "read-only", web_search: "disabled", cli_auth_credentials_store: "file", features: { apps: false, plugins: false }, mcp_servers: { bloks_reply: { default_tools_approval_mode: "approve" } } }, layers: [{ name: { type: "user", file }, config: { approval_policy: "on-request" } }, { name: { type: "system", file: "/fixture/system.toml" }, config: {} }] };
-  assert.doesNotThrow(() => checkPersonCodexConfig(answer, file));
-  const system = structuredClone(answer); system.layers[1].config = { approval_policy: "never" };
-  assert.throws(() => checkPersonCodexConfig(system, file), /held/);
-  const profile = structuredClone(answer) as any; profile.config.permissions = { permissive: {} };
-  assert.throws(() => checkPersonCodexConfig(profile, file), /held/);
-  const thread = { approvalPolicy: "on-request", approvalsReviewer: "user", sandbox: { type: "readOnly", networkAccess: false }, activePermissionProfile: null };
-  assert.doesNotThrow(() => checkPersonCodexThread(thread));
-  for (const change of [{ approvalPolicy: "never" }, { approvalsReviewer: "auto_review" }, { sandbox: { type: "workspaceWrite", networkAccess: false } }, { activePermissionProfile: "saved" }]) assert.throws(() => checkPersonCodexThread({ ...thread, ...change }), /held/);
-  const tools = { data: [{ name: "bloks_reply", tools: { reply_to_sender: {} } }], nextCursor: null };
-  assert.doesNotThrow(() => checkPersonCodexTools(tools));
-  assert.throws(() => checkPersonCodexTools({ ...tools, data: [...tools.data, { name: "account", tools: { history: { annotations: { readOnlyHint: true } } } }] }), /held/);
-});
-
-test("an empty reported system layer cannot hide a rules folder or a standing file", () => {
-  const root = mkdtempSync(join(tmpdir(), "bloks-system-guard-"));
-  const file = join(root, "config.toml"), own = join(root, "person.toml");
-  const answer = { config: { approval_policy: "on-request", approvals_reviewer: "user", sandbox_mode: "read-only", web_search: "disabled", cli_auth_credentials_store: "file", features: { apps: false, plugins: false }, mcp_servers: { bloks_reply: { default_tools_approval_mode: "approve" } } }, layers: [{ name: { type: "user", file: own }, config: { approval_policy: "on-request" } }, { name: { type: "system", file }, config: {} }] };
-  try {
-    assert.doesNotThrow(() => checkPersonCodexConfig(answer, own));
-    mkdirSync(join(root, "rules"));
-    writeFileSync(join(root, "rules", "default.rules"), 'prefix_rule(pattern=["touch"], decision="allow")\n');
-    assert.throws(() => checkPersonCodexConfig(answer, own), /held/);
-    rmSync(join(root, "rules"), { recursive: true }); writeFileSync(file, "");
-    assert.throws(() => checkPersonCodexConfig(answer, own), /held/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -158,4 +95,59 @@ test("the people upgrade drops both old grants once and keeps notice jobs and a 
   assert.notEqual(migrated.bots!.planning.generation, "old");
   assert.equal(migrated.bots!.planning.upgradeNotices!.length, 2);
   assert.equal(migrateTelegramPeople(migrated), migrated);
+});
+
+test("a person's Claude turn is refused every read and write of Bloks' own folder", () => {
+  const root = mkdtempSync(join(tmpdir(), "bloks data "));
+  try {
+    const rules = personClaudeDenials(root);
+    for (const tool of ["Read", "Edit", "Write"]) assert.ok(rules.includes(`${tool}(/${root}/**)`), `${tool} was not denied`);
+    // an absolute rule in Claude's syntax starts with two slashes
+    for (const rule of rules) assert.match(rule, /^\w+\(\/\//);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a knocking name loses the marks that reorder or hide text, and keeps a valid username only", () => {
+  assert.equal(telegramPersonName("Lee\u202e\u2066nwo\u200bOwner"), "Lee nwo Owner");
+  assert.equal(telegramPersonName("\u200f\u061c"), "Someone");
+  const state: AgentTelegram = { token: "fixture", generation: "transport", enabled: true };
+  const incoming = { chatId: 202, fromId: 202, fromBot: false, chatType: "private" as const, from: "Lee", text: "Hello", updateId: 1 };
+  assert.equal(knockTelegram(state, { ...incoming, fromUsername: "lee_writes" }).person?.username, "lee_writes");
+  for (const bad of ["lee", "lee writes", "@lee_writes", "x".repeat(33)]) assert.equal(knockTelegram(state, { ...incoming, fromUsername: bad }).person?.username, undefined);
+});
+
+test("only waiting and let-in people fill admission, and closed records stay bounded", () => {
+  const person = (i: number, state: TelegramPerson["state"], closedAt?: number): [string, TelegramPerson] =>
+    [String(1000 + i), { id: `p${i}`, userId: 1000 + i, name: `P${i}`, chatId: 1000 + i, state, grant: `g${i}`, ...(closedAt ? { closedAt } : {}) }];
+  const incoming = { chatId: 9, fromId: 9, fromBot: false, chatType: "private" as const, from: "New", text: "Hello", updateId: 1 };
+  const closed = Array.from({ length: MAX_TELEGRAM_PEOPLE + 50 }, (_, i) => person(i, i % 2 ? "declined" : "removed", 1 + i));
+  const open: AgentTelegram = { token: "fixture", generation: "transport", enabled: true, people: Object.fromEntries(closed) };
+  const knock = knockTelegram(open, incoming);
+  assert.equal(knock.capped, false, "declined and removed people kept the door shut");
+  assert.equal(knock.fresh, true);
+  // past the bound the longest closed are forgotten, oldest first
+  assert.deepEqual(knock.forget, closed.slice(0, closed.length - MAX_CLOSED_TELEGRAM_PEOPLE + 1).map(([key]) => key));
+  const active = Array.from({ length: MAX_TELEGRAM_PEOPLE }, (_, i) => person(i, "allowed"));
+  const full: AgentTelegram = { ...open, people: Object.fromEntries(active) };
+  assert.equal(knockTelegram(full, incoming).capped, true);
+  assert.equal(telegramStatus(full).admissionFull, true);
+});
+
+test("the People list says who each person is beyond the name they chose", () => {
+  const lee = (id: string, userId: number, extra: Partial<TelegramPerson> = {}): TelegramPerson =>
+    ({ id, userId, name: "Lee", chatId: userId, state: "pending", grant: id, first: { text: "Hi, it is Lee" }, ...extra });
+  const state: AgentTelegram = { token: "fixture", generation: "transport", enabled: true, people: { "1": lee("a", 1, { username: "lee_one" }), "2": lee("b", 2, { state: "allowed", first: undefined }) } };
+  const [one, two] = telegramStatus(state).people;
+  assert.deepEqual(one, { id: "a", name: "Lee", state: "pending", userId: 1, username: "lee_one", first: "Hi, it is Lee", sameName: true });
+  assert.deepEqual(two, { id: "b", name: "Lee", state: "allowed", userId: 2, sameName: true });
+});
+
+test("the private owner is matched on real ids only", () => {
+  const unpaired = { chatIds: [] as number[], pairOwner: true };
+  for (const message of [
+    { chatId: Number.NaN, from: "Sam", text: "hello", updateId: 1, fromBot: false, chatType: "private" as const },
+    { chatId: 101, from: "Sam", text: "hello", updateId: 1, fromBot: false, chatType: "private" as const },
+  ]) assert.notEqual(decide({ ...unpaired, ownerChatId: message.chatId }, message).kind, "deliver");
+  const paired = { chatIds: [] as number[], pairOwner: true, ownerUserId: 101, ownerChatId: 101 };
+  assert.equal(decide(paired, { chatId: 101, fromId: 101, from: "Sam", text: "hello", updateId: 1, fromBot: false, chatType: "private" }).kind, "deliver");
 });

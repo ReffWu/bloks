@@ -20,7 +20,7 @@ interface Status {
   pendingMigration?: boolean;
   bots?: Array<Status & { botId: string }>;
   voiceVendor?: "elevenlabs" | "openai" | null;
-  people?: Array<{ id: string; name: string; state: "pending" | "allowed" | "declined" | "removed" }>;
+  people?: Array<{ id: string; name: string; state: "pending" | "allowed" | "declined" | "removed"; userId?: number; username?: string; first?: string; sameName?: boolean }>;
   upgradeNotices?: Array<{ state: string }>;
   admissionFull?: boolean;
 }
@@ -131,7 +131,9 @@ export function TelegramSection({ botId }: { botId?: string }) {
       {status?.needsOwnerPairing && (
         <div className="mt-3">
           <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-            Telegram needs the pairing word again to identify its owner. Pair yourself here. Everyone else can message the bot to ask to be let in.
+            {(status.upgradeNotices?.length ?? 0) > 0
+              ? "Telegram needs the pairing word again to identify its owner. Pair yourself here. Everyone else can message the bot to ask to be let in."
+              : "Pair yourself as the owner before this bot can answer you. Everyone else can message the bot to ask to be let in."}
           </p>
           {status.pairing ? (
             <>
@@ -145,7 +147,12 @@ export function TelegramSection({ botId }: { botId?: string }) {
       {(status?.people?.length ?? 0) > 0 && <div className="mt-4">
         <div className="text-[12.5px] font-semibold">People on Telegram</div>
         {status!.people!.map((person) => <div key={person.id} className="mt-2 flex items-center justify-between gap-2 text-[12px]">
-          <span>{person.name} <span className="text-muted-foreground">({person.state === "allowed" ? "let in" : person.state === "pending" ? "waiting" : person.state === "declined" ? "not now" : "removed"})</span></span>
+          <span className="min-w-0">
+            {person.name} <span className="text-muted-foreground">({person.state === "allowed" ? "let in" : person.state === "pending" ? "waiting" : person.state === "declined" ? "not now" : "taken out"})</span>
+            {/* a first name is chosen freely; the id and username are not */}
+            {person.userId !== undefined && <span className="block text-[11px] text-muted-foreground">{person.username ? `@${person.username}, ` : ""}Telegram id {person.userId}{person.sameName ? ". Someone else here has the same name" : ""}</span>}
+            {person.first && <span className="block break-words text-[11px] text-muted-foreground">They wrote: {person.first}</span>}
+          </span>
           <div className="flex gap-2">
             {person.state !== "allowed" && <button disabled={busy} className="underline underline-offset-2" onClick={() => post({ personId: person.id, action: "allow" })}>Let in</button>}
             {person.state === "pending" && <button disabled={busy} className="underline underline-offset-2" onClick={() => post({ personId: person.id, action: "decline" })}>Not now</button>}
@@ -153,7 +160,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
           </div>
         </div>)}
       </div>}
-      {status?.admissionFull && <p className="mt-2 text-[12px] text-warning">Admission is full. No new person was let in.</p>}
+      {status?.admissionFull && <p className="mt-2 text-[12px] text-warning">Admission is full. No new person can ask until you decide on someone waiting or take someone out.</p>}
       {status?.upgradeNotices?.some((n) => ["uncertain", "failed"].includes(n.state)) && <p className="mt-2 text-[12px] text-warning">Some old chats could not be told, or delivery is uncertain. Their old pairing is gone. Tell those people to message the bot and ask to be let in.</p>}
       {status?.configured && (
         <>

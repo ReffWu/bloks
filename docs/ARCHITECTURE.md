@@ -998,11 +998,14 @@ its user id (`ownerUserId`), since a chat id or a display name says
 where a message came from and not who wrote it. The word is made with
 the system's random source and is good once. Another person's first private
 message creates one owner-only admission card and one waiting notice. Let
-in, Not now and Take out are per person and per bot. The first message is
-bounded and media is not downloaded before admission. Declining tells the
-person once; later messages do not create another knock. Group messages
-are not admitted by this version. Guest mail and shared rooms keep their
-own paths.
+in, Not now and Take out are per person and per bot. The card names them
+beyond the first name they chose: their Telegram user id, their @username
+when they have one, what they wrote, and anyone else on the bot with the
+same name; marks that reorder or hide text are stripped from the name. The
+first message is bounded and media is not downloaded before admission.
+Declining tells the person once; later messages do not create another
+knock. Group messages are not admitted by this version. Guest mail and
+shared rooms keep their own paths.
 
 An admitted person's message is labelled with their name and Telegram,
 and runs in the agent's first conversation with its own requester. It waits
@@ -1010,19 +1013,30 @@ behind an owner or another person's turn; only the same requester can steer
 its running turn. Each queued segment retains that requester and its grant.
 Taking someone out or retiring a bot transport revokes pending words,
 approvals and reply capabilities before interrupting that person's turn.
-An owner's turn is left alone. Admission is bounded to 100 records and 20
-pending knocks; a full inbox holds new people visibly.
+An owner's turn is left alone. Admission is bounded to 100 waiting or let-in
+people and 20 waiting; a full inbox holds new people visibly. Declined and
+removed people do not count toward it, and past 100 of them the longest
+closed is forgotten and may knock again.
 
 A person turn uses the existing untrusted approval path, including on a
-full-access agent. Claude starts a fresh default-permission session, with
-empty setting sources and hooks disabled. Codex starts a fresh read-only,
-no-network thread with on-request approvals, using a private home with mode 0700,
-disabled apps, plugins and web search, and only the reply MCP server. Both
-drivers check the reported permissions and mounted tools before input and
-hold on a mismatch. Codex supports an existing explicit file login through
-an auth.json link, never a copy; keyring or custom-provider configurations
-hold. A Linux host unable to start the restricted sandbox fails closed.
-Plain owner answers do not save session or exec-policy permissions.
+full-access agent, and runs only on Claude Code. Claude starts a fresh
+default-permission session, with empty setting sources and hooks disabled,
+and checks the reported permissions and mounted tools before input, holding
+on a mismatch. Every read and write of Bloks' own folder is refused to it
+outright (`personClaudeDenials`): saved keys, every agent's bot token, the
+agent's memory and the default working folder all live there. Codex holds a
+person's turn, in the harness and again in its driver: its read-only
+sandbox still reads every file the account can, and the reply sends without
+a card. API engines hold it too, since they cannot wait on the owner's
+approvals. A held turn says why in the owner's chat and tells the person
+once, neutrally. Plain owner answers do not save session permissions.
+
+A person's session is told as little of the owner as a stranger's mail:
+no profile notes, no "About the person you work for", no agent memory and
+no note tools. Its fresh session hears that person's own exchange only,
+their messages and the replies sent to them, without the lane's summary or
+the owner's side of the conversation; notes meant for the owner's next turn
+(undone files, a stall, a failure, a backup's handover) wait for it.
 
 Claude person turns load the text of the working folder's `CLAUDE.md` and
 `.claude/CLAUDE.md`, following symlinks, into the private system prompt each
@@ -1031,8 +1045,6 @@ means the owner, not the Telegram sender. The combined text is limited to
 100,000 bytes; an unreadable, non-file or oversized instruction file holds
 the turn visibly. No global or local instruction files, settings, hooks,
 permission rules, MCP configuration or `@` imports are loaded by this reader.
-Codex retains its native project `AGENTS.md` discovery; the fresh private
-home contains no owner-global `AGENTS.md`.
 
 The native `reply_to_sender` tool takes one text field, with no target or
 formatting controls. Its broker callback is bound to the sender, turn and
@@ -1044,12 +1056,12 @@ its final chat text sends nothing without a tool call. The person's native
 session never replaces the owner's cursor; the next owner turn starts from
 the bounded conversation, including the person's exchange.
 
-This tier permits file reads: Codex can read any file the account can read,
-credential files included, and those reads can reach the person through the
-card-free reply. Sandboxed writes fail; escalation and edits ask the owner.
-Owner account MCP servers are not inherited. An owner-approved shell that
-removes its Authorization header can still use the existing loopback-owner
-API fallback. The approval card names the person so the owner can decide.
+This tier permits reads inside the agent's working folder, outside Bloks'
+own folder, and those reads can reach the person through the card-free
+reply; a read elsewhere, a command or an edit asks the owner. Owner account
+MCP servers are not inherited. An owner-approved shell that removes its
+Authorization header can still use the existing loopback-owner API
+fallback. The approval card names the person so the owner can decide.
 
 A connection has a `generation`, renewed whenever its token, its switch
 or its pairing changes. A poll, a card's buttons, the rest of a long
@@ -1081,7 +1093,8 @@ chat (`ownerChatId`, `telegramCards`, `server/telegram-cards.ts`), including
 a card raised by an admitted person. That person's next message never
 answers it. For their questions, ordinary owner messages remain the owner's
 messages: a typed answer must reply to that physical card, or the owner can
-answer in the app. An approval comes with
+answer in the app. Such a card waits in a slot of its own (`personAsks`), so
+it never takes the place of the owner's own waiting card. An approval comes with
 Allow and Deny to tap, a question with one button per choice; a question
 with no choices, or more than eight, is answered by typing, and typing a
 number or yes / no still works on any card. A button carries a short

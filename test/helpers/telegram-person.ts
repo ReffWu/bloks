@@ -43,14 +43,15 @@ let guard,working=false,late=false,lateAfterEnd;
 const pending=new Map();
 const broker=(frame)=>new Promise((resolve,reject)=>{
  let socket;
- if(kind==='claude')socket=JSON.parse(readFileSync(args[args.indexOf('--mcp-config')+1],'utf8')).mcpServers.bloks.args[1];
- else socket=JSON.parse(readFileSync(join(process.env.CODEX_HOME,'config.toml'),'utf8').match(/^args = (.+)$/m)[1])[1];
+ socket=JSON.parse(readFileSync(args[args.indexOf('--mcp-config')+1],'utf8')).mcpServers.bloks.args[1];
  const connection=createConnection(socket);connection.on('error',reject);connection.on('connect',()=>connection.write(JSON.stringify({...frame,id:'fixture-'+Math.random()})+'\\n'));
  createInterface({input:connection}).once('line',line=>{connection.end();resolve(JSON.parse(line))});
 });
 const reply=()=>broker({t:'reply',input:{text:'Hello Lee'}});
 async function work(text){
- log({kind,person,text,token:process.env.BLOKS_TOKEN,url:process.env.BLOKS_URL,guard,args});
+ const systemFile=args.indexOf('--append-system-prompt-file');
+ const system=systemFile<0?'':readFileSync(args[systemFile+1],'utf8');
+ log({kind,person,text,token:process.env.BLOKS_TOKEN,url:process.env.BLOKS_URL,guard,args,system});
  const scenario=text.match(/FAKE_([A-Z]+)\\s*$/)?.[1];
  if(kind==='claude'&&scenario==='LATE'){
    late=true;
@@ -92,7 +93,9 @@ async function work(text){
    if(answer.decision==='accept'||answer.behavior==='allow')writeFileSync(join(root,'effect'),'approved');
  }
  if(scenario==='QUESTION'){
-   const answer=await new Promise(r=>{pending.set(901,r);out({id:901,method:'item/tool/requestUserInput',params:{threadId:thread,turnId:turn,itemId:'question',questions:[{id:'q',question:'Which day?',options:[]}]}})});
+   const answer=kind==='claude'
+     ?await broker({t:'ask',kind:'question',tool:'ask_user',input:{question:'Which day?'}})
+     :await new Promise(r=>{pending.set(901,r);out({id:901,method:'item/tool/requestUserInput',params:{threadId:thread,turnId:turn,itemId:'question',questions:[{id:'q',question:'Which day?',options:[]}]}})});
    log({questionAnswer:answer});
  }
  if(scenario==='BLOKS'){
@@ -135,19 +138,11 @@ createInterface({input:process.stdin}).on('line',async line=>{
  if(m.method==='initialized')return;
  if(m.method==='model/list')return respond({data:[{model:'gpt-6.1-sol',displayName:'GPT-6.1 Sol',isDefault:true}]});
  if(m.method==='skills/list')return respond({data:[{cwd:m.params.cwds[0],skills:[],errors:[]}]});
- if(m.method==='config/read'){
-   const bad=existsSync(join(root,'guard-case'))?readFileSync(join(root,'guard-case'),'utf8'):'';
-   const answer={config:{approval_policy:'on-request',approvals_reviewer:'user',sandbox_mode:'read-only',web_search:'disabled',cli_auth_credentials_store:'file',features:{apps:false,plugins:false},mcp_servers:{bloks_reply:{default_tools_approval_mode:'approve'}}},layers:[{name:{type:'user',file:join(process.env.CODEX_HOME,'config.toml')},config:{approval_policy:'on-request'}}]};
-   if(person&&bad==='system')answer.layers.push({name:{type:'system',file:join(root,'managed.toml')},config:{approval_policy:'never'}});
-   if(person&&bad==='system-rules')answer.layers.push({name:{type:'system',file:join(root,'managed.toml')},config:{}});
-   return respond(person?answer:{config:{cli_auth_credentials_store:bad==='keyring'?'keyring':'file'}});
- }
+ if(m.method==='config/read')return respond({config:{cli_auth_credentials_store:'file'}});
  if(m.method==='thread/start'||m.method==='thread/resume'){
    guard=m.params;thread=m.params.threadId??thread;
-   const bad=existsSync(join(root,'guard-case'))?readFileSync(join(root,'guard-case'),'utf8'):'';
-   return respond({thread:{id:thread},model:'gpt-6.1-sol',approvalPolicy:person&&bad==='policy'?'never':m.params.approvalPolicy,approvalsReviewer:'user',sandbox:{type:person?'readOnly':'dangerFullAccess',networkAccess:!person},activePermissionProfile:null});
+   return respond({thread:{id:thread},model:'gpt-6.1-sol',approvalPolicy:m.params.approvalPolicy,approvalsReviewer:'user',sandbox:{type:'dangerFullAccess',networkAccess:true},activePermissionProfile:null});
  }
- if(m.method==='mcpServerStatus/list')return respond({data:[{name:'bloks_reply',tools:{reply_to_sender:{}}}],nextCursor:null});
  if(m.method==='turn/steer'){log({steered:m.params});return respond({})}
  if(m.method!=='turn/start')return respond({});
  respond({turn:{id:turn}});out({method:'turn/started',params:{threadId:thread,turn:{id:turn}}});
@@ -166,7 +161,8 @@ export interface PersonFixtureOptions {
   seed?: (root: string) => void;
 }
 
-export async function personFixture(t: TestContext, kind: "codex" | "claude" = "codex", options: PersonFixtureOptions = {}) {
+/** Claude Code is the engine a person's turn runs on; a Codex agent holds it. */
+export async function personFixture(t: TestContext, kind: "codex" | "claude" = "claude", options: PersonFixtureOptions = {}) {
   const root = mkdtempSync(join(tmpdir(), "bloks-telegram-people-"));
   mkdirSync(join(root, ".bloks")); mkdirSync(join(root, ".codex"));
   writeFileSync(join(root, ".codex/auth.json"), JSON.stringify({ OPENAI_API_KEY: "synthetic-file-login" }));
@@ -227,7 +223,10 @@ export async function personFixture(t: TestContext, kind: "codex" | "claude" = "
       await post(`/api/bots/${bot.id}/telegram`, { personId: person.id, action: "allow" });
       return person;
     },
-    async idle() { await until(async () => !(await ownerJson("/api/bots")).bots.find((b: any) => b.id === bot.id).busy, "the turn did not end"); },
+    async idle() {
+      const settled = async () => !(await ownerJson("/api/bots")).bots.find((b: any) => b.id === bot.id).busy && !(await messages()).some((m) => m.queued);
+      await until(async () => (await settled()) && (await nap(150), await settled()), "the turn did not end");
+    },
     async flushed() { const wanted = next; await until(() => calls.some((c) => c.method === "getUpdates" && c.body.offset >= wanted), "the bot did not finish reading the updates"); },
     async reboot(change?: () => void) { await h.crash(); change?.(); h = await startHarness(env); },
   };

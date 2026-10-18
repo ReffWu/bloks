@@ -33,7 +33,7 @@ import { callSignature } from "../repeats.ts";
 import { SessionCosts } from "./session-costs.ts";
 import { readClaudeCommands, classifyClaudeCommands, type ClaudeCommandRow } from "../agent-commands.ts";
 import { createAskBroker, summarise, type AskBroker } from "../harness/ask-broker.ts";
-import { checkPersonClaudeInit, checkPersonClaudeStatus, personTurnHold, readPersonClaudeInstructions } from "../person-turn.ts";
+import { checkPersonClaudeInit, checkPersonClaudeStatus, personClaudeDenials, personTurnHold, readPersonClaudeInstructions } from "../person-turn.ts";
 
 /** The answerable options of an ask, wherever the tool put them: a flat
  * choices list, or AskUserQuestion's nested option objects. */
@@ -364,7 +364,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       // this agent's owner switched hooks off: a plugin's session-start
       // text would otherwise land in its context as if it were an order
       if (turn.noHooks || turn.person) argv.push("--settings", JSON.stringify({ disableAllHooks: true }));
-      if (turn.person) argv.push("--setting-sources", "", "--strict-mcp-config", "--no-session-persistence");
+      if (turn.person) {
+        argv.push("--setting-sources", "", "--strict-mcp-config", "--no-session-persistence");
+        // one value per flag, so a folder name with a comma or a space in
+        // it cannot split a rule in two
+        for (const rule of personClaudeDenials(DATA_DIR)) argv.push("--disallowedTools", rule);
+      }
       // extra editable folders, chiefly the agent's own workspace: memory
       // updates must not stall on approval cards when cwd points elsewhere
       for (const dir of turn.extraDirs ?? []) argv.push("--add-dir", dir);

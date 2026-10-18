@@ -20,6 +20,7 @@ export const MAX_CHAIN_EXCERPT_CHARS = 160;
 /** Telegram admission stays small; a reply is one plain-text message. */
 export const MAX_TELEGRAM_PEOPLE = 100;
 export const MAX_PENDING_TELEGRAM_PEOPLE = 20;
+export const MAX_CLOSED_TELEGRAM_PEOPLE = 100;
 export const MAX_TELEGRAM_REPLY_CHARS = 4096;
 
 /** Project instruction text in an isolated person's Claude session. */

@@ -2,7 +2,7 @@
 // private config, separate from the agent records sent to a client.
 import { randomUUID } from "node:crypto";
 import { pairingWord, type TelegramState } from "./telegram.ts";
-import type { TelegramPerson, TelegramUpgradeNotice } from "./telegram-people.ts";
+import { activeTelegramPeople, telegramNamesakes, type TelegramPerson, type TelegramUpgradeNotice } from "./telegram-people.ts";
 import { MAX_TELEGRAM_PEOPLE, MAX_PENDING_TELEGRAM_PEOPLE } from "./limits.ts";
 
 export interface AgentTelegram extends TelegramState {
@@ -81,10 +81,18 @@ export function telegramStatus(state: AgentTelegram | undefined) {
     ownerPaired: state?.ownerUserId !== undefined,
     needsOwnerPairing: Boolean(state?.token && state.ownerUserId === undefined),
     pairing: state?.pairing ?? null, username: state?.username ?? null,
-    people: Object.values(state?.people ?? {}).map(({ id, name, state }) => ({ id, name, state })),
+    // Who each one is beyond the name they chose: their Telegram id and
+    // username, what they first said while they wait, and whether anyone
+    // else here goes by the same name.
+    people: Object.values(state?.people ?? {}).map((person) => ({
+      id: person.id, name: person.name, state: person.state, userId: person.userId,
+      ...(person.username ? { username: person.username } : {}),
+      ...(person.state === "pending" && person.first?.text ? { first: person.first.text.slice(0, 280) } : {}),
+      ...(telegramNamesakes(state, person).length ? { sameName: true } : {}),
+    })),
     upgradeNotices: state?.upgradeNotices?.map(({ state }) => ({ state })) ?? [],
-    admissionFull: Object.values(state?.people ?? {}).length >= MAX_TELEGRAM_PEOPLE ||
-      Object.values(state?.people ?? {}).filter((p) => p.state === "pending").length >= MAX_PENDING_TELEGRAM_PEOPLE,
+    admissionFull: activeTelegramPeople(state).length >= MAX_TELEGRAM_PEOPLE ||
+      activeTelegramPeople(state).filter((p) => p.state === "pending").length >= MAX_PENDING_TELEGRAM_PEOPLE,
   };
 }
 

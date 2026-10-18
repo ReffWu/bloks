@@ -60,4 +60,10 @@ export const FEATURES: readonly string[] = [
   // ranges (?range= through Bloks Cloud), GET /api/artifacts/resolve for
   // a link that is a path, and video among the types a viewer opens
   "shared-files",
+  // people on an agent's Telegram bot: personId and action (allow,
+  // decline, remove) and discardPending on the Telegram route, people and
+  // upgradeNotices in its status, tg-person: request ids on /respond, and
+  // telegramPerson and telegramSent on messages. Without it a phone shows
+  // every Telegram message as the owner's and offers no admission.
+  "telegram-people",
 ];

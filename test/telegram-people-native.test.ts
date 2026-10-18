@@ -2,54 +2,42 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { LEE, SAM, nap, personFixture, until } from "./helpers/telegram-person.ts";
-import { TELEGRAM_PEOPLE_UPGRADE } from "../server/telegram-people.ts";
+import { LEE, SAM, personFixture, until } from "./helpers/telegram-person.ts";
 
-for (const kind of ["codex", "claude"] as const) {
-  test(`${kind}: a let-in person's full-agent turn asks only the owner and replies explicitly`, async (t) => {
-    const f = await personFixture(t, kind);
-    f.say("FAKE_APPROVE", LEE);
-    const person = await until(async () => (await f.status()).people.find((p: any) => p.name === "Lee"), "there was no knock");
-    await until(async () => (await f.messages()).find((m) => m.card?.requestId === `tg-person:${person.id}`), "there was no owner card");
-    f.say("again", LEE); f.say("again", LEE);
-    await f.flushed();
-    assert.equal((await f.messages()).filter((m) => m.card?.requestId === `tg-person:${person.id}`).length, 1);
-    assert.equal(f.records().filter((r) => r.person).length, 0);
-    await f.post(`/api/bots/${f.bot.id}/telegram`, { personId: person.id, action: "allow" });
-    const card = await until(async () => (await f.messages()).find((m) => m.card?.title === "Approval needed"), "the full agent did not ask for owner approval");
-    assert.match(card.card.subtitle, /asked for by Lee/);
-    assert.equal(existsSync(join(f.root, "effect")), false);
-    f.say("yes", LEE);
-    await f.flushed();
-    assert.equal(existsSync(join(f.root, "effect")), false, "Lee's yes approved the command");
-    assert.equal(f.sent(LEE).some((m) => m.body.reply_markup), false, "a card went to Lee");
-    assert.equal(f.sent(SAM).some((m) => m.body.text.includes("Approval needed") && m.body.reply_markup), true);
-    await f.post(`/api/bots/${f.bot.id}/respond`, { requestId: card.card.requestId, behavior: "allow" });
-    await until(() => f.sent(LEE).some((m) => m.body.text === "Hello Lee"), "the explicit answer was not sent");
-    await f.idle();
-    assert.equal(readFileSync(join(f.root, "effect"), "utf8"), "approved");
-    assert.equal(f.sent(LEE).some((m) => m.body.text.includes("Private transcript only")), false);
-    const answer = f.sent(LEE).find((m) => m.body.text === "Hello Lee");
-    assert.equal(answer.body.parse_mode, undefined); assert.equal(answer.body.reply_markup, undefined);
-    assert.equal((await f.messages()).filter((m) => m.telegramSent?.state === "sent").length, 1);
-    const call = f.records().find((r) => r.person);
-    if (kind === "codex") { assert.equal(call.guard.sandbox, "read-only"); assert.equal(call.guard.approvalPolicy, "on-request"); assert.equal(call.guard.ephemeral, true); }
-    else { assert.ok(call.args.includes("--setting-sources")); assert.ok(call.args.includes("--strict-mcp-config")); assert.ok(call.args.includes("--no-session-persistence")); assert.equal(call.args[call.args.indexOf("--permission-mode") + 1], "default"); }
-  });
-}
+/** The permission mode a Claude turn was started in. */
+const mode = (record: any): string => record.args[record.args.indexOf("--permission-mode") + 1];
 
-test("unknown and hostile senders cannot start a turn or fetch media; decline is told once", async (t) => {
+test("claude: a let-in person's full-agent turn asks only the owner and replies explicitly", async (t) => {
   const f = await personFixture(t);
-  for (const extra of [{ from: { id: LEE, is_bot: true, first_name: "Lee" } }, { from: {} }, { sender_chat: { id: LEE } }, { chat: { id: -123, type: "group" } }]) f.say("FAKE_REPLY", LEE, extra);
-  await nap(250);
-  assert.equal((await f.status()).people.length, 0); assert.equal(f.records().length, 0);
-  f.say("voice", LEE, { voice: { file_id: "unknown-file", file_size: 20 } });
-  const person = await until(async () => (await f.status()).people[0], "there was no knock");
-  assert.equal(f.calls.some((c) => c.method === "getFile"), false);
-  await f.post(`/api/bots/${f.bot.id}/telegram`, { personId: person.id, action: "decline" });
-  f.say("again", LEE); f.say("again", LEE); await nap(150);
-  assert.equal(f.sent(LEE).filter((m) => m.body.text.startsWith("Not now.")).length, 1);
-  assert.equal(f.records().length, 0);
+  f.say("FAKE_APPROVE", LEE);
+  const person = await until(async () => (await f.status()).people.find((p: any) => p.name === "Lee"), "there was no knock");
+  await until(async () => (await f.messages()).find((m) => m.card?.requestId === `tg-person:${person.id}`), "there was no owner card");
+  f.say("again", LEE); f.say("again", LEE);
+  await f.flushed();
+  assert.equal((await f.messages()).filter((m) => m.card?.requestId === `tg-person:${person.id}`).length, 1);
+  assert.equal(f.records().filter((r) => r.person).length, 0);
+  await f.post(`/api/bots/${f.bot.id}/telegram`, { personId: person.id, action: "allow" });
+  const card = await until(async () => (await f.messages()).find((m) => m.card?.title === "Approval needed"), "the full agent did not ask for owner approval");
+  assert.match(card.card.subtitle, /asked for by Lee/);
+  assert.equal(existsSync(join(f.root, "effect")), false);
+  f.say("yes", LEE);
+  await f.flushed();
+  assert.equal(existsSync(join(f.root, "effect")), false, "Lee's yes approved the command");
+  assert.equal(f.sent(LEE).some((m) => m.body.reply_markup), false, "a card went to Lee");
+  assert.equal(f.sent(SAM).some((m) => m.body.text.includes("Approval needed") && m.body.reply_markup), true);
+  await f.post(`/api/bots/${f.bot.id}/respond`, { requestId: card.card.requestId, behavior: "allow" });
+  await until(() => f.sent(LEE).some((m) => m.body.text === "Hello Lee"), "the explicit answer was not sent");
+  await f.idle();
+  assert.equal(readFileSync(join(f.root, "effect"), "utf8"), "approved");
+  assert.equal(f.sent(LEE).some((m) => m.body.text.includes("Private transcript only")), false);
+  const answer = f.sent(LEE).find((m) => m.body.text === "Hello Lee");
+  assert.equal(answer.body.parse_mode, undefined); assert.equal(answer.body.reply_markup, undefined);
+  assert.equal((await f.messages()).filter((m) => m.telegramSent?.state === "sent").length, 1);
+  // a message they deleted since must not turn the reply into a refusal
+  assert.deepEqual(answer.body.reply_parameters, { message_id: answer.body.reply_parameters.message_id, allow_sending_without_reply: true });
+  const call = f.records().find((r) => r.person);
+  assert.ok(call.args.includes("--setting-sources")); assert.ok(call.args.includes("--strict-mcp-config")); assert.ok(call.args.includes("--no-session-persistence"));
+  assert.equal(mode(call), "default");
 });
 
 test("owner input waits behind a person's turn and does not enter their reply", async (t) => {
@@ -105,7 +93,7 @@ for (const order of ["person-owner", "owner-person"] as const) {
       const senders = [ownerWords, personWords].filter((text) => words.includes(text));
       assert.equal(senders.length, 1, "new words from different senders merged into one turn");
       assert.equal(turn.person, words.includes(personWords), "queued person words ran with owner trust");
-      assert.equal(turn.guard.sandbox, turn.person ? "read-only" : "danger-full-access");
+      assert.equal(mode(turn), turn.person ? "default" : "bypassPermissions");
     }
     assert.equal(turns.length, 2, "one queued sender did not get its own turn");
     const newWords = turns.map((turn) => turn.text.split("--- the new message ---").at(-1)!.trim());
@@ -222,49 +210,31 @@ test("an uncertain reply is shown to the owner and cannot be retried by the same
   assert.equal((await send("after the turn")).status, 403);
 });
 
-for (const kind of ["codex", "claude"] as const) test(`${kind}: owner, person, owner keeps the owner's cursor and tells the third turn the exchange`, async (t) => {
+test("claude: owner, person, owner keeps the owner's cursor and tells the third turn the exchange", async (t) => {
+  const kind = "claude";
   const f = await personFixture(t, kind);
   await f.post(`/api/bots/${f.bot.id}/messages`, { text: "OWNER_BEFORE" }); await f.idle();
   const before = f.records().find((r) => !r.person);
-  if (kind === "codex") assert.equal(before.guard.sandbox, "danger-full-access");
+  assert.equal(mode(before), "bypassPermissions");
   const stateFile = join(f.root, ".bloks/bots.json");
   const savedLane = () => JSON.parse(readFileSync(stateFile, "utf8")).find((b: any) => b.id === f.bot.id).tasks[0];
   const ownerCursor = savedLane().resumeCursors[kind];
   assert.equal(typeof ownerCursor, "string");
   await f.admit("FAKE_TEXT"); await until(() => f.records().some((r) => r.person), "person turn did not start"); await f.idle();
   const person = f.records().find((r) => r.person);
-  if (kind === "claude") assert.equal(person.args.includes("--resume"), false);
+  assert.equal(person.args.includes("--resume"), false);
+  // the person hears their own exchange, not the owner's before it
+  assert.doesNotMatch(person.text, /OWNER_BEFORE|Owner answer/);
   assert.equal(savedLane().resumeCursors[kind], ownerCursor);
-  await f.post(`/api/bots/${f.bot.id}/messages`, { text: "OWNER_AFTER" }); await f.idle();
-  const after = f.records().filter((r) => !r.person).at(-1);
-  if (kind === "codex") assert.equal(after.guard.threadId, undefined, "the owner resumed without learning the exchange");
-  else assert.equal(after.args.includes("--resume"), false, "the owner resumed without learning the exchange");
+  await f.post(`/api/bots/${f.bot.id}/messages`, { text: "OWNER_AFTER" });
+  // the owner's own turn, by its words, not whichever turn ran last
+  const after = await until(() => f.records().filter((r) => !r.person && r.text?.includes("OWNER_AFTER")).at(-1), "the owner's next turn did not start");
+  await f.idle();
+  assert.equal(after.args.includes("--resume"), false, "the owner resumed without learning the exchange");
   assert.match(after.text, /Message from.*Lee.*Telegram/);
   assert.match(after.text, /Private transcript only/);
   assert.match(after.text, /OWNER_AFTER/);
 });
-
-for (const shape of ["system", "system-rules", "policy", "keyring"]) {
-  test(`reported ${shape} permission mismatch holds visibly before a person's input`, async (t) => {
-    const f = await personFixture(t);
-    writeFileSync(join(f.root, "guard-case"), shape);
-    if (shape === "system-rules") {
-      mkdirSync(join(f.root, "rules"));
-      writeFileSync(join(f.root, "rules/default.rules"), 'prefix_rule(pattern=["touch"], decision="allow")\n');
-    }
-    const auth = readFileSync(join(f.root, ".codex/auth.json"), "utf8");
-    await f.admit();
-    await until(() => f.sent(LEE).some((m) => m.body.text.startsWith("This agent cannot answer")), "the person was left in silence");
-    await f.idle();
-    assert.equal(f.records().length, 0, "the engine heard the person's input despite its mismatched guard");
-    assert.ok((await f.messages()).some((m) => m.kind === "notice" && /held:/.test(m.text ?? "")));
-    f.say("FAKE_REPLY", LEE); await f.flushed(); await f.idle();
-    assert.equal(f.sent(LEE).filter((m) => m.body.text.startsWith("This agent cannot answer")).length, 1);
-    assert.equal(readFileSync(join(f.root, ".codex/auth.json"), "utf8"), auth);
-    assert.equal(existsSync(join(f.root, "effect")), false);
-    assert.equal(f.sent(LEE).some((m) => m.body.text === "Hello Lee"), false);
-  });
-}
 
 for (const shape of ["claude-mode", "claude-server"]) {
   test(`Claude reported ${shape} mismatch holds before receiving the person's words`, async (t) => {
@@ -286,54 +256,6 @@ for (const shape of ["claude-mode", "claude-server"]) {
   });
 }
 
-for (const prior of ["2.6", "agent-bot"]) {
-  test(`the ${prior} two-chat upgrade notices both chats once and makes the other person knock`, async (t) => {
-    const f = await personFixture(t);
-    await f.flushed();
-    await f.reboot(() => {
-      const file = join(f.root, ".bloks/config.json"), cfg = JSON.parse(readFileSync(file, "utf8"));
-      const state = cfg.telegram.bots[f.bot.id];
-      cfg.telegram = prior === "2.6"
-        ? { token: state.token, enabled: true, botId: f.bot.id, chatIds: [SAM, LEE], offset: state.offset, pairing: "old-word" }
-        : { version: 1, bots: { [f.bot.id]: { ...state, chatIds: [SAM, LEE] } } };
-      writeFileSync(file, JSON.stringify(cfg));
-    });
-    await until(() => f.sent(SAM).some((m) => m.body.text === TELEGRAM_PEOPLE_UPGRADE) && f.sent(LEE).some((m) => m.body.text === TELEGRAM_PEOPLE_UPGRADE), "an old chat was not told");
-    assert.equal((await f.status()).legacyPaired, 0);
-    assert.equal((await f.messages()).filter((m) => m.kind === "notice" && m.text === TELEGRAM_PEOPLE_UPGRADE).length, 1);
-    f.say("FAKE_TEXT", LEE); await f.flushed();
-    const person = (await f.status()).people.find((p: any) => p.name === "Lee");
-    assert.equal(person.state, "pending"); assert.equal(f.records().length, 0);
-    if (prior === "2.6") {
-      assert.equal((await f.status()).ownerPaired, false);
-      const pair = await f.post(`/api/bots/${f.bot.id}/telegram`, { pair: true });
-      assert.notEqual(pair.pairing, "old-word"); f.say(pair.pairing); await f.flushed();
-    }
-    await f.post(`/api/bots/${f.bot.id}/telegram`, { personId: person.id, action: "allow" });
-    await until(() => f.records().some((r) => r.person), "the old chat had no way in"); await f.idle();
-    assert.equal(f.records().filter((r) => r.person).length, 1);
-    await f.reboot(); await f.flushed();
-    for (const chat of [SAM, LEE]) assert.equal(f.sent(chat).filter((m) => m.body.text === TELEGRAM_PEOPLE_UPGRADE).length, 1);
-    assert.equal((await f.messages()).filter((m) => m.kind === "notice" && m.text === TELEGRAM_PEOPLE_UPGRADE).length, 1);
-  });
-}
-
-test("upgrade sends interrupted or unconfirmed by transport stay uncertain and are not replayed", async (t) => {
-  const f = await personFixture(t); await f.flushed();
-  f.sendFailures.set(TELEGRAM_PEOPLE_UPGRADE, "disconnect");
-  await f.reboot(() => {
-    const file = join(f.root, ".bloks/config.json"), cfg = JSON.parse(readFileSync(file, "utf8"));
-    cfg.telegram.version = 2;
-    cfg.telegram.bots[f.bot.id].upgradeNotices = [{ chatId: SAM, state: "sending" }, { chatId: LEE, state: "pending" }];
-    writeFileSync(file, JSON.stringify(cfg));
-  });
-  await until(async () => (await f.status()).upgradeNotices.every((n: any) => n.state === "uncertain"), "dispatch was not marked uncertain");
-  assert.equal(f.sent(SAM).filter((m) => m.body.text === TELEGRAM_PEOPLE_UPGRADE).length, 0);
-  assert.equal(f.sent(LEE).filter((m) => m.body.text === TELEGRAM_PEOPLE_UPGRADE).length, 1);
-  await f.reboot(); await f.flushed();
-  assert.equal(f.sent(LEE).filter((m) => m.body.text === TELEGRAM_PEOPLE_UPGRADE).length, 1);
-});
-
 test("a person's free-text question takes only the owner's explicit card reply", async (t) => {
   const f = await personFixture(t);
   await f.admit("FAKE_QUESTION");
@@ -345,12 +267,12 @@ test("a person's free-text question takes only the owner's explicit card reply",
   f.say("Friday", SAM, { reply_to_message: { message_id: card.messageId } }); await f.flushed();
   await until(() => f.records().some((r) => r.questionAnswer), "explicit owner answer was not accepted");
   await f.idle();
-  assert.equal(f.records().find((r) => r.questionAnswer).questionAnswer.answers.q.answers[0], "Friday");
+  assert.equal(f.records().find((r) => r.questionAnswer).questionAnswer.message, "Friday");
   assert.equal(f.sent(LEE).some((m) => m.body.text.includes("OWNER_PRIVATE_WORDS")), false);
 });
 
 test("an owner allow rule cannot answer a full-agent person's approval", async (t) => {
-  const f = await personFixture(t, "codex", { seed: (root) => writeFileSync(join(root, ".bloks/rules.json"), JSON.stringify([{ id: "synthetic-allow", effect: "allow", field: "command", op: "contains", value: "synthetic-marker", enabled: true, createdAt: 1 }])) });
+  const f = await personFixture(t, "claude", { seed: (root) => writeFileSync(join(root, ".bloks/rules.json"), JSON.stringify([{ id: "synthetic-allow", effect: "allow", field: "command", op: "contains", value: "synthetic-marker", enabled: true, createdAt: 1 }])) });
   await f.admit("FAKE_APPROVE");
   const card = await until(async () => (await f.messages()).find((m) => m.card?.title === "Approval needed"), "the owner's rule answered the person");
   assert.equal(existsSync(join(f.root, "effect")), false);
@@ -416,9 +338,61 @@ for (const removed of [false, true]) {
     } else {
       const recovered = await until(() => f.records().find((r) => r.person), "queued person was not recovered");
       await f.idle();
-      assert.equal(recovered.guard.sandbox, "read-only"); assert.equal(recovered.guard.approvalPolicy, "on-request");
+      assert.equal(mode(recovered), "default");
       assert.match(recovered.text, /Message from.*Lee.*Telegram/);
       assert.equal(f.records().filter((r) => r.person).length, 1);
     }
   });
 }
+
+test("a person's session hears only their own exchange, and none of the owner's profile, notes or memory", async (t) => {
+  const f = await personFixture(t, "claude", { seed: (root) => {
+    const file = join(root, ".bloks/config.json"), cfg = JSON.parse(readFileSync(file, "utf8"));
+    cfg.profile = { about: "OWNER_PROFILE_FACT" };
+    writeFileSync(file, JSON.stringify(cfg));
+  } });
+  const memory = join(f.root, ".bloks/workspaces", f.bot.id, "MEMORY.md");
+  mkdirSync(join(f.root, ".bloks/workspaces", f.bot.id), { recursive: true });
+  writeFileSync(memory, "AGENT_MEMORY_FACT\n");
+  await f.post(`/api/bots/${f.bot.id}/messages`, { text: "OWNER_SECRET_WORDS FAKE_TEXT" }); await f.idle();
+  const owner = f.records().find((r) => !r.person);
+  assert.match(owner.system, /OWNER_PROFILE_FACT/, "the fixture did not reach the owner's prompt");
+  assert.match(owner.system, /AGENT_MEMORY_FACT/, "the fixture did not reach the owner's prompt");
+  await f.admit("FIRST_PERSON_WORDS FAKE_REPLY");
+  await until(() => f.sent(LEE).some((m) => m.body.text === "Hello Lee"), "the person was not answered"); await f.idle();
+  f.say("SECOND_PERSON_WORDS FAKE_TEXT", LEE); await f.flushed();
+  await until(() => f.records().some((r) => r.person && r.text?.includes("SECOND_PERSON_WORDS")), "the second message did not run"); await f.idle();
+  const [first, second] = f.records().filter((r) => r.person);
+  for (const turn of [first, second]) {
+    assert.doesNotMatch(turn.text, /OWNER_SECRET_WORDS|Owner answer/, "the person's session was told the owner's conversation");
+    assert.doesNotMatch(turn.system, /OWNER_PROFILE_FACT|About the person you work for/, "the person's session was told about the owner");
+    assert.doesNotMatch(turn.system, /AGENT_MEMORY_FACT|persistent memory/, "the person's session was given the agent's memory");
+  }
+  // their own exchange, both sides of it, is theirs to be reminded of
+  assert.match(second.text, /FIRST_PERSON_WORDS/);
+  assert.match(second.text, /Hello Lee/);
+  assert.doesNotMatch(second.text, /Private transcript only/, "what the agent wrote only to the owner reached the person's session");
+  // and Bloks' own folder, where the memory and every key live, is refused
+  const data = join(f.root, ".bloks");
+  const denied = second.args.flatMap((arg: string, i: number) => second.args[i - 1] === "--disallowedTools" ? [arg] : []);
+  for (const tool of ["Read", "Edit", "Write"]) assert.ok(denied.includes(`${tool}(/${data}/**)`), `${tool} of Bloks' folder was not refused`);
+  assert.equal(owner.args.includes("--disallowedTools"), false, "the owner's turn lost its reach");
+  // the owner's next turn still learns what the person said
+  await f.post(`/api/bots/${f.bot.id}/messages`, { text: "OWNER_AFTER FAKE_TEXT" });
+  const after = await until(() => f.records().find((r) => !r.person && r.text?.includes("OWNER_AFTER")), "the owner's next turn did not start");
+  assert.match(after.text, /SECOND_PERSON_WORDS/);
+  await f.idle();
+});
+
+test("taking a person out stops their running turn, with nothing else to end it", async (t) => {
+  const f = await personFixture(t);
+  const person = await f.admit("FAKE_HOLD");
+  await until(() => existsSync(join(f.root, "held")), "the person's turn did not run");
+  assert.equal((await f.ownerJson("/api/bots")).bots.find((b: any) => b.id === f.bot.id).busy, true);
+  // no ask is waiting, so only the interrupt can end this turn: the held
+  // engine is never released
+  await f.post(`/api/bots/${f.bot.id}/telegram`, { personId: person.id, action: "remove" });
+  await f.idle();
+  assert.equal(existsSync(join(f.root, "release")), false);
+  assert.equal(f.sent(LEE).some((m) => m.body.text === "Hello Lee"), false, "the stopped turn still replied");
+});

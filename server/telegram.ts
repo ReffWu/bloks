@@ -61,6 +61,8 @@ export interface Incoming {
   text: string;
   updateId: number;
   fromId?: number;
+  /** The sender's @username, unchecked; telegram-people.ts validates it. */
+  fromUsername?: string;
   fromBot?: boolean;
   chatType?: "private" | "group" | "supergroup" | "channel";
   anonymous?: boolean;
@@ -258,6 +260,7 @@ export function parseUpdates(payload: unknown): Incoming[] {
       text: text.slice(0, 4_000),
       from: String(message?.from?.first_name ?? "someone").slice(0, 60),
       ...(Number.isSafeInteger(message.from?.id) && message.from.id > 0 ? { fromId: message.from.id } : {}),
+      ...(typeof message.from?.username === "string" ? { fromUsername: message.from.username.slice(0, 64) } : {}),
       ...(typeof message.from?.is_bot === "boolean" ? { fromBot: message.from.is_bot } : {}),
       ...(["private", "group", "supergroup", "channel"].includes(message.chat?.type) ? { chatType: message.chat.type } : {}),
       ...(message.sender_chat ? { anonymous: true } : {}),
@@ -309,7 +312,9 @@ export function decide(state: TelegramState, message: Incoming): Decision {
   const allowed = state.chatIds ?? [];
   const human = message.fromBot === false && !message.anonymous;
   const sender = message.press?.fromId ?? message.fromId;
-  const privateOwner = human && message.chatType === "private" && sender === state.ownerUserId && message.chatId === state.ownerChatId;
+  // Ids compared only once both are real ones: two missing ids are equal too.
+  const privateOwner = human && message.chatType === "private" && Number.isSafeInteger(sender) && sender! > 0 &&
+    sender === state.ownerUserId && Number.isSafeInteger(message.chatId) && message.chatId === state.ownerChatId;
   if (state.pairOwner && state.pairing && !message.press && !message.media && message.text.trim() === state.pairing) {
     return human && message.chatType === "private" && Number.isSafeInteger(sender) && sender! > 0 && Number.isSafeInteger(message.chatId) && message.chatId > 0
       ? { kind: "pair", chatId: message.chatId, userId: sender }
@@ -482,7 +487,9 @@ export async function post(token: string, chatId: number, text: string, keyboard
 export async function replyText(token: string, chatId: number, text: string, messageId: number | undefined, canSend: () => boolean): Promise<void> {
   if (!text.trim() || text.length > MAX_TELEGRAM_REPLY_CHARS) throw new Error("Reply text must contain 1 to 4096 characters.");
   if (!canSend()) throw new Error("the sender's permission or Telegram connection changed");
-  const result = await call(token, "sendMessage", { chat_id: chatId, text, ...(messageId ? { reply_parameters: { message_id: messageId } } : {}) }) as any;
+  // Quoting their message is a courtesy. A message they deleted since
+  // must not turn the reply into a refusal.
+  const result = await call(token, "sendMessage", { chat_id: chatId, text, ...(messageId ? { reply_parameters: { message_id: messageId, allow_sending_without_reply: true } } : {}) }) as any;
   if (result?.ok !== true || !Number.isSafeInteger(result.result?.message_id) || result.result.message_id <= 0) {
     throw new Error("Telegram did not confirm the reply. Do not send it again automatically.");
   }
@@ -1007,7 +1014,8 @@ export interface InboxHooks {
   saveFile(bytes: Uint8Array, extension: string): string;
   /** A card forwarded to this chat and not yet answered. */
   waiting(chatId: number, source?: Incoming): { options: string[]; permission: boolean } | undefined;
-  answer(chatId: number, read: { option?: string; free?: string }): Promise<void>;
+  /** `waiting` is the card `waiting` named for this message. */
+  answer(chatId: number, read: { option?: string; free?: string }, waiting?: { options: string[]; permission: boolean }): Promise<void>;
   /** A button pressed in a paired chat, by the person it is paired with. */
   press(chatId: number, press: Press): Promise<void>;
   /** Start a turn with this text. Returns at once; the reply follows. */
@@ -1074,7 +1082,7 @@ export class Inbox {
   private async answer(chatId: number, waiting: { options: string[]; permission: boolean }, text: string) {
     const read = interpretAnswer(text, waiting.options);
     if (waiting.permission && !read.option) return this.hooks.send(chatId, ASK_AGAIN);
-    await this.hooks.answer(chatId, read);
+    await this.hooks.answer(chatId, read, waiting);
     await this.hooks.send(chatId, "Sent.");
   }
 

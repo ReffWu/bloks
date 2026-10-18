@@ -26,8 +26,8 @@ import { inspectionRedactor } from "./settings-redaction.ts";
 import { telegramReply, type TelegramText } from "./telegram-reply.ts";
 import { TurnProgress } from "./telegram-progress.ts";
 import { inboxState, legacyBinding, migrateTelegram, ownerPairing, pairedChats, replaceTelegramToken, telegramStatus, type AgentTelegram, type TelegramConfig } from "./telegram-bots.ts";
-import { isPrivateTelegramHuman, knockTelegram, migrateTelegramPeople, telegramSender, telegramSenderCurrent, TELEGRAM_PEOPLE_UPGRADE, type TelegramPerson, type TelegramSender } from "./telegram-people.ts";
-import { personReplyText } from "./person-turn.ts";
+import { isPrivateTelegramHuman, knockTelegram, migrateTelegramPeople, telegramNamesakes, telegramPersonHandle, telegramSender, telegramSenderCurrent, TELEGRAM_PEOPLE_UPGRADE, type TelegramPerson, type TelegramSender } from "./telegram-people.ts";
+import { CODEX_PERSON_HOLD, CODEX_PERSON_NEXT, personReplyText, personTurnHold } from "./person-turn.ts";
 import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
 import { legacyToolTitle } from "./tool-command.ts";
 import * as box from "./box.ts";
@@ -2659,6 +2659,22 @@ bus.subscribe((event: RuntimeEvent) => {
           .catch(() => {});
         break;
       }
+      // Nor does a Telegram person's turn. Those tools are not published
+      // to it; this is the second line if one is called anyway. Its asks
+      // for a key or an app go to the owner, who answers them.
+      if (
+        (event.tool === "note_about_person" || event.tool === "read_message" || event.tool === "search_history") &&
+        event.requestId &&
+        laneTelegramPerson.has(event.threadId)
+      ) {
+        void asker
+          ?.adapter.respondToRequest(event.threadId, event.requestId, {
+            behavior: "answer",
+            message: "Not for someone on Telegram: the owner's conversations and notes stay the owner's.",
+          })
+          .catch(() => {});
+        break;
+      }
       // the agent asking for an app: plant sign-in cards and answer the
       // tool right away so the model can wrap up instead of blocking
       // a note about the person, suggested for them to keep or not
@@ -2904,19 +2920,15 @@ bus.subscribe((event: RuntimeEvent) => {
           // tap on one is the answer, not a yes to the first and a no to
           // the rest.
           const yesOrNo = !asking;
-          runtime.asks.set(chatId, {
-            requestId,
-            botId: bot.id,
-            options: message.card?.options ?? [],
-            permission: yesOrNo,
-            ...(telegramPerson ? { explicit: true } : {}),
-          });
+          const waitingAsk = { requestId, botId: bot.id, options: message.card?.options ?? [], permission: yesOrNo };
+          if (telegramPerson) runtime.personAsks.set(requestId, { ...waitingAsk, chatId });
+          else runtime.asks.set(chatId, waitingAsk);
           const { title, subtitle, options } = message.card ?? {};
           const forwarded = telegramCards.forward({ title, subtitle, options, requestId, botId: bot.id, generation: runtime.generation, chatId, permission: yesOrNo });
           void telegram
             .post(runtime.token, chatId, telegramPerson ? forwarded.text.replace("Reply with your answer.", "Reply to this card with your answer, or answer it in the app.") + (options?.length ? "\n\nTap a button, or reply to this card. Ordinary messages stay in your conversation." : "") : forwarded.text, forwarded.keyboard, false, () => Boolean(currentTelegram(runtime)))
             .then((messageId) => {
-              const waiting = runtime.asks.get(chatId);
+              const waiting = telegramPerson ? runtime.personAsks.get(requestId) : runtime.asks.get(chatId);
               if (waiting?.requestId === requestId) waiting.messageId = messageId;
               // answered before Telegram said which message it is
               const late = messageId === undefined ? undefined : telegramCards.sent(requestId, messageId);
@@ -4390,8 +4402,11 @@ async function startClaimedTurn(
   // a resting engine and no queued command reaches one that is paused.
   const pausedHere = pausedOn(bot, selection);
   if (pausedHere) throw pausedRefusal(bot, pausedHere);
-  if (personSource && instance.driverKind !== "codex" && instance.driverKind !== "claudeAgent") {
-    throw new Error("This Telegram person's turn is held: choose Claude Code or Codex for this agent. Its current engine cannot wait for owner approvals on person turns.");
+  // Only Claude Code takes a person's turn. An API engine cannot wait on
+  // the owner's approvals, and Codex reads the whole disk without asking.
+  if (personSource && instance.driverKind === "codex") throw personTurnHold(CODEX_PERSON_HOLD, CODEX_PERSON_NEXT);
+  if (personSource && instance.driverKind !== "claudeAgent") {
+    throw personTurnHold("its current engine cannot wait for the owner's approvals.", "Move this agent to Claude Code to let people on Telegram in.");
   }
   if (sharing && !sharedSafe(instance.driverKind)) {
     throw Object.assign(
@@ -4589,11 +4604,16 @@ async function startClaimedTurn(
     const settled = store
       .messagesFor(roomId)
       .filter((m) => m.kind === "text" && m.text && !m.deleted && !m.queued && !m.unsent)
+      // A Telegram person is told their own exchange and nothing else:
+      // what they said and what was sent to them. The owner's words, the
+      // agent's answers to the owner and the lane's summary of both stay
+      // the owner's. The owner's next turn still hears the person's.
+      .filter((m) => !personSource || personsOwn(m, personSource.personId))
       .map((m) => ({
         role: m.role === "user" ? ("user" as const) : ("assistant" as const),
         text: storedPrompt(m),
       }));
-    return assembleTranscript(settled, task.context ?? null, transcriptBudget);
+    return assembleTranscript(settled, personSource ? null : task.context ?? null, transcriptBudget);
   };
 
   // The rule: anything that would fall out of the window gets summarised
@@ -4634,8 +4654,10 @@ async function startClaimedTurn(
   const standingNow: Standing = {
     // what every agent has learned about them and they confirmed, and how
     // to add to it; never in a room other people are reading
-    notes: (!sharing && !guestMail && profileNotes.prompt()) || null,
-    memory: !guestMail && (!sharing || sharing.memoryFor?.includes(bot.id)) ? workspace.memoryPrompt(bot.id) : null,
+    // and never for a Telegram person, who is told as little of the
+    // owner as a stranger's mail is
+    notes: (!sharing && !guestMail && !personSource && profileNotes.prompt()) || null,
+    memory: !guestMail && !personSource && (!sharing || sharing.memoryFor?.includes(bot.id)) ? workspace.memoryPrompt(bot.id) : null,
   };
   const roomInMessage = Boolean(blok) && instance.driverKind === "claudeAgent";
   const personaWith = (moving: Standing) => [
@@ -4676,11 +4698,12 @@ async function startClaimedTurn(
     // owner has let this agent's memory into the room: other people are
     // reading the replies.
     !guestMail &&
+      !personSource &&
       (!sharing || sharing.memoryFor?.includes(bot.id)) &&
       cfg.profile?.about?.trim() &&
       `About the person you work for: ${cfg.profile.about.trim()}`,
     moving.notes,
-    !sharing && !guestMail && noteBriefing(runsAProcess(instance.driverKind) ? cliCommand : null),
+    !sharing && !guestMail && !personSource && noteBriefing(runsAProcess(instance.driverKind) ? cliCommand : null),
     moving.memory,
     sharing && sharedBriefing(sharedRoom!, sharing, roomTools),
     guestMail &&
@@ -5107,13 +5130,16 @@ async function startClaimedTurn(
       }
       // a fresh story already carries what the catch-up would
       if (missed && !engineFresh) turnText = catchUpText(missed.turns, missed.by, turnText);
-      const undone = undoneSince.get(task.id);
+      // Notes for the owner's next turn (files undone, a stalled call, a
+      // failure, a backup's handover) wait for it: a person's turn neither
+      // hears nor spends them.
+      const undone = personSource ? undefined : undoneSince.get(task.id);
       if (undone && !command) {
         undoneSince.delete(task.id);
         const named = undone.slice(0, 20).join(", ") + (undone.length > 20 ? `, and ${undone.length - 20} more` : "");
         turnText = `(Since your last turn, the user undid your changes to: ${named}. Those files are back as they were before that turn.)\n\n${turnText}`;
       }
-      const stalledNote = stalledSince.get(task.id);
+      const stalledNote = personSource ? undefined : stalledSince.get(task.id);
       if (stalledNote && !command) {
         stalledSince.delete(task.id);
         turnText = `${stallPreface(stalledNote)}\n\n${turnText}`;
@@ -5152,7 +5178,9 @@ async function startClaimedTurn(
       // Every other engine is told the whole persona each turn as before.
       let standingNext: StandingRecord | null = null;
       let persona = personaWith(standingNow);
-      if (instance.driverKind === "claudeAgent") {
+      // A person's session is fresh and kept nowhere; the record of what
+      // the owner's session was told stays as it was.
+      if (instance.driverKind === "claudeAgent" && !personSource) {
         const kept = standingFor(standing.get(task.id), standingNow, {
           instanceId,
           resuming: typeof resumeCursor === "string",
@@ -5373,10 +5401,10 @@ async function startClaimedTurn(
       // a turn is getting ready. The chat notice is not the dedupe, and
       // a changed rest gets one correction with absolute past facts.
       // A failure in this conversation keeps its original longer line.
-      const pendingFailure = command ? undefined : failureNotes.get(task.id);
+      const pendingFailure = command || personSource ? undefined : failureNotes.get(task.id);
       const failedNote = pendingFailure?.text;
       const chosen = store.bot(bot.id) ?? bot;
-      const pending = command ? undefined : awayOf(chosen, awayId);
+      const pending = command || personSource ? undefined : awayOf(chosen, awayId);
       // Fresh, not the rest this turn began with: one that ended while
       // the turn got ready is not named, and its end is no correction.
       const restNow = cooldowns.of(chosen.modelSelection.instanceId);
@@ -5385,7 +5413,7 @@ async function startClaimedTurn(
       // stays the same rest across many turns
       if (pending && restNow && !changedRest) pending.rest = toldOf(restNow);
       const at = pending?.at ?? turnSince;
-      const leaving = !command && sameSelection(chosen.modelSelection, own) && sameSelection(selection, chosen.backupSelection) && !sameSelection(selection, chosen.modelSelection) && (!pending || changedRest)
+      const leaving = !command && !personSource && sameSelection(chosen.modelSelection, own) && sameSelection(selection, chosen.backupSelection) && !sameSelection(selection, chosen.modelSelection) && (!pending || changedRest)
         ? {
             own: chosen.modelSelection,
             backup: selection,
@@ -5397,7 +5425,7 @@ async function startClaimedTurn(
             })(),
           }
         : undefined;
-      const returning = !command && sameSelection(pending?.own, selection) ? pending : undefined;
+      const returning = !command && !personSource && sameSelection(pending?.own, selection) ? pending : undefined;
       // A try of the resting own engine hears why the conversation moved,
       // not the return line, which says it is back.
       const tryNote = ownTry && returning?.switched ? backupLine(returning.own, returning.backup, restNow, returning.at, true) : undefined;
@@ -8710,7 +8738,12 @@ interface TelegramRuntime {
    * than one per message. */
   refused: Set<number>;
   /** Cards forwarded to a chat and not yet answered, by chat. */
-  asks: Map<number, { requestId: string; botId: string; options: string[]; permission: boolean; explicit?: boolean; messageId?: number }>;
+  asks: Map<number, TelegramAsk>;
+  /** Cards a Telegram person's turn raised, in the owner's chat, by
+   * request. Kept apart from `asks` so one never takes the place of the
+   * owner's own waiting card, and answered only by a tap or a reply to
+   * that card itself. */
+  personAsks: Map<string, TelegramAsk & { chatId: number }>;
   /** "typing" in each chat whose message the agent is working on. */
   typing: Map<number, { now(): void; stop(): Promise<void> }>;
   /** Turns started from each chat, one after another. Kept off the
@@ -8752,6 +8785,8 @@ function currentTelegram(runtime: TelegramRuntime): AgentTelegram | undefined {
   return !runtime.abort.signal.aborted && store.bot(runtime.botId) && state?.enabled && state.token === runtime.token && state.generation === runtime.generation ? state : undefined;
 }
 
+interface TelegramAsk { requestId: string; botId: string; options: string[]; permission: boolean; messageId?: number }
+
 function liveTelegram(botId: string): TelegramRuntime | undefined {
   const runtime = telegramRuntimes.get(botId);
   return runtime && currentTelegram(runtime) ? runtime : undefined;
@@ -8765,6 +8800,19 @@ function senderForRequester(requester: string, laneId: string): TelegramSender |
 function saveTelegramPerson(botId: string, person: TelegramPerson): void {
   const state = telegramBinding(botId);
   if (state) saveTelegramBinding(botId, { ...state, people: { ...state.people, [String(person.userId)]: person } });
+}
+
+/** Change one person's record as it stands now, and only while it still
+ * carries the grant the caller read. An await in between may have let
+ * them in, taken them out or forgotten them, and writing back an older
+ * copy would undo that: a removed person let in again by a late write. */
+function updateTelegramPerson(botId: string, userId: number, grant: string, patch: Partial<TelegramPerson>): TelegramPerson | undefined {
+  const state = telegramBinding(botId);
+  const current = state?.people?.[String(userId)];
+  if (!state || !current || current.grant !== grant) return undefined;
+  const next = { ...current, ...patch };
+  saveTelegramBinding(botId, { ...state, people: { ...state.people, [String(userId)]: next } });
+  return next;
 }
 
 async function replyToTelegramPerson(credential: AgentToken, input: unknown): Promise<string> {
@@ -8789,8 +8837,7 @@ async function replyToTelegramPerson(credential: AgentToken, input: unknown): Pr
     await telegram.replyText(runtime.token, sender.chatId, text, sender.messageId, current);
     const patched = store.patchMessage(credential.taskId, message.id, { telegramSent: { ...message.telegramSent!, state: "sent" } });
     if (patched) broadcast({ kind: "message.patch", threadId: credential.taskId, message: patched });
-    const person = telegramBinding(credential.botId)?.people?.[String(sender.userId)];
-    if (person?.grant === sender.grant && person.holdReported) saveTelegramPerson(credential.botId, { ...person, holdReported: undefined });
+    if (telegramBinding(credential.botId)?.people?.[String(sender.userId)]?.holdReported) updateTelegramPerson(credential.botId, sender.userId, sender.grant, { holdReported: undefined });
     return "Sent to the person who started this turn.";
   } catch (error) {
     const failed = error instanceof telegram.TelegramError && error.status >= 400 && error.status < 500;
@@ -8806,7 +8853,7 @@ function tellTelegramPersonHeld(sender: TelegramSender, why: string): void {
   const state = telegramBinding(sender.botId);
   const person = state?.people?.[String(sender.userId)];
   if (!telegramSenderCurrent(state, sender) || !person || person.holdReported) return;
-  saveTelegramPerson(sender.botId, { ...person, holdReported: why.slice(0, MAX_DESCRIPTION_CHARS) });
+  updateTelegramPerson(sender.botId, sender.userId, sender.grant, { holdReported: why.slice(0, MAX_DESCRIPTION_CHARS) });
   const runtime = liveTelegram(sender.botId);
   if (runtime) void telegramSay(runtime, sender.chatId, "This agent cannot answer from Telegram yet. The owner can see why in the agent's chat.");
 }
@@ -8818,7 +8865,7 @@ function telegramAdmissionCard(botId: string, person: TelegramPerson): Message |
   const existing = store.messagesFor(bot.threadId).find((m) => m.card?.requestId === requestId);
   if (existing) return existing;
   const message = store.appendMessage(bot.threadId, { role: "bot", kind: "options", card: {
-    title: `Let ${person.name} in?`, subtitle: `They want to message ${bot.name} on Telegram. Let in only people you trust: what this agent reads can reach them. Actions still ask you.`,
+    title: `Let ${person.name} in?`, subtitle: admissionWords(bot, person),
     options: ["Let in", "Not now"], requestId, ownerOnly: true,
   } });
   broadcast({ kind: "message", threadId: bot.threadId, message });
@@ -8827,20 +8874,35 @@ function telegramAdmissionCard(botId: string, person: TelegramPerson): Message |
   return message;
 }
 
+/** What the owner reads before deciding: who this is beyond the first
+ * name they chose, what they said, whether someone else here has the
+ * same name, and what letting them in gives them. */
+function admissionWords(bot: BotRecord, person: TelegramPerson): string {
+  const namesakes = telegramNamesakes(telegramBinding(bot.id), person);
+  const engine = registry.get(bot.modelSelection.instanceId)?.driverKind;
+  return [
+    `${telegramPersonHandle(person)} wants to message ${bot.name} on Telegram.`,
+    namesakes.length ? `Someone else here is also called ${person.name} (${namesakes.map(telegramPersonHandle).join("; ")}). Check the id before letting this one in.` : "",
+    person.first?.text ? `They wrote: "${person.first.text.slice(0, 280).replace(/\s+/g, " ").trim()}"` : "",
+    "Let in only people you trust: they get answers from this agent, which can read files in its working folder. Anything else it does asks you first.",
+    engine !== "claudeAgent" ? "This agent answers people on Telegram only on Claude Code, so they wait until it moves there." : "",
+  ].filter(Boolean).join("\n");
+}
+
 async function forwardTelegramAdmission(runtime: TelegramRuntime, person: TelegramPerson): Promise<void> {
   const state = currentTelegram(runtime);
-  if (!state || state.ownerChatId === undefined || person.state !== "pending" || person.cardSend) return;
-  const card = telegramAdmissionCard(runtime.botId, person);
+  // the record as it is now: a caller's copy may predate an await
+  const current = state?.people?.[String(person.userId)];
+  if (!state || state.ownerChatId === undefined || !current || current.grant !== person.grant || current.state !== "pending" || current.cardSend) return;
+  const card = telegramAdmissionCard(runtime.botId, current);
   if (!card?.card) return;
-  saveTelegramPerson(runtime.botId, { ...person, cardId: card.id, cardSend: "sending" });
-  const data = (action: "a" | "d") => `tp:${action}:${person.id}:${person.grant.slice(0, 12)}`;
+  if (!updateTelegramPerson(runtime.botId, current.userId, current.grant, { cardId: card.id, cardSend: "sending" })) return;
+  const data = (action: "a" | "d") => `tp:${action}:${current.id}:${current.grant.slice(0, 12)}`;
   try {
     const id = await telegram.post(runtime.token, state.ownerChatId, `${card.card.title}\n${card.card.subtitle}`, { inline_keyboard: [[{ text: "Let in", callback_data: data("a") }, { text: "Not now", callback_data: data("d") }]] }, false, () => Boolean(currentTelegram(runtime)));
-    const after = currentTelegram(runtime)?.people?.[String(person.userId)];
-    if (after?.grant === person.grant) saveTelegramPerson(runtime.botId, { ...after, cardSend: id === undefined ? "uncertain" : "sent", ...(id ? { telegramCardId: id } : {}) });
+    updateTelegramPerson(runtime.botId, current.userId, current.grant, { cardSend: id === undefined ? "uncertain" : "sent", ...(id ? { telegramCardId: id } : {}) });
   } catch {
-    const after = currentTelegram(runtime)?.people?.[String(person.userId)];
-    if (after?.grant === person.grant) saveTelegramPerson(runtime.botId, { ...after, cardSend: "uncertain" });
+    updateTelegramPerson(runtime.botId, current.userId, current.grant, { cardSend: "uncertain" });
   }
 }
 
@@ -8850,7 +8912,7 @@ async function decideTelegramAdmission(botId: string, personId: string, action: 
   if (!state || !person) return false;
   const wanted = action === "allow" ? "allowed" : action === "decline" ? "declined" : "removed";
   if (person.state === wanted) return true;
-  const next: TelegramPerson = { ...person, state: wanted, grant: randomUUID(), ...(action !== "allow" ? { first: undefined } : {}) };
+  const next: TelegramPerson = { ...person, state: wanted, grant: randomUUID(), ...(action !== "allow" ? { first: undefined, closedAt: Date.now() } : { closedAt: undefined }) };
   // Revoke first. Late approvals and reply capabilities see this before I/O.
   saveTelegramPerson(botId, next);
   await revokeTelegramPersonTurns(botId, (sender) => sender.personId === person.id, "This Telegram person's access changed.");
@@ -8862,12 +8924,14 @@ async function decideTelegramAdmission(botId: string, personId: string, action: 
   }
   const runtime = liveTelegram(botId);
   runtime?.personInboxes.delete(person.id);
-  if (runtime && person.telegramCardId && state.ownerChatId !== undefined) void telegram.edit(runtime.token, state.ownerChatId, person.telegramCardId, `${person.name}: ${wanted}.`).catch(() => {});
-  if (runtime && action === "decline") {
-    saveTelegramPerson(botId, { ...next, notice: "sending" });
+  // the same words the app uses for the same decision
+  const said = action === "allow" ? "let in" : action === "decline" ? "not now" : "taken out";
+  if (runtime && person.telegramCardId && state.ownerChatId !== undefined) void telegram.edit(runtime.token, state.ownerChatId, person.telegramCardId, `${person.name} (${telegramPersonHandle(person)}): ${said}.`).catch(() => {});
+  // Each write after an await is made to the record as it is then, and
+  // only while it is still this decision's.
+  if (runtime && action === "decline" && updateTelegramPerson(botId, person.userId, next.grant, { notice: "sending" })) {
     await telegramSay(runtime, person.chatId, "Not now. The owner has not let you in.");
-    const after = telegramBinding(botId)?.people?.[String(person.userId)];
-    if (after?.grant === next.grant) saveTelegramPerson(botId, { ...after, notice: "sent" });
+    updateTelegramPerson(botId, person.userId, next.grant, { notice: "sent" });
   }
   if (action === "allow") deliverFirstTelegramPerson(botId, next);
   broadcast({ kind: "config", ...(await configStatus()) });
@@ -8898,10 +8962,13 @@ async function revokeTelegramPersonTurns(botId: string, matches: (sender: Telegr
 
 function deliverFirstTelegramPerson(botId: string, person: TelegramPerson): void {
   const state = telegramBinding(botId);
-  if (!state || state.ownerUserId === undefined || person.state !== "allowed" || !person.first) return;
-  const source = telegramSender(botId, state, person, person.first.messageId);
-  const text = person.first.text || "The person sent media before admission. Ask them to send it again.";
-  saveTelegramPerson(botId, { ...person, first: undefined });
+  // what is saved now, never the caller's copy, which may be from before
+  // this person was taken out
+  const current = state?.people?.[String(person.userId)];
+  if (!state || state.ownerUserId === undefined || !current || current.grant !== person.grant || current.state !== "allowed" || !current.first) return;
+  const source = telegramSender(botId, state, current, current.first.messageId);
+  const text = current.first.text || "The person sent media before admission. Ask them to send it again.";
+  updateTelegramPerson(botId, current.userId, current.grant, { first: undefined });
   deliverTelegramPerson(source, text);
 }
 
@@ -8936,6 +9003,8 @@ async function takeTelegramIncoming(runtime: TelegramRuntime, message: telegram.
   if (decision.kind === "pair" || decision.kind === "press" || decision.kind === "deliver") return runtime.inbox.take(message);
   if (!isPrivateTelegramHuman(message)) return;
   const knock = knockTelegram(state, message);
+  // room again since the last full inbox: the next full one is said again
+  if (!knock.capped && knock.fresh && state.admissionFull) saveTelegramBinding(runtime.botId, { ...state, admissionFull: undefined });
   if (knock.capped) {
     if (!state.admissionFull) {
       saveTelegramBinding(runtime.botId, { ...state, admissionFull: true });
@@ -8950,12 +9019,19 @@ async function takeTelegramIncoming(runtime: TelegramRuntime, message: telegram.
   const person = knock.person;
   if (!person) return;
   if (knock.fresh) {
+    if (knock.forget?.length) {
+      const people = { ...telegramBinding(runtime.botId)?.people };
+      for (const key of knock.forget) delete people[key];
+      saveTelegramBinding(runtime.botId, { ...telegramBinding(runtime.botId)!, people });
+    }
+    // saved before the card is made, so the card can tell them from
+    // anyone else here with the same name
+    saveTelegramPerson(runtime.botId, { ...person, notice: "sending" });
     const card = telegramAdmissionCard(runtime.botId, person);
-    saveTelegramPerson(runtime.botId, { ...person, ...(card ? { cardId: card.id } : {}), notice: "sending" });
-    await forwardTelegramAdmission(runtime, telegramBinding(runtime.botId)!.people![String(person.userId)]);
+    if (card) updateTelegramPerson(runtime.botId, person.userId, person.grant, { cardId: card.id });
+    await forwardTelegramAdmission(runtime, person);
     if (currentTelegram(runtime)?.people?.[String(person.userId)]?.state === "pending") await telegramSay(runtime, person.chatId, "The owner has been asked to let you in. Please wait for their answer.");
-    const after = currentTelegram(runtime)?.people?.[String(person.userId)];
-    if (after?.grant === person.grant) saveTelegramPerson(runtime.botId, { ...after, notice: "sent" });
+    updateTelegramPerson(runtime.botId, person.userId, person.grant, { notice: "sent" });
     return;
   }
   if (person.state !== "allowed") return;
@@ -9106,11 +9182,14 @@ function rewriteTelegramCard(card: ForwardedCard): void {
 function settleTelegramCard(requestId: string, outcome: (card: ForwardedCard) => string): void {
   const card = telegramCards.settle(requestId, outcome);
   if (card) rewriteTelegramCard(card);
-  for (const runtime of telegramRuntimes.values()) for (const [chatId, waiting] of runtime.asks) {
-    if (waiting.requestId !== requestId) continue;
-    runtime.asks.delete(chatId);
-    // the agent is working again, so the chat says so at once
-    runtime.typing.get(chatId)?.now();
+  for (const runtime of telegramRuntimes.values()) {
+    runtime.personAsks.delete(requestId);
+    for (const [chatId, waiting] of runtime.asks) {
+      if (waiting.requestId !== requestId) continue;
+      runtime.asks.delete(chatId);
+      // the agent is working again, so the chat says so at once
+      runtime.typing.get(chatId)?.now();
+    }
   }
 }
 
@@ -9121,7 +9200,7 @@ function settleTelegramCard(requestId: string, outcome: (card: ForwardedCard) =>
 function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRuntime {
   const runtime: TelegramRuntime = {
     botId, generation: state.generation, token: state.token!, abort: new AbortController(),
-    refused: new Set(), asks: new Map(), typing: new Map(), turns: new Map(), intake: new Map(), working: new Map(),
+    refused: new Set(), asks: new Map(), personAsks: new Map(), typing: new Map(), turns: new Map(), intake: new Map(), working: new Map(),
     inbox: null as unknown as telegram.Inbox, personInboxes: new Map(),
   };
   const active = () => {
@@ -9170,16 +9249,21 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
     saveVoice: (bytes) => { active(); return attachments.saveBytes(bytes, "ogg"); },
     saveFile: (bytes, extension) => { active(); return attachments.saveBytes(bytes, extension); },
     waiting: (chatId, source) => {
-      const ask = runtime.asks.get(chatId);
       // A colleague's question must not consume the owner's unrelated
       // next words. Buttons or a reply to that physical card are explicit.
-      return ask?.explicit && (ask.messageId === undefined || source?.replyToMessageId !== ask.messageId) ? undefined : ask;
+      const replied = source?.replyToMessageId;
+      if (replied !== undefined) {
+        for (const ask of runtime.personAsks.values()) if (ask.chatId === chatId && ask.messageId === replied) return ask;
+      }
+      return runtime.asks.get(chatId);
     },
-    async answer(chatId, read) {
+    async answer(chatId, read, chosen) {
       if (!currentTelegram(runtime)) return;
-      const waiting = runtime.asks.get(chatId);
-      if (!waiting) return;
-      runtime.asks.delete(chatId);
+      const personAsk = [...runtime.personAsks.values()].find((ask) => ask === chosen);
+      const waiting = personAsk ?? runtime.asks.get(chatId);
+      if (!waiting || (chosen && waiting !== chosen)) return;
+      if (personAsk) runtime.personAsks.delete(personAsk.requestId);
+      else runtime.asks.delete(chatId);
       await answerTelegramAsk(waiting, read);
       // The turn goes on, so the chat says so again without waiting for
       // the next tick.
@@ -9206,6 +9290,7 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
       }
       const { card, option } = found;
       if (runtime.asks.get(chatId)?.requestId === card.requestId) runtime.asks.delete(chatId);
+      runtime.personAsks.delete(card.requestId);
       if (!(await answerTelegramAsk(card, { option }))) telegramCards.reword(card, "That card had already closed, so nothing was done.");
       await telegram.answerPress(runtime.token, press.id, card.settled).catch(() => {});
       rewriteTelegramCard(card);
@@ -9278,6 +9363,7 @@ function startTelegramBot(botId: string): void {
     }
     if (telegramLive.get(botId)?.generation === previous.generation) telegramLive.delete(botId);
     previous.asks.clear();
+    previous.personAsks.clear();
     telegramRuntimes.delete(botId);
   }
   const state = telegramBinding(botId);
@@ -10454,6 +10540,12 @@ function lastReportFor(laneId: string): string | null {
   return open ? lastReportNote(routines.get(open.routineId)?.lastReport) : null;
 }
 
+/** A Telegram person's own part of a conversation: their messages and
+ * the replies sent to them, never the owner's side of it. */
+function personsOwn(message: Message, personId: string): boolean {
+  return message.telegramPerson?.personId === personId || message.telegramSent?.personId === personId;
+}
+
 /** Stored words stay unchanged; engines hear who started the message. */
 function storedPrompt(message: Message): string {
   if (message.telegramSent) return `(Explicit Telegram reply to ${JSON.stringify(message.telegramSent.name)}, ${message.telegramSent.state}.)\n\n${message.text ?? ""}`;
@@ -10710,7 +10802,7 @@ function drainSteer(threadId: string) {
     const failure = store.appendMessage(threadId, {
       role: "bot",
       kind: "notice",
-      text: `Your queued message could not start a turn: ${redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 200)}`,
+      text: `${telegramPerson ? `${telegramPerson.name}'s Telegram message` : "Your queued message"} could not start a turn: ${redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 200)}`,
     });
     broadcast({ kind: "message", threadId, message: failure });
     // nor does one whose next turn was refused
@@ -12287,6 +12379,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   // happen whatever else the request looks like.
   const asAgent = agentTokens.identify(bearerToken(req), Date.now(), turnAlive);
   if (asAgent) {
+    // A reply credential was answered at the top of this function. This
+    // is the second line, so that check is never the only one.
+    if (asAgent.reply) return json(res, 403, { error: "this credential can only reply to its turn's Telegram sender" });
     if (!isLocalRequest(req)) {
       return json(res, 403, { error: "an agent's credential only works on this machine" });
     }

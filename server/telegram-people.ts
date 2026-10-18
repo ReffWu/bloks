@@ -2,14 +2,20 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Incoming } from "./telegram.ts";
 import type { AgentTelegram, TelegramConfig } from "./telegram-bots.ts";
-import { MAX_NAME_CHARS, MAX_TELEGRAM_PEOPLE, MAX_PENDING_TELEGRAM_PEOPLE, MAX_TELEGRAM_REPLY_CHARS } from "./limits.ts";
+import { MAX_CLOSED_TELEGRAM_PEOPLE, MAX_NAME_CHARS, MAX_TELEGRAM_PEOPLE, MAX_PENDING_TELEGRAM_PEOPLE, MAX_TELEGRAM_REPLY_CHARS } from "./limits.ts";
 
 export interface TelegramPerson {
   id: string;
   userId: number;
   name: string;
+  /** Their @username when they have one. A first name is chosen freely
+   * and two strangers can share it; the id and username tell them apart. */
+  username?: string;
   chatId: number;
   state: "pending" | "allowed" | "declined" | "removed";
+  /** When they were declined or taken out, so the oldest closed record
+   * is the one forgotten when there are too many. */
+  closedAt?: number;
   grant: string;
   cardId?: string;
   first?: { text: string; messageId?: number };
@@ -40,8 +46,22 @@ export interface TelegramUpgradeNotice {
 
 export const TELEGRAM_PEOPLE_UPGRADE = "Telegram needs the pairing word again to identify the owner. The owner gets it in this agent's settings. Everyone else can message this bot to ask to be let in.";
 
+/** Control characters and the invisible marks that reorder or hide text
+ * go, as in a routine's name: a name chosen to read as someone else's on
+ * the admission card is the attack this card exists to stop. */
 export function telegramPersonName(name: string): string {
-  return name.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_NAME_CHARS) || "Someone";
+  return name.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_NAME_CHARS) || "Someone";
+}
+
+/** Telegram usernames are 5 to 32 letters, digits and underscores. */
+export function telegramUsername(value: unknown): string | undefined {
+  return typeof value === "string" && /^[A-Za-z0-9_]{5,32}$/.test(value) ? value : undefined;
+}
+
+/** Waiting and let-in people count toward the cap. Declined and removed
+ * ones do not, or a hundred knocks would shut the door for good. */
+export function activeTelegramPeople(state: AgentTelegram | undefined): TelegramPerson[] {
+  return Object.values(state?.people ?? {}).filter((p) => p.state === "pending" || p.state === "allowed");
 }
 
 export function isPrivateTelegramHuman(message: Incoming): boolean {
@@ -49,19 +69,36 @@ export function isPrivateTelegramHuman(message: Incoming): boolean {
     Number.isSafeInteger(message.fromId) && message.fromId! > 0 && Number.isSafeInteger(message.chatId) && message.chatId > 0;
 }
 
-export function knockTelegram(state: AgentTelegram, message: Incoming): { person?: TelegramPerson; fresh: boolean; capped: boolean } {
+export function knockTelegram(state: AgentTelegram, message: Incoming): { person?: TelegramPerson; fresh: boolean; capped: boolean; forget?: string[] } {
   if (!isPrivateTelegramHuman(message)) return { fresh: false, capped: false };
   const known = state.people?.[String(message.fromId)];
   if (known) return { person: known, fresh: false, capped: false };
-  const people = Object.values(state.people ?? {});
-  if (people.length >= MAX_TELEGRAM_PEOPLE || people.filter((p) => p.state === "pending").length >= MAX_PENDING_TELEGRAM_PEOPLE) {
+  const active = activeTelegramPeople(state);
+  if (active.length >= MAX_TELEGRAM_PEOPLE || active.filter((p) => p.state === "pending").length >= MAX_PENDING_TELEGRAM_PEOPLE) {
     return { fresh: false, capped: true };
   }
+  // Closed records stay bounded too: past the bound the longest closed
+  // is forgotten, and that person may knock again.
+  const closed = Object.entries(state.people ?? {}).filter(([, p]) => p.state === "declined" || p.state === "removed")
+    .sort(([, a], [, b]) => (a.closedAt ?? 0) - (b.closedAt ?? 0));
+  const forget = closed.slice(0, Math.max(0, closed.length - MAX_CLOSED_TELEGRAM_PEOPLE + 1)).map(([key]) => key);
   const text = message.text.slice(0, MAX_TELEGRAM_REPLY_CHARS) + (message.media ? "\n(Media was not downloaded before admission. Ask the sender to send it again.)" : "");
-  return { fresh: true, capped: false, person: {
-    id: randomUUID(), userId: message.fromId!, name: telegramPersonName(message.from), chatId: message.chatId,
+  const username = telegramUsername(message.fromUsername);
+  return { fresh: true, capped: false, ...(forget.length ? { forget } : {}), person: {
+    id: randomUUID(), userId: message.fromId!, name: telegramPersonName(message.from), ...(username ? { username } : {}), chatId: message.chatId,
     state: "pending", grant: randomUUID(), first: { text, ...(message.messageId ? { messageId: message.messageId } : {}) },
   } };
+}
+
+/** How the owner tells this person from anyone else of the same name. */
+export function telegramPersonHandle(person: Pick<TelegramPerson, "userId" | "username">): string {
+  return `${person.username ? `@${person.username}, ` : ""}Telegram id ${person.userId}`;
+}
+
+/** Others on this bot who go by the same name, ignoring case. */
+export function telegramNamesakes(state: AgentTelegram | undefined, person: Pick<TelegramPerson, "id" | "name">): TelegramPerson[] {
+  const name = person.name.toLocaleLowerCase();
+  return Object.values(state?.people ?? {}).filter((p) => p.id !== person.id && p.name.toLocaleLowerCase() === name);
 }
 
 export function telegramSender(botId: string, state: AgentTelegram, person: TelegramPerson, messageId?: number): TelegramSender {
