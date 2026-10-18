@@ -87,8 +87,6 @@ export function inspectWorkspaceCategory(category:SettingsCategory,input:Workspa
     add(['record','history'],'Settings > Record',policy('audit history is data, not a setting; inspection does not read or verify the audit record'));
   }else if(category==='device.navigation'){
     add(['navigation','history'],'Sidebar and dismiss controls',policy('selection, last-used, dismissal, onboarding and analytics markers are presentation or lifecycle data; no identifiers or contents are projected'));
-  }else if(category==='device.iphone'){
-    add(['iphone','coverage'],'iPhone Settings',{status:'unknown',reason:'private_client_contract_dependency_issue_303'});
   }
   return fields;
 }

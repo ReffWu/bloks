@@ -69,6 +69,26 @@ test('device projection dates older answers as last-reported and never shows dev
   const native=page(pages,input,'device.native');assert.match(JSON.stringify(native),/native.mode/);assert.ok(!JSON.stringify(native).includes('theme.applied'));
 });
 
+test('a paired phone with nothing reported is unavailable, never a server default, and a report shows its own defaults',()=>{
+  let elapsed=0;const devices=new DeviceSettings({monotonic:()=>elapsed,wall:()=>1000+elapsed});
+  const input=fixture();input.ownerDevices=[{id:'phone',name:'Fixture phone',client:'iOS 3.0 (40)',lastSeen:900}];
+  input.devices=devices.inspect(null);const pages=new SettingsPages();
+  let rows=page(pages,input,'device.phone').body.rows.map((row)=>row.observation).filter((row)=>'status' in row);
+  assert.equal(rows.length,1);assert.equal(rows[0]!.status,'unavailable');assert.equal(rows[0]!.settings,null);
+  assert.deepEqual(rows[0]!.client,{status:'value',value:'iOS 3.0 (40)'});
+  assert.ok(devices.reportPhone({path:'relay',deviceId:'phone'},{reason:'changed',observedAt:950,settings:[
+    {id:'looks.roleBadges',kind:'preference',value:{status:'value',value:false},default:{status:'value',value:true},owner:'Conversation list',control:'Settings > How it looks'},
+    {id:'pairing.token',kind:'credential',value:{status:'configured',configured:true},owner:'Keychain',control:'Settings > Mac connection'},
+  ]},'iOS 3.0 (40)',(text)=>text));
+  elapsed=10;const ask=devices.ask(()=>{});input.devices=devices.inspect(ask);
+  rows=page(pages,input,'device.phone').body.rows.map((row)=>row.observation).filter((row)=>'status' in row);
+  assert.equal(rows[0]!.status,'last-reported','a report from before the ask is dated, not current');
+  const settings=rows[0]!.settings as unknown as {id:string;value:unknown;default:unknown}[];
+  assert.deepEqual(settings[0]!.default,{status:'value',value:true});
+  assert.deepEqual(settings[1]!.value,{status:'configured',configured:true});
+  assert.equal(settings[1]!.default,null);
+});
+
 
 test('F1 common short MCP and URL values preserve catalog names and descriptions while credentials remain redacted',()=>{
   const input=fixture();

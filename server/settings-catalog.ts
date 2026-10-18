@@ -89,18 +89,39 @@ export function settingsCatalog(category:SettingsCategory,input:SettingsCatalogI
   }
   if(category==='workspace.policy')return input.rules.flatMap((r)=>{const key=id(r);return key?[projected(key,()=>inspectRuleSettings(r,ctx))]:[];});
   if(category==='device.browser'||category==='device.native'){
-    const windows=input.devices.entries;
+    const windows=input.devices.entries.filter((entry)=>entry.kind==='window');
     const rows:Row[]=[record('observation-boundary',()=>({control:'Device-owned controls',
       status:windows.length?'dated-client-observations':'unknown',askedAt:input.devices.askedAt,
       droppedForSpace:input.devices.droppedForSpace,bounds:input.devices.bounds,
       meaning:'open owner windows were asked once for this inspection; current means answered since that ask, last-reported is an older answer with its date, and a window that did not answer is not listed'}))];
     for(const entry of windows)rows.push(record(entry.key,()=>{
-      const values=Object.entries(entry.window.values).filter(([key])=>category==='device.native'?/^(native|window)\./.test(key):!/^(native|window)\./.test(key))
+      const values=Object.entries(entry.window!.values).filter(([key])=>category==='device.native'?/^(native|window)\./.test(key):!/^(native|window)\./.test(key))
         .map(([key,value])=>({id:key,control:deviceControl(key),reported:value}));
       return {windowReference:pages.reference('device.browser',entry.key),source:{path:entry.source.path,identity:entry.source.identity,
         deviceReference:entry.source.deviceId?pages.reference('workspace.devices',`device:${entry.source.deviceId}`):null},
         freshness:entry.freshness,receivedAt:entry.receivedAt,clientObservedAt:entry.clientObservedAt,fields:values};
     }));
+    return rows;
+  }
+  if(category==='device.phone'){
+    const rows:Row[]=[record('observation-boundary',()=>({control:'Paired phone settings',askedAt:input.devices.askedAt,bounds:input.devices.bounds,
+      meaning:'each owner device says its own settings, defaults and system-resolved values; current means heard since this inspection asked, last-reported is an older report with its date, unavailable means the device has said nothing this server still holds. No server default is ever put in place of a missing value'}))];
+    for(const device of input.ownerDevices){
+      const entry=input.devices.entries.find((item)=>item.kind==='phone'&&item.source.deviceId===device.id);
+      rows.push(record(`phone:${device.id}`,()=>({
+        deviceReference:pages.reference('workspace.devices',`device:${device.id}`),name:scalar(device.name??null,redact),
+        client:scalar(device.client??null,redact),lastHeardFrom:device.lastSeen??null,
+        ...(entry?{
+          status:entry.freshness,reason:entry.reason,source:{path:entry.source.path,identity:entry.source.identity},
+          reportedBy:scalar(entry.client,redact),receivedAt:entry.receivedAt,clientObservedAt:entry.clientObservedAt,
+          settings:entry.phone,
+        }:{
+          status:'unavailable',
+          reason:'no report from this device: it may be asleep, out of reach, a paired computer (whose windows report under device.browser), or running an app that does not report its settings',
+          settings:null,
+        }),
+      })));
+    }
     return rows;
   }
   if(category==='workspace.about')return [record('build',()=>({control:'Settings > About and updates',version:scalar(input.boot.version,redact),nativeUpdateState:'see dated device.native observations; no update check performed'}))];

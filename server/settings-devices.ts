@@ -1,15 +1,18 @@
-// What the owner's own windows say their device-local settings are, kept
-// only as long as it is worth anything.
+// What the owner's own windows and paired phone say their device-local
+// settings are, kept only as long as it is worth anything.
 //
 // Nothing here runs on its own. No timer, no lease, no heartbeat: a window
 // says nothing until an inspection asks, and the ask is one private frame
 // on the owner's streams, sent at most once per ASK_REUSE_MS however many
-// pages an agent reads.
+// pages an agent reads. A phone also says what it has when it connects
+// and when one of its settings changes, because a phone in a pocket
+// cannot answer an ask and its last word, dated, is better than none.
 //
 // Storage is bounded twice: by count, and by age. Old entries go when the
 // store is next touched (an ask, a report, a read), not on a clock.
 import { randomBytes } from "node:crypto";
 import { deviceSettingsSnapshot, type DeviceSettingsSnapshot } from "../src/lib/settings-observation.ts";
+import { scalar, type InspectionValue } from "./settings-inspection.ts";
 
 /** How long a read waits for answers before saying what it has. */
 export const ASK_WAIT_MS = 1_500;
@@ -20,6 +23,7 @@ export const ANSWER_WINDOW_MS = 10_000;
 /** Entries older than this are dropped the next time the store is touched. */
 export const OBSERVATION_TTL_MS = 24 * 60 * 60_000;
 export const MAX_OBSERVATIONS = 32;
+export const MAX_PHONE_SETTINGS = 64;
 
 /** Decided from the request by the server's guard, never from a body. */
 export type ReportSource = {
@@ -28,29 +32,97 @@ export type ReportSource = {
   deviceId: string | null;
 };
 
+export type PhoneSettingKind = "preference" | "system" | "credential" | "lifecycle";
+export interface PhoneSetting {
+  id: string;
+  kind: PhoneSettingKind;
+  value: InspectionValue;
+  /** The device's own default for it; null when it has none. Never the server's. */
+  default: InspectionValue | null;
+  /** The part of the app whose value is the effective one. */
+  owner: string;
+  /** Where the person changes it, in the app's own words. */
+  control: string;
+}
+
 type Entry = {
   key: string;
-  kind: "window";
+  kind: "window" | "phone";
   source: ReportSource;
-  label: string;
+  label: string | null;
   /** The app build the device named on the request that carried it. */
   client: string | null;
-  window: DeviceSettingsSnapshot;
+  window: DeviceSettingsSnapshot | null;
+  phone: PhoneSetting[] | null;
   /** Monotonic, for comparing with an ask; never shown. */
   receivedTick: number;
   receivedAt: number;
   clientObservedAt: number | null;
-  reason: "asked";
+  /** Why it was sent: the answer to an ask, or a phone saying so itself. */
+  reason: "asked" | "connected" | "changed";
 };
 
 type Ask = { id: string; tick: number; at: number; answered: Set<string>; listeners: Set<() => void> };
 
 const LABEL = /^[A-Za-z0-9_-]{8,64}$/;
+const SETTING_ID = /^[a-z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*){0,3}$/;
+const KINDS: readonly PhoneSettingKind[] = ["preference", "system", "credential", "lifecycle"];
 
 function own(raw: unknown, key: string): unknown {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const field = Object.getOwnPropertyDescriptor(raw, key);
   return field && "value" in field ? field.value : undefined;
+}
+const text = (raw: unknown, max: number) => typeof raw === "string" && raw.length > 0 && raw.length <= max ? raw : null;
+
+/** One reported value, as narrow as the inspection's own values. A
+ * credential can only ever say whether it is configured. */
+function reportedValue(raw: unknown, kind: PhoneSettingKind, redact: (text: string) => string): InspectionValue | null {
+  const status = own(raw, "status");
+  if (kind === "credential") {
+    const configured = own(raw, "configured");
+    return status === "configured" && typeof configured === "boolean" ? { status: "configured", configured } : null;
+  }
+  if (status === "value") {
+    const value = scalar(own(raw, "value"), redact);
+    return value.status === "value" ? value : null;
+  }
+  if (status === "configured") {
+    const configured = own(raw, "configured");
+    return typeof configured === "boolean" ? { status: "configured", configured } : null;
+  }
+  if (status === "unknown") {
+    const reason = text(own(raw, "reason"), 64);
+    return reason && /^[a-z_]+$/.test(reason) ? { status: "unknown", reason } : null;
+  }
+  return null;
+}
+
+/** Full replacement: a setting the phone no longer names is gone, not kept
+ * from an earlier report. Unknown shapes are refused field by field, and a
+ * field that cannot be read is said to be unreadable rather than dropped. */
+export function phoneSettings(raw: unknown, redact: (text: string) => string): PhoneSetting[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_PHONE_SETTINGS) return null;
+  const seen = new Set<string>();
+  const out: PhoneSetting[] = [];
+  for (const item of raw) {
+    const id = own(item, "id");
+    const kind = own(item, "kind") as PhoneSettingKind;
+    if (typeof id !== "string" || !SETTING_ID.test(id) || id.length > 64 || seen.has(id) || !KINDS.includes(kind)) return null;
+    seen.add(id);
+    const owner = text(own(item, "owner"), 128);
+    const control = text(own(item, "control"), 128);
+    if (!owner || !control) return null;
+    const value = reportedValue(own(item, "value"), kind, redact) ?? { status: "unknown", reason: "invalid_report" };
+    const fallback = own(item, "default");
+    out.push({
+      id, kind, owner: redact(owner), control: redact(control), value,
+      // a credential has no default worth saying, and says nothing else
+      default: kind === "credential" || fallback === undefined || fallback === null ? null
+        : reportedValue(fallback, kind, redact) ?? { status: "unknown", reason: "invalid_report" },
+    });
+  }
+  return out;
 }
 
 export class DeviceSettings {
@@ -145,10 +217,33 @@ export class DeviceSettings {
     const now = this.tick();
     this.prune(now);
     this.store({
-      key, kind: "window", source: { ...source }, label, client, window: snapshot,
+      key, kind: "window", source: { ...source }, label, client, window: snapshot, phone: null,
       receivedTick: now, receivedAt: this.clocks.wall(), clientObservedAt: snapshot.observedAt, reason: "asked",
     });
     this.answered(ask, key);
+    return true;
+  }
+
+  /** A paired phone's own settings, as an answer or because it connected
+   * or something changed. Only a paired owner device has an identity to
+   * file it under; the guard decides that, and nothing in the body can. */
+  reportPhone(source: ReportSource, body: unknown, client: string | null, redact: (text: string) => string): boolean {
+    if (!source.deviceId) return false;
+    const request = own(body, "request");
+    const ask = request === undefined ? null : this.answering(request);
+    if (request !== undefined && !ask) return false;
+    const reason = ask ? "asked" : own(body, "reason") === "changed" ? "changed" : own(body, "reason") === "connected" ? "connected" : null;
+    const observedAt = own(body, "observedAt");
+    const settings = phoneSettings(own(body, "settings"), redact);
+    if (!reason || !settings || typeof observedAt !== "number" || !Number.isFinite(observedAt)) return false;
+    const key = `phone:${source.deviceId}`;
+    const now = this.tick();
+    this.prune(now);
+    this.store({
+      key, kind: "phone", source: { ...source }, label: null, client, window: null, phone: settings,
+      receivedTick: now, receivedAt: this.clocks.wall(), clientObservedAt: observedAt, reason,
+    });
+    if (ask) this.answered(ask, key);
     return true;
   }
 
@@ -177,7 +272,8 @@ export class DeviceSettings {
           identity: entry.source.deviceId === null ? "owner-local-window" : "paired-owner-device" },
         freshness: ask && entry.receivedTick >= ask.tick ? "current" as const : "last-reported" as const,
         reason: entry.reason, receivedAt: entry.receivedAt, clientObservedAt: entry.clientObservedAt,
-        window: structuredClone(entry.window),
+        window: entry.window ? structuredClone(entry.window) : null,
+        phone: entry.phone ? structuredClone(entry.phone) : null,
       })),
     };
   }

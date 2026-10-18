@@ -44,6 +44,8 @@ export const FEATURES: readonly string[] = [
   // stops announcing replies as they land
   "reply-settled",
   // the private settings-request frame an inspection puts on the owner's
-  // stream, and POST /api/settings/device-report, a window's answer to it
+  // stream, and POST /api/settings/device-report: a window's answer to it,
+  // or a paired phone's own settings, also sent as it connects and when
+  // one of them changes
   "device-settings",
 ];

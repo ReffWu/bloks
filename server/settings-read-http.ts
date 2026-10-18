@@ -6,7 +6,7 @@ import { SettingsPages, type SettingsCategory } from "./settings-pages.ts";
  * surface before any owner route is matched. */
 export type SettingsReader = { role: "owner" | "agent"; identity: string };
 
-export const DEVICE_CATEGORIES: ReadonlySet<string> = new Set(["device.browser", "device.native"]);
+export const DEVICE_CATEGORIES: ReadonlySet<string> = new Set(["device.browser", "device.native", "device.phone"]);
 /** A report is a few kilobytes; anything near this is not one. */
 export const MAX_REPORT_BYTES = 16_384;
 

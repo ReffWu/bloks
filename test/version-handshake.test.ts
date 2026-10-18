@@ -31,8 +31,8 @@ test("health says which version this is and what it can do for a phone", async (
   assert.equal(health.version, VERSION);
   assert.deepEqual(health.features, [...FEATURES]);
   // the phone gates on these by name; losing one strands a shipped phone
-  // and the desktop in remote mode gates on reply-settled
-  for (const name of ["sections", "earlier", "exchange", "calls", "watchers", "briefs", "routines", "webhooks", "notes", "reply-settled"]) {
+  // and the desktop in remote mode gates on reply-settled; the phone reports its settings on device-settings
+  for (const name of ["sections", "earlier", "exchange", "calls", "watchers", "briefs", "routines", "webhooks", "notes", "reply-settled", "device-settings"]) {
     assert.ok(health.features.includes(name), `${name} went missing from the feature list`);
   }
   assert.equal(new Set(FEATURES).size, FEATURES.length, "a feature is listed twice");

@@ -1349,15 +1349,16 @@ persistent inspection snapshot store.
 ### Device settings
 
 Some settings live only on a device: a window's theme and layout, the
-desktop's native state. The server keeps what those windows say in
-memory (`server/settings-devices.ts`), and it costs nothing until
-someone asks.
+desktop's native state, a phone's own preferences and what its operating
+system decided (notifications, camera, microphone). The server keeps what
+those devices say in memory (`server/settings-devices.ts`), and it costs
+nothing until someone asks.
 
-Reading `device.browser` or `device.native` sends one private
-`settings-request` frame, with a one-time id, to the owner's own event
-streams and, sealed, to owner devices through the relay, where another
-computer's windows listen. Not to members, not into the replay ring, not
-mirrored to a chat, and without a wake. A burst of reads within
+Reading `device.browser`, `device.native` or `device.phone` sends one
+private `settings-request` frame, with a one-time id, to the owner's own
+event streams and, sealed, to owner devices through the relay. Not to
+members, not into the replay ring, not mirrored to a chat, and without a
+wake: a phone asleep is not woken to be asked. A burst of reads within
 five seconds shares one ask. The read waits up to a second and a half for
 answers, less when every owner stream has answered. A desktop window then
 reads its mounted owners, the preferences it stored and the native bridge
@@ -1368,18 +1369,32 @@ components register a reader once and keep it current through a ref.
 A window's report counts only as the answer to a live ask. A loopback
 caller is the owner to this server whether or not it is a window, so an
 unasked window report is refused rather than trusted, and an answer more
-than ten seconds late is no answer. Each answer replaces that window's
-last one whole. The device it came from is the one the guard says sent
-it, through the relay or a token on the network, never a body field.
+than ten seconds late is no answer. A phone also reports on its own, when
+its stream connects and when one of its settings changes, because a phone
+in a pocket cannot answer and its last word, dated, is better than none.
+Those reports need a paired owner device's identity, which only the guard
+supplies: through the relay or a token on the network, never a body field.
+
+Each report replaces that device's last one whole. The phone describes
+its own settings: an id, a kind (preference, system, credential or
+lifecycle), the value, the device's own default, the part of the app that
+owns the effective value and where the person changes it. A credential
+can only say whether it is configured; anything else in its place is
+refused. Values are scalars, strings are bounded and redacted, and a
+malformed field reads as unknown rather than vanishing.
 
 Inspection dates every entry against the ask its read waited on:
-`current` means heard since that ask, `last-reported` is an older answer
+`current` means heard since that ask, `last-reported` is an older report
 shown with when it arrived. A window that did not answer is not listed.
-Storage is bounded to 32 entries and a day of age, pruned whenever the
-store is touched rather than on a clock. Revoking a device, or switching
-pairing off, forgets what it said. A window on an older computer ignores
-a frame it does not know; `device-settings` in `/api/health`
-(`server/features.ts`) names both the frame and the report route.
+An owner device with nothing on record is listed as `unavailable`, with
+its app build and when it was last heard from, never with a server
+default in place of its values. Storage is bounded to 32 entries and a
+day of age, pruned whenever the store is touched rather than on a clock.
+Revoking a device, or switching pairing off, forgets what it said.
+
+A phone gates its reports on `device-settings` in `/api/health`
+(`server/features.ts`), so an older Mac is never sent one. An older phone
+ignores a frame it does not know and is listed as unavailable.
 
 ## Approval modes
 

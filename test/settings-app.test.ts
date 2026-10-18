@@ -55,6 +55,14 @@ async function ownerStream(origin: string, headers: Record<string, string> = {})
   return { stop: () => stop.abort(), frames, next };
 }
 const snapshot = (theme: string) => ({ schema: 1, revision: 1, observedAt: 10, values: { 'theme.applied': { status: 'observed', value: theme } } });
+const phoneSettings = (badges: boolean) => [
+  { id: 'looks.roleBadges', kind: 'preference', value: { status: 'value', value: badges }, default: { status: 'value', value: true },
+    owner: 'Conversation list', control: 'Settings > How it looks > Role badges' },
+  { id: 'system.notifications', kind: 'system', value: { status: 'value', value: 'denied' }, default: null,
+    owner: 'iOS', control: 'iOS Settings > Bloks > Notifications' },
+  { id: 'pairing.token', kind: 'credential', value: { status: 'configured', configured: true },
+    owner: 'Keychain', control: 'Settings > Mac connection > Pairing' },
+];
 
 test('S1-S5 actual index routes and real CLI use owner metadata without read-triggered IO or providers', { timeout: 60_000 }, async (t) => {
   const files = mkdtempSync(join(tmpdir(), 'bloks-settings-app-'));
@@ -108,6 +116,9 @@ test('S1-S5 actual index routes and real CLI use owner metadata without read-tri
     const again = await read('device.browser');
     assert.equal((JSON.stringify(again).match(/"freshness":"current"/g) ?? []).length, 2);
     assert.equal([...a.frames].filter((frame) => frame.kind === 'settings-request').length, 1);
+    // a phone report needs a paired identity, which loopback is not
+    const phone = await request('/api/settings/device-report', 'fixture-owner', 'POST', { kind: 'phone', reason: 'connected', observedAt: 1, settings: phoneSettings(true) });
+    assert.equal(phone.status, 409);
   });
 
   await t.test('all 25 categories traverse real authentication and loaded-owner projection', async () => {
@@ -143,6 +154,11 @@ test('S1-S5 actual index routes and real CLI use owner metadata without read-tri
       assert.equal((await request('/api/config', tokens.alpha, method, method === 'GET' ? undefined : {})).status, 403);
       assert.equal((await request('/api/settings/device-report', tokens.alpha, method, method === 'GET' ? undefined : {})).status, 403);
     }
+    // A relay header without the relay's own secret is only a header: the
+    // request is the owner's loopback, and it cannot name a paired device.
+    const forged = await app.fetch('/api/settings/device-report', { method: 'POST', headers: { 'x-bloks-relay-device': 'owner-device' },
+      body: JSON.stringify({ kind: 'phone', reason: 'connected', observedAt: 1, settings: phoneSettings(true) }) });
+    assert.equal(forged.status, 409);
     const unasked = await request('/api/settings/device-report', undefined, 'POST', { kind: 'window', label: 'fixture-window', snapshot: snapshot('dark') });
     assert.equal(unasked.status, 409, 'a loopback caller cannot plant a window report nobody asked for');
     const oversized = await request('/api/settings/device-report', undefined, 'POST', { kind: 'window', sentinel: 'BODY SENTINEL'.repeat(3000) });
@@ -192,10 +208,11 @@ test('S1-S5 actual index routes and real CLI use owner metadata without read-tri
   await app.stop(); h = undefined; assert.ok(!existsSync(app.home), 'fixture HOME was not removed');
 });
 
-test('D1 a window on a paired computer answers an ask through the sealed relay, and members are never asked', { timeout: 60_000 }, async (t) => {
+test('D1 a paired phone reports over the sealed relay channel, answers asks, and members are never asked', { timeout: 60_000 }, async (t) => {
   // The relay only forwards encrypted payloads. The production RelayLink owns
   // device authentication, anti-replay and trusted request attribution. The
-  // Electron remote proxy is the paired computer, its windows the streams.
+  // Electron remote proxy stands in for the phone: it seals each request
+  // with the paired device's own key, exactly as the phone does.
   const files = mkdtempSync(join(tmpdir(), 'bloks-settings-app-relay-'));
   const tracePath = join(files, 'trace.json'); writeFileSync(join(files, 'index.html'), '<!doctype html><title>Fixture</title>');
   const pending = new Map<string, ServerResponse>(); const clients = new Set<ServerResponse>();
@@ -243,11 +260,11 @@ test('D1 a window on a paired computer answers an ask through the sealed relay, 
   h = await startHarness({ NODE_OPTIONS: `--import=${new URL('./helpers/settings-app-preload.mjs', import.meta.url).href}`,
     BLOKS_SETTINGS_TEST_TRACE: tracePath, BLOKS_SETTINGS_TEST_RELAY: relayUrl, BLOKS_LOOPBACK_ONLY: '1' });
   await connection;
-  const computer = await startRemoteProxy({ relayUrl, relayToken: 'fixture-relay-client', deviceId: 'owner-device', deviceToken: 'fixture-owner' },
-    { staticDir: files });
+  const phone = await startRemoteProxy({ relayUrl, relayToken: 'fixture-relay-client', deviceId: 'owner-device', deviceToken: 'fixture-owner' },
+    { staticDir: files, client: 'iOS 3.0 (40)' });
   const member = await startRemoteProxy({ relayUrl, relayToken: 'fixture-relay-member', deviceId: 'member-device', deviceToken: 'fixture-member' }, { staticDir: files });
-  proxies.push(computer, member);
-  const origin = `http://127.0.0.1:${computer.port}`;
+  proxies.push(phone, member);
+  const origin = `http://127.0.0.1:${phone.port}`;
   const post = async (base: string, body: unknown) => {
     const response = await fetch(base + '/api/settings/device-report', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     return response.status;
@@ -255,28 +272,46 @@ test('D1 a window on a paired computer answers an ask through the sealed relay, 
   const read = async (category: string) => {
     const response = await h!.fetch(`/api/agent/settings?category=${category}`); assert.equal(response.status, 200); return response.json();
   };
+  const phoneRow = (page: any) => page.rows.map((row: { observation: any }) => row.observation).find((row: any) => 'settings' in row);
 
-  // Nothing asks until an inspection reads a device category.
+  // Before the phone says anything, it is unavailable: never a default.
+  // It is listening, and is asked, but has not answered.
   const stream = await ownerStream(origin); streams.push(stream);
-  await read('workspace.general');
-  const reading = read('device.browser');
-  const ask = await stream.next('settings-request');
-  assert.equal(await post(origin, { kind: 'window', request: ask.request, label: 'remote-window-1', snapshot: snapshot('dark') }), 200);
-  // a member's computer is turned away by the guard before any owner route
-  assert.notEqual(await post(`http://127.0.0.1:${member.port}`, { kind: 'window', request: ask.request, label: 'member-window', snapshot: snapshot('light') }), 200);
-  const browser = JSON.stringify(await reading);
-  assert.match(browser, /"path":"relay"/); assert.match(browser, /paired-owner-device/); assert.match(browser, /dark/);
-  assert.match(browser, /"freshness":"current"/); assert.ok(!browser.includes('light'));
-  assert.ok(!browser.includes(ask.request), 'the ask id is never shown');
+  const first = read('device.phone');
+  await stream.next('settings-request');
+  let row = phoneRow(await first);
+  assert.equal(row.status, 'unavailable'); assert.equal(row.settings, null);
 
-  // Past the reuse window a read asks again; a window that does not answer
-  // keeps its last word, dated, and is never shown as current.
+  // It reports as it connects, over the paired channel, as itself.
+  assert.equal(await post(origin, { kind: 'phone', reason: 'connected', observedAt: 1, settings: phoneSettings(true) }), 200);
+  // A member's phone is turned away by the guard before any owner route.
+  assert.notEqual(await post(`http://127.0.0.1:${member.port}`, { kind: 'phone', reason: 'connected', observedAt: 1, settings: phoneSettings(true) }), 200);
+
+  // A later inspection asks again; a phone that does not answer keeps its
+  // last word, dated. Past the reuse window, so this is a new ask.
   await new Promise((resolve) => setTimeout(resolve, ASK_REUSE_MS + 100));
   const seen = stream.frames.length;
-  const again = read('device.browser');
-  await stream.next('settings-request', seen);
-  const stale = JSON.stringify(await again);
-  assert.match(stale, /last-reported/); assert.ok(!stale.includes('"freshness":"current"'));
+  const reading = read('device.phone');
+  const ask = await stream.next('settings-request', seen);
+  row = phoneRow(await reading);
+  assert.equal(row.status, 'last-reported', 'a report from before the ask is never shown as current');
+  assert.equal(row.reportedBy.value, 'iOS 3.0 (40)');
+  assert.deepEqual(row.settings.find((s: any) => s.id === 'looks.roleBadges').value, { status: 'value', value: true });
+  assert.deepEqual(row.settings.find((s: any) => s.id === 'looks.roleBadges').default, { status: 'value', value: true });
+  assert.deepEqual(row.settings.find((s: any) => s.id === 'pairing.token').value, { status: 'configured', configured: true });
+
+  // The person changes it on the phone, and the answer to the ask says so.
+  assert.equal(await post(origin, { kind: 'phone', request: ask.request, observedAt: 2, settings: phoneSettings(false) }), 200);
+  row = phoneRow(await read('device.phone'));
+  assert.equal(row.status, 'current');
+  assert.deepEqual(row.settings.find((s: any) => s.id === 'looks.roleBadges').value, { status: 'value', value: false });
+  assert.deepEqual(row.settings.find((s: any) => s.id === 'system.notifications').value, { status: 'value', value: 'denied' });
+  assert.ok(!JSON.stringify(row).includes(ask.request));
+
+  // A desktop window on a paired computer answers the same ask as a window.
+  assert.equal(await post(origin, { kind: 'window', request: ask.request, label: 'remote-window-1', snapshot: snapshot('dark') }), 200);
+  const browser = JSON.stringify(await read('device.browser'));
+  assert.match(browser, /"path":"relay"/); assert.match(browser, /paired-owner-device/); assert.match(browser, /dark/);
 
   // The asks went sealed to the owner's device only, one per burst of reads.
   let asked = 0;
@@ -288,10 +323,12 @@ test('D1 a window on a paired computer answers an ask through the sealed relay, 
   }
   assert.equal(asked, 2, 'one ask per burst of reads');
 
-  // Revoked, the computer's word goes with it and it cannot answer again.
+  // Revoked, the phone's word goes with it and it cannot report again.
   assert.equal((await h.fetch('/api/pair/devices/owner-device', { method: 'DELETE' })).status, 200);
+  const after = await read('device.phone');
+  assert.equal(phoneRow(after), undefined);
   assert.ok(!JSON.stringify(await read('device.browser')).includes('remote-window-1'));
-  assert.notEqual(await post(origin, { kind: 'window', request: ask.request, label: 'remote-window-1', snapshot: snapshot('dark') }), 200);
+  assert.notEqual(await post(origin, { kind: 'phone', reason: 'changed', observedAt: 3, settings: phoneSettings(true) }), 200);
 
   const trace = JSON.parse(readFileSync(tracePath, 'utf8'));
   assert.deepEqual(trace.readEffects, []); assert.equal(trace.modelCalls, 0);

@@ -21,6 +21,7 @@ import { DeviceSettings, type ReportSource } from "./settings-devices.ts";
 import { SettingsPages, type SettingsCategory } from "./settings-pages.ts";
 import { DEVICE_CATEGORIES, noStore, readReport, serveSettingsRead } from "./settings-read-http.ts";
 import { settingsCatalog } from "./settings-catalog.ts";
+import { inspectionRedactor } from "./settings-redaction.ts";
 import { telegramReply, type TelegramText } from "./telegram-reply.ts";
 import { TurnProgress } from "./telegram-progress.ts";
 import { inboxState, legacyBinding, migrateTelegram, ownerPairing, pairedChats, replaceTelegramToken, telegramStatus, type AgentTelegram, type TelegramConfig } from "./telegram-bots.ts";
@@ -1551,10 +1552,10 @@ function broadcast(payload: unknown) {
 }
 
 /** A frame for the owner's own surfaces and nobody else: this server's
- * event streams (members listen apart, in memberStreams) and owner devices
- * through the relay, where another computer's windows listen. Not in the
+ * event streams (owner windows, and phones on the network; members listen
+ * apart, in memberStreams) and owner devices through the relay. Not in the
  * replay ring, not mirrored to a chat, and no wake: a phone asleep in a
- * pocket is not woken up by a question that is not for it. */
+ * pocket is not woken up to be asked about its settings. */
 function askOwnerSurfaces(frame: object) {
   const text = `data: ${JSON.stringify(frame)}\n\n`;
   for (const res of [...sseClients]) {
@@ -15662,9 +15663,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!saved) return noStore(res, 503, { error: "settings observations are unavailable" });
       const reader = asAgent ? { role: "agent" as const, identity: `agent:${asAgent.botId}` } : { role: "owner" as const, identity: "owner" };
       const category = url.searchParams.get("category");
-      // A device category asks the owner's open windows what they have,
-      // once, and waits a moment for answers. No other read reaches a
-      // device, and nothing asks between reads.
+      // A device category asks the owner's open windows and connected
+      // phones what they have, once, and waits a moment for answers. No
+      // other read reaches a device, and nothing asks between reads.
       const ask = method === "GET" && category && DEVICE_CATEGORIES.has(category) ? deviceSettings.ask(askOwnerSurfaces) : null;
       if (ask) {
         const owners = pairedDevices(saved.value).filter((d) => !d.personId).length;
@@ -15688,7 +15689,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       });
     }
 
-    // What an owner window says its own settings are. The
+    // What an owner window or paired phone says its own settings are. The
     // caller is the owner as the guard above decides it: a paired owner
     // device, or a loopback request with no credential, which this server
     // treats as the person at the keyboard (server/http-guard.ts). That
@@ -15712,7 +15713,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const label = req.headers["x-bloks-client"];
       const client = typeof label === "string" && label.length <= 64 && /^[\w .()+/-]+$/.test(label) ? label : null;
       const kind = body && typeof body === "object" ? (body as { kind?: unknown }).kind : undefined;
-      const accepted = kind === "window" && deviceSettings.reportWindow(source, body, client);
+      const saved = savedConfigObservation();
+      const accepted = kind === "window" ? deviceSettings.reportWindow(source, body, client)
+        : kind === "phone" ? deviceSettings.reportPhone(source, body, client, inspectionRedactor(saved?.value, cfg))
+        : false;
       return accepted ? noStore(res, 200, { ok: true }) : noStore(res, 409, { error: "settings report was not accepted" });
     }
 

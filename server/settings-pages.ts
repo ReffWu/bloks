@@ -15,15 +15,15 @@ export const SETTINGS_CATEGORIES = [
   ["room", "Room settings and sharing"], ["automations", "Routines, watchers, workflows, webhooks and goals"],
   ["projects.skills", "Projects, skills and sidebar"], ["device.browser", "Browser observations"],
   ["device.native", "Native desktop observations"], ["device.navigation", "Navigation and lifecycle data"],
-  ["device.iphone", "iPhone dependency"],
+  ["device.phone", "Paired phone settings"],
 ] as const;
 export type SettingsCategory = typeof SETTINGS_CATEGORIES[number][0];
 type RecordInput = { id: string; visible: boolean; project: () => object };
 export type SettingsPage = { status: number; body: object };
 const limits = [
-  "Private iPhone client contract is unavailable; issue 303 remains open.",
-  "Device values are what an authenticated owner window said, not independent proof of its screen.",
-  "Reading a device category asks open owner windows once and waits briefly; current means answered since that ask. Older answers stay, dated, as last-reported, for at most a day.",
+  "Device values are what an authenticated owner window or paired phone said, not independent proof of its screen.",
+  "Reading a device category asks open owner windows and connected phones once and waits briefly; current means answered since that ask.",
+  "A phone also reports when it connects and when a setting changes. Older reports stay, dated, as last-reported, for at most a day.",
   "Live collection pages use stable opaque references within this server boot. Insertions before the cursor can be missed; deletions disappear. Restart invalidates continuations.",
 ];
 

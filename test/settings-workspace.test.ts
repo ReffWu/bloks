@@ -81,6 +81,5 @@ test('unsupported observations say why and never invent readiness or device defa
     ['workspace.apps','composio.connectedAccounts','connection_refresh_not_run'],
     ['workspace.computers','computer.localVm','native_vm_probe_not_run'],
     ['workspace.import','setup.imports','filesystem_discovery_not_run'],
-    ['device.iphone','iphone.coverage','private_client_contract_dependency_issue_303'],
   ] as const)assert.deepEqual(field(read(category),id).effective,{status:'unknown',reason});
 });
