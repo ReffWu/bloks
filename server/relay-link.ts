@@ -28,6 +28,7 @@ import type { IncomingMessage } from "node:http";
 
 import { deviceKey, inviteKey, open, peek, seal, type Envelope, type RelayRequest } from "./relay-crypto.ts";
 import { markSeen, pairedDevices } from "./pairing.ts";
+import type { ActivityPush, PushResult } from "./live-activities.ts";
 
 /** What to call the machine this harness runs on. Bloks ships on
  * Windows and Linux too, where "the Mac" reads as a copy-paste slip
@@ -268,6 +269,8 @@ export class RelayLink {
     if (same && !this.stopped) return;
     this.stop();
     this.config = config?.url && config?.agentToken ? config : null;
+    // another relay, or the same one updated: ask it afresh
+    this.activitiesMissingUntil = 0;
     this.state = {
       configured: Boolean(this.config),
       connected: false,
@@ -387,6 +390,39 @@ export class RelayLink {
       }
     } finally {
       this.pushing = false;
+    }
+  }
+
+  /** Until when the relay is believed not to send Live Activity pushes,
+   * having said it has no such route: a relay older than this Mac. */
+  private activitiesMissingUntil = 0;
+
+  /**
+   * One ActivityKit push (server/live-activities.ts). Unlike a frame it is
+   * not sealed whole, because Apple reads it: what it carries is chosen
+   * there so the relay can read nothing but a state word and a time. Sent
+   * on its own rather than in the outbox, since its answer matters: a
+   * token Apple has retired is dropped, and a relay that cannot send these
+   * is not asked again for a while.
+   */
+  async activity(push: ActivityPush): Promise<PushResult> {
+    if (!this.config || Date.now() < this.activitiesMissingUntil) return "off";
+    try {
+      const res = await fetch(`${this.config.url}/space/agent/activity`, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(push),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) return "ok";
+      if (res.status === 410) return "gone";
+      if (res.status === 404) {
+        this.activitiesMissingUntil = Date.now() + 10 * 60_000;
+        return "off";
+      }
+      return "failed";
+    } catch {
+      return "failed";
     }
   }
 

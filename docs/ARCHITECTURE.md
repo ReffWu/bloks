@@ -185,6 +185,25 @@ this machine or the same network are not cut. An answer that would still be
 too big is replaced with a short 413, so the phone hears why instead of
 waiting out the relay's timeout.
 
+A phone's Live Activities follow the turns the owner is waiting on
+(`server/live-activities.ts`): only a turn the owner's own message started
+or joined, from any device, never one another agent, a routine, a watcher,
+a webhook or a member started. The phone hands over its activity tokens
+with `POST /api/live-activities` (feature `live-activities`), and a
+push-to-start token on iOS 17.2 or later. A turn that is still running a
+few seconds after it began gets an activity on each owner phone that does
+not have one for that agent already, at most two per phone with the
+newest replacing the oldest; an unanswered card turns it to waiting; and
+once its lane has stayed free for a few seconds (so a retry or the backup
+engine taking over is the same wait), every phone's activity for it is
+ended. These go through the relay as ActivityKit pushes, which Apple
+reads, so they carry only a state word, the turn's start time and opaque
+ids, with the agent's name and the conversation sealed for the device.
+The tokens are kept per paired device, swept against the pairing every
+minute (which also ends what a restart left behind), and dropped when the
+device is unpaired. Without Bloks Cloud there is no way to push, and the
+phone keeps only the activities it starts and ends itself.
+
 Both list routes accept `?messages=N` to keep only the newest N messages
 of each conversation, including zero for names and rosters alone. The CLI
 and MCP room discovery use zero; their history reads use the separate room

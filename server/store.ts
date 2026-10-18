@@ -589,6 +589,10 @@ export class Store {
    * from the transcripts (the recall index in server/index.ts) can check
    * what it holds rather than be rebuilt on every write. */
   onRewrite?: (threadId: string, changed: readonly Message[] | null) => void;
+  /** Told whenever a lane is marked busy or free. A turn ends through a
+   * dozen doors (an answer, Stop, an error, a turn never sent), and the
+   * one thing they all do is this. */
+  onBusy?: (threadId: string, busy: boolean) => void;
 
   constructor(defaultSelection: () => ModelSelection) {
     this.defaultSelection = defaultSelection;
@@ -1207,6 +1211,7 @@ export class Store {
     found.task.busy = busy;
     found.bot.busy = found.bot.tasks.some((t) => t.busy);
     this.saveBots();
+    this.onBusy?.(threadId, busy);
     return found.bot;
   }
 

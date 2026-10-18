@@ -36,6 +36,8 @@ import { ENGINE_SETUP, installEngine, openSignIn, runSetupScript } from "./engin
 import { ENGINE_PACKAGES, engineUpdates } from "./engine-updates.ts";
 import { FEATURES } from "./features.ts";
 import { ReplyNotifications, settledFrame, settledReply } from "./reply-notifications.ts";
+import { LiveActivities } from "./live-activities.ts";
+import { deviceKey, seal } from "./relay-crypto.ts";
 import * as scout from "./scout.ts";
 import {
   ArtifactCommentStore,
@@ -1746,6 +1748,12 @@ function broadcast(payload: unknown) {
   // frames are skipped for the same reason they skip the ring: megabytes
   // of pixels the phone throws away, and a batch over the relay's cap is
   // dropped whole.
+  // A card asking the person turns their Live Activity to waiting, and
+  // its answer turns it back. Guarded like the relay below: a frame can
+  // be broadcast before either exists.
+  try {
+    noteActivityCard(payload);
+  } catch {}
   if ((payload as { kind?: string })?.kind !== "screen") {
     try {
       relayLink.publish(payload, wakeFor(payload));
@@ -2222,6 +2230,17 @@ async function briefVoice(botId: string | null): Promise<speech.BotVoice | null>
   for (const c of botId) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
   const others = voices.filter((v) => v.id !== preferred.id);
   return others.length ? others[hash % others.length] : preferred;
+}
+
+/** A card that asks the person, or the answer that settles it, for the
+ * Live Activity of the turn it belongs to. */
+function noteActivityCard(payload: unknown) {
+  const p = payload as { kind?: string; threadId?: string; message?: Message } | null;
+  if ((p?.kind !== "message" && p?.kind !== "message.patch") || !p.threadId || !p.message) return;
+  const card = p.message.kind === "options" ? p.message.card : undefined;
+  if (!card) return;
+  const asking = !p.message.deleted && !card.answered && !card.dismissed && Boolean(card.requestId || card.runId);
+  liveActivities.waiting(p.threadId, p.message.id, asking, asking ? card.title : undefined);
 }
 
 /**
@@ -4791,6 +4810,9 @@ async function startClaimedTurn(
   // on from one that was stopped between its two halves still is
   if (!goesOn) stoppedGettingReady.delete(task.id);
   store.setTaskBusy(task.id, true);
+  // The owner's own message, from any device: the one turn worth their
+  // Lock Screen. Never another agent's, a routine's or a member's.
+  if (opts.byYou && owners && !opts.from && !opts.routine) liveActivities.started(task.id);
   // a goal judged before this turn began is not judging this one
   laneTurns.set(task.id, (laneTurns.get(task.id) ?? 0) + 1);
   // the busy flag holds the lane from here
@@ -7340,6 +7362,55 @@ function syncRelay(config?: AppConfig) {
   relayLink.configure(on ? { url: cfg.relay!.url!, agentToken: cfg.relay!.agentToken! } : null);
 }
 syncRelay();
+
+// ── Live Activities: the turn a person waits on, on their Lock Screen ──
+// See server/live-activities.ts. Only the owner's phones, only turns the
+// owner's own message started or joined, and ended from here whatever
+// ends the turn, through Bloks Cloud, which is the only road that reaches
+// a phone that is asleep.
+const liveActivities = new LiveActivities({
+  file: join(DATA_DIR, "live-activities.json"),
+  devices: () => pairedDevices().filter((d) => !d.personId),
+  // An idle compaction marks a lane busy too; nobody asked for that one,
+  // so it is not the turn the activity is about.
+  running: (laneId) => {
+    const compacting = idleCompacting.get(laneId);
+    return Boolean(store.taskByThread(laneId)?.task.busy) && !(compacting && !compacting.beforeTurn);
+  },
+  laneOf: (agentId) => store.bot(agentId)?.tasks.find((t) => t.busy)?.id ?? null,
+  turn: (laneId) => {
+    const found = store.taskByThread(laneId);
+    if (!found || found.bot.hidden || found.bot.archivedAt) return null;
+    const roomId = activeRoom.get(laneId);
+    const room = roomId && roomId !== laneId ? bloks.get(roomId) : null;
+    return {
+      agentId: found.bot.id,
+      startedAt: turnStarted.get(laneId) ?? Date.now(),
+      where: room?.id ?? laneId,
+      words: {
+        name: found.bot.name.slice(0, 60),
+        color: found.bot.color,
+        shape: found.bot.shape ?? "",
+        task: (room?.name ?? found.task.title).slice(0, 80),
+      },
+    };
+  },
+  seal: (deviceId, words) => {
+    const device = pairedDevices().find((d) => d.id === deviceId && !d.personId);
+    return device ? seal(deviceKey(device.hash, "mac-to-phone"), device.id, { kind: "activity", ...words }) : null;
+  },
+  send: (push) => relayLink.activity(push),
+  ...(Number(process.env.BLOKS_ACTIVITY_DELAY_MS) >= 0 && process.env.BLOKS_ACTIVITY_DELAY_MS
+    ? { startDelayMs: Number(process.env.BLOKS_ACTIVITY_DELAY_MS), endDelayMs: Number(process.env.BLOKS_ACTIVITY_DELAY_MS) }
+    : {}),
+});
+store.onBusy = (laneId, busy) => {
+  if (!busy) liveActivities.settled(laneId);
+};
+// soon after a restart, for turns that ended while this was down, and
+// then now and then for any end that did not get through
+setTimeout(() => liveActivities.sweep(), 20_000).unref?.();
+setInterval(() => liveActivities.sweep(), 60_000).unref?.();
 
 // ── routines: work that happens without being asked ───────────────────
 /**
@@ -10629,6 +10700,8 @@ async function sendUserMessage(
     if (yours && options.steer) {
       const steered = await steerLane(bot, lane, text, { replyTo: options.replyTo, personal: options.personal });
       if (steered) {
+        // the person joined this turn, so it is now one they wait on
+        liveActivities.started(lane.id);
         // A turn stopped on a question or an approval reads nothing until
         // that is answered, and the step it is on is the person's own.
         const asked = [...askThreadByRequest.values()].includes(lane.id);
@@ -14965,6 +15038,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       });
     }
 
+    // A paired phone's Live Activity tokens (server/live-activities.ts):
+    // the one that lets this computer start an activity on it, and one per
+    // activity, which is what ends it while the phone sleeps. The owner's
+    // phones only; this machine has no Lock Screen to put one on.
+    if (method === "POST" && path === "/api/live-activities") {
+      if (!caller || caller.personId) return json(res, 403, { error: "only a paired phone keeps Live Activities" });
+      const result = liveActivities.register(caller.id, await readBody(req));
+      return json(res, "error" in result ? 400 : 200, result);
+    }
+
     // ── provider instances (model picker) ──
     if (method === "GET" && path === "/api/instances") {
       return json(res, 200, { instances: await registry.describe() });
@@ -17990,6 +18073,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!local) return json(res, 403, { error: "not from here" });
       const saved = revokeAll();
       deviceSettings.forgetDevices();
+      liveActivities.sweep();
       broadcast({ kind: "pairing", ...pairingStatus(saved) });
       return json(res, 200, { ok: true });
     }
@@ -18000,6 +18084,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         broadcast({ kind: "pairing", ...pairingStatus(saved) });
       });
       if (ok) deviceSettings.forget(m[1]);
+      // its Live Activity tokens go with it
+      if (ok) liveActivities.forget(m[1]);
       return json(res, ok ? 200 : 404, ok ? { ok: true } : { error: "no such device" });
     }
 

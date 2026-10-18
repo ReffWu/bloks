@@ -66,4 +66,8 @@ export const FEATURES: readonly string[] = [
   // telegramPerson and telegramSent on messages. Without it a phone shows
   // every Telegram message as the owner's and offers no admission.
   "telegram-people",
+  // POST /api/live-activities: a phone's Live Activity tokens, so this
+  // computer can start an activity for the person's own turn and end it
+  // while the phone sleeps
+  "live-activities",
 ];
