@@ -466,8 +466,9 @@ agent may have its own (`codexSpeed`; null follows the workspace). One
 choice covers the agent's primary and backup Codex. It is resolved once,
 when a turn is dispatched, and handed to the driver with the turn; a
 steer or a setting changed mid-turn applies from the next turn. An agent
-may read its speed (`whoami`) and set its own; the workspace default is
-the owner's.
+may read its speed (`whoami`) and set its own to Standard or back to the
+default, but not to Fast, which spends the person's plan faster; Fast
+and the workspace default are the owner's.
 
 Standard is Codex as it always ran: nothing about the tier is sent, so a
 Codex older than the field works unchanged, and a host or project config

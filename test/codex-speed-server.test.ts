@@ -249,7 +249,7 @@ test("a Fast Codex check-in that answers QUIET stays folded away, speed and all"
   assert.ok(messages.slice(asked).every((m) => m.quiet), "everything from the check-in on is folded");
 });
 
-test("an agent reads its speed and sets only its own; the workspace stays the owner's", async (t) => {
+test("an agent reads its speed and may slow only itself; Fast and the workspace stay the owner's", async (t) => {
   const s = await codexCommands(t);
   s.spec({ captureCredential: true });
   await s.say("HOLD for the credential");
@@ -271,6 +271,9 @@ test("an agent reads its speed and sets only its own; the workspace stays the ow
     assert.equal((await asAgent(`/api/bots/${s.bot.id}`, "PATCH", { codexSpeed: value })).status, 400);
   }
   assert.equal((await asAgent(`/api/bots/${s.bot.id}`, "PATCH", { codexSpeed: "standard" })).status, 200);
+  // Fast spends the person's plan faster, so an agent cannot choose it
+  assert.equal((await asAgent(`/api/bots/${s.bot.id}`, "PATCH", { codexSpeed: "fast" })).status, 403);
+  assert.equal((await asAgent(`/api/bots/${s.bot.id}`, "PATCH", { codexSpeed: null })).status, 200);
 
   for (const value of [false, {}, null, "priority", { speed: "fast", extra: true }]) {
     const answer = await s.h.fetch("/api/config", { method: "PATCH", body: JSON.stringify({ codex: value }) });

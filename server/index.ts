@@ -12951,6 +12951,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const patch: Record<string, unknown> = {};
       if (body.codexSpeed !== undefined) {
         if (body.codexSpeed !== null && !isCodexSpeed(body.codexSpeed)) return json(res, 400, { error: "codexSpeed must be standard, fast or null" });
+        // Fast spends the person's plan faster, so it is theirs to choose.
+        // An agent may still slow itself down or go back to the default.
+        if (asAgent && body.codexSpeed === "fast") return json(res, 403, { error: "only the person can set an agent to Fast" });
         patch.codexSpeed = body.codexSpeed;
       }
       // Read and unread are about the conversation on screen, not the whole
