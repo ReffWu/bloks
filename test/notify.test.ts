@@ -5,7 +5,7 @@ import { describe, test } from "node:test";
 import { noticeFor, type NotifyContext } from "../src/lib/notify.ts";
 
 const bot = { id: "bot-1", name: "Sage", notifications: true };
-const base: NotifyContext = { focused: false, selectedId: "", threadId: "t1", bot };
+const base: NotifyContext = { replySettled: true, focused: false, selectedId: "", threadId: "t1", bot };
 
 describe("what is worth interrupting for", () => {
   test("an agent's reply raises a banner when you are elsewhere", () => {

@@ -81,7 +81,7 @@ test("Set a goal opens on the conversation it was asked from, and closes", () =>
 });
 
 const bot = { id: "bot-1", name: "Sage", notifications: true };
-const away: NotifyContext = { focused: false, selectedId: "", threadId: "t1", bot };
+const away: NotifyContext = { replySettled: true, focused: false, selectedId: "", threadId: "t1", bot };
 
 test("a goal says where it ended up once, and its turns on the way stay quiet", () => {
   const done = noticeFor({ role: "bot", kind: "notice", goal: "done", text: "Goal done: shipped (3 turns)." }, away);

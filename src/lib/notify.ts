@@ -31,7 +31,8 @@
 //   A quiet check-in never interrupts. Its agent answered QUIET because
 //   nothing needed you, and what a check-in says on the way to deciding
 //   that waits for the end of its turn (CheckInHold), so the commentary
-//   of a run that turns out quiet is never news either.
+//   of a run that turns out quiet is never news either. Reply banners use
+//   the server's settled decision; CheckInHold retains only speech timing.
 
 const ENGINE_OUT =
   /credit balance is too low|insufficient[_ ](?:quota|credits|funds|balance)|billing|payment required|\b402\b|out of credits|exceed your available credits|usage limit|limit (?:reached|exceeded)|quota|rate[ _-]?limit|\b429\b|not (?:logged|signed) in|sign in/i;
@@ -53,6 +54,8 @@ export interface NotifiableMessage {
 }
 
 export interface NotifyContext {
+  /** A dedicated server decision after recovery and quiet settlement. */
+  replySettled?: boolean;
   /** Is the app focused right now? */
   focused: boolean;
   /** The conversation on screen, agent or room. */
@@ -141,7 +144,7 @@ export function noticeFor(message: NotifiableMessage, ctx: NotifyContext): Notic
     return { title: `${who} could not answer`, body: preview(message.text), target, urgent: true };
   }
 
-  if (message.kind !== "text" || !message.text?.trim()) return null;
+  if (message.kind !== "text" || !message.text?.trim() || !ctx.replySettled) return null;
   if (watching) return null;
 
   // An agent's room mention is coordination, not a person's ask.
@@ -160,10 +163,10 @@ export function noticeFor(message: NotifiableMessage, ctx: NotifyContext): Notic
  * The server marks the frames of a quiet routine's turn (`checkIn`), and
  * only the end of the turn says whether it had anything for you: its
  * last words are QUIET, already marked quiet, or they are a report. So
- * each reply is held here rather than announced, the newest replacing
- * the one before, and the end of the turn lets go of the last of them
- * unless it was quiet. Only replies are held: an agent stopping to ask
- * is news the moment it happens, check-in or not.
+ * speech is held here, the newest replacing the one before, and the raw
+ * end of the turn lets go of the last of them unless it was quiet. This
+ * preserves the existing speech behavior, not notification authority:
+ * reply banners come only from reply.settled after server recovery decisions.
  */
 export class CheckInHold<M extends NotifiableMessage = NotifiableMessage> {
   private held = new Map<string, M>();
@@ -178,10 +181,27 @@ export class CheckInHold<M extends NotifiableMessage = NotifiableMessage> {
   }
 
   /** The turn in this thread ended: its last reply, to announce, or
-   * null when there is none or it was quiet. */
+   * null when there is none or it was quiet. Speech only. */
   release(threadId: string): M | null {
     const last = this.held.get(threadId) ?? null;
     this.held.delete(threadId);
     return last && !last.quiet ? last : null;
+  }
+}
+
+/** Connection-scoped freshness and bounded request-card deduplication.
+ * Consume before attention policy, even when the person is watching. */
+export class NoticeDelivery {
+  private seen = Infinity;
+  private keys = new Set<string>();
+  reconnect(): void { this.seen = Infinity; this.keys.clear(); }
+  hello(sequence: number): void { this.seen = Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : Infinity; this.keys.clear(); }
+  take(sequence: unknown, key: string): boolean {
+    if (typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence <= this.seen) return false;
+    this.seen = sequence;
+    if (this.keys.has(key)) return false;
+    this.keys.add(key);
+    if (this.keys.size > 512) this.keys.delete(this.keys.values().next().value!);
+    return true;
   }
 }
