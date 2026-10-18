@@ -1,4 +1,3 @@
-import { codexItemText } from "../codex-text.ts";
 // Codex, driven through its app-server protocol.
 //
 // `codex app-server` is the CLI's headless mode: JSON-RPC over stdio, with
@@ -14,6 +13,7 @@ import { codexItemText } from "../codex-text.ts";
 // The resume cursor is Codex's own thread id. A turn tries to resume it and
 // quietly starts a new thread if that fails, because a thread the CLI has
 // forgotten should cost the user their history, not their message.
+import { codexItemText } from "../codex-text.ts";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";

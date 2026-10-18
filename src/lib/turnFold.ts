@@ -1,4 +1,3 @@
-import { progressIds } from "../../server/codex-text.ts";
 // A finished turn's work, folded into one line (GitHub 257).
 //
 // While an agent works, everything it does on the way is worth seeing:
@@ -21,6 +20,7 @@ import { progressIds } from "../../server/codex-text.ts";
 // This file decides what folds and what the line says. The components
 // only draw it.
 import type { Message } from "@/state/reducer";
+import { progressIds } from "./codexProgress.ts";
 
 /** Who started a turn, when it was not the person. */
 export type Asker =

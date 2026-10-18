@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { codexItemText, codexTextFor, itemProgress, progressIds } from "../server/codex-text.ts";
+import { codexItemText, codexTextFor, isProgressText, itemProgress } from "../server/codex-text.ts";
+import { isProgressText as clientProgressText, itemProgress as clientItemProgress, progressIds } from "../src/lib/codexProgress.ts";
 import { foldTurns, foldRoom, type Folded } from "../src/lib/turnFold.ts";
 import { towardYou } from "../server/activity.ts";
 import { noticeFor } from "../src/lib/notify.ts";
@@ -147,4 +148,28 @@ test("reopened rooms keep latest active turns quiet and end each speaker indepen
   assert.ok(page(reopened).includes("old-fallback"), "a prior turn still gets its terminal fallback");
   assert.deepEqual(page(foldRoom([a, b], new Map([["two", null]]))), ["active-a", "work(active-b)"], "one speaker ending must not expose the other");
   assert.deepEqual(page(foldRoom([a, b], new Map([["one", null], ["two", null]]), false)), ["active-a", "active-b"], "missing history remains conservative");
+});
+
+
+test("the server and the client read the stamp the same way", () => {
+  const base = codexTextFor({ phase: "commentary", questions: "none" }, "turn", "item", "agent")!;
+  const cases = [
+    base,
+    { ...base, v: 2 },
+    { ...base, display: "full" },
+    { ...base, origin: "person" },
+    { ...base, questions: "unknown" },
+    { ...base, questions: "present" },
+    { ...base, phase: "final_answer" },
+    { ...base, turnId: "" },
+    { ...base, itemId: "x".repeat(257) },
+    null,
+    undefined,
+  ] as never[];
+  for (const c of cases) {
+    assert.equal(clientProgressText(c), isProgressText(c), JSON.stringify(c));
+    const message = { role: "bot", kind: "text", codexText: c };
+    assert.equal(clientItemProgress(message), itemProgress(message));
+  }
+  assert.equal(isProgressText(base), true);
 });

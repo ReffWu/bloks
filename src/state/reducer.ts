@@ -68,7 +68,7 @@ export interface RecalledNote {
 }
 
 export interface Message {
-  codexText?: import("../../server/codex-text.ts").CodexText;
+  codexText?: import("../../shared/codex-text.js").CodexText;
   /** A person actually accepted into this running Codex turn, not queued. */
   joinedTurnId?: string;
   /** Between two agents rather than with the person. */

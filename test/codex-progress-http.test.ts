@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { startHarness } from "./helpers/server.ts";
-import { progressIds, itemProgress } from "../server/codex-text.ts";
+import { itemProgress } from "../server/codex-text.ts";
+import { progressIds } from "../src/lib/codexProgress.ts";
 import { foldTurns } from "../src/lib/turnFold.ts";
 import { initialState, reducer, type Message, type Bot, type AppState } from "../src/state/reducer.ts";
 

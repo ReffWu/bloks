@@ -1,4 +1,3 @@
-import { itemProgress, isProgressText } from "../../server/codex-text.ts";
 // All of the app's state, and the only place it talks to anything.
 //
 // The split that matters: the reducer next door is pure and knows nothing
@@ -23,6 +22,7 @@ import {
   type ReactNode,
 } from "react";
 import { CheckInHold, NoticeDelivery, noticeFor, settlesReplies } from "@/lib/notify";
+import { itemProgress, isProgressText } from "@/lib/codexProgress";
 import { sendBotArchive } from "@/lib/botArchive";
 import { sendCardAnswer } from "@/lib/cardAnswer";
 import { sendMessage } from "@/lib/sendMessage";

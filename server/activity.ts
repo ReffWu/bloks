@@ -1,4 +1,3 @@
-import { itemProgress } from "./codex-text.ts";
 // What is happening right now, and what it is costing.
 //
 // A workspace with ten agents in it accumulates work nobody is watching. A
@@ -30,6 +29,7 @@ import { itemProgress } from "./codex-text.ts";
 //   the ceiling belongs to whoever you signed in with and inventing a
 //   denominator would be a lie. Today's spend is the honest number.
 import type { Message } from "./store.ts";
+import { itemProgress } from "./codex-text.ts";
 
 /** Why a lane is busy. */
 export type WorkKind = "you" | "routine" | "job" | "workflow";

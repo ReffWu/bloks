@@ -1,4 +1,3 @@
-import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
 // Bloks server: the harness host.
 //
 // The one rule the whole shape follows: clients hold no transports. The
@@ -8,6 +7,7 @@ import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./co
 // First, before any module below reads the data folder: a restore waiting
 // for this start is put in place (server/pending-restore.ts).
 import "./pending-restore.ts";
+import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
 import { existsSync, mkdirSync, openAsBlob, readdirSync, readFileSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";

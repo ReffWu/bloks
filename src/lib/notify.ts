@@ -1,4 +1,3 @@
-import { itemProgress, type CodexText } from "../../server/codex-text.ts";
 // What is worth interrupting somebody for.
 //
 // Agents work while you are elsewhere, which is the point of them; the
@@ -37,6 +36,8 @@ import { itemProgress, type CodexText } from "../../server/codex-text.ts";
 //   only speech timing. A server too old to send that (no "reply-settled"
 //   in its features, settlesReplies) still has its replies announced as
 //   they land, the way they were before it could say when a turn was over.
+
+import { itemProgress, type CodexText } from "./codexProgress.ts";
 
 const ENGINE_OUT =
   /credit balance is too low|insufficient[_ ](?:quota|credits|funds|balance)|billing|payment required|\b402\b|out of credits|exceed your available credits|usage limit|limit (?:reached|exceeded)|quota|rate[ _-]?limit|\b429\b|not (?:logged|signed) in|sign in/i;
