@@ -3,7 +3,7 @@
 // line, and a key in the environment does not bill them to the API.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, watch, writeFileSync, realpathSync } from "node:fs";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
@@ -142,7 +142,10 @@ for (const path of ["absolute", "relative", "PATH"] as const) test(`text-only la
   assert.ok(!seen.args.some((arg: string) => arg.includes(prompt)));
   assert.notEqual(seen.cwd, process.cwd());
   assert.ok(!seen.cwd.startsWith(process.cwd() + "/"));
-  assert.equal(seen.cwd.startsWith(f.temps), true);
+  // by where it really is: a temporary folder on a Mac is reached through
+  // a link, and a process asked for its folder gives the resolved path
+  // (the folder itself is gone by now, so only the temporary root is resolved)
+  assert.equal(seen.cwd.startsWith(f.temps) || seen.cwd.startsWith(realpathSync(f.temps)), true);
   assert.deepEqual([seen.home, seen.profile, seen.auth], [f.root, f.root, join(f.root, "auth")]);
   assert.deepEqual([seen.key, seen.parent, seen.entry], [null, null, null]);
   const value = (flag: string) => seen.args[seen.args.indexOf(flag) + 1];
