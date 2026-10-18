@@ -37,6 +37,7 @@ rl.createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='turn/steer'){
   const mode=fs.existsSync(path.join(home,'steer-mode'))?fs.readFileSync(path.join(home,'steer-mode'),'utf8'):'';
   if(mode==='drop')return process.exit(0);
+  if(mode==='refuse')return out({id:m.id,error:{code:-32600,message:'expected turn has already ended'}});
   if(mode==='stall'){const timer=setInterval(()=>{if(fs.existsSync(path.join(home,'steer-release'))){clearInterval(timer);reply()}},10);return;}
   return reply();
  }

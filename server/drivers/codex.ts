@@ -20,7 +20,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { attachRpc, type RpcLink } from "../harness/jsonrpc-stdio.ts";
+import { attachRpc, RpcResponseError, type RpcLink } from "../harness/jsonrpc-stdio.ts";
 import { readCodexSkills, MAX_CODEX_SKILL_ITEMS, type CodexSkill } from "../codex-skills.ts";
 import type {
   DriverCreateInput,
@@ -900,8 +900,12 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           return true;
         } catch (error) {
           for (const skill of skills) skillNamesSent.delete(skill.name);
-          // A reserved report cannot queue again after a possible RPC write.
-          if (options?.onDispatch) throw error;
+          // An error reply is Codex answering no: the turn it names has
+          // ended, so the words were not taken and wait for the next one,
+          // reserved report or not. Anything else (the pipe closing, the
+          // turn torn down while we waited) leaves it unknown whether the
+          // words arrived, and a reserved report must not go twice.
+          if (options?.onDispatch && !(error instanceof RpcResponseError)) throw error;
           return false;
         }
       };

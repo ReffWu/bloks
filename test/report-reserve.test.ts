@@ -240,3 +240,17 @@ test('late acceptance patches the open sender row and its folded result exactly 
   assert.equal(activityFrames().length,2);
  }finally{abort.abort();await reading;}
 });
+
+test('a Codex refusal of the reserved steer queues the message once and the retry reads that receipt',async t=>{
+ const f=await reporting(t);writeFileSync(join(f.home,'steer-mode'),'refuse');
+ await f.request('POST',`/api/bots/${f.target.id}/messages`,{text:'BUSY'});
+ await until(()=>f.calls().some(c=>c.method==='turn/start'));await f.use();
+ const body={text:'FINAL',now:true};const first=await f.accepted(body);
+ assert.equal(first.body.queued,true);
+ assert.deepEqual(await f.say(body),first);
+ assert.equal(f.calls().filter(c=>c.method==='turn/steer').length,1);
+ const words=(await f.messages()).filter(m=>m.text==='FINAL');assert.equal(words.length,1);assert.equal(words[0].queued,true);
+ assert.equal((await f.messages(f.sender)).find(m=>m.agent?.dir==='out'&&m.text==='FINAL')?.agent.status,'queued');
+ assert.equal((await f.say({text:'replacement'})).status,429);
+ assert.equal((await f.control('token',{token:f.token})).spent,13);
+});
