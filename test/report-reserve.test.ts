@@ -246,7 +246,7 @@ test('a Codex refusal of the reserved steer queues the message once and the retr
  await f.request('POST',`/api/bots/${f.target.id}/messages`,{text:'BUSY'});
  await until(()=>f.calls().some(c=>c.method==='turn/start'));await f.use();
  const body={text:'FINAL',now:true};const first=await f.accepted(body);
- assert.equal(first.body.queued,true);
+ assert.equal(first.body.queued,true);assert.match(first.body.note,/did not join that turn/);
  assert.deepEqual(await f.say(body),first);
  assert.equal(f.calls().filter(c=>c.method==='turn/steer').length,1);
  const words=(await f.messages()).filter(m=>m.text==='FINAL');assert.equal(words.length,1);assert.equal(words[0].queued,true);
@@ -268,4 +268,16 @@ test('the person\'s words behind an uncertain reserved steer still wait for the 
  await until(async()=>(await f.messages()).some(m=>m.text==='PERSON'));
  assert.equal((await f.messages()).filter(m=>m.text==='PERSON').length,1);
  assert.equal((await f.messages()).filter(m=>m.text==='FINAL').length,0);
+});
+
+test('the reserved receipt carries the readiness warning and the waiting note',async t=>{
+ const f=await reporting(t);await f.request('POST',`/api/bots/${f.target.id}/messages`,{text:'BUSY'});
+ await until(()=>f.calls().some(c=>c.method==='turn/start'));await f.use();
+ await f.control('rest',{instance:'codex'});
+ const receipt=await f.accepted();
+ assert.equal(receipt.body.queued,true);
+ assert.match(receipt.body.engine??'',/cannot answer this before then/);
+ assert.match(receipt.body.note,/in the middle of a turn; this waits until that turn ends/);
+ assert.match(receipt.body.note,/bloks take-back/);
+ assert.deepEqual(await f.say(),receipt);
 });

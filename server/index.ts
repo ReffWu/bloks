@@ -10663,7 +10663,8 @@ function storedPrompt(message: Message): string {
 /** Per-request observation at recipient admission, used only by the final say. */
 interface DirectAdmission {
   beforeEffect(): void;
-  accepted(kind: "sent" | "queued" | "steered"): void;
+  /** `note` is what the sender would be told on any other send. */
+  accepted(kind: "sent" | "queued" | "steered", note?: string): void;
 }
 
 /** `yours` says the person wrote it, which moves the agent up the
@@ -10707,6 +10708,10 @@ async function sendUserMessage(
   // is one more turn nobody but the agents asked for.
   if (options.chain && chainPastLimit(options.chain.depth)) throw chainRefusal(bot, lane.id, options.chain, text);
   const admission = options.guardedAdmission?.(lane);
+  // A kept-back message's receipt is fixed the moment it is admitted, so
+  // what the sender is told goes in with the admission rather than after.
+  const noting = (note: string): DirectAdmission | undefined =>
+    admission && { beforeEffect: () => admission.beforeEffect(), accepted: (kind) => admission.accepted(kind, note) };
   // waiting behind a turn or not, it was said to this agent now
   const yours = Boolean(options.yours && !options.from);
   if (yours) withYou({ bot });
@@ -10749,26 +10754,11 @@ async function sendUserMessage(
     if (options.from && options.now && lane.busy) {
       const why = mayJoin(options.from.botId, bot, lane);
       askedEngine = !why;
-      const steered = why ? null : await steerLane(bot, lane, text, { replyTo: options.replyTo, from: options.from, personal: false, admission });
-      if (steered) {
-        return {
-          ok: true,
-          steered: true,
-          taskId: lane.id,
-          lane: lane.title,
-          note: `${bot.name} is in the middle of a turn and reads this after the step it is on.`,
-        };
-      }
+      const joined = `${bot.name} is in the middle of a turn and reads this after the step it is on.`;
+      const steered = why ? null : await steerLane(bot, lane, text, { replyTo: options.replyTo, from: options.from, personal: false, admission: noting(joined) });
+      if (steered) return { ok: true, steered: true, taskId: lane.id, lane: lane.title, note: joined };
       notJoined = ` It did not join that turn: ${why ?? `${bot.name}'s turn could not take words mid-turn just then`}.`;
     }
-    queueOnLane(bot.id, lane.id, text, {
-      replyTo: options.replyTo, from: options.from, personal: options.personal, chain: options.chain?.depth, admission,
-      ...(drain.on && yours ? { waitsFor: "restart" as const } : paused ? { waitsFor: "pause" as const, waitsUntil: paused.until } : {}),
-    });
-    if (paused) sayPaused(lane.id, paused.id, `${pausedWhy(bot, paused)} What is said to it here waits, and goes on its own then.`);
-    // Asking the engine took a moment, and the turn may have ended in it,
-    // with nothing coming along after to take what now waits.
-    if ((yours && options.steer) || askedEngine) drainSteer(lane.id);
     // Said to the sender too: an agent that thought its "stop" landed would
     // carry on as if the other had stopped (GitHub 141).
     const waits = drain.on
@@ -10781,7 +10771,16 @@ async function sendUserMessage(
     const stop =
       lane.busy && options.from && mayStop(options.from.botId, bot.id) ? ` To stop it now, use \`bloks stop ${bot.id} "<why>"\`.` : "";
     const takeBack = options.from ? ` To take back your messages while they wait, use \`bloks take-back ${bot.id}\`.` : "";
-    return { ok: true, queued: true, taskId: lane.id, lane: lane.title, note: waits + notJoined + stop + takeBack };
+    const note = waits + notJoined + stop + takeBack;
+    queueOnLane(bot.id, lane.id, text, {
+      replyTo: options.replyTo, from: options.from, personal: options.personal, chain: options.chain?.depth, admission: noting(note),
+      ...(drain.on && yours ? { waitsFor: "restart" as const } : paused ? { waitsFor: "pause" as const, waitsUntil: paused.until } : {}),
+    });
+    if (paused) sayPaused(lane.id, paused.id, `${pausedWhy(bot, paused)} What is said to it here waits, and goes on its own then.`);
+    // Asking the engine took a moment, and the turn may have ended in it,
+    // with nothing coming along after to take what now waits.
+    if ((yours && options.steer) || askedEngine) drainSteer(lane.id);
+    return { ok: true, queued: true, taskId: lane.id, lane: lane.title, note };
   }
   await startTurn(bot.id, text, { taskId: lane.id, replyTo: options.replyTo, from: options.from, byYou: yours, personal: options.personal, chain: options.chain?.depth, admission });
   triggersFired({ kind: "message", targetId: bot.id, text, fromUser: true });
@@ -13427,8 +13426,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             }
           } catch { /* ancillary activity cannot erase known recipient admission */ }
         };
-        // No readiness probe is needed to admit a report. Freeze the actual
-        // acceptance before activity/broadcast/output; retries perform none.
+        // Whether the one written to can answer now, read as it is sent, as
+        // for any agent's message (GitHub 239). It does not decide admission;
+        // it rides on the receipt, and retries never ask again.
+        const reach = recipient ? readinessOf(recipient).catch(() => null) : null;
+        let finished: Promise<void> | undefined;
+        // Freeze the actual acceptance before activity/broadcast/output;
+        // retries perform none.
         const sending = sendUserMessage(m[1], text, {
           taskId, replyTo, from, personal: false, now,
           chain: chainFrom(sender, asAgent.taskId),
@@ -13442,15 +13446,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
                 held.dispatched = true;
                 held.response = REPORT_UNCERTAIN;
               },
-              accepted(kind) {
+              accepted(kind, said) {
                 if (held.accepted) return;
                 held.accepted = true;
                 asAgent.spent++;
-                held.response = { status: 202, body: {
+                // What any other send would have said: why it waits or did
+                // not join a running turn, and whether it can be answered.
+                const admitted: ReportResponse = { status: 202, body: {
                   ok: true, ...destination,
-                  ...(kind === "queued" ? { queued: true, note: "This message is queued until the recipient can take it." } : {}),
-                  ...(kind === "steered" ? { steered: true, note: "The recipient's running turn took this message." } : {}),
+                  ...(kind === "queued" ? { queued: true } : {}),
+                  ...(kind === "steered" ? { steered: true } : {}),
+                  ...(said ? { note: said } : {}),
                 } };
+                held.response = admitted;
+                finished = reach?.then((ready) => {
+                  const warning = ready && recipient ? readinessWarning(recipient.name, ready.engine, ready.readiness) : null;
+                  if (warning && held.response === admitted) held.response = { status: 202, body: { ...admitted.body, engine: warning } };
+                });
                 note(kind === "queued" ? "queued" : "sent");
               },
             };
@@ -13472,6 +13484,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         // One event-loop yield, not a per-retry waiter, polling timer or queue.
         // Slow preparation remains observable and can settle this same claim.
         await Promise.race([sending, new Promise<void>((done) => setImmediate(done))]);
+        // Admitted already: the readiness read is what the general path
+        // waits for too, and it settles on its own.
+        if (claim?.accepted) await finished;
         if (!current()) return unauthorized();
         if (claim?.dispatched && !claim.accepted) note("uncertain");
         const receipt = refused ?? claim?.response;

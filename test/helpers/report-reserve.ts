@@ -73,6 +73,7 @@ process.on('message',(m:any)=>{
   if(m.op==='depth')agentChain.set(m.task,m.depth);
   if(m.op==='patch')value=store.patchBot(m.bot,m.patch);
   if(m.op==='fault')reportFault=m.mode;
+  if(m.op==='rest')value=cooldowns.rest(m.instance,'limit','usage limit reached, try again in 2 hours');
   if(m.op==='hold'){reportWait=new Promise(done=>reportGate=done)}
   if(m.op==='release'){reportGate?.();reportWait=undefined}
   process.send?.({id:m.id,value});
