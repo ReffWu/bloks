@@ -52,4 +52,8 @@ export const FEATURES: readonly string[] = [
   // for a while, and `waitsFor: "pause"` with `waitsUntil` on a message
   // held for one
   "engine-pauses",
+  // codexText on a bot's text and joinedTurnId on the person's, in history
+  // and on the stream: Codex narration another agent's turn produced, to
+  // show as work and never alert for (shared/codex-text.d.ts)
+  "codex-progress",
 ];

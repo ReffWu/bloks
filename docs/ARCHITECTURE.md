@@ -873,6 +873,27 @@ folds while it runs. When a fold closes over a reader who is not at the
 end, `useHoldPlace` keeps the reply where it was on screen; a find hit
 or a forum link into folded work opens the fold.
 
+Codex narration in a turn another agent started is work from the moment
+it is said. Codex marks each finished message `commentary` or
+`final_answer`; the server stamps a bot's text with `codexText` (shaped
+in `shared/codex-text.d.ts`, stamped by `server/codex-text.ts`, feature
+`codex-progress`) and the stamp says `display: "progress"` only for
+commentary in a turn an agent started (`codexOrigins`: another agent's
+message, a room handoff, never the person, a routine, a watcher, a
+webhook or a recovery) that asks the person nothing. Codex 0.145 does not
+say whether an item asks anything, so when it is silent the server reads
+the text, and reads it one way: no question mark, nobody addressed, no
+word a request or a blocker is made of, in a script it can read.
+Anything else is `unknown` and shows as usual; Codex's own `questions`,
+should it ever send one, wins. Progress makes no unread, wake, preview,
+banner or speech. The client (`src/lib/codexProgress.ts`) folds it into
+the work row while the turn runs and gives it back once more is known: a
+person whose words joined the turn (`joinedTurnId`, set by `steerOne`
+only when Codex accepted them into that turn) sees all of it, and a turn
+that ended without an answer keeps its last commentary on the page. None
+of that rewrites history or alerts again. A client that does not know
+the field, or a newer version of it, shows the text as before.
+
 ## Desktop banners
 
 What raises a banner is one pure function, `noticeFor` in
