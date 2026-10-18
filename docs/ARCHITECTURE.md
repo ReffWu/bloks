@@ -775,6 +775,22 @@ with the queue they ride on, rather than on the lane record: a restart
 begins every chain again, which lets a loop that spans one run a stretch
 more at most, and leaves nothing on disk to clear when a lane closes.
 
+A turn's own budget is twelve general changes and one more kept back:
+past the twelve, the only change a turn may still make is one direct
+message to another agent, so an agent that spent its twelve on the work
+can still say what it did (`claimReport` in `server/agent-cli.ts`). Not
+to itself and not to a room, and the chain limit still applies to it,
+so the thirteenth cannot keep a loop going. The kept-back message gets a
+receipt, held on the credential through its renewals: the same words to
+the same place, sent again, read that receipt (accepted, queued or
+steered, with the note and the engine-readiness warning any message
+gets) without delivering anything a second time, and different words
+are refused. A refusal before anything reached the recipient leaves the
+slot free. One that might have arrived (the engine's pipe closing
+mid-steer, say) is answered as uncertain, keeps the slot, and is never
+queued again; Codex answering a steer with an error is a definite no,
+and the message waits for the next turn as any other does.
+
 Rooms and the job board carry the count too, or an agent could keep
 another going through them. An agent naming someone in a room, from the
 room or from a conversation, hands the turn it wakes a place one past
