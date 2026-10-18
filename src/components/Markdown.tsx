@@ -1,7 +1,9 @@
 // A reply's markdown, drawn as elements.
 //
 // Headings, lists (nested ones keep their depth), quotes, tables, code
-// blocks and the inline marks: bold, italic, code and links. Model output
+// blocks and the inline marks: bold, italic, code and links. A link to a
+// file an agent shared, or to where it saved one, opens the in-app viewer
+// rather than a browser (SharedFileLink in ./Artifacts). Model output
 // only ever reaches the page as text nodes and elements chosen here, never
 // as HTML. Shared by solo chats and rooms, which is why a room can ask for
 // its @mentions to be picked out as well.
@@ -10,7 +12,9 @@ import { splitBlocks, type CodeBlock, type TableBlock } from "@/lib/markdownTabl
 import { parseInline, type InlineToken } from "@/lib/inlineMarkdown";
 import { cn } from "@/lib/cn";
 import { splitHighlight } from "@/lib/find";
+import { looksShared } from "@/lib/sharedFile";
 import { TableScroll } from "./TableScroll";
+import { SharedFileLink } from "./Artifacts";
 
 /** Wraps every occurrence of the query in the plain-text parts of an
  * already-rendered line. Elements are left alone: breaking a code span
@@ -63,10 +67,27 @@ function inlineMd(text: string, keyBase: string, highlight: string, mentions?: R
                 : [node],
           );
         case "code":
+          // a path to a file in an agent's deliverables, written in
+          // backticks the way agents tend to, opens like a link to it
+          if (looksShared(token.text)) {
+            return [
+              <SharedFileLink key={k} href={token.text.trim()} className="no-underline">
+                <code className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-[12.5px] underline decoration-dotted underline-offset-2">
+                  {token.text}
+                </code>
+              </SharedFileLink>,
+            ];
+          }
           return [
             <code key={k} className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-[12.5px]">
               {token.text}
             </code>,
+          ];
+        case "file":
+          return [
+            <SharedFileLink key={k} href={token.href}>
+              {render(token.children, k)}
+            </SharedFileLink>,
           ];
         case "bold":
           return [<strong key={k}>{render(token.children, k)}</strong>];

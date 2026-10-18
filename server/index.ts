@@ -4649,7 +4649,7 @@ async function startClaimedTurn(
     sharing && sharedBriefing(sharedRoom!, sharing, roomTools),
     guestMail &&
       "This is an email from someone the person you work for has not listed. Answer it from what you know, in conversation only: you have no tools here, and nothing private of theirs is yours to share.",
-    !guestMail && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place.`,
+    !guestMail && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, video, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place.${!sharing && runsAProcess(instance.driverKind) ? ` To show the user a file that is already there, or one saved anywhere else on this computer, run \`${cliCommand} share <path>\`: it puts that one file in the chat as a card and answers with a link to it you can write in your reply.` : ""}`,
     HOUSE_STYLE,
     // In a room, who else is here and who decides. Solo chats stay silent
     // about all of it.
@@ -13992,21 +13992,138 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       return json(res, 200, { comment });
     }
 
+    // ── files shared into a conversation (server/artifacts.ts) ──
+    // What a link in a reply opens. An agent writes the place it saved a
+    // file, which is a path on this computer, and a phone cannot open a
+    // path: this says which agent's file that is, if it is one, so the
+    // viewer can ask for it. A path anywhere else is answered as not
+    // shared, never read, so this tells a caller nothing about the disk
+    // beyond what the agents' own files already show.
+    if (path === "/api/artifacts/resolve" && method === "GET") {
+      const found = artifacts.resolveShared(url.searchParams.get("path") ?? "");
+      const info = found && store.bot(found.botId) ? artifacts.artifactInfo(found.botId, found.name) : null;
+      if (!found || !info) {
+        return json(res, 404, {
+          error: "That file is on the computer running Bloks and was not shared into the chat. Ask the agent to share it.",
+          shared: false,
+        });
+      }
+      return json(res, 200, { botId: found.botId, artifact: info, href: artifacts.artifactHref(found.botId, info.name) });
+    }
+    // Everything an agent keeps in its files, folders included, for the
+    // person to pick from. Its own, for an agent: the rule list says so.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/artifacts$/);
+    if (m && method === "GET") {
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      const files = artifacts.listArtifacts(bot.id).map((info) => ({ ...info, href: artifacts.artifactHref(bot.id, info.name) }));
+      return json(res, 200, { files });
+    }
+    // Sharing one file into the conversation, as a card. Either a file
+    // already in the agent's files (a folder down, or one that was there
+    // before this turn and so never swept up), named in JSON; or a file
+    // from anywhere else on this computer, sent as its bytes. The second
+    // is how a file elsewhere reaches a phone without the person copying
+    // it anywhere: the agent's own command reads it, inside whatever
+    // sandbox the agent runs in, and only that one file crosses into the
+    // boundary files are served from. Nothing here reads a path it is
+    // handed, so this never becomes a way to read the disk.
+    if (m && method === "POST") {
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      if (!local) return json(res, 403, { error: "a file is shared from the computer it is on" });
+      if (asAgent && asAgent.botId !== bot.id) {
+        return json(res, 403, { error: "an agent can only share into its own files" });
+      }
+      const bytes = String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/octet-stream");
+      let info: artifacts.ArtifactInfo | null = null;
+      let taskId: unknown = url.searchParams.get("taskId") ?? undefined;
+      if (bytes) {
+        const declared = Number(req.headers["content-length"]);
+        if (Number.isFinite(declared) && declared > artifacts.MAX_PUBLISH_BYTES) {
+          req.resume();
+          return json(res, 413, { error: "that file is too large to share" });
+        }
+        const wanted = url.searchParams.get("name") ?? "";
+        if (!artifacts.safeName(wanted)) {
+          req.resume();
+          return json(res, 400, { error: "a shared file needs a name: letters, numbers and folders, nothing hidden and no .." });
+        }
+        const saved = await artifacts.publishBytes(bot.id, wanted, req);
+        if (!saved.ok) {
+          // whatever is still on its way is not going anywhere
+          req.resume();
+          return json(res, saved.status, { error: saved.error });
+        }
+        info = saved.info;
+      } else {
+        const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+        if (typeof body.taskId === "string") taskId = body.taskId;
+        const name = typeof body.name === "string" ? body.name : "";
+        info = artifacts.artifactInfo(bot.id, name);
+        if (!info) {
+          return json(res, 404, {
+            error: `there is no file called "${name.slice(0, 200)}" in this agent's files. Share a file from elsewhere by sending its bytes`,
+          });
+        }
+      }
+      // The lane it is sharing into, which for a background turn is not
+      // the one on screen, as for a component (the show route).
+      const laneId =
+        typeof taskId === "string" && bot.tasks.some((t) => t.id === taskId)
+          ? taskId
+          : asAgent?.taskId && bot.tasks.some((t) => t.id === asAgent.taskId)
+            ? asAgent.taskId
+            : activeLaneOf(bot);
+      // shared now, so the sweep at the end of the turn does not card it again
+      const print = artifacts.fingerprint(bot.id, info.name);
+      if (print) artifactBaseline.get(laneId)?.set(info.name, print);
+      const destination = activeRoom.get(laneId) ?? laneId;
+      const message = store.appendMessage(destination, { role: "bot", from: bot.id, kind: "artifact", artifact: info });
+      broadcast({ kind: "message", threadId: destination, message });
+      const href = artifacts.artifactHref(bot.id, info.name);
+      return json(res, 201, {
+        ok: true,
+        artifact: info,
+        href,
+        // what to write in a reply: the app turns this into the viewer
+        markdown: `[${info.name.replace(/[[\]]/g, "")}](${href})`,
+      });
+    }
+
     m = path.match(/^\/api\/bots\/([\w-]+)\/artifacts\/(.+)$/);
     if (m && method === "GET") {
       const bot = store.bot(m[1]);
       if (!bot) return json(res, 404, { error: "no such agent" });
-      const opened = artifacts.openArtifact(bot.id, decodeURIComponent(m[2]));
+      // decoded once, then judged: an encoded ../ is a ../ by then
+      let name = "";
+      try {
+        name = decodeURIComponent(m[2]);
+      } catch {
+        return json(res, 400, { error: "that is not a file name" });
+      }
+      const found = artifacts.artifactInfo(bot.id, name);
+      if (!found) return json(res, 404, { error: "no such file" });
+      // A range, from the header a video player sends to seek, or from
+      // the query, which is all that crosses Bloks Cloud: a phone there
+      // takes a large file a piece at a time.
+      const query = url.searchParams.get("range");
+      const range = artifacts.parseRange(req.headers.range ?? (query ? `bytes=${query}` : undefined), found.size);
+      if (range === null) {
+        res.writeHead(416, { "content-range": `bytes */${found.size}` });
+        return void res.end();
+      }
+      const opened = artifacts.openArtifact(bot.id, found.name, range);
       if (!opened) return json(res, 404, { error: "no such file" });
-      res.writeHead(200, {
+      res.writeHead(range ? 206 : 200, {
         "content-type": opened.mime,
-        "content-length": opened.size,
+        "content-length": range ? range.end - range.start + 1 : opened.size,
+        "accept-ranges": "bytes",
+        ...(range ? { "content-range": `bytes ${range.start}-${range.end}/${opened.size}` } : {}),
         // html artifacts render inside a sandboxed iframe; this keeps a
         // hostile file from becoming a same-origin script on the API
         "content-security-policy": "sandbox allow-scripts",
-        ...(url.searchParams.has("download")
-          ? { "content-disposition": `attachment; filename="${decodeURIComponent(m[2]).replace(/"/g, "")}"` }
-          : {}),
+        ...(url.searchParams.has("download") ? { "content-disposition": artifacts.attachmentHeader(found.name) } : {}),
       });
       opened.stream.pipe(res);
       return;
@@ -16160,6 +16277,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         name: bot?.name ?? "",
         title: bot?.title ?? "",
         taskId: asAgent.taskId,
+        // where its deliverables live, so `share` can tell a file already
+        // there from one it has to send
+        files: artifacts.artifactsDir(asAgent.botId),
         fingerprint: fingerprintFor(asAgent.botId),
         can: capabilities(),
       });

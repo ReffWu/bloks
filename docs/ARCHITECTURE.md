@@ -203,6 +203,57 @@ identified visible row measured after the wait, so new tail content does not
 move a reader who scrolled away. Find targets and the room's topics lens
 suppress paging that could displace their position.
 
+## Shared files
+
+An agent's deliverables folder (`server/artifacts.ts`) is the one place a
+file is served from, and a name is a path inside it, folders included
+(`reports/q3.pdf`). Every name is judged twice: as words (no `..`, no
+hidden segment, no backslash or control character, decoded once before
+judging, so `%2e%2e%2F` is a climb), then as the file it really is, with
+links followed, which has to land inside the folder. A link out is a file
+that is not there. `GET /api/bots/:id/artifacts/:name` takes the name
+encoded as one segment or with its slashes, answers byte ranges (a
+`Range` header, which a video player seeks with, or `?range=` for Bloks
+Cloud, which carries no request headers), and names a download in
+RFC 5987 form so any character survives. `GET /api/bots/:id/artifacts`
+lists the folder, folders included.
+
+The sweep at the end of a turn still cards only new files at the top of
+the folder: a turn that writes a site with forty images in a folder
+should not leave forty cards. Anything else reaches the chat by
+`bloks share <file> [--as <name>]` (`POST /api/bots/:me/artifacts`). A
+file already in the folder, nested or unchanged since before the turn,
+is carded where it is. A file anywhere else is read by the command, as
+the agent and inside whatever sandbox it runs in, and its bytes are
+streamed in under a free name (`q3 (2).pdf` beside an existing `q3.pdf`),
+written to a hidden file and renamed in once complete. The route never
+opens a path it is handed, so sharing cannot become a way to read the
+disk. Only this computer can share in. The answer carries the card's
+`href` and a markdown link to write in the reply, and the shared file's
+fingerprint goes into the turn's baseline so the sweep does not card it
+twice.
+
+A link in a reply that is the file route, a path or a `file:` URL is a
+`file` token in `src/lib/inlineMarkdown.ts`, never an `<a>`. Clicking it
+asks `GET /api/artifacts/resolve?path=` what it is: a path inside some
+agent's folder (lexically or after links are followed) answers that
+agent and file, and anything else answers 404 with `shared: false` and a
+sentence saying to ask the agent to share it. A code span reads as a
+file only when it looks like a path in a deliverables folder, so the
+paths in a coding conversation stay text. Card and link open the same
+viewer: PDF, image, video (no autoplay; an unplayable format says so and
+offers the download), Markdown rendered with its source a click away,
+text, tables, HTML in a sandboxed frame. A failure says why and offers
+Try again, which asks for the file again and never starts a turn.
+
+Access is the artifact route's: an owner's device on this computer, the
+network or Bloks Cloud reads any agent's files, a member of a shared
+room is shown a card's name and nothing it could open, and an agent's
+credential lists and shares into its own folder only and cannot resolve
+paths. A phone reads `shared-files` in `/api/health` before offering
+nested names, ranges or path links; through Bloks Cloud it takes a file
+a range at a time, since one answer has to fit the relay's payload.
+
 ## Rehearsals
 
 `server/rehearsals.ts` clones the agent's folder (copy-on-write with

@@ -149,6 +149,10 @@ export const RULES: Rule[] = [
   { method: "POST", path: "/api/bots/:me/secrets", why: "ask the person for an API key or other secret, through a secure field in the chat" },
   { method: "PUT", path: "/api/bots/:me/memory", why: "write its own memory" },
   { method: "GET", path: "/api/bots/:me/artifacts", why: "list what it has produced" },
+  // One file into the conversation, as a card the person opens in the
+  // app on any device. The command reads the file, as the agent, and
+  // sends its bytes; the route never reads a path it is given.
+  { method: "POST", path: "/api/bots/:me/artifacts", why: "share one file into the conversation as a card the person can open, and get a link to it" },
 
   // Skills it can consult, and its own settings.
   { method: "GET", path: "/api/skills", why: "see the skill library" },

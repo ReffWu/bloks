@@ -61,6 +61,18 @@ describe("what an agent can do", () => {
     assert.match(refused.reason ?? "", /only read and write its own/);
   });
 
+  test("it shares a file into its own files, and nobody else's", () => {
+    assert.equal(allows(ME, "POST", `/api/bots/${ME}/artifacts?name=clip.mp4`).ok, true);
+    assert.equal(allows(ME, "GET", `/api/bots/${ME}/artifacts`).ok, true);
+    const refused = allows(ME, "POST", `/api/bots/${SOMEONE_ELSE}/artifacts`);
+    assert.equal(refused.ok, false);
+    assert.match(refused.reason ?? "", /only read and write its own/);
+    // resolving a path is the person's viewer asking, not an agent probing the disk
+    assert.equal(allows(ME, "GET", "/api/artifacts/resolve?path=/etc/hosts").ok, false);
+    // nor does it read a file's bytes by name, its own or another's
+    assert.equal(allows(ME, "GET", `/api/bots/${SOMEONE_ELSE}/artifacts/q3.pdf`).ok, false);
+  });
+
   test("it can ask for a secret for itself, and for nobody else", () => {
     assert.equal(allows(ME, "POST", `/api/bots/${ME}/secrets`).ok, true);
     assert.equal(allows(ME, "POST", `/api/bots/${SOMEONE_ELSE}/secrets`).ok, false);

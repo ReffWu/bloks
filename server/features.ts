@@ -56,4 +56,8 @@ export const FEATURES: readonly string[] = [
   // and on the stream: Codex narration another agent's turn produced, to
   // show as work and never alert for (shared/codex-text.d.ts)
   "codex-progress",
+  // files shared into a conversation: names with folders in them, byte
+  // ranges (?range= through Bloks Cloud), GET /api/artifacts/resolve for
+  // a link that is a path, and video among the types a viewer opens
+  "shared-files",
 ];

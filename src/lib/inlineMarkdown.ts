@@ -5,13 +5,20 @@
 // one place where model output becomes an attribute, so its target is
 // held to a short list of schemes; anything else, javascript: first among
 // them, stays on the page as the characters the model wrote.
+//
+// A link to a file the agent shared, or to the place it saved one, is its
+// own kind of token and never an attribute: the renderer turns it into a
+// button that opens the in-app viewer (src/lib/sharedFile.ts), because a
+// path on the computer running Bloks is not a page anything can browse to.
+import { fileTarget } from "./sharedFile.ts";
 
 export type InlineToken =
   | { kind: "text"; text: string }
   | { kind: "code"; text: string }
   | { kind: "bold"; children: InlineToken[] }
   | { kind: "italic"; children: InlineToken[] }
-  | { kind: "link"; href: string; children: InlineToken[] };
+  | { kind: "link"; href: string; children: InlineToken[] }
+  | { kind: "file"; href: string; children: InlineToken[] };
 
 /** The only link targets a reply can produce. mailto is not one: the Mac
  * shell hands only http(s) to the system browser, so a mail link would be
@@ -85,6 +92,19 @@ function readLink(text: string, at: number): { label: string; href: string; end:
   if (close <= at + 1 || text[close + 1] !== "(") return null;
   let depth = 0;
   const start = close + 2;
+  // `[label](<a path with spaces.pdf>)`, the way markdown writes a target
+  // with a space in it. Only a file's: a web address has no spaces to keep.
+  if (text[start] === "<") {
+    for (let j = start + 1; j < text.length && j <= start + MAX_TARGET; j++) {
+      const ch = text[j];
+      if (ch === "<" || ch === "\n" || ch === "[" || ch === "]") return null;
+      if (ch === ">") {
+        const href = text.slice(start + 1, j);
+        return text[j + 1] === ")" && fileTarget(href) ? { label: text.slice(at + 1, close), href, end: j + 2 } : null;
+      }
+    }
+    return null;
+  }
   for (let j = start; j < text.length && j <= start + MAX_TARGET; j++) {
     const ch = text[j];
     if (ch === "[" || ch === "]" || /\s/.test(ch)) return null;
@@ -92,7 +112,7 @@ function readLink(text: string, at: number): { label: string; href: string; end:
     else if (ch === ")") {
       if (depth === 0) {
         const href = text.slice(start, j);
-        return isSafeHref(href) ? { label: text.slice(at + 1, close), href, end: j + 1 } : null;
+        return isSafeHref(href) || fileTarget(href) ? { label: text.slice(at + 1, close), href, end: j + 1 } : null;
       }
       depth--;
     }
@@ -130,7 +150,7 @@ export function parseInline(text: string, links = true): InlineToken[] {
       const link = links ? readLink(text, at) : null;
       if (!link) continue;
       pushText(text.slice(last, at));
-      out.push({ kind: "link", href: link.href, children: parseInline(link.label, false) });
+      out.push({ kind: fileTarget(link.href) ? "file" : "link", href: link.href, children: parseInline(link.label, false) });
       last = link.end;
       re.lastIndex = link.end;
     } else {
@@ -145,7 +165,7 @@ export function parseInline(text: string, links = true): InlineToken[] {
         continue;
       }
       pushText(text.slice(last, at));
-      out.push({ kind: "link", href: url, children: [{ kind: "text", text: url }] });
+      out.push({ kind: fileTarget(url) ? "file" : "link", href: url, children: [{ kind: "text", text: url }] });
       last = at + url.length;
       re.lastIndex = last;
     }

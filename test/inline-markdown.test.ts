@@ -57,6 +57,8 @@ describe("parseInline", () => {
     ]);
   });
 
+  // A path or a file: URL is a file token, never a link: the app asks the
+  // server whether it is a shared file (test/shared-file-links.test.ts).
   test("only http and https become links; mailto stays text", () => {
     for (const bad of [
       "[mail me](mailto:a@b.com)",
@@ -64,8 +66,6 @@ describe("parseInline", () => {
       "[x](javascript:alert(1))",
       "[x](JavaScript:alert(1))",
       "[x](data:text/html,<b>hi</b>)",
-      "[x](file:///etc/passwd)",
-      "[x](/relative)",
       "[x](vbscript:msgbox)",
       "[x](https://)",
     ]) {

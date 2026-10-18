@@ -9,9 +9,10 @@
 // It reads its credential from the environment, which is where the turn
 // put it. Nothing is stored, nothing is cached, and there is no login: a
 // credential that outlives its turn would be a credential worth stealing.
-import { readFileSync } from "node:fs";
+import { createReadStream, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { Readable } from "node:stream";
 
 // the running server writes its port down, and it is not always 8799
 const writtenPort = (() => {
@@ -567,6 +568,41 @@ const COMMANDS = {
       return request("POST", `/api/bots/${me.botId}/show`, { kind, data });
     },
   },
+  share: {
+    use: "share <file> [--as <name>]",
+    about:
+      "put one file in the conversation as a card the person can open in the app, here or on their phone, and get back a link " +
+      "to write in your reply. The file can be anywhere on this computer you can read: it is copied into your files unless it " +
+      "is already there. --as names the copy, folders allowed (reports/q3.pdf)",
+    run: async (args) => {
+      const flags = parseFlags(args);
+      const [file] = positional(args);
+      if (!file) throw new Error("share needs the file, as a path");
+      const at = resolve(file);
+      let real;
+      try {
+        real = realpathSync(at);
+      } catch {
+        throw new Error(`there is no file at ${at}`);
+      }
+      if (!statSync(real).isFile()) throw new Error("share takes one file, not a folder. Share the files in it one at a time");
+      const me = await request("GET", "/api/agent/whoami");
+      // Already in its files: no copy, the card points at the file as it is.
+      let root = null;
+      try {
+        root = me.files ? realpathSync(me.files) : null;
+      } catch {}
+      const rel = root ? relative(root, real) : "";
+      const there = rel && !rel.startsWith("..") && !isAbsolute(rel) && !rel.split(sep).some((part) => part.startsWith("."));
+      if (there && flags.as === undefined) {
+        return request("POST", `/api/bots/${me.botId}/artifacts`, { name: rel.split(sep).join("/") });
+      }
+      // Anywhere else: this command reads it, as the agent, and sends the
+      // bytes. The workspace never opens a path it is handed.
+      const name = flags.as && flags.as !== "true" ? flags.as : basename(at);
+      return upload(`/api/bots/${me.botId}/artifacts?name=${encodeURIComponent(name)}`, real);
+    },
+  },
   skill: {
     use: "skill <id>",
     about: "read one skill in full",
@@ -706,6 +742,47 @@ function parseFlags(args) {
     flags[arg.slice(2)] = next !== undefined && !next.startsWith("--") ? (i++, next) : "true";
   }
   return flags;
+}
+
+/** The words that are not flags or a flag's value. */
+function positional(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith("--")) {
+      if (!arg.includes("=") && args[i + 1] !== undefined && !args[i + 1].startsWith("--")) i++;
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
+/** One file's bytes, streamed rather than read whole: a recording can be
+ * larger than this process would want to hold. */
+async function upload(path, file) {
+  const response = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/octet-stream",
+      "content-length": String(statSync(file).size),
+      authorization: `Bearer ${TOKEN}`,
+      origin: BASE,
+    },
+    body: Readable.toWeb(createReadStream(file)),
+    duplex: "half",
+  }).catch((error) => {
+    throw new Error(unreachable(error));
+  });
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`the workspace answered something that is not JSON: ${text.slice(0, 200)}`);
+  }
+  if (!response.ok) throw new Error(parsed.error ?? `${response.status} ${response.statusText}`);
+  return parsed;
 }
 
 /**
