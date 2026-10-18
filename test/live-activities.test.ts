@@ -113,6 +113,19 @@ test("waiting changes only when a card does, and only for the card it showed", a
   assert.deepEqual(f.pushes.at(-1) && [f.pushes.at(-1)!.state, f.pushes.at(-1)!.sealed], ["working", "sealed:phone-a:Agent a1-lane"]);
 });
 
+test("a card that comes before a pushed activity's token is shown once the token does", async () => {
+  const f = fixture();
+  f.live.register("phone-a", { start: token(1) });
+  f.busy.add("a1-lane");
+  f.live.started("a1-lane");
+  await tick();
+  f.live.waiting("a1-lane", "card-1", true, "Ship the example?");
+  assert.deepEqual(f.pushes.map((p) => p.event), ["start"], "nothing to reach it with yet");
+  f.live.register("phone-a", { activities: [{ token: token(2), agentId: "a1", laneId: "a1-lane" }] });
+  assert.deepEqual(f.pushes.at(-1) && [f.pushes.at(-1)!.event, f.pushes.at(-1)!.state, f.pushes.at(-1)!.token], ["update", "needs-you", token(2)]);
+  assert.equal(f.pushes.at(-1)!.sealed, "sealed:phone-a:Agent a1-lane:Ship the example?");
+});
+
 test("tokens survive a restart, the sweep ends what the restart left behind, and an unpaired phone loses everything", async () => {
   const dir = mkdtempSync(join(tmpdir(), "bloks-activities-"));
   try {

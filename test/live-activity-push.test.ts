@@ -144,9 +144,11 @@ test("a question turns the activity to waiting for the person, and its answer tu
   assert.ok(await waitFor(() => phone.pushes.find((x) => x.event === "start")), "no activity started");
   await phone.report({ env: "sandbox", activities: [{ token: ACTIVITY, agentId: bot.id, laneId: bot.threadId }] });
 
-  const asking = await waitFor(() => phone.pushes.find((x) => x.event === "update" && x.state === "needs-you"));
+  // The card may come before the start goes out, and then the activity
+  // starts waiting; or after, and then it changes to waiting.
+  const asking = await waitFor(() => phone.pushes.find((x) => x.state === "needs-you"));
   assert.ok(asking, "a card waiting for the person did not reach the Lock Screen");
-  assert.equal(asking.token, ACTIVITY);
+  if (asking.event === "update") assert.equal(asking.token, ACTIVITY);
   assert.equal(asking.words?.name, "Mira");
   assert.equal(typeof asking.words?.question, "string");
   const card = (await h.json(`/api/bots/${bot.id}/messages?thread=${bot.threadId}&limit=100`)).messages.find((m: any) => m.kind === "options" && m.card?.requestId);
@@ -155,7 +157,7 @@ test("a question turns the activity to waiting for the person, and its answer tu
   await h.json(`/api/bots/${bot.id}/respond`, { method: "POST", body: JSON.stringify({ requestId: card.card.requestId, behavior: "answer", message: "Yes" }) });
   const back = await waitFor(() => phone.pushes.find((x) => x.event === "update" && x.state === "working"));
   assert.ok(back, "the answered card left the activity waiting");
-  assert.equal(phone.pushes.filter((x) => x.event === "update" && x.state === "needs-you").length, 1, "one card, one change");
+  assert.equal(phone.pushes.filter((x) => x.state === "needs-you").length, 1, "one card, one change");
   assert.ok(await idle(h, bot));
   assert.ok(await waitFor(() => phone.pushes.find((x) => x.event === "end")), "the activity outlived its turn");
 });

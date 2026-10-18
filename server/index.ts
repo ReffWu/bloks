@@ -7383,10 +7383,13 @@ const liveActivities = new LiveActivities({
     if (!found || found.bot.hidden || found.bot.archivedAt) return null;
     const roomId = activeRoom.get(laneId);
     const room = roomId && roomId !== laneId ? bloks.get(roomId) : null;
+    const where = room?.id ?? laneId;
+    const blocked = blockedOn(store.messagesFor(where), liveCards());
     return {
       agentId: found.bot.id,
       startedAt: turnStarted.get(laneId) ?? Date.now(),
-      where: room?.id ?? laneId,
+      where,
+      ...(blocked ? { asking: { messageId: blocked.messageId, question: blocked.asks } } : {}),
       words: {
         name: found.bot.name.slice(0, 60),
         color: found.bot.color,

@@ -65,6 +65,8 @@ export interface ActivityTurn {
   startedAt: number;
   where: string;
   words: ActivityWords;
+  /** A card in `where` already waiting for the person, if there is one. */
+  asking?: { messageId: string; question: string };
 }
 
 interface Tracked {
@@ -76,8 +78,13 @@ interface Tracked {
   env: ActivityEnv;
   /** When this device's activity began, so the oldest is the one replaced. */
   at: number;
-  /** The card it shows as waiting for the person, if any. */
+  /** The card it shows as waiting for the person, if any, and what the
+   * card asks. Kept even before the token is known, so an activity whose
+   * token arrives after its card still shows it. */
   waitingOn?: string;
+  asking?: string;
+  /** The card a push-started activity already showed when it started. */
+  startedOn?: string;
 }
 
 interface DeviceRecord {
@@ -135,7 +142,9 @@ function isTracked(value: unknown): value is Tracked {
     ID.test(a.laneId) &&
     (a.token === null || (typeof a.token === "string" && TOKEN.test(a.token))) &&
     isEnv(a.env) &&
-    typeof a.at === "number"
+    typeof a.at === "number" &&
+    (a.waitingOn === undefined || typeof a.waitingOn === "string") &&
+    (a.asking === undefined || typeof a.asking === "string")
   );
 }
 
@@ -198,8 +207,12 @@ export class LiveActivities {
       // report for an agent already here is that same activity, whether
       // the phone started it or a push did and this is its new token.
       const known = record.activities.find((t) => t.agentId === a.agentId);
-      if (known) Object.assign(known, { token, laneId, env });
-      else record.activities.push({ agentId: a.agentId, laneId, token, env, at: this.now() });
+      if (known) {
+        const first = known.token === null;
+        Object.assign(known, { token, laneId, env });
+        // a card came while the push-started activity had no token yet
+        if (first && known.waitingOn && known.waitingOn !== known.startedOn && this.deps.running(laneId)) this.update(deviceId, known);
+      } else record.activities.push({ agentId: a.agentId, laneId, token, env, at: this.now() });
       settle.push(laneId);
     }
     record.activities = record.activities.slice(-MAX_PER_DEVICE);
@@ -237,14 +250,25 @@ export class LiveActivities {
         const oldest = record.activities.reduce((a, b) => (b.at < a.at ? b : a));
         this.end(record, oldest);
       }
-      const tracked: Tracked = { agentId: turn.agentId, laneId, token: null, env: record.start.env, at: this.now() };
+      const tracked: Tracked = {
+        agentId: turn.agentId,
+        laneId,
+        token: null,
+        env: record.start.env,
+        at: this.now(),
+        // a question asked in the moments before the start went out
+        ...(turn.asking
+          ? { waitingOn: turn.asking.messageId, asking: turn.asking.question.slice(0, 120), startedOn: turn.asking.messageId }
+          : {}),
+      };
       record.activities.push(tracked);
-      const sealed = this.deps.seal(deviceId, turn.words) ?? undefined;
+      const words = tracked.asking ? { ...turn.words, question: tracked.asking } : turn.words;
+      const sealed = this.deps.seal(deviceId, words) ?? undefined;
       const result = await this.deps.send({
         token: record.start.token,
         env: record.start.env,
         event: "start",
-        state: "working",
+        state: tracked.waitingOn ? "needs-you" : "working",
         startedAt: turn.startedAt,
         ...(sealed ? { sealed } : {}),
         agentId: turn.agentId,
@@ -290,23 +314,34 @@ export class LiveActivities {
     for (const [deviceId, record] of this.records) {
       if (!owners.has(deviceId)) continue;
       for (const a of record.activities) {
-        if (!a.token || (on ? a.waitingOn === messageId : a.waitingOn !== messageId)) continue;
+        if (on ? a.waitingOn === messageId : a.waitingOn !== messageId) continue;
         const turn = this.deps.turn(a.laneId);
         if (!turn || turn.where !== where || !this.deps.running(a.laneId)) continue;
-        if (on) a.waitingOn = messageId;
-        else delete a.waitingOn;
-        const words = on && question ? { ...turn.words, question: question.slice(0, 120) } : turn.words;
-        const sealed = this.deps.seal(deviceId, words) ?? undefined;
-        void this.deps.send({
-          token: a.token,
-          env: a.env,
-          event: "update",
-          state: on ? "needs-you" : "working",
-          startedAt: turn.startedAt,
-          ...(sealed ? { sealed } : {}),
-        });
+        if (on) Object.assign(a, { waitingOn: messageId, asking: question?.slice(0, 120) });
+        else {
+          delete a.waitingOn;
+          delete a.asking;
+        }
+        this.update(deviceId, a);
       }
     }
+  }
+
+  /** Tells one activity what it shows now: waiting on a card, or working. */
+  private update(deviceId: string, a: Tracked) {
+    if (!a.token) return;
+    const turn = this.deps.turn(a.laneId);
+    if (!turn) return;
+    const words = a.waitingOn && a.asking ? { ...turn.words, question: a.asking } : turn.words;
+    const sealed = this.deps.seal(deviceId, words) ?? undefined;
+    void this.deps.send({
+      token: a.token,
+      env: a.env,
+      event: "update",
+      state: a.waitingOn ? "needs-you" : "working",
+      startedAt: turn.startedAt,
+      ...(sealed ? { sealed } : {}),
+    });
   }
 
   /** The device was unpaired: everything it handed over goes with it. */
