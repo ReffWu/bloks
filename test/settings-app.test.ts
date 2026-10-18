@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { startHarness, type Harness } from './helpers/server.ts';
 import { SETTINGS_CATEGORIES } from '../server/settings-pages.ts';
+import { ASK_REUSE_MS } from '../server/settings-devices.ts';
 import { startRemoteProxy } from '../electron/remote.mjs';
 import { keyFromToken, open, peek } from '../server/relay-crypto.ts';
 
@@ -22,23 +23,38 @@ async function command(h: Harness, token: string, args: string[]) {
   child.stdout.on('data', (b) => out += b); child.stderr.on('data', (b) => err += b);
   const [code] = await once(child, 'close'); return { code, out, err };
 }
-async function ownerStream(h: Harness, token = 'fixture-owner') {
+/** An owner event stream that keeps every frame it is sent, so a test can
+ * say both what arrived and what did not. */
+async function ownerStream(origin: string, headers: Record<string, string> = {}) {
   const stop = new AbortController();
-  const res = await fetch(h.url + '/api/events', { signal: stop.signal, headers: { authorization: `Bearer ${token}` } });
+  const res = await fetch(origin + '/api/events', { signal: stop.signal, headers });
   assert.equal(res.status, 200);
-  const reader = res.body!.getReader(); const decoder = new TextDecoder(); let text = '';
-  for (;;) {
-    const next = await reader.read(); assert.ok(!next.done);
-    text += decoder.decode(next.value);
-    const frames = text.split('\n\n').filter((line) => line.startsWith('data: ')).map((line) => JSON.parse(line.slice(6)));
-    const control = frames.find((frame) => frame.kind === 'settings-report');
-    if (control) {
-      assert.equal(frames[0].kind, 'hello', 'private admission must not displace hello');
-      assert.equal(frames.filter((frame) => frame.kind === 'settings-report').length, 1);
-      return { stop: () => stop.abort(), control };
+  const reader = res.body!.getReader(); const decoder = new TextDecoder();
+  const frames: any[] = []; let text = '';
+  const waiters = new Set<() => void>();
+  void (async () => {
+    try {
+      for (;;) {
+        const next = await reader.read(); if (next.done) return;
+        text += decoder.decode(next.value);
+        const parts = text.split('\n\n'); text = parts.pop()!;
+        for (const part of parts) if (part.startsWith('data: ')) frames.push(JSON.parse(part.slice(6)));
+        for (const wake of [...waiters]) wake();
+      }
+    } catch { /* aborted */ }
+  })();
+  const next = async (kind: string, after = 0) => {
+    for (let i = 0; i < 200; i++) {
+      const found = frames.slice(after).find((frame) => frame.kind === kind);
+      if (found) return found;
+      await new Promise<void>((resolve) => { const wake = () => { waiters.delete(wake); resolve(); }; waiters.add(wake); setTimeout(wake, 50); });
     }
-  }
+    throw new Error(`no ${kind} frame arrived`);
+  };
+  await next('hello');
+  return { stop: () => stop.abort(), frames, next };
 }
+const snapshot = (theme: string) => ({ schema: 1, revision: 1, observedAt: 10, values: { 'theme.applied': { status: 'observed', value: theme } } });
 
 test('S1-S5 actual index routes and real CLI use owner metadata without read-triggered IO or providers', { timeout: 60_000 }, async (t) => {
   const files = mkdtempSync(join(tmpdir(), 'bloks-settings-app-'));
@@ -67,6 +83,33 @@ test('S1-S5 actual index routes and real CLI use owner metadata without read-tri
     return response.json();
   };
 
+  // First, before any other read has made an ask this one could join.
+  await t.test('open owner windows are asked once per inspection, answer privately and are dated against the ask', async (st) => {
+    const a = await ownerStream(app.url, { authorization: 'Bearer fixture-owner' });
+    const b = await ownerStream(app.url);
+    st.after(a.stop); st.after(b.stop);
+    // nothing is asked while nobody inspects, and a non-device read asks nothing
+    await read('workspace.general');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok(![...a.frames, ...b.frames].some((frame) => frame.kind === 'settings-request'));
+    const reading = read('device.browser');
+    const [ra, rb] = await Promise.all([a.next('settings-request'), b.next('settings-request')]);
+    assert.equal(ra.request, rb.request, 'one ask, sent to every owner stream');
+    assert.equal(ra._seq, undefined, 'the ask is not a sequenced, replayable frame');
+    for (const [stream, theme, label] of [[ra, 'dark', 'fixture-window-a'], [rb, 'light', 'fixture-window-b']] as const) {
+      const sent = await request('/api/settings/device-report', undefined, 'POST', { kind: 'window', request: stream.request, label, snapshot: snapshot(theme) });
+      assert.equal(sent.status, 200);
+    }
+    const observations = await reading; const text = JSON.stringify(observations);
+    assert.match(text, /dark/); assert.match(text, /light/);
+    assert.equal((text.match(/"freshness":"current"/g) ?? []).length, 2);
+    assert.ok(!text.includes(ra.request), 'the ask id is never shown');
+    // a second read straight after joins the same ask: no second frame
+    const again = await read('device.browser');
+    assert.equal((JSON.stringify(again).match(/"freshness":"current"/g) ?? []).length, 2);
+    assert.equal([...a.frames].filter((frame) => frame.kind === 'settings-request').length, 1);
+  });
+
   await t.test('all 25 categories traverse real authentication and loaded-owner projection', async () => {
     const index = await request('/api/agent/settings', tokens.alpha);
     assert.equal(index.status, 200); const advertised = await index.json();
@@ -84,9 +127,9 @@ test('S1-S5 actual index routes and real CLI use owner metadata without read-tri
     assert.ok(JSON.stringify(skills).includes('natural skill-owner reads only'));
   });
 
-  await t.test('members, invalid and expired credentials and raw writes cannot enter inspection or report owners', async () => {
+  await t.test('members, invalid and expired credentials and raw writes cannot enter inspection or reports', async () => {
     for (const [token, status] of [['fixture-member', 403], ['invalid', 401], [tokens.expired!, 401], ['', 401]] as const) {
-      for (const path of ['/api/agent/settings', '/api/settings/device-session', '/api/settings/device-report']) {
+      for (const path of ['/api/agent/settings', '/api/settings/device-report']) {
         const response = await request(path, token, path.endsWith('settings') ? 'GET' : 'POST', path.endsWith('settings') ? undefined : { secret: 'REJECTED BODY SENTINEL' });
         assert.equal(response.status, status, `${path} ${status}`);
         assert.ok(!(await response.text()).includes('SENTINEL'));
@@ -98,12 +141,12 @@ test('S1-S5 actual index routes and real CLI use owner metadata without read-tri
     }
     for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) {
       assert.equal((await request('/api/config', tokens.alpha, method, method === 'GET' ? undefined : {})).status, 403);
-      for (const path of ['/api/settings/device-session', '/api/settings/device-report']) {
-        assert.equal((await request(path, tokens.alpha, method, method === 'GET' ? undefined : {})).status, 403);
-      }
+      assert.equal((await request('/api/settings/device-report', tokens.alpha, method, method === 'GET' ? undefined : {})).status, 403);
     }
-    const forged = await app.fetch('/api/agent/settings', { headers: { 'x-bloks-relay-device': 'owner-device' } });
-    assert.equal(forged.status, 401);
+    const unasked = await request('/api/settings/device-report', undefined, 'POST', { kind: 'window', label: 'fixture-window', snapshot: snapshot('dark') });
+    assert.equal(unasked.status, 409, 'a loopback caller cannot plant a window report nobody asked for');
+    const oversized = await request('/api/settings/device-report', undefined, 'POST', { kind: 'window', sentinel: 'BODY SENTINEL'.repeat(3000) });
+    assert.equal(oversized.status, 400); assert.ok(!(await oversized.text()).includes('SENTINEL'));
   });
 
   await t.test('room visibility precedes totals, selection and signed caller/category continuations', async () => {
@@ -141,33 +184,6 @@ test('S1-S5 actual index routes and real CLI use owner metadata without read-tri
     assert.equal(JSON.parse(readFileSync(tracePath, 'utf8')).readRequests, before + 1);
   });
 
-  await t.test('real direct SSE sessions report independently, keep authority private and invalidate actual close', async (st) => {
-    const a = await ownerStream(app); const b = await ownerStream(app);
-    st.after(a.stop); st.after(b.stop);
-    assert.notEqual(a.control.windowKey, b.control.windowKey);
-    const data = (theme: string, revision: number) => ({ schema: 1, revision, observedAt: 10, values: { 'theme.applied': { status: 'observed', value: theme } } });
-    for (const [stream, theme] of [[a, 'dark'], [b, 'light']] as const) {
-      assert.equal((await request('/api/settings/device-report', 'fixture-owner', 'POST', { admission: stream.control.admission, sequence: 1, snapshot: data(theme, 1) })).status, 200);
-    }
-    const observations = await read('device.browser'); const text = JSON.stringify(observations);
-    assert.match(text, /dark/); assert.match(text, /light/);
-    for (const stream of [a, b]) for (const secret of [stream.control.windowKey, stream.control.admission.capability, stream.control.admission.generation]) assert.ok(!text.includes(secret));
-    const oversized = await request('/api/settings/device-report', 'fixture-owner', 'POST', { admission: a.control.admission, sentinel: 'BODY SENTINEL'.repeat(3000) });
-    assert.equal(oversized.status, 400); assert.ok(!(await oversized.text()).includes('SENTINEL'));
-    assert.equal((await request('/api/settings/device-report', 'fixture-owner', 'POST', { admission: b.control.admission, sequence: 1, snapshot: data('dark', 2) })).status, 409);
-    a.stop();
-    let closed = false;
-    for (let i = 0; i < 30; i++) {
-      const page = await read('device.browser');
-      closed = JSON.stringify(page).includes('observed-closed');
-      if (closed) break;
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-    assert.ok(closed, 'actual response close did not invalidate the window');
-    assert.equal((await request('/api/settings/device-session', 'fixture-owner', 'POST', { action: 'renew', windowKey: a.control.windowKey })).status, 409);
-    const retained = JSON.stringify(await read('device.browser')); assert.match(retained, /dark/); assert.match(retained, /unknown/);
-  });
-
   const trace = JSON.parse(readFileSync(tracePath, 'utf8'));
   assert.deepEqual(trace.readEffects, [], 'inspection reached IO, provider or registry discovery');
   assert.ok(trace.readRequests > 30, 'request-context traps did not observe the real read path');
@@ -176,9 +192,10 @@ test('S1-S5 actual index routes and real CLI use owner metadata without read-tri
   await app.stop(); h = undefined; assert.ok(!existsSync(app.home), 'fixture HOME was not removed');
 });
 
-test('D1 real index and RelayLink with actual Electron proxy keep separate remote windows and report authority private', { timeout: 60_000 }, async (t) => {
+test('D1 a window on a paired computer answers an ask through the sealed relay, and members are never asked', { timeout: 60_000 }, async (t) => {
   // The relay only forwards encrypted payloads. The production RelayLink owns
-  // device authentication, anti-replay and trusted request attribution.
+  // device authentication, anti-replay and trusted request attribution. The
+  // Electron remote proxy is the paired computer, its windows the streams.
   const files = mkdtempSync(join(tmpdir(), 'bloks-settings-app-relay-'));
   const tracePath = join(files, 'trace.json'); writeFileSync(join(files, 'index.html'), '<!doctype html><title>Fixture</title>');
   const pending = new Map<string, ServerResponse>(); const clients = new Set<ServerResponse>();
@@ -213,9 +230,12 @@ test('D1 real index and RelayLink with actual Electron proxy keep separate remot
   });
   relay.listen(0, '127.0.0.1'); await once(relay, 'listening');
   const relayUrl = `http://127.0.0.1:${(relay.address() as { port: number }).port}`;
-  let h: Harness | undefined; let proxy: Awaited<ReturnType<typeof startRemoteProxy>> | undefined;
+  let h: Harness | undefined;
+  const proxies: Awaited<ReturnType<typeof startRemoteProxy>>[] = [];
+  const streams: { stop: () => void }[] = [];
   t.after(async () => {
-    proxy?.stop(); if (h) { await h.stop(); assert.ok(!existsSync(h.home), 'remote fixture HOME was not removed'); }
+    streams.forEach((stream) => stream.stop());
+    proxies.forEach((proxy) => proxy.stop()); if (h) { await h.stop(); assert.ok(!existsSync(h.home), 'remote fixture HOME was not removed'); }
     relay.closeAllConnections(); await new Promise<void>((resolve) => relay.close(() => resolve()));
     if (existsSync(tracePath)) t.diagnostic(`fixture trace: ${readFileSync(tracePath, 'utf8')}`);
     rmSync(files, { recursive: true, force: true });
@@ -223,60 +243,56 @@ test('D1 real index and RelayLink with actual Electron proxy keep separate remot
   h = await startHarness({ NODE_OPTIONS: `--import=${new URL('./helpers/settings-app-preload.mjs', import.meta.url).href}`,
     BLOKS_SETTINGS_TEST_TRACE: tracePath, BLOKS_SETTINGS_TEST_RELAY: relayUrl, BLOKS_LOOPBACK_ONLY: '1' });
   await connection;
-  proxy = await startRemoteProxy({ relayUrl, relayToken: 'fixture-relay-client', deviceId: 'owner-device', deviceToken: 'fixture-owner' }, { staticDir: files });
-  const origin = `http://127.0.0.1:${proxy.port}`;
-  const post = async (path: string, body: unknown, headers: Record<string, string> = {}) => {
-    const response = await fetch(origin + path, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
-    return { status: response.status, body: await response.json() };
+  const computer = await startRemoteProxy({ relayUrl, relayToken: 'fixture-relay-client', deviceId: 'owner-device', deviceToken: 'fixture-owner' },
+    { staticDir: files });
+  const member = await startRemoteProxy({ relayUrl, relayToken: 'fixture-relay-member', deviceId: 'member-device', deviceToken: 'fixture-member' }, { staticDir: files });
+  proxies.push(computer, member);
+  const origin = `http://127.0.0.1:${computer.port}`;
+  const post = async (base: string, body: unknown) => {
+    const response = await fetch(base + '/api/settings/device-report', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return response.status;
   };
-  const streams: { stop: () => void; control: any }[] = [];
-  t.after(() => streams.forEach((stream) => stream.stop()));
-  for (let i = 0; i < 2; i++) {
-    const stop = new AbortController(); const res = await fetch(origin + '/api/events', { signal: stop.signal });
-    assert.equal(res.status, 200); const reader = res.body!.getReader(); const decoder = new TextDecoder(); let bytes = ''; let control: any;
-    while (!control) {
-      const next = await reader.read(); assert.ok(!next.done); bytes += decoder.decode(next.value);
-      control = bytes.split('\n\n').filter((line) => line.startsWith('data: ')).map((line) => JSON.parse(line.slice(6))).find((frame) => frame.kind === 'settings-report');
-    }
-    streams.push({ stop: () => stop.abort(), control });
-  }
-  for (const [i, stream] of streams.entries()) {
-    const result = await post('/api/settings/device-session', { action: 'renew', windowKey: stream.control.windowKey });
-    assert.equal(result.status, 200, 'remote report admission did not reach real workspace auth');
-    stream.control.admission = result.body.admission;
-    const sent = await post('/api/settings/device-report', { ...stream.control, sequence: 1,
-      snapshot: { schema: 1, revision: 1, observedAt: 10, values: { 'theme.applied': { status: 'observed', value: i ? 'light' : 'dark' } } } });
-    assert.equal(sent.status, 200);
-  }
-  assert.notEqual(streams[0]!.control.windowKey, streams[1]!.control.windowKey);
-  const read = async () => {
-    const response = await h!.fetch('/api/agent/settings?category=device.browser'); assert.equal(response.status, 200); return response.json();
+  const read = async (category: string) => {
+    const response = await h!.fetch(`/api/agent/settings?category=${category}`); assert.equal(response.status, 200); return response.json();
   };
-  const inspected = await read();
-  const observations = inspected.rows.map((row: { observation: any }) => row.observation).filter((row: any) => row.source);
-  assert.equal(observations.length, 2, 'workspace SSE association cannot represent proxy-local windows');
-  for (const row of observations) { assert.equal(row.source.path, 'remote'); assert.equal(row.transportKnowledge, 'unconfirmed'); }
-  assert.match(JSON.stringify(inspected), /dark/); assert.match(JSON.stringify(inspected), /light/);
-  for (const stream of streams) for (const secret of [stream.control.windowKey, stream.control.admission.capability, stream.control.admission.generation]) {
-    assert.ok(!JSON.stringify(inspected).includes(secret));
-  }
-  assert.equal((await post('/api/settings/device-report', { windowKey: streams[1]!.control.windowKey, admission: streams[0]!.control.admission, sequence: 2 })).status, 409);
-  assert.equal((await post('/api/settings/device-session', { action: 'renew', windowKey: streams[0]!.control.windowKey }, { authorization: 'Bearer fixture-member' })).status, 403);
-  streams[0]!.stop();
-  let observedClose = false;
-  for (let i = 0; i < 30; i++) {
-    observedClose = JSON.stringify(await read()).includes('observed-closed'); if (observedClose) break;
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  }
-  assert.ok(observedClose, 'proxy close did not invalidate its real workspace generation');
-  assert.equal((await h.fetch('/api/pair/devices/owner-device', { method: 'DELETE' })).status, 200);
-  const revoked = JSON.stringify(await read()); assert.match(revoked, /revoked/); assert.match(revoked, /light/);
-  const afterRevoke = await post('/api/settings/device-session', { action: 'renew', windowKey: streams[1]!.control.windowKey });
-  assert.notEqual(afterRevoke.status, 200, 'revoked encrypted device renewed report authority');
+
+  // Nothing asks until an inspection reads a device category.
+  const stream = await ownerStream(origin); streams.push(stream);
+  await read('workspace.general');
+  const reading = read('device.browser');
+  const ask = await stream.next('settings-request');
+  assert.equal(await post(origin, { kind: 'window', request: ask.request, label: 'remote-window-1', snapshot: snapshot('dark') }), 200);
+  // a member's computer is turned away by the guard before any owner route
+  assert.notEqual(await post(`http://127.0.0.1:${member.port}`, { kind: 'window', request: ask.request, label: 'member-window', snapshot: snapshot('light') }), 200);
+  const browser = JSON.stringify(await reading);
+  assert.match(browser, /"path":"relay"/); assert.match(browser, /paired-owner-device/); assert.match(browser, /dark/);
+  assert.match(browser, /"freshness":"current"/); assert.ok(!browser.includes('light'));
+  assert.ok(!browser.includes(ask.request), 'the ask id is never shown');
+
+  // Past the reuse window a read asks again; a window that does not answer
+  // keeps its last word, dated, and is never shown as current.
+  await new Promise((resolve) => setTimeout(resolve, ASK_REUSE_MS + 100));
+  const seen = stream.frames.length;
+  const again = read('device.browser');
+  await stream.next('settings-request', seen);
+  const stale = JSON.stringify(await again);
+  assert.match(stale, /last-reported/); assert.ok(!stale.includes('"freshness":"current"'));
+
+  // The asks went sealed to the owner's device only, one per burst of reads.
+  let asked = 0;
   for (const payload of eventPayloads) {
     const envelope = peek(payload); if (!envelope) continue;
-    const frame = open(keyFromToken('fixture-owner', 'mac-to-phone'), envelope);
-    assert.ok(!JSON.stringify(frame).includes('settings-report'), 'private control entered the broadcast relay stream');
+    const owner = envelope.d === 'owner-device';
+    const frame = open(keyFromToken(owner ? 'fixture-owner' : 'fixture-member', 'mac-to-phone'), envelope);
+    if ((frame as { kind?: string } | null)?.kind === 'settings-request') { assert.ok(owner, 'a member device was asked'); asked++; }
   }
-  const trace = JSON.parse(readFileSync(tracePath, 'utf8')); assert.deepEqual(trace.readEffects, []); assert.equal(trace.modelCalls, 0);
+  assert.equal(asked, 2, 'one ask per burst of reads');
+
+  // Revoked, the computer's word goes with it and it cannot answer again.
+  assert.equal((await h.fetch('/api/pair/devices/owner-device', { method: 'DELETE' })).status, 200);
+  assert.ok(!JSON.stringify(await read('device.browser')).includes('remote-window-1'));
+  assert.notEqual(await post(origin, { kind: 'window', request: ask.request, label: 'remote-window-1', snapshot: snapshot('dark') }), 200);
+
+  const trace = JSON.parse(readFileSync(tracePath, 'utf8'));
+  assert.deepEqual(trace.readEffects, []); assert.equal(trace.modelCalls, 0);
 });

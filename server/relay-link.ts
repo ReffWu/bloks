@@ -301,9 +301,11 @@ export class RelayLink {
    *
    * Sealed once per paired device, because each device holds a different
    * key and the relay is a dumb fan-out. A phone silently drops envelopes
-   * addressed to anyone else.
+   * addressed to anyone else. `ownersOnly` keeps a frame meant for the
+   * owner's own devices off members' phones entirely, rather than trusting
+   * member-access.ts to drop a kind it has never heard of.
    */
-  publish(frame: unknown, wake?: Wake) {
+  publish(frame: unknown, wake?: Wake, ownersOnly = false) {
     if (!this.config || !this.state.connected) return;
     const devices = pairedDevices();
     // No devices still posts an empty batch: /space/agent/events touches
@@ -320,6 +322,7 @@ export class RelayLink {
     const sealed: Record<string, string> = {};
     const wantsPreview = typeof wake === "object" && wake.preview === true;
     for (const d of devices) {
+      if (ownersOnly && d.personId) continue;
       const shown = d.personId ? this.memberFrame(frame, d.personId) : frame;
       if (shown === null || shown === undefined) continue;
       frames.push(seal(deviceKey(d.hash, "mac-to-phone"), d.id, shown));

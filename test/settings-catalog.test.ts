@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { settingsCatalog, type SettingsCatalogInput } from "../server/settings-catalog.ts";
 import { SettingsPages, SETTINGS_CATEGORIES, SETTINGS_PAGE_BYTES } from "../server/settings-pages.ts";
-import { SettingsWindows } from "../server/settings-windows.ts";
+import { DeviceSettings } from "../server/settings-devices.ts";
 const secret='PRIVATE_CATALOG_SENTINEL';
 function fixture():SettingsCatalogInput{
   const cfg={secrets:{TOKEN:secret},agents:{turnLimit:24},mcpServers:[{id:'mcp',name:secret,transport:'stdio',command:secret}],providers:{grok:{key:secret}},telegram:{bots:{agent:{token:secret,ownerUserId:123,enabled:true,pairing:secret}}}};
@@ -17,7 +17,7 @@ function fixture():SettingsCatalogInput{
     profileNotes:[{id:'kept',text:secret,state:'kept'},{id:'suggested',text:secret,state:'suggested'}],sidebarSections:['Visible section'],
     skills:{lastObserved:{observedAt:100,invalidatedAt:null,omittedItems:0,items:[{id:'skill',name:secret,description:'A neutral fixture',version:null,source:'user',body:true,registry:false,sha256:false,omitted:[]}]},lastAttempt:{at:100,status:'complete'}},
     engines:[{id:'engine',loaded:true,input:{driver:'codex',displayName:secret,environment:{TOKEN:secret}}}],
-    ownerDevices:[{id:'device',name:secret},{id:'member',name:'Private member',personId:'person'}],windows:new SettingsWindows().inspect(),
+    ownerDevices:[{id:'device',name:secret}],devices:new DeviceSettings().inspect(null),
     boot:{version:'2.10.0',port:8799,listening:'loopback',timezone:'Etc/UTC',remoteEnabled:false}};
 }
 function page(pages:SettingsPages,input:SettingsCatalogInput,category:Parameters<typeof settingsCatalog>[0],id?:string){
@@ -55,15 +55,17 @@ test('projected instance, MCP and skill references resolve to the same category 
   }
 });
 
-test('device projection retains dated expired observations while excluding source device ids and all report authority',()=>{
-  let elapsed=0;const windows=new SettingsWindows({monotonic:()=>elapsed,wall:()=>1000+elapsed});
-  const source={path:'remote' as const,deviceId:secret};const opened=windows.open(source)!;
-  assert.ok(windows.report(source,opened.admission,1,{schema:1,revision:1,observedAt:1050,values:{'theme.applied':{status:'observed',value:'dark'},'native.mode':{status:'observed',value:'remote'}}}));
-  const input=fixture();input.windows=windows.inspect();const pages=new SettingsPages();
-  const fresh=page(pages,input,'device.browser');assert.match(JSON.stringify(fresh),/recent-observation/);
-  elapsed=60000;input.windows=windows.inspect();const expired=page(pages,input,'device.browser');const text=JSON.stringify(expired);
-  assert.match(text,/unknown/);assert.match(text,/dark/);assert.match(text,/unconfirmed/);
-  for(const protectedValue of [secret,opened.windowKey,opened.admission.capability,opened.admission.generation])assert.ok(!text.includes(protectedValue));
+test('device projection dates older answers as last-reported and never shows device ids or the ask',()=>{
+  let elapsed=0;const devices=new DeviceSettings({monotonic:()=>elapsed,wall:()=>1000+elapsed});
+  let request='';const first=devices.ask((frame)=>{request=frame.request;});
+  const source={path:'relay' as const,deviceId:secret};
+  assert.ok(devices.reportWindow(source,{request,label:'fixture-window',snapshot:{schema:1,revision:1,observedAt:1050,values:{'theme.applied':{status:'observed',value:'dark'},'native.mode':{status:'observed',value:'remote'}}}},null));
+  const input=fixture();input.devices=devices.inspect(first);const pages=new SettingsPages();
+  const fresh=JSON.stringify(page(pages,input,'device.browser'));assert.match(fresh,/"current"/);
+  elapsed=60000;const later=devices.ask(()=>{});input.devices=devices.inspect(later);
+  const text=JSON.stringify(page(pages,input,'device.browser'));
+  assert.match(text,/last-reported/);assert.match(text,/dark/);assert.ok(!text.includes('"current"'));
+  for(const protectedValue of [secret,request])assert.ok(!text.includes(protectedValue));
   const native=page(pages,input,'device.native');assert.match(JSON.stringify(native),/native.mode/);assert.ok(!JSON.stringify(native).includes('theme.applied'));
 });
 

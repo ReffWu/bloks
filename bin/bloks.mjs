@@ -33,7 +33,7 @@ const COMMANDS = {
   },
   settings: {
     use: "settings [--category <category>] [--id <reference>] [--cursor <continuation>]",
-    about: "inspect safe settings observations and their owner controls. Device values are dated client reports; missing and expired observations stay unknown. This command never refreshes devices or changes settings",
+    about: "inspect safe settings and their owner controls. A device category asks the owner's open windows once and says how fresh each answer is; nothing a device has not said is filled in. This command never changes a setting",
     run: (args) => {
       const flags = parseFlags(args);
       if (args.some((arg, i) => i % 2 === 0 && !["--category", "--id", "--cursor"].includes(arg)) || args.length % 2) {

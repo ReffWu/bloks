@@ -5,7 +5,7 @@ import { inspectionRedactor } from "./settings-redaction.ts";
 import { scalar, type WorkspaceInspectionInput, type InspectionField } from "./settings-inspection.ts";
 import type { SettingsPages, SettingsCategory } from "./settings-pages.ts";
 import type { observedSkillLibrary } from "./skills.ts";
-import type { SettingsWindows } from "./settings-windows.ts";
+import type { DeviceSettings } from "./settings-devices.ts";
 
 const get=(root:unknown,key:string)=>own(root,key).value;
 const array=(raw:unknown):unknown[]=>Array.isArray(raw)?raw:[];
@@ -22,8 +22,9 @@ export interface SettingsCatalogInput {
   profileNotes:readonly unknown[];sidebarSections:readonly string[];
   skills:ReturnType<typeof observedSkillLibrary>;
   engines:readonly {id:string;input:unknown;loaded:boolean}[];
-  ownerDevices:readonly unknown[];
-  windows:ReturnType<SettingsWindows['inspect']>;
+  /** Owner devices only, with what the pairing list already knows of them. */
+  ownerDevices:readonly {id:string;name:unknown;lastSeen?:number;client?:string}[];
+  devices:ReturnType<DeviceSettings['inspect']>;
   boot:{version:string;port:number;listening:'loopback'|'network';timezone:string|null;remoteEnabled:boolean};
 }
 
@@ -88,19 +89,17 @@ export function settingsCatalog(category:SettingsCategory,input:SettingsCatalogI
   }
   if(category==='workspace.policy')return input.rules.flatMap((r)=>{const key=id(r);return key?[projected(key,()=>inspectRuleSettings(r,ctx))]:[];});
   if(category==='device.browser'||category==='device.native'){
-    const rows:Row[]=[record('observation-boundary',()=>({control:'Device-owned controls',status:input.windows.windows.length?'dated-client-observations':'unknown',
-      evictedObservations:input.windows.evictedObservations,recordBounds:input.windows.limits,
-      meaning:'recent reports are authenticated observations, not independently attested current UI; expiry retains values'}))];
-    for(const window of input.windows.windows)rows.push(record(window.label,()=>{
-      const previous=window.lastReported;
-      const fields=previous?Object.entries(previous.snapshot.values).filter(([key])=>category==='device.native'?/^(native|window)\./.test(key):!/^(native|window)\./.test(key))
-        .map(([key,value])=>({id:key,control:deviceControl(key),reported:value})):null;
-      return {windowReference:pages.reference('device.browser',window.label),source:{path:window.source.path,identity:window.source.identity,
-        deviceReference:window.source.deviceId?pages.reference('workspace.devices',`device:${window.source.deviceId}`):null},
-        transportKnowledge:window.transport,freshness:window.freshness,lastReported:previous?{
-          issuedAt:previous.issuedAt,receivedAt:previous.receivedAt,clientObservedAt:previous.snapshot.observedAt,
-          revision:previous.snapshot.revision,sequence:previous.sequence,currentGeneration:previous.currentGeneration,fields,
-        }:null};
+    const windows=input.devices.entries;
+    const rows:Row[]=[record('observation-boundary',()=>({control:'Device-owned controls',
+      status:windows.length?'dated-client-observations':'unknown',askedAt:input.devices.askedAt,
+      droppedForSpace:input.devices.droppedForSpace,bounds:input.devices.bounds,
+      meaning:'open owner windows were asked once for this inspection; current means answered since that ask, last-reported is an older answer with its date, and a window that did not answer is not listed'}))];
+    for(const entry of windows)rows.push(record(entry.key,()=>{
+      const values=Object.entries(entry.window.values).filter(([key])=>category==='device.native'?/^(native|window)\./.test(key):!/^(native|window)\./.test(key))
+        .map(([key,value])=>({id:key,control:deviceControl(key),reported:value}));
+      return {windowReference:pages.reference('device.browser',entry.key),source:{path:entry.source.path,identity:entry.source.identity,
+        deviceReference:entry.source.deviceId?pages.reference('workspace.devices',`device:${entry.source.deviceId}`):null},
+        freshness:entry.freshness,receivedAt:entry.receivedAt,clientObservedAt:entry.clientObservedAt,fields:values};
     }));
     return rows;
   }
@@ -122,7 +121,7 @@ export function settingsCatalog(category:SettingsCategory,input:SettingsCatalogI
       configured:Boolean(get(binding,'token')),enabled:get(binding,'enabled')===true,ownerPaired:get(binding,'ownerUserId')!==undefined,
       pairingConfigured:Boolean(get(binding,'pairing'))})));
   }
-  if(category==='workspace.devices')for(const device of input.ownerDevices){const key=id(device);if(key && !get(device,'personId'))rows.push(record(`device:${key}`,()=>({control:'Settings > Phone and devices',name:scalar(get(device,'name'),redact),identity:'paired-owner-device',connection:'not inferred from pairing'})));}
+  if(category==='workspace.devices')for(const device of input.ownerDevices)rows.push(record(`device:${device.id}`,()=>({control:'Settings > Phone and devices',name:scalar(device.name??null,redact),identity:'paired-owner-device',client:scalar(device.client??null,redact),lastHeardFrom:device.lastSeen??null,connection:'not inferred from pairing'})));
   return rows;
 }
 

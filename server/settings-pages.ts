@@ -21,10 +21,9 @@ export type SettingsCategory = typeof SETTINGS_CATEGORIES[number][0];
 type RecordInput = { id: string; visible: boolean; project: () => object };
 export type SettingsPage = { status: number; body: object };
 const limits = [
-  "Public server and desktop slice; ALL settings coverage remains open.",
   "Private iPhone client contract is unavailable; issue 303 remains open.",
-  "Device values are authenticated client observations, not independently attested current UI.",
-  "Freshness expires 60 seconds after server issuance even for an idle open window. Last values remain dated observations.",
+  "Device values are what an authenticated owner window said, not independent proof of its screen.",
+  "Reading a device category asks open owner windows once and waits briefly; current means answered since that ask. Older answers stay, dated, as last-reported, for at most a day.",
   "Live collection pages use stable opaque references within this server boot. Insertions before the cursor can be missed; deletions disappear. Restart invalidates continuations.",
 ];
 

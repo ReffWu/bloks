@@ -18,10 +18,12 @@ async function fixture(t: {after:(fn:()=>Promise<void>)=>void}) {
     if(url.pathname !== '/api/agent/settings') {res.writeHead(404);res.end('{}');return;}
     // Fixture credentials deliberately separate from application auth. Actual
     // production index authentication and side-effect traps remain separate.
+    // Members, invites and unknown credentials are the server guard's to
+    // turn away before this handler; the handler only ever sees a reader.
     const token = req.headers.authorization;
-    const reader: SettingsReader = token === 'Bearer owner' ? {role:'owner',identity:'owner'} :
-      token === 'Bearer agent' ? {role:'agent',identity:'fixture-agent'} :
-      token === 'Bearer member' ? {role:'member'} : token === 'Bearer invite' ? {role:'invite'} : {role:'invalid'};
+    const reader: SettingsReader | null = token === 'Bearer owner' ? {role:'owner',identity:'owner'} :
+      token === 'Bearer agent' ? {role:'agent',identity:'fixture-agent'} : null;
+    if (!reader) { res.writeHead(token === 'Bearer member' ? 403 : 401, {'cache-control':'no-store'}); res.end('{}'); return; }
     serveSettingsRead(reader,req.method!,url.searchParams,res,pages,() => {
       reads++; return [{id:'workspace',visible:true,project:() => ({fields:[{id:'agents.turnLimit',effective:{status:'value',value:24},control:'Settings > General > Working with agents'}]})}];
     });
@@ -42,15 +44,15 @@ async function cli(base:string, token:string, args:string[]) {
 
 test('new narrow agent rule does not open old NEVER endpoints, writes or report authority',()=>{
   assert.equal(allows('fixture','GET','/api/agent/settings',()=>false).ok,true);
-  for(const path of [...NEVER,'/api/settings/device-report','/api/settings/device-session']) {
+  for(const path of [...NEVER,'/api/settings/device-report']) {
     for(const method of ['GET','POST','PUT','PATCH','DELETE']) assert.equal(allows('fixture',method,path,()=>false).ok,false,`${method} ${path}`);
   }
   for(const method of ['POST','PUT','PATCH','DELETE']) assert.equal(allows('fixture',method,'/api/agent/settings',()=>false).ok,false);
 });
 
-test('real HTTP read handler rejects member/invite/invalid and methods before owner access',async(t)=>{
+test('real HTTP read handler answers only a reader the guard produced, and only GET',async(t)=>{
   const f = await fixture(t);
-  for(const [token,status] of [['member',403],['invite',403],['expired',401],['',401]] as const) {
+  for(const [token,status] of [['member',403],['expired',401],['',401]] as const) {
     const res=await fetch(`${f.base}/api/agent/settings?category=workspace.general`,{headers:{authorization:`Bearer ${token}`}});
     assert.equal(res.status,status);assert.equal(res.headers.get('cache-control'),'no-store');
   }

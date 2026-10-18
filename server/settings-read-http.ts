@@ -1,10 +1,19 @@
-import type { ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { SettingsPages, type SettingsCategory } from "./settings-pages.ts";
 
-export type SettingsReader =
-  | { role: "owner"; identity: string }
-  | { role: "agent"; identity: string }
-  | { role: "member" | "invite" | "invalid" };
+/** Who is reading, as the server's guard already decided it. Members and
+ * invite holders never get this far: the guard hands them their own small
+ * surface before any owner route is matched. */
+export type SettingsReader = { role: "owner" | "agent"; identity: string };
+
+export const DEVICE_CATEGORIES: ReadonlySet<string> = new Set(["device.browser", "device.native"]);
+/** A report is a few kilobytes; anything near this is not one. */
+export const MAX_REPORT_BYTES = 16_384;
+
+export function noStore(res: ServerResponse, status: number, body: object): void {
+  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+  res.end(JSON.stringify(body));
+}
 
 /** Only the narrow route uses this projection. Caller identity is produced
  * by the existing authenticated request boundary, never a body/query field. */
@@ -13,17 +22,26 @@ export function serveSettingsRead(
   pages: SettingsPages,
   records: (category: SettingsCategory) => { id: string; visible: boolean; project: () => object }[],
 ): void {
-  const send = (status: number, body: object) => {
-    res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
-    res.end(JSON.stringify(body));
-  };
-  if (reader.role === "invalid") return send(401, { error: "settings inspection credential is not recognized" });
-  if (reader.role !== "owner" && reader.role !== "agent") return send(403, { error: "settings inspection is unavailable to this caller" });
-  if (method !== "GET") return send(405, { error: "settings inspection only accepts GET" });
+  if (method !== "GET") return noStore(res, 405, { error: "settings inspection only accepts GET" });
   try {
     const result = pages.read(query, reader.identity, records);
-    send(result.status, result.body);
+    noStore(res, result.status, result.body);
   } catch {
-    send(503, { error: "settings observations are unavailable" });
+    noStore(res, 503, { error: "settings observations are unavailable" });
   }
+}
+
+/** Bound bytes before parsing, and never retain or quote an oversized
+ * body. An early refusal drains what is left without buffering it. */
+export async function readReport(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > MAX_REPORT_BYTES) { req.resume(); throw new Error("invalid settings report"); }
+    chunks.push(buffer);
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
+  return text ? JSON.parse(text) : {};
 }

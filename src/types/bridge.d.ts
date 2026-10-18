@@ -86,9 +86,11 @@ declare global {
 
       /** The installed app's own version string. */
       appVersion(): Promise<string>;
+      /** The window's native state for a settings inspection, read only
+       * when one asks (electron/settings-observation.mjs). */
+      settingsObservation?(): Promise<unknown>;
       /** Whether this app runs its own Bloks or uses one on another
        * computer through Bloks Cloud (electron/remote.mjs). */
-      settingsObservation?(): Promise<unknown>;
       remoteStatus?(): Promise<{ mode: "local" } | { mode: "remote"; host: string; connected: boolean; revoked?: boolean }>;
       /** Pairs with another computer from a bloks-server pairing link, then restarts the app. */
       remoteConnect?(link: string): Promise<{ ok?: boolean; error?: string }>;

@@ -1322,9 +1322,22 @@ effective values or unresolved policies, and the existing owner control.
 It uses already-loaded owner metadata, not a config reread, provider
 health or authentication probe. Credentials, commands, connection URLs
 and opaque maps are configured status only. Unknown fields stay excluded.
-Owner writes and the agents' existing never list remain closed. Members
-cannot use this route, including with a member credential on loopback;
-room visibility applies before totals, references and pagination.
+Owner writes and the agents' existing never list remain closed.
+
+The route sits behind the server's ordinary guard, not a guard of its
+own: an agent's credential works only on this machine and only because
+the route is on its list, members and invite holders are sent to their
+own surface first, and a network caller needs a paired owner device. On
+this machine the guard takes a valid member credential as the owner at
+the keyboard; these two routes take such a credential at its word and
+refuse it. Room visibility applies before totals, references and
+pagination.
+
+Free text that is shown passes through a redactor built from
+`SECRET_PATHS` in `server/backup.ts`, the list the backups strip, plus a
+short list of things a backup keeps that can carry a key (connection
+URLs, an MCP server's command, arguments and environment, chat pairing
+codes). A key added to the backup list is redacted here the same day.
 
 Pages have at most twenty rows and 32 KiB; permitted text has a 256
 codepoint bound and oversized values are omitted whole. Continuations
@@ -1333,21 +1346,40 @@ are live: membership is checked again on each page, deletion removes a
 record, and an insertion before the cursor may be missed. There is no
 persistent inspection snapshot store.
 
-Device values are dated, authenticated client observations, not proof of
-current UI. Committed mounted owners report actual changes and connection
-replacement through private per-window authority. Direct streams and
-Electron remote proxy windows have distinct bindings. Reports fully replace
-the device snapshot, making omitted fields unknown; old generations or
-reordered revisions cannot replace newer observations. A server-issued monotonic sixty-second
-lease bounds freshness; delayed receipt never extends it. Expiry keeps the
-last value and source/observation/receipt times but makes current freshness
-unknown, even when an idle window remains open. Observed close or device
-revocation invalidates authority immediately. There is no heartbeat,
-polling, read-triggered report, native prompt or provider action. Retained
-observations are bounded; capacity may reclaim the oldest closed or expired
-record. Missing or unsupported native fields stay unknown. Current idle
-desktop coverage and the private iPhone contract in issue 303 remain open
-dependencies; this public server/desktop slice does not complete ALL coverage.
+### Device settings
+
+Some settings live only on a device: a window's theme and layout, the
+desktop's native state. The server keeps what those windows say in
+memory (`server/settings-devices.ts`), and it costs nothing until
+someone asks.
+
+Reading `device.browser` or `device.native` sends one private
+`settings-request` frame, with a one-time id, to the owner's own event
+streams and, sealed, to owner devices through the relay, where another
+computer's windows listen. Not to members, not into the replay ring, not
+mirrored to a chat, and without a wake. A burst of reads within
+five seconds shares one ask. The read waits up to a second and a half for
+answers, less when every owner stream has answered. A desktop window then
+reads its mounted owners, the preferences it stored and the native bridge
+(given half a second) and posts one `POST /api/settings/device-report`.
+Nothing in a window listens, times or sends between asks: mounted
+components register a reader once and keep it current through a ref.
+
+A window's report counts only as the answer to a live ask. A loopback
+caller is the owner to this server whether or not it is a window, so an
+unasked window report is refused rather than trusted, and an answer more
+than ten seconds late is no answer. Each answer replaces that window's
+last one whole. The device it came from is the one the guard says sent
+it, through the relay or a token on the network, never a body field.
+
+Inspection dates every entry against the ask its read waited on:
+`current` means heard since that ask, `last-reported` is an older answer
+shown with when it arrived. A window that did not answer is not listed.
+Storage is bounded to 32 entries and a day of age, pruned whenever the
+store is touched rather than on a clock. Revoking a device, or switching
+pairing off, forgets what it said. A window on an older computer ignores
+a frame it does not know; `device-settings` in `/api/health`
+(`server/features.ts`) names both the frame and the report route.
 
 ## Approval modes
 

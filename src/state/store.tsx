@@ -9,7 +9,7 @@
 // The app also owns no provider connections of its own. It sends typed
 // commands and folds one event stream; anything that talks to a model
 // happens in the harness.
-import { consumeSettingsControl, disconnectSettingsReports, settingsViewportChanged, settingsStorageChanged } from "@/lib/settings-client";
+import { consumeSettingsRequest } from "@/lib/settings-client";
 import {
   createContext,
   useCallback,
@@ -116,15 +116,6 @@ const StoreContext = createContext<{
 const STREAM_LINGER_MS = 8_000;
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  useEffect(() => {
-    const stored = (event: StorageEvent) => settingsStorageChanged(event.key);
-    window.addEventListener("resize", settingsViewportChanged);
-    window.addEventListener("storage", stored);
-    return () => {
-      window.removeEventListener("resize", settingsViewportChanged);
-      window.removeEventListener("storage", stored);
-    };
-  }, []);
   const [state, rawDispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -731,16 +722,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // retry loop is ours.
     let es: EventSource | null = null;
     let lastSeq = 0;
-    let streamStarted = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const connect = () => {
       if (!alive) return;
       noticeDelivery.current.reconnect();
-      streamStarted = performance.now();
       es = new EventSource(lastSeq ? `/api/events?since=${lastSeq}` : "/api/events");
       es.onopen = () => rawDispatch({ type: "connected", value: true });
       es.onerror = () => {
-        disconnectSettingsReports();
         rawDispatch({ type: "connected", value: false });
         es?.close();
         if (retryTimer) clearTimeout(retryTimer);
@@ -756,7 +744,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch {
         return;
       }
-      if (consumeSettingsControl(frame, streamStarted)) return;
+      // An inspection asking what this window's settings are: answered
+      // aside, never folded into state (src/lib/settings-client.ts).
+      if (consumeSettingsRequest(frame)) return;
       if (typeof frame._seq === "number") lastSeq = frame._seq;
       switch (frame.kind) {
         case "hello":
@@ -932,7 +922,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       alive = false;
       stopBots?.();
       if (retryTimer) clearTimeout(retryTimer);
-      disconnectSettingsReports();
       es?.close();
     };
   }, []);

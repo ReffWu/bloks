@@ -21,7 +21,7 @@ const root = join(process.env.HOME, '.bloks');
 const write = fs.writeFileSync.bind(fs);
 const rename = fs.renameSync.bind(fs);
 const context = new AsyncLocalStorage();
-const trace = { readRequests: 0, readEffects: [], blockedBackground: [], fakeSnapshots: 0, modelCalls: 0 };
+const trace = { readRequests: 0, readEffects: [], blockedBackground: [], fakeSnapshots: 0, modelCalls: 0, guardReads: 0, askDeliveries: 0 };
 const flush = () => context.run(false, () => {
   write(tracePath + '.tmp', JSON.stringify(trace), { mode: 0o600 }); rename(tracePath + '.tmp', tracePath);
 });
@@ -65,10 +65,17 @@ write(join(root, 'bloks.json'), JSON.stringify(Array.from({ length: 25 }, (_, i)
   id: `room-${i}`, name: `Fixture room ${i}`, memberIds: ['alpha'], createdAt: 1,
 })).concat([{ id: 'hidden-room', name: 'PRIVATE ROOM SENTINEL', memberIds: ['beta'], createdAt: 1 }])));
 
+// The server's guard checks a presented device credential against
+// config.json, for this route as for every other; that read is the guard's,
+// not the inspection's, and is counted apart.
+const configFile = join(root, 'config.json');
 for (const name of ['readFileSync', 'writeFileSync', 'appendFileSync', 'renameSync', 'mkdirSync',
   'readdirSync', 'statSync', 'lstatSync', 'accessSync', 'existsSync', 'openSync', 'rmSync', 'unlinkSync', 'watch']) {
   const original = fs[name].bind(fs);
-  fs[name] = (...args) => { effect(`fs.${name}`); return original(...args); };
+  fs[name] = (...args) => {
+    if (name === 'readFileSync' && args[0] === configFile && context.getStore()) { trace.guardReads++; return original(...args); }
+    effect(`fs.${name}`); return original(...args);
+  };
 }
 for (const name of ['readFile', 'writeFile', 'appendFile', 'rename', 'mkdir', 'readdir', 'stat',
   'lstat', 'access', 'open', 'rm', 'unlink']) {
@@ -83,8 +90,16 @@ for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execF
 }
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (...args) => {
-  effect('fetch');
   const url = new URL(typeof args[0] === 'string' ? args[0] : args[0].url ?? args[0]);
+  // Reading a device category asks connected owner devices once, and
+  // through the relay that ask is a frame batch: the one network write a
+  // read may cause. Counted, so a test can say how many there were.
+  if (url.pathname === '/space/agent/events' && context.getStore()) {
+    trace.askDeliveries++; flush();
+    // its socket is the delivery's own, not something the read opened
+    return context.run(false, () => originalFetch(...args));
+  }
+  effect('fetch');
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
     trace.blockedBackground.push('external-fetch'); flush();
     throw new Error('fixture forbids external fetch');

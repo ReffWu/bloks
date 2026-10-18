@@ -43,4 +43,7 @@ export const FEATURES: readonly string[] = [
   // turn is over, which a desktop in remote mode waits for before it
   // stops announcing replies as they land
   "reply-settled",
+  // the private settings-request frame an inspection puts on the owner's
+  // stream, and POST /api/settings/device-report, a window's answer to it
+  "device-settings",
 ];

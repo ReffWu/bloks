@@ -11,5 +11,5 @@ export interface RemoteProfile {
 
 export function startRemoteProxy(
   profile: RemoteProfile,
-  options?: { staticDir?: string; port?: number; onState?: (state: Record<string, unknown>) => void },
+  options?: { staticDir?: string; port?: number; onState?: (state: Record<string, unknown>) => void; client?: string },
 ): Promise<{ port: number; stop: () => void }>;
