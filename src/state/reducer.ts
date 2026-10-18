@@ -8,6 +8,7 @@
 // transports and wires this up.
 import type { BlokColor, BlokExpression, BlokShape } from "@/lib/mascot";
 import type { LaneContext } from "@/lib/contextCard";
+import type { CodexSpeed, CodexSpeedStatus } from "@/lib/codexSpeed";
 
 export type { BlokColor, BlokShape } from "@/lib/mascot";
 
@@ -215,6 +216,8 @@ export interface ModelSelection {
 /** One lane of an agent's parallel work, as the strip renders it. */
 export interface TaskSummary {
   id: string;
+  /** The Codex speed of the turn running here, absent once it ends. */
+  codexDispatch?: CodexSpeedStatus;
   title: string;
   state: "working" | "needs-you" | "idle";
   /** Something landed here that nobody has opened yet. */
@@ -270,6 +273,8 @@ export interface Bot {
   seniority?: number;
   /** Reasoning effort for engines that have the dial. */
   effort?: "low" | "medium" | "high";
+  /** This agent's own Codex speed; absent or null follows the workspace. */
+  codexSpeed?: CodexSpeed | null;
   mascotExpression?: BlokExpression | null;
   /** Upload time of the user's own photo for this agent; absent means
    * the pixel avatar. Doubles as the cache-buster. */
@@ -342,6 +347,8 @@ export interface Bot {
 /** What the server admits about stored credentials: whether each one
  * exists, and never the value. */
 export interface ConfigStatus {
+  /** The workspace Codex speed; absent from a server older than it. */
+  codex?: { speed: CodexSpeed };
   xai?: { configured: boolean   /** Whether this workspace has been through the welcome. */
   setupDone?: boolean;
 };
@@ -486,7 +493,10 @@ export interface InstanceInfo {
   };
   models: {
     default: string;
-    options: Array<{ id: string; label: string }>;
+    /** codexFast: whether Codex offers Fast for the model, where it said. */
+    options: Array<{ id: string; label: string; codexFast?: boolean }>;
+    /** When the engine last reported the list. */
+    checkedAt?: number;
     /** Where the list came from, when it is not the engine reporting it live. */
     note?: string;
     /** The engine takes any model id, so one typed in can be used. */
@@ -795,6 +805,7 @@ export type Action =
           | "skillIds"
           | "seniority"
           | "effort"
+          | "codexSpeed"
           | "mascotExpression"
           | "pinned"
           | "hidden"

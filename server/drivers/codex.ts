@@ -42,6 +42,7 @@ import { within } from "./deadline.ts";
 import { OWN_GROUP } from "../no-console.ts";
 import { EngineProcesses } from "./engine-processes.ts";
 import { CODEX_PERSON_HOLD, CODEX_PERSON_NEXT, personTurnHold } from "../person-turn.ts";
+import { CodexSpeedUnavailable, type CodexSpeedRefusal, FAST_TIER, fastRefusal, requireFastTier, resolveCodexSpeed } from "../codex-speed.ts";
 
 const DRIVER_KIND = "codex";
 const NATIVE_SOURCE = "codex.app-server";
@@ -81,12 +82,17 @@ export function catalogFromModelList(pages: any[]): ModelCatalog | null {
     for (const m of Array.isArray(page?.data) ? page.data : []) {
       const id = typeof m?.model === "string" && m.model ? m.model : typeof m?.id === "string" ? m.id : "";
       if (!id || m.hidden === true || options.some((o) => o.id === id)) continue;
-      options.push({ id, label: codexLabel(m.displayName, id) });
+      options.push({
+        id,
+        label: codexLabel(m.displayName, id),
+        // whether this model offers Fast, where the catalog says at all
+        ...(Array.isArray(m.serviceTiers) ? { codexFast: m.serviceTiers.some((tier: any) => tier?.id === FAST_TIER) } : {}),
+      });
       if (m.isDefault === true && !defaultId) defaultId = id;
     }
   }
   if (!options.length) return null;
-  return { default: defaultId || options[0].id, options };
+  return { default: defaultId || options[0].id, options, checkedAt: Date.now() };
 }
 
 // ── a turn's own tokens ────────────────────────────────────────────────
@@ -356,6 +362,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       if (!catalog) return;
       models.options = catalog.options;
       models.default = catalog.default;
+      models.checkedAt = catalog.checkedAt;
     });
 
     type Answer = (behavior: string, message?: string, source?: string, reply?: boolean) => void;
@@ -406,6 +413,16 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       // and a person's turn can send what it reads straight back. The
       // harness holds these turns before here; this is the second line.
       if (turn.person) throw personTurnHold(CODEX_PERSON_HOLD, CODEX_PERSON_NEXT);
+      // Fixed for the whole turn: a steer, or a setting changed while it
+      // runs, applies from the next turn.
+      const speedChoice = Object.freeze({ ...(turn.codexSpeed ?? resolveCodexSpeed({})) });
+      const fast = speedChoice.resolved === "fast";
+      // A model the catalog just said has no Fast is refused here, before
+      // a process starts. An old or missing answer proves nothing.
+      const offersFast = models.options.find((m) => m.id === (turn.model || models.default))?.codexFast;
+      if (fast && offersFast === false && models.checkedAt && Date.now() - models.checkedAt < 300_000) {
+        throw new CodexSpeedUnavailable("Codex does not offer Fast for this model. Choose Standard, or a model that offers Fast.");
+      }
       if (running.has(threadId)) throw new Error("a turn is already running on this thread");
       const turnId = newId();
 
@@ -424,6 +441,9 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       // the environment and only its *name* appears in argv, so process
       // listings and diagnostics never see it.
       const appServerArgs = ["app-server"];
+      // Fast stated for this process, so a host config that switched the
+      // feature off does not quietly turn the request into Standard
+      if (fast) appServerArgs.push("-c", "features.fast_mode=true");
       if (turn.integrations?.composio?.key) {
         env.BLOKS_COMPOSIO_KEY = turn.integrations.composio.key;
         if (turn.integrations.composio.url) env.BLOKS_COMPOSIO_URL = turn.integrations.composio.url;
@@ -507,14 +527,14 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         onNotify: (msg) => onAgentNotification(msg),
       });
 
-      const finish = (ok: boolean, stopReason: string | null) => {
+      const finish = (ok: boolean, stopReason: string | null, preInputRefusal?: CodexSpeedRefusal) => {
         if (finished) return;
         finished = true;
         compacting?.(false);
         for (const answer of [...asks.values()]) answer("deny", "Bloks: the turn ended", "turn-ended");
         rpc.failPending(new Error("turn settled"));
         running.delete(threadId);
-        emit({ ...envelope(threadId, turnId), type: "turn.completed", ok, stopReason, cost: null });
+        emit({ ...envelope(threadId, turnId), type: "turn.completed", ok, stopReason, cost: null, ...(preInputRefusal ? { preInputRefusal } : {}) });
         abort();
       };
 
@@ -932,6 +952,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           const cursor = typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
           if (turn.compactOnly && !cursor) throw new Error("There is no Codex conversation to compact yet.");
           let reportedModel: string | null = null;
+          // the tier Codex said it set up, for the running turn's status
+          let configuredTier: string | null = null;
           // the words go into the thread the cursor named, not a new one
           let carriedOn = false;
           // fullAuto is the engine set that way; fullAccess is this agent.
@@ -956,23 +978,34 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             // and the agent lost its session (GitHub 230).
             const resumeParams: Record<string, unknown> = { threadId: cursor, ...guard, excludeTurns: true };
             if (turn.model) resumeParams.model = turn.model;
+            // Standard says nothing about the tier, as before there was a
+            // choice; only Fast is asked for, and checked.
+            if (fast) resumeParams.serviceTier = FAST_TIER;
             const resume = () => within(rpc.request("thread/resume", resumeParams), "reopening the conversation", "Codex");
             try {
               let resumed: any;
               try {
                 resumed = await resume();
               } catch (error) {
+                // A Codex that cannot take the tier cannot run Fast, here
+                // or in a fresh thread, so the turn is refused, unsent.
+                const refused = fast ? fastRefusal(error) : null;
+                if (refused) throw refused;
                 // an app-server older than the field says so; it still
                 // resumes, just with the history in the answer
                 if (!/exclude_?turns|unknown field/i.test(String((error as Error)?.message ?? ""))) throw error;
                 delete resumeParams.excludeTurns;
                 resumed = await resume();
               }
+              if (fast) requireFastTier(resumed);
+              if (typeof resumed?.serviceTier === "string") configuredTier = resumed.serviceTier;
               codexThread = resumed?.thread?.id ?? cursor;
               if (turn.compactOnly && (typeof resumed?.thread?.id !== "string" || codexThread !== cursor)) throw new Error("That Codex conversation is no longer available to compact.");
               reportedModel = resumed?.model ?? null;
               carriedOn = true;
             } catch (error) {
+              // Fast that was not had: refused, and the session kept
+              if (error instanceof CodexSpeedUnavailable) throw error;
               // forgotten or unsupported; a fresh thread below. Anything
               // still to come about the old one is not about this turn.
               abandoned.add(cursor);
@@ -1054,7 +1087,15 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
               ...guard,
               ephemeral: false,
             };
-            const started: any = await within(rpc.request("thread/start", startParams), "opening a conversation", "Codex");
+            if (fast) startParams.serviceTier = FAST_TIER;
+            let started: any;
+            try {
+              started = await within(rpc.request("thread/start", startParams), "opening a conversation", "Codex");
+            } catch (error) {
+              throw (fast ? fastRefusal(error) : null) ?? error;
+            }
+            if (fast) requireFastTier(started);
+            if (typeof started?.serviceTier === "string") configuredTier = started.serviceTier;
             codexThread = started?.thread?.id ?? null;
             reportedModel = started?.model ?? null;
           }
@@ -1065,6 +1106,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             sessionId: codexThread,
             model: reportedModel ?? turn.model ?? null,
           });
+          emit({ ...envelope(threadId, turnId), type: "codex.speed", choice: speedChoice, configuredTier, actualTier: null });
 
           turnSent = true;
           // A cursor that did not lead back to its thread is a new thread
@@ -1096,12 +1138,16 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           if (typeof begun?.turn?.id === "string") codexTurn ??= begun.turn.id;
         } catch (error) {
           if (finished || stopping) return;
+          // Fast refused before the words went in: the message is unsent,
+          // and recovery treats it as that, not as an engine failing
+          const refusal = error instanceof CodexSpeedUnavailable ? error.refusal : undefined;
           emit({
             ...envelope(threadId, turnId),
             type: "runtime.error",
             message: (error as Error).message,
+            ...(refusal ? { preInputRefusal: refusal } : {}),
           });
-          finish(false, "rpc_error");
+          finish(false, "rpc_error", refusal);
         }
       })();
 

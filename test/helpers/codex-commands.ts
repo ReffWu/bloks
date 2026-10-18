@@ -15,6 +15,18 @@ export async function waitFor(check: () => unknown | Promise<unknown>, why = "fi
 export async function codexCommands(t: TestContext, extraEnv: Record<string, string> = {}) {
   const root = mkdtempSync(join(tmpdir(), "bloks-codex-commands-"));
   const cli = join(root, "fake-codex.mjs");
+  // Also, when a test asks:
+  //   answer: the agent's reply text, in place of ANSWER
+  //   tier: what thread/start and thread/resume say for serviceTier. Left
+  //     out, the fake never mentions the field, as a Codex older than it;
+  //     "echo" repeats what was asked (null when nothing was)
+  //   rejectTier: a thread request carrying serviceTier fails, as a Codex
+  //     that does not know the field; "thread/resume" fails only resumes
+  //   captureCredential: the turn's agent token is written down, for tests
+  //     that call the API as the agent
+  //   turnError: turn/start answers with this JSON-RPC error
+  //   exitBeforeAnswer / exitAfterStart: the process exits with a message
+  //     before turn/start is answered, or after the turn has started
   const spec = { auto: false, hold: false, compact: "ok", refuseSteer: false, used: 40_000, window: 1_000_000, forgotten: false, holdSkills: false, refuseSkills: false };
   mkdirSync(join(root, ".bloks"), { recursive: true });
   writeFileSync(join(root, ".bloks/config.json"), JSON.stringify({ instances: {
@@ -33,7 +45,8 @@ const log = (m) => appendFileSync(root+"/calls.jsonl",JSON.stringify(m)+"\\n");
 let thread, turn, ended=false, total=0;
 const finish = () => {
   if(ended)return;ended=true;
-  out({method:"item/completed",params:{threadId:thread,turnId:turn,item:{type:"agentMessage",id:"answer",text:"ANSWER"}}});
+  const answer=JSON.parse(readFileSync(root+"/spec.json","utf8")).answer??"ANSWER";
+  out({method:"item/completed",params:{threadId:thread,turnId:turn,item:{type:"agentMessage",id:"answer",text:answer}}});
   out({method:"turn/completed",params:{threadId:thread,turn:{id:turn,status:"completed"}}});
 };
 createInterface({input:process.stdin}).on("line",async (line)=>{
@@ -56,7 +69,9 @@ createInterface({input:process.stdin}).on("line",async (line)=>{
   }
   if(m.method==="thread/start"||m.method==="thread/resume"){
     if(m.method==="thread/resume"&&spec.forgotten)return out({id:m.id,error:{code:-1,message:"forgotten"}});
-    thread=m.params.threadId??"native-"+process.pid;return reply({thread:{id:thread},model:"gpt-6.1-sol"});
+    if((spec.rejectTier===true||spec.rejectTier===m.method)&&"serviceTier" in m.params)return out({id:m.id,error:{code:-32602,message:"unknown field \`serviceTier\`"}});
+    const tier=spec.tier===undefined?{}:{serviceTier:spec.tier==="echo"?(m.params.serviceTier??null):spec.tier};
+    thread=m.params.threadId??"native-"+process.pid;return reply({thread:{id:thread},model:"gpt-6.1-sol",...tier});
   }
   if(m.method==="thread/compact/start"){
     if(spec.compact==="reject")return out({id:m.id,error:{code:-1,message:"Compaction refused"}});
@@ -71,8 +86,12 @@ createInterface({input:process.stdin}).on("line",async (line)=>{
     if(spec.refuseSteer)return out({id:m.id,error:{code:-1,message:"Not taken"}});return reply({turnId:turn});
   }
   if(m.method!=="turn/start")return reply();
+  if(spec.captureCredential)appendFileSync(root+"/credentials.jsonl",JSON.stringify({token:process.env.BLOKS_TOKEN})+"\\n");
+  if(spec.turnError)return out({id:m.id,error:spec.turnError});
+  if(spec.exitBeforeAnswer){process.stderr.write(spec.exitBeforeAnswer);process.exit(1);}
   turn="work-"+process.pid;reply({turn:{id:turn}});
   out({method:"turn/started",params:{threadId:thread,turn:{id:turn}}});
+  if(spec.exitAfterStart){process.stderr.write(spec.exitAfterStart);process.exit(1);}
   const text=m.params.input.filter(i=>i.type==="text").map(i=>i.text).join("");
   if(spec.auto){
     total+=spec.used;
@@ -117,6 +136,14 @@ createInterface({input:process.stdin}).on("line",async (line)=>{
     skillsGate: () => writeFileSync(join(root, "skill-gate"), ""),
     startAuto: () => writeFileSync(join(root, "auto-start"), ""),
     async settled() { await waitFor(async () => (await current()).tasks.every((task: any) => task.state === "idle")); },
+    /** How many times the fake was called with this method. */
+    count: (method: string) => calls().filter((c) => c.method === method).length,
+    /** Waits until the fake has been called this many times with this
+     * method. A lane is idle both before a turn starts and after it ends,
+     * so waiting for the call first is what makes settled() mean ended. */
+    async called(method: string, times: number) {
+      await waitFor(() => s.count(method) >= times, `${method} was not called ${times} times`);
+    },
     async turn(text: string, extra = {}) {
       const n = calls().filter((c) => c.method === "turn/start").length;
       await s.say(text, extra);

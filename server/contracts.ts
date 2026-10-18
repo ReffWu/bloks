@@ -100,10 +100,15 @@ export type RuntimeEvent = RuntimeEventBase &
     | { type: "commands.updated"; cwd: string | null; catalog: import("./agent-commands.ts").ClaudeCatalog }
     | { type: "session.exited"; reason?: string }
     | { type: "turn.started" }
+    /** The Codex speed a turn is running at, said once its thread is open. */
+    | { type: "codex.speed"; choice: import("./codex-speed.ts").CodexSpeedChoice; configuredTier: string | null; actualTier: null }
     | {
         type: "turn.completed";
         ok: boolean;
         stopReason?: string | null;
+        /** Refused before the words reached the model (Fast that could
+         * not be had): the message is unsent, not an engine failure. */
+        preInputRefusal?: import("./codex-speed.ts").CodexSpeedRefusal;
         cost?: number | null;
         denials?: string[];
       }
@@ -177,7 +182,7 @@ export type RuntimeEvent = RuntimeEventBase &
         before: number | null;
         after: number | null;
       }
-    | { type: "runtime.error"; message: string }
+    | { type: "runtime.error"; message: string; preInputRefusal?: import("./codex-speed.ts").CodexSpeedRefusal }
   );
 
 export type RuntimeEventListener = (event: RuntimeEvent) => void;
@@ -185,6 +190,9 @@ export type RuntimeEventListener = (event: RuntimeEvent) => void;
 // ── running a turn ─────────────────────────────────────────────────────
 
 export interface SendTurnInput {
+  /** Codex speed, resolved when the turn is dispatched and kept for the
+   * whole turn, steers included. Engines other than Codex ignore it. */
+  codexSpeed?: import("./codex-speed.ts").CodexSpeedChoice;
   threadId: ThreadId;
   text: string;
   model?: string;
@@ -387,7 +395,11 @@ export interface PlanUsage {
 
 export interface ModelCatalog {
   default: string;
-  options: Array<{ id: string; label: string }>;
+  /** codexFast: whether Codex offers Fast for the model, where it said. */
+  options: Array<{ id: string; label: string; codexFast?: boolean }>;
+  /** When the engine last reported the list, so an old answer about Fast
+   * is not taken as current. */
+  checkedAt?: number;
   /** Where the list came from, said in the picker, when it is not the
    * engine reporting it live (a list built into Bloks, for one). */
   note?: string;

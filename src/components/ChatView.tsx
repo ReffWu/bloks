@@ -58,6 +58,7 @@ import { useHoldPlace } from "@/lib/useHoldPlace";
 import { foldHolding, foldTurns, lastFoldKey, rowsFrom, turnRunning } from "@/lib/turnFold";
 import { goalNoteForPerson } from "@/lib/goalNote";
 import { redoLine, type RedoPreview } from "@/lib/redo";
+import { speedStatusLine } from "@/lib/codexSpeed";
 
 /** The line over a goal turn: from Bloks, and which turn of how many. */
 function goalLabel(text: string): string {
@@ -946,6 +947,7 @@ export function ChatView({ bot }: { bot: Bot }) {
   // The last turn folds once it has ended, and not before: this
   // conversation's turn, whatever the agent's other ones are doing.
   const openLane = bot.tasks?.find((t) => t.id === (bot.activeTaskId ?? bot.threadId));
+  const speedLine = speedStatusLine(openLane?.codexDispatch);
   const running = turnRunning(
     openLane?.state,
     Boolean(bot.busy),
@@ -1230,6 +1232,14 @@ export function ChatView({ bot }: { bot: Bot }) {
           </Button>
         </div>
       </div>
+
+      {/* The running turn's Codex speed, only when it is worth saying:
+          Fast, or an agent's own choice. Gone when the turn ends. */}
+      {speedLine && (
+        <p data-codex-speed-status className="shrink-0 border-b px-3 py-1 text-[11px] text-muted-foreground md:px-4">
+          {speedLine}
+        </p>
+      )}
 
       {/* Messages. The strip repeats what the sidebar lists when it lists
           conversations, so it only shows when the sidebar does not, and

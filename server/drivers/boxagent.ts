@@ -31,6 +31,7 @@ import type {
 import { newEventId, newId } from "../contracts.ts";
 import { appendNative } from "./native.ts";
 import { BOAT_API } from "../boat.ts";
+import { codexSpeedRoute, CodexSpeedUnavailable, REMOTE_FAST_REASON } from "../codex-speed.ts";
 
 const DRIVER_KIND = "boxAgent";
 
@@ -122,6 +123,11 @@ export const BoxAgentDriver: ProviderDriver<BoxAgentConfig> = {
     const sendTurn = async (turn: SendTurnInput) => {
       const { threadId } = turn;
       const boxId = turn.integrations?.computer?.boxId;
+      // The box's Codex cannot be asked for a tier yet: Standard runs as it
+      // always has, and Fast is refused rather than run as Standard.
+      if (turn.codexSpeed?.resolved === "fast" && codexSpeedRoute(DRIVER_KIND, turn.model || MODELS.default) === "remote") {
+        throw new CodexSpeedUnavailable(REMOTE_FAST_REASON);
+      }
 
       if (!token) {
         throw new Error('box not configured. Add {"box":{"token":"…"}} to ~/.bloks/config.json');

@@ -15,6 +15,7 @@ import { ProviderMark } from "./ProviderIcons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
+import { CodexSpeedControl } from "./CodexSpeed";
 import { EngineReport } from "./EngineReport";
 import { EnginePauses } from "./EnginePauses";
 import { EngineSetupActions, EngineUpdateNote } from "./EngineSetup";
@@ -262,6 +263,7 @@ export function EnginesPanel() {
         />
       </div>
       <EnginePauses />
+      <CodexSpeedControl className="mt-4" />
       <EngineReport />
       <CustomEndpoints />
     </>

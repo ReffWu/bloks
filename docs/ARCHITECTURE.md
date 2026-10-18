@@ -373,6 +373,14 @@ when, on which engine and model, and what Bloks did (`failureNotes`).
 All of this is in memory: after a restart the own engine is simply tried
 again.
 
+A Fast Codex turn that cannot have Fast (see Codex speed) is refused
+before any words reach the model, and its end carries `preInputRefusal`.
+It is not an engine failing: nothing rests, it is not asked again, and
+the session is kept. A backup takes it once if there is one that might
+run Fast (not Codex on a Box or Boat); otherwise it ends unsent, the
+reason said once, and whatever waited on it (a routine's run, a Telegram
+reply) hears that reason. Standard turns never meet this refusal.
+
 Room turns are not asked again or handed over, since they belong to the
 room's order of speakers. The error shows in the room, an engine that is
 out rests so the agent's next room turn uses its backup, a refused
@@ -450,6 +458,35 @@ so. A file that cannot be opened at all holds nothing, and new pauses
 are refused until it can be, rather than written over it. A lane's queue
 after a restart follows the queued-message rule: words older than twelve
 hours are marked not sent rather than run.
+## Codex speed
+
+Codex runs at Standard or Fast (`server/codex-speed.ts`). The workspace
+has a default (`codex.speed` in the config, Standard when unset) and an
+agent may have its own (`codexSpeed`; null follows the workspace). One
+choice covers the agent's primary and backup Codex. It is resolved once,
+when a turn is dispatched, and handed to the driver with the turn; a
+steer or a setting changed mid-turn applies from the next turn. An agent
+may read its speed (`whoami`) and set its own; the workspace default is
+the owner's.
+
+Standard is Codex as it always ran: nothing about the tier is sent, so a
+Codex older than the field works unchanged, and a host or project config
+of Codex's own still applies. Fast asks for the priority tier on
+`thread/start` or `thread/resume`, with `features.fast_mode` on for that
+process, and goes ahead only when the answer names `priority`. A Codex
+that leaves the tier out of its answer, names another, or rejects the
+field refuses the turn before input, saying to update Codex or choose
+Standard. A model the catalog said within five minutes has no Fast is
+refused before a process starts. Codex on a Box or Boat cannot be asked
+for a tier yet, so Fast is refused there before the box is woken;
+Standard runs there as before.
+
+While a Fast turn, or one at an agent's own choice, runs, its lane
+carries `codexDispatch` (the choice and the tier Codex said it
+configured; Codex never reports the tier that served), and the desktop
+shows a line for it. Standard by the workspace default carries nothing,
+as before. It is never a message and goes when the turn ends. The phone
+checks the `codex-speed` feature before offering the choice.
 
 ## Compactions
 

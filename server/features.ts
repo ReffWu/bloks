@@ -70,4 +70,7 @@ export const FEATURES: readonly string[] = [
   // computer can start an activity for the person's own turn and end it
   // while the phone sleeps
   "live-activities",
+  // Codex speed: codex.speed on GET and PATCH /api/config, an agent's
+  // codexSpeed on PATCH /api/bots/:id, and a running lane's codexDispatch
+  "codex-speed",
 ];
