@@ -86,7 +86,10 @@ test("held schedules resume on their own after a higher limit, without consuming
     assert.match(notice.text, /^The (routine|watcher) .*(did not start a scheduled turn|did not look).*: agents reached the limit of 12 consecutive turns\./);
     assert.match(notice.text, /helps prevent repeated messages from using up your plan/);
     assert.match(notice.text, /Change it in Settings > General > Working with agents\./);
-    assert.doesNotMatch(notice.text, /Held:|starts the count|manual run|by hand|person.*carr|queued|redeliver/i);
+    // A one-time routine past its grace never runs again on its own, so
+    // that one sentence is the only mention of running by hand.
+    const once = " A one-time routine past its missed-run grace runs only by hand.";
+    assert.doesNotMatch(notice.text.replace(once, ""), /Held:|starts the count|manual run|by hand|person.*carr|queued|redeliver/i);
     const frame = await waitFor(() => pushes.find((p) => p.frames.some((frame) => frame.message?.id === notice.id)));
     assert.ok(frame, "the scheduled stop was not delivered to the synthetic phone");
     assert.equal(frame.wake, undefined, "the scheduled stop woke the phone");

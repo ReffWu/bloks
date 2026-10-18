@@ -88,9 +88,10 @@ describe("what is worth interrupting for", () => {
 });
 
 describe("an agent that could not answer", () => {
-  test("an engine failure is a record, not an unanswered decision", () => {
+  test("an engine that is out stops the work until the person acts, so it is said", () => {
     const out = noticeFor({ role: "bot", kind: "notice", text: "402 This request would exceed your available credits" }, base);
-    assert.equal(out, null);
+    assert.equal(out?.title, "Sage could not answer");
+    assert.equal(out?.urgent, true);
     assert.equal(noticeFor({ role: "bot", kind: "notice", text: "Starting a new task keeps this one readable." }, base), null);
   });
 });
@@ -123,13 +124,17 @@ describe("only pending decision cards bypass the reply switch", () => {
       assert.equal(noticeFor({ role: "bot", kind: "options", deleted: true, card: { ...pointer, title: "Proceed?" } }, base), null);
     });
   }
+  test("a hold never bypasses either switch state, whatever its words", () => {
+    for (const text of ["Held because the turn limit was reached.", "Held: the usage limit was reached."]) {
+      for (const ctx of [base, quiet]) assert.equal(noticeFor({ role: "bot", kind: "notice", chainHeld: true, text }, ctx), null);
+    }
+  });
   for (const message of [
-    { chainHeld: true, text: "Held because the turn limit was reached." },
     { goal: "blocked", text: "The work is blocked." },
     { text: "429 quota exceeded" }, { text: "Not signed in" }, { text: "402 billing payment required" },
   ]) {
-    test(`a mechanical notice never bypasses either switch state: ${message.text}`, () => {
-      for (const ctx of [base, quiet]) assert.equal(noticeFor({ role: "bot", kind: "notice", ...message }, ctx), null);
+    test(`work stopped on the person bypasses the reply switch: ${message.text}`, () => {
+      for (const ctx of [base, quiet]) assert.equal(noticeFor({ role: "bot", kind: "notice", ...message }, ctx)?.urgent, true);
     });
   }
   test("finished goal results still follow the existing per-agent reply switch", () => {

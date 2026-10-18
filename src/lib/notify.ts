@@ -20,8 +20,10 @@
 //   Nothing interrupts when you are looking straight at it. A banner for
 //   a message already on your screen is noise with extra steps.
 //
-//   A hold, a blocked goal or an engine failure is a record for its owner,
-//   not a question for the person. Goal results follow the reply switch,
+//   A hold is a record for its owner, not a question for the person. A
+//   goal blocked on the person, and an engine that is out (credits, a
+//   plan limit, a sign-in), are stopped until the person acts, so they
+//   interrupt like a question. Other goal results follow the reply switch,
 //   and while a conversation works toward one,
 //   its turns' replies are the work too: the goal's end is said once,
 //   when it comes, rather than twenty times on the way.
@@ -30,6 +32,9 @@
 //   nothing needed you, and what a check-in says on the way to deciding
 //   that waits for the end of its turn (CheckInHold), so the commentary
 //   of a run that turns out quiet is never news either.
+
+const ENGINE_OUT =
+  /credit balance is too low|insufficient[_ ](?:quota|credits|funds|balance)|billing|payment required|\b402\b|out of credits|exceed your available credits|usage limit|limit (?:reached|exceeded)|quota|rate[ _-]?limit|\b429\b|not (?:logged|signed) in|sign in/i;
 
 /** The parts of a message this decision actually depends on. */
 export interface NotifiableMessage {
@@ -109,14 +114,31 @@ export function noticeFor(message: NotifiableMessage, ctx: NotifyContext): Notic
     };
   }
 
-  // Finished goals follow the person's existing reply switch. A blocked
-  // goal alone asks no question, so it stays in the conversation.
+  // A chain hold is a record for its owner, even when it carries a goal
+  // or its explanation names billing or quota.
+  if (message.kind === "notice" && message.chainHeld) return null;
+
+  // Where a goal ended up. Blocked is judged only when the goal cannot go
+  // on without the person (server/goals.ts), so it interrupts like a
+  // question. Done or out of turns follows the reply switch.
   if (message.kind === "notice" && message.goal) {
     if (watching) return null;
+    if (message.goal === "blocked") {
+      return { title: `${who} needs you`, body: preview(message.text || "A goal is waiting on you."), target, urgent: true };
+    }
     if ((message.goal === "done" || message.goal === "out") && ctx.bot?.notifications !== false) {
       return { title: who, body: preview(message.text ?? ""), target, urgent: false };
     }
     return null;
+  }
+
+  // An agent that could not answer because its engine is out: credits, a
+  // plan limit, a sign-in. Its work is stopped until the person acts, so
+  // it is said even when the agent is otherwise quiet. The words match
+  // server/failover.ts.
+  if (message.kind === "notice" && message.text && ENGINE_OUT.test(message.text)) {
+    if (watching) return null;
+    return { title: `${who} could not answer`, body: preview(message.text), target, urgent: true };
   }
 
   if (message.kind !== "text" || !message.text?.trim()) return null;

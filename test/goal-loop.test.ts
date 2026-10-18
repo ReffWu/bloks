@@ -195,7 +195,7 @@ test("blocked hands the goal back, the lane waits on the person, and their answe
   assert.ok((await messagesOf(h, bot)).some((m) => m.goal === "blocked" && /Goal blocked: needs the staging password\./.test(m.text)));
   const delivered = await waitFor(() => pushes.find((p) => p.frames.some((frame) => frame.threadId === bot.threadId && frame.message?.goal === "blocked")));
   assert.ok(delivered, "the blocked-goal record did not reach the paired phone");
-  assert.equal(delivered.wake, undefined, "a blocked goal without a question must not wake the phone");
+  assert.ok(delivered.wake, "a blocked goal waits on the person, so it wakes the phone");
 
   await say(h, bot, "it is in the team vault under staging");
   const done = await goalIs(h, bot, "done");

@@ -2018,6 +2018,13 @@ function wakeFor(payload: unknown): Wake | undefined {
   // person. Only an unanswered card asks them to decide something.
   const card = message.card;
   if (message.deleted || message.quiet) return undefined;
+  // A goal is judged blocked only when it cannot go on without a
+  // decision, access or a key that only the person can give
+  // (server/goals.ts), so it is a question too: the owner's, since goals
+  // are only ever set in the owner's own conversations.
+  if (message.kind === "notice" && message.goal === "blocked" && !message.chainHeld) {
+    return owner ? { reason: "needs-you", clients: [owner], preview: true } : { reason: "needs-you", preview: true };
+  }
   if (message.kind === "options" && card && !card.answered && !card.dismissed && (card.requestId || card.runId)) {
     // Workflow controls are the owner's. Their card opens the run's
     // existing answer route, never an engine permission request.
@@ -2097,6 +2104,9 @@ function previewOf(frame: unknown): WakePreview | null {
       };
     }
     return { title: `${who} has a question`, body: clip(m.card.subtitle || m.card.title), category: "question", threadId: f.threadId };
+  }
+  if (m.kind === "notice" && m.text && m.goal === "blocked") {
+    return { title: room ? `${room.name} is waiting for you` : `${bot?.name ?? "An agent"} is waiting for you`, body: clip(m.text), category: "question", threadId: f.threadId };
   }
   if (m.kind === "text" && m.text) {
     const speaker = m.role === "bot" ? (bot?.name ?? "An agent") : m.author ? (people.person(m.author)?.name ?? "Someone") : hostName();
@@ -8188,7 +8198,10 @@ async function runDueRoutines() {
       if (!laneId) continue;
       // A blocked attempt is a record, not a consumed scheduled slot.
       if (chainPastLimit(routine.chain ?? 0)) {
-        const why = chainHeld(`The routine ${chainName(routine.name ?? "without a name")} did not start a scheduled turn for ${chainName(bot.name)}.`);
+        // A one-time routine has no next time to wait for, so the person
+        // is told the one way it still runs.
+        const why = chainHeld(`The routine ${chainName(routine.name ?? "without a name")} did not start a scheduled turn for ${chainName(bot.name)}.`)
+          + (routine.repeat === "once" ? " A one-time routine past its missed-run grace runs only by hand." : "");
         const slot = lastScheduledBefore(routine, now)!;
         if (routines.holdRun(routine.id, slot.getTime(), laneId, why)) {
           chainNotice(bot, laneId, why);
