@@ -333,7 +333,7 @@ a one-click switch to an engine that is. To do it by hand instead:
 | OpenRouter | Sign in from Settings, in your browser | no |
 | Gemini, Grok, Kimi, Llama, DeepSeek, Mistral, Groq | Paste a key in Settings | no |
 | Custom (OpenAI-compatible) | Paste a base URL and key(s) in Settings | no |
-| Ollama | Run it; Bloks finds it on this machine | no |
+| Ollama | Run it; Bloks finds it on this machine, or where `OLLAMA_HOST` points | no |
 
 The engines marked "runs tools" can execute commands and read files. The
 rest only produce text, which matters more than it sounds: an agent moved

@@ -168,7 +168,7 @@ import { identityFor, existingFingerprint, fingerprintFor, forget as forgetIdent
 import { assemble as assembleActivity, blockedOn, lastWithYou, towardYou } from "./activity.ts";
 import { splitArgs } from "./argv.ts";
 import { draftPrompt, parseDraft } from "./draft.ts";
-import { OLLAMA_URL, probeOllama, shouldAdopt } from "./local-models.ts";
+import { OLLAMA_URL, ollamaUrl, probeOllama, shouldAdopt } from "./local-models.ts";
 import { cookieStores, readCookies } from "./cookie-import.ts";
 import * as telegram from "./telegram.ts";
 import { CardButtons, outcomeOf, settledText, type ForwardedCard } from "./telegram-cards.ts";
@@ -1099,10 +1099,12 @@ const teamLibrary = new TeamLibrary();
 // and connect by hand. Looked for once, never written over an entry that
 // exists, and a miss costs one refused connection. See local-models.ts.
 {
-  const found = await probeOllama();
+  // here, or where OLLAMA_HOST says it is
+  const where = ollamaUrl();
+  const found = await probeOllama(where);
   if (shouldAdopt(cfg, found)) {
-    Object.assign(cfg, saveConfig({ providers: { ...(cfg.providers ?? {}), ollama: { url: `${OLLAMA_URL}/v1` } } }));
-    console.log(`[bloks] found Ollama running here with ${found.models.length} model(s); connected it`);
+    Object.assign(cfg, saveConfig({ providers: { ...(cfg.providers ?? {}), ollama: { url: `${where}/v1` } } }));
+    console.log(`[bloks] found Ollama ${where === OLLAMA_URL ? "running here" : `at ${where}`} with ${found.models.length} model(s); connected it`);
   }
 }
 

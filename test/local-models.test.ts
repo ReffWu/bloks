@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
 
-import { probeOllama, shouldAdopt, type LocalModels } from "../server/local-models.ts";
+import { OLLAMA_URL, ollamaUrl, probeOllama, shouldAdopt, type LocalModels } from "../server/local-models.ts";
 import type { AppConfig } from "../server/config.ts";
 
 const realFetch = globalThis.fetch;
@@ -60,5 +60,47 @@ describe("shouldAdopt", () => {
 
   test("nothing running means nothing to connect", () => {
     assert.equal(shouldAdopt({} as AppConfig, { running: false, models: [] }), false);
+  });
+});
+
+describe("ollamaUrl (GitHub 309)", () => {
+  test("unset, empty or blank keeps this machine's default", () => {
+    assert.equal(ollamaUrl({}), OLLAMA_URL);
+    assert.equal(ollamaUrl({ OLLAMA_HOST: "" }), OLLAMA_URL);
+    assert.equal(ollamaUrl({ OLLAMA_HOST: "   " }), OLLAMA_URL);
+  });
+
+  test("the forms Ollama accepts, read the way Ollama reads them", () => {
+    const cases: Array<[string, string]> = [
+      ["gpu-box.local", "http://gpu-box.local:11434"],
+      ["192.168.1.40", "http://192.168.1.40:11434"],
+      ["192.168.1.40:8080", "http://192.168.1.40:8080"],
+      [":9999", "http://127.0.0.1:9999"],
+      ["0.0.0.0", "http://0.0.0.0:11434"],
+      ["http://gpu-box", "http://gpu-box:80"],
+      ["https://ollama.example.com", "https://ollama.example.com:443"],
+      ["http://10.0.0.5:11434/", "http://10.0.0.5:11434"],
+      ["https://example.com:8443/ollama", "https://example.com:8443/ollama"],
+      ["[::1]:11434", "http://[::1]:11434"],
+      ["::1", "http://[::1]:11434"],
+      ["HTTP://Box:1234", "http://Box:1234"],
+    ];
+    for (const [raw, want] of cases) assert.equal(ollamaUrl({ OLLAMA_HOST: raw }), want, raw);
+  });
+
+  test("anything it cannot read keeps the default rather than guessing", () => {
+    for (const raw of ["ftp://box", "box:notaport", "box:70000"]) {
+      assert.equal(ollamaUrl({ OLLAMA_HOST: raw }), OLLAMA_URL, raw);
+    }
+  });
+
+  test("the probe goes to that address", async () => {
+    let asked = "";
+    globalThis.fetch = (async (url: string) => {
+      asked = url;
+      return { ok: true, json: async () => ({ data: [{ id: "llama3.2" }] }) };
+    }) as unknown as typeof fetch;
+    await probeOllama(ollamaUrl({ OLLAMA_HOST: "gpu-box:11434" }));
+    assert.equal(asked, "http://gpu-box:11434/v1/models");
   });
 });
