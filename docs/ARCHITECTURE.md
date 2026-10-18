@@ -1036,7 +1036,9 @@ no profile notes, no "About the person you work for", no agent memory and
 no note tools. Its fresh session hears that person's own exchange only,
 their messages and the replies sent to them, without the lane's summary or
 the owner's side of the conversation; notes meant for the owner's next turn
-(undone files, a stall, a failure, a backup's handover) wait for it.
+(undone files, a stall, a failure, a backup's handover) wait for it. A
+person's words keep their sender wherever they are retold: in the lane's
+summary, in recall (`by: "telegram"`), and they are left out of skill review.
 
 Claude person turns load the text of the working folder's `CLAUDE.md` and
 `.claude/CLAUDE.md`, following symlinks, into the private system prompt each

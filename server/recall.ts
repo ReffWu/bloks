@@ -33,6 +33,8 @@ export interface RecallMessage {
   author?: string;
   /** set when another agent sent it (store.ts, AgentNote) */
   agent?: { dir: string; peerId: string; peerName: string };
+  /** set when someone let in on Telegram said it (store.ts) */
+  telegramPerson?: { name: string };
   deleted?: boolean;
   /** still waiting for a turn, or never sent: not said yet */
   queued?: boolean;
@@ -62,7 +64,7 @@ export interface IndexedSource {
  * can rely on: only "person" is the owner's own word. */
 export interface Speaker {
   who: string;
-  by: "person" | "member" | "agent" | "self";
+  by: "person" | "member" | "agent" | "self" | "telegram";
   /** The agent that said it, for "agent" and "self". */
   agentId?: string;
 }
@@ -279,6 +281,7 @@ export function recall(
 function label(s: { who: string; by: Speaker["by"]; agentId?: string }): string {
   if (s.by === "agent") return `${s.who} (another agent${s.agentId ? `, ${s.agentId}` : ""})`;
   if (s.by === "member") return `${s.who} (a member of the room)`;
+  if (s.by === "telegram") return `${s.who}, not the person you work for`;
   if (s.by === "self") return `${s.who} (you)`;
   return s.who;
 }

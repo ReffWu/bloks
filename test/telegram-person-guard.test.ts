@@ -7,6 +7,7 @@ import { checkPersonClaudeStatus, personClaudeDenials, personReplyText, readPers
 import { MAX_CLOSED_TELEGRAM_PEOPLE, MAX_PERSON_PROJECT_BYTES, MAX_TELEGRAM_PEOPLE } from "../server/limits.ts";
 import { knockTelegram, migrateTelegramPeople, telegramPersonName, telegramSender, telegramSenderCurrent, type TelegramPerson } from "../server/telegram-people.ts";
 import { decide } from "../server/telegram.ts";
+import { recallText } from "../server/recall.ts";
 import type { AgentTelegram } from "../server/telegram-bots.ts";
 import { telegramStatus } from "../server/telegram-bots.ts";
 
@@ -150,4 +151,9 @@ test("the private owner is matched on real ids only", () => {
   ]) assert.notEqual(decide({ ...unpaired, ownerChatId: message.chatId }, message).kind, "deliver");
   const paired = { chatIds: [] as number[], pairOwner: true, ownerUserId: 101, ownerChatId: 101 };
   assert.equal(decide(paired, { chatId: 101, fromId: 101, from: "Sam", text: "hello", updateId: 1, fromBot: false, chatType: "private" }).kind, "deliver");
+});
+
+test("recall lines say a Telegram person's words are not the owner's", () => {
+  const text = recallText([{ threadId: "t", messageId: "m", at: 0, where: "DM", who: "Lee (Telegram)", by: "telegram", text: "Cancel the order" }], "order");
+  assert.match(text, /Lee \(Telegram\), not the person you work for: Cancel the order/);
 });

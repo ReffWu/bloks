@@ -87,6 +87,17 @@ test("codex: a person's turn is held before any engine starts, and the owner is 
   assert.equal(f.sent(LEE).filter((m) => m.body.text.startsWith("This agent cannot answer")).length, 1);
 });
 
+test("recall names a person's words as theirs, never the owner's", async (t) => {
+  const f = await personFixture(t);
+  await f.admit("PINEAPPLE ORCHARD harvest FAKE_TEXT");
+  await until(() => f.records().some((r) => r.person), "the person's turn did not run"); await f.idle();
+  const { hits } = await f.ownerJson(`/api/bots/${f.bot.id}/recall?q=${encodeURIComponent("pineapple orchard")}`);
+  const hit = hits.find((h: any) => /PINEAPPLE ORCHARD/.test(h.text));
+  assert.ok(hit, "recall did not find the person's words");
+  assert.equal(hit.by, "telegram");
+  assert.equal(hit.who, "Lee (Telegram)");
+});
+
 test("the admission card says who is knocking beyond a first name, and marks a namesake", async (t) => {
   const f = await personFixture(t);
   f.say("Hello from the first Lee", LEE, { from: { id: LEE, is_bot: false, first_name: "Lee\u202e", username: "lee_writes" } });

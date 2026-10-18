@@ -6421,6 +6421,8 @@ function noteWho(bot: BotRecord, hit: RecallHit): string {
 function speakerFor(bot: BotRecord) {
   const person = cfg.profile?.name?.trim() || "the person";
   return (message: RecallMessage): Speaker => {
+    // someone the owner let in on Telegram, never the owner's own word
+    if (message.telegramPerson) return { who: `${message.telegramPerson.name} (Telegram)`, by: "telegram" };
     if (message.agent?.dir === "in") {
       return { who: store.bot(message.agent.peerId)?.name ?? message.agent.peerName, by: "agent", agentId: message.agent.peerId };
     }
@@ -7876,6 +7878,14 @@ async function foldAfterTurn(botId: string, threadId: string): Promise<void> {
   }
 }
 
+/** A message as a summary hears it. A Telegram person's words, and a
+ * reply sent to them, keep their sender: folded as plain user text they
+ * would come back as the owner's, ahead of turns that may run in full
+ * access. */
+function summarisedText(m: Message): string {
+  return m.telegramPerson || m.telegramSent ? storedPrompt(m) : m.text!;
+}
+
 /**
  * Fold the older half of a lane into a summary.
  *
@@ -7906,7 +7916,7 @@ async function foldContext(botId: string, threadId: string, force = false, hando
   const carried = settled.slice(already);
   const asTurns: Turn[] = carried.map((m) => ({
     role: m.role === "user" ? ("user" as const) : ("assistant" as const),
-    text: m.text!,
+    text: summarisedText(m),
   }));
   const limit = contextLimitFor(bot.modelSelection.model);
   // Normally the budget is our own estimate of what fits. When the
@@ -7962,7 +7972,7 @@ async function microFold(botId: string, threadId: string): Promise<boolean> {
     .filter((m) => m.kind === "text" && m.text && !m.deleted && !m.queued && !m.unsent);
   const asTurns: Turn[] = settled.map((m) => ({
     role: m.role === "user" ? ("user" as const) : ("assistant" as const),
-    text: m.text!,
+    text: summarisedText(m),
   }));
 
   const through = task.context?.through ?? 0;
@@ -8023,9 +8033,11 @@ async function reviewForSkill(botId: string, threadId: string): Promise<boolean>
   // a summary or a review on an engine paused for this agent waits too
   if (!instance?.generateText || pausedOn(bot, bot.modelSelection)) return false;
 
+  // A Telegram person's words, and what was sent back to them, are not
+  // the owner's to turn into the agent's standing skills.
   const turns: Turn[] = store
     .messagesFor(threadId)
-    .filter((m) => m.kind === "text" && m.text && !m.deleted && !m.queued && !m.unsent)
+    .filter((m) => m.kind === "text" && m.text && !m.deleted && !m.queued && !m.unsent && !m.telegramPerson && !m.telegramSent)
     .map((m) => ({
       role: m.role === "user" ? ("user" as const) : ("assistant" as const),
       text: m.text!,
