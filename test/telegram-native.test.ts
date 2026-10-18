@@ -144,6 +144,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   if (["turn/start","turn/steer"].includes(m.method)) log({ method:m.method, params:m.params });
   if (m.method === "turn/steer") { if (!existsSync(root + "/scope-force-queue")) return reply({turnId:turn}); }
   if (m.method === "turn/steer" && existsSync(root + "/scope-force-queue")) return out({ id: m.id, error: { code: -32000, message: "fixture cannot steer" } });
+  if (m.method === "turn/steer") return reply({ turnId: turn });
   if (m.method !== "turn/start") return reply();
   turn = "work-" + process.pid; reply({ turn: { id: turn } });
   out({ method: "turn/started", params: { threadId: thread, turn: { id: turn } } });
