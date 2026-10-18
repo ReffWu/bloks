@@ -363,7 +363,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       turnId: string;
       abort: () => void;
       /** More words for this turn; false when Codex would not take them. */
-      steer: (text: string, options?: { skillNames?: string[]; onAccepted?: (turnId: string) => void }) => Promise<boolean>;
+      steer: (text: string, options?: { skillNames?: string[]; onAccepted?: (turnId: string) => void; onDispatch?: () => void }) => Promise<boolean>;
       asks: Map<string, Answer>;
     }
     const running = new Map<string, RunningTurn>();
@@ -885,7 +885,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       // refuses the call if that turn has ended, so a refusal means the
       // words were not taken and can go to the next turn instead.
       const canSteer = () => Boolean(!finished && !compacting && codexThread && codexTurn && ![...compactionStarts.keys()].some((key) => requestedCompaction === null || !key.startsWith(`${requestedCompaction}\0`)));
-      const steer = async (text: string, options?: { skillNames?: string[]; onAccepted?: (turnId: string) => void }) => {
+      const steer = async (text: string, options?: { skillNames?: string[]; onAccepted?: (turnId: string) => void; onDispatch?: () => void }) => {
         // during a compaction the turn running is the compaction's
         if (!canSteer()) return false;
         const skills = await selectedSkills(options?.skillNames);
@@ -893,13 +893,15 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         for (const skill of skills) skillNamesSent.add(skill.name);
         try {
           const expectedTurnId = codexTurn;
-          const accepted = await rpc.request("turn/steer", { threadId: codexThread, expectedTurnId, input: [{ type: "text", text }, ...skills.map(({ name, path }) => ({ type: "skill", name, path }))] });
+          const accepted = await rpc.request("turn/steer", { threadId: codexThread, expectedTurnId, input: [{ type: "text", text }, ...skills.map(({ name, path }) => ({ type: "skill", name, path }))] }, options?.onDispatch);
           // A successful RPC may have consumed the words even if its receipt
           // cannot verify the join identity. Do not queue them for replay.
           if ((accepted as { turnId?: unknown } | null)?.turnId === expectedTurnId) options?.onAccepted?.(turnId);
           return true;
-        } catch {
+        } catch (error) {
           for (const skill of skills) skillNamesSent.delete(skill.name);
+          // A reserved report cannot queue again after a possible RPC write.
+          if (options?.onDispatch) throw error;
           return false;
         }
       };
