@@ -699,10 +699,12 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             if (item.type === "contextCompaction") { compactionItem(params, true); break; }
             if (item.type === "agentMessage") {
               if (!item.text?.trim()) break;
+              // read once, so the streamed text and the stored text agree
+              const codexItem = codexItemText(item);
               emit({
                 ...envelope(threadId, turnId),
                 itemId: typeof item.id === "string" ? item.id : undefined,
-                codexItem: codexItemText(item),
+                codexItem,
                 type: "content.delta",
                 streamKind: "assistant_text",
                 delta: item.text,
@@ -710,7 +712,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
               emit({
                 ...envelope(threadId, turnId),
                 itemId: typeof item.id === "string" ? item.id : undefined,
-                codexItem: codexItemText(item),
+                codexItem,
                 type: "item.completed",
                 itemType: "assistant_text",
                 ...(item.phase === "commentary" || item.phase === "final_answer" ? { replyPhase: item.phase } : {}),

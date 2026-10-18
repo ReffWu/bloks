@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { startHarness } from "./helpers/server.ts";
 import { itemProgress } from "../server/codex-text.ts";
@@ -25,7 +26,7 @@ if (process.argv[2] === '--version') { console.log('codex-cli 0.162.1'); process
 if (process.argv[2] === 'login') process.exit(0);
 const out = x => console.log(JSON.stringify(x));
 const thread = 'native-' + process.pid, turn = 'turn-' + process.pid; let rejectSteer=false, receiptMode='matched';
-const item = (id,text,phase='commentary',questions=null) => out({method:'item/completed',params:{threadId:thread,turnId:turn,item:{type:'agentMessage',id,text,phase,questions}}});
+const item = (id,text,phase='commentary',questions) => out({method:'item/completed',params:{threadId:thread,turnId:turn,item:{type:'agentMessage',id,text,phase,memoryCitation:null,...(questions===undefined?{}:{questions})}}});
 const finish = () => out({method:'turn/completed',params:{threadId:thread,turn:{id:turn,status:'completed'}}});
 createInterface({input:process.stdin}).on('line',line => {
  const f=JSON.parse(line); if (f.id === undefined) return;
@@ -37,6 +38,7 @@ createInterface({input:process.stdin}).on('line',line => {
   if(input.includes('SENDER_HOLD')) { writeFileSync(${JSON.stringify(join(home, 'sender-token'))},process.env.BLOKS_TOKEN||''); return; }
   if(input.includes('ASYNC_FINAL')) item('async-answer','A visible answer','final_answer');
   if(input.includes('EXPLICIT_Q')) item('explicit-question','Which neutral option?','commentary',[{question:'Which neutral option?'}]);
+  if(input.includes('TEXT_Q')) item('text-question','Should I keep the neutral option?');
   item('progress-1','Checking the neutral sample'); item('progress-2','Still checking the neutral sample');
   if(input.includes('NO_FINAL')||input.includes('ASYNC_FINAL')||input.includes('UNIQUE_RECEIPT_')) setTimeout(finish,80);
  }
@@ -46,7 +48,8 @@ createInterface({input:process.stdin}).on('line',line => {
   writeFileSync(join(home, ".bloks/config.json"), JSON.stringify({ instances: { codex: { driver: "codex", config: { cli, fullAuto: false } } } }));
   const tracePath = join(home, "attention.jsonl");
   const h = await startHarness({ HOME: home, CODEX_HOME: join(home, ".codex"), SHELL: "/bin/sh",
-    NODE_OPTIONS: `--import=${new URL('./helpers/codex-progress-preload.mjs', import.meta.url).pathname}`,
+    // a file URL, so the space in the checkout path never splits the option
+    NODE_OPTIONS: `--import=${pathToFileURL(fileURLToPath(new URL('./helpers/codex-progress-preload.mjs', import.meta.url))).href}`,
     BLOKS_PROGRESS_TRACE: tracePath });
   const abort = new AbortController();
   t.after(async () => { abort.abort(); await h.stop(); rmSync(home, { recursive: true, force: true }); });
@@ -83,11 +86,13 @@ createInterface({input:process.stdin}).on('line',line => {
   assert.deepEqual(replayed.bots[0].messages.map(m => [m.id, m.codexText, m.joinedTurnId]), after.map(m => [m.id, m.codexText, m.joinedTurnId]), "actual SSE replay and stored reload disagree");
   assert.deepEqual(progressIds(replayed.bots[0].messages, () => true), progressIds(after, () => true));
   assert.equal(frames.slice(startIndex).filter((f) => f.kind === "message.patch").length, 0);
-  for (const marker of ["NO_FINAL", "ASYNC_FINAL", "EXPLICIT_Q NO_FINAL"]) {
+  for (const marker of ["NO_FINAL", "ASYNC_FINAL", "EXPLICIT_Q NO_FINAL", "TEXT_Q NO_FINAL"]) {
     const other = await bot(marker); await agentSend(other.id, marker);
     const rows = await until(async () => { const all = await h.json("/api/bots?messages=0"); const found = all.bots.find((b: any) => b.id === other.id); const rows = await history(other.id); return !found.busy && rows.some((m) => m.codexText) ? rows : undefined; });
     const saved = rows.filter((m) => m.codexText); assert.ok(saved.some(itemProgress));
     if (marker.includes("EXPLICIT_Q")) { const q = saved.find(m => m.codexText!.itemId === "explicit-question")!; assert.equal(q.codexText!.questions, "present"); assert.equal(itemProgress(q), false); }
+    // Codex said nothing about questions here; the text asks one, so it is not read as quiet
+    if (marker.includes("TEXT_Q")) { const q = saved.find(m => m.codexText!.itemId === "text-question")!; assert.equal(q.codexText!.questions, "unknown"); assert.equal(q.codexText!.display, "full"); assert.equal(itemProgress(q), false); }
     const display = foldTurns(rows, false); const said = display.rows.flatMap((r) => r.kind === "said" ? r.items.map((x) => x.message) : []);
     assert.equal(said.at(-1)?.codexText?.itemId, marker.includes("NO_FINAL") ? "progress-2" : "async-answer");
     const live = (await h.json("/api/bots?messages=0")).bots.find((b: any) => b.id === other.id);

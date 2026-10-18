@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { codexItemText, codexTextFor, isProgressText, itemProgress } from "../server/codex-text.ts";
+import { asksNothing, codexItemText, codexTextFor, isProgressText, itemProgress } from "../server/codex-text.ts";
 import { isProgressText as clientProgressText, itemProgress as clientItemProgress, progressIds } from "../src/lib/codexProgress.ts";
 import { foldTurns, foldRoom, type Folded } from "../src/lib/turnFold.ts";
 import { towardYou } from "../server/activity.ts";
@@ -150,6 +150,72 @@ test("reopened rooms keep latest active turns quiet and end each speaker indepen
   assert.deepEqual(page(foldRoom([a, b], new Map([["one", null], ["two", null]]), false)), ["active-a", "active-b"], "missing history remains conservative");
 });
 
+
+// Codex 0.145.0's agentMessage item is { type, id, text, phase, memoryCitation }:
+// there is no questions field, so the server reads the text itself.
+const real = (text: string, phase: string | null = "commentary") => ({ type: "agentMessage", id: "item", text, phase, memoryCitation: null });
+
+test("real Codex commentary that asks nothing is read as having no questions, and is progress only for an agent's turn", () => {
+  for (const said of ["Checking the test fixtures now.", "Build 7 passed all 169 tests. I’m checking the reduced motion path next.", "Reading server/index.ts to find where the lane is marked."]) {
+    const item = codexItemText(real(said));
+    assert.deepEqual(item, { phase: "commentary", questions: "none" }, said);
+    assert.equal(codexTextFor(item, "turn", "item", "agent")?.display, "progress", said);
+    for (const origin of ["person", "other", "unknown"] as const) assert.equal(codexTextFor(item, "turn", "item", origin)?.display, "full", origin);
+  }
+});
+
+test("commentary that asks, addresses someone or is blocked stays unknown and visible", () => {
+  for (const said of [
+    "Which of the two layouts should I keep",
+    "Should I keep the old fixture?",
+    "Done with the parser? Moving on.",
+    "¿Seguimos con la prueba",
+    "Moving on to the tests. Let me know if the fixture should change.",
+    "I'll need you to sign in to the dashboard first.",
+    "Your token looks expired, so the deploy step will fail.",
+    "Please check the staging link before I continue.",
+    "Waiting for approval before running the migration.",
+    "I'm blocked on missing credentials for the relay.",
+    "@Riley the schema is ready for review.",
+    "Want me to also update the docs.",
+    "正在检查测试。",
+    "   ",
+  ]) {
+    const item = codexItemText(real(said));
+    assert.equal(item.questions, "unknown", said);
+    assert.equal(codexTextFor(item, "turn", "item", "agent")?.display, "full", said);
+    assert.equal(asksNothing(said), false, said);
+  }
+});
+
+test("only commentary is read; final, unknown and missing phases stay unknown", () => {
+  for (const phase of ["final_answer", null, "future_phase"]) assert.equal(codexItemText(real("All checks pass.", phase)).questions, "unknown", String(phase));
+  assert.equal(codexItemText({ phase: "commentary" }).questions, "unknown", "no text to read");
+  assert.equal(codexItemText({ phase: "commentary", text: 42 }).questions, "unknown");
+});
+
+test("Codex's own questions field, when sent, wins over the text", () => {
+  assert.equal(codexItemText({ ...real("Which option should I use?"), questions: [] }).questions, "none");
+  assert.equal(codexItemText({ ...real("Which option should I use?"), questions: null }).questions, "none");
+  assert.equal(codexItemText({ ...real("Checking the sample."), questions: [{ question: "Which sample?" }] }).questions, "present");
+  for (const bad of [{}, "none", 0, true]) assert.equal(codexItemText({ ...real("Checking the sample."), questions: bad }).questions, "unknown", "malformed is unknown, never read from the text");
+});
+
+test("a question followed by more work stays visible while the work around it is progress", () => {
+  const stamp = (id: string, said: string) => ({ id, at: 1, role: "bot", kind: "text", text: said, codexText: codexTextFor(codexItemText(real(said)), "turn-a", id, "agent") }) as Message;
+  const question = stamp("question", "Should I keep the old fixture or replace it?");
+  const history = [ask, stamp("p1", "Reading the fixture."), question, stamp("p2", "Checking the other tests meanwhile."), stamp("p3", "Running the suite.")];
+  assert.equal(itemProgress(question), false);
+  assert.equal(towardYou(question, true), true, "the question still marks the chat");
+  const ctx = { focused: false, selectedId: "elsewhere", threadId: "lane", bot: { id: "bot", name: "Helper", notifications: true } };
+  assert.ok(noticeFor(question, ctx), "the question still banners");
+  assert.equal(noticeFor(history[1], ctx), null);
+  // the work folds into one expandable row; the question stays a line of its own
+  assert.deepEqual(page(foldTurns(history, true)), ["ask", "work(p1,p2,p3)", "question"]);
+  for (const running of [true, false]) assert.equal(progressIds(history, () => running).has("question"), false, "running " + running);
+  // ended without an answer: the last commentary is given back, the question was never hidden
+  assert.deepEqual([...progressIds(history, () => false)], ["p1", "p2"]);
+});
 
 test("the server and the client read the stamp the same way", () => {
   const base = codexTextFor({ phase: "commentary", questions: "none" }, "turn", "item", "agent")!;
