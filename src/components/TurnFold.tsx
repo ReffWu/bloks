@@ -6,7 +6,13 @@
 // it is pressed. An agent that asked for the turn is named first, and
 // its name is the way into the exchange between the two, which the
 // "After a message from" link used to be.
-import type { ReactNode } from "react";
+//
+// A turn that ends while you watch settles into its line: the work above
+// the reply goes, and the line comes up in its place over a beat, rather
+// than the page swapping one for the other in a frame. A fold drawn
+// because a conversation was opened is simply there.
+import { useState, type ReactNode } from "react";
+import { motion } from "motion/react";
 import { ChevronRight } from "@/components/icons";
 import { useStore } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
@@ -14,6 +20,12 @@ import { askerWords, foldWords, type Asker, type TurnFold } from "@/lib/turnFold
 import { kindOf } from "@/lib/tool-summary";
 import { goalNoteForPerson } from "@/lib/goalNote";
 import { cn } from "@/lib/cn";
+
+/** How recent a fold's newest row must be for it to count as a turn
+ * that ended just now: the last call can come well before the reply. */
+const SETTLE_WINDOW_MS = 60_000;
+/** When each fold was first drawn on this screen. */
+const settled = new Map<string, number>();
 
 export function TurnFoldLine({
   fold,
@@ -32,6 +44,17 @@ export function TurnFoldLine({
   children?: ReactNode;
 }) {
   const { state } = useStore();
+  // Just ended: its newest row is recent, and this fold has not settled
+  // on this screen before. Decided once, when it is first drawn, so
+  // opening it, closing it or coming back to it never plays it again.
+  const [settling] = useState(() => {
+    const now = Date.now();
+    const newest = fold.messages.reduce((at, m) => Math.max(at, m.at ?? 0), 0);
+    if (now - newest > SETTLE_WINDOW_MS) return false;
+    // the same first drawing, asked twice (React's strict mode), agrees
+    if (!settled.has(fold.key)) settled.set(fold.key, now);
+    return now - settled.get(fold.key)! < 250;
+  });
   const botOf = (id: string) => state.bots.find((b) => b.id === id);
   const asker = fold.asker;
   const askedBy = asker?.by === "agent" ? botOf(asker.peerId) : undefined;
@@ -52,7 +75,14 @@ export function TurnFoldLine({
   const messaged = fold.messaged.map((peer) => ({ ...peer, bot: botOf(peer.peerId) }));
   const names = messaged.map((peer) => peer.bot?.name ?? peer.peerName);
   return (
-    <div className={cn("flex flex-col items-start px-1.5", className)} data-turn-fold={fold.key}>
+    <motion.div
+      className={cn("flex flex-col items-start px-1.5", className)}
+      data-turn-fold={fold.key}
+      initial={settling ? { opacity: 0, y: 6, scale: 0.985 } : false}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+      style={{ transformOrigin: "left center" }}
+    >
       <div
         className={cn(
           "flex min-w-0 max-w-full items-center gap-1.5 text-small",
@@ -107,6 +137,6 @@ export function TurnFoldLine({
       {open && (
         <div className="ml-[5px] mt-1.5 flex animate-fade-in flex-col gap-2.5 self-stretch border-l pl-3">{children}</div>
       )}
-    </div>
+    </motion.div>
   );
 }
