@@ -1,9 +1,12 @@
-// What your agents know about you (server/profile-notes.ts).
+// What your agents know about you (server/profile-notes.ts), as the pieces
+// the Memory place's About you page lays out (MemoryPlace.tsx).
 //
 // Suggestions first, because they are the part waiting on you: keep one
-// as it is, change the words and keep it, or let it go. Below, what every
-// agent has been told, each note removable, and a line to add your own.
-import { useCallback, useEffect, useState } from "react";
+// as it is, change the words and keep it, or let it go. Then what every
+// agent has been told, each note removable, with a line to add your own;
+// and the paragraph in your own words, which is the same field Settings
+// shows under About you, saved to the same place.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check } from "@/components/icons";
 import { Pencil } from "@/components/icons";
 import { Plus } from "@/components/icons";
@@ -11,7 +14,7 @@ import { Trash2 } from "@/components/icons";
 import { X } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 
 export interface ProfileNote {
@@ -36,7 +39,8 @@ export function useProfileNotes() {
   return { notes, reload };
 }
 
-function Suggestion({ note, onDone }: { note: ProfileNote; onDone: () => void }) {
+/** One suggestion, as a card with the three things it can become. */
+export function Suggestion({ note, onDone }: { note: ProfileNote; onDone: () => void }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(note.text);
   const [busy, setBusy] = useState(false);
@@ -47,20 +51,30 @@ function Suggestion({ note, onDone }: { note: ProfileNote; onDone: () => void })
   const keep = () =>
     act(api(`/api/profile/notes/${note.id}/keep`, { method: "POST", body: JSON.stringify(editing ? { text } : {}) }));
   return (
-    <div className="rounded-xl border border-brand/30 bg-brand-soft/30 p-3">
+    <div className="flex min-w-0 flex-col rounded-2xl border border-warning/30 bg-warning/[0.06] p-4">
       {editing ? (
-        <Input value={text} onChange={(e) => setText(e.target.value)} className="text-[13px]" autoFocus />
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) (e.preventDefault(), keep());
+            if (e.key === "Escape") (e.preventDefault(), setEditing(false), setText(note.text));
+          }}
+          className="min-h-[64px] resize-none bg-card text-[14px] leading-relaxed"
+          aria-label="The note, in your words"
+          autoFocus
+        />
       ) : (
-        <div className="text-[13.5px] text-foreground">{note.text}</div>
+        <p className="text-pretty text-[14.5px] leading-relaxed text-foreground">{note.text}</p>
       )}
-      <div className="mt-1 text-[11.5px] text-muted-foreground">Suggested by {note.by.name}</div>
-      <div className="mt-2 flex items-center gap-1.5">
+      <p className="mt-1.5 text-[12.5px] text-muted-foreground">Suggested by {note.by.name}</p>
+      <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
         <Button size="sm" disabled={busy || text.trim().length < 3} onClick={keep}>
-          <Check size={13} /> Keep
+          <Check size={13} /> {editing ? "Keep this" : "Keep"}
         </Button>
         {!editing && (
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(true)}>
-            <Pencil size={12} /> Change it
+            <Pencil size={12} /> Edit
           </Button>
         )}
         <Button
@@ -76,11 +90,10 @@ function Suggestion({ note, onDone }: { note: ProfileNote; onDone: () => void })
   );
 }
 
-export function AboutYou() {
-  const { notes, reload } = useProfileNotes();
+/** What every agent is told, a removable row each, and a line to add one. */
+export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; reload: () => void }) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const suggested = (notes ?? []).filter((n) => n.state === "suggested");
   const kept = (notes ?? []).filter((n) => n.state === "kept").sort((a, b) => (a.keptAt ?? a.at) - (b.keptAt ?? b.at));
 
   const add = () => {
@@ -95,66 +108,108 @@ export function AboutYou() {
   };
 
   return (
-    <div className="flex flex-col gap-5">
-      <p className="text-[13px] leading-relaxed text-muted-foreground">
-        Short notes every agent is told about you. Agents suggest them as they learn; nothing is added until you keep
-        it. They are never shared with people you invite into a room.
-      </p>
-
-      {suggested.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h3 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
-            Suggested ({suggested.length})
-          </h3>
-          {suggested.map((note) => (
-            <Suggestion key={note.id} note={note} onDone={reload} />
-          ))}
-        </section>
-      )}
-
-      <section className="flex flex-col gap-2">
-        <h3 className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">What agents know</h3>
-        {notes === null ? null : kept.length === 0 ? (
-          <div className="rounded-xl border border-dashed px-4 py-6 text-center text-[13px] text-muted-foreground">
-            Nothing yet. Add a note below, or keep one your agents suggest.
-          </div>
-        ) : (
-          <ul className="flex flex-col divide-y rounded-xl border">
-            {kept.map((note) => (
-              <li key={note.id} className="group flex items-start gap-3 px-3.5 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] text-foreground">{note.text}</div>
-                  <div className="text-[11.5px] text-muted-foreground">
-                    {note.by.id === "you" ? "You wrote this" : `From ${note.by.name}`}
-                  </div>
+    <div className="overflow-hidden rounded-2xl border bg-card">
+      {notes !== null && kept.length === 0 ? (
+        <p className="px-5 py-6 text-[13.5px] text-muted-foreground">
+          Nothing yet. Add a note below, or keep one your agents suggest.
+        </p>
+      ) : (
+        <ul className="divide-y">
+          {kept.map((note) => (
+            <li key={note.id} className="group flex items-start gap-3 px-5 py-3.5">
+              <span className="mt-[9px] size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+              <div className="min-w-0 flex-1">
+                <div className="text-pretty text-[14px] leading-relaxed text-foreground">{note.text}</div>
+                <div className="mt-0.5 text-[12px] text-muted-foreground">
+                  {note.by.id === "you" ? "You wrote this" : `From ${note.by.name}`}
                 </div>
-                <button
-                  aria-label={`Remove "${note.text}"`}
-                  onClick={() => api(`/api/profile/notes/${note.id}`, { method: "DELETE" }).then(reload).catch(() => {})}
-                  className={cn(
-                    "rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100",
-                  )}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="flex gap-2">
-          <Input
-            value={draft}
-            placeholder="Add one, like: I prefer short answers with bullet points"
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && add()}
-            className="text-[13px]"
-          />
-          <Button variant="secondary" disabled={draft.trim().length < 3} onClick={add}>
-            <Plus size={14} /> Add
-          </Button>
-        </div>
-        {error && <div className="text-[12px] text-destructive">{error}</div>}
-      </section>
+              </div>
+              <button
+                aria-label={`Remove "${note.text}"`}
+                title="Remove"
+                onClick={() => api(`/api/profile/notes/${note.id}`, { method: "DELETE" }).then(reload).catch(() => {})}
+                className={cn(
+                  "flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 outline-none transition-[opacity,background-color,color] duration-150 hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100",
+                )}
+              >
+                <Trash2 size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex items-center gap-2 border-t bg-muted/30 px-3 py-2.5">
+        <Plus size={15} className="ml-2 shrink-0 text-muted-foreground" />
+        <input
+          value={draft}
+          placeholder="Add one, like: I prefer short answers with bullet points"
+          aria-label="Add a note about you"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          className="min-w-0 flex-1 bg-transparent py-1 text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
+        />
+        <Button size="sm" variant="secondary" disabled={draft.trim().length < 3} onClick={add}>
+          Add
+        </Button>
+      </div>
+      {error && <div className="border-t px-5 py-2 text-[12.5px] text-destructive">{error}</div>}
+    </div>
+  );
+}
+
+/**
+ * The paragraph you write about yourself: `profile.about` in the config,
+ * the same field Settings shows under About you, so either place edits
+ * the one value. Saved a moment after typing stops, like Settings does.
+ */
+export function AboutText() {
+  const { state, dispatch } = useStore();
+  const saved = state.config?.profile?.about ?? "";
+  const [value, setValue] = useState(saved);
+  const [justSaved, setJustSaved] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydrated = useRef(false);
+
+  // adopt the server value once it arrives, without stomping an edit
+  useEffect(() => {
+    if (hydrated.current || !state.config) return;
+    hydrated.current = true;
+    setValue(saved);
+  }, [state.config, saved]);
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+
+  const save = (next: string) => {
+    setValue(next);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      api("/api/config", { method: "PUT", body: JSON.stringify({ profile: { about: next } }) })
+        .then((status) => {
+          dispatch({ type: "configStatus", config: status });
+          setJustSaved(true);
+          setTimeout(() => setJustSaved(false), 1600);
+        })
+        .catch(() => {});
+    }, 600);
+  };
+
+  return (
+    <div className="overflow-hidden rounded-2xl border bg-card">
+      <textarea
+        value={value}
+        onChange={(e) => save(e.target.value)}
+        aria-label="About you, in your own words"
+        placeholder="I'm a founder building a local-first agent app. Keep replies short and skip the preamble."
+        className="block [field-sizing:content] min-h-[132px] w-full resize-none bg-transparent px-5 py-4 text-[14px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
+      />
+      <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-5 py-2.5 text-[12.5px] text-muted-foreground">
+        <span>Every agent is told this. Never shared with people you invite into a room.</span>
+        <span
+          className={cn("flex shrink-0 items-center gap-1 text-success transition-opacity duration-200", justSaved ? "opacity-100" : "opacity-0")}
+          aria-live="polite"
+        >
+          <Check size={12} /> Saved
+        </span>
+      </div>
     </div>
   );
 }

@@ -148,7 +148,9 @@ describe("through the server", () => {
     });
     assert.deepEqual(copied.copied.map((c: any) => c.file).sort(), ["MEMORY.md", "memory/vendors.md"]);
     assert.deepEqual(copied.skipped.map((s: any) => s.file), ["memory/missing.md"]);
-    assert.match((await h.json(`/api/bots/${b.id}/memory`)).text, /Prefers the zeppelin vendor/);
+    const core = (await h.json(`/api/bots/${b.id}/memory`)).text;
+    assert.match(core, /Prefers the zeppelin vendor/);
+    assert.doesNotMatch(core, /Notes this agent keeps/, "the untouched seed is replaced, not kept above the copy");
     assert.match((await h.json(`/api/bots/${b.id}/memory/topics/vendors.md`)).text, /Zeppelin Print/);
     // again: nothing new to add, so nothing is written twice
     const again = await h.json(`/api/bots/${b.id}/memory/copy`, { method: "POST", body: JSON.stringify({ from: a.id, topics: ["vendors.md"], lines: [2] }) });

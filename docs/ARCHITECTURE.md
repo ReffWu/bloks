@@ -147,7 +147,7 @@ it is still exactly what the turn left behind.
 Memory has its own journal (`server/memory-journal.ts`). An agent's
 MEMORY.md and topic files are read before and after each turn, and any
 difference becomes an entry with the whole text before and after, as do
-edits made from the Memory panel. Undo follows the checkpoint rule: only
+edits made from the Memory place. Undo follows the checkpoint rule: only
 a file still exactly as that change left it goes back, and a file that
 has become a link is never written through. A change recorded through
 Bloks while a turn of that agent runs (the agent's own `bloks memory`
@@ -168,7 +168,12 @@ Telegram person's turn. Agents read it (`bloks memory --shared`, and the
 prompt) and never write it; the write route refuses an agent's
 credential and the agent guard does not list it.
 
-The Memory place reads `GET /api/bots/:id/memory/stats` for its meter
+Memory is a place on the main rail (`src/components/MemoryPlace.tsx`):
+a sidebar of its own lists Shared, About you and every agent, and the
+page beside it is the one picked. Links open it with `openMemory` and a
+target (an agent's id, `you` or `shared`), which Back and forward
+remember. About you edits the same `profile.about` Settings does. The
+place reads `GET /api/bots/:id/memory/stats` for its meter
 (lines and bytes against the budget, topics with sizes and times),
 searches with `GET /api/memory/search` (every listed agent's memory and
 the shared memory, from recall's own indexes), and copies with
@@ -317,7 +322,9 @@ the same one undo uses, marked as a rehearsal. `/api/checkpoints/:id/apply`
 writes each file only if the real one still matches what it was when the
 rehearsal began, then the record undoes like any other; applying one
 attempt of a compared task discards the rest. Copies are deleted when an
-attempt is applied or discarded, and swept after a week.
+attempt is applied or discarded, and swept after a week. Attempts are
+listed on Overview, the whole width below the brief, and a ready one
+puts a dot on Overview in the main rail.
 
 ## Rewind
 
@@ -1471,7 +1478,7 @@ preview, where it would go and whether it was brought over before.
 files again and takes from the window only which items and where, so an
 item whose digest no longer matches the review is refused. Instructions
 become an agent's instructions (if they fit) or a block in its
-`MEMORY.md`, written through the memory journal so the Memory panel can
+`MEMORY.md`, written through the memory journal so the Memory place can
 undo it; `memory/*.md` files become topic files. A new agent is made once
 per source per import. Skills go to the library under a free id, never
 over somebody's skill, and no agent has them until the person attaches

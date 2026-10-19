@@ -4,12 +4,12 @@
 // the full pages; moving between them is recorded as it happens, whoever
 // moved, so a link that opened Settings counts the same as a click.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Action, AppState, CustomizeTab, LibraryShelf } from "@/state/store";
+import type { Action, AppState, CustomizeTab, MemoryTarget } from "@/state/reducer";
 
 export type Place =
   | { kind: "chat"; id: string; lane?: string }
   | { kind: "overview" }
-  | { kind: "library"; shelf: LibraryShelf }
+  | { kind: "memory"; target: MemoryTarget | null }
   | { kind: "customize"; tab: CustomizeTab }
   | { kind: "automations" }
   | { kind: "settings"; page: string };
@@ -20,9 +20,10 @@ export function placeOf(state: AppState): Place | null {
   if (state.appSettingsOpen) return { kind: "settings", page: state.settingsPage };
   if (state.routinesOpen) return { kind: "automations" };
   // a page's own tab is part of where you were: Back from Skills to
-  // Plugins is a step, the same as Back from one chat to another
+  // Plugins is a step, the same as Back from one chat to another, and
+  // from one agent's memory to another's
   if (state.page === "overview") return { kind: "overview" };
-  if (state.page === "library") return { kind: "library", shelf: state.library };
+  if (state.page === "memory") return { kind: "memory", target: state.memoryTarget };
   if (state.page === "plugins") return { kind: "customize", tab: state.customize };
   if (!state.selectedId) return null;
   const bot = state.bots.find((b) => b.id === state.selectedId);
@@ -40,8 +41,8 @@ export function goTo(place: Place): Action[] {
       return [{ type: "select", id: place.id, lane: place.lane }];
     case "overview":
       return [{ type: "openPage", page: "overview" }];
-    case "library":
-      return [{ type: "openLibrary", shelf: place.shelf }];
+    case "memory":
+      return [{ type: "openMemory", target: place.target }];
     case "customize":
       return [{ type: "openCustomize", tab: place.tab }];
     case "automations":

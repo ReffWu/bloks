@@ -541,6 +541,14 @@ function AboutYou() {
           placeholder="I'm a founder building a local-first agent app. Keep replies short and skip the preamble."
           className="mt-3 min-h-[120px] resize-y text-[13px]"
         />
+        {/* the same field Memory's About you edits, beside the notes your
+            agents suggested; one value, either place */}
+        <button
+          onClick={() => dispatch({ type: "openMemory", target: "you" })}
+          className="mt-2.5 text-[12.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          See what your agents have learned about you in Memory
+        </button>
       </SettingRow>
     </SettingsGroup>
   );

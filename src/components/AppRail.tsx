@@ -7,7 +7,7 @@
 import { MessageCircle } from "@/components/icons";
 import { LayoutGrid } from "@/components/icons";
 import { Zap } from "@/components/icons";
-import { LibraryBig } from "@/components/icons";
+import { Brain } from "@/components/icons";
 import { Puzzle } from "@/components/icons";
 import { Settings as SettingsIcon } from "@/components/icons";
 import { useStore, type RailPage } from "@/state/store";
@@ -114,9 +114,17 @@ export function AppRail() {
           </RailButton>
           <RailButton
             label="Overview"
-            hint={activity.waiting > 0 ? `Overview: ${activity.waiting} waiting on you` : briefNew ? "Overview: a new morning brief" : undefined}
+            hint={
+              activity.waiting > 0
+                ? `Overview: ${activity.waiting} waiting on you`
+                : briefNew
+                  ? "Overview: a new morning brief"
+                  : rehearsalsReady > 0
+                    ? `Overview: ${rehearsalsReady} rehearsal${rehearsalsReady === 1 ? "" : "s"} ready`
+                    : undefined
+            }
             active={place === "overview"}
-            dot={activity.waiting > 0 ? "warning" : briefNew ? "brand" : null}
+            dot={activity.waiting > 0 ? "warning" : briefNew || rehearsalsReady > 0 ? "brand" : null}
             onClick={() => go("overview")}
           >
             <LayoutGrid size={18} strokeWidth={1.75} />
@@ -125,19 +133,13 @@ export function AppRail() {
             <Zap size={18} strokeWidth={1.75} />
           </RailButton>
           <RailButton
-            label="Library"
-            active={place === "library"}
-            hint={
-              notesWaiting > 0
-                ? `Library: ${notesWaiting} note${notesWaiting === 1 ? "" : "s"} about you to review`
-                : rehearsalsReady > 0
-                  ? `Library: ${rehearsalsReady} rehearsal${rehearsalsReady === 1 ? "" : "s"} ready`
-                  : undefined
-            }
-            dot={notesWaiting > 0 ? "warning" : rehearsalsReady > 0 ? "brand" : null}
-            onClick={() => go("library")}
+            label="Memory"
+            active={place === "memory"}
+            hint={notesWaiting > 0 ? `Memory: ${notesWaiting} note${notesWaiting === 1 ? "" : "s"} about you to review` : undefined}
+            dot={notesWaiting > 0 ? "warning" : null}
+            onClick={() => go("memory")}
           >
-            <LibraryBig size={18} strokeWidth={1.75} />
+            <Brain size={18} strokeWidth={1.75} />
           </RailButton>
           <RailButton
             label="Plugins"

@@ -13,11 +13,12 @@ import type { CodexSpeed, CodexSpeedStatus } from "@/lib/codexSpeed";
 export type { BlokColor, BlokShape } from "@/lib/mascot";
 
 /** The full pages the main rail opens besides Chat, Automations and Settings. */
-export type RailPage = "overview" | "library" | "plugins";
+export type RailPage = "overview" | "memory" | "plugins";
 /** The two pages of Customize, the rail's Plugins place (Customize.tsx). */
 export type CustomizeTab = "plugins" | "skills";
-/** Library's two shelves. */
-export type LibraryShelf = "memory" | "rehearsals";
+/** What the Memory place has open (MemoryPlace.tsx): an agent by its id,
+ * the notes about the person, or the shared memory every agent reads. */
+export type MemoryTarget = string;
 
 export interface OptionCardData {
   title: string;
@@ -618,7 +619,7 @@ export interface AppState {
   config: ConfigStatus | null;
   selectedId: string;
   /** Which of the main rail's full pages covers the chat (AppRail): the
-   * overview, the library or plugins. Settings and Automations keep their
+   * overview, memory or plugins. Settings and Automations keep their
    * own flags; null with both of those closed is the chat. */
   page: RailPage | null;
   /** Which Customize page shows when Plugins is the place. */
@@ -631,16 +632,15 @@ export interface AppState {
   newAgentOpen: boolean;
   /** the new-agent screen is the last step of setup, not a normal visit */
   newAgentFirstRun: boolean;
-  /** Which agent Library's Memory opens on (null: the first), when a
-   * link asked for one. */
-  memoryBotId: string | null;
-  /** Which of Library's two shelves shows (RailPages.tsx). */
-  library: LibraryShelf;
+  /** What the Memory place has open: an agent's id, "you" or "shared";
+   * null until something is picked or a link asks for one, when the
+   * place chooses (notes waiting on you, else the agent in view). */
+  memoryTarget: MemoryTarget | null;
   /** The agent taking meeting notes, while its panel is open. */
   meetingFor: string | null;
   /** The conversation whose "Set a goal" dialog is open (GoalDialog). */
   goalFor: { botId: string; taskId: string } | null;
-  /** Bumped when any rehearsal moves, so Library re-reads them. */
+  /** Bumped when any rehearsal moves, so Overview re-reads them. */
   rehearsalsTick: number;
   /** Bumped when the server says a kind of thing changed (notes about
    * you, briefs, watchers, meetings), so whatever shows it re-reads. */
@@ -781,7 +781,12 @@ export type Action =
   | { type: "toggleSettings"; open?: boolean }
   | { type: "openPage"; page: RailPage | null }
   | { type: "openCustomize"; tab: CustomizeTab }
-  | { type: "openLibrary"; shelf: LibraryShelf; botId?: string | null }
+  /** The Memory place, on `target` when given (an agent's id, "you" or
+   * "shared"), else on whatever it had open; null lets the place choose. */
+  | { type: "openMemory"; target?: MemoryTarget | null }
+  /** The old Library's way to Memory, kept while a caller still uses it;
+   * the same as openMemory on `botId`. */
+  | { type: "openLibrary"; shelf?: string; botId?: string | null }
   | { type: "toggleComputer"; open?: boolean }
   /** `page` opens Settings on that page (see SETTINGS_PAGES). */
   | { type: "toggleAppSettings"; open?: boolean; page?: string }
@@ -1259,21 +1264,18 @@ export function reducer(state: AppState, action: Action): AppState {
         : { ...state, page: null };
     case "openCustomize":
       return { ...state, page: "plugins", customize: action.tab, routinesOpen: false, appSettingsOpen: false, settingsOpen: false };
-    case "openLibrary":
-      try {
-        localStorage.setItem("bloks-library-shelf", action.shelf);
-      } catch {
-        /* private mode: holds for this visit */
-      }
+    case "openMemory":
+    case "openLibrary": {
+      const target = action.type === "openMemory" ? action.target : action.botId;
       return {
         ...state,
-        page: "library",
-        library: action.shelf,
-        memoryBotId: action.botId === undefined ? state.memoryBotId : action.botId,
+        page: "memory",
+        memoryTarget: target === undefined ? state.memoryTarget : target,
         routinesOpen: false,
         appSettingsOpen: false,
         settingsOpen: false,
       };
+    }
     case "toggleComputer": {
       const open = action.open ?? !state.computerOpen;
       return {
@@ -1374,14 +1376,7 @@ export const initialState: AppState = {
   settingsPage: "general",
   newAgentOpen: false,
   newAgentFirstRun: false,
-  memoryBotId: null,
-  library: (() => {
-    try {
-      return localStorage.getItem("bloks-library-shelf") === "rehearsals" ? "rehearsals" : "memory";
-    } catch {
-      return "memory";
-    }
-  })(),
+  memoryTarget: null,
   meetingFor: null,
   goalFor: null,
   rehearsalsTick: 0,

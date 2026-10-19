@@ -214,9 +214,10 @@ WhatsApp group, where agents answer only when they are mentioned and
 strangers knock before anyone listens.
 
 **Memory you can read, and take back.** What each agent remembers is
-plain Markdown in its own folder. The Memory panel shows every agent's
-files for editing, and a journal of every change, whether the agent
-made it or you did, each with its diff and an undo.
+plain Markdown in its own folder. Memory, on the main rail, shows every
+agent's files for editing, a shared memory every agent reads, and a
+journal of every change, whether the agent made it or you did, each with
+its diff and an undo.
 
 **Teams as files.** A team is one Markdown file: a heading per member,
 their seniority and skills, and a brief. Export any room as one, import

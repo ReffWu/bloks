@@ -1,12 +1,11 @@
 // The main rail's full pages that are not Chat, Automations or Settings:
-// Overview, Library and Plugins (Customize.tsx, with skills). Each shows
-// what it holds in place, laid out as a page, rather than opening windows
-// over the chat.
-import { useStore, type LibraryShelf, type RailPage } from "@/state/store";
-import { Segmented } from "@/components/ui/segmented";
-import { MemoryPanel } from "./MemoryPanel";
+// Overview, Memory (MemoryPlace.tsx) and Plugins (Customize.tsx, with
+// skills). Each shows what it holds in place, laid out as a page, rather
+// than opening windows over the chat.
+import { type RailPage } from "@/state/store";
 import { RehearsalsPanel } from "./RehearsalsPanel";
 import { CustomizeView } from "./Customize";
+import { MemoryPlace } from "./MemoryPlace";
 import { BriefPanel } from "./BriefPanel";
 import { ActivityPanel } from "./Activity";
 import { ProjectsPanel } from "./ProjectsPanel";
@@ -22,7 +21,9 @@ function greeting(now = new Date()): string {
  * Overview: one page for the whole picture rather than three windows to
  * open in turn. The morning brief, the widest read, takes the main column;
  * what is running or waiting, and the projects, sit beside it. On a narrow
- * window they stack, brief first.
+ * window they stack, brief first. Rehearsals, work waiting on a decision
+ * like the rest, run the whole width below, where attempts side by side
+ * have room to sit side by side.
  */
 function OverviewPage() {
   const activity = useActivityCount();
@@ -48,6 +49,9 @@ function OverviewPage() {
               <ProjectsPanel />
             </div>
           </div>
+          <div className="mt-5">
+            <RehearsalsPanel />
+          </div>
         </div>
       </div>
     </main>
@@ -56,45 +60,6 @@ function OverviewPage() {
 
 export function RailPageView({ page }: { page: RailPage }) {
   if (page === "overview") return <OverviewPage />;
-  if (page === "library") return <LibraryPage />;
+  if (page === "memory") return <MemoryPlace />;
   return <CustomizeView />;
-}
-
-/** A full page's own heading, the same on each: a title and one line. */
-function PageHeading({ title, says, children }: { title: string; says: string; children?: React.ReactNode }) {
-  return (
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div className="min-w-0">
-        <h1 className="text-balance text-[28px] font-semibold tracking-tight text-foreground">{title}</h1>
-        <p className="mt-1.5 text-pretty text-[14px] text-muted-foreground">{says}</p>
-      </div>
-      {children}
-    </header>
-  );
-}
-
-function LibraryPage() {
-  const { state, dispatch } = useStore();
-  const shelf = state.library;
-  const setShelf = (next: LibraryShelf) => dispatch({ type: "openLibrary", shelf: next });
-  return (
-    <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <div className="mx-auto flex min-h-0 w-full max-w-[1200px] flex-1 flex-col px-6 pb-6 pt-9 max-md:pt-16 lg:px-10">
-        <PageHeading title="Library" says="What your agents remember between conversations, and work they tried on a copy first.">
-          <Segmented<LibraryShelf>
-            aria-label="Library"
-            value={shelf}
-            onChange={setShelf}
-            options={[
-              { value: "memory", label: "Memory" },
-              { value: "rehearsals", label: "Rehearsals" },
-            ]}
-          />
-        </PageHeading>
-        <div className="flex min-h-[520px] flex-1 flex-col">
-          {shelf === "memory" ? <MemoryPanel /> : <RehearsalsPanel />}
-        </div>
-      </div>
-    </main>
-  );
 }

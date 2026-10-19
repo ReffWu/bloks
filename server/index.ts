@@ -6588,7 +6588,8 @@ function copyMemory(
       .filter((line) => line.trim());
     if (chosen.length) {
       write("MEMORY.md", (was) => {
-        const base = was ?? "";
+        // the untouched seed is instructions to nobody; the copy replaces it
+        const base = was !== null && workspace.readMemoryFile(toId).text ? was : "";
         const have = new Set(base.split("\n").map((line) => line.trim()));
         const fresh = chosen.filter((line) => !have.has(line.trim()));
         if (!fresh.length) return base;
