@@ -37,6 +37,15 @@ import {
   suggestTitle,
   type AgentTemplate,
 } from "@/lib/agentTemplates";
+import {
+  createDrafter,
+  DRAFT_SETTLE_MS,
+  draftKey,
+  mergeDraft,
+  worthDrafting,
+  type AgentDraft,
+  type DraftField,
+} from "@/lib/agentDraft";
 import { BLOK_COLORS, BLOK_COLOR_NAMES, BLOK_SHAPES, type BlokColor, type BlokShape } from "@/lib/mascot";
 import { AvatarLanding, BeatHeading, BeatLabel as Label, PreviewCard, Stepper, beat } from "./Beats";
 import { TEAM_LIBRARY } from "@/lib/teamLibrary";
@@ -67,7 +76,17 @@ interface Persona {
   title: string;
   description: string;
   skills: string[];
+  /** Skills from the workspace's library a draft picked, kept on. */
+  skillIds: string[];
 }
+
+const NO_PERSONA: Persona = { title: "", description: "", skills: [], skillIds: [] };
+
+/** Drafts for the whole session, so a job typed again, or the screen
+ * opened again, is not another wait (src/lib/agentDraft.ts). */
+const drafter = createDrafter((body, signal) =>
+  api("/api/agents/suggest", { method: "POST", body: JSON.stringify(body), signal }),
+);
 
 interface GalleryTeam {
   slug: string;
@@ -96,12 +115,21 @@ export function NewAgentScreen() {
   const [text, setText] = useState("");
   const [template, setTemplate] = useState<AgentTemplate | null>(null);
   const [name, setName] = useState("");
-  const [persona, setPersona] = useState<Persona>({ title: "", description: "", skills: [] });
+  const [persona, setPersona] = useState<Persona>(NO_PERSONA);
   // fields the person has typed into, which a late model draft leaves alone
   const edited = useRef(new Set<string>());
   const seededFor = useRef<string | null>(null);
   const [identity, setIdentity] = useState(randomIdentity);
-  const [naming, setNaming] = useState(false);
+  // a draft on its way for the job on the second beat
+  const [drafting, setDrafting] = useState(false);
+  // the fields showing a draft's words, for the hint beside them
+  const [drafted, setDrafted] = useState<ReadonlySet<DraftField>>(() => new Set());
+  // every name a draft has offered for this job, so "Another" is another
+  const offeredNames = useRef<string[]>([]);
+  // library skills a draft picked for this job, on or off
+  const [offeredSkills, setOfferedSkills] = useState<string[]>([]);
+  // the draft for the words being typed, shown while still on the first beat
+  const [early, setEarly] = useState<{ key: string; draft: AgentDraft } | null>(null);
   const [engine, setEngine] = useState<ModelSelection | null>(null);
   const [approvals, setApprovals] = useState<ApprovalMode | null>(null);
   const [refused, setRefused] = useState(false);
@@ -140,9 +168,12 @@ export function NewAgentScreen() {
   // until a role is picked or the look is chosen by hand.
   const heard = step === "job" && described ? matchTemplate(described) : null;
   const role = template ?? heard;
+  // the draft for exactly these words, once it is in; a role picked by
+  // hand is what was wanted, and no draft speaks over it
+  const earlyDraft = step === "job" && !template && early?.key === draftKey(described) ? early.draft : null;
   const shownName =
     step === "job"
-      ? template?.name || (described ? suggestName(described) : "")
+      ? template?.name || earlyDraft?.name || (described ? suggestName(described) : "")
       : name.trim() || template?.name || (described ? suggestName(described) : "");
   const greeting = role?.greeting ?? GENERIC_SETUP.greeting;
   const lookChosen = useRef(false);
@@ -155,8 +186,33 @@ export function NewAgentScreen() {
     setIdentity(look);
   };
   const previewTitle =
-    step === "job" ? (role?.title ?? (described ? suggestTitle(described) : "")) : persona.title;
-  const previewSkills = step === "job" ? (role?.skills ?? []) : persona.skills;
+    step === "job"
+      ? (template?.title ?? earlyDraft?.title ?? heard?.title ?? (described ? suggestTitle(described) : ""))
+      : persona.title;
+  const previewSkills =
+    step === "job" ? (template?.skills ?? (earlyDraft?.skills.length ? earlyDraft.skills : (heard?.skills ?? []))) : persona.skills;
+
+  // While the job is typed, its draft is asked for once the words settle,
+  // so it is usually in hand by the time Continue is pressed. Each new
+  // word cancels the wait, and the drafter drops the call for old words.
+  useEffect(() => {
+    if (step !== "job" || template || !worthDrafting(described)) return;
+    const key = draftKey(described);
+    const have = drafter.kept(described);
+    if (have) {
+      setEarly({ key, draft: have });
+      return;
+    }
+    const timer = setTimeout(() => {
+      drafter
+        .ask(described)
+        .then((draft) => setEarly({ key, draft }))
+        .catch(() => {});
+    }, DRAFT_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [described, step, template]);
+  // nothing left asking once the screen is gone
+  useEffect(() => () => drafter.stop(), []);
 
   /** A file, from the picker or from a drop. Read here and judged by the
    * server: whether it is really an agent is not this screen's call. */
@@ -177,38 +233,79 @@ export function NewAgentScreen() {
     if (seededFor.current !== key) {
       seededFor.current = key;
       edited.current.clear();
-      setPersona({
-        title: picked?.title ?? (described ? suggestTitle(described) : ""),
-        description: picked?.description ?? "",
-        skills: picked?.skills ?? [],
-      });
-      setName(picked?.name ?? (described ? suggestName(described) : ""));
+      offeredNames.current = [];
+      setOfferedSkills([]);
+      const seed = {
+        name: picked?.name ?? (described ? suggestName(described) : ""),
+        persona: {
+          title: picked?.title ?? (described ? suggestTitle(described) : ""),
+          description: picked?.description ?? "",
+          skills: picked?.skills ?? [],
+          skillIds: [],
+        },
+      };
       // A role chosen by hand says what was wanted; one matched from the
       // words was only a guess, so a model's draft may still improve it.
-      if (described && (!picked || picked === matchTemplate(described))) suggest(described);
+      const draftable = Boolean(described) && (!picked || picked === matchTemplate(described));
+      const have = draftable ? drafter.kept(described) : undefined;
+      if (have) applyDraft(have, seed);
+      else {
+        setName(seed.name);
+        setPersona(seed.persona);
+        setDrafted(new Set());
+        if (draftable) suggest(described);
+      }
     }
     setStep("identity");
   };
 
+  /**
+   * A draft onto the second beat. A drafted persona is the agent's craft,
+   * the same job a role's description does, and it wins over a matched
+   * role because it was written for this description rather than matched
+   * to it. Nothing the person typed is touched (mergeDraft). `base` is
+   * the beat as just seeded, for a draft already in hand; without it the
+   * draft lands on whatever the beat shows by then.
+   */
+  const applyDraft = (draft: AgentDraft, base?: { name: string; persona: Persona }) => {
+    const edits = edited.current;
+    const merge = (n: string, p: Persona) => mergeDraft({ name: n, ...p }, draft, edits);
+    const personaOf = (f: ReturnType<typeof merge>["fields"]): Persona => ({
+      title: f.title,
+      description: f.description,
+      skills: f.skills,
+      skillIds: f.skillIds,
+    });
+    const { filled } = merge("", NO_PERSONA);
+    if (base) {
+      const { fields } = merge(base.name, base.persona);
+      setName(fields.name);
+      setPersona(personaOf(fields));
+      setDrafted(new Set(filled));
+    } else {
+      setName((n) => merge(n, NO_PERSONA).fields.name);
+      setPersona((p) => personaOf(merge("", p).fields));
+      // a field an earlier draft filled, and nobody has touched since,
+      // still shows a draft's words
+      setDrafted((prev) => new Set([...[...prev].filter((f) => !edits.has(f)), ...filled]));
+    }
+    if (draft.name) offeredNames.current.push(draft.name);
+    if (draft.skillIds?.length) setOfferedSkills((prev) => [...new Set([...prev, ...draft.skillIds!])]);
+  };
+
   /** Upgrade the local guess with a model-written one if a provider is up;
-   * the flow never waits on it, and nothing typed is overwritten. */
-  const suggest = (description: string) => {
-    setNaming(true);
-    api("/api/agents/suggest", { method: "POST", body: JSON.stringify({ description }) })
-      .then((s) => {
+   * the flow never waits on it, and nothing typed is overwritten. `again`
+   * asks for a different one than those already offered. */
+  const suggest = (description: string, again = false) => {
+    setDrafting(true);
+    drafter
+      .ask(description, again ? { again: true, avoid: [...offeredNames.current, name.trim()] } : {})
+      .then((draft) => {
         if (seededFor.current?.split("|").slice(1).join("|") !== description) return;
-        if (s?.name && !edited.current.has("name")) setName(s.name);
-        // A drafted persona is the agent's craft, the same job a role's
-        // description does. It wins over a matched role, because it was
-        // written for this description rather than matched to it.
-        setPersona((p) => ({
-          title: s?.title && !edited.current.has("title") ? s.title : p.title,
-          description: s?.description && !edited.current.has("description") ? s.description : p.description,
-          skills: s?.skills?.length && !edited.current.has("skills") ? s.skills : p.skills,
-        }));
+        applyDraft(draft);
       })
       .catch(() => {})
-      .finally(() => setNaming(false));
+      .finally(() => setDrafting(false));
   };
 
   const pickTemplate = (picked: AgentTemplate) => {
@@ -228,6 +325,7 @@ export function NewAgentScreen() {
 
   const editPersona = (patch: Partial<Persona>) => {
     for (const key of Object.keys(patch)) edited.current.add(key);
+    setDrafted((prev) => new Set([...prev].filter((f) => !(f in patch))));
     setPersona((p) => ({ ...p, ...patch }));
   };
 
@@ -295,6 +393,7 @@ export function NewAgentScreen() {
         title: persona.title.trim() || template?.title || (described ? suggestTitle(described) : ""),
         description: described ? (craft ? `${described}\n\n${craft}` : described) : craft,
         skills: persona.skills.map((s) => s.trim()).filter(Boolean),
+        ...(persona.skillIds.length ? { skillIds: persona.skillIds } : {}),
         greeting,
         setup: template?.setup ?? GENERIC_SETUP.setup,
       },
@@ -482,9 +581,15 @@ export function NewAgentScreen() {
                   <IdentityBeat
                     name={name}
                     shownName={shownName}
-                    naming={naming}
+                    drafting={drafting}
+                    drafted={drafted}
+                    // the same rule toIdentity drafts by: words, and no role
+                    // picked by hand over them
+                    onAnother={described && (!template || template === matchTemplate(described)) ? () => suggest(described, true) : undefined}
+                    offeredSkills={offeredSkills}
                     setName={(value) => {
                       edited.current.add("name");
+                      setDrafted((prev) => new Set([...prev].filter((f) => f !== "name")));
                       setName(value);
                     }}
                     persona={persona}
@@ -870,7 +975,10 @@ function TeamTile({
 function IdentityBeat({
   name,
   shownName,
-  naming,
+  drafting,
+  drafted,
+  onAnother,
+  offeredSkills,
   setName,
   persona,
   editPersona,
@@ -883,7 +991,14 @@ function IdentityBeat({
 }: {
   name: string;
   shownName: string;
-  naming: boolean;
+  /** A draft is on its way. */
+  drafting: boolean;
+  /** The fields showing a draft's words. */
+  drafted: ReadonlySet<DraftField>;
+  /** Asks for a different draft; absent when there is nothing to draft from. */
+  onAnother?: () => void;
+  /** Library skills a draft picked, by id, whether kept on or not. */
+  offeredSkills: string[];
   setName: (value: string) => void;
   persona: Persona;
   editPersona: (patch: Partial<Persona>) => void;
@@ -899,6 +1014,24 @@ function IdentityBeat({
   useEffect(() => {
     requestAnimationFrame(() => nameRef.current?.select());
   }, []);
+
+  // The library's names for the skills a draft picked, asked for only
+  // when there are some to show.
+  const [library, setLibrary] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+    if (!offeredSkills.length || library) return;
+    api("/api/skills")
+      .then((r: { skills?: Array<{ id: string; name: string }> }) =>
+        setLibrary(Object.fromEntries((r.skills ?? []).map((s) => [s.id, s.name]))),
+      )
+      .catch(() => setLibrary({}));
+  }, [offeredSkills.length, library]);
+  const offered = offeredSkills.filter((id) => library?.[id]);
+  const toggleLibrary = (id: string) =>
+    editPersona({
+      skillIds: persona.skillIds.includes(id) ? persona.skillIds.filter((s) => s !== id) : [...persona.skillIds, id],
+    });
+  const personaDrafted = drafted.has("description") || drafted.has("skills");
 
   const addSkill = () => {
     const value = newSkill.trim();
@@ -928,12 +1061,39 @@ function IdentityBeat({
             placeholder="Name your agent"
             aria-label="Name"
             spellCheck={false}
-            className="h-12 w-full rounded-xl border bg-card px-4 text-title font-semibold tracking-tight text-foreground outline-none transition-[border-color] duration-150 placeholder:font-normal placeholder:text-muted-foreground focus:border-ring/60"
+            className={cn(
+              "h-12 w-full rounded-xl border bg-card px-4 text-title font-semibold tracking-tight text-foreground outline-none transition-[border-color] duration-150 placeholder:font-normal placeholder:text-muted-foreground focus:border-ring/60",
+              (drafting || onAnother) && "pr-44",
+            )}
           />
-          {naming && (
-            <span className="absolute right-3.5 top-1/2 flex -translate-y-1/2 items-center gap-1.5 text-small text-muted-foreground">
-              <Loader2 size={12} className="animate-spin" />
-              Thinking of a name
+          {/* Where a draft says itself: on its way, then that the name is
+              its suggestion, with another to be had. Quiet, because the
+              person can hire without ever looking here. */}
+          {(drafting || onAnother) && (
+            <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 text-small text-muted-foreground">
+              {drafting ? (
+                <span className="flex items-center gap-1.5 px-1.5">
+                  <Loader2 size={12} className="animate-spin" />
+                  Thinking
+                </span>
+              ) : (
+                <>
+                  {drafted.has("name") && (
+                    <span className="flex items-center gap-1 px-1">
+                      <Sparkles size={11} />
+                      Suggested
+                    </span>
+                  )}
+                  <button
+                    onClick={onAnother}
+                    title="Suggest another"
+                    className="flex items-center gap-1 rounded-md px-1.5 py-1 outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground active:scale-[0.96]"
+                  >
+                    <RefreshCw size={11} />
+                    Another
+                  </button>
+                </>
+              )}
             </span>
           )}
         </div>
@@ -1000,7 +1160,14 @@ function IdentityBeat({
       </section>
 
       <section className="mt-9">
-        <Label aside={<span className="text-small text-muted-foreground">{plural(persona.skills.length, "skill")}</span>}>
+        <Label
+          aside={
+            <span className="text-small text-muted-foreground">
+              {personaDrafted ? "Suggested, " : ""}
+              {plural(persona.skills.length, "skill")}
+            </span>
+          }
+        >
           What {shownName || "they"} know{shownName ? "s" : ""}
         </Label>
         <div className="rounded-2xl border bg-card p-4">
@@ -1079,6 +1246,34 @@ function IdentityBeat({
               </button>
             </div>
           </div>
+          {/* Skills already in the library that fit the job, which a draft
+              picked: on unless switched off, and the agent gets the whole
+              skill, not a line about it. */}
+          {offered.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t pt-3">
+              <span className="mr-1 text-small text-muted-foreground">From your library</span>
+              {offered.map((id) => {
+                const on = persona.skillIds.includes(id);
+                return (
+                  <button
+                    key={id}
+                    role="checkbox"
+                    aria-checked={on}
+                    onClick={() => toggleLibrary(id)}
+                    className={cn(
+                      "flex items-center gap-1 rounded-full border px-2.5 py-1 text-small outline-none transition-[background-color,border-color,color,scale] duration-150 ease-out active:scale-[0.96]",
+                      on
+                        ? "border-brand bg-brand-soft text-foreground"
+                        : "text-muted-foreground hover:border-foreground/25 hover:text-foreground focus-visible:border-foreground/25",
+                    )}
+                  >
+                    {on ? <Check size={11} /> : <Plus size={11} />}
+                    {library?.[id]}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
     </>

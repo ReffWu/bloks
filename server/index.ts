@@ -180,7 +180,7 @@ import { JobStore, nextFor, offerText, readClaim, type Candidate, type Job } fro
 import { identityFor, existingFingerprint, fingerprintFor, forget as forgetIdentity, signAs, statementOf } from "./identity.ts";
 import { assemble as assembleActivity, blockedOn, lastWithYou, towardYou } from "./activity.ts";
 import { splitArgs } from "./argv.ts";
-import { draftPrompt, parseDraft } from "./draft.ts";
+import { clampDraft, DRAFT_LIMITS, DraftCache, draftKey, draftPrompt, parseDraft, randomInitial, type DraftContext } from "./draft.ts";
 import { OLLAMA_URL, ollamaUrl, probeOllama, shouldAdopt } from "./local-models.ts";
 import { cookieStores, readCookies } from "./cookie-import.ts";
 import * as telegram from "./telegram.ts";
@@ -473,6 +473,47 @@ async function defaultSelection() {
     available[0] ??
     described[0];
   return { instanceId: pick?.instanceId ?? "claude", model: pick?.models.default || "claude-sonnet-5" };
+}
+
+/** Which engine drafts a new agent from its job, and until when that
+ * answer holds. Only some engines have a one-shot call (generateText),
+ * so the default for new agents is asked first and then any engine that
+ * can, Claude first among equals: a workspace on Codex alone still gets
+ * a draft from a custom endpoint it has. Asking every engine for its
+ * health costs more than the draft's own call while someone types, and
+ * the answer barely moves, so it is kept for a minute; having none is
+ * kept only briefly, since signing in is the usual next step. */
+let draftWriterPick: { instanceId: string | null; until: number } | null = null;
+async function draftWriter() {
+  if (draftWriterPick && draftWriterPick.until > Date.now()) {
+    const kept = draftWriterPick.instanceId ? registry.get(draftWriterPick.instanceId) : null;
+    if (!draftWriterPick.instanceId || kept?.generateText) return kept;
+  }
+  const described = await registry.describe();
+  const usable = (d: (typeof described)[number]) => d.snapshot.state === "available" && Boolean(registry.get(d.instanceId)?.generateText);
+  const ready = described.filter((d) => usable(d) && d.snapshot.authenticated !== false);
+  const wanted = cfg.agentDefaults?.modelSelection?.instanceId;
+  const pick =
+    ready.find((d) => d.instanceId === wanted) ??
+    ready.find((d) => d.driverKind === "claudeAgent") ??
+    ready[0] ??
+    described.find(usable);
+  draftWriterPick = { instanceId: pick?.instanceId ?? null, until: Date.now() + (pick ? 60_000 : 5_000) };
+  return pick ? registry.get(pick.instanceId) : null;
+}
+
+/** Drafts by job, kept and shared between asks (server/draft.ts). */
+const drafts = new DraftCache();
+/** Past this a draft is no longer a suggestion anyone is waiting for:
+ * the person has moved on with the screen's own guess. */
+const DRAFT_DEADLINE_MS = 25_000;
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("the draft took too long")), ms);
+    timer.unref?.();
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
 type Approvals = NonNullable<BotRecord["approvals"]>;
@@ -13083,19 +13124,32 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // Model-written name + role for a described agent. The client already
     // has a local guess; this upgrades it when a provider is available.
     if (method === "POST" && path === "/api/agents/suggest") {
-      const { description } = await readBody(req);
+      const { description, again, avoid } = await readBody(req);
       if (typeof description !== "string" || !description.trim()) {
         return json(res, 400, { error: "description required" });
       }
       if (description.length > 2_000) return json(res, 413, { error: "description is too long" });
-      const instance = registry.get((await defaultSelection()).instanceId);
-      if (!instance?.generateText) return json(res, 200, {});
+      const writer = await draftWriter();
+      if (!writer) return json(res, 200, { skills: [] });
+      // Asked fresh each time, since a hire between two asks takes a name
+      // and a skill can be installed: a kept draft is read against them
+      // again on the way out, not only when it was written.
+      const context: DraftContext = {
+        taken: store.bots.filter((b) => !b.hidden).map((b) => b.name),
+        library: listSkills().map((s) => ({ id: s.id, name: s.name, description: s.description })),
+        avoid: clampList(avoid, DRAFT_LIMITS.name, 10) ?? [],
+        initial: randomInitial(),
+      };
       try {
         // Name, role, persona and a few skills in one call. Whatever
         // comes back is a proposal shown in editable fields, never
         // something applied on the person's behalf.
-        const draft = parseDraft(await instance.generateText(draftPrompt(description)));
-        return json(res, 200, draft);
+        const draft = await drafts.get(
+          draftKey(description),
+          () => withDeadline(writer.generateText!(draftPrompt(description, context), { quick: true }), DRAFT_DEADLINE_MS).then((raw) => parseDraft(raw, context)),
+          again === true,
+        );
+        return json(res, 200, clampDraft(draft, context));
       } catch {
         return json(res, 200, { skills: [] }); // never block creation on a drafting call
       }

@@ -1178,12 +1178,16 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       // machine. The same variables a turn drops are dropped here, or a key
       // in the environment would bill these summaries to the API instead
       // of the person's subscription.
-      generateText: (prompt: string) =>
+      generateText: (prompt: string, options?: { quick?: boolean }) =>
         new Promise((resolve, reject) => {
           const env: Record<string, string | undefined> = { ...process.env };
           delete env.ANTHROPIC_API_KEY;
           delete env.CLAUDECODE;
           delete env.CLAUDE_CODE_ENTRYPOINT;
+          // Thinking first is most of the wait on a short answer: a new
+          // agent's draft took 9 to 30 seconds with it and about 4 without,
+          // the same model writing much the same thing.
+          if (options?.quick) env.MAX_THINKING_TOKENS = "0";
           // This writes text, not work in the server's project. Keep the
           // sign-in home, but load none of its customizations or tools.
           const cwd = mkdtempSync(join(tmpdir(), "bloks-text-"));

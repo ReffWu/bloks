@@ -216,3 +216,39 @@ for (const mode of ["text", "fail"]) test(`a cleanup error logs once and preserv
     syncBuiltinESMExports();
   }
 });
+
+test("a quick one-shot asks Claude Code to skip thinking, and an ordinary one does not", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "bloks-oneshot-quick-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const seen = join(dir, "seen.jsonl");
+  const cli = join(dir, "fake-claude.mjs");
+  writeFileSync(
+    cli,
+    `#!${process.execPath}
+import { appendFileSync } from "node:fs";
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("9.9.9 (Claude Code)"); process.exit(0); }
+process.stdin.on("data", () => {});
+process.stdin.on("end", () => {
+  appendFileSync(${JSON.stringify(seen)}, JSON.stringify({ thinking: process.env.MAX_THINKING_TOKENS ?? null }) + "\\n");
+  console.log("Fine.");
+});
+`,
+    { mode: 0o755 },
+  );
+  const before = process.env.MAX_THINKING_TOKENS;
+  delete process.env.MAX_THINKING_TOKENS;
+  t.after(() => {
+    if (before !== undefined) process.env.MAX_THINKING_TOKENS = before;
+  });
+  const instance = await ClaudeDriver.create({
+    instanceId: "claude", displayName: "Claude", enabled: true, environment: {},
+    config: { cli, permissionMode: "acceptEdits" } as any,
+  });
+  t.after(() => instance.dispose());
+
+  await instance.generateText!("A draft, please", { quick: true });
+  await instance.generateText!("A summary, please");
+  const calls = readFileSync(seen, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(calls, [{ thinking: "0" }, { thinking: null }]);
+});
