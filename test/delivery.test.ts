@@ -182,6 +182,6 @@ describe("what the person is told", () => {
       deliveryLine("queued", "other", "A"), deliveryLine("steered", "wait", "A"), deliveryLine("stopped", "you", "A"),
       previewLine("now", "urgent", "A", true), previewLine("queue", "you", "A", false), modelPrompt("x", "y"),
     ].join(" ");
-    assert.doesNotMatch(said, /[–—]/);
+    assert.doesNotMatch(said, /[\u2013\u2014]/);
   });
 });

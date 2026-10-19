@@ -762,9 +762,45 @@ the running server.
 
 ## Queued messages
 
-What the person says to a lane in the middle of a turn goes into that
-turn when its engine can take it (`steerLane` in `server/index.ts`),
-from the app, the phone or Telegram alike. Claude Code keeps the stdin
+What the person says to a lane in the middle of a turn is read first
+(`server/delivery.ts`, `deliveryFor` in `server/index.ts`), from the app
+and the phone; Telegram follow-ups and words typed into a card skip the
+reading and go in as described below. Each agent has a delivery mode
+(`BotRecord.delivery`, `PATCH /api/bots/:id` with `auto`, `interrupt`,
+`queue`, or `null` to follow the workspace; never from an agent's
+credential), and the workspace has `delivery.mode` in config.json
+(`PUT /api/config`, Settings, General), Automatic when unset. Automatic
+reads the words by rules: a short stop stops the turn, and the message
+starts the next one; "wait", a correction ("no", "actually",
+"instead"), urgent words, or a short reply to a question the agent's
+latest words in this turn asked go in now; words that say they are for
+afterwards, and everything else, wait. Only words the rules have
+nothing to say about are put to a model, and only to the agent's own
+engine when it has a small one (`ProviderInstance.smallText`, an
+OpenAI-compatible provider's named small model), for at most 1.5
+seconds; no answer means wait. Interrupt sends everything in now (a
+stop still stops), which is how every message went before modes
+existed, and Queue waits whatever the words. The person's one tap
+(`delivery: "now" | "wait"` on `POST /api/bots/:id/messages`) outranks
+both. Going in now uses the steer below; an engine with no `steerTurn`
+is stopped instead (`stopForYou`) and the message starts the next
+turn, but only for the person's own turn in its own lane
+(`mayStopForWords`). What happened is kept on the message
+(`Message.delivery`: route `steered`, `stopped` or `queued`, why, and
+the line said under it, such as "Queued until Research Analyst
+finishes" or "Interrupted to take your correction") and returned on the
+send. `POST /api/bots/:id/delivery` says, by the rules alone, which way
+words would go before they are sent, so the composer can say so with
+Send now or Wait instead beside it. `POST /api/bots/:id/queued/now` is
+the flip afterwards: the person's waiting words go into the running
+turn as themselves, in order (`sendWaitingNow`, moved rather than
+copied), or the turn stops for them when the engine cannot take words
+midway. Words that wait on purpose do not hold back a correction sent
+after them; words that wait only because they could not go in still
+do.
+
+When words go in now, they go into that turn when its engine can take
+them (`steerLane` in `server/index.ts`). Claude Code keeps the stdin
 it was given the prompt on open and reads another stream-json message
 after the step it is on; Codex takes it through `turn/steer`, naming the
 turn it is running. A driver says it can with `steerTurn` in
@@ -1279,6 +1315,7 @@ approvals (`waitingOnYou`), the day's usage buckets, and counts of things
 ready for a look. No model call. A minute timer makes one when the chosen
 time has passed and today's has not been made (`briefDue`), and a
 `brief.ready` frame wakes the owner's phone with a sealed preview.
+Rule suggestions (see Rule suggestions) are one of those counts.
 `/api/briefs/:id/parts/:n/audio` speaks one part in that agent's voice,
 or a Mac voice picked per agent. Quiet check-ins (see Routines) are left
 out of what an agent worked on and said as one count at the end of its
@@ -1716,6 +1753,39 @@ Revoking a device, or switching pairing off, forgets what it said.
 A phone gates its reports on `device-settings` in `/api/health`
 (`server/features.ts`), so an older Mac is never sent one. An older phone
 ignores a frame it does not know and is listed as unavailable.
+
+## Rule suggestions
+
+When the owner keeps answering the same approval the same way, Bloks
+offers to make it a rule (`server/rule-suggestions.ts`). Each answer the
+owner gives to an approval card for the owner's own request (not a
+shared room member's, an email's or a Telegram contact's, and not one a
+rule or a mode answered) is noted with its tool and the one target it
+named, in `~/.bloks/approval-habits.json` (a month, at most 2,000).
+Five approvals of the same tool and target pattern within 14 days, and
+no refusal of it in that window, make a suggestion. The pattern is the
+narrowest thing the approvals share: the exact command, or the words a
+family of plain commands starts with (`runs`), the folder the files were
+directly in (`in-folder`), the site the pages were on (`on-site`), or the
+tool alone. Commands that run whatever they are given (a shell, an
+interpreter, curl and so on) are only ever offered word for word. Each
+narrow operator reads its one field rather than comparing text (`runs`
+refuses anything chained, piped, redirected or substituted), a rule can
+be held to one tool (`Rule.tool`), and a build that does not know an
+operator never lets it allow. It is offered for the agent that asked,
+when that agent alone reached the count, and for every agent only when
+more than one did. Nothing on the safety floor (`server/safety-floor.ts`:
+deleting, money, credentials and the places they live, Bloks' own
+folder) is offered, an allow rule that is narrow or tool-held never
+covers anything on the floor later either, and nothing a rule already
+decides (allowed, or refused) is offered. `GET /api/rules/suggestions`
+lists them; `POST /api/rules/suggestions/:id/accept` with
+`{ "scope": "agent" | "everyone" }` writes an ordinary rule through
+`cleanRule`, recorded as `policy.changed`; `.../dismiss` keeps one quiet
+for 30 days. The desktop shows the first for an agent in its composer's
+tray and all of them above the rules in Settings, and the morning brief
+counts them as ready for a look. None of these routes is reachable with
+an agent's credential.
 
 ## Approval modes
 
