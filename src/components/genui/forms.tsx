@@ -216,8 +216,11 @@ export const Select: Part = ({ props }) => {
   );
 };
 
+// The box itself takes the app's focus ring, the same one everything
+// else wears: a native radio or checkbox inside is a field, and fields
+// never wear it (styles.css).
 const CHOICE =
-  "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 transition-[border-color,background-color] duration-150 hover:bg-accent/40 has-[:checked]:border-brand-ink/50 has-[:checked]:bg-brand-soft/40 has-[:disabled]:cursor-default has-[:disabled]:opacity-70 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring";
+  "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 transition-[border-color,background-color] duration-150 hover:bg-accent/40 has-[:checked]:border-brand-ink/50 has-[:checked]:bg-brand-soft/40 has-[:disabled]:cursor-default has-[:disabled]:opacity-70 has-[:focus-visible]:shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--ring)]";
 
 export const RadioGroup: Part = ({ props }) => {
   const id = useContext(FieldId);

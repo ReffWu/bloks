@@ -1,0 +1,157 @@
+// Interface answers end to end: what an agent is told, and what is kept
+// of what it writes back. A stand-in Claude Code CLI reads the briefing
+// it is handed and answers with whatever the test set, behind the real
+// HTTP request path.
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test, type TestContext } from "node:test";
+
+import { startHarness } from "./helpers/server.ts";
+
+async function setup(t: TestContext) {
+  const home = mkdtempSync(join(tmpdir(), "bloks-genui-"));
+  let stop: (() => Promise<void>) | undefined;
+  t.after(async () => {
+    await stop?.();
+    rmSync(home, { recursive: true, force: true });
+  });
+  const cli = join(home, "fake-claude.mjs");
+  const replyFile = join(home, "reply.txt");
+  const callsFile = join(home, "calls.json");
+  writeFileSync(cli, `#!${process.execPath}
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("2.1.289 (Claude Code)"); process.exit(0); }
+if (args[0] === "auth") { console.log(JSON.stringify({ loggedIn: true })); process.exit(0); }
+const value = (flag) => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
+let line = "";
+const take = (chunk) => {
+  line += chunk;
+  while (line.includes(String.fromCharCode(10))) {
+    const at = line.indexOf(String.fromCharCode(10));
+    const next = line.slice(0, at);
+    line = line.slice(at + 1);
+    if (!next.trim() || JSON.parse(next).type !== "user") continue;
+    process.stdin.off("data", take);
+    answer();
+    return;
+  }
+};
+process.stdin.on("data", take);
+function answer() {
+  const sessionId = value(args.includes("--resume") ? "--resume" : "--session-id");
+  const persona = readFileSync(value("--append-system-prompt-file"), "utf8");
+  const calls = existsSync(${JSON.stringify(callsFile)}) ? JSON.parse(readFileSync(${JSON.stringify(callsFile)}, "utf8")) : [];
+  calls.push({ persona });
+  writeFileSync(${JSON.stringify(callsFile)} + ".tmp", JSON.stringify(calls));
+  renameSync(${JSON.stringify(callsFile)} + ".tmp", ${JSON.stringify(callsFile)});
+  const text = readFileSync(${JSON.stringify(replyFile)}, "utf8");
+  const out = (frame) => console.log(JSON.stringify(frame));
+  out({ type: "system", subtype: "init", session_id: sessionId, model: "claude-sonnet-5" });
+  out({ type: "assistant", message: { content: [{ type: "text", text }] } });
+  out({ type: "result", subtype: "success", is_error: false, num_turns: 1, duration_api_ms: 1, session_id: sessionId, result: text });
+}
+`, { mode: 0o755 });
+  mkdirSync(join(home, ".bloks"), { recursive: true });
+  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({
+    instances: { claude: { driver: "claudeAgent", config: { cli, permissionMode: "bypassPermissions" } } },
+  }));
+  const h = await startHarness({ HOME: home });
+  stop = () => h.stop();
+  const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Drawer" }) });
+  const patch = async (body: Record<string, unknown>) => {
+    const res = await h.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    assert.equal(res.status, 200);
+    return (await res.json()).bot;
+  };
+  await patch({ modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } });
+  const calls = (): Array<{ persona: string }> => (existsSync(callsFile) ? JSON.parse(readFileSync(callsFile, "utf8")) : []);
+  /** One turn: the persona it was briefed with, and the agent's messages after it. */
+  const turn = async (ask: string, reply: string) => {
+    writeFileSync(replyFile, reply);
+    const n = calls().length + 1;
+    const accepted = await h.fetch(`/api/bots/${bot.id}/messages`, { method: "POST", body: JSON.stringify({ text: ask }) });
+    assert.equal(accepted.status, 202);
+    for (let i = 0; i < 200; i++) {
+      const { bots } = await h.json("/api/bots");
+      const me = bots.find((b: any) => b.id === bot.id);
+      if (calls().length >= n && !me?.busy) {
+        const said = me.messages as Array<Record<string, any>>;
+        const at = said.findLastIndex((m) => m.role === "user" && m.text === ask);
+        return { persona: calls()[n - 1].persona, after: said.slice(at + 1) };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.fail(`the stand-in CLI did not finish: ${h.logs().slice(-800)}`);
+  };
+  return { h, bot, patch, turn };
+}
+
+const ANSWER = [
+  "Porto is cheaper.",
+  "",
+  "```openui",
+  "root = Card([head, rents, next])",
+  'head = CardHeader("Lisbon or Porto")',
+  'rents = Table([Col("City", ["Lisbon", "Porto"]), Col("Rent", [1450, 980])])',
+  'next = FollowUpBlock([FollowUpItem("Show me Porto listings")])',
+  "```",
+].join("\n");
+
+test("an agent is taught interface answers, and its fences are kept as checked trees", async (t) => {
+  const { turn } = await setup(t);
+  const { persona, after } = await turn("Compare rents", ANSWER);
+
+  // taught from the library itself, signatures and all
+  assert.match(persona, /## Answering with interface/);
+  assert.match(persona, /Card\(children: /);
+  assert.match(persona, /MetricIndicator\(label: string, value: string/);
+  // and never anything that would fetch: no section on it, no call
+  // shown, only the rule that there is none
+  assert.doesNotMatch(persona, /## Query|## Mutation|Query\(|Mutation\(|@Run\(/);
+  assert.match(persona, /There is no Query, Mutation or @Run/);
+  // the gallery's own line is not taught beside it, which would be two
+  // ways to draw the same table
+  assert.doesNotMatch(persona, /Instead of describing something in prose/);
+  // the generator's dashes are not the house's
+  assert.doesNotMatch(persona.slice(persona.indexOf("## Answering with interface")), /[\u2014\u2013]/);
+
+  const reply = after.find((m) => m.role === "bot" && m.kind === "text");
+  assert.ok(reply, "the reply was stored");
+  // the text stays whole: the desktop draws from it as it streams
+  assert.match(reply.text, /```openui/);
+  assert.equal(reply.ui?.length, 1);
+  assert.equal(reply.ui[0].fence, 0);
+  assert.equal(reply.ui[0].tree.type, "Card");
+  const kinds = reply.ui[0].tree.props.children.map((c: any) => c.type);
+  assert.deepEqual(kinds, ["CardHeader", "Table", "FollowUpBlock"]);
+});
+
+test("switched off, an agent is told the gallery instead, and the old bloks fences still work", async (t) => {
+  const { turn, patch } = await setup(t);
+  const bot = await patch({ withoutComponents: ["openui"] });
+  // the switch is a real setting, not a name dropped as unknown
+  assert.deepEqual(bot.withoutComponents, ["openui"]);
+
+  const old = 'Here.\n\n```bloks\n{"kind":"quote","text":"It shipped on Friday."}\n```';
+  const { persona, after } = await turn("What did the changelog say?", old);
+  assert.doesNotMatch(persona, /## Answering with interface/);
+  assert.match(persona, /Instead of describing something in prose/);
+
+  const component = after.find((m) => m.kind === "component");
+  assert.equal(component?.component?.kind, "quote");
+  const words = after.find((m) => m.role === "bot" && m.kind === "text");
+  assert.equal(words?.text, "Here.");
+  assert.equal(words?.ui, undefined);
+});
+
+test("withholding the gallery's charts takes chart shapes out of what is taught", async (t) => {
+  const { turn, patch } = await setup(t);
+  await patch({ withoutComponents: ["chart"] });
+  const { persona } = await turn("Numbers?", "Plain words.");
+  assert.match(persona, /## Answering with interface/);
+  assert.doesNotMatch(persona, /BarChart|LineChart|PieChart/);
+  assert.match(persona, /Table\(columns: Col\[\]\)/);
+});

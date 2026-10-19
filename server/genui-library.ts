@@ -563,6 +563,7 @@ export const GENUI_GROUPS: ComponentGroup[] = [
     components: ["MetricIndicator", "Table", "Col", "BarChart", "LineChart", "PieChart", "Series"],
     notes: [
       '- A Table is column by column: Table([Col("City", ["Lisbon", "Porto"]), Col("Rent", ["€1,450", "€980"])]).',
+      "- Keep cells to short values and put longer notes after the table.",
       '- Charts take labels and one Series per line or set of bars: BarChart(["Q1", "Q2"], [Series("Sales", [12, 19])]).',
       "- Write the real numbers. Never invent data you do not have.",
     ],

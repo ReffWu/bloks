@@ -513,7 +513,7 @@ export const OptionCards: Part = ({ props }) => {
               }}
               className={cn(
                 "flex min-w-0 flex-col items-start gap-1 rounded-xl border px-3.5 py-3 text-left outline-none transition-[border-color,background-color,opacity,transform] duration-150 ease-out",
-                "enabled:hover:border-foreground/20 enabled:hover:bg-accent/40 enabled:active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-ring",
+                "enabled:hover:border-foreground/20 enabled:hover:bg-accent/40 enabled:active:scale-[0.98]",
                 i === recommended && chosen === null && "border-brand/45",
                 picked && "border-brand-ink bg-brand-soft/50",
                 chosen !== null && !picked && "opacity-55",
@@ -597,7 +597,7 @@ export const Tabs: Part = ({ props, renderNode }) => {
           <TabsPrimitive.Trigger
             key={i}
             value={String(i)}
-            className="flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-body font-medium text-muted-foreground outline-none transition-[background-color,color,box-shadow] duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.06),0_0_0_0.5px_rgba(0,0,0,0.06)] dark:data-[state=active]:shadow-[0_0_0_0.5px_rgba(255,255,255,0.08)]"
+            className="flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-body font-medium text-muted-foreground outline-none transition-[background-color,color,box-shadow] duration-150 hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:not-focus-visible:shadow-[0_1px_2px_rgba(0,0,0,0.06),0_0_0_0.5px_rgba(0,0,0,0.06)] dark:data-[state=active]:not-focus-visible:shadow-[0_0_0_0.5px_rgba(255,255,255,0.08)]"
           >
             {text(item.props.trigger) || `Tab ${i + 1}`}
           </TabsPrimitive.Trigger>

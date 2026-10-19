@@ -126,7 +126,7 @@ export function genuiPrompt(without: string[] | undefined): string | null {
   const kept = prompts.get(key);
   if (kept) return kept;
   const library: Library<null> = removed.length ? genuiShapes.extend({ components: { remove: removed } }) : genuiShapes;
-  const mentions = (example: string) => removed.some((name) => new RegExp(`\\b${name}\\(`).test(example));
+  const mentions = (example: string) => removed.some((name) => new RegExp(`\\b${name}\\b`).test(example));
   const spec = library.toSpec();
   // A note about a shape that is gone goes with it, and so does a
   // section left with nothing in it.
@@ -203,7 +203,9 @@ export interface UiEntry {
   truncated?: true;
 }
 
-const parser = createParser(genuiShapes.toJSONSchema(), GENUI_ROOT);
+// Made on the first reply that has a fence, not when the server starts:
+// most replies never need it.
+let parser: ReturnType<typeof createParser> | null = null;
 
 /** An address that may be opened: http or https, and nothing else. A
  * `javascript:` or `file:` link written by a model is the first thing a
@@ -340,6 +342,7 @@ export function extractUi(text: string): UiEntry[] | undefined {
   fences.forEach(({ code }, fence) => {
     if (!code.trim() || code.length > MAX_SOURCE) return;
     try {
+      parser ??= createParser(genuiShapes.toJSONSchema(), GENUI_ROOT);
       const result = parser.parse(code);
       const store = createStore();
       store.initialize(result.stateDeclarations ?? {}, {});
@@ -400,6 +403,8 @@ export function withoutUi(text: string): string {
     else out.push(...lines.slice(i, Math.min(j + 1, lines.length)));
     i = j;
   }
+  // a reply with no interface in it goes exactly as it was written
+  if (!had) return text.trim();
   const left = out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-  return left || (had ? "The answer is interactive. Open Bloks to see it." : "");
+  return left || "The answer is interactive. Open Bloks to see it.";
 }

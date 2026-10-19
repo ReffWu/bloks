@@ -94,7 +94,8 @@ process.stdin.on("data", (chunk) => (input += chunk));
 test("a fresh turn receives short-cell and longer-note guidance for tables", async (t) => {
   const s = await setup(t);
   const first = await s.turn("Compare the options.");
-  assert.match(first.persona, /- table, for .*Keep cells to short values and put longer notes after the table/);
+  // taught with interface answers now, and the same advice holds there
+  assert.match(first.persona, /Keep cells to short values and put longer notes after the table/);
 });
 
 test("a memory change between resumed turns leaves the system prompt alone and is told in the message", async (t) => {
@@ -141,7 +142,7 @@ test("nothing is added to the message when memory and notes have not moved", asy
 
 test("a fresh session gets the current memory and notes in its system prompt", async (t) => {
   const s = await setup(t);
-  s.remember("- BEFORE\n");
+  s.remember("- BEFORE_FRESH\n");
   await s.turn("Hello.");
   s.remember("- AFTER_FRESH\n");
   await s.post("/api/profile/notes", { text: "Goes by FRESH_NOTE" });
@@ -159,7 +160,7 @@ test("a fresh session gets the current memory and notes in its system prompt", a
   assert.ok(fresh.argv.includes("--session-id"));
   assert.match(fresh.persona, /AFTER_FRESH/);
   assert.match(fresh.persona, /FRESH_NOTE/);
-  assert.doesNotMatch(fresh.persona, /BEFORE/);
+  assert.doesNotMatch(fresh.persona, /BEFORE_FRESH/);
   assert.equal(fresh.message, "Fresh start.");
 });
 
