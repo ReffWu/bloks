@@ -14,7 +14,9 @@ import {
   cleanTitle,
   foregroundJob,
   parsePs,
+  sttyArgs,
   terminalTitle,
+  ttyDevice,
   type TerminalEvent,
 } from "../server/terminal.ts";
 import { startHarness } from "./helpers/server.ts";
@@ -213,6 +215,19 @@ describe("one agent, several shells", () => {
   });
 });
 
+describe("resizing from outside the shell", () => {
+  test("ps's answer becomes a device, and nothing else does", () => {
+    assert.equal(ttyDevice("ttys005\n"), "/dev/ttys005");
+    assert.equal(ttyDevice("pts/3"), "/dev/pts/3");
+    for (const none of ["", "??", "?", "../etc/passwd", "tty s1"]) assert.equal(ttyDevice(none), null, none);
+  });
+
+  test("stty names the device the way each system's stty wants", () => {
+    assert.deepEqual(sttyArgs("darwin", "/dev/ttys005", 120, 40), ["-f", "/dev/ttys005", "rows", "40", "cols", "120"]);
+    assert.deepEqual(sttyArgs("linux", "/dev/pts/3", 120, 40), ["-F", "/dev/pts/3", "rows", "40", "cols", "120"]);
+  });
+});
+
 const hasPty = process.platform !== "win32";
 
 describe("a real shell's foreground", { skip: hasPty ? false : "no pty on this platform" }, () => {
@@ -239,6 +254,27 @@ describe("a real shell's foreground", { skip: hasPty ? false : "no pty on this p
       store.closeAll();
     }
     assert.deepEqual(await session.foreground(), { running: false }, "an ended shell runs nothing");
+  });
+
+  test("a resize changes the size without typing anything into the shell", async () => {
+    const store = new TerminalStore();
+    const session = store.create(input("bot-n"));
+    // a piped shell has no size to change
+    if (!session.pty) return store.closeAll();
+    let seen = "";
+    const { detach } = session.attach((chunk) => (seen += chunk.toString()));
+    try {
+      await until(() => (seen.length ? true : null));
+      await wait(300);
+      session.resize(132, 41);
+      await wait(600);
+      session.write("stty size\n");
+      assert.ok(await until(() => (/41 132/.test(seen) ? true : null)), `the size did not change: ${JSON.stringify(seen.slice(-300))}`);
+      assert.doesNotMatch(seen, /stty rows/, "the resize was typed where a program would read it");
+    } finally {
+      detach();
+      store.closeAll();
+    }
   });
 
   test("a shell that exits is news to whoever is watching the agent", async () => {

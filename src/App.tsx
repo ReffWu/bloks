@@ -26,6 +26,7 @@ import { Switcher } from "@/components/Switcher";
 import { QuickAsk } from "@/components/QuickAsk";
 import { Toaster, toast } from "@/components/ui/toast";
 import { ConfirmHost } from "@/components/ui/confirm";
+import { TerminalWindow, terminalWindowAgent } from "@/components/terminal/TerminalWindow";
 
 /**
  * Whatever went wrong, said over every view as an error toast. It used to
@@ -194,6 +195,9 @@ export default function App() {
   // else with the workspace: no store, no stream, no intro, because it is
   // open for four seconds at a time.
   if (new URLSearchParams(location.search).has("quick")) return <QuickAsk />;
+  // So does an agent's terminal popped out into a window of its own.
+  const terminalFor = terminalWindowAgent(location.search);
+  if (terminalFor) return <TerminalWindow botId={terminalFor} />;
 
   // First launch runs the cinematic intro, then the working onboarding.
   // Two separate flags on purpose: someone who skips the intro still needs

@@ -123,7 +123,7 @@ describe("the sheet", () => {
   test("groups come in the order the sheet promises", () => {
     assert.deepEqual(
       shortcutSheet(true).map((g) => g.id),
-      ["navigation", "conversation", "composer", "app"],
+      ["navigation", "conversation", "composer", "terminal", "app"],
     );
   });
 

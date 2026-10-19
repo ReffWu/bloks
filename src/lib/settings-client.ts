@@ -43,7 +43,7 @@ function capture(): Observation {
   // screen replaces it below. Never a default standing in for a value.
   for (const key of ["theme.preference", "theme.applied", "conversations.preference", "conversations.applied", "sidebar.preference",
     "sidebar.applied", "sidebar.foldsConfigured", "desktop.dock", "desktop.width", "desktop.height", "desktop.x", "desktop.y",
-    "terminal.height", "terminal.open", "room.lens"] as const) values[key] = { status: "unknown", reason: "unmounted" };
+    "terminal.height", "terminal.open", "terminal.position", "terminal.arrangement", "room.lens"] as const) values[key] = { status: "unknown", reason: "unmounted" };
   if (typeof window !== "undefined") {
     values["viewport.width"] = { status: "observed", value: window.innerWidth };
     values["viewport.height"] = { status: "observed", value: window.innerHeight };

@@ -256,14 +256,43 @@ export function spawnPlan(
 /**
  * A resize after the fact.
  *
- * The pty's size lives in the kernel and the only thing on the far side
- * that can change it is something running inside. So a resize is a line
- * typed into the shell, which means it is echoed: it goes in with a
- * leading space so shells configured to ignore those keep it out of
- * history, and it is not sent for a change nobody would notice.
+ * The pty's size lives in the kernel, and the program that opened the pty
+ * (expect, python, script) does not pass a new one on. What can change it
+ * is anything allowed to open the terminal device, which this account is,
+ * since its shell is on it: `stty -f /dev/ttys005 rows 40 cols 120` from
+ * outside sets the size and tells whatever is in the foreground, a full
+ * screen program included, the way a terminal app's resize does.
+ *
+ * Where the device cannot be found, a resize is a line typed into the
+ * shell instead, which means it is echoed, and typed into whatever is
+ * running if something is: it goes in with a leading space so shells
+ * configured to ignore those keep it out of history, and it is not sent
+ * for a change nobody would notice.
  */
 export function resizeLine(cols: number, rows: number): string {
   return ` stty rows ${rows} cols ${cols} 2>/dev/null\n`;
+}
+
+/** The device a `ps -o tty=` answer names, or null for no terminal. */
+export function ttyDevice(answer: string): string | null {
+  const name = answer.trim();
+  if (!name || name.startsWith("?") || !/^[\w/]+$/.test(name) || name.includes("..")) return null;
+  return `/dev/${name}`;
+}
+
+/** stty's arguments for setting another terminal's size: BSD and macOS
+ * name the device with -f, GNU with -F. */
+export function sttyArgs(platform: NodeJS.Platform, device: string, cols: number, rows: number): string[] {
+  return [platform === "linux" ? "-F" : "-f", device, "rows", String(rows), "cols", String(cols)];
+}
+
+/** The system's own stty, by full path for the reason ps is (see PS). */
+const STTY = ["/bin/stty", "/usr/bin/stty"];
+
+function run(file: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(file, args, { timeout: 3_000 }, (error, stdout) => resolve(error ? null : String(stdout)));
+  });
 }
 
 export function worthResizing(
@@ -555,7 +584,35 @@ export class TerminalSession {
     if (!worthResizing(this, next)) return;
     this.cols = next.cols;
     this.rows = next.rows;
-    if (this.pty) this.write(resizeLine(next.cols, next.rows));
+    if (!this.pty) return;
+    // one at a time and in order, so a drag's last size is the one that
+    // sticks rather than whichever stty happened to finish last
+    this.resizing = this.resizing.then(async () => {
+      if (this.cols !== next.cols || this.rows !== next.rows) return;
+      if (!(await this.resizeQuietly(next.cols, next.rows))) this.write(resizeLine(next.cols, next.rows));
+    });
+  }
+
+  private resizing: Promise<void> = Promise.resolve();
+  /** The pty's device, once found; null once known not to be findable. */
+  private device: string | null | undefined;
+
+  /** Sets the size from outside the shell, without typing anything into
+   * it. False when that cannot be done here. */
+  private async resizeQuietly(cols: number, rows: number): Promise<boolean> {
+    if (process.platform === "win32" || !this.alive) return false;
+    const stty = STTY.find(canRun);
+    const ps = PS.find(canRun);
+    if (!stty || !ps || !this.pid) return false;
+    if (this.device === undefined) {
+      // the shell is the pty program's child, and the pty is its terminal
+      const processes = await readProcesses();
+      const shell = processes?.find((r) => r.ppid === this.pid);
+      const answer = shell ? await run(ps, ["-o", "tty=", "-p", String(shell.pid)]) : null;
+      this.device = answer === null ? null : ttyDevice(answer);
+    }
+    if (!this.device) return false;
+    return (await run(stty, sttyArgs(process.platform, this.device, cols, rows))) !== null;
   }
 
   /** Forget what was printed, so a client that comes back after Clear is

@@ -119,6 +119,9 @@ declare global {
       shortcutApply(accelerator: string | null): Promise<string | null>;
       quickHide(): Promise<void>;
       quickOpenMain(): Promise<void>;
+      /** An agent's terminal in a window of its own, or the one already
+       * open brought forward. Absent in an app older than tabs. */
+      terminalWindow?(botId: string): Promise<void>;
       onQuickOpened(handler: () => void): () => void;
       /** Whether this Mac can prove who is at the keyboard: "biometry",
        * "password", or "unavailable". */

@@ -27,6 +27,8 @@ import ArrowUpRightHero from "@heroicons/react/24/outline/ArrowUpRightIcon.js";
 import ArrowUpTrayHero from "@heroicons/react/24/outline/ArrowUpTrayIcon.js";
 import ArrowUturnLeftHero from "@heroicons/react/24/outline/ArrowUturnLeftIcon.js";
 import ArrowUturnRightHero from "@heroicons/react/24/outline/ArrowUturnRightIcon.js";
+import ArrowsPointingInHero from "@heroicons/react/24/outline/ArrowsPointingInIcon.js";
+import ArrowsPointingOutHero from "@heroicons/react/24/outline/ArrowsPointingOutIcon.js";
 import BackspaceHero from "@heroicons/react/24/outline/BackspaceIcon.js";
 import BeakerHero from "@heroicons/react/24/outline/BeakerIcon.js";
 import BellAlertHero from "@heroicons/react/24/outline/BellAlertIcon.js";
@@ -65,6 +67,7 @@ import DocumentMinusHero from "@heroicons/react/24/outline/DocumentMinusIcon.js"
 import DocumentPlusHero from "@heroicons/react/24/outline/DocumentPlusIcon.js";
 import DocumentTextHero from "@heroicons/react/24/outline/DocumentTextIcon.js";
 import EllipsisHorizontalHero from "@heroicons/react/24/outline/EllipsisHorizontalIcon.js";
+import EllipsisVerticalHero from "@heroicons/react/24/outline/EllipsisVerticalIcon.js";
 import ExclamationTriangleHero from "@heroicons/react/24/outline/ExclamationTriangleIcon.js";
 import EyeHero from "@heroicons/react/24/outline/EyeIcon.js";
 import FaceSmileHero from "@heroicons/react/24/outline/FaceSmileIcon.js";
@@ -181,6 +184,31 @@ const PanelBottomShape = drawn(
     <path d="M3.75 14.25h16.5" />
   </>,
 );
+const PanelTopShape = drawn(
+  "PanelTop",
+  <>
+    <rect x="3.75" y="4.5" width="16.5" height="15" rx="2.25" />
+    <path d="M3.75 9.75h16.5" />
+  </>,
+);
+// The terminal's layout choices: the whole window taken, and the window
+// shared side by side. Filled shapes, on the same grid and stroke as the
+// panels above, so the four sides and these two read as one set.
+const PanelFillShape = drawn(
+  "PanelFill",
+  <>
+    <rect x="3.75" y="4.5" width="16.5" height="15" rx="2.25" />
+    <rect x="6.75" y="7.5" width="10.5" height="9" rx="0.75" fill="currentColor" stroke="none" />
+  </>,
+);
+const PanelSplitShape = drawn(
+  "PanelSplit",
+  <>
+    <rect x="3.75" y="4.5" width="16.5" height="15" rx="2.25" />
+    <rect x="6.75" y="7.5" width="4.25" height="9" rx="0.75" fill="currentColor" stroke="none" opacity="0.45" />
+    <rect x="13" y="7.5" width="4.25" height="9" rx="0.75" fill="currentColor" stroke="none" />
+  </>,
+);
 const KeyboardShape = drawn(
   "Keyboard",
   <>
@@ -271,7 +299,13 @@ export const Minus = icon(MinusHero, "Minus");
 export const Monitor = icon(ComputerDesktopHero, "Monitor");
 export const Moon = icon(MoonHero, "Moon");
 export const MoreHorizontal = icon(EllipsisHorizontalHero, "MoreHorizontal");
+export const Maximize2 = icon(ArrowsPointingOutHero, "Maximize2");
+export const Minimize2 = icon(ArrowsPointingInHero, "Minimize2");
+export const MoreVertical = icon(EllipsisVerticalHero, "MoreVertical");
 export const PanelBottom = PanelBottomShape;
+export const PanelFill = PanelFillShape;
+export const PanelSplit = PanelSplitShape;
+export const PanelTop = PanelTopShape;
 export const PanelLeft = PanelLeftShape;
 export const PanelRight = PanelRightShape;
 export const Pause = icon(PauseHero, "Pause");

@@ -46,6 +46,7 @@ import { claimPairLink, startRemoteProxy } from "./remote.mjs";
 import { nativeSettingsObservation } from "./settings-observation.mjs";
 import { sameAppOrigin } from "./navigation.mjs";
 import { linkInArgv, teamLink } from "./links.mjs";
+import { terminalQuery } from "./terminal-window.mjs";
 import os from "node:os";
 
 // vendored by scripts/bundle-updater.mjs: the packaged app has no
@@ -131,7 +132,7 @@ let pendingLink = null;
 function deliverLink(raw) {
   const link = teamLink(raw);
   if (!link) return;
-  const main = BrowserWindow.getAllWindows().find((w) => w !== quickWin && !w.isDestroyed());
+  const main = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w));
   if (!main || main.webContents.isLoading()) {
     pendingLink = link;
     return;
@@ -158,7 +159,7 @@ handle("link:pending", () => {
 // the same way a link waits above.
 let pendingMenuCommand = null;
 function menuCommand(command) {
-  const main = BrowserWindow.getAllWindows().find((w) => w !== quickWin && !w.isDestroyed());
+  const main = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w));
   if (!main || main.webContents.isLoading()) {
     pendingMenuCommand = command;
     if (!main) createWindow();
@@ -178,7 +179,7 @@ handle("menu:pending", () => {
 app.on("second-instance", (_event, argv = []) => {
   const link = linkInArgv(argv);
   if (link) deliverLink(link);
-  const main = BrowserWindow.getAllWindows().find((w) => w !== quickWin && !w.isDestroyed());
+  const main = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w));
   if (!main) return;
   if (main.isMinimized()) main.restore();
   main.show();
@@ -591,7 +592,8 @@ function pointWindows() {
     if (win.isDestroyed()) continue;
     // a server that died again at once fails the load, and the next try
     // or the failure page points the window again
-    win.loadURL(win === quickWin && serverStarted ? appUrl("quick=1") : appUrl()).catch(() => {});
+    const query = win === quickWin ? "quick=1" : (terminalWins.get(win) ?? "");
+    win.loadURL(serverStarted && query ? appUrl(query) : appUrl()).catch(() => {});
   }
 }
 
@@ -628,6 +630,68 @@ function quickWindow() {
     quickWin = null;
   });
   return quickWin;
+}
+
+// ── a terminal window ─────────────────────────────────────────────────
+// An agent's terminal, popped out of the conversation into a window of
+// its own: the same page, loaded with ?terminal=<agent>, which draws
+// nothing but that agent's terminal (App.tsx). One per agent; asking again
+// brings the one already open forward. Each remembers its query so a
+// server restart can point it back at the same terminal.
+
+/** Terminal windows, and the query each one loads. */
+const terminalWins = new Map();
+
+/** The main workspace window, rather than the quick ask panel or a
+ * terminal of its own: the one links, menu commands and the Dock icon
+ * are for. */
+function isWorkspaceWindow(win) {
+  return Boolean(win) && !win.isDestroyed() && win !== quickWin && !terminalWins.has(win);
+}
+
+function openTerminalWindow(botId) {
+  const query = terminalQuery(botId);
+  if (!query) throw new Error("not an agent");
+  for (const [win, has] of terminalWins) {
+    if (has === query && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+      return;
+    }
+  }
+  const parent = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w));
+  const near = parent?.getBounds();
+  const win = new BrowserWindow({
+    width: 900,
+    height: 560,
+    // a little down and across from the window it came out of
+    ...(near ? { x: near.x + 48, y: near.y + 48 } : {}),
+    minWidth: 420,
+    minHeight: 240,
+    icon: APP_ICON,
+    title: "Terminal",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? DARK_BACKDROP : LIGHT_BACKDROP,
+    // the same settings as the main window, written out for the same
+    // reason: this page draws a shell, and a shell's output is somebody
+    // else's text
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      nodeIntegrationInWorker: false,
+      nodeIntegrationInSubFrames: false,
+      webviewTag: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      preload: path.join(HERE, "preload.cjs"),
+    },
+  });
+  terminalWins.set(win, query);
+  win.on("closed", () => terminalWins.delete(win));
+  guardNavigation(win);
+  installContextMenu(win);
+  win.loadURL(appUrl(query)).catch(() => {});
 }
 
 function toggleQuickAsk() {
@@ -1111,9 +1175,10 @@ handle("shortcut:apply", (_event, accelerator) =>
   applyQuickShortcut(typeof accelerator === "string" && accelerator ? accelerator : null),
 );
 handle("quick:hide", () => quickWin?.hide());
+handle("terminal:window", (_event, botId) => openTerminalWindow(botId));
 handle("quick:open-main", () => {
   quickWin?.hide();
-  const [main] = BrowserWindow.getAllWindows().filter((w) => w !== quickWin);
+  const [main] = BrowserWindow.getAllWindows().filter((w) => isWorkspaceWindow(w));
   if (!main || main.isDestroyed()) return;
   if (main.isMinimized()) main.restore();
   main.show();
@@ -1324,8 +1389,9 @@ app.whenReady().then(async () => {
   watchPower();
 
   app.on("activate", () => {
-    // the panel is not a window worth reopening the app for
-    const windows = BrowserWindow.getAllWindows().filter((w) => w !== quickWin);
+    // the panel is not a window worth reopening the app for, and nor is
+    // a terminal on its own: the workspace is what the Dock icon opens
+    const windows = BrowserWindow.getAllWindows().filter((w) => isWorkspaceWindow(w));
     if (windows.length === 0) createWindow();
   });
 });

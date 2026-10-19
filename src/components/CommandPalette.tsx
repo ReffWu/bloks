@@ -207,7 +207,8 @@ export function CommandPalette() {
         });
       }
       list.push({
-        id: "terminal",
+        // named for its line in the shortcut list, so the row shows ⌃`
+        id: "terminalToggle",
         label: "Open terminal",
         keywords: `shell console command line ${bot.name} folder`,
         icon: SquareTerminal,

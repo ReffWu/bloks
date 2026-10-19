@@ -19,7 +19,7 @@ export type Platform = "mac" | "other";
 /** One combination, modifiers and a key: ["Mod", "K"]. */
 export type Chord = readonly string[];
 
-export type ShortcutGroup = "navigation" | "conversation" | "composer" | "app";
+export type ShortcutGroup = "navigation" | "conversation" | "composer" | "terminal" | "app";
 
 export interface Shortcut {
   id: string;
@@ -40,6 +40,7 @@ export const SHORTCUT_GROUPS: ReadonlyArray<{ id: ShortcutGroup; label: string }
   { id: "navigation", label: "Navigation" },
   { id: "conversation", label: "Conversation" },
   { id: "composer", label: "Composer" },
+  { id: "terminal", label: "Terminal" },
   { id: "app", label: "App" },
 ];
 
@@ -141,6 +142,40 @@ export const SHORTCUTS: readonly Shortcut[] = [
     keys: [["Esc"]],
     does: "Stop dictation",
     when: "while dictating",
+  },
+
+  // ── terminal ──
+  // Matched in terminalTabs.ts, which is also how the shell is told to
+  // leave these keys alone.
+  { id: "terminalToggle", group: "terminal", keys: [["Ctrl", "`"]], does: "Show or hide the terminal" },
+  { id: "terminalNew", group: "terminal", keys: [["Ctrl", "Shift", "`"]], does: "New terminal tab" },
+  {
+    id: "terminalClose",
+    group: "terminal",
+    keys: [["Ctrl", "Shift", "W"]],
+    does: "Close the terminal tab",
+    when: "in the terminal",
+  },
+  {
+    id: "terminalStep",
+    group: "terminal",
+    keys: [["Mod", "Shift", "]"], ["Mod", "Shift", "["]],
+    does: "Next or previous terminal tab",
+    when: "while the terminal is open",
+  },
+  {
+    id: "terminalFill",
+    group: "terminal",
+    keys: [["Mod", "Shift", "Enter"]],
+    does: "Terminal fills the window, or goes back",
+    when: "while the terminal is open",
+  },
+  {
+    id: "terminalLeave",
+    group: "terminal",
+    keys: [["Esc"]],
+    does: "Leave the full window terminal",
+    when: "with the keyboard outside the terminal",
   },
 
   // ── app ──

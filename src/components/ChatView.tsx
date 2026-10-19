@@ -12,7 +12,8 @@ import { AgentAvatar } from "./Avatar";
 import { OptionCard } from "./OptionCard";
 import { MessageComponent } from "./Gallery";
 import { Composer } from "./Composer";
-import { TerminalPanel } from "./Terminal";
+import { useTerminalDock } from "./terminal/TerminalDock";
+import { terminalChord } from "@/lib/terminalTabs";
 import { lastEditable, quietRunAt, splitWaiting } from "@/lib/transcript";
 import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { useLanesInSidebar } from "@/lib/conversationsView";
@@ -201,16 +202,15 @@ export function ChatView({ bot }: { bot: Bot }) {
         return null;
       })
       .catch((e) => (e instanceof Error ? e.message : String(e)));
-  // The terminal drawer. Only whether it is on screen lives here: the
-  // shell itself is on the server and outlives this component, so closing
-  // the drawer is closing a window onto it rather than ending it.
+  // The terminal. Only whether it is on screen lives here, and where it
+  // sits lives with the dock: the shells themselves are on the server and
+  // outlive this component, so hiding the panel is closing a window onto
+  // them rather than ending them.
   const [terminalOpen, setTerminalOpen] = useState(false);
-  const [terminalHeight, setTerminalHeight] = useState(() => {
-    const saved = Number(localStorage.getItem("bloks-terminal-height"));
-    return Number.isFinite(saved) && saved >= 140 ? saved : 260;
-  });
-
-  useSettingsObservation({ "terminal.height": { status: "observed", value: terminalHeight }, "terminal.open": { status: "observed", value: terminalOpen } });
+  // bumped by ⌃⇧` to ask the panel for a new tab as it opens
+  const [terminalAskNew, setTerminalAskNew] = useState(0);
+  const terminalShown = useRef(terminalOpen);
+  terminalShown.current = terminalOpen;
 
   const streaming = state.streaming[bot.threadId];
   const provisioning = state.provisioning[bot.id];
@@ -291,6 +291,18 @@ export function ChatView({ bot }: { bot: Bot }) {
       if ((e.metaKey || e.ctrlKey) && e.key === "f") {
         e.preventDefault();
         openFind();
+        return;
+      }
+      // ⌃` shows and hides the terminal; ⌃⇧` opens it on a new tab. With
+      // the panel open, the new tab is the panel's to make.
+      const chord = e.defaultPrevented ? null : terminalChord(e, platformOf());
+      if (chord === "toggle") {
+        e.preventDefault();
+        setTerminalOpen((open) => !open);
+      } else if (chord === "new" && !terminalShown.current) {
+        e.preventDefault();
+        setTerminalAskNew((n) => n + 1);
+        setTerminalOpen(true);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -436,6 +448,24 @@ export function ChatView({ bot }: { bot: Bot }) {
     setPrefill({ text: prompt, nonce: Date.now() });
     focusBox();
   };
+
+  const terminal = useTerminalDock({
+    open: terminalOpen,
+    botId: bot.id,
+    botName: bot.name,
+    askNew: terminalAskNew,
+    onClose: () => {
+      setTerminalOpen(false);
+      // the keyboard goes back where you were typing before
+      focusBox();
+    },
+  });
+  useSettingsObservation({
+    "terminal.height": { status: "observed", value: terminal.layout.sizes.bottom },
+    "terminal.open": { status: "observed", value: terminalOpen },
+    "terminal.position": { status: "observed", value: terminal.layout.position },
+    "terminal.arrangement": { status: "observed", value: terminal.layout.arrangement },
+  });
 
   // the two-agent exchange opened from one of its rows, if any
   const [exchange, setExchange] = useState<{ peerId: string; messageId: string; text: string } | null>(null);
@@ -636,7 +666,9 @@ export function ChatView({ bot }: { bot: Bot }) {
             size="icon"
             onClick={() => setTerminalOpen((open) => !open)}
             className={cn(terminalOpen && "bg-accent text-foreground")}
-            title={`Terminal in ${bot.name}'s folder`}
+            title={`Terminal in ${bot.name}'s folder  ${keysFor("terminalToggle", platformOf())[0]}`}
+            aria-label="Terminal"
+            aria-pressed={terminalOpen}
           >
             <SquareTerminal size={17} />
           </Button>
@@ -755,6 +787,12 @@ export function ChatView({ bot }: { bot: Bot }) {
           </div>
         </div>
       )}
+      {/* The conversation and the terminal, which can sit on any side of
+          it (terminal/TerminalDock.tsx). */}
+      <div ref={terminal.body} className="flex min-h-0 min-w-0 flex-1">
+      {terminal.slot("left")}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {terminal.slot("top")}
       {/* The transcript, and the way back to its end floating over it. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
       <div
@@ -819,40 +857,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       <JumpToLatest show={away && !empty} fresh={freshBelow} onJump={toLatest} />
       </div>
 
-      {terminalOpen && (
-        <div
-          className="flex shrink-0 flex-col border-t"
-          style={{ height: terminalHeight }}
-        >
-          {/* Drag to resize. Pointer capture rather than window listeners
-              so a fast drag that leaves the strip keeps working. */}
-          <div
-            role="separator"
-            aria-label="Resize the terminal"
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              const startY = e.clientY;
-              const startHeight = terminalHeight;
-              const move = (event: PointerEvent) => {
-                const next = Math.max(140, Math.min(window.innerHeight - 220, startHeight - (event.clientY - startY)));
-                setTerminalHeight(next);
-              };
-              const up = () => {
-                window.removeEventListener("pointermove", move);
-                window.removeEventListener("pointerup", up);
-                setTerminalHeight((height) => {
-                  localStorage.setItem("bloks-terminal-height", String(height));
-                  return height;
-                });
-              };
-              window.addEventListener("pointermove", move);
-              window.addEventListener("pointerup", up);
-            }}
-            className="h-1.5 shrink-0 cursor-ns-resize bg-transparent transition-colors duration-150 hover:bg-accent"
-          />
-          <TerminalPanel bot={bot} onClose={() => setTerminalOpen(false)} />
-        </div>
-      )}
+      {terminal.slot("bottom")}
       <GoalDialog />
       {/* approvals, other conversations, the engine, what waits, guest
           mail and the goal all speak through the composer's one tray */}
@@ -868,6 +873,11 @@ export function ChatView({ bot }: { bot: Bot }) {
         editAsk={editAsk}
         onSendAgain={sendAgain}
       />
+      </div>
+      {terminal.slot("right")}
+      </div>
+      {terminal.overlay}
+      {terminal.panel}
       {exchange && (
         <AgentExchangeDialog
           botId={bot.id}
