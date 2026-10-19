@@ -6,7 +6,10 @@ import { ThemeProvider } from "./lib/theme";
 import "@fontsource-variable/inter/opsz.css";
 import "./styles.css";
 import { startTranscriptWidth } from "./lib/useTranscriptWidth";
+import { applyAccent, storedAccent } from "./lib/accent";
 
+// before the first render, so the chosen colour is there from the start
+applyAccent(storedAccent());
 startTranscriptWidth();
 
 createRoot(document.getElementById("root")!).render(

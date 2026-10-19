@@ -64,6 +64,7 @@ import { UserPlus } from "@/components/icons";
 import { Luggage } from "@/components/icons";
 import { useEscape } from "@/lib/useEscape";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, useWorkspaceApprovals, type ApprovalMode } from "./ApprovalsChooser";
+import { AccentPicker } from "./AccentPicker";
 
 const THEME_OPTIONS: Array<{ value: Theme; label: string; icon: React.ReactNode }> = [
   { value: "light", label: "Light", icon: <Sun size={14} /> },
@@ -879,6 +880,11 @@ function GeneralPage() {
               options={THEME_OPTIONS.map((o) => ({ value: o.value, label: <>{o.icon}{o.label}</> }))}
             />
           }
+        />
+        <SettingRow
+          label="Accent"
+          description="Your messages, the main buttons and selected things. From the Bloks logo."
+          control={<AccentPicker />}
         />
         <SettingRow
           label="Transcript width"

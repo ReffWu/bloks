@@ -1,0 +1,168 @@
+// The accent, chosen from the eight colours of the Bloks mark and nothing
+// else (Brand.tsx draws the same eight squares). The phone offers the
+// same eight, with the same rules.
+//
+// A choice becomes four of the variables styles.css already uses, so
+// nothing that reads them has to know a choice was made:
+//   --brand            the fill: the logo colour exactly, in both modes
+//   --brand-foreground words on the fill: white where white reads, a
+//                      near-black ink where it does not
+//   --brand-ink        the accent as words or marks on the page: the same
+//                      hue, made darker on light pages or lighter on dark
+//                      ones until it reads against them
+//   --brand-soft       a quiet wash of it, for a selected row or a tag
+// The numbers behind "reads" are WCAG's: 4.5 to 1 for text, measured
+// against the card as well as the page, since the card is the harder of
+// the two in dark mode.
+
+export interface Accent {
+  id: string;
+  name: string;
+  hex: string;
+}
+
+export const ACCENTS: Accent[] = [
+  { id: "deepBlue", name: "Deep blue", hex: "#004aad" },
+  { id: "orange", name: "Orange", hex: "#ff751f" },
+  { id: "orchid", name: "Orchid", hex: "#cb6ce6" },
+  { id: "red", name: "Red", hex: "#ff3131" },
+  { id: "coral", name: "Coral", hex: "#ff5757" },
+  { id: "cyan", name: "Cyan", hex: "#5ce1e6" },
+  { id: "green", name: "Green", hex: "#7ed957" },
+  { id: "amber", name: "Amber", hex: "#ffbd59" },
+];
+
+export const DEFAULT_ACCENT = "deepBlue";
+const STORAGE_KEY = "bloks-accent";
+
+/** The surfaces accent words have to read on, from styles.css. */
+const PAGES = {
+  light: ["#ffffff", "#f7f7f8"],
+  dark: ["#0e0e10", "#17171a", "#1a1a1e"],
+};
+const INK = "#14151f";
+
+type Rgb = [number, number, number];
+
+const toRgb = (hex: string): Rgb => {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const toHex = ([r, g, b]: Rgb) =>
+  "#" + [r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
+
+export function luminance(hex: string): number {
+  const [r, g, b] = toRgb(hex).map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+export function contrast(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** RGB to HSL and back, so a colour can be moved in lightness only and
+ * keep its hue. */
+function toHsl([r, g, b]: Rgb): [number, number, number] {
+  const [R, G, B] = [r / 255, g / 255, b / 255];
+  const max = Math.max(R, G, B);
+  const min = Math.min(R, G, B);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === R ? (G - B) / d + (G < B ? 6 : 0) : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
+  return [h / 6, s, l];
+}
+
+function fromHsl([h, s, l]: [number, number, number]): Rgb {
+  if (s === 0) return [l * 255, l * 255, l * 255];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const f = (t: number) => {
+    const u = t < 0 ? t + 1 : t > 1 ? t - 1 : t;
+    if (u < 1 / 6) return p + (q - p) * 6 * u;
+    if (u < 1 / 2) return q;
+    if (u < 2 / 3) return p + (q - p) * (2 / 3 - u) * 6;
+    return p;
+  };
+  return [f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255];
+}
+
+/** The accent made readable as words on every page of a mode: the exact
+ * colour when it already reads, otherwise the nearest lightness that does. */
+export function readableOn(hex: string, mode: "light" | "dark", ratio = 4.5): string {
+  const reads = (c: string) => PAGES[mode].every((page) => contrast(c, page) >= ratio);
+  if (reads(hex)) return hex;
+  const [h, s, l] = toHsl(toRgb(hex));
+  for (let step = 1; step <= 100; step++) {
+    const next = mode === "light" ? l - step / 100 : l + step / 100;
+    if (next < 0 || next > 1) break;
+    const candidate = toHex(fromHsl([h, s, next]));
+    if (reads(candidate)) return candidate;
+  }
+  return mode === "light" ? "#000000" : "#ffffff";
+}
+
+/** Words on the fill: white when it reaches 4.5, else the ink. Buttons
+ * here are small text, so the large-text allowance does not apply. */
+export function onFill(hex: string): string {
+  return contrast("#ffffff", hex) >= 4.5 ? "#ffffff" : INK;
+}
+
+/** A quiet wash: the accent over the page at a small strength. */
+function soft(hex: string, mode: "light" | "dark"): string {
+  const [r, g, b] = toRgb(hex);
+  if (mode === "dark") return `rgba(${r}, ${g}, ${b}, 0.16)`;
+  return toHex([255 + (r - 255) * 0.12, 255 + (g - 255) * 0.12, 255 + (b - 255) * 0.12]);
+}
+
+export function tokensFor(hex: string) {
+  return {
+    light: { brand: hex, "brand-foreground": onFill(hex), "brand-ink": readableOn(hex, "light"), "brand-soft": soft(hex, "light") },
+    dark: { brand: hex, "brand-foreground": onFill(hex), "brand-ink": readableOn(hex, "dark"), "brand-soft": soft(hex, "dark") },
+  };
+}
+
+export function storedAccent(): Accent {
+  let id = DEFAULT_ACCENT;
+  try {
+    id = localStorage.getItem(STORAGE_KEY) ?? DEFAULT_ACCENT;
+  } catch {
+    /* storage unavailable: the default */
+  }
+  return ACCENTS.find((a) => a.id === id) ?? ACCENTS[0];
+}
+
+/** Writes the accent into its own style element. The selectors are a
+ * step more specific than styles.css's own (:root:root over :root,
+ * :root.dark over .dark), so they win in both modes whichever stylesheet
+ * the browser happens to load last. */
+export function applyAccent(accent: Accent) {
+  const t = tokensFor(accent.hex);
+  const block = (vars: Record<string, string>) =>
+    Object.entries(vars)
+      .map(([k, v]) => `--${k}: ${v};`)
+      .join(" ");
+  let el = document.getElementById("bloks-accent") as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement("style");
+    el.id = "bloks-accent";
+    document.head.appendChild(el);
+  }
+  el.textContent = `:root:root { ${block(t.light)} } :root.dark { ${block(t.dark)} }`;
+}
+
+export function chooseAccent(id: string) {
+  const accent = ACCENTS.find((a) => a.id === id) ?? ACCENTS[0];
+  try {
+    localStorage.setItem(STORAGE_KEY, accent.id);
+  } catch {
+    /* holds for this visit */
+  }
+  applyAccent(accent);
+  return accent;
+}
