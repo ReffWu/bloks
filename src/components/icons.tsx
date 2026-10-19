@@ -10,6 +10,7 @@
 import { forwardRef, type ComponentType, type SVGProps } from "react";
 import AdjustmentsHorizontalHero from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon.js";
 import ArchiveBoxHero from "@heroicons/react/24/outline/ArchiveBoxIcon.js";
+import ArrowDownHero from "@heroicons/react/24/outline/ArrowDownIcon.js";
 import ArrowDownLeftHero from "@heroicons/react/24/outline/ArrowDownLeftIcon.js";
 import ArrowDownTrayHero from "@heroicons/react/24/outline/ArrowDownTrayIcon.js";
 import ArrowLeftHero from "@heroicons/react/24/outline/ArrowLeftIcon.js";
@@ -193,6 +194,7 @@ export const Activity = icon(ChartBarHero, "Activity");
 export const AlertTriangle = icon(ExclamationTriangleHero, "AlertTriangle");
 export const AppWindow = icon(WindowHero, "AppWindow");
 export const Archive = icon(ArchiveBoxHero, "Archive");
+export const ArrowDown = icon(ArrowDownHero, "ArrowDown");
 export const ArrowDownLeft = icon(ArrowDownLeftHero, "ArrowDownLeft");
 export const ArrowDownToLine = icon(ArrowDownTrayHero, "ArrowDownToLine");
 export const ArrowLeft = icon(ArrowLeftHero, "ArrowLeft");

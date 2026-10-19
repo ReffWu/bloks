@@ -2,23 +2,39 @@
 // ⌘K.
 //
 // Empty, it is a switcher: the chats you were most recently in, each a
-// Ctrl+number away, then the few things the app can be told to do and the
-// settings people reach for most. Typing filters the agents and rooms by
-// name (prefix matches first) and, after a short debounce, searches every
-// transcript on the server, best match first (ranked as an agent's own
-// recall is); a message hit jumps to the exact conversation and lane it
-// lives in. One flat keyboard cursor runs across all sections, because
-// reaching for arrow keys should never care about headings.
+// Ctrl+number away, then what can be done to the conversation on screen
+// and the app's places. Typing filters the agents and rooms by name
+// (prefix matches first), every action and settings page by what it
+// says, and, after a short debounce, searches every transcript on the
+// server, best match first (ranked as an agent's own recall is). A
+// message hit opens the exact conversation and lane it lives in and
+// lands on the message itself (src/lib/chatAsk.ts). One flat keyboard
+// cursor runs across all sections, because reaching for arrow keys
+// should never care about headings.
+//
+// Opened from the keyboard it is simply there: something reached for all
+// day should never make you wait for it. Opened with the mouse it settles
+// in, quickly, the way the rest of the app's panels do.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot as BotIcon } from "@/components/icons";
+import { Brain } from "@/components/icons";
+import { CircleStop } from "@/components/icons";
 import { Keyboard } from "@/components/icons";
+import { LayoutGrid } from "@/components/icons";
 import { MessageSquare } from "@/components/icons";
-import { Settings2 as SettingsIcon } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { Puzzle } from "@/components/icons";
+import { Search } from "@/components/icons";
+import { Settings as SettingsIcon } from "@/components/icons";
 import { SquarePen } from "@/components/icons";
+import { SquareTerminal } from "@/components/icons";
 import { Users } from "@/components/icons";
-import { api, useStore, type Action, type Blok, type Bot } from "@/state/store";
+import { Zap } from "@/components/icons";
+import { api, openLaneWorking, useStore, type Action, type Blok, type Bot } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { SETTINGS_PAGES } from "./AppSettingsPanel";
+import { askChat } from "@/lib/chatAsk";
+import { splitHighlight } from "@/lib/find";
 import { keysFor, platformOf } from "@/lib/shortcuts";
 import { cn } from "@/lib/cn";
 
@@ -40,24 +56,21 @@ export function openSearch() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
 
-/** Things to do rather than places to go. `id` is the command's line in
- * the shortcuts list, when it has a key. */
-const COMMANDS: ReadonlyArray<{
+type Icon = React.ComponentType<{ size?: number; strokeWidth?: number }>;
+
+/** Something to do, or somewhere to go. `id` is the command's line in
+ * the shortcuts list, when it has a key there. */
+interface Command {
   id: string;
   label: string;
   /** Words people search for that the label does not say. */
   keywords: string;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
-  action: Action;
-}> = [
-  { id: "newAgent", label: "New agent", keywords: "create add hire bot chat", icon: SquarePen, action: { type: "toggleNewAgent", open: true } },
-  { id: "newRoom", label: "New room", keywords: "create add group team", icon: Users, action: { type: "toggleNewRoom", open: true } },
-  { id: "settings", label: "Settings", keywords: "preferences options", icon: SettingsIcon, action: { type: "toggleAppSettings", open: true } },
-  { id: "shortcuts", label: "Keyboard shortcuts", keywords: "keys hotkeys help", icon: Keyboard, action: { type: "toggleShortcuts", open: true } },
-];
-
-/** The Settings pages shown before anything is typed. */
-const FIRST_PAGES = ["general", "engines", "devices"];
+  icon: Icon;
+  /** Shown once it is typed for, and not on the empty palette, which
+   * keeps to what is reached for most. */
+  quiet?: boolean;
+  run: () => void;
+}
 
 /** How many recent chats an empty search offers, each with its Ctrl key. */
 const RECENT = 6;
@@ -77,11 +90,16 @@ function rankByName<T>(items: T[], nameOf: (item: T) => string, query: string): 
   return [...prefix, ...inside];
 }
 
+/** Every typed word somewhere in what a row says or is known by. */
+const matches = (words: string[], text: string) => words.every((w) => text.toLowerCase().includes(w));
+
 type Chat = { kind: "agent"; bot: Bot } | { kind: "room"; room: Blok };
 
 export function CommandPalette() {
   const { state, dispatch } = useStore();
-  const [open, setOpen] = useState(false);
+  // null is closed; otherwise how it was opened, which decides whether
+  // it settles in or is simply there
+  const [open, setOpen] = useState<null | "keys" | "pointer">(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<MessageHit[]>([]);
   const [cursor, setCursor] = useState(0);
@@ -90,8 +108,8 @@ export function CommandPalette() {
   const platform = platformOf();
 
   useEffect(() => {
-    const show = (toggle: boolean) => {
-      setOpen((was) => (toggle ? !was : true));
+    const show = (how: "keys" | "pointer", toggle: boolean) => {
+      setOpen((was) => (toggle && was ? null : how));
       setQuery("");
       setHits([]);
       setCursor(0);
@@ -99,10 +117,10 @@ export function CommandPalette() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        show(true);
+        show("keys", true);
       }
     };
-    const onOpen = () => show(false);
+    const onOpen = () => show("pointer", false);
     window.addEventListener("keydown", onKey);
     window.addEventListener(OPEN_EVENT, onOpen);
     return () => {
@@ -134,6 +152,17 @@ export function CommandPalette() {
   }, [open, query]);
 
   const q = query.trim();
+  const words = useMemo(() => q.toLowerCase().split(/\s+/).filter(Boolean), [q]);
+
+  // The agent whose conversation is on screen, or would be with the
+  // pages closed: the one App.tsx shows. A room has no lanes, terminal or
+  // stop of its own here, so with one open the agent's actions go.
+  const room = state.bloks.find((b) => b.id === state.selectedId);
+  const bot = room
+    ? null
+    : (state.bots.find((b) => b.id === state.selectedId && !b.hidden) ?? state.bots.find((b) => !b.hidden) ?? null);
+  const working = bot ? openLaneWorking(bot) : false;
+
   // Agents and rooms together, as the sidebar lists them: most recently
   // with you first. Empty, only the latest few; typed, every match.
   const chats = useMemo<Chat[]>(() => {
@@ -143,19 +172,84 @@ export function CommandPalette() {
     ].sort((a, b) => b.at - a.at);
     return q ? rankByName(all, (c) => c.name, q) : all.slice(0, RECENT);
   }, [state.bots, state.bloks, q]);
-  const commands = useMemo(() => {
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-    return COMMANDS.filter((c) => words.every((w) => `${c.label} ${c.keywords}`.toLowerCase().includes(w)));
-  }, [q]);
+
+  // What can be done here: the conversation on screen first, then the
+  // app's own. Each action on a conversation brings the chat back first,
+  // closing whatever page covers it, so the result is seen happening.
+  const actions = useMemo<Command[]>(() => {
+    const go = (action: Action) => () => dispatch(action);
+    const list: Command[] = [];
+    if (bot) {
+      const toChat = () => dispatch({ type: "select", id: bot.id });
+      list.push(
+        {
+          id: "newConversation",
+          label: "New conversation",
+          keywords: `${bot.name} lane thread task chat start fresh`,
+          icon: Plus,
+          run: () => (toChat(), dispatch({ type: "newTask", botId: bot.id })),
+        },
+        {
+          id: "find",
+          label: "Find in conversation",
+          keywords: "search this thread text",
+          icon: Search,
+          run: () => (askChat({ kind: "find", botId: bot.id }), toChat()),
+        },
+      );
+      if (working) {
+        list.push({
+          id: "stop",
+          label: `Stop ${bot.name}`,
+          keywords: "stop interrupt cancel halt agent",
+          icon: CircleStop,
+          run: go({ type: "interrupt", botId: bot.id }),
+        });
+      }
+      list.push({
+        id: "terminal",
+        label: "Open terminal",
+        keywords: `shell console command line ${bot.name} folder`,
+        icon: SquareTerminal,
+        run: () => (askChat({ kind: "terminal", botId: bot.id }), toChat()),
+      });
+    }
+    list.push(
+      { id: "newAgent", label: "New agent", keywords: "create add hire bot", icon: SquarePen, run: go({ type: "toggleNewAgent", open: true }) },
+      { id: "newRoom", label: "New room", keywords: "create add group team", icon: Users, quiet: true, run: go({ type: "toggleNewRoom", open: true }) },
+      { id: "shortcuts", label: "Keyboard shortcuts", keywords: "keys hotkeys help", icon: Keyboard, quiet: true, run: go({ type: "toggleShortcuts", open: true }) },
+    );
+    return list;
+  }, [bot, working, dispatch]);
+
+  // The app's places, as the rail has them.
+  const places = useMemo<Command[]>(
+    () => [
+      { id: "overview", label: "Overview", keywords: "home today brief activity", icon: LayoutGrid, run: () => dispatch({ type: "openPage", page: "overview" }) },
+      { id: "automations", label: "Automations", keywords: "routines schedules watchers workflows webhooks jobs", icon: Zap, run: () => dispatch({ type: "toggleRoutines", open: true }) },
+      { id: "memory", label: "Memory", keywords: "notes remember about you", icon: Brain, run: () => dispatch({ type: "openPage", page: "memory" }) },
+      { id: "plugins", label: "Plugins", keywords: "apps skills connectors integrations tools mcp", icon: Puzzle, run: () => dispatch({ type: "openPage", page: "plugins" }) },
+      { id: "settings", label: "Settings", keywords: "preferences options", icon: SettingsIcon, run: () => dispatch({ type: "toggleAppSettings", open: true }) },
+    ],
+    [dispatch],
+  );
+
+  const commands = useMemo(
+    () => actions.filter((c) => (words.length ? matches(words, `${c.label} ${c.keywords}`) : !c.quiet)),
+    [actions, words],
+  );
+  const goTo = useMemo(
+    () => places.filter((c) => (words.length ? matches(words, `${c.label} ${c.keywords}`) : !c.quiet)),
+    [places, words],
+  );
   // Settings pages by what they hold, so "voice" or "telegram" goes
-  // straight to the page rather than through the Settings menu.
+  // straight to the page rather than through the Settings menu. Only
+  // once typed for: empty, Settings itself is one of the places.
   const pages = useMemo(() => {
-    const all = SETTINGS_PAGES.flatMap((g) => g.pages);
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-    if (!words.length) return FIRST_PAGES.map((id) => all.find((p) => p.id === id)).filter((p) => p !== undefined);
-    return all.filter((p) => words.every((w) => `${p.label} ${p.keywords}`.toLowerCase().includes(w)));
-  }, [q]);
-  const total = chats.length + commands.length + pages.length + hits.length;
+    if (!words.length) return [];
+    return SETTINGS_PAGES.flatMap((g) => g.pages).filter((p) => matches(words, `${p.label} ${p.keywords}`));
+  }, [words]);
+  const total = chats.length + commands.length + goTo.length + pages.length + hits.length;
 
   useEffect(() => {
     setCursor((c) => Math.min(c, Math.max(0, total - 1)));
@@ -165,15 +259,18 @@ export function CommandPalette() {
 
   // where each section starts in the one flat cursor
   const commandsAt = chats.length;
-  const pagesAt = commandsAt + commands.length;
+  const goToAt = commandsAt + commands.length;
+  const pagesAt = goToAt + goTo.length;
   const hitsAt = pagesAt + pages.length;
 
   const activate = (index: number) => {
     if (index < commandsAt) {
       const chat = chats[index];
       dispatch({ type: "select", id: chat.kind === "agent" ? chat.bot.id : chat.room.id });
+    } else if (index < goToAt) {
+      commands[index - commandsAt].run();
     } else if (index < pagesAt) {
-      dispatch(commands[index - commandsAt].action);
+      goTo[index - goToAt].run();
     } else if (index < hitsAt) {
       dispatch({ type: "toggleAppSettings", open: true, page: pages[index - pagesAt].id });
     } else {
@@ -182,13 +279,15 @@ export function CommandPalette() {
       if (hit.blokId) {
         dispatch({ type: "select", id: hit.blokId });
       } else if (hit.botId) {
-        const bot = state.bots.find((b) => b.id === hit.botId);
+        const target = state.bots.find((b) => b.id === hit.botId);
         // the hit may live in another lane; open that lane
-        const lane = bot?.tasks?.some((t) => t.id === hit.threadId) ? hit.threadId : undefined;
+        const lane = target?.tasks?.some((t) => t.id === hit.threadId) ? hit.threadId : undefined;
+        // the conversation lands on the message once it has it
+        askChat({ kind: "land", botId: hit.botId, threadId: hit.threadId, messageId: hit.messageId });
         dispatch({ type: "select", id: hit.botId, lane });
       }
     }
-    setOpen(false);
+    setOpen(null);
   };
 
   const move = (delta: number) => {
@@ -203,6 +302,10 @@ export function CommandPalette() {
     <button
       key={index}
       data-index={index}
+      id={`palette-row-${index}`}
+      role="option"
+      aria-selected={index === cursor}
+      tabIndex={-1}
       onClick={() => activate(index)}
       onMouseMove={() => setCursor(index)}
       className={cn(
@@ -227,23 +330,38 @@ export function CommandPalette() {
       )}
     </button>
   );
+  const command = (index: number, c: Command) => {
+    const Icon = c.icon;
+    return row(index, <Icon size={16} strokeWidth={1.75} />, c.label, undefined, keysFor(c.id, platform));
+  };
 
+  const settles = open === "pointer";
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-fade-in items-start justify-center bg-black/30 pt-[18vh] dark:bg-black/50"
-      onMouseDown={() => setOpen(false)}
+      className={cn(
+        "fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[18vh] dark:bg-black/50",
+        settles && "animate-fade-in",
+      )}
+      onMouseDown={() => setOpen(null)}
     >
       <div
         role="dialog"
         aria-label="Search"
-        className="flex max-h-[min(560px,64vh)] w-[680px] max-w-[92vw] animate-pop-in flex-col overflow-hidden rounded-2xl border bg-popover shadow-2xl shadow-(color:--shadow-color)"
+        className={cn(
+          "flex max-h-[min(560px,64vh)] w-[680px] max-w-[92vw] flex-col overflow-hidden rounded-2xl border bg-popover shadow-2xl shadow-(color:--shadow-color)",
+          settles && "animate-pop-in",
+        )}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <input
           ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search chats, settings and messages"
+          aria-label="Search chats, messages and commands"
+          role="combobox"
+          aria-expanded
+          aria-controls="palette-results"
+          aria-activedescendant={total ? `palette-row-${cursor}` : undefined}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") (e.preventDefault(), move(1));
             else if (e.key === "ArrowUp") (e.preventDefault(), move(-1));
@@ -251,18 +369,18 @@ export function CommandPalette() {
             else if (e.key === "Escape") {
               e.preventDefault();
               e.stopPropagation();
-              setOpen(false);
+              setOpen(null);
             } else if (e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key)) {
               // Ctrl+number opens that chat, as its key says
               const n = Number(e.key) - 1;
               if (n < Math.min(chats.length, RECENT)) (e.preventDefault(), activate(n));
             }
           }}
-          placeholder="Search chats"
+          placeholder="Search chats, messages and commands"
           className="h-14 w-full shrink-0 bg-transparent px-5 text-lead text-foreground outline-none placeholder:text-muted-foreground"
         />
 
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <div ref={listRef} id="palette-results" role="listbox" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {chats.length > 0 && (
             <Section label="Chats">
               {chats.map((chat, i) =>
@@ -285,18 +403,16 @@ export function CommandPalette() {
             </Section>
           )}
           {commands.length > 0 && (
-            <Section label="Quick actions">
-              {commands.map((command, i) => {
-                const Icon = command.icon;
-                return row(commandsAt + i, <Icon size={16} strokeWidth={1.75} />, command.label, undefined, keysFor(command.id, platform));
-              })}
+            <Section label="Actions">
+              {commands.map((c, i) => command(commandsAt + i, c))}
             </Section>
           )}
+          {goTo.length > 0 && <Section label="Go to">{goTo.map((c, i) => command(goToAt + i, c))}</Section>}
           {pages.length > 0 && (
             <Section label="Settings">
               {pages.map((page, i) => {
                 const Icon = page.icon;
-                return row(pagesAt + i, <Icon size={16} />, page.label, q ? page.description : undefined);
+                return row(pagesAt + i, <Icon size={16} />, page.label, page.description);
               })}
             </Section>
           )}
@@ -306,7 +422,7 @@ export function CommandPalette() {
                 row(
                   hitsAt + i,
                   <MessageSquare size={15} strokeWidth={1.75} />,
-                  hit.snippet,
+                  <Snippet text={hit.snippet} query={q} />,
                   `${hit.name}${hit.task ? ` · ${hit.task}` : ""}`,
                 ),
               )}
@@ -324,9 +440,34 @@ export function CommandPalette() {
   );
 }
 
+/** A message hit with the words that found it a shade stronger, so the
+ * eye goes straight to why it is in the list. A match far into a long
+ * snippet would be cut off by the row's end, so the line starts a few
+ * words before it instead. */
+function Snippet({ text, query }: { text: string; query: string }) {
+  const at = text.toLowerCase().indexOf(query.trim().toLowerCase());
+  const from = at > 48 ? text.lastIndexOf(" ", at - 24) : -1;
+  const shown = from > 0 ? `…${text.slice(from + 1)}` : text;
+  return (
+    <>
+      {splitHighlight(shown, query).map((part, i) =>
+        part.hit ? (
+          <mark key={i} className="bg-transparent font-semibold text-foreground">
+            {part.text}
+          </mark>
+        ) : (
+          <span key={i} className="text-foreground/80">
+            {part.text}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="pb-1">
+    <div className="pb-1" role="group" aria-label={label}>
       <div className="px-3 pb-1.5 pt-2.5 text-body font-medium text-muted-foreground">{label}</div>
       {children}
     </div>
