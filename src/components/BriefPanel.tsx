@@ -19,6 +19,7 @@ import { Check } from "@/components/icons";
 import { ChevronLeft } from "@/components/icons";
 import { ChevronRight } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
+import { Moon } from "@/components/icons";
 import { Pause } from "@/components/icons";
 import { Play } from "@/components/icons";
 import { RefreshCw } from "@/components/icons";
@@ -58,6 +59,9 @@ export interface Brief {
   waiting: BriefWaiting[];
   spend: { turns: number; cost: number; costKnown: boolean };
   ready: Array<{ label: string; many?: string; count: number }>;
+  /** What the nightly tidy did to each agent's memory; absent on briefs
+   * made before there was one. */
+  memory?: Array<{ botId: string; name: string; text: string; runId: string }>;
   quiet: boolean;
   readAt?: number;
 }
@@ -595,6 +599,40 @@ export function BriefPanel() {
                   );
                 })}
               </div>
+              {/* Housekeeping, so it comes last and is never read aloud:
+                  a line per agent, each leading to that agent's Memory
+                  page, where last night's changes open with their Undo. */}
+              {(brief.memory?.length ?? 0) > 0 && (
+                <div className="mt-8">
+                  <SubHead className="flex items-center gap-1.5">
+                    <Moon size={12} />
+                    Memory, tidied overnight
+                  </SubHead>
+                  <ul className="-mx-2 flex flex-col">
+                    {brief.memory!.map((line) => {
+                      const agent = bot(line.botId);
+                      return (
+                        <li key={line.runId}>
+                          <button
+                            onClick={() => dispatch({ type: "openMemory", target: line.botId })}
+                            className="group flex w-full items-start gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent/60"
+                          >
+                            {agent ? <AgentAvatar bot={agent} size={20} /> : null}
+                            <span className="min-w-0 flex-1 text-pretty text-body text-foreground/90">
+                              <span className="font-medium text-foreground">{line.name}: </span>
+                              {line.text}
+                              <span className="ml-1 whitespace-nowrap text-muted-foreground transition-colors duration-150 group-hover:text-foreground">
+                                Review or undo
+                                <ArrowUpRight size={12} className="ml-0.5 inline-block -translate-y-px" />
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </motion.article>
           </AnimatePresence>
         )}

@@ -155,6 +155,12 @@ export const RULES: Rule[] = [
   { method: "POST", path: "/api/watchers", why: "watch a folder, a web page or a feed, or run a cheap check, and act when it finds something" },
   { method: "PATCH", path: "/api/watchers/:id", why: "change one of its own watchers without replacing it" },
   { method: "DELETE", path: "/api/watchers/:id", why: "stop one of its own watchers" },
+  // Standing intents (server/intents.ts): an agent proposes, the person
+  // approves. Nothing on this list approves, pauses or changes one; the
+  // route files an agent's as a proposal whatever the body says.
+  { method: "GET", path: "/api/intents", why: "see the standing intents it proposed, and whether the person approved each" },
+  { method: "POST", path: "/api/intents", why: "propose a standing intent: whenever some words come up in a conversation, post a note, bring an agent in or message one, once the person approves it" },
+  { method: "DELETE", path: "/api/intents/:id", why: "withdraw a standing intent it proposed that is still waiting for approval" },
   // Pausing an engine for itself, and only for itself: the route refuses
   // another agent, longer than a day, and stopping what is running.
   { method: "GET", path: "/api/engine-pauses", why: "see the engine pauses that apply to it, and until when" },

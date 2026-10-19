@@ -125,7 +125,9 @@ export interface Message {
   deleted?: boolean;
   /** Came in some other way than you typing it here. "goal" is Bloks
    * starting the next turn toward the conversation's goal. */
-  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal";
+  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal" | "intent";
+  /** Posted or sent by a standing intent (server/intents.ts). */
+  intent?: { id: string; name: string };
   /** The routine's name and start mode when this message was written,
    * and whether its agent was told it may answer QUIET. */
   routine?: { name?: string; manual: boolean; quiet?: boolean };
@@ -384,6 +386,8 @@ export interface ConfigStatus {
   /** Whether agents are reminded of their other conversations before
    * your turn. On unless turned off. */
   recall?: { beforeTurn: boolean };
+  /** Each agent's memory tidied once a night; on unless turned off. */
+  memory?: { tidy: boolean };
   /** Agents' turn limit, 1 to 50 (server/agent-chain.ts). */
   agents?: { turnLimit: number };
   /** Count-only cards for overlapping turns with no own files. On by default. */
@@ -612,7 +616,7 @@ export interface Skill {
 }
 
 /** The tabs of the Automations page (src/components/AutomationsPanel.tsx). */
-export type AutomationsTab = "schedules" | "watchers" | "workflows" | "webhooks" | "jobs";
+export type AutomationsTab = "schedules" | "watchers" | "intents" | "workflows" | "webhooks" | "jobs";
 
 export interface AppState {
   bots: Bot[];

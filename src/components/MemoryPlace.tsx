@@ -18,6 +18,7 @@ import { ChevronDown } from "@/components/icons";
 import { Copy } from "@/components/icons";
 import { FileText } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
+import { Moon } from "@/components/icons";
 import { Plus } from "@/components/icons";
 import { Search } from "@/components/icons";
 import { Trash2 } from "@/components/icons";
@@ -32,6 +33,8 @@ import { DiffLines, type DiffLine } from "./DiffLines";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
 
@@ -58,7 +61,9 @@ interface Entry {
   id: string;
   at: number;
   file: string;
-  by: "agent" | "you" | "undo";
+  by: "agent" | "you" | "undo" | "tidy";
+  /** The nightly tidy that wrote it. */
+  tidy?: string;
   undoes?: string;
   undoneBy?: string;
   big?: boolean;
@@ -817,8 +822,17 @@ function Timeline({ owner }: { owner: Owner }) {
         <span aria-hidden className="absolute bottom-3 left-[15px] top-3 w-px bg-border" />
         {shown.map((entry) => {
           const heading = day(entry.at) !== lastDay ? (lastDay = day(entry.at)) : null;
-          const who = entry.by === "agent" && owner.kind === "agent" ? owner.bot.name : entry.by === "you" ? "You" : entry.by === "undo" ? "Undo" : "An agent";
-          const verb = entry.by === "undo" ? "put back" : entry.created ? "started" : entry.deleted ? "forgot" : "changed";
+          const who =
+            entry.by === "agent" && owner.kind === "agent"
+              ? owner.bot.name
+              : entry.by === "you"
+                ? "You"
+                : entry.by === "undo"
+                  ? "Undo"
+                  : entry.by === "tidy"
+                    ? "The nightly tidy"
+                    : "An agent";
+          const verb = entry.by === "undo" ? "put back" : entry.by === "tidy" ? (entry.created ? "started" : "tidied") : entry.created ? "started" : entry.deleted ? "forgot" : "changed";
           const isOpen = expanded === entry.id;
           const canUndo = !entry.undoneBy && entry.by !== "undo" && !entry.big;
           return (
@@ -832,7 +846,7 @@ function Timeline({ owner }: { owner: Owner }) {
                     <AgentAvatar bot={owner.bot} size={26} />
                   ) : (
                     <span className="flex size-[26px] items-center justify-center rounded-full border bg-card text-muted-foreground">
-                      {entry.by === "undo" ? <Undo2 size={12} /> : <UserRound size={13} />}
+                      {entry.by === "undo" ? <Undo2 size={12} /> : entry.by === "tidy" ? <Moon size={12} /> : <UserRound size={13} />}
                     </span>
                   )}
                 </span>
@@ -1111,6 +1125,243 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
   );
 }
 
+// ── the nightly tidy ───────────────────────────────────────────────────
+// Once a night the server tidies each agent's memory (server/memory-tidy.ts)
+// and writes a line or two about what it did. Here is that diary, newest
+// first, each night opening to the changes it made, with Undo for the
+// night whole and Tidy now for one on the spot.
+
+interface TidyRun {
+  id: string;
+  at: number;
+  night: string | null;
+  manual?: boolean;
+  state: "done" | "nothing" | "skipped";
+  diary: string;
+  note?: string;
+  entries: string[];
+  undoneAt?: number;
+}
+
+interface TidyState {
+  enabled: boolean;
+  hours: { from: string; to: string };
+  tidying: boolean;
+  runs: TidyRun[];
+}
+
+/** How many nights show before the rest wait behind a line. */
+const NIGHTS_SHOWN = 4;
+
+function useTidy(bot: Bot): [TidyState | null, () => void] {
+  const tick = useMemoryTick(useMemo<Owner>(() => ({ kind: "agent", bot }), [bot]));
+  const [tidy, setTidy] = useState<TidyState | null>(null);
+  const load = useCallback(() => {
+    api(`/api/bots/${bot.id}/memory/tidy`)
+      .then(setTidy)
+      .catch(() => {});
+  }, [bot.id]);
+  useEffect(load, [load, tick]);
+  return [tidy, load];
+}
+
+/** When a tidy ran, as the diary is dated: the night, or the moment it
+ * was asked for. */
+function tidyWhen(run: TidyRun): string {
+  const day = new Date(run.at).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  if (run.manual) return `${day}, ${new Date(run.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  return Date.now() - run.at < 24 * 60 * 60 * 1000 ? "Last night" : `Night before ${day}`;
+}
+
+/** What one night changed, file by file, read from the journal. */
+function TidyChanges({ bot, run }: { bot: Bot; run: TidyRun }) {
+  const tick = useMemoryTick(useMemo<Owner>(() => ({ kind: "agent", bot }), [bot]));
+  const [entries, setEntries] = useState<Entry[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    api(`/api/bots/${bot.id}/memory/journal`)
+      .then((r) => live && setEntries((r.entries ?? []).filter((e: Entry) => e.tidy === run.id)))
+      .catch(() => live && setEntries([]));
+    return () => {
+      live = false;
+    };
+  }, [bot.id, run.id, tick]);
+  if (entries === null) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-3 text-body text-muted-foreground">
+        <Loader2 size={13} className="animate-spin" /> Loading what it changed
+      </div>
+    );
+  }
+  if (!entries.length) return <div className="px-4 py-3 text-body text-muted-foreground">Its changes are no longer in the history.</div>;
+  return (
+    <div className="flex flex-col gap-2 px-4 pb-4">
+      {entries.map((entry) => (
+        <div key={entry.id} className={cn("overflow-hidden rounded-xl border bg-background", entry.undoneBy && "opacity-60")}>
+          <div className="flex items-center justify-between gap-3 px-3 py-2 text-small text-muted-foreground">
+            <span className="truncate font-mono text-foreground">{entry.file}</span>
+            <span className="shrink-0 tabular-nums">
+              {entry.undoneBy ? (
+                "Undone"
+              ) : (
+                <>
+                  <span className="text-success">+{entry.added}</span> <span className="text-destructive">-{entry.removed}</span>
+                </>
+              )}
+            </span>
+          </div>
+          {entry.lines && (
+            <div className="max-h-[280px] overflow-auto border-t bg-muted/30 py-2">
+              <DiffLines lines={entry.lines} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TidySection({ bot }: { bot: Bot }) {
+  const { dispatch } = useStore();
+  const [tidy, reload] = useTidy(bot);
+  const [running, setRunning] = useState(false);
+  const [undoing, setUndoing] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
+  // last night's tidy opens on its own, since a link from the morning
+  // brief is the usual way here and its changes are what it came to see
+  const [open, setOpen] = useState<string | null | undefined>(undefined);
+  const latest = tidy?.runs.find((run) => run.state === "done" && !run.undoneAt && Date.now() - run.at < 24 * 60 * 60 * 1000);
+  const opened = open === undefined ? (latest?.id ?? null) : open;
+
+  const tidyNow = () => {
+    setRunning(true);
+    api(`/api/bots/${bot.id}/memory/tidy`, { method: "POST" })
+      .then((r: { run: TidyRun }) => {
+        if (r.run.state === "done") {
+          toast.success("Tidied", { description: r.run.diary || undefined });
+          setOpen(r.run.id);
+        } else if (r.run.state === "nothing") toast("Nothing to tidy", { description: r.run.note });
+        else toast.error("Not tidied", { description: r.run.note });
+      })
+      .catch((e: Error) => toast.error(e.message))
+      .finally(() => {
+        setRunning(false);
+        reload();
+      });
+  };
+
+  const undo = async (run: TidyRun) => {
+    const yes = await confirm({
+      title: "Undo this tidy?",
+      body: "Every file it changed goes back to how it was, as long as nothing has changed that file since.",
+      confirmLabel: "Undo tidy",
+    });
+    if (!yes) return;
+    setUndoing(run.id);
+    api(`/api/bots/${bot.id}/memory/tidy/${run.id}/undo`, { method: "POST" })
+      .then((r: { failed: Array<{ file: string; error: string }> }) => {
+        if (r.failed.length) toast(`Partly undone`, { description: `${r.failed.map((f) => f.file).join(", ")} changed since, so it stayed.` });
+        else toast.success("Tidy undone");
+      })
+      .catch((e: Error) => toast.error(e.message))
+      .finally(() => {
+        setUndoing(null);
+        reload();
+      });
+  };
+
+  const runs = tidy?.runs ?? [];
+  const shown = all ? runs : runs.slice(0, NIGHTS_SHOWN);
+  return (
+    <>
+      <SectionTitle
+        aside={
+          <Button size="sm" variant="secondary" disabled={running || tidy?.tidying} onClick={tidyNow}>
+            {running || tidy?.tidying ? <Loader2 size={13} className="animate-spin" /> : <Moon size={13} />}
+            {running || tidy?.tidying ? "Tidying" : "Tidy now"}
+          </Button>
+        }
+      >
+        Nightly tidy
+      </SectionTitle>
+      <div className="overflow-hidden rounded-2xl border bg-card">
+        <p className="px-4 pb-3 pt-4 text-pretty text-body leading-relaxed text-muted-foreground">
+          {tidy === null ? (
+            " "
+          ) : tidy.enabled ? (
+            <>
+              Between {tidy.hours.from} and {tidy.hours.to}, notes past their date go, repeats are merged, and anything contradicted moves to
+              archive.md with why. Every change shows here and can be undone.
+            </>
+          ) : (
+            <>
+              Off for every agent in{" "}
+              <button
+                className="underline underline-offset-2 hover:text-foreground"
+                onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "general" })}
+              >
+                Settings, General
+              </button>
+              . Tidy now still works.
+            </>
+          )}
+        </p>
+        {tidy !== null && runs.length === 0 && (
+          <div className="border-t px-4 py-3 text-body text-muted-foreground">Not tidied yet.</div>
+        )}
+        <ul>
+          {shown.map((run) => {
+            const isOpen = opened === run.id && run.state === "done";
+            return (
+              <li key={run.id} className="border-t">
+                <div className="flex items-start gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-small text-muted-foreground">
+                      {tidyWhen(run)}
+                      {run.undoneAt ? " · Undone" : ""}
+                    </div>
+                    <p className={cn("mt-0.5 text-pretty text-ui leading-relaxed", run.state === "done" ? "text-foreground" : "text-muted-foreground")}>
+                      {run.state === "done"
+                        ? run.diary || "Tidied."
+                        : run.state === "nothing"
+                          ? run.note ?? "Nothing to tidy."
+                          : `Skipped: ${run.note ?? "it could not go ahead."}`}
+                    </p>
+                    {run.state === "done" && run.note && <p className="mt-0.5 text-pretty text-small text-muted-foreground">{run.note}</p>}
+                  </div>
+                  {run.state === "done" && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button size="sm" variant="ghost" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : run.id)}>
+                        Review
+                        <ChevronDown size={13} className={cn("transition-transform duration-200", isOpen && "rotate-180")} />
+                      </Button>
+                      {!run.undoneAt && (
+                        <Button size="sm" variant="ghost" disabled={undoing === run.id} onClick={() => void undo(run)}>
+                          {undoing === run.id ? <Loader2 size={12} className="animate-spin" /> : <Undo2 size={12} />}
+                          Undo
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {isOpen && <TidyChanges bot={bot} run={run} />}
+              </li>
+            );
+          })}
+        </ul>
+        {!all && runs.length > NIGHTS_SHOWN && (
+          <button
+            onClick={() => setAll(true)}
+            className="w-full border-t px-4 py-2.5 text-left text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          >
+            Show {plural(runs.length - NIGHTS_SHOWN, "earlier night")}
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ── the pages ──────────────────────────────────────────────────────────
 
 function AgentPage({ bot, focus, onFocus }: { bot: Bot; focus: Focus; onFocus: (file: string) => void }) {
@@ -1154,6 +1405,8 @@ function AgentPage({ bot, focus, onFocus }: { bot: Bot; focus: Focus; onFocus: (
 
       <SectionTitle aside="Read at the start of every chat">Space used</SectionTitle>
       <BudgetMeter stats={stats} />
+
+      <TidySection bot={bot} />
 
       <SectionTitle aside={stats?.lastChangedAt ? `Edited ${ago(stats.lastChangedAt)}` : undefined}>Core memory</SectionTitle>
       <CoreEditor

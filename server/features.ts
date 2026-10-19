@@ -84,4 +84,12 @@ export const FEATURES: readonly string[] = [
   // POST /api/bots/:id/memory/copy: topics and picked MEMORY.md lines from
   // another agent, journaled so the copy can be undone
   "memory-copy",
+  // GET and POST /api/bots/:id/memory/tidy and POST .../tidy/:runId/undo:
+  // the nightly memory tidy, its diary and Tidy now; memory.tidy on
+  // /api/config; `memory` lines on a brief; "tidy" entries in the journal
+  "memory-tidy",
+  // GET, POST, PATCH and DELETE /api/intents: standing intents, approving
+  // an agent's proposal, pausing and renewing; `intents` on the stream,
+  // and `intent` with via "intent" on the messages they post and send
+  "intents",
 ];

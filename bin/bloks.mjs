@@ -220,6 +220,50 @@ const COMMANDS = {
       return request("DELETE", `/api/watchers/${args[0]}`);
     },
   },
+  intent: {
+    use: 'intent --when "<words or phrases, comma separated>" (--note "<what to post>" | --mention <agent-id> [--say "<why>"] | --message <agent-id> --say "<what to send>") [--name <name>] [--rooms "<room-id>,..."] [--cooldown <hours>]',
+    about:
+      "propose a standing intent: whenever one of the words or phrases comes up in a new message in your conversations or the rooms you are in, " +
+      "post a note there, bring an agent in, or send an agent a short message. Matching is whole words in any case; end a word with * for its other endings (refund*). " +
+      "It fires at most once a day in one conversation and three times a day in all, and stops after 90 days unless renewed. " +
+      "--rooms narrows the rooms it listens in (--rooms= for none). Nothing happens until the person approves it in Automations",
+    run: async (args) => {
+      const flags = parseFlags(args);
+      if (!flags.when || flags.when === "true") throw new Error('intent needs --when "the words to listen for"');
+      const kinds = ["note", "mention", "message"].filter((kind) => Object.hasOwn(flags, kind));
+      if (kinds.length !== 1) throw new Error("intent takes one of --note, --mention or --message");
+      const [kind] = kinds;
+      const value = flags[kind];
+      if (!value || value === "true") throw new Error(kind === "note" ? "--note needs the words to post" : `--${kind} needs an agent id, from \`agents\``);
+      const say = flags.say && flags.say !== "true" ? flags.say : "";
+      if (kind === "message" && !say) throw new Error('--message needs --say "what to send"');
+      const body = {
+        phrases: flags.when.split(","),
+        action: kind === "note" ? { kind, text: value } : { kind, botId: value, ...(say ? { text: say } : {}) },
+        ...(flags.name && flags.name !== "true" ? { name: flags.name } : {}),
+        ...(flags.cooldown !== undefined ? { cooldownHours: Number(flags.cooldown) } : {}),
+      };
+      if (flags.rooms !== undefined) {
+        const me = await request("GET", "/api/agent/whoami");
+        const rooms = flags.rooms === "true" ? [] : flags.rooms.split(",").map((id) => id.trim()).filter(Boolean);
+        body.covers = { agents: [me.botId ?? me.id], rooms };
+      }
+      return request("POST", "/api/intents", body);
+    },
+  },
+  intents: {
+    use: "intents",
+    about: "the standing intents you proposed, and whether each is waiting for approval, listening, paused or expired",
+    run: async () => (await request("GET", "/api/intents")).intents,
+  },
+  unintent: {
+    use: "unintent <intent-id>",
+    about: "withdraw a standing intent you proposed that is still waiting for approval",
+    run: (args) => {
+      if (!args[0]) throw new Error("unintent needs an intent id, from `intents`");
+      return request("DELETE", `/api/intents/${encodeURIComponent(args[0])}`);
+    },
+  },
   history: {
     use: "history <room-id> [--limit <n>]",
     about: "read what was said in a room you are in, newest last, so you can join a discussion with its context",

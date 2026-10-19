@@ -257,6 +257,8 @@ export function waitingSender(m: Message): string | null {
   switch (m.via) {
     case "watcher":
       return "your watcher";
+    case "intent":
+      return `your standing intent${m.intent?.name ? ` ${m.intent.name}` : ""}`;
     case "webhook":
       return "a webhook";
     case "email":

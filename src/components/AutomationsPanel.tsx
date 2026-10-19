@@ -2,9 +2,9 @@
 //
 // A routine is an appointment an agent keeps, so the primary view is a
 // calendar, not a list: a time gutter, day columns, and a card at every
-// hour a routine will run. Two tabs share the page, Schedules and
-// Webhooks, because both answer "what happens without me pressing
-// anything". Full-viewport overlay, matching the app's own language:
+// hour a routine will run. The other tabs share the page (watchers,
+// standing intents, workflows, webhooks, the job board) because all of
+// them answer "what happens without me pressing anything". Full-viewport overlay, matching the app's own language:
 // tokens, Blok avatars, quiet chrome; the reference material's ideas,
 // none of its skin.
 //
@@ -43,6 +43,8 @@ import { JobBoard } from "./JobBoard";
 import { Workflows } from "./Workflows";
 import { cn } from "@/lib/cn";
 import { WatchersTab } from "./WatchersTab";
+import { IntentsTab } from "./IntentsTab";
+import { Zap } from "@/components/icons";
 import { Eye } from "@/components/icons";
 import { thisComputer } from "@/lib/thisComputer";
 import { gridHours } from "@/lib/dayGrid";
@@ -295,6 +297,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
               [
                 ["schedules", "Schedules", <CalendarClock key="s" size={13} />],
                 ["watchers", "Watchers", <Eye key="e" size={13} />],
+                ["intents", "Intents", <Zap key="i" size={13} />],
                 ["workflows", "Workflows", <Workflow key="f" size={13} />],
                 ["webhooks", "Webhooks", <Webhook key="w" size={13} />],
                 ["jobs", "Job board", <Briefcase key="j" size={13} />],
@@ -330,6 +333,8 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
         <WebhooksTab targetOf={targetOf} />
       ) : tab === "watchers" ? (
         <WatchersTab />
+      ) : tab === "intents" ? (
+        <IntentsTab />
       ) : (
         <>
           {/* ── calendar controls ── */}

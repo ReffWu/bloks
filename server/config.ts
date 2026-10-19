@@ -166,6 +166,9 @@ export interface AppConfig {
    * said elsewhere that matches. Unset is on; each agent can also turn it
    * off for itself (BotRecord.recallBeforeTurn). */
   recall?: { beforeTurn?: boolean };
+  /** Whether each agent's memory is tidied once a night, in the small
+   * hours (server/memory-tidy.ts). Unset is on; Tidy now works either way. */
+  memory?: { tidy?: boolean };
   /** Agent-started turns in a row, 1 to 50, default 12. There is no Off;
    * anything else stored here is read as 12 (agentTurnLimit). */
   agents?: { turnLimit?: number };
@@ -311,6 +314,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "skills",
     "turns",
     "recall",
+    "memory",
     "agents",
     "changes",
     "telegram",
