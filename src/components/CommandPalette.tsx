@@ -277,6 +277,8 @@ export function CommandPalette() {
       const hit = hits[index - hitsAt];
       if (!hit) return;
       if (hit.blokId) {
+        // the room lands on the message too, once it has it
+        askChat({ kind: "landRoom", roomId: hit.blokId, messageId: hit.messageId });
         dispatch({ type: "select", id: hit.blokId });
       } else if (hit.botId) {
         const target = state.bots.find((b) => b.id === hit.botId);

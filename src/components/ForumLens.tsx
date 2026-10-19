@@ -16,6 +16,7 @@ import { MessageSquare } from "@/components/icons";
 import { preview, replyLabel, threadsFrom, type Thread } from "@/lib/threads";
 import type { Bot, Message, RoomPerson } from "@/state/reducer";
 import { AgentAvatar } from "./Avatar";
+import { splitAttachments } from "@/lib/attachments";
 import { cn } from "@/lib/cn";
 
 function when(at: number): string {
@@ -25,6 +26,17 @@ function when(at: number): string {
   return today
     ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+/** What a message says, with the files it carried named rather than
+ * spelled out as the tags they travel in. */
+function said(message: Message): Message {
+  if (!message.text) return message;
+  const { display, images, files } = splitAttachments(message.text);
+  const carried = images.length + files.length;
+  if (!carried) return message;
+  const note = carried === 1 ? (images.length ? "an image" : "a file") : `${carried} files`;
+  return { ...message, text: display ? `${display} (with ${note})` : `Shared ${note}` };
 }
 
 /** Whoever is not an agent: you, or somebody the room is shared with,
@@ -65,7 +77,7 @@ export function ForumLens({
         ? (members.find((b) => b.id === message.from)?.name ?? "Agent")
         : // the room's own lines, its opening one among them
           "Room";
-  const threads = threadsFrom(messages, nameOf);
+  const threads = threadsFrom(messages.map(said), nameOf);
   const [open, setOpen] = useState<string | null>(null);
 
   if (!threads.length) {

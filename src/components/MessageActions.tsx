@@ -1,13 +1,13 @@
 // The conversation verbs: reply, forward, copy, react and the rest.
 //
-// Shared by solo chats and rooms: in a chat they sit in a quiet row
-// under each message, in a room in a pill beside it. Either shows on
-// hover, on keyboard focus, or on a tap where nothing hovers
-// (useTapToShow). Here too are the two pieces that complete the loop:
-// the chip a composer shows while a reply is being written, and the
-// picker a forward opens. Reply carries structured context to the agent
-// and renders as a quoted card on the bubble; forward re-posts the
-// message into another conversation with its origin named.
+// Shared by solo chats and rooms: in both they sit in a quiet row
+// under each message. The row shows on hover, on keyboard focus, or
+// on a tap where nothing hovers (useTapToShow). Here too are the two
+// pieces that complete the loop: the chip a composer shows while a
+// reply is being written, and the picker a forward opens. Reply carries
+// structured context to the agent and renders as a quoted card on the
+// bubble; forward re-posts the message into another conversation with
+// its origin named.
 import { Fragment, forwardRef, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Check } from "@/components/icons";
 import { CornerUpLeft } from "@/components/icons";
@@ -211,7 +211,8 @@ type Action = { label: string; icon: React.ReactNode; run: () => void; destructi
  * arrives; it only fades in. The few verbs people reach for sit in the
  * row and the rest wait behind the ⋯.
  *
- * "pill" is the room's, floating beside a message with every verb in it.
+ * "pill" floats beside a message with every verb in it. Rooms used it
+ * before they took the row; nothing draws it now.
  */
 export function MessageActionBar({
   message,
