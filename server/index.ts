@@ -11032,10 +11032,12 @@ function agentSaidLast(laneId: string): string | undefined {
   return undefined;
 }
 
-/** The agent's own engine, when it has a small model to ask: the words
- * go nowhere they were not already going, and it is quick enough to
- * wait for (ProviderInstance.smallText). */
+/** The agent's own engine, when the person asked for a model to be
+ * consulted (`delivery.askModel`) and that engine has a small one: the
+ * words go nowhere they were not already going, and it is quick enough
+ * to wait for (ProviderInstance.smallText). */
 function deliveryModel(bot: BotRecord) {
+  if (cfg.delivery?.askModel !== true) return null;
   const instance = registry.get(bot.modelSelection.instanceId);
   return instance?.smallText && instance.generateText && !pausedOn(bot, bot.modelSelection) ? instance : null;
 }
@@ -11983,7 +11985,9 @@ function configStatus() {
     recall: { beforeTurn: cfg.recall?.beforeTurn !== false },
     agents: { turnLimit: agentLimit() },
     // what happens to words sent mid-turn, for agents that have not chosen
-    delivery: { mode: resolveMode(undefined, cfg.delivery?.mode) },
+    // off unless asked for: a small model asked about words the rules
+    // could not read costs a call on the person's own key
+    delivery: { mode: resolveMode(undefined, cfg.delivery?.mode), askModel: cfg.delivery?.askModel === true },
     changes: { showShared: cfg.changes?.showShared !== false },
     // how long a silent tool call may hold a turn, in minutes; 0 is never
     turns: { stallMinutes: stallLimitMs() / 60_000 },
@@ -18999,8 +19003,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (body.codex !== undefined && (!isRecord(body.codex) || !isCodexSpeed(body.codex.speed) || Object.keys(body.codex).some((key) => key !== "speed"))) {
         return json(res, 400, { error: "codex.speed must be standard or fast" });
       }
-      if (body.delivery !== undefined && (!isRecord(body.delivery) || !deliveryMode(body.delivery.mode))) {
-        return json(res, 400, { error: "delivery.mode is auto, interrupt or queue" });
+      if (body.delivery !== undefined && (
+        !isRecord(body.delivery) ||
+        (body.delivery.mode === undefined && body.delivery.askModel === undefined) ||
+        (body.delivery.mode !== undefined && !deliveryMode(body.delivery.mode)) ||
+        (body.delivery.askModel !== undefined && typeof body.delivery.askModel !== "boolean")
+      )) {
+        return json(res, 400, { error: "delivery.mode is auto, interrupt or queue, and delivery.askModel is true or false" });
       }
       if (body.agents !== undefined && (!isRecord(body.agents) || !validTurnLimit(body.agents.turnLimit))) {
         return json(res, 400, { error: `agents.turnLimit must be a whole number from ${MIN_AGENT_CHAIN_LIMIT} to ${MAX_AGENT_CHAIN_LIMIT}` });
@@ -19075,7 +19084,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         wroteSomething = true;
       }
       if (isRecord(body.delivery)) {
-        Object.assign(cfg, saveConfig({ delivery: { mode: deliveryMode(body.delivery.mode) } }));
+        const mode = deliveryMode(body.delivery.mode);
+        const askModel = typeof body.delivery.askModel === "boolean" ? body.delivery.askModel : undefined;
+        Object.assign(cfg, saveConfig({ delivery: { ...(mode ? { mode } : {}), ...(askModel !== undefined ? { askModel } : {}) } }));
         wroteSomething = true;
       }
       if (body.recall && typeof body.recall === "object" && !Array.isArray(body.recall)) {

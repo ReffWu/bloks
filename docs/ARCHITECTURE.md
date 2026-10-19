@@ -775,8 +775,10 @@ starts the next one; "wait", a correction ("no", "actually",
 "instead"), urgent words, or a short reply to a question the agent's
 latest words in this turn asked go in now; words that say they are for
 afterwards, and everything else, wait. Only words the rules have
-nothing to say about are put to a model, and only to the agent's own
-engine when it has a small one (`ProviderInstance.smallText`, an
+nothing to say about are put to a model, only when the person turned
+that on (`delivery.askModel`, off by default, since each ask is a call
+on their key), and only to the agent's own engine when it has a small
+one (`ProviderInstance.smallText`, an
 OpenAI-compatible provider's named small model), for at most 1.5
 seconds; no answer means wait. Interrupt sends everything in now (a
 stop still stops), which is how every message went before modes

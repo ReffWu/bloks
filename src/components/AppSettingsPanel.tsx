@@ -325,12 +325,13 @@ function AgentTurnLimit() {
 function MidTurnMessages() {
   const { state, dispatch } = useStore();
   const mode = state.config?.delivery?.mode ?? "auto";
+  const askModel = state.config?.delivery?.askModel === true;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const save = (next: DeliveryMode) => {
+  const save = (next: { mode?: DeliveryMode; askModel?: boolean }) => {
     setSaving(true);
     setError("");
-    api("/api/config", { method: "PUT", body: JSON.stringify({ delivery: { mode: next } }) })
+    api("/api/config", { method: "PUT", body: JSON.stringify({ delivery: next }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
       .finally(() => setSaving(false));
@@ -346,10 +347,23 @@ function MidTurnMessages() {
           aria-label="Messages while an agent works"
           size="sm"
           value={mode}
-          onChange={(next) => !saving && next !== mode && save(next)}
+          onChange={(next) => !saving && next !== mode && save({ mode: next })}
           options={DELIVERY_MODES.map((m) => ({ value: m.value, label: m.label }))}
         />
       </div>
+      {mode === "auto" && (
+        // Only for words the rules cannot read, and only on an agent whose
+        // own engine has a small model; each ask is one small call.
+        <label className="mt-3 flex max-w-[460px] items-center justify-between gap-3">
+          <span className="text-body text-muted-foreground">When unsure, ask the agent's small model</span>
+          <Switch
+            aria-label="When unsure, ask the agent's small model"
+            checked={askModel}
+            disabled={saving}
+            onCheckedChange={(on: boolean) => save({ askModel: on })}
+          />
+        </label>
+      )}
       {error && <p role="alert" className="mt-2 text-small text-destructive">{error}</p>}
     </SettingRow>
   );

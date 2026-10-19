@@ -26,7 +26,8 @@
 //
 // Reading is rules first, because they are instant, free and the same
 // every time, and a person can predict them. Only a message the rules
-// have nothing to say about may be put to a model, and only to the
+// have nothing to say about may be put to a model, only when the person
+// asked for that (each ask is a call on their key), and only to the
 // agent's own engine when it has a small one: the words go nowhere they
 // were not already going, and a slow or failed answer just means wait.
 // Whatever was decided is said in a quiet line under the message, and

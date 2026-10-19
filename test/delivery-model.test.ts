@@ -46,6 +46,10 @@ async function boot(t: TestContext, verdict: () => string) {
   const f = await fixture(t, verdict);
   const h = await startHarness();
   t.after(() => h.stop());
+  // off unless the person turns it on
+  assert.equal((await h.json("/api/config")).delivery.askModel, false);
+  assert.equal((await h.fetch("/api/config", { method: "PUT", body: JSON.stringify({ delivery: { askModel: "yes" } }) })).status, 400);
+  assert.equal((await h.fetch("/api/config", { method: "PUT", body: JSON.stringify({ delivery: { askModel: true } }) })).status, 200);
   assert.ok((await h.fetch("/api/providers/grok/connect", { method: "POST", body: JSON.stringify({ key: "local-fixture", url: f.url }) })).ok);
   const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Ivy" }) });
   await h.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: "grok", model: "grok-4" } }) });

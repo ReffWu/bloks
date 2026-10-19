@@ -394,7 +394,7 @@ export interface ConfigStatus {
   agents?: { turnLimit: number };
   /** What happens to words sent mid-turn, for agents that have not
    * chosen (server/delivery.ts). */
-  delivery?: { mode: "auto" | "interrupt" | "queue" };
+  delivery?: { mode: "auto" | "interrupt" | "queue"; askModel?: boolean };
   /** Count-only cards for overlapping turns with no own files. On by default. */
   changes?: { showShared: boolean };
   /** How long a silent tool call may hold a turn, in minutes; 0 is never. */

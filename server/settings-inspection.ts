@@ -89,6 +89,7 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   add("recall", "beforeTurn", general, value("recall", "beforeTurn") !== false);
   add("agents", "turnLimit", general, agentTurnLimit(value("agents", "turnLimit")));
   add("delivery", "mode", general, resolveMode(undefined, value("delivery", "mode")));
+  add("delivery", "askModel", general, value("delivery", "askModel") === true);
   add("skills", "propose", general, Boolean(value("skills", "propose")));
   add("changes", "showShared", general, value("changes", "showShared") !== false);
   add("shortcuts", "quickAsk", "Settings > General > Quick ask shortcut", value("shortcuts", "quickAsk") ?? null);
