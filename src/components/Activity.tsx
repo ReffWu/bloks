@@ -16,6 +16,7 @@
 // buttons; going to find it in a background lane to press the same two
 // buttons is the trip this panel exists to save.
 import { useCallback, useEffect, useState } from "react";
+import { Activity as ActivityIcon } from "@/components/icons";
 import { Check } from "@/components/icons";
 import { Hourglass } from "@/components/icons";
 import { Square } from "@/components/icons";
@@ -25,6 +26,8 @@ import { AgentAvatar } from "./Avatar";
 import { TeamMapView } from "./TeamMap";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
+import { Segmented } from "@/components/ui/segmented";
+import { EmptyState, PanelHeader, SkeletonRows, SubHead } from "./OverviewParts";
 import { activityContext, type Fill } from "@/lib/contextCard";
 
 export interface Spend {
@@ -192,49 +195,42 @@ export function ActivityPanel() {
   const quiet =
     activity && !activity.waiting.length && !activity.running.length && !activity.paused?.length;
 
+  // Somewhere to go when nothing is happening: the agent you were last
+  // with, or making a first one.
+  const last = state.bots.find((b) => b.id === state.selectedId && !b.hidden) ?? state.bots.find((b) => !b.hidden);
+
   return (
-    <div
-      className="flex min-w-0 flex-col rounded-2xl border bg-card p-5 sm:p-6"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-title font-semibold text-foreground">Activity</div>
-          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            {view === "map"
-              ? "Your whole team. Click anyone to open them."
-              : "What's running, and today's cost."}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="flex rounded-lg bg-muted p-0.5">
-            {(["list", "map"] as const).map((option) => (
-              <button
-                key={option}
-                onClick={() => setView(option)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-small capitalize transition-colors",
-                  view === option
-                    ? "bg-background font-medium text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+    <section aria-label="Activity" className="flex min-w-0 flex-col">
+      <PanelHeader
+        icon={<ActivityIcon size={17} />}
+        title="Activity"
+        hint={view === "map" ? "Your whole team. Click anyone to open them." : "What's running, and today's cost."}
+        actions={
+          <Segmented
+            size="sm"
+            aria-label="Show as"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "list", label: "List" },
+              { value: "map", label: "Map" },
+            ]}
+          />
+        }
+      />
 
       {view === "map" && (
-        <TeamMapView
-          onNavigate={(id) => {
-            dispatch({ type: "select", id });
-          }}
-        />
+        <div className="mt-5">
+          <TeamMapView
+            onNavigate={(id) => {
+              dispatch({ type: "select", id });
+            }}
+          />
+        </div>
       )}
 
       {view === "list" && activity && (
-        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1 text-body text-muted-foreground">
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-body tabular-nums text-muted-foreground">
           <span>
             <span className="text-foreground">{activity.today.turns}</span> replies today
           </span>
@@ -264,9 +260,27 @@ export function ActivityPanel() {
         </div>
       )}
 
-      <div className={cn("mt-4 min-h-0 flex-1 overflow-y-auto", view === "map" && "hidden")}>
+      <div className={cn("mt-5 min-h-0 flex-1", view === "map" && "hidden")}>
+        {!activity && !error && <SkeletonRows rows={3} label="Loading activity" />}
+
         {quiet && (
-          <div className="px-4 py-10 text-center text-body text-muted-foreground">Nothing running right now.</div>
+          <div className="mb-5">
+            <EmptyState
+              action={
+                last ? (
+                  <Button variant="secondary" size="sm" onClick={() => dispatch({ type: "select", id: last.id })}>
+                    Message {last.name}
+                  </Button>
+                ) : (
+                  <Button variant="secondary" size="sm" onClick={() => dispatch({ type: "toggleNewAgent", open: true })}>
+                    Make an agent
+                  </Button>
+                )
+              }
+            >
+              Nothing running or waiting. Ask an agent for something and it shows up here.
+            </EmptyState>
+          </div>
         )}
 
         {activity?.waiting.length ? (
@@ -427,18 +441,15 @@ export function ActivityPanel() {
           </Section>
         ) : null}
       </div>
-    </div>
-
+    </section>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mb-4 last:mb-0">
-      <div className="mb-1.5 text-small font-medium text-muted-foreground">
-        {title}
-      </div>
-      <div className="flex flex-col gap-1">{children}</div>
+    <div className="mb-6 last:mb-0">
+      <SubHead>{title}</SubHead>
+      <div className="-mx-3 flex flex-col">{children}</div>
     </div>
   );
 }
@@ -463,7 +474,7 @@ function Row({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-xl border bg-card px-3 py-2.5">
+    <div className="flex items-start gap-2.5 rounded-xl px-3 py-2.5 transition-colors duration-150 hover:bg-accent/40">
       <span className="mt-0.5 shrink-0">
         {bot ? (
           <AgentAvatar bot={bot} size={24} />
