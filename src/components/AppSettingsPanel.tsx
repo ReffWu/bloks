@@ -347,6 +347,35 @@ function RecallBeforeTurn() {
   );
 }
 
+/**
+ * Whether each agent's memory is tidied once a night (server/memory-tidy.ts).
+ * On, like recall: notes past their date cost nothing to remove, and the
+ * rest is one small model call a night for an agent whose memory moved.
+ * What it did is in each agent's Memory page, with Undo.
+ */
+function MemoryTidy() {
+  const { state, dispatch } = useStore();
+  const on = state.config?.memory?.tidy ?? true;
+  const [saving, setSaving] = useState(false);
+
+  const set = (tidy: boolean) => {
+    setSaving(true);
+    api("/api/config", { method: "PUT", body: JSON.stringify({ memory: { tidy } }) })
+      .then((status) => dispatch({ type: "configStatus", config: status }))
+      .catch(() => {})
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <SettingRow
+      label="Tidy memory every night"
+      info="Between 1 and 5 in the morning, while an agent is idle: notes marked (until a date) go after that date, repeats are merged, and anything contradicted moves to an archive with why. Each night's changes are in that agent's Memory page, with Undo, and the morning brief mentions them."
+      description="Keep each agent's notes short and current while you sleep."
+      control={<Switch aria-label="Tidy memory every night" checked={on} disabled={saving} onCheckedChange={set} />}
+    />
+  );
+}
+
 /** Shared context every agent receives. Optional, never asked for up
  * front: it lives here for whenever you feel like writing it. */
 /**
@@ -723,7 +752,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "General",
         icon: SlidersHorizontal,
         description: `How Bloks looks and behaves on ${thisComputer()}.`,
-        keywords: "width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain reply replies stuck silent tool call",
+        keywords: "width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain reply replies stuck silent tool call tidy nightly archive dated expire",
       },
       {
         id: "about-you",
@@ -918,6 +947,7 @@ function GeneralPage() {
         <QuickAskShortcut />
         <ProposeSkills />
         <RecallBeforeTurn />
+        <MemoryTidy />
         <AgentTurnLimit />
         <SharedChanges />
         <Compaction />

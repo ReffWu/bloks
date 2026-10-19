@@ -27,7 +27,7 @@ import { splitWaiting } from "@/lib/transcript";
 import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { ArtifactCard } from "./Artifacts";
 import { ForwardDialog, MessageActionBar, Reactions, ReplyContext, useTapToShow, type ReplyDraft } from "./MessageActions";
-import { UserText } from "./chat/Bubble";
+import { IntentNote, UserText } from "./chat/Bubble";
 import { JumpToLatest } from "./chat/JumpToLatest";
 import { RoomComposer } from "./room/RoomComposer";
 import { OptionCard } from "./OptionCard";
@@ -493,6 +493,14 @@ function RoomMessage({
 
   if (message.kind === "notice" && (message.event || message.compaction)) {
     return <div className="py-1 text-center text-small text-muted-foreground">{message.text}</div>;
+  }
+
+  if (message.kind === "notice" && message.intent) {
+    return (
+      <div className="pl-11">
+        <IntentNote message={message} />
+      </div>
+    );
   }
 
   if (message.kind === "notice") {

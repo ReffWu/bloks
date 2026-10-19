@@ -288,7 +288,7 @@ describe("through the server", () => {
     // Maya hears it in her own conversation, in the intent's words
     assert.ok(told, "Maya was told");
     assert.match(told.text, /Your standing intent "Launch" was set off/);
-    assert.match(told.text, /"launch date" came up in Alpha's conversation with/);
+    assert.match(told.text, /"launch date" came up in Alpha's conversation, from the person you work for:/);
     assert.match(told.text, /Check the press plan\./);
     const mine = await f.messages(maya);
     assert.ok(mine.some((m) => m.via === "intent" && m.intent?.id === launch.id));

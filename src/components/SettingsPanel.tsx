@@ -1315,7 +1315,7 @@ function MemorySummary({ bot }: { bot: Bot }) {
   }, [bot.id]);
 
   const share = info ? Math.min(1, info.lines / MEMORY_LINES) : 0;
-  const who = last?.by === "you" ? "you" : last?.by === "undo" ? "an undo" : bot.name || "the agent";
+  const who = last?.by === "you" ? "you" : last?.by === "undo" ? "an undo" : last?.by === "tidy" ? "the nightly tidy" : bot.name || "the agent";
 
   return (
     <div className="rounded-2xl border bg-card p-4 sm:p-5">

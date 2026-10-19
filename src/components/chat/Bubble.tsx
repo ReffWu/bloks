@@ -7,6 +7,7 @@ import { BellOff } from "@/components/icons";
 import { ChevronDown } from "@/components/icons";
 import { History } from "@/components/icons";
 import { Target } from "@/components/icons";
+import { Zap } from "@/components/icons";
 import type { Message } from "@/state/store";
 import { CarryOn } from "@/components/CarryOn";
 import { quietLine } from "@/lib/transcript";
@@ -358,9 +359,9 @@ export function Bubble({
       {/* A column, so reactions hang under the bubble they belong to
           rather than beside it where they would push the text around. */}
       <div className={cn("flex max-w-[82%] flex-col items-end sm:max-w-[68%]", editing !== null && "w-full")}>
-        {(message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal") && (
+        {(message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal" || message.via === "intent") && (
           <div className="mb-1 px-1 text-caption text-muted-foreground">
-            {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? "From your watcher" : message.via === "webhook" ? "From a webhook" : message.via === "goal" ? goalLabel(message.text ?? "") : "By email"}
+            {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? "From your watcher" : message.via === "intent" ? `From your standing intent${message.intent?.name ? ` ${message.intent.name}` : ""}` : message.via === "webhook" ? "From a webhook" : message.via === "goal" ? goalLabel(message.text ?? "") : "By email"}
           </div>
         )}
         <div
@@ -485,11 +486,31 @@ export function Bubble({
  * usually instructions, so it is readable prose in a card rather than a
  * truncated line of monospace.
  */
+/** A note a standing intent posted (server/intents.ts), with its name
+ * over it so it never reads as something the agent said. */
+export function IntentNote({ message, fresh }: { message: Message; fresh?: boolean }) {
+  return (
+    <div className={cn("flex justify-start", fresh && "animate-receive-in")}>
+      <div className="flex max-w-[560px] gap-2.5 rounded-2xl border bg-card px-3.5 py-2.5">
+        <Zap size={15} className="mt-0.5 shrink-0 text-brand-ink" aria-hidden />
+        <div className="min-w-0">
+          <div className="text-caption text-muted-foreground">Standing intent{message.intent?.name ? ` · ${message.intent.name}` : ""}</div>
+          <div className="whitespace-pre-wrap text-ui leading-relaxed text-foreground">{message.text}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Notice({ message, fresh }: { message: Message; fresh?: boolean }) {
-  // a compaction is a fact about the conversation, marked like a date line
-  if (message.compaction) {
+  // a compaction is a fact about the conversation, marked like a date
+  // line, and so is a standing intent saying who it brought in
+  if (message.compaction || (message.intent && message.event)) {
     return <div className="py-1 text-center text-small text-muted-foreground">{message.text}</div>;
   }
+  // A standing intent's own note: the person's words, said back when the
+  // thing they were about came up. Not a warning, so it does not wear one.
+  if (message.intent && !message.event) return <IntentNote message={message} fresh={fresh} />;
   // The goal's own news. Set and done are not warnings, so they do not
   // wear one; where it stopped short (blocked, out, paused) still does.
   if (message.goal) {

@@ -2404,8 +2404,9 @@ async function tidyMemory(botId: string, manual: boolean): Promise<TidyRun> {
           const plan = parsePlan(await withDeadline(engine.generateText(prompt, { quick: true }), TIDY_MODEL_MS), memoryNext);
           if (plan) applied = applyPlan(memoryNext, plan);
           else run.note = "The model's answer was not a list of edits, so only notes past their date were looked at.";
-        } catch {
-          run.note = "The model did not answer in time, so only notes past their date were looked at.";
+        } catch (error) {
+          const late = /took too long/.test(String((error as Error)?.message));
+          run.note = `The model ${late ? "did not answer in time" : "could not be reached"}, so only notes past their date were looked at.`;
         }
       }
     }
@@ -2555,7 +2556,7 @@ function speakerOf(threadId: string, message: Message): string {
   if (message.role === "bot") return store.bot(message.from ?? "")?.name ?? store.botByThread(threadId)?.name ?? "an agent";
   if (message.agent?.dir === "in") return message.agent.peerName;
   if (message.author) return people.person(message.author)?.name ?? "someone";
-  return hostName();
+  return cfg.profile?.name?.trim() || "the person you work for";
 }
 
 /** A conversation as an agent elsewhere is told where something came up. */
@@ -2564,7 +2565,7 @@ function whereWords(threadId: string): string {
   if (room) return `the room ${room.name}`;
   const bot = store.botByThread(threadId);
   const lane = bot?.tasks.find((task) => task.id === threadId);
-  return `${bot?.name ?? "an agent"}'s conversation${lane?.title && lane.title !== "General" ? ` "${lane.title}"` : ""} with ${hostName()}`;
+  return `${bot?.name ?? "an agent"}'s conversation${lane?.title && lane.title !== "General" ? ` "${lane.title}"` : ""}`;
 }
 
 function checkIntents(threadId: string, message: Message) {

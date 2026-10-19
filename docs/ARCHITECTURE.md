@@ -1359,6 +1359,74 @@ rehearsal (`openRehearsals`), with the message marked `via: "watcher"`.
 A look is skipped while the agent is busy, so its own edits are not news
 to it, and `mayFire` caps a watcher at six turns an hour.
 
+## Standing intents
+
+`server/intents.ts` is the third trigger beside routines (a time) and
+watchers (something outside): words that come up in a conversation. An
+intent is up to twelve phrases, where it listens (everywhere, meaning
+every agent's own conversations and every room not shared with other
+people, or named agents and rooms, a shared room only when named) and
+one action: a note posted in that conversation in the person's words, an
+agent brought in (woken in the room when it is a member, otherwise sent
+the excerpt in its first conversation, and the conversation says so), or
+a short message to an agent. Intents live in `intents.json`.
+
+Every appended message is checked (`checkIntents`, from
+`store.onAppend`): text only, not deleted or quiet, never a machine's
+words (`via` other than a chat platform), a Telegram stranger, the
+sender's copy of an agent message, a stranger's mail lane, a rehearsal or
+a shared room's own lane. Matching is a pattern per phrase, any case, on
+word boundaries, with a trailing `*` open; no model. A fire is recorded
+before it acts, and the action runs after the message's own append has
+gone out. The guardrails are on the intent: once per conversation per
+cooldown (24 hours unless set, 1 to 168), three fires in any 24 hours,
+and 90 days from making, approving or renewing, after which it reads
+expired until renewed. It never hears its own output or another
+intent's: its notes carry `intent`, its messages `via: "intent"`, a bot
+reply in a lane whose turn an intent's message started is skipped
+(`startedByIntent`), and so is what an agent it woke in a room says for
+the length of a room turn (`intentWoken`). An intent that would bring
+an agent in to its own words, or into its own conversation, does not.
+
+The person makes, edits, pauses, renews and deletes intents in
+Automations, Intents (`src/components/IntentsTab.tsx`), and the phone
+through `GET`, `POST`, `PATCH` (`enabled`, `approve`, `renew`, any
+field) and `DELETE /api/intents`. An agent's `POST` (`bloks intent`) is
+always a proposal, listening only in its own conversations and rooms it
+is in, at most five waiting; it does nothing until approved, the agent
+sees and withdraws only its own proposals, and the brief counts them as
+ready for a look.
+
+## The nightly memory tidy
+
+`server/memory-tidy.ts` tidies each agent's memory once a night, between
+01:00 and 05:00 local, one agent per minute tick, skipping an agent that
+is working (it is looked at again next tick), archived or without memory,
+and anything while the shell has said the Mac sleeps (`macAsleep`) or
+Bloks is draining. `memory.tidy` in config turns the night off; Tidy now
+(`POST /api/bots/:id/memory/tidy`) works either way.
+
+Lines ending `(until YYYY-MM-DD)`, which `memoryPrompt` teaches agents
+to write for temporary facts, are removed the day after their date, in
+MEMORY.md and topic files, with no model. Then, when MEMORY.md has at
+least three notes and has moved since the last tidy, one one-shot call
+(`generateText`, quick) on the agent's own engine, or the workspace's
+drafting engine when that one cannot, answers with line edits only:
+merge, reword (only if shorter), archive with a reason, and move to a
+topic only near the budget. `parsePlan` checks every line it names; any
+line not named stays byte for byte. Archived lines go to
+`memory/archive.md` with the date and why. Nothing is written if the
+agent started working or a file changed while the model thought.
+
+Each file written is one journal entry by `"tidy"` carrying the run's id
+(`MemoryEntry.tidy`), and `POST .../memory/tidy/:runId/undo` undoes the
+night newest first, leaving any file changed since and saying so. The
+run's diary (`diaryOf`) is written from what was done, not by the
+model; the log keeps two weeks per agent (`memory-tidy.json`). The
+Memory place shows the diary under the budget meter with Review and Undo,
+and the morning brief carries one line per agent (`Brief.memory`),
+never in its headline or spoken round.
+
 ## Meeting notes
 
 `electron/resources/speech-helper.swift --meeting [--system]` transcribes

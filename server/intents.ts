@@ -207,7 +207,9 @@ export function agentTurnText(input: {
     `"${input.phrase}" came up in ${input.where}, from ${input.who}:`,
     `> ${input.excerpt}`,
     "",
-    ...(asked ? [`What you were asked to do when this happens: ${asked}`, ""] : []),
+    ...(asked
+      ? [input.intent.action.kind === "mention" ? `Why you are being brought in: ${asked}` : `What you were asked to do when this happens: ${asked}`, ""]
+      : []),
     "If this does not need you, say so in one line and stop.",
   ].join("\n");
 }

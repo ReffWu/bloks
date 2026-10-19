@@ -29,6 +29,7 @@ export type Asker =
   | { by: "routine"; name?: string }
   | { by: "watcher" }
   | { by: "webhook" }
+  | { by: "intent"; name?: string }
   | { by: "goal"; text: string };
 
 /** One fold: the messages under it, and what its line is made of. */
@@ -75,7 +76,7 @@ export interface Folded {
   hold: SaidItem | null;
 }
 
-const MACHINES = new Set<Message["via"]>(["routine", "watcher", "webhook", "goal"]);
+const MACHINES = new Set<Message["via"]>(["routine", "watcher", "webhook", "goal", "intent"]);
 
 /** Somebody or something saying a thing to the agent. */
 function said(m: Message): boolean {
@@ -142,6 +143,7 @@ function askerOf(m: Message): Asker | null {
   if (m.via === "routine") return { by: "routine", ...(m.routine?.name ? { name: m.routine.name } : {}) };
   if (m.via === "watcher") return { by: "watcher" };
   if (m.via === "webhook") return { by: "webhook" };
+  if (m.via === "intent") return { by: "intent", ...(m.intent?.name ? { name: m.intent.name } : {}) };
   if (m.via === "goal") return { by: "goal", text: m.text ?? "" };
   return null;
 }
@@ -466,6 +468,8 @@ export function askerWords(asker: Asker, o: { name?: string; turn?: { of: number
       return "From your watcher";
     case "webhook":
       return "From a webhook";
+    case "intent":
+      return `From your standing intent${asker.name ? ` ${asker.name}` : ""}`;
     case "goal":
       return o.turn ? `Toward your goal, step ${o.turn.of} of ${o.turn.budget}` : "Toward your goal";
   }

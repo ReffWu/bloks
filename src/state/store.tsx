@@ -839,6 +839,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "profile":
         case "brief":
         case "watchers":
+        case "intents":
         case "meetings":
         case "enginePauses":
           rawDispatch({ type: "tick", key: frame.kind });
