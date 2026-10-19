@@ -271,10 +271,8 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
           Connect your everyday tools
         </h2>
         <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:100ms]">
-          Agents reach Slack, Gmail, Notion and the rest through Composio.
-          Paste a Composio Connect key (it starts with ck_) and you can
-          link your tools right here; a free key takes a minute at
-          composio.dev.
+          Agents reach Slack, Gmail, Notion and more through Composio.
+          Paste a Composio Connect key (starts with ck_) to link them here. Get one free at composio.dev.
         </p>
         <div className="intro-rise mx-auto mt-6 max-w-[380px] text-left [animation-delay:200ms]">
           <input
@@ -316,7 +314,7 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
         What do you use every day?
       </h2>
       <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:100ms]">
-        Click a tool to connect it now; each one opens its own sign-in.
+        Click a tool to sign in and connect it.
       </p>
       <div className="intro-rise mt-6 grid grid-cols-4 gap-2 sm:grid-cols-5 [animation-delay:200ms]">
         {EVERYDAY.map(({ slug, label, domain, icon }) => {
@@ -346,8 +344,7 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
       </div>
       {error && <div className="mt-3 text-body text-destructive">{error}</div>}
       <p className="mt-4 text-small text-muted-foreground/70">
-        Finished signing in? The card turns green by itself. Everything
-        else lives in Plugins later.
+        Cards turn green once you're signed in. More in Plugins later.
       </p>
       <Button className="mt-5" onClick={() => onDone(connected)}>
         {connected.length ? `Continue with ${connected.length} connected` : "Continue"}
@@ -710,8 +707,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
         Every agent gets its own computer
       </h2>
       <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:250ms]">
-        A real machine to browse, run tools and finish work on, while you
-        do something better with your afternoon.
+        A real machine to browse, run tools and finish work on.
       </p>
       <Button className="intro-rise mt-7 [animation-delay:350ms]" onClick={onNext}>
         Next
@@ -801,8 +797,8 @@ function JobsStage({ onNext }: { onNext: () => void }) {
         Give every agent a job
       </h2>
       <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:120ms]">
-        Each one carries its own role, skills and memory. Put them in a
-        room together and the most senior one runs the meeting.
+        Each has its own role, skills and memory. In a room together, the
+        most senior one leads.
       </p>
       <Button className="intro-rise mt-6 [animation-delay:240ms]" onClick={onNext}>
         Next

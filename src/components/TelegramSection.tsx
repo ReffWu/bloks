@@ -4,7 +4,6 @@ import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { YourComputer } from "@/lib/thisComputer";
 
 interface Status {
   configured: boolean;
@@ -80,12 +79,12 @@ export function TelegramSection({ botId }: { botId?: string }) {
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <div className="text-ui font-semibold text-foreground">Telegram</div>
       <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-        Each agent has its own bot in Agent settings. An agent without a bot token is not on Telegram.
+        Each agent gets its own bot, set up in its Agent settings.
       </p>
       {(status?.bots ?? []).map((connected) => (
         <button key={connected.botId} onClick={() => openAgent(connected.botId)} className="mt-2 block text-body underline underline-offset-2">
           {state.bots.find((bot) => bot.id === connected.botId)?.name ?? "Agent"}: {connected.username ? `@${connected.username}` : "Telegram settings"}
-          {connected.needsOwnerPairing ? " (pair again to identify the owner)" : ""}
+          {connected.needsOwnerPairing ? " (needs pairing again)" : ""}
         </button>
       ))}
       {status?.migrationError && (
@@ -109,7 +108,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
         <div>
           <div className="text-ui font-semibold text-foreground">Telegram bot</div>
           <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-            Message this agent as itself. {YourComputer()} asks Telegram for new messages.
+            Message this agent on Telegram.
           </p>
         </div>
         {status?.configured && <Switch aria-label="Enable Telegram bot" checked={status.enabled} disabled={busy} onCheckedChange={(enabled) => post({ enabled })} />}
@@ -132,18 +131,18 @@ export function TelegramSection({ botId }: { botId?: string }) {
         <div className="mt-3">
           <p className="text-body leading-relaxed text-muted-foreground">
             {(status.upgradeNotices?.length ?? 0) > 0
-              ? "Telegram needs the pairing word again to identify its owner. Pair yourself here. Everyone else can message the bot to ask to be let in."
-              : "Pair yourself as the owner before this bot can answer you. Everyone else can message the bot to ask to be let in."}
+              ? "Pair yourself as the owner again. Others can message the bot to ask to be let in."
+              : "Pair yourself as the owner so the bot answers you. Others can message it to ask to be let in."}
           </p>
           {status.pairing ? (
             <>
-              <p className="mt-2 text-small text-muted-foreground">Send this word in a private message to this bot. Do not share it.</p>
+              <p className="mt-2 text-small text-muted-foreground">Send this word to the bot in a private chat. Keep it to yourself.</p>
               <div className="mt-1.5 rounded-lg bg-muted px-2.5 py-1.5 font-mono text-ui">{status.pairing}</div>
             </>
           ) : <Button className="mt-2" size="sm" variant="secondary" disabled={busy} onClick={() => post({ pair: true })}>Pair owner</Button>}
         </div>
       )}
-      {status?.ownerPaired && <p className="mt-3 text-body text-muted-foreground">Owner paired. Other people are not admitted by this pairing word.</p>}
+      {status?.ownerPaired && <p className="mt-3 text-body text-muted-foreground">Owner paired.</p>}
       {(status?.people?.length ?? 0) > 0 && <div className="mt-4">
         <div className="text-body font-semibold">People on Telegram</div>
         {status!.people!.map((person) => <div key={person.id} className="mt-2 flex items-center justify-between gap-2 text-small">
@@ -160,12 +159,12 @@ export function TelegramSection({ botId }: { botId?: string }) {
           </div>
         </div>)}
       </div>}
-      {status?.admissionFull && <p className="mt-2 text-small text-warning">Admission is full. No new person can ask until you decide on someone waiting or take someone out.</p>}
-      {status?.upgradeNotices?.some((n) => ["uncertain", "failed"].includes(n.state)) && <p className="mt-2 text-small text-warning">Some old chats could not be told, or delivery is uncertain. Their old pairing is gone. Tell those people to message the bot and ask to be let in.</p>}
+      {status?.admissionFull && <p className="mt-2 text-small text-warning">The waiting list is full. Decide on someone waiting, or take someone out, to make room.</p>}
+      {status?.upgradeNotices?.some((n) => ["uncertain", "failed"].includes(n.state)) && <p className="mt-2 text-small text-warning">Some old chats may not know their pairing ended. Ask those people to message the bot to be let in again.</p>}
       {status?.configured && (
         <>
           <p className="mt-3 text-small leading-relaxed text-muted-foreground">
-            {status.voiceVendor ? `Voice messages are sent to ${status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs"} to be transcribed, using your speech key.` : "Voice messages need an OpenAI or ElevenLabs speech key. Without one, the bot asks for text instead."}
+            {status.voiceVendor ? `Voice messages are transcribed by ${status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs"} with your speech key.` : "Voice messages need an OpenAI or ElevenLabs key. Without one, the bot asks for text."}
           </p>
           <div className="mt-3 flex flex-wrap gap-3 text-small text-muted-foreground">
             <button disabled={busy} onClick={() => setEditingToken(!editingToken)} className="underline underline-offset-2">Change token</button>

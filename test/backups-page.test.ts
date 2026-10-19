@@ -43,10 +43,10 @@ test("the keys sentence matches the backup: kept without keys, replaced with the
 
 test("each step of a restore under way reads as a sentence, and a stop says nothing changed once", () => {
   const now = 1_000_000;
-  assert.equal(restoreLine({ phase: "draining", from: "x", running: 2, deadline: now + 4.5 * 60_000 }, now), "Waiting for 2 running turns to finish, up to 5 more minutes…");
-  assert.equal(restoreLine({ phase: "draining", from: "x", running: 1, deadline: now + 30_000 }, now), "Waiting for 1 running turn to finish, up to 1 more minute…");
+  assert.equal(restoreLine({ phase: "draining", from: "x", running: 2, deadline: now + 4.5 * 60_000 }, now), "Waiting for 2 running replies to finish, up to 5 more minutes…");
+  assert.equal(restoreLine({ phase: "draining", from: "x", running: 1, deadline: now + 30_000 }, now), "Waiting for 1 running reply to finish, up to 1 more minute…");
   assert.equal(restoreLine({ phase: "draining", from: "x", running: 0 }, now), "Getting ready to restore…");
-  assert.match(restoreLine({ phase: "staging", from: "x" }), /checking every file/);
+  assert.match(restoreLine({ phase: "staging", from: "x" }), /Checking every file/);
   assert.equal(
     restoreLine({ phase: "failed", from: "x", error: "That passphrase does not open this backup." }),
     "The restore stopped. That passphrase does not open this backup. Nothing was changed.",

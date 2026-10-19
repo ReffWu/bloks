@@ -22,7 +22,7 @@ export function BoxSleep() {
   if (minutes === null) return null;
   return (
     <label className="flex items-center justify-between gap-3 text-body text-muted-foreground">
-      <span>Put agents' cloud computers to sleep after they sit idle for</span>
+      <span>Sleep idle cloud computers after</span>
       <select
         value={minutes}
         onChange={(e) => {

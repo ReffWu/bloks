@@ -64,7 +64,7 @@ function Summary({ report, loading }: { report: CheckupReport; loading: boolean 
     ? `${plural(risky, "risky finding")}${look ? `, and ${look} worth a look` : ""}.`
     : look
       ? `Nothing risky. ${plural(look, "finding")} worth a look.`
-      : "Nothing risky, and nothing worth a look.";
+      : "All clear.";
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border bg-card px-4 py-3.5">
       {risky ? (
@@ -74,7 +74,7 @@ function Summary({ report, loading }: { report: CheckupReport; loading: boolean 
       )}
       <div className="min-w-0 flex-1">
         <div className="text-ui font-medium text-foreground">{line}</div>
-        <div className="text-small text-muted-foreground">Checked {when(report.checkedAt)}. Nothing changes unless you press a button.</div>
+        <div className="text-small text-muted-foreground">Checked {when(report.checkedAt)}.</div>
       </div>
       <Button size="sm" variant="secondary" disabled={loading} onClick={() => void refreshCheckup()}>
         {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -97,7 +97,7 @@ function Row({ finding }: { finding: CheckupFinding }) {
     try {
       const answered = await run();
       const report = await refreshCheckup(answered ? Promise.resolve(answered) : undefined);
-      if (report?.failed?.length) setError(`Could not change ${report.failed.join(", ")}. It may belong to another account.`);
+      if (report?.failed?.length) setError(`Couldn't change ${report.failed.join(", ")}. It may belong to another account.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -255,10 +255,10 @@ export function SecurityCheckup() {
         <div className="flex items-center gap-2 px-4 py-6 text-body text-muted-foreground">
           {error ? (
             error === "not from here" ? (
-              "The checkup looks at files and settings on the computer Bloks runs on, so it only opens there."
+              "Open the checkup on the computer Bloks runs on."
             ) : (
               <>
-                <span className="min-w-0 flex-1">The checkup could not run: {error}</span>
+                <span className="min-w-0 flex-1">Couldn't run the checkup: {error}</span>
                 <Button size="sm" variant="secondary" onClick={() => void refreshCheckup()}>
                   Try again
                 </Button>

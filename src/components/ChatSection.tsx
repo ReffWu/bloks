@@ -104,9 +104,8 @@ function PlatformCard({
         <div className="min-w-0 pr-3">
           <div className="text-ui font-semibold text-foreground">{name}</div>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            Carry a shared room into a {name} channel. People there talk to the room's agents by naming
-            them, and you let each person in. This computer connects out to {name}; nothing new listens on
-            your network.
+            Bring a shared room into a {name} channel. People you let in name an agent to talk to it.
+            Nothing new is opened on your network.
           </div>
         </div>
         {status.configured && (
@@ -123,7 +122,7 @@ function PlatformCard({
           {platform === "slack" ? (
             <>
               <div className="text-small leading-relaxed text-muted-foreground">
-                Create a Slack app with Socket Mode on, give its bot the scopes channels:history,
+                Create a Slack app with Socket Mode on. Give its bot the scopes channels:history,
                 groups:history, channels:read, groups:read, chat:write and users:read, subscribe it to the
                 message.channels and message.groups events, and install it. Then paste the bot token and an
                 app-level token with connections:write.
@@ -168,7 +167,7 @@ function PlatformCard({
       ) : (
         <div className="mt-3 flex items-center justify-between border-t pt-3">
           <span className="text-small text-muted-foreground">
-            {status.enabled ? STATE_LABEL[status.state] : "Switched off"}
+            {status.enabled ? STATE_LABEL[status.state] : "Off"}
             {status.enabled && status.state === "error" && status.detail ? `: ${status.detail}` : ""}
           </span>
           <button
@@ -218,8 +217,8 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
         <div className="min-w-0 pr-3">
           <div className="text-ui font-semibold text-foreground">WhatsApp</div>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            Carry a shared room into a WhatsApp group, through a WhatsApp Business number. People there talk to
-            the room's agents by mentioning the number or naming an agent, and you let each person in.
+            Bring a shared room into a WhatsApp group with a WhatsApp Business number. People you let in
+            mention the number or name an agent.
           </div>
         </div>
         {status.configured && (
@@ -229,9 +228,8 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
 
       {(status.configured || settingUp) && (
       <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-small leading-relaxed text-muted-foreground">
-        Needs Bloks Cloud. Meta only delivers messages to a public address, so group messages reach this computer
-        through Bloks Cloud, and unlike everything else it carries, they pass through readable: Meta sends them
-        that way. Nothing is kept on the way.
+        Needs Bloks Cloud. Messages pass through it without end-to-end encryption, because Meta sends them
+        that way. Nothing is kept.
       </div>
       )}
 
@@ -285,7 +283,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
           )}
           <div className="mt-3 flex items-center justify-between border-t pt-3">
             <span className="text-small text-muted-foreground">
-              {status.enabled ? STATE_LABEL[status.state] : "Switched off"}
+              {status.enabled ? STATE_LABEL[status.state] : "Off"}
               {status.number ? ` as ${status.number}` : ""}
             </span>
             <button
@@ -343,8 +341,7 @@ function EmailCard() {
         <div className="min-w-0 pr-3">
           <div className="text-ui font-semibold text-foreground">Email</div>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            Give every agent an email address. Forward it an invoice, a newsletter or a thread and it gets to work; what
-            it says back is emailed as the reply.
+            Give every agent an email address. Forward it anything and it replies by email.
           </div>
         </div>
         <Switch
@@ -356,7 +353,7 @@ function EmailCard() {
       </div>
       {!status.cloud && !status.enabled && (
         <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-small leading-relaxed text-muted-foreground">
-          Needs Bloks Cloud: mail reaches this computer through it. Turn it on under Bloks Cloud.
+          Needs Bloks Cloud. Turn it on under Bloks Cloud.
         </div>
       )}
       {status.enabled && (
@@ -368,9 +365,8 @@ function EmailCard() {
           </div>
           <div className="mt-3 border-t pt-3">
             <div className="text-small text-muted-foreground">
-              Who may write. Leave it empty and anyone with an address can; list addresses or @domains to allow only them.
-              While it is empty, mail is answered in its own conversation and in words only: no tools, none of your apps,
-              secrets, notes or past conversations, and only by agents on Claude Code or an API model.
+              Who can write: addresses or @domains. Left empty, anyone can, and agents reply in text only, with no
+              tools, apps, secrets, notes or past conversations (Claude Code or API models only).
             </div>
             <div className="mt-1.5 flex gap-2">
               <Input
@@ -390,8 +386,8 @@ function EmailCard() {
             </div>
           </div>
           <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-small leading-relaxed text-muted-foreground">
-            Mail passes through Bloks Cloud readable, because email arrives that way; nothing is kept on the way. An agent
-            can only reply to someone who wrote to it.
+            Mail passes through Bloks Cloud without end-to-end encryption. Nothing is kept. Agents only reply to
+            people who wrote to them.
           </div>
         </>
       )}

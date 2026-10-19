@@ -94,8 +94,8 @@ function Compaction() {
   return (
     <SettingRow
       label="Summarise as you go"
-      info="A long conversation has to be summarised to keep fitting. Off, that happens once when it fills up, which is a pause before your next message. On, one message is folded in after each turn instead, so it never pauses. The cost: folding rewrites what was already sent, so the provider cannot reuse its cache, which on some providers costs more than the pause it removes. Your own messages are never summarised either way."
-      description="Fold the conversation a little after each turn instead of all at once when it fills up."
+      info="Long chats get summarised to keep fitting. Off: all at once when full, with a short pause. On: a little after each reply, so no pause, but the provider can't reuse its cache, which costs more on some. Your own messages are never summarised."
+      description="Summarise a little after each reply, not all at once."
       control={<Switch aria-label="Summarise as you go" checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
@@ -122,8 +122,8 @@ function IdleCompaction() {
   return (
     <SettingRow
       label="Compact while idle"
-      info="Claude Code keeps a conversation cached for an hour after its last request. The first message after that writes the whole conversation to the cache again, which for a long one is the most expensive message of the day. With this on, a Claude Code conversation over 100k tokens that has been quiet for 55 minutes is compacted first, while it is still cached, so the next message starts from about a third of the size. A compaction drops some detail, and a line in the chat says where it happened."
-      description="Compact a long Claude Code conversation shortly before its cache expires."
+      info="Claude Code keeps a chat cached for an hour. The first message after that re-sends the whole chat, which costs the most. With this on, a Claude Code chat over 100k tokens that has been quiet for 55 minutes is compacted while still cached. Some detail is lost, and the chat marks where."
+      description="Compact long Claude Code chats before their cache expires."
       control={<Switch aria-label="Compact while idle" checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
@@ -151,9 +151,9 @@ function SharedChanges() {
 
   return (
     <SettingRow
-      label="Show files changed beside a turn"
-      description="Show a card for files changed while a turn was working, even when it lists no files of its own. Cards for its own files still appear."
-      control={<Switch aria-label="Show files changed beside a turn" checked={on} disabled={saving} onCheckedChange={set} />}
+      label="Show other changed files"
+      description="Also show files that changed while an agent was working, not only its own."
+      control={<Switch aria-label="Show other changed files" checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
 }
@@ -180,13 +180,13 @@ function BeforeTurnCompaction() {
 
   return (
     <SettingRow
-      label="Compact before a long turn"
-      info="Claude Code, Codex and Pi keep a conversation in a session of their own, and every tool call in a turn sends that whole session to the model again. A turn with twenty tool calls on a long conversation can use millions of tokens. With this set, a session that has grown past this size, or past 60% of what the model will take, is compacted before your next message goes, by the engine's own compaction where it has one, or by starting a new session that is told a summary and the recent messages. A line in the chat says where it happened."
-      description="Compact a long Claude Code, Codex or Pi conversation before the next message, from this size."
+      label="Compact long chats"
+      info="Claude Code, Codex and Pi re-send the whole chat with every tool call, so one reply in a long chat can use millions of tokens. Past this size, or 60% of the model's limit, the chat is compacted before your next message. The chat marks where."
+      description="For Claude Code, Codex and Pi. Compact before the next message once a chat reaches this size."
     >
       <div className="mt-3">
         <Segmented
-          aria-label="Compact before a long turn"
+          aria-label="Compact long chats"
           value={BEFORE_TURN_CEILINGS.some((o) => o.value === ceiling) ? ceiling : "200000"}
           onChange={(next) => !saving && set(next)}
           options={BEFORE_TURN_CEILINGS.map((o) => ({ value: o.value, label: o.label }))}
@@ -225,14 +225,14 @@ function SilentCallLimit() {
 
   return (
     <SettingRow
-      label="Stop a tool call that goes silent"
-      info="Now and then a command waits on something that never answers: a cloud folder holding a read, a prompt nobody can see. The engine says nothing more and the agent stays on working. After this long with no word, Bloks ends the turn and tells you and the agent which call it was. Thinking, writing, and commands that keep reporting are never cut short, and time spent waiting on your approval does not count."
-      description="End the turn when one call has made no progress for this long."
+      label="Stop stuck tool calls"
+      info="Sometimes a command waits on something that never answers. After this long with no progress, Bloks stops the reply and tells you and the agent which call it was. Thinking, writing and commands that keep reporting are never cut short. Time waiting on your approval doesn't count."
+      description="Stop when one call makes no progress for this long."
     >
       {/* five choices do not fit beside the label, so they sit under it */}
       <div className="mt-3">
         <Segmented
-          aria-label="Stop a tool call that goes silent"
+          aria-label="Stop stuck tool calls"
           value={SILENT_CALL_LIMITS.some((o) => o.value === minutes) ? minutes : "15"}
           onChange={(next) => !saving && set(next)}
           options={SILENT_CALL_LIMITS.map((o) => ({ value: o.value, label: o.label }))}
@@ -266,8 +266,8 @@ function ProposeSkills() {
   return (
     <SettingRow
       label="Suggest skills"
-      info="Nothing is ever installed on its own. A suggestion waits in Skills with the words already written, and keeping it is one press. Reading a session back costs one cheap call, on your own key, for work you did not ask for, which is why this is off until you turn it on."
-      description="After a conversation that worked something out, write the procedure down as a skill for you to keep or not."
+      info="Nothing installs on its own. Suggestions wait in Skills, ready to keep with one press. Each check costs one small call on your own key, so this starts off."
+      description="After a chat that worked something out, suggest it as a skill."
       control={<Switch aria-label="Suggest skills" checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
@@ -298,21 +298,21 @@ function AgentTurnLimit() {
       .then((status) => dispatch({ type: "configStatus", config: status }))
       .catch((cause: unknown) => {
         setNumber(String(stored));
-        setError(cause instanceof Error ? cause.message : "The turn limit could not be saved.");
+        setError(cause instanceof Error ? cause.message : "Couldn't save the limit.");
       })
       .finally(() => setSaving(false));
   };
   return (
     <SettingRow
-      label="Agents' turn limit"
-      description={`Stop a chain after this many agent-started turns, from ${MIN_TURN_LIMIT} to ${MAX_TURN_LIMIT}. Every turn costs usage, so the limit keeps agents from keeping each other going without you. Your message in a conversation starts its count over.`}
+      label="Agent-to-agent limit"
+      description="Agents stop after this many replies to each other, so they don't use up your usage without you. Your next message resets the count."
     >
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <input aria-label="Maximum consecutive agent turns" type="number" min={MIN_TURN_LIMIT} max={MAX_TURN_LIMIT} step="1" value={number} disabled={saving}
+        <input aria-label="Most agent replies in a row" type="number" min={MIN_TURN_LIMIT} max={MAX_TURN_LIMIT} step="1" value={number} disabled={saving}
           onChange={(event) => { setNumber(event.target.value); setError(""); }}
           className="h-8 w-24 rounded-lg border bg-background px-2 text-body outline-none focus:border-primary" />
-        <span className="text-small text-muted-foreground">turns</span>
-        <Button size="sm" variant="secondary" disabled={saving || number === String(stored)} onClick={saveNumber} aria-label="Save turn limit">Save</Button>
+        <span className="text-small text-muted-foreground">replies</span>
+        <Button size="sm" variant="secondary" disabled={saving || number === String(stored)} onClick={saveNumber} aria-label="Save limit">Save</Button>
       </div>
       {error && <p role="alert" className="mt-2 text-small text-destructive">{error}</p>}
     </SettingRow>
@@ -341,8 +341,8 @@ function RecallBeforeTurn() {
   return (
     <SettingRow
       label="Bring up other conversations"
-      info="When you write to an agent, Bloks looks through its other conversations and its topic notes for what matches your message. Only a close match counts, and at most three short notes go with your words for that turn, never into the agent's standing instructions. Each says where and when it was said, the agent is told it may ignore them, and your message shows what was added. Rooms and email from people you have not listed never get them."
-      description="Give an agent what it said elsewhere that matches your message, before it answers."
+      info="Bloks searches the agent's other chats and notes for close matches to your message. Up to three short notes go with that message only, each saying where it came from, and your message shows what was added. Rooms and email from people you haven't listed never get them."
+      description="Remind an agent what it said elsewhere that matches your message."
       control={<Switch aria-label="Bring up other conversations" checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
@@ -383,8 +383,8 @@ function AboutCard() {
               ? update.reason === "install"
                 ? "The update downloaded but didn't install. Quit and reopen Bloks to try again."
                 : update.reason === "server"
-                  ? "GitHub didn't hand over the update just now. Try again in a few minutes."
-                  : "The update check didn't reach the server. Bloks tries again in a few hours."
+                  ? "Couldn't get the update. Try again in a few minutes."
+                  : "Couldn't reach the update server. Bloks will try again in a few hours."
               : update.state === "dev"
                 ? "Updates apply to the installed app, not a dev build."
                 : null;
@@ -418,7 +418,7 @@ function AboutCard() {
       />
       <SettingRow
         label="Something broken, or missing?"
-        description="Opens a GitHub issue. For anything gnarly, paste the diagnostics below into it."
+        description="Opens a GitHub issue."
         control={
           <Button size="sm" variant="secondary" asChild>
             <a
@@ -462,12 +462,12 @@ function Diagnostics() {
   return (
     <SettingRow
       label="Diagnostics"
-      info="The report holds versions, engine connection states, which keys are set as yes or no, and agent counts. Never the keys themselves, and the finished text is scrubbed for anything credential-shaped besides."
+      info="Versions, connection states, which keys are set (yes or no) and agent counts. Never the keys, and anything that looks like one is removed."
       description={
         failed ? (
           <span className="text-destructive">Couldn't build the report. Is the server running?</span>
         ) : (
-          "Copies a short report about this install, ready to paste into a bug report."
+          "A short report to paste into a bug report."
         )
       }
       control={
@@ -522,7 +522,7 @@ function AboutYou() {
       <SettingRow
         label="What every agent knows about you"
         htmlFor="about-you"
-        description={`Optional. Stays on ${thisComputer()}, and is never shared with people you invite into a room.`}
+        description={`Optional. Stays on ${thisComputer()} and is never shown to people in your rooms.`}
         control={
           <span
             className={cn(
@@ -548,7 +548,7 @@ function AboutYou() {
           onClick={() => dispatch({ type: "openMemory", target: "you" })}
           className="mt-2.5 text-body text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
-          See what your agents have learned about you in Memory
+          See what agents have learned in Memory
         </button>
       </SettingRow>
     </SettingsGroup>
@@ -579,8 +579,8 @@ function OpenAIKeyHint() {
           Found an OpenAI API key from {sourceName(speech.openaiAvailable)}
         </div>
         <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-          Bloks can use it for voices, which would bill that key's account per character
-          spoken. Nothing is used until you say so.
+          Bloks can use it for voices, billed to that key per character. Nothing is used
+          until you say so.
         </div>
         <Button size="sm" className="mt-2" onClick={() => setConsent(true)}>
           Use that key for voices
@@ -627,7 +627,7 @@ function QuickAskShortcut() {
     setProblem(null);
     const took = (await window.bloks?.shortcutApply(next)) ?? null;
     if (next && !took) {
-      setProblem("Another app already owns those keys. Try a different combination.");
+      setProblem("Another app uses those keys. Try another combination.");
       return;
     }
     setAccelerator(took);
@@ -651,7 +651,7 @@ function QuickAskShortcut() {
     if (e.altKey) parts.push("Alt");
     if (e.shiftKey) parts.push("Shift");
     if (parts.length === 0) {
-      setProblem("A global shortcut needs at least one modifier, or it would fire while you type.");
+      setProblem("Include a modifier key, like Command or Control.");
       return;
     }
     parts.push(key.length === 1 ? key.toUpperCase() : key);
@@ -669,7 +669,7 @@ function QuickAskShortcut() {
         problem ? (
           <span className="text-destructive">{problem}</span>
         ) : (
-          `Ask any agent from anywhere on ${thisComputer()}. It opens one line over whatever you are doing.`
+          `Ask any agent from anywhere on ${thisComputer()}.`
         )
       }
       control={
@@ -724,20 +724,20 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "General",
         icon: SlidersHorizontal,
         description: `How Bloks looks and behaves on ${thisComputer()}.`,
-        keywords: "width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain",
+        keywords: "width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain reply replies stuck silent tool call",
       },
       {
         id: "about-you",
         label: "About you",
         icon: UserIcon,
-        description: "Context every agent gets, so you do not have to repeat yourself.",
+        description: "Context every agent gets, so you don't repeat yourself.",
         keywords: "profile context personal instructions",
       },
       {
         id: "bring-setup",
         label: "Bring your setup",
         icon: Luggage,
-        description: "Instructions, skills and tool servers from the agent tools you already use, without their keys.",
+        description: "Import instructions, skills and MCP servers from tools you already use. Keys stay behind.",
         keywords: "import migrate claude code codex openclaw hermes claude.md agents.md skills mcp memory rules move switch",
       },
     ],
@@ -756,21 +756,21 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         id: "new-agents",
         label: "New agents",
         icon: UserPlus,
-        description: "Where every new agent starts, whoever hires it.",
+        description: "Defaults for every new agent.",
         keywords: "defaults folder hire approvals model effort",
       },
       {
         id: "rules",
         label: "Rules and approvals",
         icon: ShieldCheck,
-        description: "How much agents do before asking you, and what they may never do.",
+        description: "When agents ask first, and what they never do.",
         keywords: "deny allow permissions safety approval gate full access auto ask conservative",
       },
       {
         id: "security",
         label: "Security checkup",
         icon: ShieldAlert,
-        description: "What can reach your keys, accounts and computer, and how to narrow it.",
+        description: "What can reach your keys, accounts and computer.",
         keywords: "security checkup audit risk full access pairing devices email webhooks secrets browser computer file permissions signed out",
       },
       {
@@ -829,7 +829,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         id: "computers",
         label: "Computers",
         icon: Monitor,
-        description: `A private computer agents can work on, on ${thisComputer()} or in the cloud.`,
+        description: `A private computer for agents, on ${thisComputer()} or in the cloud.`,
         keywords: "vm virtual machine local box sandbox desktop",
       },
     ],
@@ -848,14 +848,14 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         id: "backups",
         label: "Backups",
         icon: Archive,
-        description: "Copies of your whole workspace, made every day or when you ask, and putting one back.",
+        description: "Copies of your workspace, daily or when you ask.",
         keywords: "backup restore archive copy export move new computer undo history passphrase encrypt seal daily automatic",
       },
       {
         id: "about",
         label: "About and updates",
         icon: Info,
-        description: "Your version, updates, and a way to tell us what broke.",
+        description: "Version, updates and feedback.",
         keywords: "version update feedback diagnostics bug",
       },
     ],
@@ -884,7 +884,7 @@ function GeneralPage() {
         />
         <SettingRow
           label="Transcript width"
-          description="Maximum width of the conversation and composer. Saved on this device."
+          description="How wide chats get on this device."
           control={
             <Segmented
               aria-label="Transcript width"
@@ -900,7 +900,7 @@ function GeneralPage() {
         />
         <SettingRow
           label="Show conversations in the sidebar"
-          description="List each agent's conversations under it, each with its own unread dot and state."
+          description="List each agent's conversations under it."
           control={
             <Switch
               aria-label="Show conversations in the sidebar"
@@ -944,7 +944,7 @@ function WorkspaceApprovals() {
     setNote(null);
     if (next === mode) return;
     if (!(await confirmWidening(mode, next, "new agents"))) {
-      setNote("Not confirmed, so nothing changed.");
+      setNote("Nothing changed.");
       return;
     }
     await save(next, false);
@@ -952,7 +952,7 @@ function WorkspaceApprovals() {
   const applyToAll = async () => {
     setNote(null);
     if (!(await confirmWidening("ask", mode, "every agent"))) {
-      setNote("Not confirmed, so nothing changed.");
+      setNote("Nothing changed.");
       return;
     }
     await save(mode, true);
@@ -968,7 +968,7 @@ function WorkspaceApprovals() {
             {note ??
               (elsewhere > 0
                 ? `New agents start on ${label}. ${elsewhere} of your ${total} agent${total === 1 ? " is" : "s are"} on something else.`
-                : `New agents start on ${label}, and so is every agent you have.`)}
+                : `All your agents are on ${label}.`)}
           </span>
           {elsewhere > 0 && (
             <Button size="sm" variant="secondary" onClick={() => void applyToAll()}>
@@ -977,7 +977,7 @@ function WorkspaceApprovals() {
           )}
         </div>
         <div className="mt-2 text-small text-muted-foreground">
-          Each agent can still be set differently in its own settings. Shared rooms always ask, whatever is set here.
+          Each agent can change this in its own settings. Shared rooms always ask.
         </div>
       </div>
     </SettingsGroup>
@@ -1028,7 +1028,7 @@ function PageBody({ id }: { id: string }) {
                 label="Composio Connect key"
                 placeholder="ck_…"
                 info={{
-                  text: "Composio issues two different keys. This is the Connect key (starts with ck_), the one that links accounts like Slack and Gmail. The key is checked with Composio when you save it.",
+                  text: "The Connect key starts with ck_ and links accounts like Slack and Gmail. It's checked when you save it.",
                   linkLabel: "Get a Connect key at composio.dev",
                   linkHref: "https://composio.dev",
                 }}
@@ -1036,9 +1036,9 @@ function PageBody({ id }: { id: string }) {
               <ApiKeyRow
                 section="composioApi"
                 label="Composio API key (optional)"
-                placeholder="ak_…  unlocks the full app catalog"
+                placeholder="ak_…"
                 info={{
-                  text: "The other Composio key: a project API key (starts with ak_), separate from the Connect key above. Only used to browse the full app catalog; connections work without it.",
+                  text: "A project API key, starting with ak_. Only used to browse the full app catalog. Connections work without it.",
                 }}
               />
               <ApiKeyRow
@@ -1046,7 +1046,7 @@ function PageBody({ id }: { id: string }) {
                 label="Boat API key"
                 placeholder="Paste your Boat API key"
                 info={{
-                  text: "Gives agents an isolated remote Linux computer with a desktop and a terminal. Boat (formerly Box) is a paid service after its trial, so usage can incur charges.",
+                  text: "Gives agents a private Linux computer in the cloud, with a desktop and terminal. Boat (formerly Box) is paid after its trial.",
                   linkLabel: "Open the Boat API key guide",
                   linkHref: "https://docs.boat.dev/api-keys",
                 }}

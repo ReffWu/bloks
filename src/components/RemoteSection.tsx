@@ -38,25 +38,24 @@ export function RemoteSection() {
       {status.mode === "remote" ? (
         <>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            This app is using the Bloks on {status.host}'s always-on computer, through Bloks Cloud. Your agents
-            keep working there when this computer sleeps.{" "}
+            Using Bloks on {status.host} through Bloks Cloud. Agents keep working when this computer
+            sleeps.{" "}
             {status.revoked
-              ? "That computer no longer recognises this app; pair it again."
+              ? "That computer no longer knows this app. Pair it again."
               : status.connected
                 ? "Connected."
-                : "That computer is not reachable right now."}
+                : "That computer can't be reached right now."}
           </div>
           <Button size="sm" variant="secondary" className="mt-3" disabled={busy} onClick={() => bridge.remoteDisconnect?.()}>
-            Use this computer's own Bloks instead
+            Use this computer instead
           </Button>
           <div className="mt-1.5 text-small text-muted-foreground">Restarts the app. Nothing on either computer is deleted.</div>
         </>
       ) : (
         <>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            On this computer, so your agents stop when it sleeps. To keep them working, run Bloks on a computer
-            that never sleeps (a small rented server, a Mac mini, a home server) with{" "}
-            <code className="rounded bg-muted px-1">bloks-server</code>, then run{" "}
+            On this computer, so agents stop when it sleeps. To keep them running, install{" "}
+            <code className="rounded bg-muted px-1">bloks-server</code> on an always-on computer, run{" "}
             <code className="rounded bg-muted px-1">bloks-server pair</code> there and paste the link here.
           </div>
           <div className="mt-3 flex gap-1.5">
@@ -71,7 +70,7 @@ export function RemoteSection() {
             </Button>
           </div>
           <div className="mt-1.5 text-small text-muted-foreground">
-            Restarts the app. This computer's own agents stay here, switched off, until you come back to them.
+            Restarts the app. Agents on this computer stay here, paused, until you switch back.
           </div>
         </>
       )}

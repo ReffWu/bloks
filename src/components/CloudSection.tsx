@@ -70,7 +70,7 @@ export function CloudSection() {
   const activate = () => {
     const trimmed = key.trim();
     if (!CLOUD_KEY.test(trimmed)) {
-      setError("That is not a Bloks Cloud key. One starts with blok_live_ and ends in 32 hex characters.");
+      setError("That's not a Bloks Cloud key. They start with blok_live_.");
       return;
     }
     setBusy(true);
@@ -110,9 +110,8 @@ export function CloudSection() {
             <span className="text-ui font-semibold text-foreground">Your plan</span>
           </div>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            Reaches {thisComputer()} from your phone anywhere, not just on this network, and pushes
-            you the moment an agent needs an answer. Your agents keep running here, and the
-            keys never leave this machine.
+            Reach {thisComputer()} from your phone anywhere, and get notified when an agent needs
+            you. Your agents and keys stay here.
           </div>
         </div>
         {on && (
@@ -141,9 +140,8 @@ export function CloudSection() {
         <div className="mt-3 text-small leading-relaxed text-muted-foreground">
           {phonesOff ? (
             <>
-              Activated, but phone access is off on {thisComputer()}, and Cloud only runs while it
-              is on. Turning phone access off is how every phone is cut loose at once, Cloud
-              included.
+              Activated, but phone access is off on {thisComputer()}. Cloud only works while it is
+              on.
               <div className="mt-2">
                 <Button size="sm" variant="brand" disabled={busy} onClick={turnOnPhones}>
                   {busy ? <Loader2 size={13} className="animate-spin" /> : "Turn on phone access"}
@@ -152,28 +150,27 @@ export function CloudSection() {
             </>
           ) : status.connected && status.delivering === false ? (
             <>
-              {thisComputer()} can hear Bloks Cloud, but its replies are not getting through, so
-              your phone may say it cannot reach it. This is usually the network here. Bloks
-              keeps retrying and turns green once replies land.
+              Replies from {thisComputer()} aren't getting through, usually because of the network
+              here. Bloks keeps retrying.
             </>
           ) : status.spaceId ? (
             <>
-              Active. Pair a phone above and it will reach {thisComputer()} from anywhere.
+              Active. Paired phones reach {thisComputer()} from anywhere.
               <span className="ml-1 font-mono text-small text-muted-foreground/70">
                 {status.spaceId}
               </span>
             </>
           ) : status.problem ? (
             <>
-              Activated, but {thisComputer()} cannot reach Bloks Cloud yet. Bloks keeps trying.
+              Activated, but {thisComputer()} can't reach Bloks Cloud yet. Bloks keeps trying.
               <span className="mt-1 block text-small text-muted-foreground/80">{status.problem}</span>
             </>
           ) : (
-            "Activated. Waiting for the relay to answer."
+            "Activated. Connecting to Bloks Cloud…"
           )}
           <div className="mt-2">
-            Paste a different key to move Cloud to another computer. The one it was on stops
-            reaching your phone when you do.
+            Paste a different key to move Cloud. The computer it was on stops reaching your
+            phone.
           </div>
           <div className="mt-2 flex gap-2">
             <Input
@@ -211,14 +208,14 @@ export function CloudSection() {
           <div className="mt-2.5 text-small leading-relaxed text-muted-foreground">
             {phones > 0 ? (
               <>
-                {phones === 1 ? "Your phone is paired and works" : `Your ${phones} phones are paired and work`}{" "}
-                on this network. Cloud is what lets {phones === 1 ? "it" : "them"} reach {thisComputer()}
-                from anywhere, and buzz you when an agent needs an answer.
+                {phones === 1 ? "Your phone works" : `Your ${phones} phones work`} on this network. Cloud
+                lets {phones === 1 ? "it" : "them"} reach {thisComputer()} from anywhere, with a
+                notification when an agent needs you.
               </>
             ) : (
               <>
-                Pair a phone above and it will reach {thisComputer()} on this network. Cloud is what
-                lets it reach you from anywhere.
+                A paired phone reaches {thisComputer()} on this network. Cloud makes it work
+                anywhere.
               </>
             )}
           </div>
@@ -234,8 +231,7 @@ export function CloudSection() {
             <span className="text-small text-muted-foreground">$5 a month or $45 a year</span>
           </div>
           <div className="mt-2 text-small leading-relaxed text-muted-foreground/80">
-            Already bought it? Your key was on the page shown right after paying, and in the
-            email that came with it. Paste it above.
+            Already bought it? Paste the key from your confirmation email above.
           </div>
         </div>
       )}

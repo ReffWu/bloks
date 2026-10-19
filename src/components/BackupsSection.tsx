@@ -84,8 +84,8 @@ function Elsewhere() {
   return (
     <SettingsGroup>
       <SettingRow
-        label="Backups live on the computer Bloks runs on"
-        description="Open Bloks on that computer to back up or restore its workspace."
+        label="Backups are on the computer running Bloks"
+        description="Open Bloks there to back up or restore."
       />
     </SettingsGroup>
   );
@@ -146,7 +146,7 @@ function Backups() {
           return;
         }
       }
-      setRestartNote("The restore is ready. Restart Bloks to open the restored workspace.");
+      setRestartNote("Restore ready. Restart Bloks to finish.");
     };
     const tick = setInterval(() => {
       fetch("/api/backups/restore")
@@ -247,7 +247,7 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
         </div>
         {restore.phase === "draining" && (
           <Button size="sm" variant="secondary" onClick={onCancel}>
-            Call off
+            Cancel
           </Button>
         )}
       </div>
@@ -256,8 +256,8 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
   if (status.pending) {
     return (
       <div role="status" className="mb-6 rounded-2xl border bg-card p-4 text-body text-foreground">
-        A restore of <span className="break-all font-medium">{status.pending.from}</span> is checked and ready. It is put in
-        place when Bloks next starts.
+        A restore of <span className="break-all font-medium">{status.pending.from}</span> is ready. It applies when Bloks next
+        starts.
       </div>
     );
   }
@@ -273,10 +273,10 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
           {last.aside && (
             <>
               {" "}
-              The workspace it replaced is in <span className="break-all font-mono text-small">{last.aside}</span>.
+              Your previous workspace is in <span className="break-all font-mono text-small">{last.aside}</span>.
             </>
           )}
-          {last.keys === "kept" ? " The keys on this computer were kept." : " Its saved keys came back with it."}
+          {last.keys === "kept" ? " Keys on this computer were kept." : " Its saved keys were restored too."}
         </div>
       </div>
     );
@@ -296,7 +296,7 @@ function AutoBackup({ status, onChange }: { status: Status; onChange: (s: Status
   return (
     <SettingRow
       label="Back up every day"
-      info="Made once a day while Bloks is open and nothing is running. They leave out saved keys and the Undo history, since nobody is there to give a passphrase. Backups you make yourself stay until you delete them."
+      info="Made once a day while Bloks is open and idle, without saved keys or Undo history. Backups you make yourself stay until you delete them."
       description={`Keeps the newest ${status.keep}, in ${status.folder}.`}
       control={<Switch aria-label="Back up every day" checked={status.auto} disabled={saving} onCheckedChange={set} />}
     />
@@ -321,7 +321,7 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
       body: JSON.stringify({ undo, ...(seal ? { passphrase, secrets: keys } : {}) }),
     })
       .then(({ backup }: { backup: BackupItem }) => {
-        setResult({ ok: true, text: `Backed up, ${sizeText(backup.size)}.${seal ? " Keep the passphrase somewhere safe: without it this backup cannot be opened." : ""}` });
+        setResult({ ok: true, text: `Backed up, ${sizeText(backup.size)}.${seal ? " Keep the passphrase safe: without it, this backup can't be opened." : ""}` });
         setPassphrase("");
         setAgain("");
         onDone();
@@ -334,12 +334,12 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
     <>
       <SettingRow
         label="Include Undo history"
-        description="Every earlier version of the files your agents changed, so changes can still be undone after a restore. It can make a backup much bigger."
+        description="Lets you undo agent changes after a restore. Can make backups much bigger."
         control={<Switch aria-label="Include Undo history" checked={undo} onCheckedChange={setUndo} />}
       />
       <SettingRow
         label="Seal with a passphrase"
-        description="Nobody can open a sealed backup without it, Bloks included, so keep it somewhere safe."
+        description="Without it, nobody can open the backup, not even Bloks."
         control={<Switch aria-label="Seal with a passphrase" checked={seal} onCheckedChange={setSeal} />}
       >
         {seal && (
@@ -356,8 +356,8 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
               <Input
                 type="password"
                 autoComplete="new-password"
-                aria-label="Passphrase again"
-                placeholder="Again, to be sure"
+                aria-label="Confirm passphrase"
+                placeholder="Confirm passphrase"
                 value={again}
                 onChange={(e) => setAgain(e.target.value)}
               />
@@ -367,8 +367,8 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
               <div className="min-w-0 flex-1">
                 <div className="text-body font-medium text-foreground">Include saved keys</div>
                 <div className="mt-0.5 text-pretty text-small leading-relaxed text-muted-foreground">
-                  Engine keys, tokens and paired devices, so a restore on another computer is ready to go. Only ever in a
-                  sealed backup.
+                  Engine keys, tokens and paired devices, ready to go on another computer. Only in sealed
+                  backups.
                 </div>
               </div>
               <Switch aria-label="Include saved keys" checked={keys} onCheckedChange={setKeys} />
@@ -382,7 +382,7 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
           result ? (
             <span className={result.ok ? "text-success" : "text-destructive"}>{result.text}</span>
           ) : (
-            `Agents, rooms, conversations, skills and settings, ${seal && keys ? "with" : "without"} saved keys. Kept in ${folder} until you delete it.`
+            `Agents, rooms, conversations, skills and settings, ${seal && keys ? "with" : "without"} saved keys. Saved to ${folder}.`
           )
         }
         control={
@@ -445,7 +445,7 @@ function BackupRow({
       .catch((e) => setLine({ ok: false, text: errorOf(e) }));
 
   const remove = () => {
-    if (!window.confirm(`Delete the backup from ${when(backup.created)}?\n\nIt is gone for good once deleted.`)) return;
+    if (!window.confirm(`Delete the backup from ${when(backup.created)}?\n\nThis can't be undone.`)) return;
     void api(base, { method: "DELETE" })
       .then(onChanged)
       .catch((e) => setLine({ ok: false, text: errorOf(e) }));

@@ -193,7 +193,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const startFresh = async () => {
     if (
       !window.confirm(
-        "Start fresh?\n\nYour agents, rooms and conversations are moved into a timestamped folder beside this one, and nothing is deleted. Your keys, engines and Bloks Cloud stay set up. Bloks restarts to finish.",
+        "Start fresh?\n\nYour agents, rooms and conversations move to a dated folder beside this one. Nothing is deleted. Keys, engines and Bloks Cloud stay set up. Bloks will restart.",
       )
     ) {
       return;
@@ -333,22 +333,22 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       kind: "claudeAgent",
       name: "Claude Code",
       command: "curl -fsSL https://claude.ai/install.sh | bash",
-      have: "Installed and ready to power agents.",
-      want: "Not installed yet. Install it here; it turns green on its own.",
+      have: "Installed and ready.",
+      want: "Not installed yet. Install it here.",
     },
     {
       kind: "codex",
       name: "Codex",
       command: "npm i -g --prefix ~/.local @openai/codex",
       have: "Installed. Agents can run on Codex too.",
-      want: "Optional. Adds a second engine your agents can use.",
+      want: "Optional. Another engine for your agents.",
     },
     {
       kind: "pi",
       name: "Pi",
       command: "npm i -g --prefix ~/.local --ignore-scripts @earendil-works/pi-coding-agent pi-acp",
       have: "Installed. Agents can run on Pi too.",
-      want: "Optional. Install Pi and pi-acp to add a tool-running engine.",
+      want: "Optional. Installs Pi and pi-acp.",
     },
     {
       kind: "antigravity",
@@ -361,15 +361,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       kind: "grokCli",
       name: "Grok CLI",
       command: "curl -fsSL https://x.ai/cli/install.sh | bash",
-      have: "Installed. Binds to your grok.com subscription.",
+      have: "Installed. Uses your grok.com subscription.",
       want: "Optional. Runs on an existing Grok subscription.",
     },
     {
       kind: "kimi",
       name: "Kimi",
       byKey: true,
-      have: "Connected. Ready for agents to think with.",
-      want: "Optional. Paste a Kimi key in Settings to switch it on.",
+      have: "Connected and ready.",
+      want: "Optional. Add a Kimi key in Settings.",
     },
   ];
 
@@ -424,8 +424,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               <p className="mt-3 text-center text-small leading-relaxed text-warning">{resetNote}</p>
             ) : (
               <p className="mt-3 text-center text-small leading-relaxed text-muted-foreground">
-                Starting fresh keeps the old workspace in a timestamped folder beside this one.
-                Nothing is deleted, and your keys and engines stay set up.
+                Starting fresh moves the old workspace to a dated folder. Nothing is deleted, and
+                keys and engines stay set up.
               </p>
             )}
           </div>
@@ -468,7 +468,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                             state === "ready"
                               ? engine.have
                               : state === "signed-out"
-                                ? "Installed, but not signed in yet, so it cannot answer. One step left."
+                                ? "Installed. Sign in to finish."
                                 : engine.want
                           }
                           command={engine.command}
@@ -481,8 +481,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                     // a CLI is the best engine, not the only one: without
                     // either of them there is still a way in
                     <p className="px-1 pt-1 text-body leading-relaxed text-muted-foreground">
-                      Neither one installed? Continue anyway and connect Gemini, Grok, Kimi, Llama or
-                      OpenRouter from Settings. Those chat but cannot run commands.
+                      None installed? Continue and connect Gemini, Grok, Kimi, Llama or OpenRouter in
+                      Settings. They can chat but not run commands.
                     </p>
                   )}
                 </>
@@ -521,8 +521,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               What do you spend your time on?
             </h1>
             <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              Pick any that fit. This only decides who we suggest first; you can make
-              any agent you like afterwards.
+              Pick any that fit. It only shapes what we suggest.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-1.5">
               {WORK_TYPES.map((option) => {
@@ -563,8 +562,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               How much should your agents ask?
             </h1>
             <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              You can change this any time in Settings, and for any one agent in its own
-              settings.
+              You can change this any time in Settings.
             </p>
             <div className="mt-4">
               <ApprovalsChooser value={approvals} onChange={setApprovals} compact />
@@ -582,8 +580,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               Start with one of these
             </h1>
             <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              Each comes with a role already written. Hire one now, or skip and build
-              your own from scratch.
+              Each comes with its role written. Add one, or skip and make your own.
             </p>
             <div className="mt-4 flex flex-col gap-2">
               {recommendedFor(work, 3).map((id) => {
@@ -634,8 +631,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <div className="flex min-h-0 flex-col">
             <h1 className="text-title font-semibold tracking-tight text-foreground">Bring your setup</h1>
             <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              Found in {setup.review.sources.map((s) => s.name).join(", ")}. Tick what to bring over. You can
-              do this later from Settings too.
+              Found in {setup.review.sources.map((s) => s.name).join(", ")}. Tick what to bring over, now or
+              later in Settings.
             </p>
             <SetupPrivacyLine className="mt-4" />
             <div className="mt-4 min-h-0">
@@ -668,13 +665,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <div className="flex flex-col">
             <h1 className="text-title font-semibold tracking-tight text-foreground">Permissions</h1>
             <p className="mt-1 text-body text-muted-foreground">
-              Nothing here is required, and nothing is used until you ask for the feature that needs it.
+              All optional. Nothing is used until you need it.
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <PermissionRow
                 icon={<Mic size={17} />}
                 title="Microphone & speech"
-                detail="Voice dictation into the composer, transcribed on-device."
+                detail="Dictate messages, transcribed on-device."
                 status={perms?.mic}
                 onEnable={() =>
                   window.bloks?.permRequestMic?.().then(() => window.bloks?.permStatus?.().then(setPerms))

@@ -149,8 +149,8 @@ export function LocalVmSection() {
         </Button>
       </div>
       <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-        A Cua Linux desktop in a container on {thisComputer()}. Free, isolated from your own desktop, and
-        recycled after 8 quiet hours; files in its workspace survive.
+        A free Linux desktop on {thisComputer()}, kept apart from yours. It resets after 8 idle hours, but
+        workspace files stay.
       </div>
 
       {error && (
@@ -192,13 +192,13 @@ export function LocalVmSection() {
         <div className="mt-3.5">
           <Step index={1} done={s.runtime !== null} title="Install a container runtime">
             <div className="mt-0.5 text-small text-muted-foreground">
-              Apple's container CLI or Docker Desktop, either works.
+              Apple's container CLI or Docker Desktop.
             </div>
           </Step>
           <Step index={2} done={s.daemonUp} title="Start the container runtime">
             {s.runtime && (
               <div className="mt-0.5 text-small text-muted-foreground">
-                Open {s.runtime === "container" ? "it with: container system start" : "Docker and wait for it to settle"}.
+                Open {s.runtime === "container" ? "it with: container system start" : "Docker and wait for it to start"}.
               </div>
             )}
           </Step>
@@ -214,7 +214,7 @@ export function LocalVmSection() {
                 {acting === "prepare" ? "Preparing, takes a few minutes" : "Prepare Cua desktop"}
               </Button>
             )}
-            <CommandReveal label="Show base-image download" command={s.commands.pull} />
+            <CommandReveal label="Show download command" command={s.commands.pull} />
           </Step>
           <Step index={4} done={s.container === "running" && s.desktopReady} title="Create and start the Local VM">
             {s.imageReady &&
@@ -253,8 +253,8 @@ export function LocalVmSection() {
           </Step>
 
           <div className="mt-1 rounded-xl bg-muted/50 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
-            The VM gets 4GB, 2 CPUs, and a viewer only {thisComputer()} can open. One host folder is
-            mounted as its workspace; browser sign-ins and files there survive recreation.
+            4 GB memory, 2 CPUs, and a viewer only {thisComputer()} can open. Files and browser sign-ins
+            in its workspace survive a reset.
             <div className="mt-1 text-muted-foreground/70">
               Workspace: {s.workspace} · Driver {s.driverVersion}
             </div>

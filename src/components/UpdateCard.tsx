@@ -37,7 +37,7 @@ function dismissedVersion(): string | null {
 /** What an install is waiting for, while it waits. */
 export function drainingLine(draining: NonNullable<UpdateState["draining"]>, now = Date.now()): string {
   const n = draining.running;
-  const what = n > 0 ? `${n} running ${n === 1 ? "turn" : "turns"}` : "what is running";
+  const what = n > 0 ? `${n} running ${n === 1 ? "reply" : "replies"}` : "what's running";
   const minutes = draining.deadline ? Math.ceil((draining.deadline - now) / 60_000) : null;
   const left = minutes === null ? "" : minutes > 1 ? ` (${minutes} minutes left)` : " (under a minute left)";
   return `Finishing ${what} before restarting…${left}`;
@@ -156,7 +156,7 @@ function UpdateCard() {
             </button>
           </div>
           <p className="mt-1 text-small leading-snug text-muted-foreground">
-            Running turns pick up where they left off after the restart.
+            Anything still running picks up after the restart.
           </p>
         </div>
       </div>

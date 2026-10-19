@@ -137,9 +137,8 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
       <DialogContent className="max-h-[86vh] max-w-[480px] overflow-y-auto">
         <DialogTitle className="text-lead font-semibold">Share {blok.name}</DialogTitle>
         <DialogDescription className="mt-1 text-body leading-relaxed text-muted-foreground">
-          People you invite talk to this room's agents from the Bloks app, a browser, or a linked Slack or
-          Discord channel. The agents keep running on this computer, and anything that touches your
-          accounts, files or computer waits for you.
+          Invite people to talk to this room's agents. Agents run on this computer, and anything that
+          touches your accounts, files or computer waits for you.
         </DialogDescription>
 
         {error && (
@@ -152,13 +151,12 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
           </div>
         ) : !data.plan ? (
           <div className="mt-4 rounded-2xl border bg-card p-4 text-body leading-relaxed text-muted-foreground">
-            Sharing a room needs Bloks Cloud, which is what carries people's messages to this computer
-            while they are away from it. Turn it on in Settings, under Bloks Cloud, then come back here.
+            Sharing a room needs Bloks Cloud. Turn it on in Settings, under Bloks Cloud.
           </div>
         ) : !shared ? (
           <div className="mt-4 space-y-3">
             <label className="block text-body font-medium text-foreground">
-              Your name, as people in the room will see it
+              Your name in the room
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -218,8 +216,8 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                   {k.name} wants to talk to the agents from {PLATFORM[k.platform]}
                 </div>
                 <div className="mt-1 text-small text-muted-foreground">
-                  They named an agent in {data.chat.link?.channelName ?? "the linked channel"}. Let them in as a
-                  collaborator, or they are not answered.
+                  They named an agent in {data.chat.link?.channelName ?? "the linked channel"}. Agents only answer
+                  them once you let them in.
                 </div>
                 <div className="mt-3 flex gap-2">
                   <Button
@@ -267,8 +265,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                     </div>
                   )}
                   <div className="min-w-0 flex-1 text-small leading-relaxed text-muted-foreground">
-                    Send this to one person. It works once, for 24 hours, and you still decide
-                    whether they get in.
+                    For one person. Works once, for 24 hours. You still approve who gets in.
                     <Button size="sm" variant="secondary" className="mt-2 w-full" onClick={copy}>
                       {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                       {copied ? "Copied" : "Copy link"}
@@ -352,7 +349,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
               <div className="space-y-3">
                 <Toggle
                   label="New people see the whole history"
-                  hint="Off: they see the room from when they joined. Applies to everyone in it now."
+                  hint="Off: only from when they joined. Applies to everyone in the room."
                   checked={shared.history === "all"}
                   onChange={(on) => share({ history: on ? "all" : "join" })}
                 />
@@ -388,7 +385,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                 <div>
                   <div className="text-body text-foreground">Monthly cap for this room</div>
                   <div className="text-small leading-snug text-muted-foreground">
-                    Agents here run on your engines. At the cap they pause until next month or until you raise it.
+                    Agents here use your engines. At the cap, they pause until next month or until you raise it.
                   </div>
                 </div>
                 <select
@@ -432,7 +429,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                     </div>
                   )}
                   <div className="mt-1.5 text-caption leading-snug text-muted-foreground">
-                    Estimated from what your engines report, by who asked.
+                    Estimated, by who asked.
                   </div>
                 </div>
               )}
@@ -516,8 +513,7 @@ function ChatLinkSection({
           <div className="min-w-0 text-body text-foreground">
             Linked to <span className="font-medium">{link.channelName}</span> in {PLATFORM[link.platform]}
             <div className="text-small leading-snug text-muted-foreground">
-              Everything said here is said there. People there talk to the agents by naming one, once you let
-              them in.
+              Messages show in both places. People there name an agent to talk to it, once you let them in.
             </div>
           </div>
           <Button
@@ -531,13 +527,12 @@ function ChatLinkSection({
         </div>
       ) : data.chat.connected.length === 0 ? (
         <div className="text-small leading-snug text-muted-foreground">
-          Carry this room into a Slack or Discord channel. Connect one in Settings, under Chat and email.
+          Bring this room into Slack or Discord. Connect one in Settings, under Chat and email.
         </div>
       ) : (
         <div className="space-y-2">
           <div className="text-small leading-snug text-muted-foreground">
-            Carry this room into a channel. The agents answer only when someone names one, and only people you
-            let in.
+            Bring this room into a channel. Agents only answer people you let in, when they name an agent.
           </div>
           <div className="flex flex-wrap gap-2">
             {data.chat.connected.map((p) => (
@@ -556,8 +551,8 @@ function ChatLinkSection({
             channels.length === 0 ? (
               <div className="text-small leading-snug text-muted-foreground">
                 {platform === "whatsapp"
-                  ? "The number is not in any groups yet. Add it to one in WhatsApp, then pick again."
-                  : `The bot is not in any channels yet. Add it to one in ${PLATFORM[platform]}, then pick again.`}
+                  ? "The number isn't in any groups yet. Add it to one in WhatsApp, then pick again."
+                  : `The bot isn't in any channels yet. Add it to one in ${PLATFORM[platform]}, then pick again.`}
               </div>
             ) : (
               <div className="flex gap-2">
@@ -630,8 +625,8 @@ function OwnerToolsSection({
       <SectionTitle>Your tools</SectionTitle>
       {!team ? (
         <div className="text-small leading-snug text-muted-foreground">
-          With Bloks Team you can let this room's agents ask to use your connected apps, a browser or
-          your computer, with each use waiting for your approval.{" "}
+          With Bloks Team, agents here can ask to use your apps, a browser or your computer. You approve
+          each use.{" "}
           <a
             href="https://bloks.dev/cloud/upgrade/"
             target="_blank"
@@ -644,13 +639,12 @@ function OwnerToolsSection({
       ) : (
         <div className="space-y-3">
           <div className="text-small leading-snug text-muted-foreground">
-            Agents here can ask to use what you switch on. Every use waits for an approval, even when
-            your own rules would allow it.
+            Agents here can ask to use what you turn on. You approve every use, whatever your rules say.
           </div>
           {data.available.connectors && (
             <Toggle
               label="Connected apps"
-              hint="Your email, calendar and other apps connected in Settings."
+              hint="Email, calendar and other connected apps."
               checked={Boolean(tools.connectors)}
               disabled={busy}
               onChange={(on) => set({ connectors: on })}
@@ -660,7 +654,7 @@ function OwnerToolsSection({
             <Toggle
               key={server.id}
               label={server.name}
-              hint="An MCP server from your settings, for agents you have given it to."
+              hint="An MCP server, for agents that have it."
               checked={Boolean(tools.mcp?.includes(server.id))}
               disabled={busy}
               onChange={(on) =>
@@ -674,7 +668,7 @@ function OwnerToolsSection({
           ))}
           <Toggle
             label="A browser"
-            hint="A browser of the room's own, signed in to nothing of yours."
+            hint="A separate browser, not signed in to your accounts."
             checked={Boolean(tools.browser)}
             disabled={busy}
             onChange={(on) => set({ browser: on })}
@@ -690,15 +684,15 @@ function OwnerToolsSection({
           )}
           <Toggle
             label="Collaborators can approve"
-            hint="They can answer approvals here, except for what they asked for themselves."
+            hint="They can approve requests, except their own."
             checked={Boolean(shared.collaboratorsApprove)}
             disabled={busy}
             onChange={(on) => share({ collaboratorsApprove: on })}
           />
           {anyOn && left.length > 0 && (
             <div className="text-small leading-snug text-muted-foreground">
-              {left.map((a) => a.name).join(", ")} {left.length === 1 ? "runs" : "run"} on an engine that
-              cannot pause for approvals, so {left.length === 1 ? "it stays" : "they stay"} conversation only.
+              {left.map((a) => a.name).join(", ")} can't pause for approvals, so{" "}
+              {left.length === 1 ? "it" : "they"} can only talk.
             </div>
           )}
         </div>
@@ -740,8 +734,8 @@ function PlanLine({ data }: { data: PeopleResponse }) {
   if (data.plan !== "cloud" || !data.limits) return null;
   return (
     <div className="mt-2 text-small leading-snug text-muted-foreground">
-      Bloks Cloud includes one shared room with up to {data.limits.members} people. Bloks Team shares
-      as many rooms as you like, with up to 10 people each.{" "}
+      Bloks Cloud includes one shared room for up to {data.limits.members} people. Bloks Team allows any
+      number of rooms, up to 10 people each.{" "}
       <a
         href="https://bloks.dev/cloud/upgrade/"
         target="_blank"

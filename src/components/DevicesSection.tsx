@@ -66,8 +66,8 @@ function ThisBrowser() {
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <div className="text-ui font-semibold text-foreground">This browser</div>
       <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-        Connected to {window.bloksWeb?.host || "your computer"} through Bloks Cloud, sealed end to end. Disconnecting
-        forgets its keys here; remove it on your computer too to be sure it cannot come back.
+        Connected to {window.bloksWeb?.host || "your computer"} through Bloks Cloud, end-to-end encrypted. To fully
+        disconnect, also remove this browser on your computer.
       </div>
       <Button
         variant="secondary"
@@ -241,7 +241,7 @@ function PairingControls() {
         <div className="mt-3 flex flex-wrap items-center gap-2.5 rounded-lg bg-warning/10 px-3 py-2 text-body text-foreground">
           <span className="min-w-0 flex-1">
             {status.enabled
-              ? `Restart Bloks to finish turning this on. Until then your phone cannot reach ${thisComputer()}.`
+              ? "Restart Bloks to finish turning this on."
               : "Restart Bloks to stop listening on your network."}
           </span>
           {window.bloks?.relaunch ? (
@@ -298,7 +298,7 @@ function PairingControls() {
                     network, is a dead end without a way round the QR */}
                 {!browserLink && (
                   <div className="mt-1 text-small text-muted-foreground">
-                    QR will not scan?{" "}
+                    QR won't scan?{" "}
                     <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={makeBrowserLink}>
                       Use a link instead
                     </button>
@@ -323,9 +323,8 @@ function PairingControls() {
             <div className="mt-3 rounded-xl border bg-muted/40 p-3" data-browser-link>
               <div className="text-body font-medium text-foreground">Pair with a link</div>
               <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-                Both links are the same pairing and work once, for {Math.ceil(browserSecondsLeft / 60)} more
-                minute{browserSecondsLeft > 60 ? "s" : ""}, through Bloks Cloud. Whoever opens one becomes one of
-                your devices, so keep them to yourself.
+                Works once, for {Math.ceil(browserSecondsLeft / 60)} more minute{browserSecondsLeft > 60 ? "s" : ""}.
+                Anyone who opens a link gets access, so keep it private.
               </div>
               <PairLinkRow
                 label="Open in a browser"
@@ -334,7 +333,7 @@ function PairingControls() {
                 onCopy={() => void navigator.clipboard.writeText(browserLink.web).then(() => setCopied("web"))}
               />
               <PairLinkRow
-                label="Paste into the Bloks app or Bloks on another computer"
+                label="Paste into the Bloks app or another computer"
                 link={browserLink.pair}
                 copied={copied === "pair"}
                 onCopy={() => void navigator.clipboard.writeText(browserLink.pair).then(() => setCopied("pair"))}
