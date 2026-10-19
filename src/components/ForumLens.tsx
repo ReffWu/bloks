@@ -14,7 +14,7 @@ import { ChevronDown } from "@/components/icons";
 import { ChevronRight } from "@/components/icons";
 import { MessageSquare } from "@/components/icons";
 import { preview, replyLabel, threadsFrom, type Thread } from "@/lib/threads";
-import type { Bot, Message } from "@/state/reducer";
+import type { Bot, Message, RoomPerson } from "@/state/reducer";
 import { AgentAvatar } from "./Avatar";
 import { cn } from "@/lib/cn";
 
@@ -27,26 +27,57 @@ function when(at: number): string {
     : date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+/** Whoever is not an agent: you, or somebody the room is shared with,
+ * by their initial, as the stream draws them. */
+function PersonFace({ name, size }: { name: string; size: number }) {
+  return (
+    <span
+      aria-hidden
+      className="flex shrink-0 items-center justify-center rounded-full bg-secondary font-semibold text-secondary-foreground"
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+    >
+      {(name.trim()[0] ?? "?").toUpperCase()}
+    </span>
+  );
+}
+
 export function ForumLens({
   messages,
   members,
+  people = [],
   onOpenInStream,
 }: {
   messages: Message[];
   members: Bot[];
+  /** The people a shared room is shared with, so their words carry their
+   * names rather than reading as yours. */
+  people?: RoomPerson[];
   /** Jump to this message in the stream, because a topic worth reading is
    * often a topic worth answering, and answering happens there. */
   onOpenInStream: (messageId: string) => void;
 }) {
   const nameOf = (message: Message) =>
-    message.role === "user" ? "You" : (members.find((b) => b.id === message.from)?.name ?? "Agent");
+    message.role === "user"
+      ? message.author
+        ? (people.find((p) => p.id === message.author)?.name ?? "A former member")
+        : "You"
+      : message.from
+        ? (members.find((b) => b.id === message.from)?.name ?? "Agent")
+        : // the room's own lines, its opening one among them
+          "Room";
   const threads = threadsFrom(messages, nameOf);
   const [open, setOpen] = useState<string | null>(null);
 
   if (!threads.length) {
     return (
-      <div className="mx-auto max-w-[var(--transcript-width,760px)] px-4 py-16 text-center text-body text-muted-foreground md:px-6">
-        No topics yet.
+      <div className="mx-auto flex max-w-[var(--transcript-width,760px)] flex-col items-center gap-1 px-4 py-16 text-center md:px-6">
+        <span className="mb-2 flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+          <MessageSquare size={16} />
+        </span>
+        <span className="text-ui font-medium text-foreground">No topics yet</span>
+        <span className="max-w-[280px] text-pretty text-body text-muted-foreground">
+          What is said here shows as topics, with replies gathered under each.
+        </span>
       </div>
     );
   }
@@ -92,6 +123,8 @@ function ThreadRow({
         <span className="mt-0.5 shrink-0">
           {author ? (
             <AgentAvatar bot={author} size={26} />
+          ) : thread.root.role === "user" ? (
+            <PersonFace name={nameOf(thread.root)} size={26} />
           ) : (
             <span className="flex size-[26px] items-center justify-center rounded-lg bg-muted text-muted-foreground">
               <MessageSquare size={13} />
@@ -130,13 +163,7 @@ function ThreadRow({
                 return (
                   <div key={reply.id} className="flex items-start gap-2.5">
                     <span className="mt-0.5 shrink-0">
-                      {from ? (
-                        <AgentAvatar bot={from} size={20} />
-                      ) : (
-                        <span className="flex size-5 items-center justify-center rounded-md bg-muted text-micro text-muted-foreground">
-                          You
-                        </span>
-                      )}
+                      {from ? <AgentAvatar bot={from} size={20} /> : <PersonFace name={nameOf(reply)} size={20} />}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">

@@ -2,6 +2,7 @@
 // every line is attributed, because who said it is half the meaning.
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
 import { AlertTriangle } from "@/components/icons";
 import { ArrowUp } from "@/components/icons";
 import { BookmarkPlus } from "@/components/icons";
@@ -58,6 +59,10 @@ import { boxFor, carryFocus, keepDraft, readDraft, showBox, takeBack, takeFocus,
 import { queuedLine, stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
 import { useStickToBottom } from "@/lib/useStickToBottom";
+import { usePageVisible } from "@/lib/pageVisible";
+import { handoffsIn, namesLine, unsaid, type Handoff, type StreamMark } from "@/lib/roomVoices";
+import { BLOK_COLORS, type BlokColor } from "@/lib/mascot";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHoldPlace } from "@/lib/useHoldPlace";
 import { foldHolding, foldRoom, lastFoldKey, rowsFrom } from "@/lib/turnFold";
 
@@ -97,6 +102,260 @@ function PersonDot({ name, size = 30 }: { name: string; size?: number }) {
     >
       {(name.trim()[0] ?? "?").toUpperCase()}
     </span>
+  );
+}
+
+/** A member's last words in the room, which its stream is cut after. */
+function lastWordsOf(said: readonly Message[], botId: string): { id: string; text: string } | undefined {
+  for (let i = said.length - 1; i >= 0; i--) {
+    const m = said[i];
+    if (m.role === "bot" && m.from === botId && m.kind === "text" && !m.deleted && m.text) return { id: m.id, text: m.text };
+  }
+  return undefined;
+}
+
+/** The lead, then everyone else in the room's own order: the chart the
+ * room was made from, read left to right. */
+function byLead(members: readonly Bot[], lead: Bot | null): Bot[] {
+  return lead ? [lead, ...members.filter((m) => m.id !== lead.id)] : [...members];
+}
+
+/** A face's own corners, for the ring drawn just outside them: a photo
+ * is round, a blok is a square with soft corners. */
+function ringShape(bot: Bot) {
+  return bot.avatarAt ? "rounded-full" : "rounded-[9px]";
+}
+
+const SETTLE = [0.23, 1, 0.32, 1] as const;
+/** How many faces the header shows before it counts the rest. */
+const FACES = 6;
+
+/**
+ * Who is in the room, in the header, and who is speaking right now.
+ *
+ * A member taking its turn here wears a soft ring in its own colour that
+ * breathes while it works. It loops for as long as the turn runs, so
+ * it stops when nobody can see it: the window is
+ * hidden, the header is out of view, or motion is turned down, which
+ * leaves the ring still and lit. The lead wears a small crown, and what
+ * that means is in its tooltip.
+ */
+function RoomPresence({
+  members,
+  lead,
+  working,
+  leadOnly,
+}: {
+  members: Bot[];
+  lead: Bot | null;
+  working: Bot[];
+  leadOnly: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref);
+  const visible = usePageVisible();
+  const reduced = useReducedMotion();
+  const breathe = inView && visible && !reduced;
+  const ordered = byLead(members, lead);
+  const shown = ordered.slice(0, ordered.length > FACES ? FACES - 1 : FACES);
+  const more = ordered.length - shown.length;
+  return (
+    <TooltipProvider delayDuration={300}>
+      <div ref={ref} role="group" aria-label="Members" className="mr-1 hidden items-center gap-1.5 sm:flex">
+        {shown.map((m) => {
+          const crowned = m.id === lead?.id && members.length > 1;
+          const live = working.some((w) => w.id === m.id);
+          const tint = BLOK_COLORS[m.color as BlokColor] ?? "var(--brand)";
+          return (
+            <Tooltip key={m.id}>
+              <TooltipTrigger asChild>
+                <span
+                  role="img"
+                  aria-label={`${m.name}${crowned ? ", lead" : ""}${live ? ", working" : ""}`}
+                  className="relative flex shrink-0"
+                >
+                  <AnimatePresence initial={false}>
+                    {live && (
+                      <motion.span
+                        key="ring"
+                        aria-hidden
+                        className={cn("pointer-events-none absolute -inset-[3px]", ringShape(m))}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.2, ease: SETTLE }}
+                      >
+                        <motion.span
+                          className={cn("absolute inset-0 border-2", ringShape(m))}
+                          style={{ borderColor: tint }}
+                          animate={breathe ? { opacity: [0.9, 0.35, 0.9], scale: [1, 1.08, 1] } : { opacity: 0.8, scale: 1 }}
+                          transition={breathe ? { duration: 2.2, ease: "easeInOut", repeat: Infinity } : { duration: 0.2 }}
+                        />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                  <AgentAvatar bot={m} size={26} />
+                  {crowned && (
+                    <span
+                      aria-hidden
+                      className="absolute -right-1.5 -top-1.5 flex size-3.5 items-center justify-center rounded-full bg-brand-ink text-brand-foreground ring-2 ring-background"
+                    >
+                      <Crown size={8} strokeWidth={2.4} />
+                    </span>
+                  )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[240px] text-center">
+                {crowned ? `${m.name} leads and has the final call` : m.name}
+                {crowned && leadOnly && (
+                  <span className="block font-normal opacity-75">Answers unless you @name someone</span>
+                )}
+                {live && <span className="block font-normal opacity-75">Working now</span>}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+        {more > 0 && (
+          <span
+            title={ordered.slice(shown.length).map((m) => m.name).join(", ")}
+            className="flex h-[26px] min-w-[26px] items-center justify-center rounded-[9px] bg-muted px-1 text-caption font-medium tabular-nums text-muted-foreground"
+          >
+            +{more}
+          </span>
+        )}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+/** One member passing the turn to another, where the other's answer
+ * begins. Pressed, it brings back the message that did it. */
+function HandoffLine({ from, to, ask, onOpen }: { from: string; to: string; ask: string; onOpen: () => void }) {
+  return (
+    // a little more room above than below: it opens what follows rather
+    // than closing what came before
+    <div className="mt-1.5 flex pl-11">
+      <button
+        onClick={onOpen}
+        className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md py-0.5 text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
+      >
+        <span className="shrink-0 font-medium text-foreground/80">{from}</span>
+        <span aria-hidden className="shrink-0">→</span>
+        <span className="sr-only">to</span>
+        <span className="shrink-0 font-medium text-foreground/80">
+          {to}
+          {ask && ":"}
+        </span>
+        {ask && <span className="truncate">{ask}</span>}
+      </button>
+    </div>
+  );
+}
+
+/** A member's reply while it is still arriving, where it will land and
+ * drawn as it will be, so the finished message takes its place without
+ * a jump. The caret is the stream's own (styles.css, .streaming-text). */
+function LiveWords({ bot, text, showSpeaker, mentions }: { bot: Bot; text: string; showSpeaker: boolean; mentions: string[] }) {
+  return (
+    <div className="flex gap-2.5">
+      <div className="w-8 shrink-0 pt-0.5">{showSpeaker && <AgentAvatar bot={bot} size={30} />}</div>
+      <div className="min-w-0 flex-1">
+        {showSpeaker && (
+          <div className="mb-0.5 flex items-baseline gap-1.5">
+            <span className="text-body font-semibold text-foreground">{bot.name}</span>
+          </div>
+        )}
+        <div className="streaming-text min-w-0 text-lead leading-relaxed text-foreground">
+          <Markdownish text={text} mentions={mentions} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Everyone at work with nothing to read yet, said once: "Ada and Ben
+ * are working". Their faces sit where a speaker's face does, so the line
+ * reads as theirs. */
+function WorkingLine({ bots }: { bots: Bot[] }) {
+  return (
+    <div role="status" className="flex animate-fade-in items-center gap-2.5 text-small text-muted-foreground">
+      <span className="flex w-8 shrink-0 justify-end -space-x-1">
+        {bots.slice(0, 3).map((b) => (
+          <AgentAvatar key={b.id} bot={b} size={16} className="rounded-[5px] ring-2 ring-background" />
+        ))}
+      </span>
+      <span className="min-w-0 truncate">
+        {namesLine(bots.map((b) => b.name))} {bots.length === 1 ? "is" : "are"} working
+      </span>
+    </div>
+  );
+}
+
+/**
+ * A room nobody has spoken in yet. The opening line the server writes
+ * ("Room opened with ...") says who is here and how to reach them; this
+ * says the same with faces, and each face is a way to name that member.
+ */
+function RoomWelcome({
+  name,
+  members,
+  lead,
+  leadOnly,
+  onMention,
+}: {
+  name: string;
+  members: Bot[];
+  lead: Bot | null;
+  leadOnly: boolean;
+  onMention: (name: string) => void;
+}) {
+  const others = members.filter((m) => m.id !== lead?.id).map((m) => m.name);
+  return (
+    <div className="mx-auto flex min-h-full max-w-[var(--transcript-width,760px)] flex-col items-center justify-center px-2 py-12 text-center">
+      <div className="flex items-end gap-2">
+        {members.map((m, i) => (
+          <motion.span
+            key={m.id}
+            className="relative"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, delay: Math.min(i, 4) * 0.025, ease: SETTLE }}
+          >
+            <AgentAvatar bot={m} size={m.id === lead?.id ? 44 : 36} />
+            {m.id === lead?.id && (
+              <span
+                aria-hidden
+                className="absolute -right-1.5 -top-1.5 flex size-[18px] items-center justify-center rounded-full bg-brand-ink text-brand-foreground ring-2 ring-background"
+              >
+                <Crown size={10} />
+              </span>
+            )}
+          </motion.span>
+        ))}
+      </div>
+      <h2 className="mt-5 text-title font-semibold text-foreground">{name}</h2>
+      <p className="mt-1 max-w-[360px] text-pretty text-body leading-relaxed text-muted-foreground">
+        {lead
+          ? `${lead.name} leads, with ${namesLine(others)}.`
+          : `${namesLine(members.map((m) => m.name))} ${members.length === 1 ? "is" : "are"} here.`}
+      </p>
+      <div className="mt-5 flex max-w-[420px] flex-wrap justify-center gap-1.5">
+        {members.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => onMention(m.name)}
+            className="inline-flex items-center gap-1.5 rounded-full border bg-card py-1 pl-1 pr-2.5 text-small text-foreground transition-[background-color,border-color,scale] duration-150 ease-out hover:border-foreground/20 hover:bg-accent active:scale-[0.97]"
+          >
+            <AgentAvatar bot={m} size={18} className={m.avatarAt ? undefined : "rounded-[5px]"} />@{m.name}
+          </button>
+        ))}
+      </div>
+      <p className="mt-3 max-w-[360px] text-pretty text-caption text-muted-foreground">
+        {leadOnly && lead
+          ? `${lead.name} answers unless you name someone with @.`
+          : "Everyone can answer. Name someone with @ to ask just them."}
+      </p>
+    </div>
   );
 }
 
@@ -438,6 +697,95 @@ export function RoomView({ blok }: { blok: Blok }) {
   const visibleRows = useMemo(() => rowsFrom(folded.rows, start), [folded, start]);
   const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set());
 
+  // Who handed what to whom, read the way the server reads a mention
+  // (src/lib/roomVoices.ts). Everyone ever in the room counts, so a
+  // handoff to a member since archived still reads as one.
+  const memberKey = members.map((m) => `${m.id}:${m.name}`).join(" ");
+  const handoffs = useMemo(() => handoffsIn(said, members), [said, memberKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Each member's words as they arrive, under its name. The stream is
+  // kept per lane, and a lane says which room its turn speaks in while it
+  // runs; the part that already landed here is cut off the front
+  // (unsaid). Where each lane was cut is kept between renders.
+  const streamMarks = useRef(new Map<string, StreamMark>());
+  const voices: Array<{ bot: Bot; text: string }> = [];
+  const streamingLanes = new Set<string>();
+  for (const m of working) {
+    const lane = m.tasks?.find((t) => t.room === blok.id)?.id;
+    const stream = lane ? state.streaming[lane] : undefined;
+    if (!lane || !stream) continue;
+    streamingLanes.add(lane);
+    const next = unsaid(stream, lastWordsOf(said, m.id), streamMarks.current.get(lane));
+    streamMarks.current.set(lane, next.mark);
+    if (next.text) voices.push({ bot: m, text: next.text });
+  }
+  for (const lane of [...streamMarks.current.keys()]) if (!streamingLanes.has(lane)) streamMarks.current.delete(lane);
+  const mentionNames = [
+    ...members.map((m) => m.name),
+    ...roomPeople.map((p) => p.name),
+    ...(blok.sharing && ownerName ? [ownerName] : []),
+  ];
+  // at work with nothing to read yet: one line says who
+  const quiet = working.filter((m) => !voices.some((v) => v.bot.id === m.id));
+
+  // A handoff line was pressed: the message that made it, brought into
+  // view and lit for a moment.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(flashTimer.current), []);
+  const reduced = useReducedMotion();
+  /** Brings a message into view: the whole room drawn when it is above
+   * what is drawn, and its fold opened when it is under one. */
+  const bringIntoView = (messageId: string, whole: boolean) => {
+    const index = said.findIndex((m) => m.id === messageId);
+    pinned.current = false;
+    if (whole || (index !== -1 && index < start)) earlier.showAll();
+    const fold = foldHolding(folded.rows, index);
+    if (fold) setOpenFolds((open) => new Set(open).add(fold));
+    const scroller = scrollRef.current;
+    requestAnimationFrame(() => {
+      if (!scroller || scrollRef.current !== scroller) return;
+      scroller
+        .querySelector(`[data-room-msg="${messageId}"]`)
+        ?.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+    });
+  };
+  const openHandoff = (handoff: Handoff) => {
+    bringIntoView(handoff.sourceId, false);
+    setFlashId(handoff.sourceId);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlashId(null), 1400);
+  };
+  const handoffLine = (handoff: Handoff) => (
+    <HandoffLine
+      key={`handoff:${handoff.sourceId}:${handoff.toId}`}
+      from={members.find((b) => b.id === handoff.fromId)?.name ?? "An agent"}
+      to={members.find((b) => b.id === handoff.toId)?.name ?? "an agent"}
+      ask={handoff.ask}
+      onOpen={() => openHandoff(handoff)}
+    />
+  );
+
+  // A room with nothing in it yet but its opening line: a welcome, with
+  // the members and how to reach one of them.
+  const fresh =
+    lens === "stream" &&
+    !blok.olderMessages &&
+    !working.length &&
+    !waiting.length &&
+    said.every((m) => m.role === "bot" && !m.from && m.kind === "text");
+  /** Puts @name in the box, for a member picked on the welcome. */
+  const mention = (name: string) => {
+    const base = text.trimEnd();
+    const next = base ? `${base} @${name} ` : `@${name} `;
+    setText(next);
+    setMentionAt(null);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.length, next.length);
+    });
+  };
+
   useStickToBottom(scrollRef, pinned);
 
   // When a turn ends its work folds, and the reply stays where it is on
@@ -465,7 +813,7 @@ export function RoomView({ blok }: { blok: Blok }) {
   useEffect(() => {
     if (!pinned.current) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [blok.id, said.length, waiting.length, working.length]);
+  }, [blok.id, said.length, waiting.length, working.length, voices.length]);
 
   useEffect(() => {
     const el = inputRef.current;
@@ -552,31 +900,51 @@ export function RoomView({ blok }: { blok: Blok }) {
   // fold's work once it is opened. Who spoke last and a run of tool calls
   // are read within the stretch, since rows with a fold between them are
   // not next to each other on the page.
-  const rowsOf = (list: readonly Message[]) =>
-    list.map((m, i) => {
+  //
+  // A handoff line goes in front of the first row at or past where its
+  // member's answer begins. Each is placed once a render, so a fold that
+  // opens does not draw again the one already drawn above its line.
+  const handoffAt = [...handoffs.placed.keys()].filter((i) => i >= start).sort((a, b) => a - b);
+  const handoffsDrawn = new Set<number>();
+  const handoffsBefore = (index: number) => {
+    const lines = [];
+    for (const at of handoffAt) {
+      if (at > index) break;
+      if (handoffsDrawn.has(at)) continue;
+      handoffsDrawn.add(at);
+      lines.push(...(handoffs.placed.get(at) ?? []).map(handoffLine));
+    }
+    return lines;
+  };
+  const rowsOf = (list: readonly Message[], indices: readonly number[]) =>
+    list.flatMap((m, i) => {
       const prev = list[i - 1];
       // one member's run of tool calls reads as one line
       if (m.kind === "activity" && m.tool) {
-        if (prev?.kind === "activity" && prev.from === m.from && !prev.deleted) return null;
+        if (prev?.kind === "activity" && prev.from === m.from && !prev.deleted) return [];
         const run: Message[] = [];
         for (let j = i; j < list.length; j++) {
           const next = list[j];
           if (next.kind !== "activity" || next.from !== m.from || next.deleted || !next.tool) break;
           run.push(next);
         }
-        return <ToolRun key={m.id} messages={run} className="pl-11" />;
+        return [...handoffsBefore(indices[i]), <ToolRun key={m.id} messages={run} className="pl-11" />];
       }
       const showSpeaker = !prev || prev.from !== m.from || prev.role !== m.role;
       const answers = replyLabel(counts.get(m.id) ?? 0);
-      return (
-        <div
-          key={m.id}
-          data-room-msg={m.id}
-          className={cn(
-            "rounded-2xl transition-colors duration-700",
-            highlightId === m.id && "bg-brand/10",
-          )}
-        >
+      const lit = highlightId === m.id || flashId === m.id;
+      return [
+        ...handoffsBefore(indices[i]),
+        <div key={m.id} data-room-msg={m.id} className="relative isolate">
+          {/* the light behind a message found from elsewhere, faded in
+              and out rather than painted, so it costs no layout */}
+          <span
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute -inset-x-2 -inset-y-1 -z-10 rounded-2xl bg-brand/10 opacity-0 transition-opacity duration-300 ease-out",
+              lit && "opacity-100",
+            )}
+          />
           <RoomMessage
             message={m}
             members={members}
@@ -595,8 +963,8 @@ export function RoomView({ blok }: { blok: Blok }) {
               {answers}
             </button>
           )}
-        </div>
-      );
+        </div>,
+      ];
     });
 
   return (
@@ -608,21 +976,20 @@ export function RoomView({ blok }: { blok: Blok }) {
           </span>
           <span className="min-w-0">
             <span className="block truncate text-ui font-semibold text-foreground">{blok.name}</span>
-            <span className="block truncate text-small text-muted-foreground">
-              {answering.map((m) => m.name).join(", ")}
-              {answering.length < members.length &&
-                ` · ${members.length - answering.length} archived`}
+            {/* the lead first, crowned, so a phone without the faces on
+                the right still says who has the final call */}
+            <span className="flex min-w-0 items-center gap-1 text-small text-muted-foreground">
+              {lead && answering.length > 1 && <Crown size={11} className="shrink-0 text-brand-ink" aria-label="Lead" />}
+              <span className="truncate">
+                {byLead(answering, lead).map((m) => m.name).join(", ")}
+                {answering.length < members.length &&
+                  ` · ${members.length - answering.length} archived`}
+              </span>
             </span>
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <div className="hidden items-center -space-x-1.5 sm:flex">
-            {answering.map((m) => (
-              <span key={m.id} title={m.id === lead?.id ? `${m.name} (lead)` : m.name}>
-                <AgentAvatar bot={m} size={24} className="rounded-lg ring-2 ring-background" />
-              </span>
-            ))}
-          </div>
+          <RoomPresence members={answering} lead={lead} working={working} leadOnly={Boolean(blok.leadOnly)} />
           <Button
             variant="ghost"
             size="icon"
@@ -719,13 +1086,6 @@ export function RoomView({ blok }: { blok: Blok }) {
         </div>
       )}
 
-      {lead && members.length > 1 && (
-        <div className="flex items-center justify-center gap-1.5 border-b bg-muted/30 py-1.5 text-small text-muted-foreground">
-          <Crown size={11} />
-          {lead.name} leads and has the final call
-        </div>
-      )}
-
       <div
         ref={scrollRef}
         onScroll={earlier.onScroll}
@@ -735,27 +1095,22 @@ export function RoomView({ blok }: { blok: Blok }) {
           <ForumLens
             messages={said}
             members={members}
+            people={roomPeople}
             onOpenInStream={(messageId) => {
               setLensAnd("stream");
               setHighlightId(messageId);
-              // the stream may be windowed to its tail, so open the whole
-              // thing rather than scrolling to something not rendered
-              pinned.current = false;
-              earlier.showAll();
-              // and a message under a fold is shown by opening the fold
-              const fold = foldHolding(folded.rows, said.findIndex((m) => m.id === messageId));
-              if (fold) {
-                pinned.current = false;
-                setOpenFolds((open) => new Set(open).add(fold));
-              }
-              const scroller = scrollRef.current;
-              requestAnimationFrame(() => {
-                if (!scroller || scrollRef.current !== scroller) return;
-                scroller
-                  .querySelector(`[data-room-msg="${messageId}"]`)
-                  ?.scrollIntoView({ block: "center", behavior: "smooth" });
-              });
+              // the stream may be windowed to its tail, so the whole of
+              // it is drawn rather than scrolling to something not there
+              bringIntoView(messageId, true);
             }}
+          />
+        ) : fresh ? (
+          <RoomWelcome
+            name={blok.name}
+            members={byLead(answering, lead)}
+            lead={answering.length > 1 ? lead : null}
+            leadOnly={Boolean(blok.leadOnly)}
+            onMention={mention}
           />
         ) : (
         <div className="mx-auto flex max-w-[var(--transcript-width,760px)] flex-col gap-2 pb-4 pt-3">
@@ -771,8 +1126,12 @@ export function RoomView({ blok }: { blok: Blok }) {
           )}
           {visibleRows.flatMap((row) =>
             row.kind === "said"
-              ? rowsOf(row.items.map((item) => item.message))
+              ? rowsOf(
+                  row.items.map((item) => item.message),
+                  row.items.map((item) => item.index),
+                )
               : [
+                  ...handoffsBefore(Math.min(...row.fold.indices)),
                   <TurnFoldLine
                     key={`fold:${row.fold.key}`}
                     fold={row.fold}
@@ -780,19 +1139,29 @@ export function RoomView({ blok }: { blok: Blok }) {
                     onToggle={() => toggleFold(row.fold.key)}
                     className="pl-11"
                   >
-                    {openFolds.has(row.fold.key) && rowsOf(row.fold.messages)}
+                    {openFolds.has(row.fold.key) && rowsOf(row.fold.messages, row.fold.indices)}
                   </TurnFoldLine>,
                 ],
           )}
-          {working.map((m) => (
-            <div key={m.id} className="flex animate-rise-in items-center gap-2.5 pl-11 text-small text-muted-foreground">
-              <Loader2 size={11} className="animate-spin" />
-              {m.name} is thinking
-            </div>
-          ))}
+          {/* what members are saying right now, each under its own
+              name, after the handoff that started it when one did */}
+          {voices.flatMap(({ bot, text: words }, i) => {
+            const handoff = handoffs.pending.get(bot.id);
+            const last = said[said.length - 1];
+            const continues = i === 0 && !handoff && last?.role === "bot" && last.from === bot.id;
+            return [
+              ...(handoff ? [handoffLine(handoff)] : []),
+              <LiveWords key={`live:${bot.id}`} bot={bot} text={words} showSpeaker={!continues} mentions={mentionNames} />,
+            ];
+          })}
+          {quiet.flatMap((m) => {
+            const handoff = handoffs.pending.get(m.id);
+            return handoff ? [handoffLine(handoff)] : [];
+          })}
+          {quiet.length > 0 && <WorkingLine bots={quiet} />}
           {typingNow && (
             <div className="flex items-center gap-2.5 pl-11 text-small text-muted-foreground">
-              <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground" />
+              <span className="size-1.5 rounded-full bg-muted-foreground motion-safe:animate-pulse" />
               {typingNow} is typing
             </div>
           )}
