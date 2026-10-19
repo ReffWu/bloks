@@ -158,9 +158,7 @@ function SessionRow({ session, on, onChange }: { session: Session; on: boolean; 
           </span>
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-small text-muted-foreground">
-          <span>{ENGINE[session.engine].name}</span>
-          <span>{day(session.lastAt)}</span>
-          <span>{plural(session.messages, "message", "messages")}</span>
+          <span>{[ENGINE[session.engine].name, day(session.lastAt), plural(session.messages, "message", "messages")].join(" · ")}</span>
           {session.imported && (
             <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-caption">
               <Check size={11} /> With {session.imported.name}
@@ -240,7 +238,7 @@ function Transcript({ session }: { session: Reviewed }) {
   );
 }
 
-function ReviewRow({ session, result, onOpen }: { session: Reviewed; result?: Result; onOpen: (r: Result) => void }) {
+function ReviewRow({ session, result, onOpen }: { session: Reviewed; result?: Result; onOpen?: (r: Result) => void }) {
   const [open, setOpen] = useState(false);
   const engine = ENGINE[session.engine].name;
   return (
@@ -277,7 +275,7 @@ function ReviewRow({ session, result, onOpen }: { session: Reviewed; result?: Re
       {result && (
         <div className={cn("mt-1.5 flex flex-wrap items-center gap-2 text-small", result.ok ? "text-success" : "text-destructive")} aria-live="polite">
           {result.ok ? "Brought over." : `Not brought over: ${result.error}`}
-          {result.ok && result.laneId && (
+          {result.ok && result.laneId && onOpen && (
             <Button size="sm" variant="secondary" onClick={() => onOpen(result)}>
               Open
             </Button>
@@ -360,7 +358,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
       if (brought.length) {
         toast.success(`Brought over ${plural(brought.length, "conversation", "conversations")}`, {
           ...(failed ? { description: `${failed} could not come over. The review says why.` } : {}),
-          action: { label: "Open", onClick: () => open(brought[brought.length - 1]) },
+          ...(compact ? {} : { action: { label: "Open", onClick: () => open(brought[brought.length - 1]) } }),
         });
       } else if (failed) {
         toast.error("Nothing was brought over", { description: "The review says why." });
@@ -396,7 +394,9 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
           <h2 className="min-w-0 truncate text-ui font-semibold text-foreground">
             {"botId" in review.to
               ? `To ${review.to.name}`
-              : `To ${review.to.hire.length === 1 ? "a new agent" : `${review.to.hire.length} new agents`} for ${review.to.hire.map((h) => h.name).join(", ")}`}
+              : review.to.hire.length === 1
+                ? `To a new agent for the ${review.to.hire[0].name} folder`
+                : `To a new agent for each of ${review.to.hire.map((h) => h.name).join(", ")}`}
           </h2>
         </div>
         {going > room && !done && (
@@ -407,7 +407,8 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
         )}
         <ul className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
           {review.sessions.map((session) => (
-            <ReviewRow key={session.key} session={session} result={results[session.key]} onOpen={open} />
+            // the first run's way on is its own Continue, not a jump out of it
+            <ReviewRow key={session.key} session={session} result={results[session.key]} onOpen={compact ? undefined : open} />
           ))}
         </ul>
         <div className={cn("flex flex-col gap-2", compact ? "mt-4" : "sticky bottom-0 -mx-1 mt-5 bg-background/90 px-1 pb-1 pt-3 backdrop-blur")}>
