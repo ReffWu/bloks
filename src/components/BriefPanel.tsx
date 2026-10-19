@@ -32,6 +32,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
+import { SkeletonAvatar } from "@/components/ui/skeleton";
 
 interface BriefPart {
   botId: string | null;
@@ -706,7 +707,7 @@ function BriefSkeleton() {
       {[0, 1, 2].map((i) => (
         <div key={i} className="mt-9 flex flex-col gap-2.5">
           <div className="flex items-center gap-2">
-            <div aria-hidden className="size-5 animate-pulse rounded-md bg-muted motion-reduce:animate-none" />
+            <SkeletonAvatar size={20} shape="tile" />
             <Bone className="w-24" />
           </div>
           <Bone className="w-full" />

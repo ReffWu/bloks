@@ -3,6 +3,7 @@
 // here yet", one shape for "still reading", so the page reads as one page
 // rather than four windows that happen to sit together.
 import { cn } from "@/lib/cn";
+import { Skeleton, SkeletonAvatar, SkeletonGroup } from "@/components/ui/skeleton";
 
 /**
  * A panel's head: what it is, a line on what it holds, and whatever it
@@ -51,26 +52,26 @@ export function EmptyState({ children, action }: { children: React.ReactNode; ac
   );
 }
 
-/** A line of text that has not arrived yet. Pulses by opacity only, and
- * holds still when motion is turned down. */
+/** A line of text that has not arrived yet, in the app's one skeleton
+ * (ui/skeleton.tsx), so Overview loads like everywhere else. */
 export function Bone({ className }: { className?: string }) {
-  return <div aria-hidden className={cn("h-3 animate-pulse rounded-full bg-muted motion-reduce:animate-none", className)} />;
+  return <Skeleton className={cn("h-3 rounded-full", className)} />;
 }
 
 /** Rows of bones, the shape of a list that is on its way. */
 export function SkeletonRows({ rows = 3, label }: { rows?: number; label: string }) {
   return (
-    <div role="status" aria-label={label} className="flex flex-col gap-4 py-1">
+    <SkeletonGroup label={label} className="flex flex-col gap-4 py-1">
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="flex items-center gap-3">
-          <div aria-hidden className="size-6 shrink-0 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+          <SkeletonAvatar size={24} shape="tile" />
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <Bone className={i % 2 ? "w-2/3" : "w-4/5"} />
             <Bone className="h-2.5 w-2/5" />
           </div>
         </div>
       ))}
-    </div>
+    </SkeletonGroup>
   );
 }
 

@@ -65,6 +65,7 @@ import { BLOK_COLORS, type BlokColor } from "@/lib/mascot";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHoldPlace } from "@/lib/useHoldPlace";
 import { foldHolding, foldRoom, lastFoldKey, rowsFrom } from "@/lib/turnFold";
+import { confirm } from "@/components/ui/confirm";
 
 /** A reaction in a room is the cheapest thing anyone can say, and often
  * the right thing: agreeing with a plan should not wake six agents. */
@@ -446,9 +447,10 @@ function RoomMessage({
         <div className="flex max-w-[76%] flex-col items-end">
           <div
             onPointerUp={tap.onPointerUp}
-            className="whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-lead leading-relaxed text-primary-foreground"
+            // the same soft bubble your words wear in a chat with one agent
+            className="min-w-0 whitespace-pre-wrap rounded-2xl bg-secondary px-4 py-2.5 text-lead text-foreground [overflow-wrap:anywhere]"
           >
-            {message.replyTo && <ReplyContext replyTo={message.replyTo} onDark />}
+            {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
             {message.text}
           </div>
           <Reactions
@@ -1067,13 +1069,12 @@ export function RoomView({ blok }: { blok: Blok }) {
                 className="text-destructive"
                 onClick={() => {
                   // the second decision, in its own words, naming the room
-                  if (
-                    window.confirm(
-                      `Delete ${blok.name} and its whole transcript?\n\nThis cannot be undone. Archive it instead to keep it.`,
-                    )
-                  ) {
-                    dispatch({ type: "deleteRoom", blokId: blok.id });
-                  }
+                  void confirm({
+                    title: `Delete ${blok.name} and its whole transcript?`,
+                    body: "This cannot be undone. Archive it instead to keep it.",
+                    confirmLabel: "Delete",
+                    destructive: true,
+                  }).then((yes) => yes && dispatch({ type: "deleteRoom", blokId: blok.id }));
                 }}
               >
                 Delete permanently

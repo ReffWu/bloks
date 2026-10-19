@@ -33,7 +33,6 @@ import { TurnFoldLine } from "./TurnFold";
 import { MeetingPanel } from "./MeetingPanel";
 import { AudioLines } from "@/components/icons";
 import { ForwardDialog, type ReplyDraft } from "./MessageActions";
-import { ModelPicker } from "./ModelPicker";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { useStickToBottom } from "@/lib/useStickToBottom";
@@ -47,6 +46,7 @@ import { EmptyState } from "./chat/EmptyState";
 import { JumpToLatest } from "./chat/JumpToLatest";
 import { onAsk, peekAsk, takeAsk } from "@/lib/chatAsk";
 import { keysFor, platformOf } from "@/lib/shortcuts";
+import { confirm } from "@/components/ui/confirm";
 
 /**
  * Which messages should animate in: ones that arrive while you're
@@ -612,7 +612,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           </span>
         </button>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <ModelPicker bot={bot} />
+          {/* the model is picked where you type, in the composer's footer */}
           <CallButton bot={bot} />
           {window.bloks?.meetingStart && (
             <Button
@@ -665,13 +665,21 @@ export function ChatView({ bot }: { bot: Bot }) {
           const lane = bot.tasks?.find((t) => t.id === taskId);
           const open = taskId === (bot.activeTaskId ?? bot.threadId);
           const said = laneHasMessages(lane) || (open && bot.messages.length > 0);
-          if (said && !window.confirm(`Close "${lane?.title ?? "this conversation"}"? Its messages are deleted.`)) return;
-          dispatch({ type: "closeTask", botId: bot.id, taskId });
+          if (!said) return dispatch({ type: "closeTask", botId: bot.id, taskId });
+          void confirm({
+            title: `Close "${lane?.title ?? "this conversation"}"?`,
+            body: "Its messages are deleted.",
+            confirmLabel: "Close",
+            destructive: true,
+          }).then((yes) => yes && dispatch({ type: "closeTask", botId: bot.id, taskId }));
         }}
         onClear={(taskId) => {
-          if (window.confirm("Clear this conversation? Its messages are deleted.")) {
-            dispatch({ type: "clearTask", botId: bot.id, taskId });
-          }
+          void confirm({
+            title: "Clear this conversation?",
+            body: "Its messages are deleted.",
+            confirmLabel: "Clear",
+            destructive: true,
+          }).then((yes) => yes && dispatch({ type: "clearTask", botId: bot.id, taskId }));
         }}
         onRename={(taskId, title) => dispatch({ type: "renameTask", botId: bot.id, taskId, title })}
       />}

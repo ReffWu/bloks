@@ -17,6 +17,7 @@ import { api, type Message } from "@/state/store";
 import { stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
 import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
+import { confirm } from "@/components/ui/confirm";
 
 /** Opens the editor on a queued message: the server holds back the turn
  * it waits for until the editor closes (GitHub 155). What comes back
@@ -45,8 +46,14 @@ export function editQueued(threadId: string, messageId: string) {
 function takeBack(threadId: string, messageId: string) {
   // No undo exists for this, so the question is asked once, as the
   // bubble's own Delete asks it.
-  if (!window.confirm("Take this message back? This can't be undone.")) return;
-  void api(`/api/threads/${threadId}/messages/${messageId}`, { method: "DELETE" }).catch(() => {});
+  void confirm({
+    title: "Take this message back?",
+    body: "This can't be undone.",
+    confirmLabel: "Take back",
+    destructive: true,
+  }).then((yes) => {
+    if (yes) void api(`/api/threads/${threadId}/messages/${messageId}`, { method: "DELETE" }).catch(() => {});
+  });
 }
 
 function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
