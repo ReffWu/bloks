@@ -107,10 +107,30 @@ export function readableOn(hex: string, mode: "light" | "dark", ratio = 4.5): st
   return mode === "light" ? "#000000" : "#ffffff";
 }
 
-/** Words on the fill: white when it reaches 4.5, else the ink. Buttons
- * here are small text, so the large-text allowance does not apply. */
+/** APCA lightness contrast (Lc), the model behind WCAG 3 (0.0.98G):
+ * positive for dark text on light, negative for light on dark. */
+export function apca(text: string, background: string): number {
+  const y = (hex: string) => {
+    const [r, g, b] = toRgb(hex).map((v) => (v / 255) ** 2.4);
+    return 0.2126729 * r + 0.7151522 * g + 0.072175 * b;
+  };
+  const clamp = (v: number) => (v > 0.022 ? v : v + (0.022 - v) ** 1.414);
+  const t = clamp(y(text));
+  const b = clamp(y(background));
+  if (b > t) {
+    const s = (b ** 0.56 - t ** 0.57) * 1.14;
+    return s < 0.1 ? 0 : (s - 0.027) * 100;
+  }
+  const s = (b ** 0.65 - t ** 0.62) * 1.14;
+  return s > -0.1 ? 0 : (s + 0.027) * 100;
+}
+
+/** Words on the fill: white or ink, whichever APCA says reads better.
+ * Not WCAG 2's ratio, which misjudges saturated reds and oranges and picks
+ * ink where anyone looking sees white reads better; APCA agrees with the
+ * eye, and with the phone, which makes the same choice. */
 export function onFill(hex: string): string {
-  return contrast("#ffffff", hex) >= 4.5 ? "#ffffff" : INK;
+  return Math.abs(apca("#ffffff", hex)) >= Math.abs(apca(INK, hex)) ? "#ffffff" : INK;
 }
 
 /** A quiet wash: the accent over the page at a small strength. */

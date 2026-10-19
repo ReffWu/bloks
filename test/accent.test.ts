@@ -3,7 +3,7 @@
 // words on the page reads, in light and in dark (lib/accent.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ACCENTS, contrast, tokensFor } from "../src/lib/accent.ts";
+import { ACCENTS, apca, contrast, tokensFor } from "../src/lib/accent.ts";
 
 const PAGES = { light: ["#ffffff", "#f7f7f8"], dark: ["#0e0e10", "#17171a", "#1a1a1e"] };
 
@@ -20,7 +20,11 @@ for (const accent of ACCENTS) {
     for (const mode of ["light", "dark"] as const) {
       const v = t[mode];
       assert.equal(v.brand, accent.hex, "the fill is the logo colour");
-      assert.ok(contrast(v["brand-foreground"], v.brand) >= 4.5, `${mode}: words on the fill read`);
+      // the better of white and ink by APCA, and strong enough for a label
+      const chosen = Math.abs(apca(v["brand-foreground"], v.brand));
+      const other = Math.abs(apca(v["brand-foreground"] === "#ffffff" ? "#14151f" : "#ffffff", v.brand));
+      assert.ok(chosen >= other, `${mode}: the better of white and ink is on the fill`);
+      assert.ok(chosen >= 55, `${mode}: words on the fill reach Lc ${chosen.toFixed(1)}`);
       for (const page of PAGES[mode]) {
         assert.ok(contrast(v["brand-ink"], page) >= 4.5, `${mode}: the ink reads on ${page}`);
       }
