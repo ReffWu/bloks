@@ -77,7 +77,7 @@ export function LiveBrowser({ botId, frame }: { botId: string; frame: { png: str
 export function StreamingBubble({ text }: { text: string }) {
   return (
     <div className="flex w-full justify-start">
-      <div className="streaming-text min-w-0 max-w-full rounded-2xl rounded-bl-md bg-muted px-3.5 py-2 text-lead leading-relaxed text-foreground">
+      <div className="streaming-text w-full min-w-0 py-1.5 text-lead text-foreground">
         <Markdownish text={text} />
       </div>
     </div>

@@ -116,7 +116,11 @@ export function MessageActionBar({
   onRewind,
   open,
   className,
+  lead,
 }: {
+  /** Drawn inside the pill before the buttons: the time a message was
+   * said, which then needs no row of its own. */
+  lead?: React.ReactNode;
   message: Message;
   author: string;
   onReply: (draft: ReplyDraft) => void;
@@ -219,6 +223,7 @@ export function MessageActionBar({
           ))}
         </div>
       )}
+      {lead}
       {buttons.map(([label, icon, run]) => (
         <button
           key={label}
