@@ -5481,6 +5481,8 @@ async function startClaimedTurn(
       // The session the person brought over, carried on: told once where
       // it is now. It never ran the CLI from anywhere, so nothing moved.
       const carriedOver = !command && task.imported && !task.imported.carried && typeof resumeCursor === "string" && resumeCursor === task.imported.sessionId;
+      // what a new session is told instead, if the engine cannot carry it on
+      const unprefaced = turnText;
       if (carriedOver) {
         turnText = `(This conversation was brought over into Bloks from ${SESSION_ENGINE_NAMES[task.imported!.engine]}. You carry it on here as ${bot.name}.)\n\n${turnText}`;
       } else if (!command && credential && resumeCursor && task.briefedCli !== CLI_COMMAND) {
@@ -5608,7 +5610,11 @@ async function startClaimedTurn(
         ...(typeof resumeCursor === "string" && !nativeReplay && (instance.driverKind !== "claudeAgent" || resumeCursor === task.imported?.sessionId)
           ? (() => {
               const told = boundHandoff(transcript, handoffTokens);
-              return { handoff: freshTurnText(told.turns, turnText, { left: told.left, why: "session" }) };
+              return {
+                handoff: carriedOver
+                  ? freshTurnText(told.turns, unprefaced, { left: told.left, from: SESSION_ENGINE_NAMES[task.imported!.engine] })
+                  : freshTurnText(told.turns, turnText, { left: told.left, why: "session" }),
+              };
             })()
           : {}),
         ...(compactInTurn ? { compactFirst: true } : {}),

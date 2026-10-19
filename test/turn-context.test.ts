@@ -64,3 +64,9 @@ describe("engine freshness", () => {
     assert.equal(freshTurnText([], "hi"), "hi");
   });
 });
+
+test("a conversation brought over from before Bloks says where it was had", () => {
+  const text = freshTurnText([{ role: "user", text: "hi" }], "next", { from: "Codex", why: "session" });
+  assert.match(text, /^You are picking up a conversation the person had in Codex before Bloks\. It was brought over, and you carry it on here\./);
+  assert.match(text, /User: hi\n\n--- the new message ---\n\nnext$/);
+});
