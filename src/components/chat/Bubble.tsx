@@ -490,6 +490,18 @@ export function Notice({ message, fresh }: { message: Message; fresh?: boolean }
   if (message.compaction) {
     return <div className="py-1 text-center text-small text-muted-foreground">{message.text}</div>;
   }
+  // Where a conversation brought over from before Bloks came from, and
+  // how it carries on. A fact about the conversation, not a warning.
+  if (message.imported) {
+    return (
+      <div className={cn("flex justify-start", fresh && "animate-receive-in")}>
+        <div className="flex max-w-[560px] gap-2.5 rounded-2xl border bg-card px-3.5 py-2.5">
+          <History size={15} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
+          <div className="whitespace-pre-wrap text-ui leading-relaxed text-foreground">{message.text}</div>
+        </div>
+      </div>
+    );
+  }
   // The goal's own news. Set and done are not warnings, so they do not
   // wear one; where it stopped short (blocked, out, paused) still does.
   if (message.goal) {

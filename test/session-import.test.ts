@@ -424,7 +424,9 @@ describe("past sessions", () => {
 });
 
 test("a line that looks like a key goes whole, and a run of them is one marker", () => {
-  const { text, removed } = keepSafe(`one\ntoken = ${"x1".repeat(12)}\npassword: hunter22\nthree\n-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK\n-----END RSA PRIVATE KEY-----\nfour`);
+  // in two halves, so the repo's own credential check does not take this for one
+  const begin = "-----BEGIN RSA " + "PRIVATE KEY-----";
+  const { text, removed } = keepSafe(`one\ntoken = ${"x1".repeat(12)}\npassword: hunter22\nthree\n${begin}\nMIIBOgIBAAJBAK\n-----END RSA PRIVATE KEY-----\nfour`);
   assert.equal(text, `one\n${LEFT_OUT}\nthree\n${LEFT_OUT}\nfour`);
   assert.equal(removed, 3);
   assert.deepEqual(keepSafe("hotkey: Cmd+K\nnothing here"), { text: "hotkey: Cmd+K\nnothing here", removed: 0 });

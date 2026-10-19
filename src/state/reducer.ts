@@ -119,6 +119,8 @@ export interface Message {
   reactions?: Record<string, string[]>;
   /** When this message was last edited. Absent means never. */
   editedAt?: number;
+  /** Said in that engine before Bloks, and brought over with the session. */
+  imported?: "claude" | "codex";
   /** What recall found elsewhere and added to the turn this started. */
   recalled?: RecalledNote[];
   /** Taken back: the row stays, the words are gone. */
@@ -250,6 +252,9 @@ export interface TaskSummary {
   /** A lane that never takes a goal: a shared room's, a rehearsal, or
    * the one that answers mail from people not listed. */
   noGoals?: boolean;
+  /** Brought over from a session before Bloks (server/session-import.ts):
+   * the engine it was had in, when, and whether it carries that session on. */
+  imported?: { engine: "claude" | "codex"; at: number; resumes: boolean };
 }
 
 /** A lane's goal as the server ships it (goalSummary in server/goals.ts). */

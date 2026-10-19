@@ -39,6 +39,7 @@ import { UseFromOtherApps } from "./UseFromOtherApps";
 import { SecurityCheckup } from "./SecurityCheckup";
 import { riskyCount, useSecurityCheckup } from "@/lib/securityCheckup";
 import { BringYourSetupPage } from "./BringYourSetup";
+import { PastSessionsPage } from "./PastSessions";
 import { BoxSleep } from "./BoxSleep";
 import { AgentDefaults } from "./AgentDefaults";
 import { SettingRow, SettingsGroup, SettingsPageHeader } from "./SettingsLayout";
@@ -50,6 +51,7 @@ import { Archive } from "@/components/icons";
 import { Cloud as CloudIcon } from "@/components/icons";
 import { Cpu } from "@/components/icons";
 import { History } from "@/components/icons";
+import { MessagesSquare } from "@/components/icons";
 import { Info } from "@/components/icons";
 import { LayoutGrid } from "@/components/icons";
 import { MessageCircle } from "@/components/icons";
@@ -739,6 +741,13 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         description: "Import instructions, skills and MCP servers from tools you already use. Keys stay behind.",
         keywords: "import migrate claude code codex openclaw hermes claude.md agents.md skills mcp memory rules move switch",
       },
+      {
+        id: "past-sessions",
+        label: "Past conversations",
+        icon: MessagesSquare,
+        description: "Bring in your Claude Code and Codex conversations, so your agents start with the history.",
+        keywords: "import sessions history transcripts claude code codex resume continue chats conversations projects",
+      },
     ],
   },
   {
@@ -996,6 +1005,8 @@ function PageBody({ id }: { id: string }) {
       return <AboutYou />;
     case "bring-setup":
       return <BringYourSetupPage />;
+    case "past-sessions":
+      return <PastSessionsPage />;
     case "engines":
       return <EnginesPanel />;
     case "new-agents":
