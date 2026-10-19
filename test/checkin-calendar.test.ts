@@ -4,8 +4,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkInBand, checkInProblem, everyMinutes, foldQuietRuns, intervalShort } from "../src/lib/checkIns.ts";
-import { checkInsOn } from "../server/routines.ts";
+import {
+  CHECK_IN_EVERY,
+  checkInBand,
+  checkInProblem,
+  dateKey,
+  everyMinutes,
+  foldQuietRuns,
+  intervalLabel,
+  intervalPhrase,
+  intervalShort,
+  nextRuns,
+  runsOnDay,
+  type DraftSchedule,
+} from "../src/lib/checkIns.ts";
+import { checkInsOn, nextScheduledAfter, type Routine } from "../server/routines.ts";
 
 test("the editor reads an interval in minutes or hours, within the server's bounds", () => {
   assert.equal(everyMinutes("30", "min"), 30);
@@ -71,4 +84,51 @@ test("a stretch of quiet runs is one row in the history, between the runs that s
     ["ab", "c", "d", "e", "f"],
   );
   assert.deepEqual(foldQuietRuns([]), []);
+});
+
+test("the editor's next runs are the scheduler's own, for every shape a routine can take", () => {
+  // a Tuesday morning, so today, tomorrow and the weekend all come up
+  const now = new Date(2026, 2, 17, 10, 20);
+  const shapes: DraftSchedule[] = [
+    { days: [1, 2, 3, 4, 5], time: "09:00" },
+    { days: [5], time: "16:00" },
+    { days: [], time: "23:30" },
+    { days: [1, 2, 3, 4, 5], time: "09:00", every: 60, activeHours: { from: "09:00", to: "18:00" } },
+    { days: [0, 6], time: "00:00", every: 240 },
+  ];
+  for (const shape of shapes) {
+    const runs = nextRuns(shape, now, 3);
+    assert.equal(runs.length, 3);
+    // each one is the very next the server would pick after the one before
+    const routine = { id: "r", targetId: "a", targetKind: "agent", prompt: "p", enabled: true, ...shape, repeat: undefined } as Routine;
+    let after = now;
+    for (const at of runs) {
+      assert.equal(at.getTime(), nextScheduledAfter(routine, after)?.getTime(), JSON.stringify(shape));
+      after = at;
+    }
+  }
+});
+
+test("a once runs on its day and never again, and one already past has no next run", () => {
+  const now = new Date(2026, 2, 17, 10, 20);
+  const later = nextRuns({ days: [], time: "09:00", repeat: "once", date: "2026-03-30" }, now, 3);
+  assert.equal(later.length, 1);
+  assert.equal(dateKey(later[0]), "2026-03-30");
+  assert.deepEqual(nextRuns({ days: [], time: "09:00", repeat: "once", date: "2026-03-17" }, now, 3), []);
+  assert.equal(nextRuns({ days: [], time: "11:00", repeat: "once", date: "2026-03-17" }, now, 3).length, 1);
+  // a day draws its runs, or none
+  assert.deepEqual(runsOnDay({ days: [5], time: "16:00" }, new Date(2026, 2, 20)), [16 * 60]);
+  assert.deepEqual(runsOnDay({ days: [5], time: "16:00" }, new Date(2026, 2, 19)), []);
+});
+
+test("an interval reads short under a slider and whole in a sentence", () => {
+  assert.equal(intervalLabel(15), "15 min");
+  assert.equal(intervalLabel(60), "1 hr");
+  assert.equal(intervalLabel(180), "3 hrs");
+  assert.equal(intervalLabel(1440), "1 day");
+  assert.equal(intervalPhrase(30), "every 30 min");
+  assert.equal(intervalPhrase(60), "every hour");
+  assert.equal(intervalPhrase(120), "every 2 hours");
+  assert.equal(intervalPhrase(1440), "once a day");
+  for (const every of CHECK_IN_EVERY) assert.equal(checkInProblem(every, null), null, `${every} is a stop the server takes`);
 });

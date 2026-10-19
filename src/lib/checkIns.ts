@@ -1,5 +1,6 @@
-// Check-ins in the app: how the routine editor reads an interval, and
-// where a check-in sits on the calendar.
+// Check-ins in the app: how the routine editor reads an interval, where a
+// check-in sits on the calendar, and when a routine being written will
+// next run, so the editor can draw its week before it exists.
 //
 // The schedule itself is the server's (server/routines.ts, checkInsOn);
 // these only have to agree with it. A check-in's slots start where its
@@ -55,6 +56,88 @@ export function foldQuietRuns<R extends { quiet?: boolean }>(runs: readonly R[])
 /** "30m", "2h": a check-in's interval where there is no room for words. */
 export function intervalShort(every: number): string {
   return every % 60 === 0 ? `${every / 60}h` : `${every}m`;
+}
+
+/** The intervals the editor's slider stops at. Every one is inside the
+ * server's bounds, so a slider can never ask for what it will refuse.
+ * Once a day is left to a routine at a time of day, which can be just as
+ * quiet and says when; six stops also leave each name room on a phone. */
+export const CHECK_IN_EVERY = [15, 30, 60, 120, 240, 480].filter((m) => m >= MIN_EVERY && m <= MAX_EVERY);
+
+/** "15 min", "1 hr", "1 day": short enough to sit under a slider's dot. */
+export function intervalLabel(every: number): string {
+  if (every >= 1440 && every % 1440 === 0) return every === 1440 ? "1 day" : `${every / 1440} days`;
+  if (every >= 60 && every % 60 === 0) return every === 60 ? "1 hr" : `${every / 60} hrs`;
+  return `${every} min`;
+}
+
+/** "every 30 min", "every hour", "once a day": an interval inside a sentence. */
+export function intervalPhrase(every: number): string {
+  if (every === 1440) return "once a day";
+  if (every === 60) return "every hour";
+  if (every % 60 === 0) return `every ${every / 60} hours`;
+  return `every ${every} min`;
+}
+
+/** What the editor knows about a schedule, before it is a routine. */
+export interface DraftSchedule {
+  every?: number;
+  activeHours?: { from: string; to: string };
+  days: number[];
+  time: string;
+  repeat?: "weekly" | "once";
+  /** "YYYY-MM-DD", for a once. */
+  date?: string;
+}
+
+/** Minutes past midnight this schedule runs at on `day`, in order. The
+ * same slots the server keeps (server/routines.ts, checkInsOn and
+ * nextScheduledAfter), so the editor's preview is the calendar to come. */
+export function runsOnDay(schedule: DraftSchedule, day: Date): number[] {
+  if (schedule.every) {
+    if (schedule.days.length > 0 && !schedule.days.includes(day.getDay())) return [];
+    const from = minutesOf(schedule.activeHours?.from) ?? 0;
+    const to = minutesOf(schedule.activeHours?.to) ?? 24 * 60 - 1;
+    const out: number[] = [];
+    for (let at = from; at <= to; at += schedule.every) out.push(at);
+    return out;
+  }
+  const at = minutesOf(schedule.time);
+  if (at === null) return [];
+  if (schedule.repeat === "once") return schedule.date === dateKey(day) ? [at] : [];
+  return schedule.days.length === 0 || schedule.days.includes(day.getDay()) ? [at] : [];
+}
+
+/** The next `count` runs after `now`: as many weeks ahead as it takes for
+ * one a week, and a once as far as its date. Empty when it would never
+ * run again. */
+export function nextRuns(schedule: DraftSchedule, now: Date, count: number): Date[] {
+  const out: Date[] = [];
+  const reach = schedule.repeat === "once" && !schedule.every ? onceReach(schedule.date, now) : 7 * count + 1;
+  for (let ahead = 0; ahead <= reach && out.length < count; ahead++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + ahead);
+    for (const minutes of runsOnDay(schedule, day)) {
+      const at = new Date(day);
+      at.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+      if (at.getTime() > now.getTime()) out.push(at);
+      if (out.length === count) break;
+    }
+  }
+  return out;
+}
+
+/** Local "YYYY-MM-DD", the shape a routine's date is kept in. */
+export function dateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** How many days ahead a once's date is, so the search reaches it. */
+function onceReach(date: string | undefined, now: Date): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date ?? "");
+  if (!match) return -1;
+  const day = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((day.getTime() - today.getTime()) / 86_400_000);
 }
 
 /**
