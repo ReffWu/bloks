@@ -232,7 +232,7 @@ export function ActivityPanel() {
       {view === "list" && activity && (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-body tabular-nums text-muted-foreground">
           <span>
-            <span className="text-foreground">{activity.today.turns}</span> replies today
+            <span className="text-foreground">{activity.today.turns}</span> {activity.today.turns === 1 ? "reply" : "replies"} today
           </span>
           {activity.today.unmeasured ? (
             <span>{spentTokens(activity.today)}</span>
