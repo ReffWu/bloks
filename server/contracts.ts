@@ -430,8 +430,11 @@ export interface ProviderInstance {
   skills?(cwd: string): Promise<import("./codex-skills.ts").CodexSkill[] | null>;
   snapshot(): Promise<ProviderSnapshot>;
   /** A cheap one-shot completion, for naming and summarising. Optional:
-   * not every engine has something small enough to be worth using. */
-  generateText?(prompt: string): Promise<string>;
+   * not every engine has something small enough to be worth using.
+   * `quick` is for an answer someone is waiting on as they type: the
+   * engine skips any thinking it would do before writing, which it may
+   * ignore when it has none to skip. */
+  generateText?(prompt: string, options?: { quick?: boolean }): Promise<string>;
   /** The latest the engine said about its plan's limits, kept in memory
    * on the instance and null until it says anything. Optional: only an
    * engine signed in to a subscription has limits to report. For the

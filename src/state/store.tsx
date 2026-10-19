@@ -357,7 +357,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "createRoom":
           api("/api/bloks", {
             method: "POST",
-            body: JSON.stringify({ name: action.name, memberIds: action.memberIds }),
+            // the crown goes with the room rather than after it, so no
+            // turn ever runs under a lead nobody chose
+            body: JSON.stringify({
+              name: action.name,
+              memberIds: action.memberIds,
+              ...(action.leadId ? { leadId: action.leadId } : {}),
+            }),
           })
             .then(({ blok }) => {
               // shown at once, and the list read again around it, never

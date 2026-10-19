@@ -279,7 +279,8 @@ export interface Bot {
   skills?: string[];
   /** Library skills attached to this agent, by id. */
   skillIds?: string[];
-  /** 1 to 5; the most senior member of a room has the final call. */
+  /** 1 to 5; the most senior member of a room has the final call, unless
+   * the room crowned someone else (Blok.leadId). */
   seniority?: number;
   /** Reasoning effort for engines that have the dial. */
   effort?: "low" | "medium" | "high";
@@ -533,8 +534,11 @@ export interface Blok {
   id: string;
   name: string;
   memberIds: string[];
-  /** Unaddressed messages wake only the most senior member. */
+  /** Unaddressed messages wake only the lead. */
   leadOnly?: boolean;
+  /** The member crowned for this room. Null or absent means the most
+   * senior leads (src/lib/roomLead.ts). */
+  leadId?: string | null;
   /** The room's shared desk, and the pin that fixes it at first use. */
   cwd?: string;
   pinnedCwd?: string | null;
@@ -711,9 +715,9 @@ export type Action =
   | { type: "joinRequest"; roomId: string; pending?: number }
   | { type: "roomTyping"; roomId: string; name: string; at: number }
   | { type: "blokDeleted"; blokId: string }
-  /** `leadOnly` and `cwd` are the room's own settings, chosen as it is
-   * made rather than found in its header afterwards. */
-  | { type: "createRoom"; name: string; memberIds: string[]; leadOnly?: boolean; cwd?: string }
+  /** `leadId`, `leadOnly` and `cwd` are the room's own settings, chosen
+   * as it is made rather than found in its header afterwards. */
+  | { type: "createRoom"; name: string; memberIds: string[]; leadId?: string; leadOnly?: boolean; cwd?: string }
   | { type: "deleteRoom"; blokId: string }
   | { type: "patchRoom"; blokId: string; patch: { archived?: boolean; name?: string; section?: string | null } }
   /** Where an agent or a room sits in the sidebar: its section, whether

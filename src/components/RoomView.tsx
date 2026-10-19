@@ -44,12 +44,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { replyCounts, replyLabel } from "@/lib/threads";
 import { queuedLine, stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
+import { roomLead } from "@/lib/roomLead";
 import { useStickToBottom } from "@/lib/useStickToBottom";
 import { usePageVisible } from "@/lib/pageVisible";
 import { handoffsIn, namesLine, unsaid, type Handoff, type StreamMark } from "@/lib/roomVoices";
@@ -79,11 +81,6 @@ const CHANNEL_NAMES: Partial<Record<NonNullable<Message["via"]>, string>> = {
   discord: "Discord",
   whatsapp: "WhatsApp",
 };
-
-function seniorityOf(bot: Bot) {
-  return bot.seniority ?? 1;
-}
-
 
 /** A person in a shared room: their initial, never an agent's avatar, so
  * who is a person and who is an agent is never in doubt. */
@@ -633,12 +630,10 @@ export function RoomView({ blok }: { blok: Blok }) {
   const [justSaved, setJustSaved] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
-  // The crown goes to whoever the server would actually route to, which
-   // is the most senior of the ones that can answer.
-  const lead = answering.reduce<Bot | null>(
-    (best, m) => (!best || seniorityOf(m) > seniorityOf(best) ? m : best),
-    null,
-  );
+  // The crown goes to whoever the server would actually route to: the
+  // member crowned for this room, or the most senior, of those who can
+  // answer.
+  const lead = roomLead(answering, blok.leadId);
   // thinking here, not just busy: a member at work in another
   // conversation is not about to answer this room
   const working = members.filter((m) => workingInRoom(m, blok.id));
@@ -860,6 +855,15 @@ export function RoomView({ blok }: { blok: Blok }) {
       .catch(() => {});
   };
 
+  // Seniority is the agent's in every room; the crown is this room's own.
+  // The header follows the server's frame, so nothing moves until it lands.
+  const makeLead = (id: string | null) => {
+    api(`/api/bloks/${blok.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ leadId: id }),
+    }).catch((e: Error) => dispatch({ type: "error", message: e.message }));
+  };
+
   const toggleLeadOnly = () => {
     api(`/api/bloks/${blok.id}`, {
       method: "PATCH",
@@ -994,6 +998,9 @@ export function RoomView({ blok }: { blok: Blok }) {
             onSave={saveToLibrary}
             onExport={exportManifest}
             onLeadOnly={toggleLeadOnly}
+            members={answering}
+            lead={lead}
+            onLead={makeLead}
             onClose={() => setClosing(true)}
           />
         </div>
@@ -1268,6 +1275,9 @@ function RoomMenu({
   onSave,
   onExport,
   onLeadOnly,
+  members,
+  lead,
+  onLead,
   onClose,
 }: {
   blok: Blok;
@@ -1276,6 +1286,11 @@ function RoomMenu({
   onSave: () => void;
   onExport: () => void;
   onLeadOnly: () => void;
+  /** Those who can answer, the only ones a crown means anything on. */
+  members: Bot[];
+  lead: Bot | null;
+  /** An id crowns that member; null hands the room back to seniority. */
+  onLead: (id: string | null) => void;
   onClose: () => void;
 }) {
   return (
@@ -1302,6 +1317,32 @@ function RoomMenu({
           <Crown size={15} />
           {blok.leadOnly ? "Let everyone answer" : "Only the lead answers"}
         </DropdownMenuItem>
+        {members.length > 1 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Lead</DropdownMenuLabel>
+            {members.map((m) => (
+              <DropdownMenuItem
+                key={m.id}
+                // choosing the one already crowned by name changes nothing
+                onClick={() => m.id !== blok.leadId && onLead(m.id)}
+              >
+                <AgentAvatar bot={m} size={18} />
+                <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                {m.id === lead?.id ? (
+                  <Crown size={13} className="shrink-0 text-brand-ink" />
+                ) : (
+                  <span className="shrink-0 text-small text-muted-foreground">Make lead</span>
+                )}
+              </DropdownMenuItem>
+            ))}
+            {blok.leadId && lead?.id === blok.leadId && (
+              <DropdownMenuItem onClick={() => onLead(null)} className="text-muted-foreground">
+                Most senior leads
+              </DropdownMenuItem>
+            )}
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onClose} className="text-destructive focus:text-destructive">
           <Trash2 size={15} />

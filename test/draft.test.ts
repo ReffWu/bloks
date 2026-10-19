@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { DRAFT_LIMITS, draftPrompt, parseDraft } from "../server/draft.ts";
+import { DRAFT_LIMITS, DraftCache, draftKey, draftPrompt, parseDraft } from "../server/draft.ts";
 
 describe("parseDraft", () => {
   test("the shape we asked for", () => {
@@ -61,21 +61,123 @@ describe("parseDraft", () => {
     assert.deepEqual(parseDraft("I cannot help with that"), { skills: [] });
   });
 
-  test("every field is cut to its limit", () => {
+  test("every field is cut to its limit, at a word where there is one", () => {
+    const words = (n: number, w: string) => Array.from({ length: n }, () => w).join(" ");
     const draft = parseDraft(
-      `NAME: ${"n".repeat(80)}\nTITLE: ${"t".repeat(200)}\nPERSONA: ${"p".repeat(3000)}\n` +
-        Array.from({ length: 12 }, (_, i) => `SKILL: ${"s".repeat(400)}${i}`).join("\n"),
+      `NAME: ${"n".repeat(80)}\nTITLE: ${words(40, "title")}\nPERSONA: ${words(600, "persona")}\n` +
+        Array.from({ length: 12 }, (_, i) => `SKILL: Skill ${i}: ${"s".repeat(400)}`).join("\n"),
     );
-    assert.equal(draft.name!.length, DRAFT_LIMITS.name);
-    assert.equal(draft.title!.length, DRAFT_LIMITS.title);
-    assert.equal(draft.description!.length <= DRAFT_LIMITS.description, true);
+    // eighty letters is not anybody's name, so the screen keeps its own
+    assert.equal(draft.name, undefined);
+    assert.ok(draft.title!.length <= DRAFT_LIMITS.title);
+    assert.match(draft.title!, /title$/, "a title was cut through a word");
+    assert.ok(draft.description!.length <= DRAFT_LIMITS.description);
+    assert.match(draft.description!, /persona$/);
     assert.equal(draft.skills.length, DRAFT_LIMITS.skills);
     assert.equal(draft.skills[0].length, DRAFT_LIMITS.skill);
   });
 });
 
-test("the prompt carries the description and asks for the labels", () => {
-  const prompt = draftPrompt("  browse digital stores  ");
-  assert.match(prompt, /"browse digital stores"/);
-  for (const label of ["NAME:", "TITLE:", "PERSONA:", "SKILL:"]) assert.ok(prompt.includes(label));
+describe("what a draft has to be to be shown", () => {
+  test("a name is a person's, and one already taken is left to the screen", () => {
+    assert.equal(parseDraft("NAME: maya").name, "Maya");
+    assert.equal(parseDraft("NAME: Mary Jane").name, "Mary Jane");
+    assert.equal(parseDraft("NAME: **Theo**").name, "Theo");
+    assert.equal(parseDraft("NAME: Inbox Manager").name, undefined);
+    assert.equal(parseDraft("NAME: Deal Hunter Bot").name, undefined);
+    assert.equal(parseDraft("NAME: R2-D2").name, undefined);
+    assert.equal(parseDraft("NAME: Maya", { taken: ["maya"] }).name, undefined);
+    assert.equal(parseDraft("NAME: Maya", { avoid: ["Maya"] }).name, undefined);
+  });
+
+  test("a persona too short to be one is dropped, a title starts with a capital", () => {
+    const draft = parseDraft("TITLE: keeps the inbox at zero.\nPERSONA: You help.");
+    assert.equal(draft.title, "Keeps the inbox at zero");
+    assert.equal(draft.description, undefined);
+  });
+
+  test("the same skill twice is one skill, and bullets are not part of it", () => {
+    const draft = parseDraft("SKILL: - Triage: sort the inbox\nSKILL: * triage: sort the inbox\nSKILL: 2) Reply: draft answers\nSKILL: 3D renders: for product shots");
+    assert.deepEqual(draft.skills, ["Triage: sort the inbox", "Reply: draft answers", "3D renders: for product shots"]);
+  });
+
+  test("library picks are only ids the library has, three at most", () => {
+    const library = ["daily-brief", "inbox-triage", "meeting-prep", "weekly-review"].map((id) => ({ id, name: id, description: "" }));
+    const draft = parseDraft("LIBRARY: inbox-triage, made-up, Daily-Brief, meeting-prep, weekly-review", { library });
+    assert.deepEqual(draft.skillIds, ["inbox-triage", "daily-brief", "meeting-prep"]);
+    assert.equal(parseDraft("LIBRARY: none", { library }).skillIds, undefined);
+    // nothing offered, nothing taken
+    assert.equal(parseDraft("LIBRARY: inbox-triage").skillIds, undefined);
+  });
+});
+
+describe("the prompt", () => {
+  test("carries the description and asks for the labels", () => {
+    const prompt = draftPrompt("  browse digital stores  ");
+    assert.match(prompt, /"browse digital stores"/);
+    for (const label of ["NAME:", "TITLE:", "PERSONA:", "SKILL:"]) assert.ok(prompt.includes(label));
+    assert.ok(!prompt.includes("LIBRARY:"), "asked for library picks with no library to pick from");
+  });
+
+  test("offers the library and names the names to avoid", () => {
+    const prompt = draftPrompt("triage my inbox", {
+      taken: ["Nova"],
+      avoid: ["Maya"],
+      library: [{ id: "inbox-triage", name: "Inbox triage", description: "Sort the inbox\ninto now, later and never" }],
+    });
+    assert.match(prompt, /LIBRARY:/);
+    assert.match(prompt, /- inbox-triage: Inbox triage\. Sort the inbox into now, later and never/);
+    assert.match(prompt, /must not be any of: Nova, Maya/);
+  });
+
+  test("names the letter the name starts with, and only a letter", () => {
+    assert.match(draftPrompt("triage my inbox", { initial: "M" }), /starts with the letter M\./);
+    assert.ok(!draftPrompt("triage my inbox", { initial: "Mx" }).includes("starts with the letter"));
+  });
+});
+
+describe("DraftCache", () => {
+  const draft = { name: "Maya", skills: [] };
+
+  test("one call for the same job, whether asked together or after", async () => {
+    const cache = new DraftCache();
+    let calls = 0;
+    const make = () => (calls++, new Promise<typeof draft>((r) => setTimeout(() => r(draft), 10)));
+    const [a, b] = await Promise.all([cache.get("k", make), cache.get("k", make)]);
+    assert.equal(a, b);
+    await cache.get("k", make);
+    assert.equal(calls, 1);
+    // asked for another, it calls again
+    await cache.get("k", make, true);
+    assert.equal(calls, 2);
+  });
+
+  test("an empty draft or a failed call is not kept", async () => {
+    const cache = new DraftCache();
+    let calls = 0;
+    await cache.get("k", async () => (calls++, { skills: [] }));
+    await cache.get("k", async () => (calls++, { skills: [] }));
+    await assert.rejects(cache.get("j", async () => (calls++, Promise.reject(new Error("down")))));
+    await cache.get("j", async () => (calls++, draft));
+    assert.equal(calls, 4);
+  });
+
+  test("it holds only so many, dropping the longest unused", async () => {
+    const cache = new DraftCache(2);
+    let calls = 0;
+    const make = async () => (calls++, draft);
+    await cache.get("a", make);
+    await cache.get("b", make);
+    await cache.get("a", make);
+    await cache.get("c", make);
+    assert.equal(calls, 3);
+    await cache.get("a", make);
+    assert.equal(calls, 3, "the one just read was dropped");
+    await cache.get("b", make);
+    assert.equal(calls, 4);
+  });
+
+  test("the key ignores spacing and capitals", () => {
+    assert.equal(draftKey("  Triage   my\nInbox "), "triage my inbox");
+  });
 });

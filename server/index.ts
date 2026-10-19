@@ -79,7 +79,7 @@ import { DEFAULT_STALL_MINUTES, STALL_CHOICES, stallPreface } from "./drivers/st
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { MAX_TASKS, Store, type AgentNote, type BotRecord, type Message, type NewBotProfile, type RecalledNote, type TaskRecord } from "./store.ts";
-import { addressees, BlokStore, currentSpend, MAX_MEMBERS, type BlokRecord, type RoomSharing } from "./bloks.ts";
+import { addressees, BlokStore, currentSpend, leadOf, MAX_MEMBERS, ranksForExport, type BlokRecord, type RoomSharing } from "./bloks.ts";
 import { cleanSectionOrder, placeAt, SidebarStore, sidebarView, upgradePlaces, type Placed } from "./sidebar.ts";
 import { extractTeamPlan, MAX_HIRES, normalizePlan, TEAM_PROTOCOL, type TeamPlan } from "./teams.ts";
 import { houseStyle, HOUSE_STYLE } from "./house-style.ts";
@@ -180,7 +180,7 @@ import { JobStore, nextFor, offerText, readClaim, type Candidate, type Job } fro
 import { identityFor, existingFingerprint, fingerprintFor, forget as forgetIdentity, signAs, statementOf } from "./identity.ts";
 import { assemble as assembleActivity, blockedOn, lastWithYou, towardYou } from "./activity.ts";
 import { splitArgs } from "./argv.ts";
-import { draftPrompt, parseDraft } from "./draft.ts";
+import { clampDraft, DRAFT_LIMITS, DraftCache, draftKey, draftPrompt, parseDraft, randomInitial, type DraftContext } from "./draft.ts";
 import { OLLAMA_URL, ollamaUrl, probeOllama, shouldAdopt } from "./local-models.ts";
 import { cookieStores, readCookies } from "./cookie-import.ts";
 import * as telegram from "./telegram.ts";
@@ -473,6 +473,47 @@ async function defaultSelection() {
     available[0] ??
     described[0];
   return { instanceId: pick?.instanceId ?? "claude", model: pick?.models.default || "claude-sonnet-5" };
+}
+
+/** Which engine drafts a new agent from its job, and until when that
+ * answer holds. Only some engines have a one-shot call (generateText),
+ * so the default for new agents is asked first and then any engine that
+ * can, Claude first among equals: a workspace on Codex alone still gets
+ * a draft from a custom endpoint it has. Asking every engine for its
+ * health costs more than the draft's own call while someone types, and
+ * the answer barely moves, so it is kept for a minute; having none is
+ * kept only briefly, since signing in is the usual next step. */
+let draftWriterPick: { instanceId: string | null; until: number } | null = null;
+async function draftWriter() {
+  if (draftWriterPick && draftWriterPick.until > Date.now()) {
+    const kept = draftWriterPick.instanceId ? registry.get(draftWriterPick.instanceId) : null;
+    if (!draftWriterPick.instanceId || kept?.generateText) return kept;
+  }
+  const described = await registry.describe();
+  const usable = (d: (typeof described)[number]) => d.snapshot.state === "available" && Boolean(registry.get(d.instanceId)?.generateText);
+  const ready = described.filter((d) => usable(d) && d.snapshot.authenticated !== false);
+  const wanted = cfg.agentDefaults?.modelSelection?.instanceId;
+  const pick =
+    ready.find((d) => d.instanceId === wanted) ??
+    ready.find((d) => d.driverKind === "claudeAgent") ??
+    ready[0] ??
+    described.find(usable);
+  draftWriterPick = { instanceId: pick?.instanceId ?? null, until: Date.now() + (pick ? 60_000 : 5_000) };
+  return pick ? registry.get(pick.instanceId) : null;
+}
+
+/** Drafts by job, kept and shared between asks (server/draft.ts). */
+const drafts = new DraftCache();
+/** Past this a draft is no longer a suggestion anyone is waiting for:
+ * the person has moved on with the screen's own guess. */
+const DRAFT_DEADLINE_MS = 25_000;
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("the draft took too long")), ms);
+    timer.unref?.();
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
 type Approvals = NonNullable<BotRecord["approvals"]>;
@@ -3851,22 +3892,34 @@ const askThreadByRequest = new Map<string, string>();
  */
 const turnStarted = new Map<string, number>();
 
-/** Highest seniority wins; ties break toward the earliest member listed. */
-function leadOf(members: BotRecord[]): BotRecord | null {
-  return members.reduce<BotRecord | null>(
-    (best, m) => (!best || (m.seniority ?? 1) > (best.seniority ?? 1) ? m : best),
-    null,
-  );
+/** A room's `leadId` as a request gives it: absent says nothing, null
+ * hands the room back to seniority, and an id must be on the roster the
+ * request leaves. The crown is the person's to give. An agent that could
+ * crown itself would take the final call, and the stop that comes with
+ * it, over agents senior to it, which is the same reason it cannot raise
+ * its own seniority. */
+function readLeadId(
+  body: Record<string, unknown>,
+  memberIds: readonly string[],
+  byAgent: boolean,
+): { ok: true; leadId?: string | null } | { ok: false; status: number; error: string } {
+  if (!("leadId" in body) || body.leadId === undefined) return { ok: true };
+  if (byAgent) return { ok: false, status: 403, error: "only the person chooses a room's lead" };
+  if (body.leadId === null) return { ok: true, leadId: null };
+  if (typeof body.leadId !== "string" || !memberIds.includes(body.leadId)) {
+    return { ok: false, status: 400, error: "the lead must be one of the room's members" };
+  }
+  return { ok: true, leadId: body.leadId };
 }
 
 /** The room brief an agent gets before it speaks: who else is here, who
  * decides, and how to address someone. */
 function roomBriefing(blok: BlokRecord, speaker: BotRecord, members: BotRecord[]): string {
-  const lead = leadOf(members);
+  const lead = leadOf(members, blok.leadId);
   const roster = members
     .map((m) => {
       const tag = m.id === speaker.id ? " (you)" : "";
-      const rank = m.id === lead?.id ? ", most senior" : "";
+      const rank = m.id === lead?.id ? ", lead" : "";
       return `- ${m.name}${tag}: ${m.title || "no stated role"}${rank}`;
     })
     .join("\n");
@@ -3881,7 +3934,7 @@ function roomBriefing(blok: BlokRecord, speaker: BotRecord, members: BotRecord[]
   const authority =
     lead?.id === speaker.id
       ? [
-          "You are the most senior agent in this room, and you speak last.",
+          "You lead this room, and you speak last.",
           "Your job is judgement, not volume: delegate the legwork to the right member with @Name, then check what comes back. Verify the substance rather than restating it. Look for what is wrong, missing, or asserted without evidence, and say so directly.",
           "When members disagree, make the call, state it plainly, and give the reason. Do not push the decision back to the user unless it is genuinely theirs.",
           "Do not do a member's task yourself when you can assign it. Your time is the expensive kind.",
@@ -3889,7 +3942,7 @@ function roomBriefing(blok: BlokRecord, speaker: BotRecord, members: BotRecord[]
         ].join(" ")
       : lead
         ? [
-            `${lead.name} is the most senior agent here and has the final say; your work goes to them for review.`,
+            `${lead.name} leads this room and has the final say; your work goes to them for review.`,
             "Do the actual work rather than describing how you would do it. Produce the concrete thing that was asked for, note anything you could not verify, and keep it tight.",
             "Stay in your lane. Deliver your part of the brief and only your part; the other members are covering theirs, and duplicating their work wastes everyone's turn.",
             `End your turn by handing it over: @${lead.name} plus one line on what you did and anything you are unsure of.`,
@@ -6683,14 +6736,18 @@ function speakerFor(bot: BotRecord) {
 
 /** Why `callerId` may stop `targetId`'s turn, or null when it may not:
  * it hired that agent, or it outranks it in a room they are both in. The
- * same seniority that gives the lead the final call in a room (GitHub 141). */
+ * same seniority that gives the lead the final call in a room (GitHub 141),
+ * and the crown the person gave in one, which outranks seniority there. */
 function mayStop(callerId: string, targetId: string): "hired" | "senior" | null {
   const target = store.bot(targetId);
   const caller = store.bot(callerId);
   if (!target || !caller || callerId === targetId) return null;
   if (target.hiredBy === callerId) return "hired";
   const outranks = (caller.seniority ?? 1) > (target.seniority ?? 1);
-  if (outranks && bloks.bloks.some((room) => room.memberIds.includes(callerId) && room.memberIds.includes(targetId))) return "senior";
+  const shared = bloks.bloks.filter((room) => room.memberIds.includes(callerId) && room.memberIds.includes(targetId));
+  if (shared.some((room) => room.leadId === callerId)) return "senior";
+  // seniority counts in a room where the target was not crowned over it
+  if (outranks && shared.some((room) => room.leadId !== targetId)) return "senior";
   return null;
 }
 
@@ -7028,12 +7085,12 @@ async function postToRoomNow(blok: BlokRecord, text: string, author: RoomAuthor,
   // someone it named, otherwise every reply would wake the whole room. The
   // exception is a kickoff brief, which is meant for everyone.
   let reach = forPeopleOnly ? [] : !author.botId ? ids : author.toAll ? awake.map((m) => m.id) : mentioned ? ids : [];
-  // A lead-only room narrows the unaddressed case to its most senior
-  // member. Naming someone still reaches exactly who was named.
+  // A lead-only room narrows the unaddressed case to its lead. Naming
+  // someone still reaches exactly who was named.
   if (blok.leadOnly && !author.botId && !mentioned && !forPeopleOnly) {
-    // the most senior member who can actually answer, or a lead-only
-    // room whose lead is archived swallows every message
-    const lead = leadOf(awake);
+    // the lead among those who can actually answer, or a lead-only room
+    // whose lead is archived swallows every message
+    const lead = leadOf(awake, blok.leadId);
     if (lead) reach = [lead.id];
   }
   const asked = reach.filter((id) => id !== author.botId);
@@ -7340,9 +7397,14 @@ async function speakInTurn(
     .filter((entry): entry is readonly [BotRecord, string, number] => entry[0] !== null);
   // a busy agent hears it when its turn ends, rather than never
   for (const [member, text, hops] of named) if (!idleHere(member)) queueRoomTag(member.id, roomId, text, requester, hops);
+  // Junior first, so the lead speaks last, having heard the rest. A
+  // crowned lead may be junior to someone in the room, so it is put last
+  // by name; a room on seniority gets there by rank, as it always has.
+  const crowned = bloks.get(roomId)?.leadId;
+  const rank = (bot: BotRecord) => (bot.id === crowned ? Number.MAX_SAFE_INTEGER : (bot.seniority ?? 1));
   const ordered = named
     .filter(([member]) => idleHere(member))
-    .sort(([a], [b]) => (a.seniority ?? 1) - (b.seniority ?? 1));
+    .sort(([a], [b]) => rank(a) - rank(b));
 
   for (const [member, text, hops] of ordered) {
     // one agent failing must not silence the rest of the room; one that
@@ -13062,19 +13124,32 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // Model-written name + role for a described agent. The client already
     // has a local guess; this upgrades it when a provider is available.
     if (method === "POST" && path === "/api/agents/suggest") {
-      const { description } = await readBody(req);
+      const { description, again, avoid } = await readBody(req);
       if (typeof description !== "string" || !description.trim()) {
         return json(res, 400, { error: "description required" });
       }
       if (description.length > 2_000) return json(res, 413, { error: "description is too long" });
-      const instance = registry.get((await defaultSelection()).instanceId);
-      if (!instance?.generateText) return json(res, 200, {});
+      const writer = await draftWriter();
+      if (!writer) return json(res, 200, { skills: [] });
+      // Asked fresh each time, since a hire between two asks takes a name
+      // and a skill can be installed: a kept draft is read against them
+      // again on the way out, not only when it was written.
+      const context: DraftContext = {
+        taken: store.bots.filter((b) => !b.hidden).map((b) => b.name),
+        library: listSkills().map((s) => ({ id: s.id, name: s.name, description: s.description })),
+        avoid: clampList(avoid, DRAFT_LIMITS.name, 10) ?? [],
+        initial: randomInitial(),
+      };
       try {
         // Name, role, persona and a few skills in one call. Whatever
         // comes back is a proposal shown in editable fields, never
         // something applied on the person's behalf.
-        const draft = parseDraft(await instance.generateText(draftPrompt(description)));
-        return json(res, 200, draft);
+        const draft = await drafts.get(
+          draftKey(description),
+          () => withDeadline(writer.generateText!(draftPrompt(description, context), { quick: true }), DRAFT_DEADLINE_MS).then((raw) => parseDraft(raw, context)),
+          again === true,
+        );
+        return json(res, 200, clampDraft(draft, context));
       } catch {
         return json(res, 200, { skills: [] }); // never block creation on a drafting call
       }
@@ -15918,7 +15993,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             : null;
           return bloks.bloks.map((b, i) =>
             !asAgent || b.memberIds.includes(asAgent.botId)
-              ? { ...b, ...(fitted ? fitted[i] : { messages: zero ? [] : trim(store.messagesFor(b.id)) }) }
+              ? { ...b, leadId: b.leadId ?? null, ...(fitted ? fitted[i] : { messages: zero ? [] : trim(store.messagesFor(b.id)) }) }
               : { id: b.id, name: b.name, memberIds: b.memberIds, archived: b.archived, messages: [] },
           );
         })(),
@@ -15940,7 +16015,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // Whoever opened it is in it. An agent that left itself off the
       // roster would have made a room it cannot speak in.
       if (asAgent && !memberIds.includes(asAgent.botId)) memberIds.unshift(asAgent.botId);
-      const blok = bloks.create(clamp(body.name, MAX_NAME_CHARS) ?? "", memberIds, asAgent ? 0 : Date.now());
+      const lead = readLeadId(body, memberIds, Boolean(asAgent));
+      if (!lead.ok) return json(res, lead.status, { error: lead.error });
+      const blok = bloks.create(clamp(body.name, MAX_NAME_CHARS) ?? "", memberIds, asAgent ? 0 : Date.now(), lead.leadId ?? null);
       // open with the roster so the transcript explains itself later
       const names = memberIds.map((id) => store.bot(id)!.name).join(", ");
       store.appendMessage(blok.id, {
@@ -15954,7 +16031,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     m = path.match(/^\/api\/bloks\/([\w-]+)$/);
     if (m && method === "PATCH") {
       const body = await readBody(req);
-      const patch: { name?: string; memberIds?: string[]; leadOnly?: boolean; cwd?: string; archived?: boolean } = {};
+      const patch: { name?: string; memberIds?: string[]; leadOnly?: boolean; leadId?: string | null; cwd?: string; archived?: boolean } = {};
       if (typeof body.name === "string") patch.name = body.name;
       if (typeof body.leadOnly === "boolean") patch.leadOnly = body.leadOnly;
       if (typeof body.archived === "boolean") patch.archived = body.archived;
@@ -15976,6 +16053,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         patch.memberIds = (body.memberIds as unknown[]).filter(
           (id): id is string => typeof id === "string" && Boolean(store.bot(id)),
         );
+      }
+      if ("leadId" in body) {
+        const room = bloks.get(m[1]);
+        if (!room) return json(res, 404, { error: "no such room" });
+        // checked against the roster this same request leaves behind
+        const lead = readLeadId(body, patch.memberIds ?? room.memberIds, Boolean(asAgent));
+        if (!lead.ok) return json(res, lead.status, { error: lead.error });
+        patch.leadId = lead.leadId ?? null;
       }
       const blok = bloks.patch(m[1], patch);
       if (!blok) return json(res, 404, { error: "no such room" });
@@ -16276,15 +16361,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && method === "GET") {
       const blok = bloks.get(m[1]);
       if (!blok) return json(res, 404, { error: "no such room" });
-      const members = blok.memberIds
-        .map((id) => store.bot(id))
-        .filter((b): b is BotRecord => Boolean(b))
+      const roster = blok.memberIds.map((id) => store.bot(id)).filter((b): b is BotRecord => Boolean(b));
+      const ranks = ranksForExport(roster, blok.leadId);
+      const members = roster
         .map((b) => ({
           name: b.name,
           title: b.title,
           description: b.description,
           skills: b.skills ?? [],
-          seniority: b.seniority ?? 1,
+          seniority: ranks.get(b.id) ?? 1,
           color: b.color,
           shape: b.shape,
         }));
@@ -16295,14 +16380,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && method === "GET") {
       const blok = bloks.get(m[1]);
       if (!blok) return json(res, 404, { error: "no such room" });
-      const members = blok.memberIds
-        .map((id) => store.bot(id))
-        .filter((b): b is BotRecord => Boolean(b))
+      const roster = blok.memberIds.map((id) => store.bot(id)).filter((b): b is BotRecord => Boolean(b));
+      const ranks = ranksForExport(roster, blok.leadId);
+      const members = roster
         .map((b) => ({
           title: b.title || b.name,
           description: b.description ?? "",
           skills: b.skills ?? [],
-          seniority: b.seniority ?? 1,
+          seniority: ranks.get(b.id) ?? 1,
           color: b.color,
           shape: b.shape,
         }));

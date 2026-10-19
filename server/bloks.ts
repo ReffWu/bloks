@@ -23,11 +23,16 @@ export interface BlokRecord {
   name: string;
   /** Agents in the room. The user is always present implicitly. */
   memberIds: string[];
-  /** When set, a message that names nobody wakes only the most senior
-   * member instead of the whole room. The lead can still delegate with
+  /** When set, a message that names nobody wakes only the lead (see
+   * leadOf) instead of the whole room. The lead can still delegate with
    * @name, so the work happens either way; what changes is that six
    * agents stop burning six turns on "thanks everyone". */
   leadOnly?: boolean;
+  /** The member the person crowned for this room. Seniority is the
+   * agent's everywhere, so it cannot pick a lead for one room without
+   * changing that agent in every other; this can. Null or absent, or a
+   * member no longer here, and the room falls back to seniority. */
+  leadId?: string | null;
   /** Out of the way, not gone. Archiving a room keeps its transcript and
    * its members so it can come back; only an explicit second decision
    * removes anything. */
@@ -183,11 +188,14 @@ export class BlokStore {
   /** A new room starts pinned, after the pins already placed, so it
    * keeps its place the way rooms always have. `withYouAt` is when the
    * person made it, or 0 when an agent did. */
-  create(name: string, memberIds: string[], withYouAt = 0): BlokRecord {
+  create(name: string, memberIds: string[], withYouAt = 0, leadId: string | null = null): BlokRecord {
+    const members = [...new Set(memberIds)].slice(0, MAX_MEMBERS);
     const blok: BlokRecord = {
       id: newId(),
       name: name.trim() || "New room",
-      memberIds: [...new Set(memberIds)].slice(0, MAX_MEMBERS),
+      memberIds: members,
+      // null rather than absent, so every room says whether it has one
+      leadId: leadId && members.includes(leadId) ? leadId : null,
       createdAt: Date.now(),
       pinned: true,
       pinOrder: null,
@@ -200,7 +208,7 @@ export class BlokStore {
 
   patch(
     id: string,
-    patch: Partial<Pick<BlokRecord, "name" | "memberIds" | "leadOnly" | "cwd" | "archived" | "section">>,
+    patch: Partial<Pick<BlokRecord, "name" | "memberIds" | "leadOnly" | "leadId" | "cwd" | "archived" | "section">>,
   ): BlokRecord | null {
     const blok = this.get(id);
     if (!blok) return null;
@@ -208,6 +216,10 @@ export class BlokStore {
     if (Array.isArray(patch.memberIds)) {
       blok.memberIds = [...new Set(patch.memberIds)].slice(0, MAX_MEMBERS);
     }
+    if ("leadId" in patch) blok.leadId = patch.leadId ?? null;
+    // A crown on someone who left goes with them, and the room is back on
+    // seniority. Kept as null so a client merging this frame drops it too.
+    if (blok.leadId && !blok.memberIds.includes(blok.leadId)) blok.leadId = null;
     if (typeof patch.leadOnly === "boolean") blok.leadOnly = patch.leadOnly;
     if (typeof patch.archived === "boolean") blok.archived = patch.archived || undefined;
     if ("cwd" in patch) blok.cwd = patch.cwd ?? undefined;
@@ -343,6 +355,7 @@ export class BlokStore {
     for (const blok of this.bloks) {
       if (!blok.memberIds.includes(botId)) continue;
       blok.memberIds = blok.memberIds.filter((id) => id !== botId);
+      if (blok.leadId === botId) blok.leadId = null;
       touched = true;
     }
     if (touched) this.save();
@@ -352,6 +365,43 @@ export class BlokStore {
   roomsFor(botId: string): BlokRecord[] {
     return this.bloks.filter((b) => b.memberIds.includes(botId));
   }
+}
+
+/**
+ * Who leads a room: the member the person crowned, while still in the
+ * list given, and otherwise the most senior, ties going to whoever is
+ * listed first. The list is whoever counts for the question asked, so a
+ * crowned member who is archived falls through to the next in line
+ * where only those who can answer are passed in.
+ *
+ * Everything that means "the lead" asks here: the room's own briefing,
+ * who speaks last, who a lead-only room wakes. src/lib/roomLead.ts reads
+ * it the same way for the crown.
+ */
+export function leadOf<T extends { id: string; seniority?: number }>(
+  members: readonly T[],
+  leadId?: string | null,
+): T | null {
+  const chosen = leadId ? members.find((m) => m.id === leadId) : undefined;
+  if (chosen) return chosen;
+  return members.reduce<T | null>(
+    (best, m) => (!best || (m.seniority ?? 1) > (best.seniority ?? 1) ? m : best),
+    null,
+  );
+}
+
+/** Seniority as a team file says it, for a room whose lead was chosen
+ * rather than ranked: files carry only seniority, so the lead goes out
+ * on top and nobody else level with it, or the file would crown someone
+ * else when it is read back. A room on seniority goes out as it is. */
+export function ranksForExport<T extends { id: string; seniority?: number }>(
+  members: readonly T[],
+  leadId?: string | null,
+): Map<string, number> {
+  const ranks = new Map(members.map((m) => [m.id, m.seniority ?? 1]));
+  if (!leadId || !ranks.has(leadId) || leadOf(members)?.id === leadId) return ranks;
+  for (const [id, rank] of ranks) ranks.set(id, id === leadId ? 5 : Math.min(rank, 4));
+  return ranks;
 }
 
 /**
