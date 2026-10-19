@@ -5,7 +5,7 @@
 // the way a Codex older than the field behaves. Standard has to work
 // against it unchanged; Fast has to be refused by it, unsent.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { codexCommands, waitFor } from "./helpers/codex-commands.ts";
@@ -254,7 +254,11 @@ test("an agent reads its speed and may slow only itself; Fast and the workspace 
   s.spec({ captureCredential: true });
   await s.say("HOLD for the credential");
   await s.called("turn/start", 1);
-  const { token } = JSON.parse(readFileSync(join(s.root, "credentials.jsonl"), "utf8").trim().split("\n")[0]);
+  // the stand-in notes the turn before it writes what it was handed, so
+  // on a busy machine the file can lag the call by a beat
+  const credentials = join(s.root, "credentials.jsonl");
+  await waitFor(() => existsSync(credentials) && readFileSync(credentials, "utf8").trim(), "the credential was never captured");
+  const { token } = JSON.parse(readFileSync(credentials, "utf8").trim().split("\n")[0]);
   const asAgent = (path: string, method = "GET", body?: unknown) =>
     s.h.fetch(path, {
       method,
