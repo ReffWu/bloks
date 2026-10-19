@@ -48,6 +48,7 @@ import { TeamHireDialog, type HireableTeam } from "./TeamHireDialog";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, useWorkspaceApprovals, type ApprovalMode } from "./ApprovalsChooser";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
+import { useEscape } from "@/lib/useEscape";
 
 const isElectron = navigator.userAgent.includes("Electron");
 
@@ -332,6 +333,12 @@ export function NewAgentScreen() {
   // whenever the first beat is shown
   const scroller = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
+  // Escape with the focus inside is handled on the screen itself, below.
+  // With it nowhere in particular, this screen is still the thing on top,
+  // so it is the one that goes back, not a page underneath it.
+  useEscape(() => {
+    if (!root.current?.contains(document.activeElement)) back();
+  });
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
     if (step !== "job") return;
