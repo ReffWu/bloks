@@ -109,6 +109,9 @@ export interface Message {
   /** Went into the turn already running rather than starting one, so a
    * finished turn's work folds around it (src/lib/turnFold.ts). */
   midTurn?: boolean;
+  /** Sent while a turn ran: whether it went in, stopped the turn, or
+   * waited, and the quiet line that says so (server/delivery.ts). */
+  delivery?: { route: "steered" | "stopped" | "queued"; why: string; line: string };
   /** Queued, but still waiting when Bloks restarted and too old to send
    * on its own (server/index.ts, recoverQueued). */
   unsent?: boolean;
@@ -330,6 +333,9 @@ export interface Bot {
   engineHooks?: boolean;
   /** False: no notes from its other conversations before your turns. */
   recallBeforeTurn?: boolean;
+  /** Words sent mid-turn: read them, always go in now, or always wait.
+   * Unset follows the workspace's choice. */
+  delivery?: "auto" | "interrupt" | "queue";
   /** The public half of this agent's key, hex. What its signatures in
    * the record are checked against. */
   fingerprint?: string;
@@ -386,6 +392,9 @@ export interface ConfigStatus {
   recall?: { beforeTurn: boolean };
   /** Agents' turn limit, 1 to 50 (server/agent-chain.ts). */
   agents?: { turnLimit: number };
+  /** What happens to words sent mid-turn, for agents that have not
+   * chosen (server/delivery.ts). */
+  delivery?: { mode: "auto" | "interrupt" | "queue" };
   /** Count-only cards for overlapping turns with no own files. On by default. */
   changes?: { showShared: boolean };
   /** How long a silent tool call may hold a turn, in minutes; 0 is never. */

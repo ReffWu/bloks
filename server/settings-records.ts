@@ -59,6 +59,7 @@ export function inspectAgentSettings(root:unknown, ctx:InspectionContext):Inspec
   for (const [id,fallback] of [["name",""],["title",""],["description",""],["color",null],["shape",null],["seniority",1],["mascotExpression",null],["section",null],["pinOrder",null]] as const) f.scalar(id,fallback);
   f.bool("notifications",true);f.bool("pinned");f.add("browser",{status:"value",value:get(root,"browser")===true});f.bool("speakReplies");f.bool("engineHooks",true);
   f.scalar("approvals","ask");
+  f.scalar("delivery",null);f.add("delivery.context",policy("unset follows the workspace's delivery.mode; it decides how the person's words meet a running turn, not whether they are delivered"),{status:"absent"});
   f.add("approvals.context",policy("saved preference; deny rules, shared-room, guest, rehearsal and hiring restrictions still apply"),{status:"absent"});
   const computer=get(root,"computer");f.add("computer",{status:"value",value:typeof computer === "string" && ["cloud","sandbox","local","off"].includes(computer)?computer:"auto"});f.add("computer.context",policy("automatic selection and room/routine overrides resolve at turn dispatch; inspection does not create or discover a computer"),{status:"absent"});
   const effort=get(root,"effort");f.add("effort",policy(effort?"explicit preference; engine support and turn dispatch determine application":"engine default"));

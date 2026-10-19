@@ -242,6 +242,20 @@ import {
 } from "./policy.ts";
 import { RuleSuggestionStore, ruleFor, type Suggestion } from "./rule-suggestions.ts";
 import {
+  MODEL_DEADLINE_MS,
+  deliveryLine,
+  deliveryMode,
+  endsOnQuestion,
+  modelPrompt,
+  plan as deliveryPlan,
+  previewLine,
+  readModelAnswer,
+  resolveMode,
+  type Delivery,
+  type DeliveryWhy,
+  type Reading as DeliveryReading,
+} from "./delivery.ts";
+import {
   ProposalStore,
   fingerprintOf,
   parseProposal,
@@ -10727,6 +10741,8 @@ function queueOnLane(
     /** An agent sent it: the place in a chain of agents' messages the
      * turn that takes it would have (agentChain). */
     chain?: number;
+    /** Why the person's words wait, said under them (server/delivery.ts). */
+    delivery?: Delivery;
   } = {},
 ) {
   // A routine's command keeps Claude Code's command path, as it does
@@ -10749,6 +10765,7 @@ function queueOnLane(
     ...(options.telegramBinding ? { telegramBinding: options.telegramBinding } : {}),
     ...(options.telegramPerson ? { telegramPerson: options.telegramPerson } : {}),
     ...(!options.from && !options.via && store.bot(botId) ? { commandInstance } : {}),
+    ...(options.delivery ? { delivery: options.delivery } : {}),
   });
   options.admission?.accepted("queued");
   broadcast({ kind: "message", threadId: laneId, message });
@@ -10791,7 +10808,7 @@ function steerLane(
   bot: BotRecord,
   lane: TaskRecord,
   text: string,
-  options: { admission?: DirectAdmission; replyTo?: ReplyRef; personal?: boolean; from?: { botId: string; name: string }; fromTelegram?: boolean; telegramBinding?: Message["telegramBinding"]; telegramPerson?: TelegramSender } = {},
+  options: { admission?: DirectAdmission; replyTo?: ReplyRef; personal?: boolean; from?: { botId: string; name: string }; fromTelegram?: boolean; telegramBinding?: Message["telegramBinding"]; telegramPerson?: TelegramSender; delivery?: Delivery; moving?: string } = {},
 ): Promise<Message | null> {
   const previous = steerAttempts.get(lane.id);
   if (!previous && laneInstance(bot, lane.id)?.driverKind !== "codex") return steerOne(bot, lane, text, options);
@@ -10818,7 +10835,7 @@ async function steerOne(
   bot: BotRecord,
   lane: TaskRecord,
   text: string,
-  options: { admission?: DirectAdmission; replyTo?: ReplyRef; personal?: boolean; from?: { botId: string; name: string }; fromTelegram?: boolean; telegramBinding?: Message["telegramBinding"]; telegramPerson?: TelegramSender } = {},
+  options: { admission?: DirectAdmission; replyTo?: ReplyRef; personal?: boolean; from?: { botId: string; name: string }; fromTelegram?: boolean; telegramBinding?: Message["telegramBinding"]; telegramPerson?: TelegramSender; delivery?: Delivery; moving?: string } = {},
 ): Promise<Message | null> {
   // an agent's words reach the engine framed, so they are never a command
   if (commandTurns.has(lane.id) || (!options.telegramPerson && !options.from && acceptingNative(bot, lane.id) && commandFor(text, acceptingNative(bot, lane.id)!))) return null;
@@ -10831,9 +10848,14 @@ async function steerOne(
   if ((activeRoom.get(lane.id) ?? lane.id) !== lane.id || (laneRequester.get(lane.id) ?? "owner") !== (options.telegramPerson?.requester ?? "owner")) return null;
   if (options.telegramPerson && !telegramSenderCurrent(telegramBinding(bot.id), options.telegramPerson)) return null;
   const waiting = steerQueues.get(lane.id)?.items ?? [];
+  // Words of the person's that are waiting only because they could not
+  // go in either, so these would overtake them. Not ones that wait on
+  // purpose, chosen or read as work for after this turn
+  // (server/delivery.ts): a correction to the turn in hand goes ahead
+  // of "and when you're done, book the table".
   const yoursWaiting = waiting.some((item) => {
     const m = item.messageId ? store.messagesFor(lane.id).find((msg) => msg.id === item.messageId) : undefined;
-    return m && !m.deleted && !m.agent && !m.via;
+    return m && m.id !== options.moving && !m.deleted && !m.agent && !m.via && m.delivery?.route !== "queued";
   });
   if (yoursWaiting) return null;
   const adapter = laneInstance(bot, lane.id)?.adapter;
@@ -10855,7 +10877,10 @@ async function steerOne(
   const took = options.admission ? await taking : await taking.catch(() => false);
   if (!took) return null;
   options.admission?.accepted("steered");
-  const message = store.appendMessage(lane.id, {
+  // A message that was waiting goes in as itself: moved to where the
+  // turn hears it, as a waiting message always is, and marked as joined.
+  const moved = options.moving ? moveIntoTurn(lane.id, options.moving, { joinedTurnId, delivery: options.delivery }) : null;
+  const message = moved ?? store.appendMessage(lane.id, {
     role: "user",
     kind: "text",
     text,
@@ -10868,8 +10893,9 @@ async function steerOne(
     ...(options.fromTelegram ? { fromTelegram: true } : {}),
     ...(options.telegramBinding ? { telegramBinding: options.telegramBinding } : {}),
     ...(options.telegramPerson ? { telegramPerson: options.telegramPerson } : {}),
+    ...(options.delivery ? { delivery: options.delivery } : {}),
   });
-  broadcast({ kind: "message", threadId: lane.id, message });
+  if (!moved) broadcast({ kind: "message", threadId: lane.id, message });
   // what the turn says from here on is an answer to the person too, and
   // with the person in it, a chain of agents' messages starts over
   if (!from && !options.telegramPerson) {
@@ -10981,6 +11007,126 @@ function storedPrompt(message: Message): string {
   return command ? words : withReply(words, message.replyTo);
 }
 
+// ── words that meet a running turn (server/delivery.ts) ──
+
+/** Whether the person's words may stop this lane's turn to go first:
+ * only a turn of the person's own, in its own lane, that nothing else
+ * is holding. A room's turn, somebody else's, a Redo taking it back or
+ * a quiet compaction are not the person's to stop by typing. */
+function mayStopForWords(bot: BotRecord, lane: TaskRecord): boolean {
+  return Boolean(lane.busy) && !drain.on && !bot.archivedAt && !wheel.heldBy(bot.id) &&
+    (activeRoom.get(lane.id) ?? lane.id) === lane.id && (laneRequester.get(lane.id) ?? "owner") === "owner" &&
+    !claimedLanes.has(lane.id) && !idleCompacting.has(lane.id);
+}
+
+/** What the agent said last in this lane, when it said it after the
+ * person did: the turn's own words so far, not an old reply. */
+function agentSaidLast(laneId: string): string | undefined {
+  const said = store.messagesFor(laneId);
+  for (let i = said.length - 1; i >= 0; i--) {
+    const m = said[i];
+    if (m.deleted || m.queued) continue;
+    if (m.role === "user") return undefined;
+    if (m.role === "bot" && (m.kind ?? "text") === "text" && m.text?.trim()) return m.text;
+  }
+  return undefined;
+}
+
+/** The agent's own engine, when it has a small model to ask: the words
+ * go nowhere they were not already going, and it is quick enough to
+ * wait for (ProviderInstance.smallText). */
+function deliveryModel(bot: BotRecord) {
+  const instance = registry.get(bot.modelSelection.instanceId);
+  return instance?.smallText && instance.generateText && !pausedOn(bot, bot.modelSelection) ? instance : null;
+}
+
+/**
+ * How these words meet the turn running in this lane: the person's own
+ * tap first, then the agent's mode and the words, and only when the
+ * rules had nothing to say, the agent's small model, briefly.
+ */
+async function deliveryFor(bot: BotRecord, lane: TaskRecord, text: string, choice?: "now" | "wait" | "answer"): Promise<DeliveryReading> {
+  if (choice === "answer") return { route: "now", why: "answer", sure: true };
+  const mode = resolveMode(bot.delivery, cfg.delivery?.mode);
+  const said = agentSaidLast(lane.id);
+  const read = deliveryPlan(mode, text, { asked: endsOnQuestion(said) }, choice);
+  const model = !read.sure && mode === "auto" ? deliveryModel(bot) : null;
+  if (!model?.generateText) return read;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<string>((done) => {
+    timer = setTimeout(() => done(""), MODEL_DEADLINE_MS);
+    timer.unref?.();
+  });
+  const answer = readModelAnswer(await Promise.race([model.generateText(modelPrompt(text, said), { quick: true }).catch(() => ""), late]));
+  clearTimeout(timer);
+  return answer ? { route: answer === "now" ? "now" : "queue", why: "model", sure: true } : read;
+}
+
+/** A waiting message going into the running turn as itself (steerOne):
+ * moved to where the turn hears it, no longer waiting, and marked as
+ * having joined. */
+function moveIntoTurn(laneId: string, messageId: string, how: { joinedTurnId?: string; delivery?: Delivery }): Message | null {
+  deliverQueued(laneId, [messageId]);
+  const patched = store.patchMessage(laneId, messageId, {
+    midTurn: true,
+    ...(how.joinedTurnId ? { joinedTurnId: how.joinedTurnId } : {}),
+    ...(how.delivery ? { delivery: how.delivery } : {}),
+  });
+  if (patched) broadcast({ kind: "message.patch", threadId: laneId, message: patched });
+  return patched;
+}
+
+/**
+ * Send now, for what of the person's is waiting behind a running turn:
+ * the flip of "Queued until it finishes". Each goes into the turn in the
+ * order it was said, when the engine can take words mid-turn; otherwise
+ * the turn is stopped and they go together in the next one, as Stop
+ * always did. What another agent, a webhook or a routine queued keeps
+ * its place: those are requests of their own.
+ */
+async function sendWaitingNow(bot: BotRecord, lane: TaskRecord): Promise<"steered" | "stopped" | "nothing"> {
+  const said = (id?: string) => (id ? store.messagesFor(lane.id).find((m) => m.id === id) : undefined);
+  const yours = (steerQueues.get(lane.id)?.items ?? []).filter((item) => {
+    const m = said(item.messageId);
+    return m && m.role === "user" && m.queued && !m.deleted && !m.agent && !m.via && !m.telegramPerson && m.text;
+  });
+  if (!lane.busy || !yours.length) return "nothing";
+  if (laneInstance(bot, lane.id)?.adapter.steerTurn) {
+    let all = true;
+    for (const item of yours) {
+      const m = said(item.messageId);
+      const entry = steerQueues.get(lane.id);
+      const at = entry?.items.indexOf(item) ?? -1;
+      if (!m || !entry || at < 0) continue;
+      // out of the queue before the engine is asked, so a turn ending
+      // meanwhile does not deliver it a second time
+      entry.items.splice(at, 1);
+      if (!entry.items.length) steerQueues.delete(lane.id);
+      const now = { route: "steered" as const, why: "you" as const, line: deliveryLine("steered", "you", bot.name) };
+      const took = await steerLane(bot, lane, m.text!, { replyTo: m.replyTo, personal: true, delivery: now, moving: m.id }).catch(() => null);
+      if (took) continue;
+      // back where it was, ahead of anything said since
+      const back = steerQueues.get(lane.id) ?? { botId: bot.id, items: [] };
+      back.items.splice(Math.min(at, back.items.length), 0, item);
+      steerQueues.set(lane.id, back);
+      all = false;
+      break;
+    }
+    if (all) return "steered";
+    drainSteer(lane.id);
+  }
+  if (!mayStopForWords(bot, lane)) return "nothing";
+  for (const item of steerQueues.get(lane.id)?.items ?? []) {
+    const m = said(item.messageId);
+    if (!m || !yours.includes(item)) continue;
+    const line = { route: "stopped" as const, why: "you" as const, line: deliveryLine("stopped", "you", bot.name) };
+    const patched = store.patchMessage(lane.id, m.id, { delivery: line });
+    if (patched) broadcast({ kind: "message.patch", threadId: lane.id, message: patched });
+  }
+  await stopForYou(bot, lane.id);
+  return "stopped";
+}
+
 /** Per-request observation at recipient admission, used only by the final say. */
 interface DirectAdmission {
   beforeEffect(): void;
@@ -11009,6 +11155,10 @@ async function sendUserMessage(
     /** An agent sent this, to another agent or to itself (chainFrom). */
     chain?: AgentChain;
     guardedAdmission?: (lane: TaskRecord) => DirectAdmission;
+    /** The person's one tap on how these words meet a running turn, or
+     * "answer" for words typed into a card, which are its answer. Unset
+     * leaves it to the agent's delivery mode (server/delivery.ts). */
+    delivery?: "now" | "wait" | "answer";
   } = {},
 ) {
   const bot = store.bot(botId);
@@ -11047,8 +11197,17 @@ async function sendUserMessage(
   // lane, shown as waiting for the pause, as they would behind a turn.
   const paused = pauseHolding(bot, lane.id);
   if (laneWaits(lane) || paused) {
-    if (yours && options.steer) {
-      const steered = await steerLane(bot, lane, text, { replyTo: options.replyTo, personal: options.personal });
+    // The person's own words meeting a turn in progress: read for whether
+    // they belong in it now, or after it (server/delivery.ts). Anything
+    // else that holds a lane (a pause, a restart, a burst held for an
+    // editor) has no turn to put them in, and they wait as before.
+    let delivery: Delivery | undefined;
+    let stopFor: DeliveryWhy | null = null;
+    const deciding = yours && options.steer && lane.busy && !paused;
+    const decided = deciding ? await deliveryFor(bot, lane, text, options.delivery) : null;
+    if (yours && options.steer && (!decided || decided.route === "now")) {
+      const into: Delivery | undefined = decided ? { route: "steered", why: decided.why, line: deliveryLine("steered", decided.why, bot.name) } : undefined;
+      const steered = await steerLane(bot, lane, text, { replyTo: options.replyTo, personal: options.personal, delivery: into });
       if (steered) {
         // the person joined this turn, so it is now one they wait on
         liveActivities.started(lane.id);
@@ -11063,9 +11222,21 @@ async function sendUserMessage(
           note: asked
             ? `${bot.name} is waiting on an answer in this conversation and reads this once it has one.`
             : `${bot.name} is in the middle of a turn and reads this after the step it is on.`,
+          delivery: into,
         };
       }
+      // An engine with no way to take words mid-turn is stopped instead,
+      // and these words start the next turn: what Command-Enter does. One
+      // that can, but did not just now, is ending its turn anyway.
+      if (decided && !laneInstance(bot, lane.id)?.adapter.steerTurn && mayStopForWords(bot, lane)) stopFor = decided.why;
     }
+    if (decided?.route === "stop" && mayStopForWords(bot, lane)) stopFor = decided.why;
+    if (decided) {
+      const route = stopFor ? "stopped" as const : "queued" as const;
+      const why = stopFor ?? decided.why;
+      delivery = { route, why, line: deliveryLine(route, why, bot.name) };
+    }
+    if (stopFor) await stopForYou(bot, lane.id);
     // Another agent saying this changes what the running turn is doing
     // (GitHub 238). It goes in as the person's words do, when mayJoin
     // lets it and the turn can take it; otherwise it waits as any
@@ -11086,6 +11257,8 @@ async function sendUserMessage(
       ? DRAINING_TEXT
       : paused
         ? `${pausedWhy(bot, paused)} This waits, and goes on its own then.`
+      : delivery
+        ? `${delivery.line}.`
       : lane.busy
         ? `${bot.name} is in the middle of a turn; this waits until that turn ends.`
         : `Messages said to ${bot.name} before this one are still waiting to go; this goes with them.`;
@@ -11096,12 +11269,13 @@ async function sendUserMessage(
     queueOnLane(bot.id, lane.id, text, {
       replyTo: options.replyTo, from: options.from, personal: options.personal, chain: options.chain?.depth, admission: noting(note),
       ...(drain.on && yours ? { waitsFor: "restart" as const } : paused ? { waitsFor: "pause" as const, waitsUntil: paused.until } : {}),
+      ...(delivery ? { delivery } : {}),
     });
     if (paused) sayPaused(lane.id, paused.id, `${pausedWhy(bot, paused)} What is said to it here waits, and goes on its own then.`);
     // Asking the engine took a moment, and the turn may have ended in it,
     // with nothing coming along after to take what now waits.
     if ((yours && options.steer) || askedEngine) drainSteer(lane.id);
-    return { ok: true, queued: true, taskId: lane.id, lane: lane.title, note };
+    return { ok: true, queued: true, taskId: lane.id, lane: lane.title, note, delivery };
   }
   await startTurn(bot.id, text, { taskId: lane.id, replyTo: options.replyTo, from: options.from, byYou: yours, personal: options.personal, chain: options.chain?.depth, admission });
   triggersFired({ kind: "message", targetId: bot.id, text, fromUser: true });
@@ -11808,6 +11982,8 @@ function configStatus() {
     // ahead of the person's turn (recallAhead)
     recall: { beforeTurn: cfg.recall?.beforeTurn !== false },
     agents: { turnLimit: agentLimit() },
+    // what happens to words sent mid-turn, for agents that have not chosen
+    delivery: { mode: resolveMode(undefined, cfg.delivery?.mode) },
     changes: { showShared: cfg.changes?.showShared !== false },
     // how long a silent tool call may hold a turn, in minutes; 0 is never
     turns: { stallMinutes: stallLimitMs() / 60_000 },
@@ -13358,6 +13534,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         }
         patch.recallBeforeTurn = body.recallBeforeTurn;
       }
+      if (body.delivery !== undefined) {
+        // Whether the person's words may break into this agent's turns is
+        // theirs to say, and PATCH /api/bots/:me is on the agent allowlist.
+        if (asAgent) return json(res, 403, { error: "an agent cannot choose how it is interrupted" });
+        if (body.delivery !== null && !deliveryMode(body.delivery)) {
+          return json(res, 400, { error: "delivery is auto, interrupt, queue, or null to follow the workspace" });
+        }
+        patch.delivery = body.delivery === null ? undefined : deliveryMode(body.delivery);
+      }
       if (body.speakReplies !== undefined) {
         if (typeof body.speakReplies !== "boolean") {
           return json(res, 400, { error: "speakReplies must be true or false" });
@@ -13905,6 +14090,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           steer: !asAgent && body.steer !== false,
           // only another agent asks for this; the person's words normally try
           now: Boolean(from) && body.now === true,
+          // the person's one tap on how these words meet a running turn
+          // (server/delivery.ts); never an agent's
+          ...(!asAgent && (body.delivery === "now" || body.delivery === "wait") ? { delivery: body.delivery } : {}),
           // an agent writing, to another or to itself, carries its turn's
           // place in a chain of agents' messages one further; and never as
           // the person's own words, which alone may name a skill or a command
@@ -14394,7 +14582,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           enqueueRoomPost(room, text, { hops: 0, replyTo, byYou: true });
           triggersFired({ kind: "message", targetId: room.id, text, fromUser: true });
         } else {
-          await sendUserMessage(bot.id, text, { taskId: threadId, replyTo, yours: true, steer: true, personal: false });
+          // a choice is the answer to what the agent asked, so it goes in now
+          await sendUserMessage(bot.id, text, { taskId: threadId, replyTo, yours: true, steer: true, personal: false, delivery: "answer" });
         }
         const message = store.patchMessage(threadId, messageId, { decisionChoice: choice });
         broadcast({ kind: "message.patch", threadId, message: message! });
@@ -15558,6 +15747,47 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         broadcast({ kind: "message", threadId: cardThread, message: notice });
         return json(res, 200, { ok: false, outcome: "unavailable" });
       }
+    }
+    // How words would meet the turn running now, before they are sent, so
+    // the composer can say so and offer the other way with one tap. The
+    // rules alone, never the model: this is asked as somebody types.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/delivery$/);
+    if (m && method === "POST") {
+      if (asAgent) return json(res, 403, { error: "this is for the person's own words" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const lane = bot.tasks.find((t) => t.id === (typeof body.taskId === "string" && body.taskId ? body.taskId : activeLaneOf(bot)));
+      if (!lane) return json(res, 404, { error: "no such task" });
+      const mode = resolveMode(bot.delivery, cfg.delivery?.mode);
+      const busy = Boolean(lane.busy);
+      const text = typeof body.text === "string" ? body.text.slice(0, MAX_MESSAGE_CHARS) : "";
+      const choice = body.choice === "now" || body.choice === "wait" ? body.choice : undefined;
+      const read = deliveryPlan(mode, text, { asked: endsOnQuestion(agentSaidLast(lane.id)) }, choice);
+      const canSteer = Boolean(laneInstance(bot, lane.id)?.adapter.steerTurn);
+      return json(res, 200, {
+        busy,
+        mode,
+        route: read.route,
+        why: read.why,
+        // unsure readings may still go the other way once a small model is asked
+        sure: read.sure,
+        canSteer,
+        line: busy ? previewLine(read.route, read.why, bot.name, canSteer) : null,
+      });
+    }
+    // The flip of "Queued until it finishes": the person's waiting words
+    // go into the running turn now, or the turn stops for them.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/queued\/now$/);
+    if (m && method === "POST") {
+      if (asAgent) return json(res, 403, { error: "this is for the person's own words" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const lane = bot.tasks.find((t) => t.id === (typeof body.taskId === "string" && body.taskId ? body.taskId : activeLaneOf(bot)));
+      if (!lane) return json(res, 404, { error: "no such task" });
+      const outcome = await sendWaitingNow(bot, lane);
+      return json(res, 200, { ok: outcome !== "nothing", outcome });
     }
     m = path.match(/^\/api\/bots\/([\w-]+)\/interrupt$/);
     if (m && method === "POST") {
@@ -18769,6 +18999,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (body.codex !== undefined && (!isRecord(body.codex) || !isCodexSpeed(body.codex.speed) || Object.keys(body.codex).some((key) => key !== "speed"))) {
         return json(res, 400, { error: "codex.speed must be standard or fast" });
       }
+      if (body.delivery !== undefined && (!isRecord(body.delivery) || !deliveryMode(body.delivery.mode))) {
+        return json(res, 400, { error: "delivery.mode is auto, interrupt or queue" });
+      }
       if (body.agents !== undefined && (!isRecord(body.agents) || !validTurnLimit(body.agents.turnLimit))) {
         return json(res, 400, { error: `agents.turnLimit must be a whole number from ${MIN_AGENT_CHAIN_LIMIT} to ${MAX_AGENT_CHAIN_LIMIT}` });
       }
@@ -18839,6 +19072,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       if (isRecord(body.agents)) {
         Object.assign(cfg, saveConfig({ agents: { turnLimit: body.agents.turnLimit as number } }));
+        wroteSomething = true;
+      }
+      if (isRecord(body.delivery)) {
+        Object.assign(cfg, saveConfig({ delivery: { mode: deliveryMode(body.delivery.mode) } }));
         wroteSomething = true;
       }
       if (body.recall && typeof body.recall === "object" && !Array.isArray(body.recall)) {

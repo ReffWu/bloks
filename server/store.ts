@@ -235,6 +235,11 @@ export interface Message {
    * without this (server/redo.ts). Absent on anything written before it
    * was recorded, which then reads as having started a turn of its own. */
   midTurn?: boolean;
+  /** What happened to the person's message because a turn was running
+   * when they sent it, and the line that says so under it: it went into
+   * that turn, the turn was stopped for it, or it waited (server/delivery.ts).
+   * Absent on a message that started a turn of its own. */
+  delivery?: import("./delivery.ts").Delivery;
   /** Server-only return address for a Telegram request queued during
    * drain. Preserved on edits, never accepted from a client body. */
   telegramReply?: TelegramReply;
@@ -468,6 +473,10 @@ export interface BotRecord {
   /** False stops recall before this agent's turns (the workspace switch
    * is `recall.beforeTurn` in config.json). Unset is on. */
   recallBeforeTurn?: boolean;
+  /** What happens to the person's words sent while this agent is mid-turn:
+   * read them (auto), always go in now (interrupt), or always wait
+   * (queue). Unset follows the workspace's `delivery.mode`. */
+  delivery?: import("./delivery.ts").DeliveryMode;
   /** Components this agent may not answer with. By exclusion rather than
    * by grant: withholding one from one agent should not touch anybody
    * else, and a list of everything permitted goes stale as the gallery

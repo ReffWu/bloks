@@ -169,6 +169,11 @@ export interface AppConfig {
   /** Agent-started turns in a row, 1 to 50, default 12. There is no Off;
    * anything else stored here is read as 12 (agentTurnLimit). */
   agents?: { turnLimit?: number };
+  /** What happens to words sent while an agent is mid-turn, for every
+   * agent that has not chosen for itself (server/delivery.ts). Unset is
+   * auto: stops, corrections, answers and urgent words go in now, the
+   * rest waits for the turn to end. */
+  delivery?: { mode?: "auto" | "interrupt" | "queue" };
   /** Show a card for files changed during an overlapping turn even when
    * none are named as its own. On unless turned off; own-file cards stay. */
   changes?: { showShared?: boolean };
@@ -312,6 +317,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "turns",
     "recall",
     "agents",
+    "delivery",
     "changes",
     "telegram",
     "chat",
