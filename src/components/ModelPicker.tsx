@@ -137,6 +137,10 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [unfolded, setUnfolded] = useState<string[]>([]);
+  // Which engines' lists are open. Each opening starts with only the one
+  // in use, so the menu reads as a short list of engines with the familiar
+  // one ready; any other is a tap on its name away.
+  const [expanded, setExpanded] = useState<string[]>([]);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -199,6 +203,11 @@ export function ModelPicker({
   }, [open, composer]);
 
   // Opening starts at the model in use, so a long list never hides it.
+  // each opening starts folded to the engine in use
+  useEffect(() => {
+    if (open) setExpanded(selection.instanceId ? [selection.instanceId] : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const current = listRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
@@ -234,11 +243,13 @@ export function ModelPicker({
       !instance.models.options.some((o) => o.id === typed)
         ? typed
         : null;
+    // a search opens every engine: a match tucked away is no match at all
+    const closed = !words.length && !expanded.includes(instance.instanceId);
     const folds = !words.length && !unfolded.includes(instance.instanceId) && matching.length > FOLDED + 1;
     const shown = folds
       ? matching.filter((o, i) => i < FOLDED || (isActive && o.id === runs))
       : matching;
-    return { instance, matching, shown, unlisted, typedId, folds, isActive, runs };
+    return { instance, matching, shown, unlisted, typedId, folds, isActive, runs, closed };
   });
   // while searching, an engine with nothing that matches has nothing to say
   const visible = words.length
@@ -391,19 +402,40 @@ export function ModelPicker({
                 {instances.length ? "No models match." : "No engines found. Is Bloks running?"}
               </div>
             )}
-            {visible.map(({ instance, shown, matching, unlisted, typedId, folds, runs, isActive }) => {
+            {visible.map(({ instance, shown, matching, unlisted, typedId, folds, runs, isActive, closed }) => {
               const off = !usable(instance);
               const update = Boolean(state.engineUpdates[instance.driverKind]);
               const provider = state.providers.find((p) => p.kind === instance.driverKind);
               return (
                 <div key={instance.instanceId} role="group" aria-label={instance.displayName} className="border-t border-border/70 pt-1 first:border-t-0 [&:not(:first-child)]:mt-1">
                   <div className="flex items-center gap-2 px-2 pb-0.5 pt-1.5">
-                    <span className={cn("flex shrink-0", off && "opacity-50")}>
-                      <ProviderMark driverKind={instance.driverKind} size={14} />
-                    </span>
-                    <span className={cn("min-w-0 truncate text-small font-medium", off ? "text-muted-foreground" : "text-foreground")}>
-                      {instance.displayName}
-                    </span>
+                    {off ? (
+                      <>
+                        <span className="flex shrink-0 opacity-50">
+                          <ProviderMark driverKind={instance.driverKind} size={14} />
+                        </span>
+                        <span className="min-w-0 truncate text-small font-medium text-muted-foreground">{instance.displayName}</span>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-expanded={!closed}
+                        onClick={() =>
+                          setExpanded((e) => (e.includes(instance.instanceId) ? e.filter((id) => id !== instance.instanceId) : [...e, instance.instanceId]))
+                        }
+                        className="-mx-1 flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left outline-none transition-colors duration-150 hover:bg-accent"
+                      >
+                        <span className="flex shrink-0">
+                          <ProviderMark driverKind={instance.driverKind} size={14} />
+                        </span>
+                        <span className="min-w-0 truncate text-small font-medium text-foreground">{instance.displayName}</span>
+                        {closed && <span className="shrink-0 text-caption tabular-nums text-muted-foreground">{matching.length}</span>}
+                        <ChevronDown
+                          size={13}
+                          className={cn("shrink-0 text-muted-foreground transition-transform duration-150 ease-out", closed && "-rotate-90")}
+                        />
+                      </button>
+                    )}
                     {/* an agent on a chat-only engine cannot run commands
                         or touch files, and that is worth knowing here */}
                     {provider && !provider.agentic && (
@@ -431,7 +463,7 @@ export function ModelPicker({
                     <div className="px-2 pb-1.5 pl-[30px] text-caption leading-snug text-muted-foreground">
                       {instance.snapshot.reason ?? "Not available"}
                     </div>
-                  ) : (
+                  ) : closed ? null : (
                     <>
                       {!words.length && update && isActive && (
                         <div className="px-2 pb-1 pl-[30px]">

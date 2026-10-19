@@ -26,7 +26,6 @@ import { type ReplyDraft } from "./MessageActions";
 import { ComposerRing } from "./ComposerRing";
 import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";
-import { AgentAvatar } from "./Avatar";
 import { BoxButton, ComposerShell, SendStop } from "./composer/Shell";
 import { ApprovalModeMenu } from "./composer/ApprovalMode";
 import { CodexSpeedMenu } from "./CodexSpeed";
@@ -51,6 +50,7 @@ import { edgeMask } from "@/lib/composerSize";
 import { acceptDraft, boxFor, carryFocus, discardRecovery, isEmptyDraft, keepDraft, readDraft, readRecoveries, recoverDraft, restoreRecovery, showBox, takeFocus, type Draft } from "@/lib/drafts";
 import { grouped, insert as insertCommand, matches as matchCommands, segments, slashAt, withBloksCommands, type Command } from "@/lib/slashCommands";
 import { escapeTaken } from "@/lib/useEscape";
+import { ComparePicker } from "./composer/ComparePicker";
 
 /** Fade whichever edges have more text beyond them (see edgeMask). */
 function shadeEdges(el: HTMLTextAreaElement) {
@@ -814,30 +814,8 @@ export function Composer({
         <div className="flex w-full animate-pop-in flex-wrap items-center gap-1.5 text-small">
           <span className="text-muted-foreground">
             {bot.name} works on a copy. You choose what to keep.
-            {others.length > 0 && " Compare with"}
           </span>
-          {others.slice(0, 8).map((other) => {
-            const on = compareWith.includes(other.id);
-            return (
-              <button
-                key={other.id}
-                type="button"
-                aria-pressed={on}
-                onClick={() =>
-                  setCompareWith((cur) =>
-                    on ? cur.filter((id) => id !== other.id) : cur.length >= 2 ? cur : [...cur, other.id],
-                  )
-                }
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 transition-[background-color,color,border-color,transform] duration-150 active:scale-95",
-                  on ? "border-brand/40 bg-brand-soft text-brand-ink" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <AgentAvatar bot={other} size={18} />
-                {other.name}
-              </button>
-            );
-          })}
+          {others.length > 0 && <ComparePicker others={others} chosen={compareWith} onChange={setCompareWith} />}
         </div>
       )}
     </>
