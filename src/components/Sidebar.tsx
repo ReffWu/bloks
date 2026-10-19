@@ -368,6 +368,7 @@ function RowMenu({
           const wasOpen = state.selectedId === bot.id;
           dispatch({ type: "deleteBot", botId: bot.id });
           toast.success(`Archived ${bot.name}`, {
+            id: `archive-${bot.id}`,
             action: {
               label: "Undo",
               onClick: () => {

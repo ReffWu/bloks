@@ -144,12 +144,40 @@ const QUIET = /^\d+ quiet check-ins?, nothing needed you\.$/;
 const PRESET_TIMES = ["07:00", "08:00", "09:00"];
 
 /**
- * What has been dealt with from the waiting list, kept for the session.
- * The brief is a snapshot, so the server will go on listing an approval
- * after it is answered; this is what lets it stay ticked when you come
- * back from the conversation it opened.
+ * What has been dealt with from the waiting list. The brief is a
+ * snapshot, so the server will go on listing an approval after it is
+ * answered; this is what keeps it ticked when you come back from the
+ * conversation it opened, and, kept on this device, after a restart.
  */
-const handled = new Map<string, string>();
+const HANDLED_KEY = "bloks-brief-handled";
+const handled = new Map<string, string>(readHandled());
+
+function readHandled(): Array<[string, string]> {
+  try {
+    const kept = JSON.parse(localStorage.getItem(HANDLED_KEY) ?? "[]");
+    return Array.isArray(kept) ? kept.filter((e) => Array.isArray(e) && e.length === 2) : [];
+  } catch {
+    return [];
+  }
+}
+
+function keepHandled() {
+  try {
+    // only the newest few hundred: a week of mornings, not a growing log
+    localStorage.setItem(HANDLED_KEY, JSON.stringify([...handled].slice(-300)));
+  } catch {
+    /* private mode or full: ticks hold for this visit */
+  }
+}
+
+/** A card answered in its conversation counts as handled here too, even
+ * when it was answered somewhere the brief never saw. */
+function answeredLabel(card: { answered?: string; closed?: string; dismissed?: boolean } | undefined, kind: "approval" | "question") {
+  if (!card) return null;
+  if (card.answered) return kind === "approval" ? (/deny|reject|decline/i.test(card.answered) ? "Denied" : "Allowed") : "Answered";
+  if (card.closed || card.dismissed) return "Closed";
+  return null;
+}
 
 const settle = [0.23, 1, 0.32, 1] as const;
 
@@ -311,6 +339,7 @@ export function BriefPanel() {
 
   const markDone = (id: string, label: string) => {
     handled.set(id, label);
+    keepHandled();
     setDone(new Map(handled));
   };
 
@@ -346,7 +375,15 @@ export function BriefPanel() {
   const closing = brief ? brief.parts.findIndex((p, i) => i > 0 && !p.botId) : -1;
   // while it plays, everything but the part being read steps back
   const dim = (part: number) => playing !== null && playing !== part;
-  const waitingLeft = brief ? brief.waiting.filter((w) => !done.has(w.messageId)).length : 0;
+  // what this device remembers, plus any card the app has loaded and
+  // already seen answered
+  const doneFor = (w: BriefWaiting): string | undefined => {
+    const kept = done.get(w.messageId);
+    if (kept) return kept;
+    const card = state.bots.find((b) => b.id === w.botId)?.messages.find((m) => m.id === w.messageId)?.card;
+    return answeredLabel(card, w.kind) ?? undefined;
+  };
+  const waitingLeft = brief ? brief.waiting.filter((w) => !doneFor(w)).length : 0;
   const reader = playing === null || !brief ? "" : playing === 0 ? "Overview" : brief.parts[playing]?.name ?? "";
 
   return (
@@ -501,7 +538,7 @@ export function BriefPanel() {
                         key={w.messageId}
                         item={w}
                         agent={bot(w.botId)}
-                        done={done.get(w.messageId)}
+                        done={doneFor(w)}
                         busy={busy === w.messageId}
                         onAnswer={(behavior) => answer(w, behavior)}
                         onOpen={() => {

@@ -47,6 +47,7 @@ import {
   type Message,
   type OptionCardData,
 } from "./reducer";
+import { toast } from "@/components/ui/toast";
 
 export * from "./reducer";
 
@@ -342,7 +343,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             action.botId,
             action.forget ? "forget" : "archive",
             (bots) => rawDispatch({ type: "hydrate", bots }),
-            showError,
+            (error) => {
+              // the "Archived" toast went up on the click; a refusal takes
+              // it back down so it never sits beside the error saying why
+              toast.dismiss(`archive-${action.botId}`);
+              showError(error);
+            },
           );
           break;
         case "restoreBot":

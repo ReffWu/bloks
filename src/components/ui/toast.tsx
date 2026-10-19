@@ -164,10 +164,14 @@ export function Toaster() {
       </div>
       <section
         aria-label="Notifications"
-        className="pointer-events-none fixed inset-x-0 top-14 z-70 flex justify-center px-4"
+        // Below the header and off to the right on a desktop, over the
+        // transcript's empty margin, so a toast never sits on the chat's
+        // name or the composer's Send. A phone has no margin to spare, so
+        // there they keep to the top centre.
+        className="pointer-events-none fixed inset-x-0 top-14 z-70 flex justify-center px-4 md:inset-x-auto md:right-5 md:top-24 md:px-0"
       >
         <ol
-          className="relative flex w-full max-w-[420px] flex-col items-center gap-2"
+          className="relative flex w-full max-w-[420px] flex-col items-center gap-2 md:w-[360px] md:items-stretch"
           onPointerEnter={() => setHovered(true)}
           onPointerLeave={() => setHovered(false)}
           onFocus={() => setFocused(true)}
@@ -207,6 +211,8 @@ function ToastRow({ item, paused }: { item: ToastItem; paused: boolean }) {
       layout="position"
       initial={{ opacity: 0, y: -8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
+      // the same width for every toast in a stack on a desktop, so they
+      // line up as a column instead of a ragged edge
       exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.14, ease: "easeOut" } }}
       transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
       onKeyDown={(e) => {
@@ -216,7 +222,7 @@ function ToastRow({ item, paused }: { item: ToastItem; paused: boolean }) {
         }
       }}
       className={cn(
-        "pointer-events-auto flex w-fit min-w-0 max-w-full items-start gap-2.5 rounded-xl border bg-popover py-2 pl-3 pr-1.5 text-popover-foreground shadow-lg shadow-(color:--shadow-color)",
+        "pointer-events-auto flex w-fit min-w-0 max-w-full items-start gap-2.5 md:w-full rounded-xl border bg-popover py-2 pl-3 pr-1.5 text-popover-foreground shadow-lg shadow-(color:--shadow-color)",
         item.kind === "error" && "border-destructive/30",
       )}
     >

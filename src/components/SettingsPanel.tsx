@@ -1501,6 +1501,7 @@ function DangerZone({ bot }: { bot: Bot }) {
     // an archive comes back, so it says so right where it happened
     if (!forget) {
       toast.success(`Archived ${name}`, {
+        id: `archive-${bot.id}`,
         action: {
           label: "Undo",
           onClick: () => {
