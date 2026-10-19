@@ -487,6 +487,10 @@ export interface BotRecord {
    * rate limit, no credit, an outage (server/failover.ts). Unset means
    * a turn that hits one of those just fails, as it always did. */
   backupSelection?: ModelSelection | null;
+  /** How its engine is paid for. Unset is the engine's own sign-in;
+   * "credits" runs Claude Code on the person's Bloks credits instead
+   * (server/credits.ts). Engines other than Claude Code ignore it. */
+  engineAccess?: "credits" | null;
   /** Where each engine thinks this conversation got to. Opaque to us;
    * handed straight back on the next turn. */
   resumeCursors: Record<string, unknown>;

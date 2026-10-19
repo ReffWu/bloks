@@ -247,6 +247,47 @@ export function isLimitNotice(text: unknown): text is string {
   );
 }
 
+/**
+ * The environment a turn's CLI starts in. Exported so the rules below are
+ * held by a test rather than by reading a spawn.
+ *
+ * On credits (SendTurnInput.credits) the CLI is pointed at the Bloks
+ * credits service, which answers the Anthropic Messages API, with the
+ * credits token as its bearer. The API key is set empty rather than
+ * removed: Claude Code prefers a key to a token when it finds one, and an
+ * empty one is how it is told there is none, so a key in this server's
+ * own environment can never be what a credits turn spends.
+ */
+export function turnEnvironment(
+  base: NodeJS.ProcessEnv,
+  turn: Pick<SendTurnInput, "env" | "shared" | "person" | "credits">,
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {
+    ...base,
+    NPM_CONFIG_LOGLEVEL: "error",
+    // the turn's own credential, so the agent can act on the
+    // workspace as itself rather than only describe what should happen
+    ...(turn.env ?? {}),
+  };
+  if (turn.shared || turn.person) {
+    env.CLAUDE_CODE_DISABLE_CLAUDE_MDS = "1";
+    env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
+  }
+  if (turn.person) env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
+  // A subscription login gets billed as pay-as-you-go if a key leaks
+  // through, and the two CLAUDECODE markers would make the child think
+  // it is a nested session of whatever spawned this server.
+  delete env.ANTHROPIC_API_KEY;
+  delete env.CLAUDECODE;
+  delete env.CLAUDE_CODE_ENTRYPOINT;
+  if (turn.credits) {
+    env.ANTHROPIC_BASE_URL = turn.credits.baseUrl;
+    env.ANTHROPIC_AUTH_TOKEN = turn.credits.token;
+    env.ANTHROPIC_API_KEY = "";
+  }
+  return env;
+}
+
 export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
   driverKind: DRIVER_KIND,
   metadata: { displayName: "Claude", supportsMultipleInstances: true },
@@ -562,24 +603,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         if (allowList.length) argv.push("--allowedTools", allowList.join(","));
       }
 
-      const env: Record<string, string | undefined> = {
-        ...process.env,
-        NPM_CONFIG_LOGLEVEL: "error",
-        // the turn's own credential, so the agent can act on the
-        // workspace as itself rather than only describe what should happen
-        ...(turn.env ?? {}),
-      };
-      if (turn.shared || turn.person) {
-        env.CLAUDE_CODE_DISABLE_CLAUDE_MDS = "1";
-        env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
-      }
-      if (turn.person) env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
-      // A subscription login gets billed as pay-as-you-go if a key leaks
-      // through, and the two CLAUDECODE markers would make the child think
-      // it is a nested session of whatever spawned this server.
-      delete env.ANTHROPIC_API_KEY;
-      delete env.CLAUDECODE;
-      delete env.CLAUDE_CODE_ENTRYPOINT;
+      const env = turnEnvironment(process.env, turn);
 
       const child = spawn(config.cli, argv, {
         cwd: turn.cwd ?? homedir(),

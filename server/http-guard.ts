@@ -37,7 +37,7 @@ function hostnameOf(value: string): string {
  * of where the bytes came from, and it cannot be forged from off-box.
  * IPv4-mapped IPv6 ("::ffff:127.0.0.1") is how a dual-stack listener
  * reports a v4 loopback peer, so it counts too. */
-function isLoopbackPeer(req: IncomingMessage): boolean {
+export function isLoopbackPeer(req: IncomingMessage): boolean {
   const addr = req.socket?.remoteAddress;
   if (!addr) return false;
   const bare = addr.startsWith("::ffff:") ? addr.slice(7) : addr;

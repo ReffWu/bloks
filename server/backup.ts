@@ -271,6 +271,8 @@ export const SECRET_PATHS = [
   "secrets",
   "relay.agentToken",
   "relay.clientToken",
+  "credits.licence",
+  "credits.token",
   "remote.devices",
   "remote.memberDevices",
 ] as const;

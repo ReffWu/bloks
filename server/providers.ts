@@ -10,6 +10,7 @@
 // tool already holds the login and we ride along; "none" means it runs on
 // this machine and asks for nothing.
 import type { ModelCatalog } from "./contracts.ts";
+import { CREDITS_SPEC } from "./credits.ts";
 
 export type AuthKind = "oauth" | "key" | "cli" | "none";
 
@@ -263,6 +264,7 @@ export const CUSTOM_SPEC: ProviderSpec = {
 
 export function specFor(kind: string): ProviderSpec | undefined {
   if (kind === CUSTOM_SPEC.kind) return CUSTOM_SPEC;
+  if (kind === CREDITS_SPEC.kind) return CREDITS_SPEC;
   return PROVIDER_SPECS.find((s) => s.kind === kind);
 }
 

@@ -102,4 +102,13 @@ export const FEATURES: readonly string[] = [
   // GET /api/routines and /api/watchers, cleared by any PATCH, `failing`
   // on a brief and on GET /api/activity, and `failing` on its notice
   "automation-failures",
+  // Bloks credits: GET and PATCH /api/credits (the balance as the service
+  // says it, the background switch, a refusal still standing, the checkout
+  // address), engineAccess on PATCH /api/bots/:id and on each agent, and
+  // the `credits` frame on the stream
+  "credits",
+  // a hosted workspace: `hosted` on /api/health, `hosted` on /api/config
+  // with the computer choices it offers, refusals with code "hosted", and
+  // POST /api/hosted/desktop for a ticket to its virtual desktop
+  "hosted",
 ];
