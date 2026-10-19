@@ -26,7 +26,7 @@ function claudeHome(): string {
   mkdirSync(join(home, ".bloks"), { recursive: true });
   const engine = { driver: "claudeAgent", config: { cli: join(home, "fake-claude.mjs") } };
   // a second engine, for an agent switched to it while an ask is open
-  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ instances: { claude: engine, spare: engine } }));
+  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ delivery: { mode: "interrupt" }, instances: { claude: engine, spare: engine } }));
   writeFileSync(
     join(home, "fake-claude.mjs"),
     `#!${process.execPath}
@@ -115,7 +115,7 @@ setTimeout(() => process.exit(0), 50);
 function codexHome(): string {
   const home = mkdtempSync(join(tmpdir(), "bloks-ask-answers-"));
   mkdirSync(join(home, ".bloks"), { recursive: true });
-  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ instances: { codex: { driver: "codex", config: { cli: join(home, "fake-codex.mjs") } } } }));
+  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ delivery: { mode: "interrupt" }, instances: { codex: { driver: "codex", config: { cli: join(home, "fake-codex.mjs") } } } }));
   writeFileSync(
     join(home, "fake-codex.mjs"),
     `#!${process.execPath}
@@ -164,7 +164,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 function acpHome(): string {
   const home = mkdtempSync(join(tmpdir(), "bloks-ask-answers-"));
   mkdirSync(join(home, ".bloks"), { recursive: true });
-  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ instances: { acp: { driver: "pi", config: { cli: join(home, "fake-acp.cjs") } } } }));
+  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ delivery: { mode: "interrupt" }, instances: { acp: { driver: "pi", config: { cli: join(home, "fake-acp.cjs") } } } }));
   writeFileSync(
     join(home, "fake-acp.cjs"),
     `#!${process.execPath}

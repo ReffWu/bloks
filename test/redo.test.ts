@@ -292,7 +292,7 @@ describe("redo, on an engine that takes words mid-turn", () => {
     const home = mkdtempSync(join(tmpdir(), "bloks-redo-"));
     mkdirSync(join(home, ".bloks"), { recursive: true });
     mkdirSync(join(home, "desk"), { recursive: true });
-    writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ instances: { claude: { driver: "claudeAgent", config: { cli: join(home, "fake-claude.mjs") } } } }));
+    writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ delivery: { mode: "interrupt" }, instances: { claude: { driver: "claudeAgent", config: { cli: join(home, "fake-claude.mjs") } } } }));
     const cli = `#!${process.execPath}
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 const args = process.argv.slice(2);

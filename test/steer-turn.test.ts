@@ -39,7 +39,7 @@ const waitFor = async <T,>(check: () => Promise<T | null | undefined> | T | null
 function workspace(script: string) {
   const home = mkdtempSync(join(tmpdir(), "bloks-steer-"));
   mkdirSync(join(home, ".bloks"), { recursive: true });
-  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ instances: { claude: { driver: "claudeAgent", config: { cli: join(home, "fake-claude.mjs") } } } }));
+  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ delivery: { mode: "interrupt" }, instances: { claude: { driver: "claudeAgent", config: { cli: join(home, "fake-claude.mjs") } } } }));
   const cli = `#!${process.execPath}
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 const args = process.argv.slice(2);

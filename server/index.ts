@@ -11051,7 +11051,11 @@ async function deliveryFor(bot: BotRecord, lane: TaskRecord, text: string, choic
   if (choice === "answer") return { route: "now", why: "answer", sure: true };
   const mode = resolveMode(bot.delivery, cfg.delivery?.mode);
   const said = agentSaidLast(lane.id);
-  const read = deliveryPlan(mode, text, { asked: endsOnQuestion(said) }, choice);
+  // A turn stopped on a question or an approval card is waiting for the
+  // person, and words sent now are their answer as much as a reply to a
+  // question the agent wrote out.
+  const asking = [...askThreadByRequest.values()].includes(lane.id);
+  const read = deliveryPlan(mode, text, { asked: asking || endsOnQuestion(said) }, choice);
   const model = !read.sure && mode === "auto" ? deliveryModel(bot) : null;
   if (!model?.generateText) return read;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -11233,11 +11237,12 @@ async function sendUserMessage(
       if (decided && !laneInstance(bot, lane.id)?.adapter.steerTurn && mayStopForWords(bot, lane)) stopFor = decided.why;
     }
     if (decided?.route === "stop" && mayStopForWords(bot, lane)) stopFor = decided.why;
-    if (decided) {
-      const route = stopFor ? "stopped" as const : "queued" as const;
-      const why = stopFor ?? decided.why;
-      delivery = { route, why, line: deliveryLine(route, why, bot.name) };
-    }
+    // Said under the words only when it is what was decided: they stop
+    // the turn, or they wait on purpose. Words meant to go in now that the
+    // turn could not take wait like any such words always have, and keep
+    // their place ahead of anything said after them.
+    if (stopFor) delivery = { route: "stopped", why: stopFor, line: deliveryLine("stopped", stopFor, bot.name) };
+    else if (decided?.route === "queue") delivery = { route: "queued", why: decided.why, line: deliveryLine("queued", decided.why, bot.name) };
     if (stopFor) await stopForYou(bot, lane.id);
     // Another agent saying this changes what the running turn is doing
     // (GitHub 238). It goes in as the person's words do, when mayJoin
@@ -15767,7 +15772,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const busy = Boolean(lane.busy);
       const text = typeof body.text === "string" ? body.text.slice(0, MAX_MESSAGE_CHARS) : "";
       const choice = body.choice === "now" || body.choice === "wait" ? body.choice : undefined;
-      const read = deliveryPlan(mode, text, { asked: endsOnQuestion(agentSaidLast(lane.id)) }, choice);
+      const asking = [...askThreadByRequest.values()].includes(lane.id);
+      const read = deliveryPlan(mode, text, { asked: asking || endsOnQuestion(agentSaidLast(lane.id)) }, choice);
       const canSteer = Boolean(laneInstance(bot, lane.id)?.adapter.steerTurn);
       return json(res, 200, {
         busy,

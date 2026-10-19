@@ -54,7 +54,7 @@ async function setup(t: TestContext, stallMinutes?: number, extraEnv: Record<str
   let h: Harness;
   mkdirSync(join(home, ".bloks"), { recursive: true });
   writeFileSync(join(home, "catalog.json"), JSON.stringify(catalog));
-  writeFileSync(join(home, ".bloks/config.json"), JSON.stringify({ instances: {
+  writeFileSync(join(home, ".bloks/config.json"), JSON.stringify({ delivery: { mode: "interrupt" }, instances: {
     claude: { driver: "claudeAgent", config: { cli, permissionMode: "acceptEdits" } },
     other: { driver: "claudeAgent", config: { cli, permissionMode: "acceptEdits" } },
   }, ...(stallMinutes === undefined ? {} : { turns: { stallMinutes } }) }));

@@ -45,7 +45,7 @@ createInterface({input:process.stdin}).on('line',line => {
  if(f.method==='turn/steer' && !rejectSteer) { setTimeout(()=>item('after-join','Continuing with your direction'),20); if(receiptMode!=='matched') setTimeout(finish,80); }
 });
 `, { mode: 0o755 });
-  writeFileSync(join(home, ".bloks/config.json"), JSON.stringify({ instances: { codex: { driver: "codex", config: { cli, fullAuto: false } } } }));
+  writeFileSync(join(home, ".bloks/config.json"), JSON.stringify({ delivery: { mode: "interrupt" }, instances: { codex: { driver: "codex", config: { cli, fullAuto: false } } } }));
   const tracePath = join(home, "attention.jsonl");
   const h = await startHarness({ HOME: home, CODEX_HOME: join(home, ".codex"), SHELL: "/bin/sh",
     // a file URL, so the space in the checkout path never splits the option
