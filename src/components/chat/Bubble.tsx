@@ -455,6 +455,12 @@ export function Bubble({
             {queuedLine(message.queuedAt ?? message.at, message.deliveredAt)}
           </div>
         )}
+        {/* Sent while the agent worked, and taken into that turn or
+            stopping it: said once, quietly, so a person who expected it
+            to wait can see it did not (server/delivery.ts). */}
+        {message.delivery && message.delivery.route !== "queued" && !message.queued && (
+          <div className="mt-1 px-1 text-caption text-muted-foreground">{message.delivery.line}</div>
+        )}
       </div>
       {/* The same row as a reply's, under your bubble and lined up with
           its right edge. While the editor has the keyboard the row keeps

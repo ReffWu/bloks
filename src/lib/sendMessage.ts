@@ -8,6 +8,9 @@ export interface MessageSend {
   replyTo?: Message["replyTo"];
   taskId?: string;
   stopFirst?: boolean;
+  /** The person's one tap on how these words meet a running turn: in now,
+   * or after it (server/delivery.ts). Unset leaves it to the agent. */
+  delivery?: "now" | "wait";
 }
 
 /** Modifier-Enter stops before submitting, and never joins the dying turn.
@@ -45,6 +48,8 @@ async function send(api: Api, ref: MessageSend): Promise<any> {
     replyTo: ref.replyTo,
     ...lane,
     ...(stopFirst ? { steer: false } : {}),
+    // a stop-and-send has decided already; the tap is for everything else
+    ...(ref.delivery && !stopFirst ? { delivery: ref.delivery } : {}),
   });
   if (stopFirst) {
     await api(`/api/bots/${botId}/interrupt`, { method: "POST", body: JSON.stringify(lane) });

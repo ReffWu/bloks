@@ -335,7 +335,7 @@ export interface Bot {
   recallBeforeTurn?: boolean;
   /** Words sent mid-turn: read them, always go in now, or always wait.
    * Unset follows the workspace's choice. */
-  delivery?: "auto" | "interrupt" | "queue";
+  delivery?: "auto" | "interrupt" | "queue" | null;
   /** The public half of this agent's key, hex. What its signatures in
    * the record are checked against. */
   fingerprint?: string;
@@ -758,7 +758,7 @@ export type Action =
   | { type: "configStatus"; config: ConfigStatus }
   /** `lane` opens that conversation; without it, the one that pinged. */
   | { type: "select"; id: string; lane?: string }
-  | { type: "send"; botId: string; text: string; replyTo?: Message["replyTo"]; stopFirst?: boolean; onFailed?: () => void }
+  | { type: "send"; botId: string; text: string; replyTo?: Message["replyTo"]; stopFirst?: boolean; delivery?: "now" | "wait"; onFailed?: () => void }
   | { type: "answerCard"; botId: string; messageId: string; answer: string; roomId?: string }
   | { type: "dismissCard"; botId: string; messageId: string; roomId?: string }
   /** An answer that did not go: the card can be answered again. */
