@@ -116,8 +116,8 @@ function spentTokens(spend: Spend): string {
   const used = spend.input + spend.output;
   const unmeasured = spend.unmeasured ?? 0;
   if (!unmeasured) return `${tokens(used)} tokens`;
-  const turns = `${unmeasured} ${unmeasured === 1 ? "turn" : "turns"}`;
-  return used > 0 ? `${tokens(used)} tokens, not reported for ${turns}` : `tokens not reported for ${turns}`;
+  const replies = `${unmeasured} ${unmeasured === 1 ? "reply" : "replies"}`;
+  return used > 0 ? `${tokens(used)} tokens, ${replies} not counted` : "Tokens not reported";
 }
 
 function money(n: number): string {
@@ -201,8 +201,8 @@ export function ActivityPanel() {
           <div className="text-lead font-semibold text-foreground">Activity</div>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             {view === "map"
-              ? "The whole team at a glance. Click anyone to go there."
-              : "Everything your agents are doing right now, and what today has cost."}
+              ? "Your whole team. Click anyone to open them."
+              : "What's running, and today's cost."}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -236,7 +236,7 @@ export function ActivityPanel() {
       {view === "list" && activity && (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-muted/50 px-3 py-2 text-body text-muted-foreground">
           <span>
-            <span className="text-foreground">{activity.today.turns}</span> turns today
+            <span className="text-foreground">{activity.today.turns}</span> replies today
           </span>
           {activity.today.unmeasured ? (
             <span>{spentTokens(activity.today)}</span>
@@ -250,10 +250,10 @@ export function ActivityPanel() {
               and a guess. */}
           {activity.costKnown ? (
             <span>
-              <span className="text-foreground">{money(activity.today.cost)}</span> where the provider says
+              <span className="text-foreground">{money(activity.today.cost)}</span> spent where known
             </span>
           ) : (
-            <span>no provider in range reports a price</span>
+            <span>Cost unavailable</span>
           )}
         </div>
       )}
@@ -267,11 +267,7 @@ export function ActivityPanel() {
       <div className={cn("mt-3 min-h-0 flex-1 overflow-y-auto", view === "map" && "hidden")}>
         {quiet && (
           <div className="rounded-2xl border border-dashed px-4 py-10 text-center">
-            <div className="text-ui text-foreground">Nothing is running.</div>
-            <div className="mx-auto mt-1 max-w-[380px] text-body leading-relaxed text-muted-foreground">
-              Routines, jobs and workflows show up here while they work, and anything that stops to
-              ask you appears at the top.
-            </div>
+            <div className="text-ui text-foreground">Nothing running right now.</div>
           </div>
         )}
 
@@ -329,11 +325,8 @@ export function ActivityPanel() {
                   <div className="min-w-0 flex-1">
                     <div className="text-body text-foreground">{row.botName} is waiting for you</div>
                     <div className="mt-0.5 text-small text-warning">
-                      You took over {elapsed(row.since, now)} ago. It will not start anything until
-                      you hand it back
-                      {row.turnedAway
-                        ? `, and ${row.turnedAway} ${row.turnedAway === 1 ? "thing has" : "things have"} been turned away since.`
-                        : "."}
+                      You took over {elapsed(row.since, now)} ago. Paused until you hand it back.
+                      {row.turnedAway ? ` ${row.turnedAway} turned away since.` : ""}
                     </div>
                   </div>
                 }
@@ -386,7 +379,7 @@ export function ActivityPanel() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      title="Stop this turn"
+                      title="Stop"
                       disabled={busy === row.threadId}
                       onClick={() => stop(row)}
                     >
@@ -410,7 +403,7 @@ export function ActivityPanel() {
                   <div className="min-w-0 flex-1">
                     <div className="text-body text-foreground">{row.botName}</div>
                     <div className="mt-0.5 text-small text-muted-foreground">
-                      {row.today.turns} {row.today.turns === 1 ? "turn" : "turns"} ·{" "}
+                      {row.today.turns} {row.today.turns === 1 ? "reply" : "replies"} ·{" "}
                       {spentTokens(row.today)}
                       {activity.costKnown && row.today.cost > 0 ? ` · ${money(row.today.cost)}` : ""}
                     </div>

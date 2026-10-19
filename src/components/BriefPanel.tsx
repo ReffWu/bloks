@@ -102,7 +102,7 @@ export function BriefPanel() {
   // plays, so the round has no gaps.
   const fetchPart = (id: string, index: number): Promise<string> =>
     fetch(`/api/briefs/${id}/parts/${index}/audio`).then(async (res) => {
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "that part could not be played");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Couldn't play this part");
       return URL.createObjectURL(await res.blob());
     });
 
@@ -180,7 +180,7 @@ export function BriefPanel() {
               {playing === null ? "Play" : "Stop"}
             </Button>
           )}
-          <Button variant="ghost" size="sm" disabled={making} onClick={make} title="Make a brief of everything since the last one">
+          <Button variant="ghost" size="sm" disabled={making} onClick={make} title="Make a brief now">
             {making ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             Now
           </Button>
@@ -191,11 +191,11 @@ export function BriefPanel() {
         {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>}
         {!data ? (
           <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" /> Reading
+            <Loader2 size={14} className="animate-spin" /> Loading
           </div>
         ) : !brief ? (
           <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-body leading-relaxed text-muted-foreground">
-            Your first brief arrives at {data.settings.time}. Press <strong>Now</strong> to make one of the last day.
+            First brief at {data.settings.time}. Press <strong>Now</strong> for one today.
           </div>
         ) : (
           <div className="flex flex-col gap-6">
@@ -281,7 +281,7 @@ export function BriefPanel() {
                 ))}
                 {brief.spend.turns > 0 && (
                   <span className="rounded-full bg-muted px-2.5 py-1">
-                    {plural(brief.spend.turns, "turn")}
+                    {plural(brief.spend.turns, "reply", "replies")}
                     {brief.spend.costKnown && brief.spend.cost > 0 ? `, about $${brief.spend.cost.toFixed(2)}` : ""}
                   </span>
                 )}

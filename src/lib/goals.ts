@@ -15,15 +15,15 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 export function goalState(goal: LaneGoal): string {
   switch (goal.status) {
     case "active":
-      return goal.judging ? `checking turn ${goal.turns} of ${goal.budget}` : `turn ${goal.turns} of ${goal.budget}`;
+      return goal.judging ? `checking step ${goal.turns} of ${goal.budget}` : `step ${goal.turns} of ${goal.budget}`;
     case "paused":
-      return `paused at turn ${goal.turns} of ${goal.budget}`;
+      return `paused at step ${goal.turns} of ${goal.budget}`;
     case "done":
-      return `done in ${plural(goal.turns, "turn")}`;
+      return `done in ${plural(goal.turns, "step")}`;
     case "blocked":
       return goal.lastReason ? `blocked: ${goal.lastReason}` : "blocked, waiting on you";
     case "out":
-      return `out of turns (${goal.turns} of ${goal.budget})`;
+      return `out of steps (${goal.turns} of ${goal.budget})`;
   }
 }
 
@@ -40,7 +40,7 @@ export function goalStateShort(goal: LaneGoal): string {
     case "blocked":
       return "needs you";
     case "out":
-      return "out of turns";
+      return "out of steps";
   }
 }
 
@@ -52,7 +52,7 @@ export function goalAction(goal: LaneGoal): { label: string; body: { status: "pa
   if (goal.status === "active") return { label: "Pause", body: { status: "paused" } };
   if (goal.status === "paused" || goal.status === "blocked") return { label: "Resume", body: { status: "active" } };
   if (goal.status === "out" && goal.budget < MAX_GOAL_TURNS) {
-    return { label: "More turns", body: { status: "active", budget: Math.min(MAX_GOAL_TURNS, goal.budget + MORE_GOAL_TURNS) } };
+    return { label: "More steps", body: { status: "active", budget: Math.min(MAX_GOAL_TURNS, goal.budget + MORE_GOAL_TURNS) } };
   }
   return null;
 }

@@ -39,7 +39,7 @@ function OverviewPage() {
             <p className="text-body text-muted-foreground">{today}</p>
             <h1 className="mt-1 text-balance text-display font-semibold text-foreground">{greeting()}</h1>
             <p className="mt-1.5 text-pretty text-ui text-muted-foreground">
-              {now.length ? `${now.join(", ")}.` : "Nothing is running and nothing is waiting on you."}
+              {now.length ? `${now.join(", ")}.` : "Nothing running or waiting."}
             </p>
           </header>
           <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">

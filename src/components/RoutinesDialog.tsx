@@ -155,8 +155,7 @@ export function RoutinesDialog({
               <div className="py-10 text-center">
                 <div className="text-ui font-medium text-foreground">Nothing scheduled yet</div>
                 <div className="mx-auto mt-1 max-w-[300px] text-body text-muted-foreground">
-                  A routine is a task an agent runs on a schedule: a morning digest, a weekly
-                  report, an inbox sweep.
+                  Tasks your agents run on a schedule.
                 </div>
               </div>
             ) : (
@@ -216,7 +215,7 @@ export function RoutinesDialog({
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="Run it now, without waiting for the schedule"
+                          title="Run once now"
                           onClick={() => write(api(`/api/routines/${routine.id}/run`, { method: "POST" }))}
                         >
                           <Play size={11} />
@@ -242,8 +241,7 @@ export function RoutinesDialog({
               New routine
             </Button>
             <div className="mt-2 text-caption leading-relaxed text-muted-foreground/70">
-              Routines run while Bloks is open. If {thisComputer()} is asleep at the scheduled time the
-              run is skipped rather than piling up.
+              Routines run while Bloks is open. Runs missed while {thisComputer()} sleeps are skipped.
             </div>
           </div>
         )}
@@ -531,8 +529,7 @@ function CreateForm({
             <div className="mt-2 text-small text-destructive">{checkInWrong}</div>
           ) : (
             <div className="mt-2 text-small leading-relaxed text-muted-foreground">
-              Check-ins are quiet: when nothing needs you, {target?.name ?? "the agent"} answers QUIET and
-              you are not told. The chat folds them into one line.
+              Check-ins stay silent unless something needs you.
             </div>
           )}
         </>
@@ -575,9 +572,6 @@ function CreateForm({
               <Switch aria-label="Only speak up when something needs you" checked={quiet} onCheckedChange={setQuiet} className="mt-0.5" />
               <span className="min-w-0">
                 <span className="block text-body text-foreground">Only speak up when something needs me</span>
-                <span className="block text-small leading-relaxed text-muted-foreground">
-                  {target?.name ?? "The agent"} may answer QUIET, and a quiet run is not announced.
-                </span>
               </span>
             </label>
           )}
@@ -618,7 +612,7 @@ function CreateForm({
           <label className="block">
             <div
               className="mb-1.5 text-body font-medium text-muted-foreground"
-              title="A routine runs in the agent's first conversation, where you talk to it, unless you name another. Two routines in different conversations run side by side, each with its own context."
+              title="Leave blank for the main chat. Routines in different chats run side by side."
             >
               Conversation
             </div>

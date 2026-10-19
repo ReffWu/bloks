@@ -30,11 +30,11 @@ export function everyMinutes(count: string, unit: "min" | "hour"): number | null
 /** Why the editor cannot file this check-in yet, in a few words under
  * the field, or null when it can. */
 export function checkInProblem(every: number | null, hours: { from: string; to: string } | null): string | null {
-  if (every === null || every < MIN_EVERY || every > MAX_EVERY) return "Every 15 minutes up to every 24 hours.";
+  if (every === null || every < MIN_EVERY || every > MAX_EVERY) return "Pick between 15 minutes and 24 hours.";
   if (hours) {
     const from = minutesOf(hours.from);
     const to = minutesOf(hours.to);
-    if (from === null || to === null || from >= to) return "The hours end after they start, on the same day.";
+    if (from === null || to === null || from >= to) return "End time must be after start time.";
   }
   return null;
 }

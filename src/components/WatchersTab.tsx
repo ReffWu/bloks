@@ -93,7 +93,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
   };
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-lead font-semibold text-foreground">A new watcher</div>
+      <div className="text-lead font-semibold text-foreground">New watcher</div>
       <div className="flex gap-1 rounded-xl bg-muted p-1">
         {(Object.keys(KIND) as Kind[]).map((k) => {
           const Icon = KIND[k].icon;
@@ -154,10 +154,8 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
         </Button>
       </div>
       <p className="text-small leading-relaxed text-muted-foreground">
-        The first look only notes how things are. From then on, a change gives the agent a turn in a lane of its own. Pages,
-        feeds and checks are looked at every 30 minutes; folders within seconds. A check is a command run in the agent's
-        folder without waking it: exit 0 means act on what it printed, exit 1 means nothing to do. You can also tell an
-        agent in a chat to keep an eye on something, and it files the watcher itself.
+        Pages, feeds and checks are looked at every 30 minutes, folders within seconds. A check is a command: exit 0
+        means act on its output, exit 1 means nothing to do.
       </p>
     </div>
   );
@@ -181,7 +179,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
     setChecking(true);
     setNote(null);
     api(`/api/watchers/${w.id}/check`, { method: "POST" })
-      .then((r) => setNote(r.note || "looked"))
+      .then((r) => setNote(r.note || "Checked"))
       .catch((e: Error) => setNote(e.message))
       .finally(() => setChecking(false));
   };
@@ -196,12 +194,11 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           </div>
           <code className="block break-all rounded-lg bg-background px-2.5 py-1.5 font-mono text-small">{w.target}</code>
           <div className="text-muted-foreground">
-            Every {w.every < 60 ? `${w.every} minutes` : `${Math.round(w.every / 60)} hours`}, in its working folder, without asking each time.
-            It does not run until you approve it.
+            Runs every {w.every < 60 ? `${w.every} minutes` : `${Math.round(w.every / 60)} hours`} without asking, once you approve it.
           </div>
           <div>
             <Button size="sm" onClick={() => patch({ approved: true })}>
-              Approve this command
+              Approve
             </Button>
           </div>
         </div>
@@ -215,7 +212,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           {w.kind === "check" && !waiting && (
             <div className="mt-1 flex items-center gap-1.5 text-small text-muted-foreground">
               <ShieldCheck size={12} />
-              {w.approvedBy === "person" ? "You approved this command." : `Runs because ${bot?.name ?? "its agent"} may run commands without asking.`}
+              {w.approvedBy === "person" ? "You approved this command." : `${bot?.name ?? "Its agent"} can run commands without asking.`}
               {w.approvedBy === "person" && (
                 <button className="underline underline-offset-2" onClick={() => patch({ approved: false })}>
                   Withdraw
@@ -236,7 +233,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
         />
       </label>
       <label className="flex flex-col gap-1.5 text-body text-muted-foreground">
-        Which conversation it speaks in
+        Which chat it replies in
         <Input
           value={thread}
           onChange={(e) => setThread(e.target.value)}
@@ -245,7 +242,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           className="text-body text-foreground"
         />
         <span className="text-small">
-          Its first conversation, where you talk to it, unless you name another; one that does not exist is made, and a busy one queues the turn.
+          Leave blank for the main chat. A new name starts a new one.
         </span>
       </label>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-body text-muted-foreground">
@@ -269,19 +266,19 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           <Switch checked={w.mode === "rehearse"} onCheckedChange={(on) => patch({ mode: on ? "rehearse" : "act" })} aria-label="Rehearse first" />
           <FlaskConical size={13} /> Try it on a copy first
         </label>
-        <span>Last look {ago(w.lastCheck)}</span>
+        <span>Last checked {ago(w.lastCheck)}</span>
       </div>
       {w.enabled && w.suspended === "archived" && (
         <div className="rounded-lg bg-muted px-3 py-2 text-body text-muted-foreground">
-          Paused while {bot?.name ?? "its agent"} is archived. It looks again once {bot?.name ?? "the agent"} is restored.
+          Paused while {bot?.name ?? "its agent"} is archived. Resumes when restored.
         </div>
       )}
       {w.lastError && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{w.lastError}</div>}
       <div>
-        <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">Fired</div>
+        <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">Triggered</div>
         {w.fires.length === 0 ? (
           <div className="text-body text-muted-foreground">
-            {w.kind === "check" ? "Not yet. It fires when the check finds something new." : "Not yet. It fires the first time something changes."}
+            Not yet.
           </div>
         ) : (
           <ul className="flex flex-col gap-1">
@@ -296,7 +293,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" disabled={checking} onClick={check}>
-          {checking ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} Look now
+          {checking ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} Check now
         </Button>
         {laneId && bot && (
           <Button
@@ -306,7 +303,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
               dispatch({ type: "select", id: bot.id, lane: laneId });
             }}
           >
-            Open the conversation
+            Open chat
           </Button>
         )}
         <Button
@@ -364,7 +361,7 @@ export function WatchersTab() {
                     <span className="truncate">{w.name}</span>
                   </span>
                   <span className={cn("block truncate text-caption", waiting || w.lastError ? "text-warning" : w.enabled ? "text-muted-foreground" : "text-muted-foreground/70")}>
-                    {!w.enabled ? "Paused" : w.suspended === "archived" ? "Paused while archived" : waiting ? "Needs your approval" : w.lastError ? "Needs a look" : w.fires[0] ? `Fired ${ago(w.fires[0].at)}` : `Looked ${ago(w.lastCheck)}`}
+                    {!w.enabled ? "Paused" : w.suspended === "archived" ? "Paused while archived" : waiting ? "Needs your approval" : w.lastError ? "Needs a look" : w.fires[0] ? `Triggered ${ago(w.fires[0].at)}` : `Checked ${ago(w.lastCheck)}`}
                   </span>
                 </span>
               </button>

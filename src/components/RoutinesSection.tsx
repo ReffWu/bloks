@@ -132,7 +132,7 @@ export function RoutinesSection({
             Routines
           </div>
           <div className="mt-0.5 text-body text-muted-foreground">
-            Recurring tasks {targetName} runs on a schedule.
+            What {targetName} does on a schedule.
           </div>
         </>
       )}
@@ -180,7 +180,7 @@ export function RoutinesSection({
               <Button
                 variant="ghost"
                 size="sm"
-                title="Run it now, without waiting for the schedule"
+                title="Run once now"
                 onClick={() => write(api(`/api/routines/${routine.id}/run`, { method: "POST" }))}
               >
                 <Play size={11} />
@@ -207,7 +207,7 @@ export function RoutinesSection({
 
       <Button variant="secondary" className="mt-3 w-full" onClick={() => setAdding(true)}>
         <Plus size={13} />
-        Create Routine
+        New routine
       </Button>
       {adding && (
         <RoutinesDialog
@@ -221,8 +221,7 @@ export function RoutinesSection({
       )}
 
       <div className="mt-2 text-caption leading-relaxed text-muted-foreground/70">
-        Routines run while Bloks is open. If {thisComputer()} is asleep at the scheduled time the run is
-        skipped rather than piling up.
+        Routines run while Bloks is open. Runs missed while {thisComputer()} sleeps are skipped.
       </div>
     </div>
   );

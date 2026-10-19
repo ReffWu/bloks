@@ -106,8 +106,8 @@ export function EnginePauses() {
         setEveryone(true);
         // what happens to work already under way is the one thing a
         // pause does not decide on its own, so it is said
-        if (body.stopped) setSaid(`Paused. ${body.stopped === 1 ? "The turn" : `${body.stopped} turns`} running on it ${body.stopped === 1 ? "was" : "were"} stopped.`);
-        else if (body.running) setSaid(`Paused. ${body.running === 1 ? "A turn" : `${body.running} turns`} already running on it ${body.running === 1 ? "finishes" : "finish"} first.`);
+        if (body.stopped) setSaid(`Paused. Stopped ${body.stopped} running ${body.stopped === 1 ? "task" : "tasks"}.`);
+        else if (body.running) setSaid(`Paused. ${body.running} running ${body.running === 1 ? "task finishes" : "tasks finish"} first.`);
         load();
       })
       .catch((e: Error) => setError(e.message))
@@ -131,8 +131,7 @@ export function EnginePauses() {
           <div>
             <div className="text-ui font-semibold text-foreground">Pauses</div>
             <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-              Hold an engine or a model for a while. An agent on it uses its backup if it has one that may go;
-              otherwise its work waits and goes on its own when the pause ends.
+              Pause an engine or model for a while. Agents use their backup, or wait until it ends.
             </div>
           </div>
           {!adding && (
@@ -155,7 +154,7 @@ export function EnginePauses() {
             <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
               {p.agents === "all" ? "Every agent" : (p.agentNames ?? p.agents).join(", ")}, until {stamp(p.until)}
               {p.byName ? ` · ${p.byName} paused itself` : ""}
-              {p.running ? ` · ${p.running} running ${p.running === 1 ? "turn finishes" : "turns finish"} first` : ""}
+              {p.running ? ` · ${p.running} running ${p.running === 1 ? "task finishes" : "tasks finish"} first` : ""}
             </div>
             {p.note && <div className="mt-0.5 text-small text-muted-foreground">{p.note}</div>}
           </div>
@@ -242,12 +241,12 @@ export function EnginePauses() {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             maxLength={200}
-            placeholder="Why (optional), e.g. saving the plan for Friday"
+            placeholder="Why (optional)"
             className="h-8 text-body"
           />
           <label className="flex items-center justify-between gap-3 text-muted-foreground">
-            <span>Also stop what is running on it now</span>
-            <Switch checked={stopRunning} onCheckedChange={setStopRunning} aria-label="Also stop what is running on it now" />
+            <span>Also stop what's running now</span>
+            <Switch checked={stopRunning} onCheckedChange={setStopRunning} aria-label="Also stop what's running now" />
           </label>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setAdding(false)}>

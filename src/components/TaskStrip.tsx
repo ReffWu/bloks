@@ -198,7 +198,7 @@ export function TaskStrip({
         const parted = !active && index !== activeIndex - 1 && index !== tasks.length - 1;
         const total = (task.usage?.input ?? 0) + (task.usage?.output ?? 0);
         const usage = formatTokens(total)
-          ? ` · ${task.usage!.input.toLocaleString()} in, ${task.usage!.output.toLocaleString()} out, ${plural(task.usage!.turns, "turn")}`
+          ? ` · ${task.usage!.input.toLocaleString()} in, ${task.usage!.output.toLocaleString()} out, ${plural(task.usage!.turns, "reply", "replies")}`
           : "";
         if (renaming === task.id) {
           return (
@@ -275,7 +275,7 @@ export function TaskStrip({
         <button
           onClick={onNew}
           aria-label="New conversation"
-          title="New conversation: a separate thread, running in parallel"
+          title="New conversation, runs alongside this one"
           className="mb-1 ml-1 flex size-7 shrink-0 items-center justify-center self-center rounded-full text-muted-foreground transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.94]"
         >
           <Plus size={15} />

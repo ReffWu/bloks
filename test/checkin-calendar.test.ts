@@ -20,8 +20,8 @@ test("the editor reads an interval in minutes or hours, within the server's boun
   assert.match(checkInProblem(10, null) ?? "", /15 minutes/);
   assert.match(checkInProblem(25 * 60, null) ?? "", /24 hours/);
   assert.match(checkInProblem(null, null) ?? "", /15 minutes/);
-  assert.match(checkInProblem(30, { from: "18:00", to: "09:00" }) ?? "", /end after they start/);
-  assert.match(checkInProblem(30, { from: "09:00", to: "09:00" }) ?? "", /end after they start/);
+  assert.match(checkInProblem(30, { from: "18:00", to: "09:00" }) ?? "", /End time must be after start time\./);
+  assert.match(checkInProblem(30, { from: "09:00", to: "09:00" }) ?? "", /End time must be after start time\./);
 });
 
 test("a check-in is one band over its hours, with a tick for each run the column draws", () => {

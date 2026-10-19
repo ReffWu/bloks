@@ -74,7 +74,7 @@ export function RehearsalsPanel() {
             Rehearsals
           </div>
           <div className="mt-0.5 text-body text-muted-foreground">
-            Work done on a copy of the folder, waiting for you. Apply one attempt and the others are discarded.
+            Work done on a copy, ready to review. Applying one discards the rest.
           </div>
         </div>
       </div>
@@ -83,12 +83,11 @@ export function RehearsalsPanel() {
         {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>}
         {attempts === null ? (
           <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" /> Reading rehearsals
+            <Loader2 size={14} className="animate-spin" /> Loading
           </div>
         ) : groups.length === 0 ? (
           <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-body leading-relaxed text-muted-foreground">
-            Nothing rehearsed yet. In any chat, press the flask beside the microphone, describe the task, and the agent
-            does it on a copy of its folder. Pick other agents there too, and they each try it, side by side, here.
+            Nothing rehearsed yet. Press the flask in any chat to try a task on a copy first.
           </div>
         ) : (
           <div className="flex flex-col gap-6">
@@ -144,7 +143,7 @@ export function RehearsalsPanel() {
                             className="mt-auto flex items-center gap-1.5 self-start rounded-lg px-1.5 py-1 text-small text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                           >
                             <MessageSquare size={13} />
-                            Open the conversation
+                            Open chat
                           </button>
                         </div>
                       );

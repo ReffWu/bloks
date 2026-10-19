@@ -65,7 +65,7 @@ export function EngineSuggestionCard({ s, bot, compact }: { s: EngineSuggestion;
       <div className="min-w-0 flex-1 text-body leading-relaxed text-foreground">
         {!compact && bot && <span className="font-medium">{bot.name}: </span>}
         {s.why}
-        {s.saves ? ` About $${s.saves.toFixed(3)} less a turn.` : ""}
+        {s.saves ? ` About $${s.saves.toFixed(3)} less per reply.` : ""}
       </div>
       <Button
         size="sm"
@@ -92,8 +92,7 @@ export function EngineReport() {
           <Gauge size={14} className="text-muted-foreground" /> How your engines are doing
         </div>
         <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-          Learned from what you do with the work: a change you undo, a conversation you rewind past or a rehearsal you
-          discard counts against it. Worked out on this machine only.
+          Based on what you keep. Undone, rewound or discarded work counts against an engine. Stays on this computer.
         </div>
       </div>
       {report.suggestions.length > 0 && (
@@ -105,7 +104,7 @@ export function EngineReport() {
       )}
       {judged.length === 0 ? (
         <div className="border-t px-4 py-4 text-body text-muted-foreground">
-          Nothing to go on yet. It fills in as your agents work.
+          Fills in as your agents work.
         </div>
       ) : (
         <div className="overflow-x-auto border-t">
@@ -113,9 +112,9 @@ export function EngineReport() {
             <thead className="text-caption uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-2 font-medium">Engine</th>
-                <th className="px-2 py-2 text-right font-medium">Turns</th>
+                <th className="px-2 py-2 text-right font-medium">Replies</th>
                 <th className="px-2 py-2 text-right font-medium">Kept</th>
-                <th className="px-2 py-2 text-right font-medium">Tokens a turn</th>
+                <th className="px-2 py-2 text-right font-medium">Tokens each</th>
                 <th className="px-4 py-2 text-right font-medium">Cost</th>
               </tr>
             </thead>
@@ -128,7 +127,7 @@ export function EngineReport() {
                     className="px-2 py-2 text-right tabular-nums text-foreground"
                     title={`Undone ${e.undone}, rewound ${e.rewound}, discarded ${e.discarded}, failed ${e.failed}, ran out ${e.out}`}
                   >
-                    {e.keptRate === null ? "–".replace("–", "-") : `${e.keptRate}%`}
+                    {e.keptRate === null ? "-" : `${e.keptRate}%`}
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{tokens(e.tokensPerTurn)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">

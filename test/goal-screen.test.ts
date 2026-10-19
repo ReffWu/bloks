@@ -50,24 +50,24 @@ const goal = (over: Partial<LaneGoal>): LaneGoal => ({
   ...over,
 });
 
-test("the chip says which turn of how many, or how the goal ended and why", () => {
-  assert.equal(goalState(goal({})), "turn 3 of 20");
-  assert.equal(goalState(goal({ judging: true })), "checking turn 3 of 20");
-  assert.equal(goalState(goal({ status: "paused" })), "paused at turn 3 of 20");
-  assert.equal(goalState(goal({ status: "done", turns: 1 })), "done in 1 turn");
+test("the chip says which step of how many, or how the goal ended and why", () => {
+  assert.equal(goalState(goal({})), "step 3 of 20");
+  assert.equal(goalState(goal({ judging: true })), "checking step 3 of 20");
+  assert.equal(goalState(goal({ status: "paused" })), "paused at step 3 of 20");
+  assert.equal(goalState(goal({ status: "done", turns: 1 })), "done in 1 step");
   assert.equal(goalState(goal({ status: "blocked", lastReason: "needs the staging password" })), "blocked: needs the staging password");
-  assert.equal(goalState(goal({ status: "out", turns: 20 })), "out of turns (20 of 20)");
+  assert.equal(goalState(goal({ status: "out", turns: 20 })), "out of steps (20 of 20)");
   // and short enough for a phone, where the goal itself needs the room
   assert.equal(goalStateShort(goal({})), "3 of 20");
   assert.equal(goalStateShort(goal({ status: "paused" })), "paused, 3 of 20");
   assert.equal(goalStateShort(goal({ status: "blocked", lastReason: "a long reason that would not fit" })), "needs you");
 });
 
-test("the chip's one press: pause what goes, resume what stopped short, more turns for what ran out", () => {
+test("the chip's one press: pause what goes, resume what stopped short, more steps for what ran out", () => {
   assert.deepEqual(goalAction(goal({})), { label: "Pause", body: { status: "paused" } });
   assert.deepEqual(goalAction(goal({ status: "paused" })), { label: "Resume", body: { status: "active" } });
   assert.deepEqual(goalAction(goal({ status: "blocked" })), { label: "Resume", body: { status: "active" } });
-  assert.deepEqual(goalAction(goal({ status: "out", turns: 20 })), { label: "More turns", body: { status: "active", budget: 30 } });
+  assert.deepEqual(goalAction(goal({ status: "out", turns: 20 })), { label: "More steps", body: { status: "active", budget: 30 } });
   // never past the server's cap, and nothing to resume once done
   assert.deepEqual(goalAction(goal({ status: "out", budget: 95, turns: 95 }))?.body, { status: "active", budget: 100 });
   assert.equal(goalAction(goal({ status: "out", budget: 100, turns: 100 })), null);

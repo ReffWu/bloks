@@ -88,8 +88,8 @@ export function GoalChip({ bot }: { bot: Bot }) {
             onClick={() => change({ method: "DELETE" })}
             disabled={busy}
             className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-            title="Clear the goal"
-            aria-label="Clear the goal"
+            title="Clear goal"
+            aria-label="Clear goal"
           >
             <X size={13} />
           </button>
@@ -148,8 +148,8 @@ export function GoalDialog() {
       <DialogContent className="w-[calc(100vw-32px)] max-w-[460px]">
         <DialogTitle>Set a goal</DialogTitle>
         <DialogDescription>
-          {bot.name} keeps working, turn after turn, until it is done, it needs you, or it runs out of turns.
-          {going && " This replaces the goal it has now."}
+          {bot.name} keeps going until it's done, needs you, or runs out of steps.
+          {going && " This replaces the current goal."}
         </DialogDescription>
         <form
           className="mt-4 flex flex-col gap-3.5"
@@ -190,17 +190,16 @@ export function GoalDialog() {
               className="font-mono text-body"
             />
             <span className="text-small leading-relaxed text-muted-foreground">
-              Runs in this conversation&rsquo;s folder after each turn, for up to five minutes. The goal only counts as
-              done when it exits 0.
+              Runs after each step, for up to 5 minutes. Done only when it exits 0.
             </span>
           </label>
           <label className="flex items-center justify-between gap-3">
-            <span className="text-body font-medium text-foreground">Most turns it may take</span>
+            <span className="text-body font-medium text-foreground">Step limit</span>
             <Input
               value={turns}
               onChange={(e) => setTurns(e.target.value.replace(/\D/g, "").slice(0, 3))}
               inputMode="numeric"
-              aria-label="Most turns it may take"
+              aria-label="Step limit"
               className="w-20 text-right tabular-nums"
             />
           </label>

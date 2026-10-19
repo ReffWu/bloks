@@ -43,7 +43,7 @@ export function editQueued(threadId: string, messageId: string) {
 function takeBack(threadId: string, messageId: string) {
   // No undo exists for this, so the question is asked once, as the
   // bubble's own Delete asks it.
-  if (!window.confirm("Take this message back? The words are removed for good.")) return;
+  if (!window.confirm("Take this message back? This can't be undone.")) return;
   void api(`/api/threads/${threadId}/messages/${messageId}`, { method: "DELETE" }).catch(() => {});
 }
 
@@ -111,15 +111,15 @@ function WaitingRow({
 
   const queuedAt = message.queuedAt ?? message.at;
   const status = message.unsent
-    ? "Not sent: it was still waiting when Bloks restarted, too long ago to send on its own."
+    ? "Not sent. Bloks restarted before it could go."
     : editing !== null
       ? "Queued, waits until you save or cancel"
       : message.waitsFor === "restart"
-        ? `Queued at ${stamp(queuedAt)}, sends when Bloks is back from restarting`
+        ? `Queued at ${stamp(queuedAt)}, sends after Bloks restarts`
         : message.waitsFor === "pause"
-          ? `Queued at ${stamp(queuedAt)}, sends when its engine's pause ends${message.waitsUntil ? ` at ${stamp(message.waitsUntil)}` : ""}`
+          ? `Queued at ${stamp(queuedAt)}, sends when the pause ends${message.waitsUntil ? ` at ${stamp(message.waitsUntil)}` : ""}`
         : working
-          ? `Queued at ${stamp(queuedAt)}, sends when this turn finishes`
+          ? `Queued at ${stamp(queuedAt)}, sends when this reply finishes`
           : `Queued at ${stamp(queuedAt)}`;
 
   return (

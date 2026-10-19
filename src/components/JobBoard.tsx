@@ -113,8 +113,7 @@ export function JobBoard() {
           Post a job
         </div>
         <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-          Say what needs doing, not who should do it. Whoever looks most suited
-          is asked first, and can hand it back.
+          Say what needs doing. The best-suited agent is asked first.
         </div>
         <Input
           value={title}
@@ -126,7 +125,7 @@ export function JobBoard() {
         <Textarea
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
-          placeholder="Anything else worth knowing. Optional."
+          placeholder="Details (optional)"
           rows={2}
           className="mt-2 resize-none"
         />
@@ -150,12 +149,12 @@ export function JobBoard() {
         {jobs === null && (
           <div className="flex items-center gap-2 rounded-2xl border bg-card px-4 py-6 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
-            Reading the board
+            Loading
           </div>
         )}
         {jobs?.length === 0 && (
           <div className="rounded-2xl border border-dashed px-4 py-8 text-center text-body text-muted-foreground">
-            Nothing on the board. Post something and see who takes it.
+            No jobs yet.
           </div>
         )}
         {jobs?.map((job) => {
@@ -202,7 +201,7 @@ export function JobBoard() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      title={job.offers.length ? "Ask around again" : "Offer it"}
+                      title={job.offers.length ? "Offer again" : "Offer it"}
                       onClick={() =>
                         act(`/api/jobs/${job.id}/offer`, {
                           method: "POST",
@@ -216,7 +215,7 @@ export function JobBoard() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    title={job.state === "claimed" ? "Cancel it" : "Take it off the board"}
+                    title={job.state === "claimed" ? "Cancel" : "Remove"}
                     onClick={() => act(`/api/jobs/${job.id}`, { method: "DELETE" })}
                   >
                     <Trash2 size={13} />
@@ -243,7 +242,7 @@ export function JobBoard() {
 
               {job.state === "open" && job.offers.length > 0 && (
                 <div className="mt-2 rounded-lg bg-muted/50 px-2.5 py-1.5 text-small text-muted-foreground">
-                  Everyone has been asked. Ask around again to start another round.
+                  Everyone has been asked. Offer it again to retry.
                 </div>
               )}
 

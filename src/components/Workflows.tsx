@@ -177,8 +177,7 @@ export function Workflows() {
     <div className="mx-auto flex max-w-[860px] flex-col gap-3 px-1 py-4">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
         <p className="max-w-[560px] text-body leading-relaxed text-muted-foreground">
-          Work with more than one step in it. Something sets it off, each step passes what it found
-          to the next, and a step can stop and wait for you before the rest happens.
+          Work in steps. Each step passes its result on, and any step can wait for your OK.
         </p>
         <Button size="sm" className="shrink-0" onClick={() => setEditing("new")}>
           <Plus size={14} /> New workflow
@@ -191,11 +190,7 @@ export function Workflows() {
 
       {workflows?.length === 0 && (
         <div className="rounded-2xl border border-dashed px-4 py-10 text-center">
-          <div className="text-ui text-foreground">Nothing runs itself yet.</div>
-          <div className="mx-auto mt-1 max-w-[420px] text-body leading-relaxed text-muted-foreground">
-            A workflow is worth having when the answer to something changes what happens next: have
-            an agent look, and if it turns out to matter, ask you before anything is done about it.
-          </div>
+          <div className="text-ui text-foreground">No workflows yet.</div>
         </div>
       )}
 
@@ -259,8 +254,8 @@ function WorkflowCard({
         <button
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          aria-label={open ? `Hide the steps in ${workflow.name}` : `Show the steps in ${workflow.name}`}
-          title={open ? "Hide the steps" : "Show the steps"}
+          aria-label={open ? `Hide steps in ${workflow.name}` : `Show steps in ${workflow.name}`}
+          title={open ? "Hide steps" : "Show steps"}
           className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
         >
           {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -299,7 +294,7 @@ function WorkflowCard({
                 .catch((e: Error) => onError(e.message))
             }
           />
-          <Button variant="ghost" size="icon-sm" title="Run it now" disabled={busy} onClick={run}>
+          <Button variant="ghost" size="icon-sm" title="Run now" disabled={busy} onClick={run}>
             <Play size={14} />
           </Button>
         </div>
@@ -577,7 +572,7 @@ function Editor({
                 {draft.trigger.kind === "message" ? (
                   <label className="flex flex-col gap-1.5">
                     <span className="text-small text-muted-foreground">
-                      Only when it mentions (leave empty for any message)
+                      Only if it mentions (optional)
                     </span>
                     <Input
                       value={draft.trigger.contains ?? ""}
@@ -600,11 +595,10 @@ function Editor({
                     otherwise set itself off, forever. */}
                 <label className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2">
                   <span className="text-body leading-relaxed text-muted-foreground">
-                    Agents can set this off too. Off by default: a workflow that posts where it
-                    watches would keep triggering itself.
+                    Agents can trigger it too. Off by default, so it can't keep triggering itself.
                   </span>
                   <Switch
-                    aria-label="Agents can set this off too"
+                    aria-label="Agents can trigger it too"
                     checked={draft.trigger.from === "anyone"}
                     onCheckedChange={(on) =>
                       setDraft({ ...draft, trigger: { ...draft.trigger, from: on ? "anyone" : "user" } })
@@ -615,8 +609,7 @@ function Editor({
             )}
             {draft.trigger.kind === "webhook" && (
               <p className="mt-2.5 text-body leading-relaxed text-muted-foreground">
-                Save this, then add a webhook pointing at it under Automations, Webhooks. What gets
-                posted arrives as <code className="rounded bg-muted px-1">{"{{trigger.text}}"}</code>.
+                Save, then add a webhook for it under Webhooks. Posted text arrives as <code className="rounded bg-muted px-1">{"{{trigger.text}}"}</code>.
               </p>
             )}
           </div>
@@ -742,10 +735,10 @@ function StepEditor({
         value={step.text}
         placeholder={
           step.action === "approve"
-            ? "What you are being asked to approve"
+            ? "What to approve"
             : step.action === "post"
               ? "What to say"
-              : "What to ask them to do"
+              : "What to ask"
         }
         onChange={(e) => onChange({ text: e.target.value })}
         className="mt-2 min-h-[62px] resize-none text-body"
@@ -834,7 +827,7 @@ function StepEditor({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Always run this step"
+              aria-label="Remove condition"
               onClick={() => {
                 setConditional(false);
                 onChange({ when: undefined });
@@ -848,7 +841,7 @@ function StepEditor({
             onClick={() => setConditional(true)}
             className="text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
-            Only run this sometimes
+            Add a condition
           </button>
         )}
       </div>

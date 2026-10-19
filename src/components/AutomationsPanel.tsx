@@ -283,7 +283,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
               Automations
             </div>
             <div className="hidden truncate text-small leading-tight text-muted-foreground sm:block">
-              What your agents do without being asked
+              What runs without you
             </div>
           </div>
         </div>
@@ -684,11 +684,10 @@ function EmptyRhythm({ onCreate }: { onCreate: () => void }) {
       </div>
       <div>
         <div className="text-title font-semibold text-foreground">
-          Put your agents on a rhythm
+          Put your agents on a schedule
         </div>
         <div className="mx-auto mt-1 max-w-[380px] text-body leading-relaxed text-muted-foreground">
-          Morning digests, weekly reports, recurring reviews. Every run lands
-          in its own task lane with its own result.
+          Daily digests, weekly reports, regular reviews.
         </div>
       </div>
       <Button onClick={onCreate}>
@@ -802,7 +801,7 @@ function RunHistory({ runs }: { runs?: RoutineRun[] }) {
   if (!runs?.length) {
     return (
       <div className="mt-4 border-t pt-3 text-small text-muted-foreground">
-        No runs yet. When this fires, what it did shows up here.
+        No runs yet.
       </div>
     );
   }
@@ -953,7 +952,7 @@ function RoutineDetails({
             </div>
             {routine.quiet && (
               <div className="mt-0.5 text-small text-muted-foreground/80">
-                Answers QUIET when nothing needs you, and a quiet run is not announced.
+                Stays silent when nothing needs you.
               </div>
             )}
             {routine.lastReport && (
@@ -964,7 +963,7 @@ function RoutineDetails({
             )}
             {routine.enabled && routine.suspended === "archived" && (
               <div className="mt-0.5 text-small text-warning">
-                Paused while {target?.name ?? "its agent"} is archived. It runs again once restored.
+                Paused while {target?.name ?? "its agent"} is archived. Resumes when restored.
               </div>
             )}
           </div>
@@ -1124,7 +1123,7 @@ function WebhooksTab({
           })}
           {hooks !== null && hooks.length === 0 && (
             <div className="px-3 py-8 text-center text-body leading-relaxed text-muted-foreground">
-              A webhook turns an outside event into a task for an agent.
+              A webhook lets other apps send your agents work.
             </div>
           )}
         </div>
@@ -1163,11 +1162,11 @@ function WebhooksTab({
                   title="Rename"
                 />
                 <div className="text-small text-muted-foreground">
-                  Tasks go to {target?.name ?? "?"}
+                  Goes to {target?.name ?? "?"}
                   {" · "}
                   {selected.firedCount
-                    ? `fired ${selected.firedCount} ${selected.firedCount === 1 ? "time" : "times"}, last ${new Date(selected.lastFiredAt ?? 0).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
-                    : "never fired"}
+                    ? `used ${selected.firedCount} ${selected.firedCount === 1 ? "time" : "times"}, last ${new Date(selected.lastFiredAt ?? 0).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                    : "not used yet"}
                 </div>
               </div>
               <Switch
@@ -1186,13 +1185,13 @@ function WebhooksTab({
 
             <div className="mt-5 rounded-2xl border bg-card p-4">
               <div className="flex items-center justify-between">
-                <div className="text-body font-semibold text-foreground">The URL</div>
+                <div className="text-body font-semibold text-foreground">URL</div>
                 <Button
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground"
                   onClick={() => {
-                    if (!confirm("Give this webhook a fresh URL? The old one stops answering.")) return;
+                    if (!confirm("Make a new URL? The old one will stop working.")) return;
                     api(`/api/webhooks/${selected.id}/rotate`, { method: "POST" })
                       .then(load)
                       .catch((e) => setError(e.message));
@@ -1249,8 +1248,7 @@ function WebhooksTab({
                   className="mt-2 w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-body text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
                 />
                 <p className="mt-1.5 text-small text-muted-foreground">
-                  Events go to {target?.name ?? "the agent"}'s first conversation, where you talk to it, unless you name
-                  another; one that does not exist is made.
+                  Leave blank for {target?.name ?? "the agent"}'s main chat. A new name starts a new one.
                 </p>
               </label>
             )}
@@ -1265,14 +1263,14 @@ function WebhooksTab({
                         {new Date(d.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                       </span>
                       <span className="min-w-0 truncate font-mono text-small text-foreground">
-                        {d.excerpt || "(empty payload)"}
+                        {d.excerpt || "(empty)"}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="mt-1 text-body text-muted-foreground">
-                  Nothing yet. Each delivery shows up here with what it sent.
+                  Nothing received yet.
                 </div>
               )}
             </div>
@@ -1280,7 +1278,7 @@ function WebhooksTab({
             <div className="mt-4 flex items-center justify-between rounded-2xl border bg-card p-4">
               <div>
                 <div className="text-body font-semibold text-foreground">Remove this webhook</div>
-                <div className="text-small text-muted-foreground">The URL stops answering.</div>
+                <div className="text-small text-muted-foreground">The URL will stop working.</div>
               </div>
               <Button
                 variant="secondary"
@@ -1302,7 +1300,7 @@ function WebhooksTab({
           </div>
         ) : (
           <div className="flex h-full items-center justify-center text-body text-muted-foreground">
-            {hooks === null ? "Loading…" : "Pick a webhook, or create one for an agent."}
+            {hooks === null ? "Loading…" : "Pick a webhook or make a new one."}
           </div>
         )}
       </div>
