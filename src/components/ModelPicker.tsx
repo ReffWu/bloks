@@ -33,6 +33,7 @@ import { Search } from "@/components/icons";
 import { useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
 import { ProviderMark } from "./ProviderIcons";
 import { EngineUpdateNote } from "./EngineSetup";
+import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
 import { Segmented } from "@/components/ui/segmented";
 import { backupOptions, isOwnRun, offersBackup } from "@/lib/backupChoice";
@@ -44,7 +45,29 @@ const SEARCH_ABOVE = 8;
 const FOLDED = 6;
 
 function modelLabel(instance: InstanceInfo | undefined, model: string): string {
-  return instance?.models.options.find((o) => o.id === model)?.label ?? model;
+  const label = instance?.models.options.find((o) => o.id === model)?.label;
+  return label && label !== model ? label : readableId(model);
+}
+
+/** Words that read as letters, not as a name. */
+const ACRONYMS = new Set(["gpt", "glm", "llm", "ai", "api", "xl", "mini"]);
+
+/**
+ * A model id said as a name, for engines that list ids with no label of
+ * their own: "opencode/big-pickle" reads "Big Pickle", "gpt-5.2-codex"
+ * reads "GPT 5.2 Codex", "claude-sonnet-4-5" reads "Claude Sonnet 4.5".
+ * The id itself stays one hover away, in the row's tooltip.
+ */
+export function readableId(id: string): string {
+  const bare = id.split("/").pop() || id;
+  // a version split by a dash ("4-5") is one number, not two words
+  const joined = bare.replace(/(\d)[-_](\d)(?!\d{3,})/g, "$1.$2");
+  // a trailing release date ("20251101") is for machines, not people
+  const words = joined.split(/[-_\s]+/).filter((w, i, all) => w && !(i === all.length - 1 && i > 0 && /^\d{8}$/.test(w)));
+  if (!words.length) return id;
+  return words
+    .map((w) => (w.toLowerCase() === "mini" ? "mini" : ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : /^[a-z]/.test(w) ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
 }
 
 /** A model's name without its engine's in front: "Opus 5.5" rather than
@@ -386,6 +409,9 @@ export function ModelPicker({
                     {provider && !provider.agentic && (
                       <span className="shrink-0 text-caption text-muted-foreground">Chat only</span>
                     )}
+                    {/* how this engine's list was made is a footnote, not
+                        something to read on the way to picking a model */}
+                    {!off && instance.models.note && <InfoTip text={instance.models.note} />}
                     {/* the whole update note is for the engine in use, where
                         a missing model is being looked for; elsewhere a dot */}
                     {update && !isActive && !off && (
@@ -407,14 +433,9 @@ export function ModelPicker({
                     </div>
                   ) : (
                     <>
-                      {!words.length && ((update && isActive) || instance.models.note) && (
+                      {!words.length && update && isActive && (
                         <div className="px-2 pb-1 pl-[30px]">
-                          {isActive && <EngineUpdateNote kind={instance.driverKind} name={instance.displayName} />}
-                          {instance.models.note && (
-                            <div title={instance.models.note} className="line-clamp-2 text-pretty text-caption leading-snug text-muted-foreground">
-                              {instance.models.note}
-                            </div>
-                          )}
+                          <EngineUpdateNote kind={instance.driverKind} name={instance.displayName} />
                         </div>
                       )}
                       {unlisted && (
@@ -424,8 +445,8 @@ export function ModelPicker({
                           className={cn(optionRow, "bg-accent text-foreground")}
                         >
                           <span className="flex min-w-0 items-center gap-2">
-                            <span className="line-clamp-2 [overflow-wrap:anywhere]">{unlisted}</span>
-                            <span className="shrink-0 text-caption text-warning">Not in list</span>
+                            <span className="line-clamp-2 [overflow-wrap:anywhere]">{readableId(unlisted)}</span>
+                            <span className="shrink-0 text-caption text-muted-foreground">Custom</span>
                           </span>
                           <Check size={14} className="shrink-0 text-brand-ink" />
                         </div>
@@ -463,7 +484,7 @@ export function ModelPicker({
                                 tooltip has the rest */}
                             <span className="flex min-w-0 items-center gap-2">
                               <span className={cn("line-clamp-2 [overflow-wrap:anywhere]", current && "font-medium")}>
-                                {shortName(instance, option.label)}
+                                {shortName(instance, option.label === option.id ? readableId(option.id) : option.label)}
                               </span>
                               {option.id === instance.models.default && (
                                 <span className="shrink-0 text-caption text-muted-foreground">Default</span>
