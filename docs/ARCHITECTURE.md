@@ -121,6 +121,7 @@ Plain JSON under `~/.bloks`, written synchronously. No database.
 | `turns-in-flight.json` | Every turn while it runs, so one cut off by a stop is picked up |
 | `room-lines.json` | Room lines waiting for a busy agent, or for Bloks to be back |
 | `engine-pauses.json` | Engines and models paused for a while, only while any are (see Engine pauses) |
+| `incidents.json` | What failed, who has it and how it ended, and the quiet desk's one card (see The incident desk) |
 | `messages-<id>.json` | One transcript per agent or room, same key space |
 | `config.json` | Connected providers and keys, `0600` |
 | `skills/*.md` | Installed skills |
@@ -1428,6 +1429,111 @@ model; the log keeps two weeks per agent (`memory-tidy.json`). The
 Memory place shows the diary under the budget meter with Review and Undo,
 and the morning brief carries one line per agent (`Brief.memory`),
 never in its headline or spoken round.
+
+A watcher that fails three looks in a row (the page will not load, the
+feed is not one, the check broke) stops looking on its own, as a routine
+that fails three runs does (see The incident desk). Holds are not looks
+and never count.
+
+## The incident desk
+
+Failure used to leave a notice where it happened and nothing else, so a
+person found out late or not at all. `server/incidents.ts` makes it a
+thing somebody hears about. Each of these is an incident, with what
+failed, where (agent, conversation, room, routine, watcher, workflow and
+run ids), why (the failure's own words, redacted, one line) and when:
+
+- a solo turn that failed for good: after recoverTurn's own retry and
+  backup, never one that is asked again or handed on (`noteTurnEnd` in
+  `server/index.ts`)
+- a room turn that failed
+- a turn that stopped on a silent tool call (`tool_stalled`)
+- a routine's run, a watcher's look and a workflow's run that failed
+
+Not incidents: a stop, a command, a conversation folded and asked again,
+a rehearsal, a stranger's mail, a Telegram person's turn, a Fast Codex
+refusal, and a routine's or a workflow's own turn, which its run speaks
+for. `incidents.json` keeps the list, two hundred at most, the oldest
+settled ones going first.
+
+It goes to whoever leads (`chooseLead`): in a room, the room's lead
+(`leadOf`); otherwise the agent named in Settings, or the one agent more
+senior than every other (a tie at the top is nobody in particular). Never
+the agent that failed, and never one that cannot act: listed, not
+archived or held, on an engine whose turns get the command line. With no
+such lead it goes straight to the person.
+
+A lead gets one quiet turn: a note from Bloks (`via: "incident"`, the
+note's `incident: { id, kind: "note" }`) queued into its first
+conversation like any message, told what failed and the three things it
+can do, and asked to answer QUIET, which folds the turn away as a
+check-in's is. With `bloks incident retry|hand|tell <id>`:
+
+- retry tries the failed thing once more: the turn asked again the same
+  way (in memory, so not after a restart), the routine run now, the
+  watcher looking, the workflow fired with the same trigger. A retry turn
+  is not asked again or handed to a backup on top. One that works settles
+  the incident; one that fails puts it to the person.
+- hand sends a teammate what failed and what to do, as any agent's
+  message (the chain limit applies), and settles the incident.
+- tell puts it to the person with the lead's words.
+
+A lead turn that chooses none, or fails, leaves it with the person, and
+so does one that has not run within half an hour (`LEAD_WAIT_MS`).
+
+The person's card is a notice in the conversation or room where it
+happened, with `incident: { id, kind: "needs-you", state: "open" }` and
+text that says it all, so a client that does not know the field still
+reads it. It marks the lane unread, raises an urgent banner and wakes the
+owner's phone like a blocked goal, and Activity and the brief list it.
+Resolving patches the card to `state: "resolved"` with a `resolution`.
+
+The storm rules are pure and tested in one place. The same thing failing
+while its incident is open is counted on it (`count`), never a new one;
+nothing about an incident, its lead's turn or its retry, ever raises
+another. One automatic retry per thing (`subject`) a day and two per
+conversation (`thread`) a day. Past five incidents in an hour the desk is
+quiet: what fails is listed (`state: "muted"`) and handed to nobody, and
+the person gets one card (`kind: "summary"`) that keeps the count.
+
+`incidents` in `config.json` (`PUT /api/config`): `enabled` (on unless
+off; off raises nothing) and `lead` (`"auto"`, `"person"` or an agent id).
+
+Routines and watchers that keep failing stop. Three failed runs or looks
+in a row (`FAILS_TO_PAUSE`) set `failing: { at, error }` and the schedule
+stops (`isDue`, the watcher tick), while the routine stays on. A notice
+with `failing: { kind, id, name }` says so once, with Fix it, Pause and
+Remove on the desktop. A run or look that works clears `failures` and
+`failing`; so does any PATCH, the person's or the agent's own.
+
+### For a phone (feature `incidents`, `automation-failures`)
+
+- `GET /api/incidents`: `{ incidents, summary, desk, failing }`, newest
+  first. An incident is `{ id, kind (turn|stall|routine|watcher|workflow),
+  subject, thread, title, why, at, lastAt, count, where: { botId,
+  botName, laneId, roomId, routineId, watcherId, workflowId, runId },
+  lead: { kind: "agent", id, name } | { kind: "person" }, state
+  (with-lead|retrying|needs-you|muted|resolved), retriedAt, handedTo,
+  needs, card: { threadId, messageId }, resolvedAt, resolution, open }`.
+  `desk` is `{ enabled, lead }`; `failing` as in Activity.
+- `GET /api/incidents/:id`: `{ incident }`.
+- `POST /api/incidents/:id/resolve`: `{ incident }`, the person's alone.
+- `POST /api/incidents/:id/retry`: `{ ok, note, incident }`. The
+  person's retry is not held to the storm rules; a lead's is.
+- `POST /api/incidents/:id/hand` `{ to, note }` and `/tell` `{ text }`
+  (600 characters at most): the lead's, with its turn credential, only
+  while the incident is `with-lead`.
+- `GET /api/activity` adds `incidents` (open ones) and `failing`:
+  `[{ kind: "routine" | "watcher", id, name, error, since, failures,
+  botId?, targetId? }]`.
+- `GET /api/routines` and `/api/watchers` carry `failures` and
+  `failing`; a stopped routine's `nextRunAt` is null. Pause is
+  `PATCH { enabled: false }`, Remove is `DELETE`, and any PATCH starts it
+  again.
+- A brief may carry `incidents: [{ id, title, why, state, threadId,
+  needs? }]` and `failing: [{ kind, id, name, error, since }]`, and is not
+  quiet when it does.
+- The stream sends `{ kind: "incidents" }` when the list changes.
 
 ## Meeting notes
 

@@ -532,6 +532,32 @@ const COMMANDS = {
       return request("DELETE", `/api/engine-pauses/${encodeURIComponent(args[0])}`);
     },
   },
+  incident: {
+    use: 'incident <id> | incident retry <id> | incident hand <id> <agent id> "<what to do>" | incident tell <id> "<what you need>"',
+    about:
+      "deal with an incident Bloks handed you because you lead: read it, try the failed thing once more, " +
+      "hand it to a teammate with what to do, or tell the person what is needed, which they see as a card. " +
+      "One of the three settles it; choosing none leaves it with the person",
+    run: (args) => {
+      const [first, id, ...rest] = args;
+      if (first === "retry") {
+        if (!id) throw new Error("incident retry needs the incident's id");
+        return request("POST", `/api/incidents/${encodeURIComponent(id)}/retry`);
+      }
+      if (first === "hand") {
+        const [to, ...words] = rest;
+        if (!id || !to) throw new Error('incident hand needs the incident\'s id, the teammate\'s id, and what to do');
+        return request("POST", `/api/incidents/${encodeURIComponent(id)}/hand`, { to, note: words.join(" ") });
+      }
+      if (first === "tell") {
+        const text = rest.join(" ").trim();
+        if (!id || !text) throw new Error("incident tell needs the incident's id and what you need from the person");
+        return request("POST", `/api/incidents/${encodeURIComponent(id)}/tell`, { text });
+      }
+      if (!first || id) throw new Error("incident needs an incident's id, or retry, hand or tell and one");
+      return request("GET", `/api/incidents/${encodeURIComponent(first)}`);
+    },
+  },
   jobs: {
     use: "jobs",
     about: "the job board",

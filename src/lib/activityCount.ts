@@ -10,9 +10,12 @@ export interface ActivityCount {
   running: number;
   waiting: number;
   suggested: number;
+  /** Incidents that need the person, and automations stopped for
+   * failing (server/incidents.ts): things to look at, as waiting is. */
+  failed: number;
 }
 
-let count: ActivityCount = { running: 0, waiting: 0, suggested: 0 };
+let count: ActivityCount = { running: 0, waiting: 0, suggested: 0, failed: 0 };
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -26,12 +29,30 @@ function load() {
         running: a?.running?.length ?? 0,
         waiting: a?.waiting?.length ?? 0,
         suggested: s?.proposals?.length ?? 0,
+        failed: failedCount(a?.incidents ?? [], a?.failing ?? []),
       };
-      if (next.running === count.running && next.waiting === count.waiting && next.suggested === count.suggested) return;
+      if (
+        next.running === count.running &&
+        next.waiting === count.waiting &&
+        next.suggested === count.suggested &&
+        next.failed === count.failed
+      ) return;
       count = next;
       for (const listener of listeners) listener();
     })
     .catch(() => {});
+}
+
+/** Things that failed and want the person: incidents put to them, and
+ * routines or watchers stopped for failing, a stopped one counted once
+ * when its own incident is among the first. */
+export function failedCount(
+  incidents: ReadonlyArray<{ subject?: string; state?: string }>,
+  failing: ReadonlyArray<{ kind?: string; id?: string }>,
+): number {
+  const asking = incidents.filter((i) => i.state === "needs-you");
+  const said = new Set(asking.map((i) => i.subject));
+  return asking.length + failing.filter((f) => !said.has(`${f.kind}:${f.id}`)).length;
 }
 
 /** Polling runs only while someone is listening and the page is shown. */

@@ -118,14 +118,16 @@ export function AppRail() {
             hint={
               activity.waiting > 0
                 ? `Overview: ${activity.waiting} waiting on you`
-                : briefNew
+                : activity.failed > 0
+                  ? `Overview: ${activity.failed} failed and ${activity.failed === 1 ? "needs" : "need"} a look`
+                  : briefNew
                   ? "Overview: a new morning brief"
                   : rehearsalsReady > 0
                     ? `Overview: ${rehearsalsReady} rehearsal${rehearsalsReady === 1 ? "" : "s"} ready`
                     : undefined
             }
             active={place === "overview"}
-            dot={activity.waiting > 0 ? "warning" : briefNew || rehearsalsReady > 0 ? "brand" : null}
+            dot={activity.waiting > 0 || activity.failed > 0 ? "warning" : briefNew || rehearsalsReady > 0 ? "brand" : null}
             onClick={() => go("overview")}
           >
             <LayoutGrid size={18} strokeWidth={1.75} />

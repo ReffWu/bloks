@@ -62,6 +62,10 @@ export interface Brief {
   /** What the nightly tidy did to each agent's memory; absent on briefs
    * made before there was one. */
   memory?: Array<{ botId: string; name: string; text: string; runId: string }>;
+  /** What was still failing when it was made (server/incidents.ts), and
+   * what had stopped for failing. Absent on a brief from before. */
+  incidents?: Array<{ id: string; title: string; why: string; state: string; threadId?: string; needs?: string }>;
+  failing?: Array<{ kind: "routine" | "watcher"; id: string; name: string; error: string; since: number }>;
   quiet: boolean;
   readAt?: number;
 }
@@ -554,6 +558,26 @@ export function BriefPanel() {
                   </ul>
                 </div>
               )}
+
+              {(brief.incidents?.length || brief.failing?.length) ? (
+                <div className={cn("mt-8 transition-opacity duration-200", closing >= 0 && dim(closing) && "opacity-45")}>
+                  <SubHead>Something failed</SubHead>
+                  <ul className="flex flex-col gap-2">
+                    {(brief.incidents ?? []).map((i) => (
+                      <li key={i.id} className="text-body text-foreground">
+                        {i.title} failed: <span className="text-muted-foreground">{i.why}.</span>
+                        {i.needs ? <span className="text-warning"> Needs you: {i.needs}</span> : null}
+                      </li>
+                    ))}
+                    {(brief.failing ?? []).map((f) => (
+                      <li key={f.id} className="text-body text-foreground">
+                        The {f.kind} {f.name} kept failing, so it is paused:{" "}
+                        <span className="text-muted-foreground">{f.error}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <div className="mt-8 flex flex-col gap-8">
                 {brief.parts.map((part, at) => {

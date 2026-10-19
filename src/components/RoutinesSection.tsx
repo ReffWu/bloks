@@ -63,12 +63,18 @@ export interface Routine {
   lastReport?: { at: number; summary: string };
   /** On, but its agent is archived, so it does not run until restored. */
   suspended?: "archived";
+  /** Runs that failed in a row. */
+  failures?: number;
+  /** Stopped running on its own after failing again and again, since
+   * when and why. Any change starts it again. */
+  failing?: { at: number; error: string };
 }
 
 /** The line under a routine saying when it next runs, or why it will not. */
 export function routineStatus(routine: Routine, whenNext: (at?: number | null) => string): string {
   if (!routine.enabled) return "Paused";
   if (routine.suspended === "archived") return "Paused while its agent is archived";
+  if (routine.failing) return "Stopped after failing again and again";
   return whenNext(routine.nextRunAt);
 }
 

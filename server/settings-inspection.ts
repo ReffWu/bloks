@@ -88,6 +88,10 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   add("recall", "beforeTurn", general, value("recall", "beforeTurn") !== false);
   add("memory", "tidy", general, value("memory", "tidy") !== false);
   add("agents", "turnLimit", general, agentTurnLimit(value("agents", "turnLimit")));
+  // the incident desk (server/incidents.ts): on unless turned off, and
+  // who leads, which is "auto" unless the person chose
+  add("incidents", "enabled", general, value("incidents", "enabled") !== false);
+  add("incidents", "lead", general, typeof value("incidents", "lead") === "string" ? value("incidents", "lead") : "auto");
   add("skills", "propose", general, Boolean(value("skills", "propose")));
   add("changes", "showShared", general, value("changes", "showShared") !== false);
   add("shortcuts", "quickAsk", "Settings > General > Quick ask shortcut", value("shortcuts", "quickAsk") ?? null);

@@ -112,6 +112,11 @@ export interface Paused {
 }
 
 export interface Activity {
+  /** Incidents still open (server/incidents.ts), newest first, and the
+   * routines and watchers stopped for failing. Joined on by the route,
+   * since they are kept apart from the lanes this file reads. */
+  incidents?: Array<ReturnType<typeof import("./incidents.ts").incidentView>>;
+  failing?: Array<{ kind: "routine" | "watcher"; id: string; name: string; error: string; since: number; failures: number; botId?: string; targetId?: string }>;
   waiting: WaitingWork[];
   running: RunningWork[];
   paused: Paused[];
@@ -214,6 +219,9 @@ export function asksYou(message: Message): boolean {
   if (message.kind === "options") return !message.card?.answered && !message.card?.dismissed;
   if (message.kind === "secret") return message.secret?.status === "needs-value";
   if (message.kind === "connector") return message.connector?.status === "needs-auth";
+  // an incident's card, or a routine that stopped for failing, until it
+  // is settled (server/incidents.ts)
+  if (message.kind === "notice") return message.incident ? message.incident.state !== "resolved" : true;
   return message.decisionChoice === undefined;
 }
 
@@ -228,6 +236,7 @@ function asked(message: Message): boolean {
   }
   if (message.kind === "secret") return Boolean(message.secret);
   if (message.kind === "connector") return Boolean(message.connector);
+  if (message.kind === "notice") return message.incident?.kind === "needs-you" || message.incident?.kind === "summary" || Boolean(message.failing);
   return message.kind === "component" && message.component?.kind === "decision";
 }
 

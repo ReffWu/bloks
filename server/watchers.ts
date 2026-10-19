@@ -86,7 +86,19 @@ export interface Watcher {
    * messages its turns take (MAX_AGENT_CHAIN in server/index.ts). Absent
    * once the person has changed it or looked by hand. */
   chain?: number;
+  /** Looks that failed in a row: the page would not load, the feed was
+   * not one, the check broke. A look that worked puts it back to none. */
+  failures?: number;
+  /** Its looks on a schedule stopped after FAILS_TO_PAUSE failures in a
+   * row, since when and why, as a routine's do (server/routines.ts). A
+   * page that is gone answers the same error every few minutes forever.
+   * The person changing it, or a look by hand that works, starts it
+   * again. */
+  failing?: { at: number; error: string };
 }
+
+/** Failed looks in a row before a watcher stops looking on its own. */
+export const FAILS_TO_PAUSE = 3;
 
 export const MIN_EVERY = 5;
 export const MAX_EVERY = 24 * 60;
@@ -362,6 +374,27 @@ export function orphanWatcherLanes(
     .slice(1)
     .filter((t) => t.title.startsWith(WATCHING) && !used.has(t.id) && !named.has(t.title) && !t.busy && !spokenIn(t.id))
     .map((t) => t.id);
+}
+
+// ── failing ────────────────────────────────────────────────────────────
+
+/**
+ * One look, counted toward the watcher stopping for failing. A look
+ * that worked clears the count and starts it again if it had stopped.
+ * True when this failure is the one that stopped it. A hold (paused,
+ * waiting for approval, past the chain limit) is not a look at all and
+ * is never counted here.
+ */
+export function countLook(w: Pick<Watcher, "failures" | "failing">, ok: boolean, error: string, at: number): boolean {
+  if (ok) {
+    delete w.failures;
+    delete w.failing;
+    return false;
+  }
+  w.failures = (w.failures ?? 0) + 1;
+  if (w.failing || w.failures < FAILS_TO_PAUSE) return false;
+  w.failing = { at, error: error.slice(0, 300) };
+  return true;
 }
 
 // ── firing ─────────────────────────────────────────────────────────────

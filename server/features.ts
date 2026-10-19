@@ -92,4 +92,14 @@ export const FEATURES: readonly string[] = [
   // an agent's proposal, pausing and renewing; `intents` on the stream,
   // and `intent` with via "intent" on the messages they post and send
   "intents",
+  // the incident desk: GET /api/incidents and /api/incidents/:id,
+  // POST /api/incidents/:id/resolve and /retry, `incidents` on
+  // GET /api/activity, on PUT /api/config and on a brief, an `incident`
+  // on a notice for its card, and the `incidents` frame on the stream
+  "incidents",
+  // routines and watchers that stop running on their own after failing
+  // three times in a row: `failures` and `failing` on each in
+  // GET /api/routines and /api/watchers, cleared by any PATCH, `failing`
+  // on a brief and on GET /api/activity, and `failing` on its notice
+  "automation-failures",
 ];

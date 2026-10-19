@@ -14,6 +14,8 @@ export type { BlokColor, BlokShape } from "@/lib/mascot";
 
 /** The full pages the main rail opens besides Chat, Automations and Settings. */
 export type RailPage = "overview" | "memory" | "plugins";
+/** One routine or watcher, for a link into Automations. */
+export type AutomationsFocus = { kind: "routine" | "watcher"; id: string };
 /** The two pages of Customize, the rail's Plugins place (Customize.tsx). */
 export type CustomizeTab = "plugins" | "skills";
 /** One thing on Settings' Plugins page with a page of its own. */
@@ -126,10 +128,18 @@ export interface Message {
   /** Taken back: the row stays, the words are gone. */
   deleted?: boolean;
   /** Came in some other way than you typing it here. "goal" is Bloks
-   * starting the next turn toward the conversation's goal. */
-  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal" | "intent";
+   * starting the next turn toward the conversation's goal; "incident" is
+   * the incident desk handing a lead something that failed. */
+  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal" | "intent" | "incident";
   /** Posted or sent by a standing intent (server/intents.ts). */
   intent?: { id: string; name: string };
+  /** The incident desk (server/incidents.ts): the note on a lead's quiet
+   * turn, the person's card for an incident, or the one card that stands
+   * for many while the desk is quiet. */
+  incident?: { id: string; kind: "note" | "needs-you" | "summary"; state?: "open" | "resolved"; resolution?: string };
+  /** A notice that a routine or a watcher stopped running on its own
+   * after failing again and again. */
+  failing?: { kind: "routine" | "watcher"; id: string; name: string };
   /** The routine's name and start mode when this message was written,
    * and whether its agent was told it may answer QUIET. */
   routine?: { name?: string; manual: boolean; quiet?: boolean };
@@ -395,6 +405,9 @@ export interface ConfigStatus {
   memory?: { tidy: boolean };
   /** Agents' turn limit, 1 to 50 (server/agent-chain.ts). */
   agents?: { turnLimit: number };
+  /** The incident desk (server/incidents.ts): on unless turned off, and
+   * who leads incidents: "auto", "person" or an agent's id. */
+  incidents?: { enabled: boolean; lead: string };
   /** Count-only cards for overlapping turns with no own files. On by default. */
   changes?: { showShared: boolean };
   /** How long a silent tool call may hold a turn, in minutes; 0 is never. */
@@ -670,6 +683,9 @@ export interface AppState {
   routinesOpen: boolean;
   /** The tab Automations opens on, when something linked to one. */
   routinesTab: AutomationsTab | null;
+  /** The routine or watcher Automations opens on, when something linked
+   * to one (a card about one that stopped for failing). */
+  routinesFocus: AutomationsFocus | null;
   newRoomOpen: boolean;
   /** The sheet of every keyboard shortcut (⌘/). */
   shortcutsOpen: boolean;
@@ -767,7 +783,7 @@ export type Action =
   | { type: "newBot"; profile?: NewAgentProfile }
   | { type: "toggleNewAgent"; open?: boolean; firstRun?: boolean }
   /** `tab` opens Automations on that tab, for a link from elsewhere. */
-  | { type: "toggleRoutines"; open?: boolean; tab?: AutomationsTab }
+  | { type: "toggleRoutines"; open?: boolean; tab?: AutomationsTab; focus?: AutomationsFocus }
   | { type: "toggleShortcuts"; open?: boolean }
   | { type: "newTask"; botId: string }
   | { type: "selectTask"; botId: string; taskId: string }
@@ -1056,6 +1072,7 @@ export function reducer(state: AppState, action: Action): AppState {
           ...state,
           routinesOpen: open,
           routinesTab: open ? (action.tab ?? null) : null,
+          routinesFocus: open ? (action.focus ?? null) : null,
           appSettingsOpen: open ? false : state.appSettingsOpen,
           page: open ? null : state.page,
           settingsOpen: open ? false : state.settingsOpen,
@@ -1427,6 +1444,7 @@ export const initialState: AppState = {
   teamLink: null,
   routinesOpen: false,
   routinesTab: null,
+  routinesFocus: null,
   newRoomOpen: false,
   shortcutsOpen: false,
   projectId: (() => {

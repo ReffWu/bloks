@@ -57,6 +57,10 @@ export interface NotifiableMessage {
   goal?: string;
   /** Agents stopped at the workspace turn limit (server/agent-chain.ts). */
   chainHeld?: boolean;
+  /** The incident desk's card, or its note to a lead (server/incidents.ts). */
+  incident?: { kind: string; state?: string };
+  /** A routine or a watcher that stopped for failing. */
+  failing?: { kind: string };
 }
 
 export interface NotifyContext {
@@ -140,6 +144,21 @@ export function noticeFor(message: NotifiableMessage, ctx: NotifyContext): Notic
       return { title: who, body: preview(message.text ?? ""), target, urgent: false };
     }
     return null;
+  }
+
+  // Something that failed, put to the person by the incident desk
+  // (server/incidents.ts), or the one card that stands for many while it
+  // is quiet. Like a blocked goal, the person is who settles it now. The
+  // note that hands a lead an incident is never the person's news.
+  if (message.kind === "notice" && message.incident) {
+    if (message.incident.kind === "note" || message.incident.state === "resolved" || watching) return null;
+    return { title: `${who} needs you`, body: preview(message.text || "Something failed."), target, urgent: true };
+  }
+  // A routine or a watcher that stopped running on its own: worth a word
+  // when it happens, not an interruption, since nothing is waiting on it.
+  if (message.kind === "notice" && message.failing) {
+    if (watching) return null;
+    return { title: who, body: preview(message.text ?? ""), target, urgent: false };
   }
 
   // An agent that could not answer because its engine is out: credits, a

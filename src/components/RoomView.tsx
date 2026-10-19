@@ -19,6 +19,7 @@ import { UserPlus } from "@/components/icons";
 import type { RoomPerson } from "@/state/reducer";
 import { SharePanel } from "./SharePanel";
 import { api, useStore, workingInRoom, type Blok, type Bot, type Message } from "@/state/store";
+import { IncidentNotice } from "@/components/chat/IncidentCard";
 import { CarryOn } from "@/components/CarryOn";
 import { AgentAvatar } from "./Avatar";
 import { RoutinesDialog } from "./RoutinesDialog";
@@ -499,6 +500,15 @@ function RoomMessage({
     return (
       <div className="pl-11">
         <IntentNote message={message} />
+      </div>
+    );
+  }
+
+  // what failed in the room, put to the person (server/incidents.ts)
+  if (message.kind === "notice" && message.incident && message.incident.kind !== "note") {
+    return (
+      <div className="pl-11">
+        <IncidentNotice message={message} />
       </div>
     );
   }

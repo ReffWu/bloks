@@ -45,6 +45,7 @@ function OverviewPage() {
   const today = new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   const now: string[] = [];
   if (activity.waiting > 0) now.push(`${activity.waiting} waiting on you`);
+  if (activity.failed > 0) now.push(`${activity.failed} failed and ${activity.failed === 1 ? "needs" : "need"} a look`);
   if (activity.running > 0) now.push(`${activity.running} running`);
   return (
     <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">

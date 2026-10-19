@@ -265,6 +265,8 @@ export function waitingSender(m: Message): string | null {
       return "email";
     case "goal":
       return "your goal";
+    case "incident":
+      return "Bloks, about something that failed";
     case "routine":
       return `your routine${m.routine?.name ? ` ${m.routine.name}` : ""}`;
     default:
