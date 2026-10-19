@@ -14,6 +14,8 @@ import { AgentAvatar } from "./Avatar";
 import { ChangesCard } from "./ChangesCard";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
+import { Button } from "@/components/ui/button";
+import { EmptyState, PanelHeader, SkeletonRows } from "./OverviewParts";
 
 interface Attempt {
   id: string;
@@ -61,34 +63,35 @@ export function RehearsalsPanel() {
     dispatch({ type: "select", id: a.botId, lane: a.taskId });
   };
 
-  return (
-    <div
-      className="flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-card"
-      role="region"
-      aria-label="Rehearsals"
-    >
-      <div className="flex items-center justify-between border-b px-6 py-5">
-        <div>
-          <div className="flex items-center gap-2 text-title font-semibold text-foreground">
-            <FlaskConical size={17} className="text-muted-foreground" />
-            Rehearsals
-          </div>
-          <div className="mt-0.5 text-body text-muted-foreground">
-            Work done on a copy, ready to review. Applying one discards the rest.
-          </div>
-        </div>
-      </div>
+  // a rehearsal starts from a chat, so the way in is the agent you were
+  // last with
+  const last = state.bots.find((b) => b.id === state.selectedId && !b.hidden) ?? state.bots.find((b) => !b.hidden);
 
-      <div className="p-6">
+  return (
+    <section aria-label="Rehearsals" className="flex min-w-0 flex-col">
+      <PanelHeader
+        icon={<FlaskConical size={17} />}
+        title="Rehearsals"
+        hint="Work done on a copy, ready to review. Applying one discards the rest."
+      />
+
+      <div className="mt-5">
         {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>}
         {attempts === null ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" /> Loading
-          </div>
+          error ? null : <SkeletonRows rows={2} label="Loading rehearsals" />
         ) : groups.length === 0 ? (
-          <div className="px-6 py-12 text-center text-body leading-relaxed text-muted-foreground">
+          <EmptyState
+            action={
+              last && (
+                <Button variant="secondary" size="sm" onClick={() => dispatch({ type: "select", id: last.id })}>
+                  <MessageSquare size={13} />
+                  Open {last.name}
+                </Button>
+              )
+            }
+          >
             Nothing rehearsed yet. Press the flask in any chat to try a task on a copy first.
-          </div>
+          </EmptyState>
         ) : (
           <div className="flex flex-col gap-6">
             {groups.map((group) => {
@@ -114,7 +117,7 @@ export function RehearsalsPanel() {
                     {group.map((a) => {
                       const agent = state.bots.find((b) => b.id === a.botId);
                       return (
-                        <div key={a.id} className="flex min-w-0 flex-col gap-2 rounded-2xl border bg-muted/30 p-3">
+                        <div key={a.id} className="flex min-w-0 flex-col gap-2 rounded-2xl bg-muted/40 p-3">
                           <div className="flex items-center gap-2">
                             {agent && <AgentAvatar bot={agent} size={22} />}
                             <span className="min-w-0 flex-1 truncate text-body font-semibold text-foreground">
@@ -155,7 +158,6 @@ export function RehearsalsPanel() {
           </div>
         )}
       </div>
-    </div>
-
+    </section>
   );
 }

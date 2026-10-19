@@ -9,6 +9,7 @@
 // on the card, in the words somebody would use: this is not there any
 // more, and nothing will run in it until it is.
 import { useCallback, useEffect, useState } from "react";
+import { FolderKanban } from "@/components/icons";
 import { FolderOpen } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
 import { Plus } from "@/components/icons";
@@ -21,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { cn } from "@/lib/cn";
+import { EmptyState, PanelHeader, SkeletonRows } from "./OverviewParts";
 
 interface FolderStanding {
   path: string;
@@ -76,27 +78,21 @@ export function ProjectsPanel() {
   };
 
   return (
-    <div
-      className="flex min-w-0 flex-col rounded-2xl border bg-card p-6"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-title font-semibold text-foreground">Projects</div>
-          <div className="mt-0.5 text-body text-muted-foreground">
-            {editing
-              ? "Its folders, people and brief."
-              : "Open one to see only its people and folders."}
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          {!editing && (
-            <Button variant="secondary" size="sm" onClick={() => setEditing("new")}>
+    <section aria-label="Projects" className="flex min-w-0 flex-col">
+      <PanelHeader
+        icon={<FolderKanban size={17} />}
+        title="Projects"
+        hint={editing ? "Its folders, people and brief." : "Open one to see only its people and folders."}
+        actions={
+          // an empty list offers the same thing in its own words, once
+          !editing && projects?.length ? (
+            <Button variant="ghost" size="sm" onClick={() => setEditing("new")}>
               <Plus size={13} />
               New
             </Button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {error && (
         <div className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">
@@ -104,7 +100,7 @@ export function ProjectsPanel() {
         </div>
       )}
 
-      <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+      <div className="mt-5 min-h-0 flex-1">
         {editing ? (
           <ProjectForm
             project={editing === "new" ? null : editing}
@@ -115,14 +111,18 @@ export function ProjectsPanel() {
             onCancel={() => setEditing(null)}
           />
         ) : projects === null ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" />
-            Reading projects
-          </div>
+          error ? null : <SkeletonRows rows={2} label="Loading projects" />
         ) : projects.length === 0 ? (
-          <div className="px-4 py-10 text-center text-body text-muted-foreground">
-            No projects yet.
-          </div>
+          <EmptyState
+            action={
+              <Button variant="secondary" size="sm" onClick={() => setEditing("new")}>
+                <Plus size={13} />
+                New project
+              </Button>
+            }
+          >
+            A project gathers folders, people and a shared brief, so opening it shows only that work.
+          </EmptyState>
         ) : (
           <div className="flex flex-col gap-2">
             {projects.map((project) => {
@@ -133,8 +133,8 @@ export function ProjectsPanel() {
                 <div
                   key={project.id}
                   className={cn(
-                    "rounded-xl bg-muted/50 p-4",
-                    state.projectId === project.id && "ring-1 ring-foreground/20",
+                    "rounded-2xl bg-muted/40 p-4 transition-colors duration-150",
+                    state.projectId === project.id && "bg-brand-soft/60",
                   )}
                 >
                   <div className="flex items-start gap-3">
@@ -211,8 +211,7 @@ export function ProjectsPanel() {
           </div>
         )}
       </div>
-    </div>
-
+    </section>
   );
 }
 
