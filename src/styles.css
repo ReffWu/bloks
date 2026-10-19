@@ -240,6 +240,24 @@
   }
 }
 
+/* The slider's real input sits invisible over the drawn one; its thumb is
+   sized to match, so where you press is exactly where the dot goes
+   (ui/slider.tsx). */
+.slider-input {
+  appearance: none;
+  background: transparent;
+}
+.slider-input::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+}
+.slider-input::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 0;
+}
+
 ::-webkit-scrollbar {
   width: 7px;
   height: 7px;

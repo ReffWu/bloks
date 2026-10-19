@@ -43,6 +43,7 @@ import { BoxSleep } from "./BoxSleep";
 import { AgentDefaults } from "./AgentDefaults";
 import { SettingRow, SettingsGroup, SettingsPageHeader } from "./SettingsLayout";
 import { Segmented } from "@/components/ui/segmented";
+import { Slider, numberStops } from "@/components/ui/slider";
 import { useConversationsView } from "@/lib/conversationsView";
 import { useTranscriptWidth } from "@/lib/useTranscriptWidth";
 import { Archive } from "@/components/icons";
@@ -129,12 +130,14 @@ function IdleCompaction() {
   );
 }
 
+// smallest to largest, with Never as the far end of "later": a slider
+// reads left to right as sooner to never
 const BEFORE_TURN_CEILINGS = [
-  { value: "0", label: "Never" },
   { value: "100000", label: "100k" },
   { value: "200000", label: "200k" },
   { value: "400000", label: "400k" },
-] as const;
+  { value: "0", label: "Never" },
+];
 
 function SharedChanges() {
   const { state, dispatch } = useStore();
@@ -185,11 +188,12 @@ function BeforeTurnCompaction() {
       description="For Claude Code, Codex and Pi. Compact before the next message once a chat reaches this size."
     >
       <div className="mt-3">
-        <Segmented
+        <Slider
           aria-label="Compact long chats"
+          className="max-w-[420px]"
+          stops={BEFORE_TURN_CEILINGS}
           value={BEFORE_TURN_CEILINGS.some((o) => o.value === ceiling) ? ceiling : "200000"}
-          onChange={(next) => !saving && set(next)}
-          options={BEFORE_TURN_CEILINGS.map((o) => ({ value: o.value, label: o.label }))}
+          onCommit={(next) => !saving && set(next)}
         />
       </div>
     </SettingRow>
@@ -202,7 +206,7 @@ const SILENT_CALL_LIMITS = [
   { value: "30", label: "30 min" },
   { value: "60", label: "1 hour" },
   { value: "0", label: "Never" },
-] as const;
+];
 
 /**
  * How long one tool call may sit without a word from the engine before
@@ -229,13 +233,13 @@ function SilentCallLimit() {
       info="Sometimes a command waits on something that never answers. After this long with no progress, Bloks stops the reply and tells you and the agent which call it was. Thinking, writing and commands that keep reporting are never cut short. Time waiting on your approval doesn't count."
       description="Stop when one call makes no progress for this long."
     >
-      {/* five choices do not fit beside the label, so they sit under it */}
       <div className="mt-3">
-        <Segmented
+        <Slider
           aria-label="Stop stuck tool calls"
+          className="max-w-[420px]"
+          stops={SILENT_CALL_LIMITS}
           value={SILENT_CALL_LIMITS.some((o) => o.value === minutes) ? minutes : "15"}
-          onChange={(next) => !saving && set(next)}
-          options={SILENT_CALL_LIMITS.map((o) => ({ value: o.value, label: o.label }))}
+          onCommit={(next) => !saving && set(next)}
         />
       </div>
     </SettingRow>
@@ -281,25 +285,15 @@ function ProposeSkills() {
 function AgentTurnLimit() {
   const { state, dispatch } = useStore();
   const stored = state.config?.agents?.turnLimit ?? DEFAULT_TURN_LIMIT;
-  const [number, setNumber] = useState(String(stored));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => setNumber(String(stored)), [stored]);
 
-  const saveNumber = () => {
-    const value = Number(number);
-    if (!/^[0-9]+$/.test(number) || !Number.isSafeInteger(value) || value < MIN_TURN_LIMIT || value > MAX_TURN_LIMIT) {
-      setError(`Enter a whole number from ${MIN_TURN_LIMIT} to ${MAX_TURN_LIMIT}.`);
-      return;
-    }
+  const save = (value: number) => {
     setSaving(true);
     setError("");
     api("/api/config", { method: "PUT", body: JSON.stringify({ agents: { turnLimit: value } }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
-      .catch((cause: unknown) => {
-        setNumber(String(stored));
-        setError(cause instanceof Error ? cause.message : "Couldn't save the limit.");
-      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save the limit."))
       .finally(() => setSaving(false));
   };
   return (
@@ -307,17 +301,21 @@ function AgentTurnLimit() {
       label="Agent-to-agent limit"
       description="Agents stop after this many replies to each other, so they don't use up your usage without you. Your next message resets the count."
     >
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <input aria-label="Most agent replies in a row" type="number" min={MIN_TURN_LIMIT} max={MAX_TURN_LIMIT} step="1" value={number} disabled={saving}
-          onChange={(event) => { setNumber(event.target.value); setError(""); }}
-          className="h-8 w-24 rounded-lg border bg-background px-2 text-body outline-none focus:border-primary" />
-        <span className="text-small text-muted-foreground">replies</span>
-        <Button size="sm" variant="secondary" disabled={saving || number === String(stored)} onClick={saveNumber} aria-label="Save limit">Save</Button>
+      <div className="mt-3">
+        <Slider
+          aria-label="Most agent replies in a row"
+          className="max-w-[460px]"
+          stops={TURN_LIMIT_STOPS}
+          value={stored}
+          onCommit={(value) => !saving && save(value)}
+        />
       </div>
       {error && <p role="alert" className="mt-2 text-small text-destructive">{error}</p>}
     </SettingRow>
   );
 }
+
+const TURN_LIMIT_STOPS = numberStops(MIN_TURN_LIMIT, MAX_TURN_LIMIT, (n) => `${n} ${n === 1 ? "reply" : "replies"}`);
 
 /**
  * Whether agents are reminded of their other conversations before your

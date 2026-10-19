@@ -16,6 +16,7 @@ import type { RoomPerson, RoomSharing } from "@/state/reducer";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
 
 interface PendingInvite {
   id: string;
@@ -48,7 +49,14 @@ interface PeopleResponse {
   };
 }
 
-const CAPS = [0, 5, 10, 25, 50, 100, 250];
+const CAPS = [5, 10, 25, 50, 100, 250];
+
+/** The caps to slide between, smallest first and No cap at the far end,
+ * keeping a cap set some other way so the slider can still show it. */
+function capStops(current: number) {
+  const caps = [...new Set([...CAPS, current])].filter((c) => c > 0).sort((a, b) => a - b);
+  return [...caps.map((c) => ({ value: c, label: `$${c}` })), { value: 0, label: "No cap" }];
+}
 
 type ChatPlatform = "slack" | "discord" | "whatsapp";
 const PLATFORM: Record<ChatPlatform, string> = { slack: "Slack", discord: "Discord", whatsapp: "WhatsApp" };
@@ -381,26 +389,17 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
             {/* what it costs */}
             <section>
               <SectionTitle>Spending</SectionTitle>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-body text-foreground">Monthly cap for this room</div>
-                  <div className="text-small leading-snug text-muted-foreground">
-                    Agents here use your engines. At the cap, they pause until next month or until you raise it.
-                  </div>
-                </div>
-                <select
-                  value={shared.spendCap ?? 0}
-                  onChange={(e) => share({ spendCap: Number(e.target.value) })}
-                  className="rounded-md border bg-background px-1.5 py-1 text-body"
-                  aria-label="Monthly cap"
-                >
-                  {[...new Set([...CAPS, shared.spendCap ?? 0])].sort((a, b) => a - b).map((c) => (
-                    <option key={c} value={c}>
-                      {c === 0 ? "No cap" : `$${c}`}
-                    </option>
-                  ))}
-                </select>
+              <div className="text-body text-foreground">Monthly cap for this room</div>
+              <div className="text-small leading-snug text-muted-foreground">
+                Agents here use your engines. At the cap, they pause until next month or until you raise it.
               </div>
+              <Slider
+                aria-label="Monthly cap"
+                className="mt-3"
+                stops={capStops(shared.spendCap ?? 0)}
+                value={shared.spendCap ?? 0}
+                onCommit={(spendCap) => share({ spendCap })}
+              />
               {data.spend && (
                 <div className="mt-3 rounded-xl border bg-card px-3 py-2.5">
                   <div className="flex items-baseline justify-between text-body">

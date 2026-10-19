@@ -13,17 +13,20 @@ import { Target } from "@/components/icons";
 import { X } from "@/components/icons";
 import { api, useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { DEFAULT_GOAL_TURNS, goalAction, goalState, goalStateShort } from "@/lib/goals";
+import { DEFAULT_GOAL_TURNS, MAX_GOAL_TURNS, goalAction, goalState, goalStateShort } from "@/lib/goals";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Slider, numberStops } from "@/components/ui/slider";
 
 function goalPath(botId: string, taskId: string) {
   return `/api/bots/${botId}/tasks/${taskId}/goal`;
 }
 
 /** The chip over the composer, until the open conversation's goal is done. */
+const GOAL_STEPS = numberStops(1, MAX_GOAL_TURNS, (n) => `${n} ${n === 1 ? "step" : "steps"}`);
+
 export function GoalChip({ bot }: { bot: Bot }) {
   const laneId = bot.activeTaskId ?? bot.threadId;
   const goal = bot.tasks?.find((t) => t.id === laneId)?.goal;
@@ -114,14 +117,14 @@ export function GoalDialog() {
   const current = lane?.goal;
   const [text, setText] = useState("");
   const [check, setCheck] = useState("");
-  const [turns, setTurns] = useState(String(DEFAULT_GOAL_TURNS));
+  const [turns, setTurns] = useState(DEFAULT_GOAL_TURNS);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (!target) return;
     setText(current?.text ?? "");
     setCheck(current?.check ?? "");
-    setTurns(String(current?.budget ?? DEFAULT_GOAL_TURNS));
+    setTurns(Math.min(MAX_GOAL_TURNS, Math.max(1, current?.budget ?? DEFAULT_GOAL_TURNS)));
     setError(null);
     // only when it opens: a goal moving on underneath is not a reason to
     // throw away what is being typed
@@ -136,7 +139,7 @@ export function GoalDialog() {
     setError(null);
     api(goalPath(bot.id, lane.id), {
       method: "PUT",
-      body: JSON.stringify({ text: text.trim(), check: check.trim() || undefined, budget: turns.trim() || undefined }),
+      body: JSON.stringify({ text: text.trim(), check: check.trim() || undefined, budget: String(turns) }),
     })
       .then(close)
       .catch((e: Error) => setError(e.message))
@@ -193,16 +196,10 @@ export function GoalDialog() {
               Runs after each step, for up to 5 minutes. Done only when it exits 0.
             </span>
           </label>
-          <label className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-2">
             <span className="text-body font-medium text-foreground">Step limit</span>
-            <Input
-              value={turns}
-              onChange={(e) => setTurns(e.target.value.replace(/\D/g, "").slice(0, 3))}
-              inputMode="numeric"
-              aria-label="Step limit"
-              className="w-20 text-right tabular-nums"
-            />
-          </label>
+            <Slider aria-label="Step limit" stops={GOAL_STEPS} value={turns} onChange={setTurns} onCommit={setTurns} />
+          </div>
           {error && <div className="text-body text-destructive">{error}</div>}
           <div className="mt-1 flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={close}>
