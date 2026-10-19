@@ -1,19 +1,21 @@
-// The conversation verbs: reply, forward, copy.
+// The conversation verbs: reply, forward, copy, react and the rest.
 //
-// One pill shared by solo chats and rooms, shown on hover, or on a tap
-// where nothing hovers (useTapToShow), plus the two pieces
-// that complete the loop: the chip a composer shows while a reply is
-// being written, and the picker a forward opens. Reply carries
-// structured context to the agent and renders as a quoted card on the
-// bubble; forward re-posts the message into another conversation with
-// its origin named.
-import { useEffect, useRef, useState } from "react";
+// Shared by solo chats and rooms: in a chat they sit in a quiet row
+// under each message, in a room in a pill beside it. Either shows on
+// hover, on keyboard focus, or on a tap where nothing hovers
+// (useTapToShow). Here too are the two pieces that complete the loop:
+// the chip a composer shows while a reply is being written, and the
+// picker a forward opens. Reply carries structured context to the agent
+// and renders as a quoted card on the bubble; forward re-posts the
+// message into another conversation with its origin named.
+import { Fragment, forwardRef, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Check } from "@/components/icons";
 import { CornerUpLeft } from "@/components/icons";
 import { Copy } from "@/components/icons";
 import { SmilePlus } from "@/components/icons";
 import { Pencil } from "@/components/icons";
 import { History } from "@/components/icons";
+import { MoreHorizontal } from "@/components/icons";
 import { Trash2 } from "@/components/icons";
 import { Send } from "@/components/icons";
 import { Users } from "@/components/icons";
@@ -21,7 +23,16 @@ import { X } from "@/components/icons";
 import { useStore, type Message } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { confirm } from "@/components/ui/confirm";
+import { stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
 
 export type ReplyDraft = { id?: string; author: string; excerpt: string };
@@ -31,13 +42,13 @@ export function excerptOf(message: Message): string {
 }
 
 /**
- * The pill on a touch screen, where nothing hovers and it never showed,
+ * The actions on a touch screen, where nothing hovers and they never showed,
  * so reply, react, copy and the rest could not be reached from a phone.
  * A tap on the message shows it and a tap anywhere else puts it away.
  * Only a finger or a pen gets here: a mouse keeps the hover, and a tap on
  * a link or a button inside the message still does its own thing.
  *
- * `row` holds the message and its pill, so a tap on the pill is not a tap
+ * `row` holds the message and its actions, so a tap on them is not a tap
  * away; `onPointerUp` goes on the message itself.
  */
 export function useTapToShow() {
@@ -61,9 +72,6 @@ export function useTapToShow() {
   return { open, row, onPointerUp };
 }
 
-/** The hover pill. Quiet until the row is hovered, then it rises in
- * beside the bubble. Copy confirms in place with a tick, because a copy
- * that says nothing feels like a copy that did nothing. */
 /** The six a person actually reaches for. A full picker is a search box
  * in disguise, and nobody searches for how they feel about a message. */
 export const QUICK_REACTIONS = ["👍", "🎉", "👀", "❤️", "😂", "🤔"];
@@ -106,6 +114,105 @@ export function Reactions({
   );
 }
 
+/** When a message was said, the way a person says it a minute later:
+ * "9 minutes ago", "yesterday", then the date. The exact moment is a
+ * hover away, so this can afford to be loose. */
+export function sinceLine(at: number, now = Date.now(), locale?: string): string {
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return "just now";
+  const say = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  if (minutes < 60) return say.format(-minutes, "minute");
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return say.format(-hours, "hour");
+  // calendar days from here, not lots of 24 hours, so "yesterday" means
+  // the day before today even across a change of the clocks
+  const midnight = (t: number) => new Date(t).setHours(0, 0, 0, 0);
+  const days = Math.round((midnight(now) - midnight(at)) / 86_400_000);
+  if (days < 7) return say.format(-days, "day");
+  return stamp(at, now, locale);
+}
+
+// One clock for every "minutes ago" on the page, so a long conversation
+// does not keep a timer per message. Half a minute is close enough for
+// words that only count minutes.
+let minuteNow = Date.now();
+const ticking = new Set<() => void>();
+let ticker: ReturnType<typeof setInterval> | undefined;
+function onMinute(change: () => void) {
+  ticking.add(change);
+  if (!ticker) {
+    minuteNow = Date.now();
+    ticker = setInterval(() => {
+      minuteNow = Date.now();
+      for (const tell of ticking) tell();
+    }, 30_000);
+  }
+  return () => {
+    ticking.delete(change);
+    if (ticking.size === 0 && ticker) {
+      clearInterval(ticker);
+      ticker = undefined;
+    }
+  };
+}
+
+function SaidAt({ at }: { at: number }) {
+  const now = useSyncExternalStore(onMinute, () => minuteNow);
+  return (
+    <Tip label={new Date(at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })}>
+      <time
+        dateTime={new Date(at).toISOString()}
+        className="px-1.5 text-caption tabular-nums whitespace-nowrap text-muted-foreground"
+      >
+        {sinceLine(at, Math.max(now, at))}
+      </time>
+    </Tip>
+  );
+}
+
+/** A name for an icon, shown under it after a moment's rest. `quiet`
+ * holds it back, for an icon whose menu is open or has just handed the
+ * focus back to it: the name would only cover what was chosen. */
+function Tip({ label, quiet, children }: { label: string; quiet?: boolean; children: React.ReactNode }) {
+  return (
+    <Tooltip open={quiet ? false : undefined}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** One quiet icon: muted until the pointer is on it, in a hit target a
+ * finger can find. */
+const Verb = forwardRef<HTMLButtonElement, React.ComponentProps<"button"> & { label: string }>(
+  ({ label, className, ...rest }, ref) => (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={label}
+      className={cn(
+        "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95 data-[state=open]:bg-accent data-[state=open]:text-foreground motion-reduce:transition-none",
+        className,
+      )}
+      {...rest}
+    />
+  ),
+);
+Verb.displayName = "Verb";
+
+type Action = { label: string; icon: React.ReactNode; run: () => void; destructive?: boolean };
+
+/**
+ * What can be done with a message, in one of two looks.
+ *
+ * "row" is the chat's: a line of small icons under the message, lined up
+ * with its words, then when it was said. It holds its height whether it
+ * shows or not, so nothing in the transcript moves when the pointer
+ * arrives; it only fades in. The few verbs people reach for sit in the
+ * row and the rest wait behind the ⋯.
+ *
+ * "pill" is the room's, floating beside a message with every verb in it.
+ */
 export function MessageActionBar({
   message,
   author,
@@ -117,11 +224,10 @@ export function MessageActionBar({
   onRewind,
   open,
   className,
-  lead,
+  look = "pill",
+  align = "start",
+  at,
 }: {
-  /** Drawn inside the pill before the buttons: the time a message was
-   * said, which then needs no row of its own. */
-  lead?: React.ReactNode;
   message: Message;
   author: string;
   onReply: (draft: ReplyDraft) => void;
@@ -135,9 +241,24 @@ export function MessageActionBar({
   /** Shown without a hover: the message was tapped (useTapToShow). */
   open?: boolean;
   className?: string;
+  look?: "row" | "pill";
+  /** Which edge of the message the row lines up with: an agent's words
+   * start at the left, yours end at the right. */
+  align?: "start" | "end";
+  /** When it was said, shown at the end of the row. */
+  at?: number;
 }) {
   const [copied, setCopied] = useState(false);
-  const [picking, setPicking] = useState(false);
+  // A menu that is open keeps its row in view: the pointer has left the
+  // message for the menu, and the icon it hangs from should not fade
+  // out from under it.
+  const [menu, setMenu] = useState<"react" | "more" | null>(null);
+  const [settling, setSettling] = useState<"react" | "more" | null>(null);
+  const toggle = (which: "react" | "more") => (opening: boolean) => {
+    setMenu(opening ? which : null);
+    if (!opening) setSettling(which);
+  };
+  const settled = { onPointerLeave: () => setSettling(null), onBlur: () => setSettling(null) };
   if (!message.text || message.deleted) return null;
   const draft: ReplyDraft = { id: message.id, author, excerpt: excerptOf(message) };
   const copy = () => {
@@ -145,98 +266,181 @@ export function MessageActionBar({
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
   };
-  const buttons: Array<[string, React.ReactNode, () => void]> = [
-    ...(onReact
-      ? ([["React", <SmilePlus key="e" size={14} strokeWidth={1.8} />, () => setPicking((p) => !p)]] as Array<
-          [string, React.ReactNode, () => void]
-        >)
-      : []),
-    ["Reply", <CornerUpLeft key="r" size={14} strokeWidth={1.8} />, () => onReply(draft)],
-    ["Forward", <Send key="f" size={13} strokeWidth={1.8} />, () => onForward(message, author)],
-    ...(onEdit
-      ? ([["Edit", <Pencil key="e" size={13} strokeWidth={1.8} />, onEdit]] as Array<
-          [string, React.ReactNode, () => void]
-        >)
-      : []),
-    ...(onRewind
-      ? ([
-          [
-            "Rewind to here",
-            <History key="w" size={13} strokeWidth={1.8} />,
-            () =>
-              void confirm({
-                title: "Rewind to before this message?",
-                body: "It and everything after are removed, and file changes since then are undone. Your message returns to the box.",
-                confirmLabel: "Rewind",
-                destructive: true,
-              }).then((yes) => yes && onRewind()),
-          ],
-        ] as Array<[string, React.ReactNode, () => void]>)
-      : []),
-    ...(onDelete
-      ? ([
-          [
-            "Delete",
-            <Trash2 key="d" size={13} strokeWidth={1.8} />,
-            () =>
-              // No undo exists for this, so the question is asked once
-              // and names what goes.
-              void confirm({
-                title: "Delete this message?",
-                body: "This can't be undone.",
-                confirmLabel: "Delete",
-                destructive: true,
-              }).then((yes) => yes && onDelete()),
-          ],
-        ] as Array<[string, React.ReactNode, () => void]>)
-      : []),
-    [
-      copied ? "Copied" : "Copy",
-      copied ? (
-        <Check key="c" size={13} strokeWidth={2.2} className="text-success" />
-      ) : (
-        <Copy key="c" size={13} strokeWidth={1.8} />
-      ),
-      copy,
-    ],
-  ];
-  return (
-    <div
-      className={cn(
-        "pointer-events-none relative flex shrink-0 translate-y-1 items-center self-center rounded-full border border-border/70 bg-popover/95 p-[3px] opacity-0 shadow-[0_4px_14px_-6px_rgba(0,0,0,0.25)] backdrop-blur-md transition-[opacity,transform] duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100",
-        open && "pointer-events-auto translate-y-0 opacity-100",
-        className,
-      )}
-    >
-      {picking && onReact && (
-        <div className="absolute bottom-full right-0 mb-1.5 flex gap-0.5 rounded-full border bg-popover p-1 shadow-lg shadow-(color:--shadow-color)">
-          {QUICK_REACTIONS.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => {
-                onReact(emoji);
-                setPicking(false);
-              }}
-              className="flex size-7 items-center justify-center rounded-full text-lead transition-transform duration-150 hover:scale-110 hover:bg-accent active:scale-95"
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      )}
-      {lead}
-      {buttons.map(([label, icon, run]) => (
-        <button
-          key={label}
-          title={label}
-          aria-label={label}
-          onClick={run}
-          className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-90"
-        >
-          {icon}
-        </button>
+  // Asked after the menu has closed and handed focus back, so the
+  // question keeps the keyboard rather than losing it to the ⋯.
+  const ask = (question: Parameters<typeof confirm>[0], then: () => void) =>
+    setTimeout(() => void confirm(question).then((yes) => yes && then()), 0);
+  const size = look === "row" ? 16 : 14;
+  const copyAction: Action = {
+    label: copied ? "Copied" : "Copy",
+    icon: copied ? (
+      <Check size={size} strokeWidth={2.2} className="text-success" />
+    ) : (
+      <Copy size={size} strokeWidth={1.8} />
+    ),
+    run: copy,
+  };
+  const reply: Action = { label: "Reply", icon: <CornerUpLeft size={size} strokeWidth={1.8} />, run: () => onReply(draft) };
+  const forward: Action = {
+    label: "Forward",
+    icon: <Send size={size - 1} strokeWidth={1.8} />,
+    run: () => onForward(message, author),
+  };
+  const edit: Action | null = onEdit ? { label: "Edit", icon: <Pencil size={size - 1} strokeWidth={1.8} />, run: onEdit } : null;
+  const rewind: Action | null = onRewind
+    ? {
+        label: "Rewind to here",
+        icon: <History size={size - 1} strokeWidth={1.8} />,
+        run: () =>
+          ask(
+            {
+              title: "Rewind to before this message?",
+              body: "It and everything after are removed, and file changes since then are undone. Your message returns to the box.",
+              confirmLabel: "Rewind",
+              destructive: true,
+            },
+            onRewind,
+          ),
+      }
+    : null;
+  const remove: Action | null = onDelete
+    ? {
+        label: "Delete",
+        icon: <Trash2 size={size - 1} strokeWidth={1.8} />,
+        // No undo exists for this, so the question is asked once and
+        // names what goes.
+        run: () => ask({ title: "Delete this message?", body: "This can't be undone.", confirmLabel: "Delete", destructive: true }, onDelete),
+        destructive: true,
+      }
+    : null;
+
+  const mine = message.role === "user";
+  // The row keeps to the four verbs people reach for. Your own message
+  // swaps forward for edit, since words you sent are the ones you fix.
+  const shown: Action[] =
+    look === "pill"
+      ? [reply, forward, ...(edit ? [edit] : []), ...(rewind ? [rewind] : []), ...(remove ? [remove] : []), copyAction]
+      : mine
+        ? [copyAction, ...(edit ? [edit] : []), reply]
+        : [copyAction, reply, forward];
+  const more: Action[] =
+    look === "pill" ? [] : [...(mine ? [forward] : []), ...(rewind ? [rewind] : []), ...(remove ? [remove] : [])];
+
+  const react = onReact ? (
+    <DropdownMenu modal={false} open={menu === "react"} onOpenChange={toggle("react")}>
+      <Tip label="React" quiet={menu === "react" || settling === "react"}>
+        <DropdownMenuTrigger asChild>
+          <Verb label="React" {...settled} className={look === "pill" ? "rounded-full" : undefined}>
+            <SmilePlus size={size} strokeWidth={1.8} />
+          </Verb>
+        </DropdownMenuTrigger>
+      </Tip>
+      {/* the six, in a row of their own above the icon */}
+      <DropdownMenuContent
+        side="top"
+        align={align === "end" ? "end" : "start"}
+        className="flex min-w-0 gap-0.5 rounded-full p-1"
+      >
+        {QUICK_REACTIONS.map((emoji) => (
+          <DropdownMenuItem
+            key={emoji}
+            onSelect={() => onReact(emoji)}
+            className="size-8 justify-center rounded-full p-0 text-lead transition-transform duration-150 data-[highlighted]:scale-110 motion-reduce:transition-none"
+          >
+            {emoji}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null;
+
+  const icons = (
+    <>
+      {shown.map((action) => (
+        <Tip key={action.label === "Copied" ? "Copy" : action.label} label={action.label}>
+          <Verb label={action.label} onClick={action.run} className={look === "pill" ? "rounded-full" : undefined}>
+            {action.icon}
+          </Verb>
+        </Tip>
       ))}
-    </div>
+      {react}
+      {more.length > 0 && (
+        <DropdownMenu modal={false} open={menu === "more"} onOpenChange={toggle("more")}>
+          <Tip label="More" quiet={menu === "more" || settling === "more"}>
+            <DropdownMenuTrigger asChild>
+              <Verb label="More actions" {...settled}>
+                <MoreHorizontal size={size} strokeWidth={1.8} />
+              </Verb>
+            </DropdownMenuTrigger>
+          </Tip>
+          <DropdownMenuContent side="bottom" align={align === "end" ? "end" : "start"} className="min-w-[168px]">
+            {more.map((action) => (
+              <Fragment key={action.label}>
+                {/* the one with no undo stands apart from the rest */}
+                {action.destructive && more.length > 1 && <DropdownMenuSeparator />}
+                <DropdownMenuItem variant={action.destructive ? "destructive" : "default"} onSelect={action.run}>
+                  {action.icon}
+                  {action.label}
+                </DropdownMenuItem>
+              </Fragment>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </>
+  );
+
+  // Hidden is see-through and out of the pointer's way, never gone: the
+  // row's height stays put, and Tab still reaches a hidden icon, which
+  // then shows its row because focus is inside the message.
+  const showing = cn(
+    "pointer-events-none opacity-0 transition-opacity duration-150 ease-out motion-reduce:transition-none",
+    "group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+    (open || menu) && "pointer-events-auto opacity-100",
+  );
+
+  if (look === "row") {
+    const when = at ? <SaidAt at={at} /> : null;
+    return (
+      <TooltipProvider delayDuration={500}>
+        <div
+          data-actions=""
+          className={cn(
+            "flex h-7 shrink-0 items-center",
+            // the icons' own padding sits outside the words' edge, so
+            // the first glyph lines up with the text above it
+            align === "end" ? "-mr-1.5 justify-end" : "-ml-1.5",
+            showing,
+            className,
+          )}
+        >
+          {align === "end" && when}
+          {icons}
+          {align === "start" && when}
+        </div>
+      </TooltipProvider>
+    );
+  }
+
+  return (
+    <TooltipProvider delayDuration={500}>
+      <div
+        className={cn(
+          "relative flex shrink-0 items-center self-center rounded-full border border-border/70 bg-popover/95 p-[3px] shadow-[0_4px_14px_-6px_rgba(0,0,0,0.25)] backdrop-blur-md",
+          showing,
+          className,
+        )}
+      >
+        {react}
+        {shown.map((action) => (
+          <Tip key={action.label === "Copied" ? "Copy" : action.label} label={action.label}>
+            <Verb label={action.label} onClick={action.run} className="rounded-full">
+              {action.icon}
+            </Verb>
+          </Tip>
+        ))}
+      </div>
+    </TooltipProvider>
   );
 }
 
