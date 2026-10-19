@@ -1,0 +1,586 @@
+// Settings, Plugins: managing what agents can reach, where the Plugins
+// page in the rail is for finding it. Three lists under one switch, Apps,
+// MCPs and Skills, each counted, each searchable, and each item opening a
+// page of its own: an app's connection and who may use it, a server's
+// connection, values and agents, a skill's text and the agents using it.
+//
+// The switches here are the ones Bloks really has. Apps are connected or
+// not, and each agent may use connected apps or not; servers and skills
+// are attached to agents one by one. Nothing pretends to switch an app
+// off without disconnecting it.
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "@/components/icons";
+import { ChevronRight } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Lock } from "@/components/icons";
+import { MessageSquare } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { Puzzle } from "@/components/icons";
+import { RefreshCw } from "@/components/icons";
+import { Search } from "@/components/icons";
+import { Settings } from "@/components/icons";
+import { Sparkles } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { api, useStore, type PluginFocus, type Skill } from "@/state/store";
+import { useConnectors, type ToolkitCard } from "@/lib/useConnectors";
+import { detailsFor } from "@/lib/appDetails";
+import { tryPrompt } from "@/lib/tryPrompt";
+import { AddMcpServerDialog, BackLink, McpServerSettings, mcpTarget, useMcpServers } from "./McpServers";
+import { AddSkillDialog } from "./SkillsPanel";
+import { ServiceIcon } from "./Customize";
+import { AgentAvatar } from "./Avatar";
+import { Switch } from "@/components/ui/switch";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/cn";
+
+type List = "apps" | "mcps" | "skills";
+
+const pill =
+  "flex h-9 items-center rounded-full outline-none transition-[background-color,color,scale,opacity] duration-150 ease-out active:scale-[0.97]";
+
+function Tile({ children, size = 10 }: { children: React.ReactNode; size?: 10 | 14 }) {
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-xl border bg-background text-muted-foreground",
+        size === 14 ? "size-14 rounded-2xl" : "size-10",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** One row of a list: its mark, its name and line, what sits on the right. */
+function Row({
+  tile,
+  name,
+  line,
+  aside,
+  onOpen,
+}: {
+  tile: React.ReactNode;
+  name: string;
+  line?: string;
+  aside?: React.ReactNode;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="group flex items-center gap-3.5 px-4 py-3.5 transition-colors duration-150 hover:bg-accent/30">
+      <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3.5 text-left outline-none">
+        {tile}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[14px] font-medium text-foreground">{name}</span>
+          {line && <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">{line}</span>}
+        </span>
+      </button>
+      {aside}
+    </div>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return <div className="divide-y overflow-hidden rounded-2xl border bg-card">{children}</div>;
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-[13.5px] text-muted-foreground">{children}</div>;
+}
+
+const usedBy = (n: number) => (n === 0 ? "No agents" : n === 1 ? "1 agent" : `${n} agents`);
+
+export function PluginSettings() {
+  const { state, dispatch } = useStore();
+  const focus = state.pluginFocus;
+  const setFocus = (next: PluginFocus | null) => dispatch({ type: "openPluginSettings", focus: next });
+  const connectors = useConnectors();
+  const { servers, reload: reloadServers } = useMcpServers();
+  const [skills, setSkills] = useState<Skill[] | null>(null);
+  const loadSkills = () =>
+    api("/api/skills")
+      .then((r) => setSkills(r.skills ?? []))
+      .catch(() => setSkills([]));
+  useEffect(() => {
+    void loadSkills();
+  }, []);
+  const [list, setList] = useState<List>("apps");
+  const [query, setQuery] = useState("");
+  const [addingServer, setAddingServer] = useState(false);
+  const [addingSkill, setAddingSkill] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const agents = state.bots.filter((b) => !b.hidden);
+
+  // a page opened from elsewhere (Manage on an app) shows its own list
+  // behind it, so Back lands where it belongs
+  useEffect(() => {
+    if (focus) setList(focus.kind === "app" ? "apps" : focus.kind === "mcp" ? "mcps" : "skills");
+  }, [focus]);
+
+  const q = query.trim().toLowerCase();
+  const apps = useMemo(
+    () => connectors.installed.filter((c) => !q || `${c.label} ${c.blurb}`.toLowerCase().includes(q)),
+    [connectors.installed, q],
+  );
+  const shownServers = (servers ?? []).filter((s) => !q || `${s.name} ${s.target}`.toLowerCase().includes(q));
+  const shownSkills = (skills ?? []).filter((s) => !q || `${s.name} ${s.description}`.toLowerCase().includes(q));
+
+  if (focus?.kind === "mcp") {
+    return (
+      <McpServerSettings
+        id={focus.id}
+        onBack={() => {
+          setFocus(null);
+          reloadServers();
+        }}
+      />
+    );
+  }
+  if (focus?.kind === "app") {
+    const card = connectors.cards?.find((c) => c.slug === focus.id);
+    return card ? (
+      <AppSettings card={card} connected={Boolean(connectors.status[card.slug]?.connected)} connectors={connectors} onBack={() => setFocus(null)} />
+    ) : (
+      <div>
+        <BackLink onBack={() => setFocus(null)} />
+        <div className="mt-6 flex items-center gap-2 text-[13.5px] text-muted-foreground">
+          {connectors.cards === null ? (
+            <>
+              <Loader2 size={14} className="animate-spin" /> Loading
+            </>
+          ) : (
+            "That app is not in the catalogue."
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (focus?.kind === "skill") {
+    const skill = skills?.find((s) => s.id === focus.id);
+    return skill ? (
+      <SkillSettings
+        skill={skill}
+        onBack={() => setFocus(null)}
+        onRemoved={() => {
+          setFocus(null);
+          void loadSkills();
+        }}
+      />
+    ) : (
+      <div>
+        <BackLink onBack={() => setFocus(null)} />
+        <p className="mt-6 text-[13.5px] text-muted-foreground">{skills === null ? "Loading" : "That skill is no longer installed."}</p>
+      </div>
+    );
+  }
+
+  const counts: Record<List, number> = {
+    apps: connectors.installed.length,
+    mcps: servers?.length ?? 0,
+    skills: skills?.length ?? 0,
+  };
+
+  return (
+    <div>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-[26px] font-semibold tracking-tight text-foreground">Plugins</h2>
+          <p className="mt-1.5 text-[14px] text-muted-foreground">Manage apps, MCP servers and skills.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => dispatch({ type: "openCustomize", tab: list === "skills" ? "skills" : "plugins" })}
+            className={cn(pill, "border bg-card px-4 text-[13px] font-medium text-foreground hover:bg-accent")}
+          >
+            Browse directory
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger className={cn(pill, "gap-1 bg-foreground px-4 text-[13px] font-medium text-background hover:opacity-90")}>
+              Add
+              <ChevronDown size={14} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[220px]">
+              <DropdownMenuItem onClick={() => setAddingServer(true)}>
+                <Puzzle />
+                Add custom MCP server
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAddingSkill(true)}>
+                <Sparkles />
+                Add a skill
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
+        <div role="tablist" className="flex items-center gap-1">
+          {(
+            [
+              ["apps", "Apps"],
+              ["mcps", "MCPs"],
+              ["skills", "Skills"],
+            ] as const
+          ).map(([value, text]) => (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={list === value}
+              onClick={() => setList(value)}
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13.5px] font-medium transition-colors duration-150",
+                list === value ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {text}
+              <span className="tabular-nums text-muted-foreground">{counts[value]}</span>
+            </button>
+          ))}
+        </div>
+        <label className="flex h-9 w-full max-w-[280px] items-center gap-2 rounded-xl border bg-card px-3 focus-within:border-ring/50">
+          <Search size={15} className="shrink-0 text-muted-foreground" />
+          <input
+            ref={searchRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={list === "apps" ? "Search apps" : list === "mcps" ? "Search MCP servers" : "Search skills"}
+            aria-label="Search"
+            className="min-w-0 flex-1 bg-transparent text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
+          />
+        </label>
+      </div>
+
+      <div className="mt-5">
+        {list === "apps" &&
+          (connectors.cards === null ? (
+            <Loading />
+          ) : !connectors.configured ? (
+            <Empty>
+              Connecting apps needs a Composio Connect key.{" "}
+              <button onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })} className="text-foreground underline underline-offset-2">
+                Add one in Apps and keys
+              </button>
+              .
+            </Empty>
+          ) : apps.length === 0 ? (
+            <Empty>
+              {q ? `No connected apps match “${query.trim()}”.` : "No apps connected yet."}{" "}
+              {!q && (
+                <button onClick={() => dispatch({ type: "openCustomize", tab: "plugins" })} className="text-foreground underline underline-offset-2">
+                  Browse the directory
+                </button>
+              )}
+            </Empty>
+          ) : (
+            <Card>
+              {apps.map((card) => (
+                <Row
+                  key={card.slug}
+                  onOpen={() => setFocus({ kind: "app", id: card.slug })}
+                  tile={
+                    <Tile>
+                      <ServiceIcon card={card} />
+                    </Tile>
+                  }
+                  name={card.label}
+                  line={detailsFor(card).about}
+                  aside={
+                    <button
+                      onClick={() => setFocus({ kind: "app", id: card.slug })}
+                      aria-label={`${card.label} settings`}
+                      className="flex items-center gap-2 text-[12.5px] text-muted-foreground"
+                    >
+                      Connected
+                      <ChevronRight size={16} />
+                    </button>
+                  }
+                />
+              ))}
+            </Card>
+          ))}
+
+        {list === "mcps" &&
+          (servers === null ? (
+            <Loading />
+          ) : shownServers.length === 0 ? (
+            <Empty>
+              {q ? `No servers match “${query.trim()}”.` : "No MCP servers yet. Anything that speaks MCP works: a local command or a remote URL."}{" "}
+              {!q && (
+                <button onClick={() => setAddingServer(true)} className="text-foreground underline underline-offset-2">
+                  Add one
+                </button>
+              )}
+            </Empty>
+          ) : (
+            <>
+              <h3 className="mb-2.5 text-[14px] font-semibold text-foreground">Servers</h3>
+              <Card>
+                {shownServers.map((server) => {
+                  const n = agents.filter((b) => b.mcpServers?.includes(server.id)).length;
+                  return (
+                    <Row
+                      key={server.id}
+                      onOpen={() => setFocus({ kind: "mcp", id: server.id })}
+                      tile={
+                        <Tile>
+                          <Puzzle size={17} />
+                        </Tile>
+                      }
+                      name={server.name}
+                      line={mcpTarget(server)}
+                      aside={
+                        <span className="flex shrink-0 items-center gap-3">
+                          {(server.needs ?? []).length > 0 && (
+                            <button
+                              onClick={() => setFocus({ kind: "mcp", id: server.id })}
+                              className="rounded-lg border px-2.5 py-1 text-[12.5px] font-medium text-foreground transition-colors hover:bg-accent"
+                            >
+                              Finish setup
+                            </button>
+                          )}
+                          <span className="text-[12.5px] tabular-nums text-muted-foreground">{usedBy(n)}</span>
+                          <button
+                            onClick={() => setFocus({ kind: "mcp", id: server.id })}
+                            aria-label={`${server.name} settings`}
+                            title="Settings"
+                            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          >
+                            <Settings size={16} />
+                          </button>
+                        </span>
+                      }
+                    />
+                  );
+                })}
+              </Card>
+            </>
+          ))}
+
+        {list === "skills" &&
+          (skills === null ? (
+            <Loading />
+          ) : shownSkills.length === 0 ? (
+            <Empty>{q ? `No skills match “${query.trim()}”.` : "No skills yet."}</Empty>
+          ) : (
+            <Card>
+              {shownSkills.map((skill) => {
+                const n = agents.filter((b) => b.skillIds?.includes(skill.id)).length;
+                return (
+                  <Row
+                    key={skill.id}
+                    onOpen={() => setFocus({ kind: "skill", id: skill.id })}
+                    tile={<Tile>{skill.source === "builtin" ? <Lock size={16} /> : <Sparkles size={17} />}</Tile>}
+                    name={skill.name}
+                    line={skill.description}
+                    aside={
+                      <span className="flex shrink-0 items-center gap-3 text-[12.5px] text-muted-foreground">
+                        <span>{skill.source === "builtin" ? "Built in" : "Yours"}</span>
+                        <span className="tabular-nums">{usedBy(n)}</span>
+                        <ChevronRight size={16} />
+                      </span>
+                    }
+                  />
+                );
+              })}
+            </Card>
+          ))}
+      </div>
+
+      <AddMcpServerDialog
+        open={addingServer}
+        onOpenChange={setAddingServer}
+        onAdded={(id) => {
+          reloadServers();
+          setFocus({ kind: "mcp", id });
+        }}
+      />
+      <AddSkillDialog open={addingSkill} onOpenChange={setAddingSkill} onInstalled={() => void loadSkills()} />
+    </div>
+  );
+}
+
+function Loading() {
+  return (
+    <div className="flex items-center gap-2 py-10 text-[13px] text-muted-foreground">
+      <Loader2 size={14} className="animate-spin" /> Loading
+    </div>
+  );
+}
+
+function Section({ title, says, children }: { title: string; says?: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl border bg-card p-5">
+      <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
+      {says && <p className="mt-1 text-pretty text-[13px] text-muted-foreground">{says}</p>}
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+/** An app's page in Settings: its connection, and which agents may use
+ * connected apps (one switch per agent covers every app; Bloks has no
+ * switch for one app alone). */
+function AppSettings({
+  card,
+  connected,
+  connectors,
+  onBack,
+}: {
+  card: ToolkitCard;
+  connected: boolean;
+  connectors: ReturnType<typeof useConnectors>;
+  onBack: () => void;
+}) {
+  const { state, dispatch } = useStore();
+  const agents = state.bots.filter((b) => !b.hidden);
+  const details = detailsFor(card);
+  const busy = connectors.busySlug === card.slug;
+  return (
+    <div>
+      <BackLink onBack={onBack} />
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="flex min-w-0 items-center gap-3 text-[26px] font-semibold tracking-tight text-foreground">
+            <ServiceIcon card={card} />
+            <span className="truncate">{card.label}</span>
+          </h2>
+          <p className="mt-0.5 text-[14px] text-muted-foreground">{details.category}, through Composio Connect</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => dispatch({ type: "openCustomize", tab: "plugins", app: card.slug })}
+            className={cn(pill, "border bg-card px-4 text-[13px] font-medium text-foreground hover:bg-accent")}
+          >
+            View details
+          </button>
+          {connected && (
+            <button
+              onClick={() => tryPrompt(state, dispatch, `Using ${card.label}: ${details.prompts[0]}`)}
+              className={cn(pill, "gap-1.5 bg-foreground px-4 text-[13px] font-medium text-background hover:opacity-90")}
+            >
+              <MessageSquare size={15} />
+              Try now
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-7 flex flex-col gap-4">
+        <Section title="Connection">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="flex items-center gap-2 text-[14px] text-foreground">
+              <span className={cn("size-2 rounded-full", connected ? "bg-success" : "bg-muted-foreground/50")} />
+              {connected ? "Connected" : "Not connected"}
+            </span>
+            <span className="flex items-center gap-2">
+              {busy && <Loader2 size={15} className="animate-spin text-muted-foreground" />}
+              <button
+                onClick={() => connectors.connect(card.slug)}
+                disabled={!connectors.configured || busy}
+                className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-40"
+              >
+                {connected ? <RefreshCw size={14} /> : <Plus size={14} />}
+                {connected ? "Sign in again" : "Connect"}
+              </button>
+              {connected && (
+                <button
+                  onClick={() => connectors.disconnect(card.slug)}
+                  disabled={busy}
+                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-destructive transition-colors hover:bg-destructive/10"
+                >
+                  <Trash2 size={14} />
+                  Disconnect
+                </button>
+              )}
+            </span>
+          </div>
+        </Section>
+
+        <Section
+          title="Agents that can use connected apps"
+          says={`One switch per agent covers every connected app, ${card.label} included.`}
+        >
+          <div className="flex flex-col divide-y">
+            {agents.map((bot) => (
+              <div key={bot.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                <AgentAvatar bot={bot} size={26} />
+                <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{bot.name}</span>
+                <Switch
+                  checked={bot.composio !== false}
+                  aria-label={`${bot.name} can use connected apps`}
+                  onCheckedChange={(on) => dispatch({ type: "updateBot", botId: bot.id, patch: { composio: on } })}
+                />
+              </div>
+            ))}
+          </div>
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+/** A skill's page in Settings: what it says, and which agents use it. */
+function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () => void; onRemoved: () => void }) {
+  const { state, dispatch } = useStore();
+  const agents = state.bots.filter((b) => !b.hidden);
+  const remove = () => {
+    if (!window.confirm(`Remove ${skill.name}? Agents using it stop.`)) return;
+    void api(`/api/skills/${skill.id}`, { method: "DELETE" }).then(onRemoved).catch(() => {});
+  };
+  return (
+    <div>
+      <BackLink onBack={onBack} />
+      <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
+          <Tile size={14}>{skill.source === "builtin" ? <Lock size={20} /> : <Sparkles size={22} />}</Tile>
+          <div className="min-w-0">
+            <h2 className="truncate text-[26px] font-semibold tracking-tight text-foreground">{skill.name}</h2>
+            <p className="mt-0.5 text-[14px] text-muted-foreground">{skill.source === "builtin" ? "Built in, part of Bloks" : "Yours, on this computer"}</p>
+          </div>
+        </div>
+        {skill.source === "user" && (
+          <button
+            onClick={remove}
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-destructive/10 px-3.5 text-[13.5px] font-medium text-destructive transition-colors hover:bg-destructive/15"
+          >
+            <Trash2 size={15} />
+            Remove
+          </button>
+        )}
+      </div>
+      {skill.description && <p className="mt-4 text-pretty text-[14px] text-foreground">{skill.description}</p>}
+
+      <div className="mt-6 flex flex-col gap-4">
+        <Section title="Agents that use it" says="A skill goes into every turn of the agents it is switched on for.">
+          <div className="flex flex-col divide-y">
+            {agents.map((bot) => {
+              const ids = bot.skillIds ?? [];
+              const on = ids.includes(skill.id);
+              return (
+                <div key={bot.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <AgentAvatar bot={bot} size={26} />
+                  <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{bot.name}</span>
+                  <Switch
+                    checked={on}
+                    aria-label={`${bot.name} uses ${skill.name}`}
+                    onCheckedChange={(next) =>
+                      dispatch({
+                        type: "updateBot",
+                        botId: bot.id,
+                        patch: { skillIds: next ? [...ids, skill.id] : ids.filter((x) => x !== skill.id) },
+                      })
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+        <Section title="Instructions">
+          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-xl bg-muted/40 p-4 font-mono text-[12.5px] leading-relaxed text-foreground">
+            {skill.body}
+          </pre>
+        </Section>
+      </div>
+    </div>
+  );
+}

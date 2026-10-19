@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { DiffLines, type DiffLine } from "./DiffLines";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { MAX_SKILL_CHARS, skillLength } from "@/lib/skillLength";
 
 /** How long the instructions are against the limit, red once over it. */
@@ -201,6 +202,36 @@ export function AddSkill({
         </Button>
       </div>
     </div>
+  );
+}
+
+/** Adding a skill in a window over the page it was asked for from: the
+ * Skills page, or Settings, Plugins. */
+export function AddSkillDialog({
+  open,
+  onOpenChange,
+  onInstalled,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onInstalled: (skill: Skill) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[84vh] max-w-[620px] flex-col">
+        <DialogTitle>Add a skill</DialogTitle>
+        <DialogDescription>Teach your agents something new: drop a Markdown file, or write it here.</DialogDescription>
+        <div className="mt-4 flex min-h-0 flex-1 flex-col">
+          <AddSkill
+            onBack={() => onOpenChange(false)}
+            onInstalled={(skill) => {
+              onOpenChange(false);
+              onInstalled(skill);
+            }}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

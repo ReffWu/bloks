@@ -1,15 +1,14 @@
-// A phone-narrow window's way around: one small pill in the top-left
-// corner, and behind it a drawer with the rail's places and the agents and
+// A phone-narrow window's way around: one round button of three lines in
+// the top-left corner, and behind it a drawer with the rail's places and the agents and
 // rooms. The page gets the whole screen until you ask for the list, rather
 // than a header strip of faces and icons sitting over every conversation.
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { PanelLeft } from "@/components/icons";
+import { Menu } from "@/components/icons";
 import { useStore } from "@/state/store";
 import { useEscape } from "@/lib/useEscape";
 import { AppRail } from "./AppRail";
 import { Sidebar } from "./Sidebar";
-import { BloksMark } from "./Brand";
 
 export function MobileNav() {
   const { state } = useStore();
@@ -28,11 +27,10 @@ export function MobileNav() {
         onClick={() => setOpen(true)}
         aria-label={unread ? "Open the sidebar, something is unread" : "Open the sidebar"}
         aria-expanded={open}
-        className="fixed left-3 top-[max(env(safe-area-inset-top),10px)] z-30 flex h-9 items-center gap-2 rounded-full border bg-popover/95 pl-2.5 pr-3 text-muted-foreground shadow-md shadow-(color:--shadow-color) backdrop-blur-sm transition-[scale,color] duration-150 ease-out hover:text-foreground active:scale-[0.96] md:hidden"
+        className="fixed left-3 top-[max(env(safe-area-inset-top),10px)] z-30 flex size-10 items-center justify-center rounded-full border bg-popover/95 text-muted-foreground shadow-md shadow-(color:--shadow-color) backdrop-blur-sm transition-[scale,color] duration-150 ease-out hover:text-foreground active:scale-[0.96] md:hidden"
       >
-        <PanelLeft size={17} />
-        <BloksMark size={13} />
-        {unread && <span className="size-1.5 rounded-full bg-brand" />}
+        <Menu size={19} />
+        {unread && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-brand ring-2 ring-popover" />}
       </button>
       <AnimatePresence>
         {open && (

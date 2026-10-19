@@ -21,7 +21,8 @@ import { RecordPanel } from "./RecordPanel";
 import { BackupsSection } from "./BackupsSection";
 import { RulesPanel } from "./RulesPanel";
 import { ApiKeyRow } from "./ApiKeys";
-import { McpServersCard } from "./McpServers";
+import { PluginSettings } from "./PluginSettings";
+import { Puzzle } from "@/components/icons";
 import { EnginesPanel } from "./EnginesPanel";
 import { CloudSection } from "./CloudSection";
 import { DevicesSection } from "./DevicesSection";
@@ -774,15 +775,27 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
     ],
   },
   {
-    group: "Connections",
+    group: "Integrations",
     pages: [
+      {
+        id: "plugins",
+        label: "Plugins",
+        icon: Puzzle,
+        description: "Manage apps, MCP servers and skills.",
+        keywords: "apps connectors composio mcp servers skills agents tools integrations gmail slack github",
+      },
       {
         id: "apps",
         label: "Apps and keys",
         icon: LayoutGrid,
         description: `Accounts and tools shared by every agent. Keys stay on ${thisComputer()}.`,
-        keywords: "composio slack gmail connectors mcp servers box key claude desktop",
+        keywords: "composio connect key api key box boat claude desktop",
       },
+    ],
+  },
+  {
+    group: "Connections",
+    pages: [
       {
         id: "devices",
         label: "Phone and devices",
@@ -995,6 +1008,8 @@ function PageBody({ id }: { id: string }) {
           </div>
         </SettingsGroup>
       );
+    case "plugins":
+      return <PluginSettings />;
     case "apps":
       return (
         <>
@@ -1031,7 +1046,7 @@ function PageBody({ id }: { id: string }) {
               <BoxSleep />
             </div>
           </SettingsGroup>
-          <McpServersCard />
+          {/* MCP servers are managed in Plugins now, beside apps and skills */}
           <UseFromOtherApps />
         </>
       );
@@ -1163,8 +1178,10 @@ export function AppSettingsPanel() {
         </div>
       </nav>
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[760px] px-5 pb-16 pt-8 md:px-10">
-          <SettingsPageHeader title={page.label} description={page.description} />
+        {/* Plugins draws its own header, with its tools, and lists that
+            want the room of a wider column */}
+        <div className={cn("mx-auto w-full px-5 pb-16 pt-8 md:px-10", pageId === "plugins" ? "max-w-[960px]" : "max-w-[760px]")}>
+          {pageId !== "plugins" && <SettingsPageHeader title={page.label} description={page.description} />}
           <div className="[&>div:first-child]:mt-0">
             <PageBody id={pageId} />
           </div>

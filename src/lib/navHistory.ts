@@ -4,26 +4,32 @@
 // the full pages; moving between them is recorded as it happens, whoever
 // moved, so a link that opened Settings counts the same as a click.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Action, AppState, CustomizeTab, LibraryShelf } from "@/state/store";
+import type { Action, AppState, CustomizeTab, LibraryShelf, PluginFocus } from "@/state/store";
 
 export type Place =
   | { kind: "chat"; id: string; lane?: string }
   | { kind: "overview" }
   | { kind: "library"; shelf: LibraryShelf }
-  | { kind: "customize"; tab: CustomizeTab }
+  | { kind: "customize"; tab: CustomizeTab; app?: string }
   | { kind: "automations" }
-  | { kind: "settings"; page: string };
+  | { kind: "settings"; page: string; focus?: PluginFocus };
 
 const LIMIT = 100;
 
 export function placeOf(state: AppState): Place | null {
-  if (state.appSettingsOpen) return { kind: "settings", page: state.settingsPage };
+  if (state.appSettingsOpen)
+    return {
+      kind: "settings",
+      page: state.settingsPage,
+      ...(state.settingsPage === "plugins" && state.pluginFocus ? { focus: state.pluginFocus } : {}),
+    };
   if (state.routinesOpen) return { kind: "automations" };
   // a page's own tab is part of where you were: Back from Skills to
   // Plugins is a step, the same as Back from one chat to another
   if (state.page === "overview") return { kind: "overview" };
   if (state.page === "library") return { kind: "library", shelf: state.library };
-  if (state.page === "plugins") return { kind: "customize", tab: state.customize };
+  if (state.page === "plugins")
+    return { kind: "customize", tab: state.customize, ...(state.customizeApp ? { app: state.customizeApp } : {}) };
   if (!state.selectedId) return null;
   const bot = state.bots.find((b) => b.id === state.selectedId);
   return { kind: "chat", id: state.selectedId, lane: bot?.activeTaskId ?? undefined };
@@ -43,11 +49,13 @@ export function goTo(place: Place): Action[] {
     case "library":
       return [{ type: "openLibrary", shelf: place.shelf }];
     case "customize":
-      return [{ type: "openCustomize", tab: place.tab }];
+      return [{ type: "openCustomize", tab: place.tab, app: place.app ?? null }];
     case "automations":
       return [{ type: "toggleRoutines", open: true }];
     case "settings":
-      return [{ type: "toggleAppSettings", open: true, page: place.page }];
+      return place.page === "plugins"
+        ? [{ type: "openPluginSettings", focus: place.focus ?? null }]
+        : [{ type: "toggleAppSettings", open: true, page: place.page }];
   }
 }
 

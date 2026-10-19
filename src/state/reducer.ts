@@ -16,6 +16,8 @@ export type { BlokColor, BlokShape } from "@/lib/mascot";
 export type RailPage = "overview" | "library" | "plugins";
 /** The two pages of Customize, the rail's Plugins place (Customize.tsx). */
 export type CustomizeTab = "plugins" | "skills";
+/** One thing on Settings' Plugins page with a page of its own. */
+export type PluginFocus = { kind: "app" | "mcp" | "skill"; id: string };
 /** Library's two shelves. */
 export type LibraryShelf = "memory" | "rehearsals";
 
@@ -623,6 +625,11 @@ export interface AppState {
   page: RailPage | null;
   /** Which Customize page shows when Plugins is the place. */
   customize: CustomizeTab;
+  /** The app whose details page is open in Customize, by slug. */
+  customizeApp: string | null;
+  /** What Settings' Plugins page has open (PluginSettings.tsx): an app,
+   * a server or a skill, or null for the lists. */
+  pluginFocus: PluginFocus | null;
   settingsOpen: boolean;
   computerOpen: boolean;
   appSettingsOpen: boolean;
@@ -780,7 +787,8 @@ export type Action =
   | { type: "error"; message: string | null; at?: number }
   | { type: "toggleSettings"; open?: boolean }
   | { type: "openPage"; page: RailPage | null }
-  | { type: "openCustomize"; tab: CustomizeTab }
+  | { type: "openCustomize"; tab: CustomizeTab; app?: string | null }
+  | { type: "openPluginSettings"; focus: PluginFocus | null }
   | { type: "openLibrary"; shelf: LibraryShelf; botId?: string | null }
   | { type: "toggleComputer"; open?: boolean }
   /** `page` opens Settings on that page (see SETTINGS_PAGES). */
@@ -1258,7 +1266,25 @@ export function reducer(state: AppState, action: Action): AppState {
         ? { ...state, page: action.page, routinesOpen: false, appSettingsOpen: false, settingsOpen: false }
         : { ...state, page: null };
     case "openCustomize":
-      return { ...state, page: "plugins", customize: action.tab, routinesOpen: false, appSettingsOpen: false, settingsOpen: false };
+      return {
+        ...state,
+        page: "plugins",
+        customize: action.tab,
+        customizeApp: action.app ?? null,
+        routinesOpen: false,
+        appSettingsOpen: false,
+        settingsOpen: false,
+      };
+    case "openPluginSettings":
+      return {
+        ...state,
+        appSettingsOpen: true,
+        settingsPage: "plugins",
+        pluginFocus: action.focus,
+        routinesOpen: false,
+        page: null,
+        settingsOpen: false,
+      };
     case "openLibrary":
       try {
         localStorage.setItem("bloks-library-shelf", action.shelf);
@@ -1369,6 +1395,8 @@ export const initialState: AppState = {
   settingsOpen: false,
   page: null,
   customize: "plugins",
+  customizeApp: null,
+  pluginFocus: null,
   computerOpen: false,
   appSettingsOpen: false,
   settingsPage: "general",

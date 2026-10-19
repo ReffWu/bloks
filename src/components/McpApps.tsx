@@ -75,7 +75,7 @@ export function McpAppsCard() {
       </div>
       {servers.length === 0 ? (
         <div className="mt-3 rounded-xl border border-dashed px-3 py-4 text-center text-[12px] text-muted-foreground">
-          No MCP servers yet. Add one under Settings, Apps and keys.
+          No MCP servers yet. Add one from Add, or in Settings, Plugins.
         </div>
       ) : (
         <div className="mt-3 flex flex-col gap-2">

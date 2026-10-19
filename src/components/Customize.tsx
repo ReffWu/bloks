@@ -11,6 +11,7 @@ import { Check } from "@/components/icons";
 import { ChevronDown } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
 import { Lock } from "@/components/icons";
+import { MessageSquare } from "@/components/icons";
 import { MoreHorizontal } from "@/components/icons";
 import { Plus } from "@/components/icons";
 import { Puzzle } from "@/components/icons";
@@ -22,8 +23,12 @@ import { Trash2 } from "@/components/icons";
 import { api, useStore, type CustomizeTab, type Skill } from "@/state/store";
 import { useConnectors, type Connectors, type ToolkitCard } from "@/lib/useConnectors";
 import { McpAppsCard } from "./McpApps";
+import { AddMcpServerDialog, useMcpServers } from "./McpServers";
+import { AppDetailsPage } from "./AppDetails";
+import { detailsFor } from "@/lib/appDetails";
+import { tryPrompt } from "@/lib/tryPrompt";
 import { SkillCatalog } from "./SkillCatalog";
-import { AddSkill, ProposedSkill, type Proposal } from "./SkillsPanel";
+import { AddSkillDialog, ProposedSkill, type Proposal } from "./SkillsPanel";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -257,12 +262,23 @@ function PluginsPage({
   setSearch: (value: string) => void;
   searchRef: React.RefObject<HTMLInputElement | null>;
 }) {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   const { ordered, installed, configured, source, status, busySlug, refreshing, error, refreshStatus, connect, disconnect, statusRef, cards } =
     connectors;
+  const { servers, reload: reloadServers } = useMcpServers();
   const [view, setView] = useState<"apps" | "mcp">("apps");
   const [unfolded, setUnfolded] = useState(false);
-  const toSettings = () => dispatch({ type: "toggleAppSettings", open: true, page: "apps" });
+  const [addingServer, setAddingServer] = useState(false);
+  const [addingSkill, setAddingSkill] = useState(false);
+  const [tried, setTried] = useState<string | null>(null);
+  const toKeys = () => dispatch({ type: "toggleAppSettings", open: true, page: "apps" });
+  const toSettings = () => dispatch({ type: "openPluginSettings", focus: null });
+  const openApp = (card: ToolkitCard) => dispatch({ type: "openCustomize", tab: "plugins", app: card.slug });
+  const unfinished = (servers ?? []).filter((server) => (server.needs ?? []).length > 0);
+  const tryNow = (card: ToolkitCard) => {
+    const bot = tryPrompt(state, dispatch, `Using ${card.label}: ${detailsFor(card).prompts[0]}`);
+    if (!bot) setTried("No agent can use connected apps. Switch it on in an agent's settings first.");
+  };
 
   const q = search.trim().toLowerCase();
   const matching = ordered.filter((c) => !q || `${c.label} ${c.slug} ${c.blurb}`.toLowerCase().includes(q));
@@ -306,13 +322,17 @@ function PluginsPage({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[180px]">
-        <DropdownMenuItem onClick={() => connect(card.slug)}>
-          <RefreshCw />
-          Sign in again
+        <DropdownMenuItem onClick={() => tryNow(card)}>
+          <MessageSquare />
+          Try now
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => dispatch({ type: "openPluginSettings", focus: { kind: "app", id: card.slug } })}>
+          <Settings />
+          Manage
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => disconnect(card.slug)} className="text-destructive focus:text-destructive">
           <Trash2 />
-          Disconnect
+          Delete
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -339,18 +359,13 @@ function PluginsPage({
               <ChevronDown size={14} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[220px]">
-              <DropdownMenuItem
-                onClick={() => {
-                  setView("apps");
-                  searchRef.current?.focus();
-                }}
-              >
-                <Search />
-                Find an app to connect
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={toSettings}>
+              <DropdownMenuItem onClick={() => setAddingServer(true)}>
                 <Puzzle />
-                Add an MCP server
+                Add custom MCP server
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAddingSkill(true)}>
+                <Sparkles />
+                Add a skill
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -379,7 +394,7 @@ function PluginsPage({
                 <span className="text-muted-foreground"> Your agents sign in through it, once for all of them.</span>
               </span>
               <button
-                onClick={toSettings}
+                onClick={toKeys}
                 className={cn(pill, "h-8 bg-foreground px-3.5 text-[12.5px] font-medium text-background hover:opacity-90")}
               >
                 Add a key
@@ -389,13 +404,41 @@ function PluginsPage({
           {configured && source === "curated" && (
             <p className="mt-5 text-[12.5px] text-muted-foreground">
               Showing a curated set.{" "}
-              <button onClick={toSettings} className="underline underline-offset-2 hover:text-foreground">
+              <button onClick={toKeys} className="underline underline-offset-2 hover:text-foreground">
                 Add a Composio API key
               </button>{" "}
               to browse the full catalogue.
             </p>
           )}
-          {error && <p className="mt-4 text-[12.5px] text-destructive">{error}</p>}
+          {(error || tried) && <p className="mt-4 text-[12.5px] text-destructive">{error ?? tried}</p>}
+
+          {unfinished.length > 0 && !q && (
+            <>
+              <SectionTitle>Needs setup</SectionTitle>
+              <div className="flex flex-col">
+                {unfinished.map((server) => (
+                  <GridItem
+                    key={server.id}
+                    tile={
+                      <Tile>
+                        <Puzzle size={17} />
+                      </Tile>
+                    }
+                    name={server.name}
+                    line={`Waiting for ${(server.needs ?? []).join(", ")}`}
+                    action={
+                      <button
+                        onClick={() => dispatch({ type: "openPluginSettings", focus: { kind: "mcp", id: server.id } })}
+                        className="h-8 rounded-lg border px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-accent"
+                      >
+                        Finish setup
+                      </button>
+                    }
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
           {installed.length > 0 && !q && (
             <>
@@ -447,6 +490,7 @@ function PluginsPage({
                   }
                   name={card.label}
                   line={card.blurb}
+                  onOpen={() => openApp(card)}
                   action={status[card.slug]?.connected ? manageAction(card) : connectAction(card)}
                 />
               ))}
@@ -455,6 +499,21 @@ function PluginsPage({
           {!q && !unfolded && <MoreLine hidden={notConnected.slice(FOLD).map((c) => c.label)} onClick={() => setUnfolded(true)} />}
         </>
       )}
+
+      <AddMcpServerDialog
+        open={addingServer}
+        onOpenChange={setAddingServer}
+        onAdded={(id) => {
+          reloadServers();
+          // a server is only useful once an agent may use it, which is chosen on its page
+          dispatch({ type: "openPluginSettings", focus: { kind: "mcp", id } });
+        }}
+      />
+      <AddSkillDialog
+        open={addingSkill}
+        onOpenChange={setAddingSkill}
+        onInstalled={(skill) => dispatch({ type: "openPluginSettings", focus: { kind: "skill", id: skill.id } })}
+      />
     </>
   );
 }
@@ -631,21 +690,7 @@ function SkillsPage({
         </>
       )}
 
-      <Dialog open={adding} onOpenChange={setAdding}>
-        <DialogContent className="flex max-h-[84vh] max-w-[620px] flex-col">
-          <DialogTitle>Add a skill</DialogTitle>
-          <DialogDescription>Teach your agents something new: drop a Markdown file, or write it here.</DialogDescription>
-          <div className="mt-4 flex min-h-0 flex-1 flex-col">
-            <AddSkill
-              onBack={() => setAdding(false)}
-              onInstalled={() => {
-                setAdding(false);
-                void load();
-              }}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AddSkillDialog open={adding} onOpenChange={setAdding} onInstalled={() => void load()} />
 
       <Dialog open={open !== null} onOpenChange={(next) => !next && setOpen(null)}>
         <DialogContent className="flex max-h-[84vh] max-w-[680px] flex-col">
@@ -794,7 +839,9 @@ export function CustomizeView() {
                 ]}
               />
             </div>
-            {tab === "plugins" ? (
+            {tab === "plugins" && state.customizeApp ? (
+              <AppDetailsPage slug={state.customizeApp} connectors={connectors} />
+            ) : tab === "plugins" ? (
               <PluginsPage connectors={connectors} search={pluginSearch} setSearch={setPluginSearch} searchRef={searchRef} />
             ) : (
               <SkillsPage search={skillSearch} setSearch={setSkillSearch} searchRef={searchRef} />
