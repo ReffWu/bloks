@@ -428,7 +428,7 @@ export function NewAgentScreen() {
         </div>
         <Stepper step={step} ready={ready} onGo={goTo} />
         <div className="flex items-center gap-1 justify-self-end">
-          <Button variant="ghost" className="max-sm:hidden" onClick={() => fileRef.current?.click()} title="Bring in an agent from a file">
+          <Button variant="ghost" className="max-sm:hidden" onClick={() => fileRef.current?.click()} title="Import an agent from a file">
             <Upload size={14} />
             Import
           </Button>
@@ -554,8 +554,8 @@ export function NewAgentScreen() {
             <span className={cn("mr-auto min-w-0 truncate text-body", createError ? "text-destructive" : "text-muted-foreground max-sm:hidden")}>
               {createError ??
                 (step === "identity"
-                  ? "Everything here can change later, in their settings."
-                  : "Their greeting will be waiting in your first conversation.")}
+                  ? "You can change all of this later."
+                  : "Their greeting will be waiting in your first chat.")}
             </span>
             {step === "identity" && (
               <Button variant="ghost" size="lg" onClick={() => setStep("setup")} disabled={creating} className="max-sm:px-3">
@@ -707,7 +707,7 @@ function JobBeat({
         says={
           firstRun
             ? "Describe the job, or pick a role. You can add more any time."
-            : "Describe the job in your own words, or start from a role. They come with the skills to do it."
+            : "Describe the job, or start from a role."
         }
       />
 
@@ -829,7 +829,7 @@ function JobBeat({
               ))}
             </span>
             <span className="min-w-0 text-body text-muted-foreground">
-              A job that needs several people: a lead and the agents under them, in a room of their own.
+              A lead and their agents, in a room of their own.
             </span>
           </button>
         ) : (
@@ -845,9 +845,9 @@ function JobBeat({
           onClick={onImport}
           className="rounded-md px-1 py-0.5 font-medium text-foreground underline-offset-2 transition-colors duration-150 hover:underline"
         >
-          Bring it in from a file
+          Import a file
         </button>
-        or drop it anywhere here.
+        or drop it here.
       </div>
       {fileError && <div className="mt-2 text-small text-destructive">{fileError}</div>}
     </>
@@ -902,10 +902,10 @@ function TeamShelf({ onTeam }: { onTeam: (team: HireableTeam) => void }) {
           </button>
         ) : gallery === null ? (
           <span className="flex items-center gap-1.5">
-            <Loader2 size={12} className="animate-spin" /> Asking the gallery
+            <Loader2 size={12} className="animate-spin" /> Loading the gallery
           </span>
         ) : galleryError ? (
-          "The gallery could not be reached right now."
+          "Could not reach the gallery."
         ) : gallery.length === 0 ? (
           "Nothing else in the gallery yet."
         ) : null}
@@ -1006,7 +1006,7 @@ function IdentityBeat({
         says={
           template
             ? `Set up as ${asRole(template)}, with ${plural(persona.skills.length, "skill")}. Make them yours.`
-            : "We picked a name from your description. Change anything you like."
+            : "Change anything you like."
         }
       />
 
@@ -1112,7 +1112,7 @@ function IdentityBeat({
           <textarea
             value={persona.description}
             onChange={(e) => editPersona({ description: e.target.value })}
-            placeholder={described ? "How they work, beyond your words above (optional)" : "How they work: what they care about and how they go about it"}
+            placeholder={described ? "Anything else about how they work (optional)" : "What they care about and how they work"}
             aria-label="How they work"
             rows={4}
             className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-body leading-relaxed text-foreground outline-none transition-[border-color] duration-150 placeholder:text-muted-foreground focus:border-ring/60"
@@ -1143,8 +1143,8 @@ function IdentityBeat({
                   <button
                     onClick={() => editPersona({ skills: persona.skills.filter((_, j) => j !== i) })}
                     className="mt-1 shrink-0 rounded p-0.5 text-muted-foreground/60 opacity-0 transition-[opacity,color] duration-150 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-                    title="Drop this skill"
-                    aria-label="Drop this skill"
+                    title="Remove skill"
+                    aria-label="Remove skill"
                   >
                     <X size={12} />
                   </button>
@@ -1211,20 +1211,18 @@ function SetupBeat({
     const inst = state.instances.find((i) => i.instanceId === instanceId);
     return inst?.models.options.find((o) => o.id === (model || inst.models.default))?.label ?? (model || inst?.models.default || "");
   };
-  const who = shownName || "they";
 
   return (
     <>
       <BeatHeading
         title={shownName ? `How ${shownName} works` : "How they work"}
-        says="Sensible defaults are already set. Change what matters to you; all of it can change later."
+        says="Defaults are set. Change anything, now or later."
       />
 
       <section>
         <Label>The engine</Label>
         <p className="-mt-1.5 mb-3 text-pretty text-body leading-relaxed text-muted-foreground">
-          The model that does the thinking for {who === "they" ? "them" : who}. Larger models reason better and cost more;
-          smaller ones are quicker. Switching later takes one click.
+          Bigger models think better and cost more. Smaller ones are faster.
         </p>
         <div role="radiogroup" aria-label="Engine" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <EngineOption
@@ -1254,7 +1252,7 @@ function SetupBeat({
           ))}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-body text-muted-foreground" data-keep-escape>
-          A particular model:
+          Or pick a model:
           <div className="rounded-lg border bg-card">
             <ModelPicker value={engine} onPick={setEngine} noneLabel="Workspace default" />
           </div>
@@ -1272,7 +1270,7 @@ function SetupBeat({
           How much they ask
         </Label>
         <ApprovalsChooser value={mode} onChange={onApprovals} compact />
-        {refused && <div className="mt-2 text-small text-warning">Not confirmed, so the mode is unchanged.</div>}
+        {refused && <div className="mt-2 text-small text-warning">Not confirmed. Nothing changed.</div>}
       </section>
 
       <section className="mt-9">
@@ -1283,7 +1281,7 @@ function SetupBeat({
           </span>
         </Label>
         <p className="-mt-1.5 mb-3 text-pretty text-body leading-relaxed text-muted-foreground">
-          Point them at a project to work in that folder. Left empty, they get a workspace of their own.
+          Pick a project folder, or leave it empty for their own workspace.
         </p>
         <div className="flex gap-2">
           <Input
@@ -1302,8 +1300,8 @@ function SetupBeat({
 }
 
 function approvalsNote(mode: ApprovalMode, workspaceMode: ApprovalMode): string | null {
-  if (mode === workspaceMode) return "Your workspace's setting";
-  return "Just for this agent";
+  if (mode === workspaceMode) return "Workspace default";
+  return "This agent only";
 }
 
 function EngineOption({

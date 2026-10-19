@@ -111,7 +111,7 @@ export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; relo
     <div className="overflow-hidden rounded-2xl border bg-card">
       {notes !== null && kept.length === 0 ? (
         <p className="px-5 py-6 text-ui text-muted-foreground">
-          Nothing yet. Add a note below, or keep one your agents suggest.
+          Nothing yet. Add a note below.
         </p>
       ) : (
         <ul className="divide-y">
@@ -142,7 +142,7 @@ export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; relo
         <Plus size={15} className="ml-2 shrink-0 text-muted-foreground" />
         <input
           value={draft}
-          placeholder="Add one, like: I prefer short answers with bullet points"
+          placeholder="Add a note, like: I prefer short answers"
           aria-label="Add a note about you"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && add()}
@@ -202,7 +202,7 @@ export function AboutText() {
         className="block [field-sizing:content] min-h-[132px] w-full resize-none bg-transparent px-5 py-4 text-ui leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
       />
       <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-5 py-2.5 text-body text-muted-foreground">
-        <span>Every agent is told this. Never shared with people you invite into a room.</span>
+        <span>Every agent reads this. People you invite never see it.</span>
         <span
           className={cn("flex shrink-0 items-center gap-1 text-success transition-opacity duration-200", justSaved ? "opacity-100" : "opacity-0")}
           aria-live="polite"

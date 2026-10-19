@@ -248,7 +248,7 @@ function SearchField({
       {value && (
         <button
           onClick={() => onChange("")}
-          aria-label="Clear the search"
+          aria-label="Clear search"
           className="-mr-1 flex size-5 items-center justify-center rounded-full text-muted-foreground outline-none hover:text-foreground"
         >
           <X size={13} />
@@ -282,7 +282,7 @@ function Bar({ share, tone }: { share: number; tone: "ok" | "near" | "cut" }) {
  * then bytes. It says when the file is near either, and when part of it
  * no longer reaches the agent at all.
  */
-function BudgetMeter({ stats, who }: { stats: Stats | null; who: string }) {
+function BudgetMeter({ stats }: { stats: Stats | null }) {
   if (!stats) {
     return <div className="h-[132px] animate-pulse rounded-2xl border bg-card motion-reduce:animate-none" />;
   }
@@ -297,7 +297,7 @@ function BudgetMeter({ stats, who }: { stats: Stats | null; who: string }) {
           <span className="text-display font-semibold tabular-nums text-foreground">
             {Math.min(100, Math.round(Math.max(lineShare, byteShare) * 100))}%
           </span>
-          <span className="text-body text-muted-foreground">of what a turn loads</span>
+          <span className="text-body text-muted-foreground">full</span>
         </div>
         <span
           className={cn(
@@ -336,8 +336,8 @@ function BudgetMeter({ stats, who }: { stats: Stats | null; who: string }) {
       {overall !== "ok" && (
         <p className="mt-4 text-pretty text-body leading-relaxed text-muted-foreground">
           {overall === "cut"
-            ? `Only the first part of MEMORY.md reaches ${who} each turn; the rest is cut. Trim it, or move detail into a topic file.`
-            : `MEMORY.md is close to what a turn loads. Past the limit, the end of it stops reaching ${who}.`}
+            ? "Too long, so the end is cut off. Trim it, or move detail into a topic."
+            : "Nearly full. Past the limit, the end gets cut off."}
         </p>
       )}
     </div>
@@ -498,7 +498,7 @@ function CoreEditor({
         {error ? (
           <span className="text-destructive">{error}</span>
         ) : (
-          <span>{lines > 200 ? "Lines past 200 are not loaded" : "Markdown. One fact per line reads best."}</span>
+          <span>{lines > 200 ? "Lines past 200 are not loaded" : "One fact per line works best."}</span>
         )}
       </div>
     </div>
@@ -660,7 +660,7 @@ function NewTopicDialog({ bot, open, onClose, onMade }: { bot: Bot; open: boolea
       <DialogContent className="max-w-[560px]">
         <DialogTitle>New topic</DialogTitle>
         <DialogDescription>
-          A file {bot.name} reads when the topic comes up, rather than every turn. Good for people, projects, vendors.
+          {bot.name} reads it when the topic comes up.
         </DialogDescription>
         <div className="mt-4 flex flex-col gap-3">
           <Input
@@ -744,7 +744,7 @@ function Topics({ bot, stats, focus }: { bot: Bot; stats: Stats | null; focus: F
       )}
       {stats !== null && topics.length === 0 && (
         <p className="mt-3 text-body leading-relaxed text-muted-foreground">
-          No topics yet. {bot.name} makes them as it learns, for detail that does not need to load every turn.
+          No topics yet. {bot.name} adds them as it learns.
         </p>
       )}
       <TopicDialog bot={bot} name={open} onClose={() => setOpen(null)} />
@@ -795,16 +795,14 @@ function Timeline({ owner }: { owner: Owner }) {
   if (entries === null) {
     return (
       <div className="flex items-center gap-2 py-6 text-body text-muted-foreground">
-        <Loader2 size={14} className="animate-spin" /> Reading the journal
+        <Loader2 size={14} className="animate-spin" /> Loading changes
       </div>
     );
   }
   if (entries.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed px-6 py-10 text-center text-body leading-relaxed text-muted-foreground">
-        {owner.kind === "agent"
-          ? `Nothing yet. When ${owner.bot.name} writes to its memory, or you edit it, each change shows up here with a way back.`
-          : "Nothing yet. Each change you make shows up here with a way back."}
+        No changes yet.
       </div>
     );
   }
@@ -860,7 +858,7 @@ function Timeline({ owner }: { owner: Owner }) {
                             </span>
                           )}
                           {entry.undoneBy && <span>Undone</span>}
-                          {entry.big && <span>Too large to keep</span>}
+                          {entry.big && <span>Too large to undo</span>}
                         </span>
                       </span>
                       {entry.lines && (
@@ -993,14 +991,14 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
       <DialogContent className="flex max-h-[86vh] max-w-[640px] flex-col">
         <DialogTitle>Copy from another agent</DialogTitle>
         <DialogDescription>
-          Bring topics, or lines of MEMORY.md, into {bot.name}'s memory. Each file copied is one change you can undo.
+          Pick topics or lines to copy into {bot.name}'s memory. You can undo it later.
         </DialogDescription>
         {done ? (
           <div className="mt-5 flex flex-col gap-4">
             <div className="flex items-start gap-3 rounded-xl border bg-card p-4">
               <Check size={16} className="mt-0.5 shrink-0 text-success" />
               <div className="text-ui leading-relaxed text-foreground">
-                {done.copied ? `Copied ${plural(done.copied, "file")}. Each is in Recent changes, with Undo.` : "Nothing new to copy."}
+                {done.copied ? `Copied ${plural(done.copied, "file")}. Undo from Recent changes.` : "Nothing new to copy."}
                 {done.skipped.length > 0 && (
                   <ul className="mt-1.5 text-body text-muted-foreground">
                     {done.skipped.map((line) => (
@@ -1016,7 +1014,7 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
           </div>
         ) : !from ? (
           <div className="mt-4 flex min-h-0 flex-col gap-0.5 overflow-y-auto">
-            {others.length === 0 && <p className="py-6 text-body text-muted-foreground">There is no other agent to copy from yet.</p>}
+            {others.length === 0 && <p className="py-6 text-body text-muted-foreground">No other agents yet.</p>}
             {others.map((other) => (
               <button
                 key={other.id}
@@ -1066,7 +1064,7 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
                     ))
                   )}
                   <div className="flex items-center justify-between border-y bg-muted/30 px-4 py-2 text-small font-medium text-muted-foreground">
-                    <span>Lines of MEMORY.md</span>
+                    <span>Core memory</span>
                     {coreLines.length > 0 && (
                       <button
                         onClick={() => setLines(lines.size === coreLines.length ? new Set() : new Set(coreLines.map((l) => l.at)))}
@@ -1077,7 +1075,7 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
                     )}
                   </div>
                   {coreLines.length === 0 ? (
-                    <p className="px-4 py-3 text-body text-muted-foreground">MEMORY.md is empty.</p>
+                    <p className="px-4 py-3 text-body text-muted-foreground">Core memory is empty.</p>
                   ) : (
                     coreLines.map((line) => (
                       <label key={line.at} className="flex cursor-pointer items-start gap-3 px-4 py-1.5 hover:bg-accent/40">
@@ -1099,7 +1097,7 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
             {error && <p className="mt-2 text-body text-destructive">{error}</p>}
             <div className="mt-4 flex items-center justify-between gap-3">
               <span className="text-body text-muted-foreground">
-                {picked ? `${plural(topics.size, "topic")}, ${plural(lines.size, "line")}` : "Pick what to bring over"}
+                {picked ? `${plural(topics.size, "topic")}, ${plural(lines.size, "line")}` : "Pick what to copy"}
               </span>
               <Button onClick={copy} disabled={!picked || busy}>
                 {busy && <Loader2 size={13} className="animate-spin" />}
@@ -1127,7 +1125,7 @@ function AgentPage({ bot, focus, onFocus }: { bot: Bot; focus: Focus; onFocus: (
       <PageHead
         mark={<AgentAvatar bot={bot} size={52} />}
         title={bot.name}
-        says={`What ${bot.name} keeps between conversations, as plain files. Every change is recorded, with a way back.`}
+        says={`What ${bot.name} remembers. Every change can be undone.`}
       >
         <SearchField value={q} onChange={setQ} placeholder={`Search ${bot.name}'s memory`} className="w-[220px] lg:w-[260px]" />
         <button
@@ -1154,14 +1152,14 @@ function AgentPage({ bot, focus, onFocus }: { bot: Bot; focus: Focus; onFocus: (
         </>
       )}
 
-      <SectionTitle aside="MEMORY.md, up to 200 lines and 24 KB">Loaded every turn</SectionTitle>
-      <BudgetMeter stats={stats} who={bot.name} />
+      <SectionTitle aside="Read at the start of every chat">Space used</SectionTitle>
+      <BudgetMeter stats={stats} />
 
       <SectionTitle aside={stats?.lastChangedAt ? `Edited ${ago(stats.lastChangedAt)}` : undefined}>Core memory</SectionTitle>
       <CoreEditor
         owner={owner}
         focus={focus}
-        placeholder={`Nothing remembered yet. ${bot.name} adds notes here as it learns how you work, or write them yourself: one fact per line.`}
+        placeholder={`Nothing yet. ${bot.name} adds notes as it learns, or write your own, one fact per line.`}
       />
 
       <SectionTitle aside={stats ? plural(stats.topics.length, "file") : undefined}>Topics</SectionTitle>
@@ -1195,15 +1193,15 @@ function SharedPage({ focus }: { focus: Focus }) {
           </MarkTile>
         }
         title="Shared memory"
-        says="One memory every agent reads, kept by you. Agents can read it but never change it, and it stays out of rooms shared with other people, mail from strangers and Telegram."
+        says="Notes every agent reads. Only you can change them. Kept out of shared rooms, mail from strangers and Telegram."
       />
-      <SectionTitle aside="Up to 200 lines and 24 KB">Loaded every turn</SectionTitle>
-      <BudgetMeter stats={stats} who="your agents" />
+      <SectionTitle aside="Read at the start of every chat">Space used</SectionTitle>
+      <BudgetMeter stats={stats} />
       <SectionTitle aside={stats?.lastChangedAt ? `Edited ${ago(stats.lastChangedAt)}` : undefined}>For every agent</SectionTitle>
       <CoreEditor
         owner={owner}
         focus={focus}
-        placeholder="What every agent should know: the company, the people, how you like things done. One fact per line."
+        placeholder="What every agent should know, one fact per line."
       />
       <SectionTitle>Recent changes</SectionTitle>
       <Timeline owner={owner} />
@@ -1225,7 +1223,7 @@ function AboutYouPage() {
           </MarkTile>
         }
         title="About you"
-        says="What every agent knows about you. Agents suggest notes as they learn; nothing is kept until you say so, and none of it reaches people you invite into a room."
+        says="What every agent knows about you. Nothing is kept without your OK, and people you invite never see it."
       />
       {suggested.length > 0 && (
         <>
@@ -1294,7 +1292,7 @@ function PlaceRow({
 
 function statsLine(stats: Stats | null): React.ReactNode {
   if (!stats) return " ";
-  if (!stats.lines && !stats.topics.length) return "Nothing kept yet";
+  if (!stats.lines && !stats.topics.length) return "Empty";
   const lines = (
     <span className={cn(stats.truncated && "text-destructive", !stats.truncated && stats.lines / stats.maxLines >= NEAR && "text-warning")}>
       {stats.lines} of {stats.maxLines} lines
@@ -1359,7 +1357,7 @@ function MemorySidebar({
         <span className="text-lead font-semibold text-foreground">Memory</span>
         <button
           onClick={() => (searching ? close() : setSearching(true))}
-          aria-label={searching ? "Close the search" : "Search every memory"}
+          aria-label={searching ? "Close search" : "Search all memory"}
           aria-pressed={searching}
           title="Search"
           className={cn(
@@ -1379,8 +1377,8 @@ function MemorySidebar({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && close()}
-              placeholder="Search every memory"
-              aria-label="Search every memory"
+              placeholder="Search all memory"
+              aria-label="Search all memory"
               className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
             />
             {loading && <Loader2 size={13} className="shrink-0 animate-spin text-muted-foreground" />}
@@ -1507,7 +1505,7 @@ export function MemoryPlace() {
               <div className="flex flex-col items-center gap-3 py-24 text-center">
                 <Brain size={28} className="text-muted-foreground" />
                 <p className="max-w-[320px] text-ui leading-relaxed text-muted-foreground">
-                  Memory is what your agents keep between conversations. Make an agent and it shows up here.
+                  Make an agent and its memory shows up here.
                 </p>
               </div>
             )}

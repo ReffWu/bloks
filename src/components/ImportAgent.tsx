@@ -92,7 +92,7 @@ export function ImportAgentDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-[460px] flex-col gap-0 overflow-hidden p-0">
         <div className="flex h-[52px] shrink-0 items-center border-b px-5">
-          <DialogTitle className="text-lead">Bring in an agent</DialogTitle>
+          <DialogTitle className="text-lead">Import an agent</DialogTitle>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-5">
@@ -139,7 +139,7 @@ export function ImportAgentDialog({
               {/* What it comes with, counted rather than described, so the
                   size of what is about to land is legible at a glance. */}
               <div className="mt-4 flex flex-col gap-1.5 rounded-xl border bg-card p-3">
-                <Line label="Skills it carries" value={String(preview.skills.length)} />
+                <Line label="Skills" value={String(preview.skills.length)} />
                 {fresh.length > 0 && (
                   <Line label="New to your library" value={fresh.map((s) => s.name).join(", ")} />
                 )}
@@ -180,9 +180,8 @@ export function ImportAgentDialog({
               <div className="mt-3 flex gap-2 rounded-xl bg-muted/50 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
                 <AlertTriangle size={14} className="mt-[1px] shrink-0" />
                 <span>
-                  An agent's instructions are written by whoever made it. Bring in
-                  agents from people you trust, and read the skills afterwards if
-                  you are not sure.
+                  Its instructions come from whoever made it. Only import agents
+                  from people you trust.
                 </span>
               </div>
 
@@ -201,7 +200,7 @@ export function ImportAgentDialog({
           </Button>
           <Button disabled={!preview || importing} onClick={bringItIn}>
             {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-            {importing ? "Bringing it in" : "Bring it in"}
+            {importing ? "Importing" : "Import"}
           </Button>
         </div>
       </DialogContent>
@@ -226,6 +225,6 @@ function Line({ label, value }: { label: string; value: string }) {
 export const MAX_AGENT_FILE_BYTES = 8 * 1024 * 1024;
 
 export async function readAgentFile(file: File): Promise<string> {
-  if (file.size > MAX_AGENT_FILE_BYTES) throw new Error("that agent file is too large");
+  if (file.size > MAX_AGENT_FILE_BYTES) throw new Error("This file is too large.");
   return await file.text();
 }

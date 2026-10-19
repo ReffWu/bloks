@@ -99,8 +99,8 @@ export function RulesPanel() {
           <div className="min-w-0">
             <div className="text-ui font-semibold text-foreground">Your rules</div>
             <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-              When an agent stops to ask permission, these answer first. Only what they do not cover
-              reaches you.
+              These answer permission requests for you. Anything they do not cover still comes to
+              you.
             </div>
           </div>
           {!adding && (
@@ -110,8 +110,7 @@ export function RulesPanel() {
           )}
         </div>
         <div className="mt-2.5 rounded-xl bg-muted/50 px-3 py-2 text-small leading-relaxed text-muted-foreground">
-          With no rules nothing changes: every question still reaches you. A deny always wins over an
-          allow, whichever was written first, so what is refused stays refused.
+          Refuse always wins over allow.
         </div>
       </div>
 
@@ -134,8 +133,7 @@ export function RulesPanel() {
         <div className="mt-3 rounded-2xl border border-dashed px-4 py-8 text-center">
           <div className="text-body text-foreground">No rules yet.</div>
           <div className="mx-auto mt-1 max-w-[380px] text-body leading-relaxed text-muted-foreground">
-            A rule is worth writing when you have answered the same question twice. Every agent
-            still asks you about everything else.
+            Add one when you keep answering the same question.
           </div>
         </div>
       )}
@@ -167,7 +165,7 @@ export function RulesPanel() {
                 </div>
                 <div className="mt-0.5 text-small text-muted-foreground">
                   {rule.botId ? `Only ${nameOf(rule.botId)}` : "Every agent"}
-                  {rule.enabled ? "" : " · switched off"}
+                  {rule.enabled ? "" : " · off"}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -183,7 +181,7 @@ export function RulesPanel() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Remove this rule"
+                  aria-label="Remove rule"
                   onClick={() =>
                     api(`/api/rules/${rule.id}`, { method: "DELETE" })
                       .then(load)
@@ -290,7 +288,7 @@ function RuleForm({
 
       <div className="mt-3 flex items-center gap-2">
         <Button size="sm" disabled={busy || !value.trim()} onClick={save}>
-          Add it
+          Add rule
         </Button>
         <Button variant="ghost" size="sm" onClick={onCancel}>
           Cancel

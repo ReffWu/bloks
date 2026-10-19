@@ -311,13 +311,13 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
           />
 
           <div className="mt-12">
-            <Section id="identity" title="Identity" says={`How ${bot.name || "this agent"} looks, what it is for, and where it stands in a room.`}>
+            <Section id="identity" title="Identity">
               <LookCard bot={bot} patch={patch} />
               <Group>
                 <SettingRow
                   label="Instructions"
                   htmlFor="agent-instructions"
-                  description="What it is for and how it should behave. It reads this before every turn."
+                  description="It reads these before every reply."
                 >
                   <Textarea
                     id="agent-instructions"
@@ -329,7 +329,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 </SettingRow>
                 <SettingRow
                   label="Seniority"
-                  description="In a room the most senior agent speaks last, reviews the others' work and makes the final call. Give seniors your most capable model and juniors cheaper ones."
+                  description="In a room, the most senior agent speaks last and makes the final call."
                 >
                   <Segmented
                     aria-label="Seniority"
@@ -346,18 +346,18 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
               </Group>
             </Section>
 
-            <Section id="engine" title="Engine" says="The model that does the thinking, how hard it thinks, and what answers when it cannot.">
+            <Section id="engine" title="Engine">
               <Group>
                 <SettingRow
                   label="Model"
-                  description={`What ${bot.name || "it"} thinks with. Switching takes effect on the next turn.`}
+                  description="Changes apply from the next message."
                   control={
                     <div className="rounded-lg border bg-background">
                       <ModelPicker bot={bot} />
                     </div>
                   }
                 />
-                <SettingRow label="Reasoning effort" description="How hard the engine thinks, where the engine has the dial.">
+                <SettingRow label="Reasoning effort" description="How hard it thinks, where the model supports it.">
                   <Segmented
                     aria-label="Reasoning effort"
                     className="mt-3 max-w-[420px]"
@@ -373,7 +373,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 </SettingRow>
                 <SettingRow
                   label="Backup engine"
-                  description="Answers when the model above hits a usage or rate limit, runs out of credit or is down, or when a turn fails again after one more try. The conversation carries over, and it switches back once its own engine is usable again."
+                  description="Takes over if the main model hits a limit or fails, then hands back when it can."
                   control={
                     <div className="rounded-lg border bg-background">
                       <ModelPicker
@@ -391,8 +391,8 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                       will not try it (backupFor) */}
                   {sameEngineBackup(bot.modelSelection, bot.backupSelection) && (
                     <Note>
-                      This backup is on the same engine, so it answers when a turn fails, but not when the engine itself
-                      is out: over its usage limit, out of credit, or signed out. For that, pick another engine.
+                      Same engine as the main model, so it cannot cover usage limits, credit or sign-in problems. Pick
+                      another engine for that.
                     </Note>
                   )}
                 </SettingRow>
@@ -402,7 +402,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                   // context. Some agents are better off without any of it.
                   <SettingRow
                     label="Plugin hooks"
-                    description="Let Claude Code run your plugins' and settings' hooks in this agent's turns."
+                    description="Let Claude Code run your plugin and settings hooks for this agent."
                     control={
                       <Switch
                         checked={bot.engineHooks !== false}
@@ -417,13 +417,13 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
               {suggestion && <EngineSuggestionCard s={suggestion} compact />}
             </Section>
 
-            <Section id="behaviour" title="Behaviour and approvals" says="How much it does before asking you, where its work happens, and the shapes its answers can take.">
+            <Section id="behaviour" title="Behaviour and approvals">
               <ApprovalsCard bot={bot} />
               <WorkingFolderCard bot={bot} />
               <AnswersCard bot={bot} patch={patch} />
             </Section>
 
-            <Section id="tools" title="Tools" says="What it can reach beyond the conversation: your apps, a browser, servers, skills and a computer.">
+            <Section id="tools" title="Tools">
               <Group>
                 <ConnectedAppsRow bot={bot} patch={patch} />
                 <BrowserRow bot={bot} patch={patch} />
@@ -433,14 +433,14 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
               <SkillsCard bot={bot} />
             </Section>
 
-            <Section id="memory" title="Memory" says="What it keeps between conversations, in its own words. Yours to read and correct.">
+            <Section id="memory" title="Memory">
               <MemorySummary bot={bot} />
               <Group>
                 <RecallRow bot={bot} patch={patch} />
               </Group>
             </Section>
 
-            <Section id="reach" title="Voice and Telegram" says={`Talk to ${bot.name || "it"} out loud, or message it from your phone as itself.`}>
+            <Section id="reach" title="Voice and Telegram">
               <VoiceCard bot={bot} />
               <TelegramSection key={bot.id} botId={bot.id} />
             </Section>
@@ -448,8 +448,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
             <Section id="notifications" title="Notifications">
               <Group>
                 <SettingRow
-                  label="Interrupt me when a reply lands"
-                  description={`A notification when ${bot.name || "this agent"} answers while you are elsewhere.`}
+                  label="Notify me when it replies"
                   control={
                     <Switch
                       checked={bot.notifications}
@@ -462,19 +461,18 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                       on deserves to know what it does and does not cover,
                       rather than discovering the shape of it over a week. */}
                   <Note>
-                    Approvals always interrupt, even with this off: a waiting agent has stopped working. Agents talking
-                    to each other in a room stay quiet unless they name you. Nothing interrupts you about the
-                    conversation already on your screen.
+                    Approvals always notify you. In a room, agents only notify you when they name you. Nothing
+                    notifies you about the chat on your screen.
                   </Note>
                 </SettingRow>
               </Group>
             </Section>
 
-            <Section id="schedules" title="Schedules" says={`Recurring work ${bot.name || "it"} starts on its own, at a time you set.`}>
+            <Section id="schedules" title="Schedules">
               <RoutinesSection targetId={bot.id} targetKind="agent" targetName={bot.name} bare />
             </Section>
 
-            <Section id="export" title="Signature and export" says="Proof of what it did, and the agent as a file you can carry to another machine.">
+            <Section id="export" title="Signature and export">
               <Group>
                 <SignatureRow bot={bot} />
                 <ExportRow bot={bot} />
@@ -636,7 +634,7 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
             </motion.span>
           </div>
           <div className="flex flex-wrap justify-center gap-1">
-            <Button variant="ghost" size="sm" onClick={shuffle} title="A new color and shape, at random">
+            <Button variant="ghost" size="sm" onClick={shuffle} title="Random color and shape">
               <RefreshCw size={13} />
               Shuffle
             </Button>
@@ -695,7 +693,7 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
 
           {bot.avatarAt && (
             <p className="mb-3 text-pretty text-small leading-relaxed text-muted-foreground">
-              The photo stands in for this face everywhere. Remove it and this face comes back.
+              The photo replaces this face. Remove it to bring the face back.
             </p>
           )}
 
@@ -801,12 +799,12 @@ function ApprovalsCard({ bot }: { bot: Bot }) {
       <SettingRow
         label="How much it asks"
         info={RULES_AND_MODES}
-        description="From asking before every change to working without a word. Giving it more asks who is there first."
+        description="Giving it more freedom asks you to confirm it is you."
       >
         <div className="mt-3">
           <ApprovalsChooser value={mode} onChange={(next) => void choose(next)} compact />
         </div>
-        {refused && <div className="mt-2 text-small text-warning">Not confirmed, so the mode is unchanged.</div>}
+        {refused && <div className="mt-2 text-small text-warning">Not confirmed. Nothing changed.</div>}
       </SettingRow>
     </Group>
   );
@@ -835,7 +833,7 @@ function WorkingFolderCard({ bot }: { bot: Bot }) {
       <SettingRow
         label="Working folder"
         htmlFor="agent-folder"
-        info="Point it at a project to work in that repo; leave it empty and the agent uses its own workspace. Running tasks keep the folder they started in."
+        info="Pick a project folder, or leave it empty to use its own workspace. Running tasks keep their folder."
         description="Where new tasks run."
         control={<Saved shown={saved} />}
       >
@@ -894,7 +892,7 @@ function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
     <Group>
       <SettingRow
         label="Answers"
-        description={`${bot.name || "It"} can answer with these instead of describing them in prose. Switch one off and it writes that kind of answer out in words.`}
+        description="Turn one off and it answers in plain text instead."
       >
         <div className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
           {COMPONENTS.map(([kind, label]) => {
@@ -933,8 +931,8 @@ function ConnectedAppsRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void 
         configured
           ? allowed
             ? "It can use your connected apps: Slack, Gmail and the rest."
-            : "Blocked from your connected apps; it works with its own tools only."
-          : "No connector key yet. Add one in Settings, Apps and keys."
+            : "Blocked from your connected apps."
+          : "Add a Composio key in Settings, Apps and keys."
       }
       control={
         <Switch
@@ -991,8 +989,8 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
       label="Its own browser"
       description={
         on
-          ? "Opens pages, reads them and clicks, in a browser of its own. Signed in separately from yours."
-          : "Off. Turn this on for work on the web: comparing prices, filling a form, reading a page that needs a session."
+          ? "A browser of its own, signed in separately from yours."
+          : "For web tasks like comparing prices or filling in forms."
       }
       control={<Switch checked={on} onCheckedChange={(next) => patch({ browser: next })} aria-label="Its own browser" />}
     >
@@ -1002,7 +1000,7 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
         <div className="mt-3 rounded-xl bg-muted/50 p-3">
           <div className="text-body font-medium text-foreground">Borrow a sign-in</div>
           <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-            Name the sites this agent needs, and only those move across. Your browser asks your keychain first.
+            Only sign-ins for the sites you name are copied. Your keychain may ask first.
           </div>
           <Input
             value={sites}
@@ -1047,8 +1045,8 @@ function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
       label="Computer"
       description={
         bot.computer
-          ? "Where its computer runs: a desktop and a terminal it works in."
-          : "Automatic: the cloud box when one exists, else this computer."
+          ? "Where it gets a desktop and a terminal."
+          : "Uses your cloud box if you have one, otherwise this computer."
       }
       control={
         <label className="flex items-center gap-2 text-body text-muted-foreground">
@@ -1107,7 +1105,7 @@ function McpAttachCard({ bot }: { bot: Bot }) {
 
   return (
     <Group>
-      <SettingRow label="MCP servers" description="Which of your registered servers this agent may use." />
+      <SettingRow label="MCP servers" description="Servers this agent can use." />
       {servers.map((server: McpServerRow) => {
         const on = attached.includes(server.id);
         return (
@@ -1179,7 +1177,6 @@ function SkillsCard({ bot }: { bot: Bot }) {
             <span className="font-normal tabular-nums text-muted-foreground">{attached.length}</span>
           </>
         }
-        description="Shared instruction sets this agent carries."
         control={
           <Button variant="ghost" size="sm" onClick={() => dispatch({ type: "openCustomize", tab: "skills" })}>
             Manage
@@ -1234,7 +1231,6 @@ function SkillsCard({ bot }: { bot: Bot }) {
             <span className="font-normal tabular-nums text-muted-foreground">{written.length}</span>
           </>
         }
-        description="Instructions it carries into every conversation, in a line each: when to use it, and what to return."
       >
         {written.length > 0 && (
           <div className="mt-3 flex flex-col gap-1">
@@ -1328,7 +1324,7 @@ function MemorySummary({ bot }: { bot: Bot }) {
             <span className="text-heading font-semibold tabular-nums text-foreground">
               {info ? info.lines : "…"}
             </span>
-            <span className="text-body text-muted-foreground">of {MEMORY_LINES} lines read each turn</span>
+            <span className="text-body text-muted-foreground">of {MEMORY_LINES} lines</span>
           </div>
           <div
             role="meter"
@@ -1351,7 +1347,7 @@ function MemorySummary({ bot }: { bot: Bot }) {
           </div>
           {info?.truncated && (
             <div className="mt-2 text-small text-warning">
-              Over the budget: only the first {MEMORY_LINES} lines reach the agent each turn.
+              Too long: only the first {MEMORY_LINES} lines are read.
             </div>
           )}
           {error && <div className="mt-2 text-small text-destructive">{error}</div>}
@@ -1382,7 +1378,7 @@ function RecallRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
       label="Bring up other conversations"
       description={
         everywhere
-          ? `Before your turn, give ${bot.name || "it"} what it said elsewhere, or keeps in its topic notes, that matches your message. Only a close match, at most three short notes, shown under your message.`
+          ? `Gives ${bot.name || "it"} up to three close matches from its other chats and notes, shown under your message.`
           : "Off for every agent in Settings, General."
       }
       control={
@@ -1418,11 +1414,11 @@ function SignatureRow({ bot }: { bot: Bot }) {
   return (
     <SettingRow
       label="Signature"
-      description={`${bot.name} signs what it does in the record, so afterwards you can tell what it really did from what something merely says it did. The private half of the key never leaves ${thisComputer()}.`}
+      description={`${bot.name} signs what it does, so you can check it later. Its private key never leaves ${thisComputer()}.`}
     >
       <button
         onClick={() => setFull((v) => !v)}
-        title={full ? "Show it short" : "Show all of it"}
+        title={full ? "Show less" : "Show all"}
         className="mt-3 w-full rounded-xl bg-muted/60 px-3 py-2 text-left font-mono text-small leading-relaxed text-foreground transition-colors duration-150 hover:bg-muted"
       >
         {full ? <span className="break-all">{print}</span> : short}
@@ -1463,7 +1459,7 @@ function ExportRow({ bot }: { bot: Bot }) {
   return (
     <SettingRow
       label={`Take ${bot.name || "it"} with you`}
-      description={`One file with everything that makes ${bot.name || "it"} itself: the role, the look, the skills and the memory. Drop it into Bloks on another machine and the same agent is there.`}
+      description="One file with its role, look, skills and memory. Open it in Bloks on another machine."
       control={
         <Button variant="secondary" size="sm" disabled={busy} onClick={save}>
           <Download size={13} />
@@ -1473,8 +1469,7 @@ function ExportRow({ bot }: { bot: Bot }) {
     >
       {error && <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">{error}</div>}
       <Note>
-        Conversations stay here. The file is the agent, not the history, and it carries no keys: whoever opens it uses
-        their own.
+        Conversations and keys stay here.
       </Note>
     </SettingRow>
   );
@@ -1509,7 +1504,7 @@ function DangerZone({ bot }: { bot: Bot }) {
       <Group className="border-destructive/25">
         <SettingRow
           label={`Archive ${name}`}
-          description="Out of the list and stops working. Its conversations, rules, rooms and key are kept, and it comes back from Archived agents in the sidebar."
+          description="Stops it and hides it. Everything is kept. Restore it from Archived agents in the sidebar."
           control={
             <Button variant="outline" onClick={() => setAsking("archive")}>
               <Archive size={14} />
@@ -1519,7 +1514,7 @@ function DangerZone({ bot }: { bot: Bot }) {
         />
         <SettingRow
           label={`Delete ${name} for good`}
-          description="Its conversations go, and so does the key it signs with, which cannot be remade. This cannot be undone."
+          description="Deletes its conversations and signing key. This cannot be undone."
           control={
             <Button variant="destructive" onClick={() => setAsking("delete")}>
               <Trash2 size={14} />
@@ -1537,8 +1532,8 @@ function DangerZone({ bot }: { bot: Bot }) {
               <DialogTitle>{asking === "delete" ? `Delete ${name} for good?` : `Archive ${name}?`}</DialogTitle>
               <DialogDescription>
                 {asking === "delete"
-                  ? "Its conversations go, and so does the key it signs with, which cannot be remade. What it already signed in the record stays readable but can never be re-signed. This cannot be undone."
-                  : "It leaves the list and stops working. Everything it has is kept, and Archived agents in the sidebar brings it back."}
+                  ? "Deletes its conversations and signing key. Past signed records stay readable. This cannot be undone."
+                  : "It stops and leaves the list. Everything is kept, and you can restore it from Archived agents."}
               </DialogDescription>
             </div>
           </div>

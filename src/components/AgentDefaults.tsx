@@ -76,7 +76,7 @@ export function AgentDefaults() {
       <SettingsGroup title="Where they start">
         <SettingRow
           label="Working folder"
-          info="Applied the moment an agent is made, so its first chat already runs in the folder. Only you can change these; agents cannot. Team hires keep the lighter model the team chose and take the rest."
+          info="Applied when an agent is made. Only you can change these, not your agents. Team hires keep their team's model but take the rest."
           description={error ? <span className="text-destructive">{error}</span> : "Existing agents keep their own settings."}
           control={
             <span
@@ -118,7 +118,6 @@ export function AgentDefaults() {
         </SettingRow>
         <SettingRow
           label="Model"
-          description="The engine and model they think with."
           control={
             <ModelPicker
               value={saved.modelSelection ?? null}
@@ -160,7 +159,7 @@ export function AgentDefaults() {
           onClick={() => save({ cwd: undefined, modelSelection: undefined, effort: undefined })}
           className="px-1 text-body text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
         >
-          Reset to the built-in start
+          Reset to defaults
         </button>
       )}
     </>
