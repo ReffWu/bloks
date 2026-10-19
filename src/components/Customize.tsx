@@ -36,6 +36,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { confirm } from "@/components/ui/confirm";
+import { Skeleton, SkeletonAvatar, SkeletonGroup } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 
 /** An app's mark: its own artwork, then its site's icon, then a letter,
@@ -241,6 +244,28 @@ function GridItem({
       )}
       {action && <span className="flex shrink-0 items-center">{action}</span>}
     </div>
+  );
+}
+
+/** A catalogue grid before it arrives: GridItem's own outline, a tile and
+ * two lines, so the real items land where their shapes already were. */
+function GridSkeleton({ label, count = 6, className }: { label: string; count?: number; className?: string }) {
+  return (
+    <SkeletonGroup label={label} className={cn("grid grid-cols-1 gap-x-8 md:grid-cols-2", className)}>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex min-w-0 items-center gap-3.5 px-2 py-3">
+          <SkeletonAvatar size={40} shape="tile" />
+          <div className="min-w-0 flex-1">
+            <div className="flex h-[22px] items-center">
+              <Skeleton className="h-2.5 rounded-full" style={{ width: `${32 + ((i * 17) % 24)}%` }} />
+            </div>
+            <div className="mt-0.5 flex h-5 items-center">
+              <Skeleton className="h-2 rounded-full" style={{ width: `${62 + ((i * 23) % 30)}%` }} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </SkeletonGroup>
   );
 }
 
@@ -473,9 +498,7 @@ function PluginsPage({
             {q ? "Results" : installed.length ? "More apps" : "Popular"}
           </SectionTitle>
           {cards === null ? (
-            <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" /> Loading the catalogue
-            </div>
+            <GridSkeleton label="Loading the catalogue" count={8} />
           ) : matching.length === 0 ? (
             <p className="py-10 text-ui text-muted-foreground">No apps match “{search.trim()}”.</p>
           ) : (
@@ -564,10 +587,19 @@ function SkillsPage({
     { key: "builtin", title: "Built in", rows: matching.filter((s) => s.source === "builtin") },
   ].filter((g) => g.rows.length > 0);
 
-  const remove = (skill: Skill) => {
-    if (!window.confirm(`Remove ${skill.name}? Agents will stop using it.`)) return;
+  const remove = async (skill: Skill) => {
+    const yes = await confirm({
+      title: `Remove ${skill.name}?`,
+      body: "Agents will stop using it.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!yes) return;
     void api(`/api/skills/${skill.id}`, { method: "DELETE" })
-      .then(() => setOpen(null))
+      .then(() => {
+        setOpen(null);
+        toast(`Removed ${skill.name}`);
+      })
       .then(load)
       .catch(() => {});
   };
@@ -643,9 +675,7 @@ function SkillsPage({
           )}
 
           {skills === null ? (
-            <div className="mt-10 flex items-center gap-2 text-body text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" /> Loading skills
-            </div>
+            <GridSkeleton label="Loading skills" className="mt-6" />
           ) : groups.length === 0 ? (
             <p className="mt-10 text-ui text-muted-foreground">
               {q ? `No skills match “${search.trim()}”.` : "No skills yet. Add one, or browse the catalogue."}

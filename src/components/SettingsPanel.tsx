@@ -45,6 +45,7 @@ import {
 import { CodexSpeedControl } from "./CodexSpeed";
 import { ModelPicker } from "./ModelPicker";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "@/components/ui/toast";
 import { VoiceCard } from "./Voice";
 import { TelegramSection } from "./TelegramSection";
 import { RoutinesSection } from "./RoutinesSection";
@@ -1497,6 +1498,18 @@ function DangerZone({ bot }: { bot: Bot }) {
     // leave the page first: the agent it shows is about to be gone
     dispatch({ type: "toggleSettings", open: false });
     dispatch({ type: "deleteBot", botId: bot.id, ...(forget ? { forget: true } : {}) });
+    // an archive comes back, so it says so right where it happened
+    if (!forget) {
+      toast.success(`Archived ${name}`, {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            dispatch({ type: "restoreBot", botId: bot.id });
+            dispatch({ type: "select", id: bot.id });
+          },
+        },
+      });
+    }
   };
 
   return (

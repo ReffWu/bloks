@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { MotionConfig } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import { MotionConfig, motion, useReducedMotion } from "motion/react";
 import { Loader2 } from "@/components/icons";
 import { StoreProvider, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
@@ -24,32 +24,64 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutKeys } from "@/components/Shortcuts";
 import { Switcher } from "@/components/Switcher";
 import { QuickAsk } from "@/components/QuickAsk";
+import { Toaster, toast } from "@/components/ui/toast";
+import { ConfirmHost } from "@/components/ui/confirm";
 
 /**
- * Whatever last went wrong, said over every view. It used to be drawn by
- * the chat alone, so a room send, an engine connect in Settings or a
- * room rename that failed said nothing at all while a room or Settings
- * was open. One timer, for the error on screen: a newer error restarts
- * it rather than going early with the old one's.
+ * Whatever went wrong, said over every view as an error toast. It used to
+ * be drawn by the chat alone, so a room send, an engine connect in
+ * Settings or a room rename that failed said nothing at all while a room
+ * or Settings was open.
+ *
+ * Each error is its own toast, so a second failure no longer pushes the
+ * first off the screen before it was read; the same words again only
+ * restart the one already showing. The store keeps the error until its
+ * toast goes, and the clear names that error (errorAt), so an older
+ * toast leaving cannot take a newer error with it.
  */
-function ErrorNotice() {
+function ErrorToasts() {
   const { state, dispatch } = useStore();
   const { error, errorAt } = state;
   useEffect(() => {
     if (!error) return;
-    const timer = setTimeout(() => dispatch({ type: "error", message: null, at: errorAt }), 6000);
-    return () => clearTimeout(timer);
+    toast.error(error, {
+      id: `error:${error}`,
+      onDismiss: () => dispatch({ type: "error", message: null, at: errorAt }),
+    });
   }, [error, errorAt, dispatch]);
-  if (!error) return null;
+  return null;
+}
+
+/**
+ * The work panel's content, under a key that changes only when the place
+ * does (a rail page, Settings, Automations, a room, the chat), so moving
+ * between places fades the new one in over 150ms instead of cutting to
+ * it. Opacity only: nothing moves, and the page takes clicks from its
+ * first frame, so the fade never costs a wait.
+ *
+ * Not every change is a move worth marking. Picking another agent keeps
+ * the key, so the chat does not blink on every pick; a move close on the
+ * heels of the last one, which is somebody stepping through places from
+ * the keyboard, lands at once; and reduce motion means no fade at all.
+ */
+function PlaceFade({ place, children }: { place: string; children: React.ReactNode }) {
+  const reduce = useReducedMotion();
+  const last = useRef({ place, at: 0, fade: false });
+  if (last.current.place !== place) {
+    const now = performance.now();
+    last.current = { place, at: now, fade: now - last.current.at > 350 };
+  }
+  const fade = last.current.fade && !reduce;
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[60px] z-[70] flex justify-center px-4">
-      <div
-        role="alert"
-        className="pointer-events-auto max-w-[560px] animate-rise-in rounded-xl border border-destructive/30 bg-popover px-3.5 py-2 text-body text-destructive shadow-lg shadow-(color:--shadow-color)"
-      >
-        {error}
-      </div>
-    </div>
+    <motion.div
+      key={place}
+      initial={fade ? { opacity: 0 } : false}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col md:flex-row"
+    >
+      {children}
+    </motion.div>
   );
 }
 
@@ -75,6 +107,17 @@ function Shell() {
   // its chat was, so they have the panel to themselves.
   const agentSettings = state.settingsOpen && bot !== null && !room;
   const chatPlace = !state.appSettingsOpen && !state.routinesOpen && !state.page && !agentSettings;
+  const place = state.appSettingsOpen
+    ? "settings"
+    : state.routinesOpen
+      ? "automations"
+      : state.page
+        ? `page:${state.page}`
+        : agentSettings
+          ? "agent-settings"
+          : room
+            ? "room"
+            : "chat";
   return (
     <div className="relative flex h-full min-w-0 flex-col overflow-hidden bg-sidebar">
       <TitleBar />
@@ -88,6 +131,7 @@ function Shell() {
           frame and the panel as the work. */}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background md:flex-row md:rounded-tl-xl md:border-l md:border-t">
       {chatPlace ? <Sidebar /> : <div className="md:hidden"><Sidebar /></div>}
+      <PlaceFade place={place}>
       {state.appSettingsOpen ? (
         <AppSettingsPanel />
       ) : state.routinesOpen ? (
@@ -127,6 +171,7 @@ function Shell() {
           )}
         </main>
       )}
+      </PlaceFade>
       </div>
       </div>
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
@@ -134,7 +179,7 @@ function Shell() {
       {state.newAgentOpen && <NewAgentScreen />}
       <CommandPalette />
       <ShortcutKeys />
-      <ErrorNotice />
+      <ErrorToasts />
       {/* what is on screen, for Ctrl+Tab to come back to: a room, or one
           of an agent's conversations */}
       <Switcher
@@ -191,6 +236,10 @@ export default function App() {
         <Shell />
         {setupOpen && !introOpen && <Onboarding onDone={() => setSetupOpen(false)} />}
         {introOpen && <Intro onDone={() => setIntroOpen(false)} />}
+        {/* over everything, the welcome included: a question, or a word
+            about what just happened, is never behind what it is about */}
+        <ConfirmHost />
+        <Toaster />
       </StoreProvider>
     </MotionConfig>
   );

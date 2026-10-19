@@ -35,6 +35,8 @@ import { AgentAvatar, BlokAvatar } from "./Avatar";
 import { type Routine, type RoutineRun } from "./RoutinesSection";
 import { RoutinesDialog } from "./RoutinesDialog";
 import { Button } from "@/components/ui/button";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
 import { Switch } from "@/components/ui/switch";
 import { useEscape } from "@/lib/useEscape";
 import { JobBoard } from "./JobBoard";
@@ -1190,10 +1192,19 @@ function WebhooksTab({
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground"
-                  onClick={() => {
-                    if (!confirm("Make a new URL? The old one will stop working.")) return;
+                  onClick={async () => {
+                    const yes = await confirm({
+                      title: "Make a new URL?",
+                      body: "The old one will stop working.",
+                      confirmLabel: "Make new URL",
+                      destructive: true,
+                    });
+                    if (!yes) return;
                     api(`/api/webhooks/${selected.id}/rotate`, { method: "POST" })
-                      .then(load)
+                      .then(() => {
+                        load();
+                        toast.success("New URL made");
+                      })
                       .catch((e) => setError(e.message));
                   }}
                 >

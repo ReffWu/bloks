@@ -31,6 +31,8 @@ import { ServiceIcon } from "./Customize";
 import { AgentAvatar } from "./Avatar";
 import { Switch } from "@/components/ui/switch";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 
 type List = "apps" | "mcps" | "skills";
@@ -522,9 +524,20 @@ function AppSettings({
 function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () => void; onRemoved: () => void }) {
   const { state, dispatch } = useStore();
   const agents = state.bots.filter((b) => !b.hidden);
-  const remove = () => {
-    if (!window.confirm(`Remove ${skill.name}? Agents will stop using it.`)) return;
-    void api(`/api/skills/${skill.id}`, { method: "DELETE" }).then(onRemoved).catch(() => {});
+  const remove = async () => {
+    const yes = await confirm({
+      title: `Remove ${skill.name}?`,
+      body: "Agents will stop using it.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!yes) return;
+    void api(`/api/skills/${skill.id}`, { method: "DELETE" })
+      .then(() => {
+        onRemoved();
+        toast(`Removed ${skill.name}`);
+      })
+      .catch(() => {});
   };
   return (
     <div>

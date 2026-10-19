@@ -20,6 +20,8 @@ import { Trash2 } from "@/components/icons";
 import { Target } from "@/components/icons";
 import { api, sidebarRows, useStore, formatWhen, workingInRoom, type Action, type Blok, type Bot } from "@/state/store";
 import { Button } from "@/components/ui/button";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
 import { AgentAvatar } from "./Avatar";
 import { BloksLogo } from "./Brand";
 import { cn } from "@/lib/cn";
@@ -324,7 +326,8 @@ function RowMenu({
           dispatch({ type: "duplicateBot", botId: bot.id }),
         ),
         item(<ClipboardCopy size={15} className="text-muted-foreground" />, "Copy conversation ID", () => {
-          void navigator.clipboard?.writeText(bot.threadId);
+          // the menu closes on the click, so the toast is the only sign it worked
+          void navigator.clipboard?.writeText(bot.threadId).then(() => toast.success("Copied conversation ID"));
         }),
         divider("d2"),
         // The chat shows no tabs while an agent has one conversation
@@ -347,20 +350,33 @@ function RowMenu({
           item(
             <Eraser size={15} />,
             "Clear conversation",
-            () => {
-              if (window.confirm("Clear this conversation? Its messages are deleted.")) {
-                dispatch({ type: "clearTask", botId: bot.id, taskId: general.id });
-              }
-            },
+            () =>
+              void confirm({
+                title: "Clear this conversation?",
+                body: "Its messages are deleted.",
+                confirmLabel: "Clear",
+                destructive: true,
+              }).then((yes) => yes && dispatch({ type: "clearTask", botId: bot.id, taskId: general.id })),
             { danger: true },
           ),
-        // Archiving is reversible, so it lives here; deleting the agent is
-        // behind the drawer where the confirm can name what goes. Archiving takes
-        // the agent out of the list and stops it working; it keeps the
+        // Archiving is reversible, so it lives here, asks nothing, and
+        // offers its own undo; deleting the agent is behind the drawer
+        // where the confirm can name what goes. Archiving takes the agent
+        // out of the list and stops it working; it keeps the
         // conversations, the rules, the rooms and the key.
-        item(<Archive size={15} className="text-muted-foreground" />, "Archive", () =>
-          dispatch({ type: "deleteBot", botId: bot.id }),
-        ),
+        item(<Archive size={15} className="text-muted-foreground" />, "Archive", () => {
+          const wasOpen = state.selectedId === bot.id;
+          dispatch({ type: "deleteBot", botId: bot.id });
+          toast.success(`Archived ${bot.name}`, {
+            action: {
+              label: "Undo",
+              onClick: () => {
+                dispatch({ type: "restoreBot", botId: bot.id });
+                if (wasOpen) dispatch({ type: "select", id: bot.id });
+              },
+            },
+          });
+        }),
       ]}
     </div>
   );
@@ -1266,12 +1282,14 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
                 title={`Delete ${bot.name} for good`}
                 aria-label={`Delete ${bot.name} for good`}
                 className="text-muted-foreground hover:text-destructive"
-                onClick={() => {
-                  const sure = confirm(
-                    `Delete ${bot.name} for good?\n\nIts conversations and signing key are deleted. What it already signed stays readable.\n\nThis cannot be undone.`,
-                  );
-                  if (sure) dispatch({ type: "deleteBot", botId: bot.id, forget: true });
-                }}
+                onClick={() =>
+                  void confirm({
+                    title: `Delete ${bot.name} for good?`,
+                    body: "Its conversations and signing key are deleted. What it already signed stays readable.\n\nThis cannot be undone.",
+                    confirmLabel: "Delete for good",
+                    destructive: true,
+                  }).then((sure) => sure && dispatch({ type: "deleteBot", botId: bot.id, forget: true }))
+                }
               >
                 <Trash2 size={14} />
               </Button>

@@ -6,6 +6,8 @@
 // which it got.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/state/store";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
 
 export interface ToolkitCard {
   slug: string;
@@ -77,15 +79,22 @@ export function useConnectors() {
       .finally(() => setBusySlug(null));
   };
 
-  const disconnect = (slug: string) => {
+  const disconnect = async (slug: string) => {
     const label = cards?.find((c) => c.slug === slug)?.label ?? slug;
     // every account behind it goes, and agents stop being able to use it
-    if (!window.confirm(`Disconnect ${label}? Agents can't use it until you reconnect.`)) {
-      return;
-    }
+    const yes = await confirm({
+      title: `Disconnect ${label}?`,
+      body: "Agents can't use it until you reconnect.",
+      confirmLabel: "Disconnect",
+      destructive: true,
+    });
+    if (!yes) return;
     setBusySlug(slug);
     api(`/api/connectors/${slug}`, { method: "DELETE" })
-      .then(() => refreshStatus([slug]))
+      .then(() => {
+        toast(`Disconnected ${label}`);
+        return refreshStatus([slug]);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusySlug(null));
   };

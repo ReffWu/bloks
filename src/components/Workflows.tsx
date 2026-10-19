@@ -45,6 +45,8 @@ import { useStore, type Bot } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -575,10 +577,18 @@ function WorkflowCard({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                if (!confirm(`Delete "${workflow.name}"?`)) return;
+              onClick={async () => {
+                const yes = await confirm({
+                  title: `Delete "${workflow.name}"?`,
+                  confirmLabel: "Delete",
+                  destructive: true,
+                });
+                if (!yes) return;
                 api(`/api/workflows/${workflow.id}`, { method: "DELETE" })
-                  .then(onChanged)
+                  .then(() => {
+                    onChanged();
+                    toast(`Deleted "${workflow.name}"`);
+                  })
                   .catch((e: Error) => onError(e.message));
               }}
             >
@@ -894,8 +904,19 @@ function Editor({
     ? "Saved and switched off. Create turns it on."
     : `Try it runs it once for real${postsIn.length ? `, and posts in ${postsIn.length > 2 ? `${postsIn.slice(0, 2).join(", ")} and more` : postsIn.join(" and ")}` : ""}.${!draft.id && draft.trigger.kind !== "manual" ? " It stays off until you press Create." : ""}`;
 
-  const close = () => {
-    if (dirty && !confirm("Close without saving your changes?")) return;
+  const close = async () => {
+    if (
+      dirty &&
+      !(await confirm({
+        title: "Close without saving?",
+        body: "Your changes to this workflow are lost.",
+        confirmLabel: "Discard changes",
+        cancelLabel: "Keep editing",
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
     onClose();
   };
 

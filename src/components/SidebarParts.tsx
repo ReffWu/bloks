@@ -18,6 +18,8 @@ import { Hand } from "@/components/icons";
 import { Target } from "@/components/icons";
 import { formatWhen, useStore, type Bot, laneHasMessages } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
 import { ContextRing, RING_FROM, type TaskChipData } from "./TaskStrip";
 import { contextTitle, measuredContext } from "@/lib/contextCard";
 
@@ -120,7 +122,8 @@ function LaneMenu({
         dispatch({ type: "markLaneUnread", botId: bot.id, taskId: lane.id }),
       )}
       {item(<ClipboardCopy size={15} className="text-muted-foreground" />, "Copy conversation ID", () => {
-        void navigator.clipboard?.writeText(lane.id);
+        // the menu closes on the click, so the toast is the only sign it worked
+        void navigator.clipboard?.writeText(lane.id).then(() => toast.success("Copied conversation ID"));
       })}
       {/* opened in this conversation, so the goal it sets is plainly its own */}
       {!lane.noGoals &&
@@ -139,8 +142,14 @@ function LaneMenu({
             // The same rule as a tab's ×: closing deletes the transcript, so
             // one with anything in it names what goes first; an empty one
             // just goes.
-            if (laneHasMessages(lane) && !window.confirm(`Close "${lane.title}"? Its messages are deleted.`)) return;
-            dispatch({ type: "closeTask", botId: bot.id, taskId: lane.id });
+            const close = () => dispatch({ type: "closeTask", botId: bot.id, taskId: lane.id });
+            if (!laneHasMessages(lane)) return close();
+            void confirm({
+              title: `Close "${lane.title}"?`,
+              body: "Its messages are deleted.",
+              confirmLabel: "Close",
+              destructive: true,
+            }).then((yes) => yes && close());
           },
           true,
         )
