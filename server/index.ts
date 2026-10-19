@@ -1218,7 +1218,11 @@ async function readinessOf(bot: BotRecord): Promise<{ readiness: Readiness; engi
   return backup && agentReadiness(own.readiness, backup.readiness) === backup.readiness ? backup : own;
 }
 // What each agent remembered, and when, with a way back per change.
-const memoryJournal = new MemoryJournal(join(DATA_DIR, "memory-journal"), workspace.workspaceDir);
+// The workspace's shared memory keeps its record here too, under an id
+// no agent can have.
+const memoryJournal = new MemoryJournal(join(DATA_DIR, "memory-journal"), (id) =>
+  id === workspace.SHARED_MEMORY_ID ? workspace.sharedMemoryDir() : workspace.workspaceDir(id),
+);
 // What was brought over from other agent tools, and where it went, so a
 // second import updates the first (server/setup-import.ts).
 const setupRecord = new ImportRecord(join(DATA_DIR, "setup-import.json"));
@@ -2692,6 +2696,7 @@ bus.subscribe((event: RuntimeEvent) => {
       // trust, still carrying out what the mail said.
       if (
         (event.tool === "note_about_person" || event.tool === "read_message" || event.tool === "search_history" ||
+          event.tool === "memory_read" || event.tool === "memory_write" ||
           event.tool === "request_secret" || event.tool === "request_connection") &&
         event.requestId &&
         laneRequester.get(event.threadId) === MAIL_FROM_ANYONE
@@ -2708,7 +2713,8 @@ bus.subscribe((event: RuntimeEvent) => {
       // to it; this is the second line if one is called anyway. Its asks
       // for a key or an app go to the owner, who answers them.
       if (
-        (event.tool === "note_about_person" || event.tool === "read_message" || event.tool === "search_history") &&
+        (event.tool === "note_about_person" || event.tool === "read_message" || event.tool === "search_history" ||
+          event.tool === "memory_read" || event.tool === "memory_write") &&
         event.requestId &&
         laneTelegramPerson.has(event.threadId)
       ) {
@@ -2730,6 +2736,23 @@ bus.subscribe((event: RuntimeEvent) => {
           : suggestNote(bot, (event.input as { fact?: unknown } | undefined)?.fact, event.threadId);
         void asker
           ?.adapter.respondToRequest(event.threadId, event.requestId, { behavior: "answer", message: answer })
+          .catch(() => {});
+        break;
+      }
+      // An API engine keeping its own memory: the same files a CLI engine
+      // edits, written through the journal as the agent's. Not in a room
+      // shared with other people, whose words would be what steered the
+      // write; reading there only where the owner let this agent's memory
+      // into the room, as the standing prompt does.
+      if ((event.tool === "memory_read" || event.tool === "memory_write") && event.requestId) {
+        const room = bloks.bloks.find((b) => b.sharing && b.lanes?.[bot.id] === event.threadId);
+        const answer =
+          room && (event.tool === "memory_write" || !room.sharing?.memoryFor?.includes(bot.id))
+            ? { message: "Not in a shared room: your memory is private to the person you work for.", changed: false }
+            : memoryTool(bot.id, event.tool, (event.input as Record<string, unknown> | undefined) ?? {});
+        if (answer.changed) broadcast({ kind: "memory.changed", botId: bot.id, changes: 1 });
+        void asker
+          ?.adapter.respondToRequest(event.threadId, event.requestId, { behavior: "answer", message: answer.message })
           .catch(() => {});
         break;
       }
@@ -4709,7 +4732,14 @@ async function startClaimedTurn(
     // and never for a Telegram person, who is told as little of the
     // owner as a stranger's mail is
     notes: (!sharing && !guestMail && !personSource && profileNotes.prompt()) || null,
-    memory: !guestMail && !personSource && (!sharing || sharing.memoryFor?.includes(bot.id)) ? workspace.memoryPrompt(bot.id) : null,
+    // An engine with no files of its own keeps memory with the API
+    // tools (memory_read, memory_write) instead.
+    memory: !guestMail && !personSource && (!sharing || sharing.memoryFor?.includes(bot.id))
+      ? workspace.memoryPrompt(bot.id, !runsAProcess(instance.driverKind) && instance.driverKind !== "claudeAgent" && specFor(instance.driverKind)?.tools === true ? "tools" : "files")
+      : null,
+    // what the person keeps for every agent: private to them, under the
+    // same gate as the notes about them
+    shared: (!sharing && !guestMail && !personSource && workspace.sharedMemoryPrompt()) || null,
   };
   const roomInMessage = Boolean(blok) && instance.driverKind === "claudeAgent";
   const personaWith = (moving: Standing) => [
@@ -4756,6 +4786,7 @@ async function startClaimedTurn(
       `About the person you work for: ${cfg.profile.about.trim()}`,
     moving.notes,
     !sharing && !guestMail && !personSource && noteBriefing(runsAProcess(instance.driverKind) ? cliCommand : null),
+    moving.shared,
     moving.memory,
     sharing && sharedBriefing(sharedRoom!, sharing, roomTools),
     guestMail &&
@@ -6428,6 +6459,144 @@ function recallFor(bot: BotRecord, query: string, laneId?: string | null, limit 
   const hits = recallFrom(query, sources, speakerFor(bot), { limit });
   recallDone();
   return hits;
+}
+
+/**
+ * The person's search of memory: every agent still in the list and the
+ * shared memory, each file from the index recall already keeps of it.
+ * A hit says whose memory ("shared" for the workspace's) and which file,
+ * so the Memory page can open it there.
+ */
+function searchMemory(query: string, limit: number): Array<{ botId: string; file: string; text: string; at: number }> {
+  const owners: string[] = [];
+  const sources: IndexedSource[] = [];
+  const add = (owner: string, key: string, files: workspace.MemoryFileRead[]) => {
+    for (const file of files) {
+      const index = recallIndexes.get(`memory:${key}:${file.name}`, () => indexMemory(file.read(), file.mtimeMs), file.stamp);
+      if (!index.docs.length) continue;
+      owners.push(owner);
+      sources.push({ threadId: `memory:${key}:${file.name}`, where: file.name, index, memory: file.name });
+    }
+  };
+  add("shared", workspace.SHARED_MEMORY_ID, workspace.sharedMemoryFiles());
+  for (const bot of store.bots) {
+    if (!bot.hidden && !bot.archivedAt) add(bot.id, bot.id, workspace.memoryFiles(bot.id));
+  }
+  const hits = recallFrom(query, sources, () => ({ who: "", by: "self" }), { limit, excerpt: 260 });
+  recallDone();
+  const ownerOf = new Map(sources.map((source, i) => [source.threadId, owners[i]]));
+  return hits.map((hit) => ({ botId: ownerOf.get(hit.threadId)!, file: hit.memory!, text: hit.text, at: hit.at }));
+}
+
+/**
+ * memory_read and memory_write, for an API engine that has no files of its
+ * own (server/drivers/openai-compat.ts). The name is judged here: MEMORY.md
+ * or a topic name under memory/, never a path. A write is the agent's in
+ * the journal, once: the turn's own photograph of memory is told of it.
+ */
+function memoryTool(botId: string, tool: "memory_read" | "memory_write", input: Record<string, unknown>): { message: string; changed: boolean } {
+  const said = (message: string, changed = false) => ({ message, changed });
+  const name = (typeof input.file === "string" ? input.file.trim() : "").replace(/^memory\//, "");
+  const file = !name ? "" : name === "MEMORY.md" ? "MEMORY.md" : `memory/${/\.md$/i.test(name) ? name : `${name}.md`}`;
+  const badName = "A topic is a file name ending in .md, like people.md.";
+  if (tool === "memory_read") {
+    if (!file) {
+      const topics = workspace.listMemoryTopics(botId);
+      return said(topics.length ? `Your topic files:\n${topics.map((t) => `- ${t.name} (${t.bytes} bytes)`).join("\n")}` : "You have no topic files yet.");
+    }
+    if (file === "MEMORY.md") {
+      const { text, truncated } = workspace.readMemoryFile(botId);
+      return said(text ? `${text}${truncated ? "\n[only the first part of this loads each turn; trim it]" : ""}` : "MEMORY.md is empty.");
+    }
+    if (!workspace.isTopicName(file.slice(7))) return said(badName);
+    return said(workspace.readMemoryTopic(botId, file.slice(7)) ?? `There is no topic ${file.slice(7)}.`);
+  }
+  if (!file) return said("memory_write needs a file: MEMORY.md or a topic name.");
+  const text = typeof input.text === "string" ? input.text : null;
+  if (text === null) return said("memory_write needs the file's new text.");
+  if (Buffer.byteLength(text, "utf8") > workspace.MEMORY_FILE_MAX_BYTES) return said("That is over 256KB. Keep memory short, with detail in topic files.");
+  const path = memoryJournal.pathOf(botId, file);
+  if (!path) return said(badName);
+  const forget = file !== "MEMORY.md" && !text.trim();
+  try {
+    const was = readMemoryText(path, file);
+    if (forget && was === null) return said(`There is no topic ${file.slice(7)} to forget.`);
+    const entry = memoryJournal.record(botId, file, "agent", was, forget ? null : text, undefined, () => {
+      if (forget) return void rmSync(path, { force: true });
+      const written = file === "MEMORY.md" ? workspace.writeMemoryFile(botId, text) : workspace.writeMemoryTopic(botId, file.slice(7), text);
+      if (!written) throw new Error(`${file} is a link to somewhere else now, so it was not written.`);
+    });
+    if (!entry) return said(`${file} already says exactly that.`);
+    const cut = file === "MEMORY.md" && workspace.readMemoryFile(botId).truncated;
+    return said(
+      `${forget ? "Forgot" : "Saved"} ${file}.${cut ? " It is now longer than a turn loads (200 lines, 24 KB); move detail into topic files." : ""}`,
+      true,
+    );
+  } catch (error) {
+    return said((error as Error).message);
+  }
+}
+
+/**
+ * Topics of one agent's memory, and picked lines of its MEMORY.md, into
+ * another's. A topic the other already has gains the copy after what it
+ * holds rather than losing what it had; lines it already has are not
+ * added twice. Every file written is one journal entry, the person's.
+ */
+function copyMemory(
+  fromId: string,
+  toId: string,
+  pick: { topics: string[]; lines: number[] },
+): { copied: Array<{ file: string; created: boolean }>; skipped: Array<{ file: string; reason: string }> } {
+  const copied: Array<{ file: string; created: boolean }> = [];
+  const skipped: Array<{ file: string; reason: string }> = [];
+  const write = (file: string, next: (was: string | null) => string) => {
+    const path = memoryJournal.pathOf(toId, file);
+    if (!path) return void skipped.push({ file, reason: "not a memory file" });
+    try {
+      const was = readMemoryText(path, file);
+      const text = next(was);
+      if (Buffer.byteLength(text, "utf8") > workspace.MEMORY_FILE_MAX_BYTES) {
+        return void skipped.push({ file, reason: "together they would be over 256KB" });
+      }
+      const entry = memoryJournal.record(toId, file, "you", was, text, undefined, () => {
+        const written = file === "MEMORY.md" ? workspace.writeMemoryFile(toId, text) : workspace.writeMemoryTopic(toId, file.slice(7), text);
+        if (!written) throw new Error("that file is a link to somewhere else now, so it was left alone");
+      });
+      if (entry) copied.push({ file, created: was === null });
+      else skipped.push({ file, reason: "already there" });
+    } catch (error) {
+      skipped.push({ file, reason: (error as Error).message });
+    }
+  };
+  for (const name of new Set(pick.topics)) {
+    const source = workspace.isTopicName(name) ? workspace.readMemoryTopic(fromId, name) : null;
+    if (source === null) {
+      skipped.push({ file: `memory/${name}`, reason: "no such topic" });
+      continue;
+    }
+    write(`memory/${name}`, (was) =>
+      !was?.trim() ? source : was.includes(source.trim()) ? was : `${was.replace(/\s*$/, "")}\n\n${source}`,
+    );
+  }
+  if (pick.lines.length) {
+    const all = workspace.readMemoryFile(fromId).text.split("\n");
+    const chosen = [...new Set(pick.lines)]
+      .sort((a, b) => a - b)
+      .filter((n) => n >= 0 && n < all.length)
+      .map((n) => all[n])
+      .filter((line) => line.trim());
+    if (chosen.length) {
+      write("MEMORY.md", (was) => {
+        const base = was ?? "";
+        const have = new Set(base.split("\n").map((line) => line.trim()));
+        const fresh = chosen.filter((line) => !have.has(line.trim()));
+        if (!fresh.length) return base;
+        return `${base.replace(/\s*$/, "")}${base.trim() ? "\n\n" : ""}${fresh.join("\n")}\n`;
+      });
+    }
+  }
+  return { copied, skipped };
 }
 
 /** What recall before a turn may add at most: three excerpts of about
@@ -12834,10 +13003,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (file.agent.backup && registry.get(file.agent.backup.instanceId)) engines.backupSelection = file.agent.backup;
       store.patchBot(bot.id, { ...(await newAgentSettings()), ...engines, ...patch, activeWithYouAt: Date.now() });
 
+      // Through the journal like any other edit, so what the file brought
+      // shows in Memory as yours and each piece of it can be undone.
       if (file.memory) {
-        if (file.memory.text.trim()) workspace.writeMemoryFile(bot.id, file.memory.text);
-        for (const topic of file.memory.topics) {
-          workspace.writeMemoryTopic(bot.id, topic.name, topic.text);
+        const imported: Array<[string, string]> = [
+          ...(file.memory.text.trim() ? [["MEMORY.md", file.memory.text] as [string, string]] : []),
+          ...file.memory.topics.filter((topic) => workspace.isTopicName(topic.name)).map((topic) => [`memory/${topic.name}`, topic.text] as [string, string]),
+        ];
+        for (const [name, text] of imported) {
+          try {
+            const was = readMemoryText(memoryJournal.pathOf(bot.id, name)!, name);
+            memoryJournal.record(bot.id, name, "you", was, text, undefined, () => {
+              const written = name === "MEMORY.md" ? workspace.writeMemoryFile(bot.id, text) : workspace.writeMemoryTopic(bot.id, name.slice(7), text);
+              if (!written) throw new Error(`${name} was not written`);
+            });
+          } catch {
+            // one file that will not write is a missing note, not a failed import
+          }
         }
       }
       if (file.avatar) {
@@ -14573,7 +14755,85 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       return json(res, 200, { ok: true });
     }
 
+    // ── shared memory: one MEMORY.md the person keeps for every agent ──
+    // Agents read it (`bloks memory --shared`) and are told it each turn;
+    // only the person writes it, so the agent guard lists the read alone
+    // and the write refuses an agent's credential besides.
+    if (path === "/api/memory/shared" && method === "GET") {
+      return json(res, 200, { ...workspace.readSharedMemory(), stats: workspace.sharedMemoryStats() });
+    }
+    if (path === "/api/memory/shared" && method === "PUT") {
+      if (asAgent) return json(res, 403, { error: "shared memory is the person's to write; an agent reads it" });
+      const body = await readBody(req);
+      if (typeof body.text !== "string") return json(res, 400, { error: "text required" });
+      if (Buffer.byteLength(body.text, "utf8") > workspace.MEMORY_FILE_MAX_BYTES) {
+        return json(res, 400, { error: "shared memory is capped at 256KB" });
+      }
+      const sharedPath = memoryJournal.pathOf(workspace.SHARED_MEMORY_ID, "MEMORY.md")!;
+      let was: string | null;
+      try {
+        was = readMemoryText(sharedPath, "MEMORY.md");
+      } catch (error) {
+        return json(res, 409, { error: (error as Error).message });
+      }
+      if (memoryJournal.record(workspace.SHARED_MEMORY_ID, "MEMORY.md", "you", was, body.text, undefined, () => {
+        if (!workspace.writeSharedMemory(body.text)) {
+          throw Object.assign(new Error("the shared MEMORY.md is a link to somewhere else now, so it was not saved"), { status: 409 });
+        }
+      })) {
+        broadcast({ kind: "memory.changed", botId: workspace.SHARED_MEMORY_ID, changes: 1 });
+      }
+      return json(res, 200, { ok: true, truncated: workspace.readSharedMemory().truncated });
+    }
+    if (path === "/api/memory/shared/journal" && method === "GET") {
+      const entries = memoryJournal.list(workspace.SHARED_MEMORY_ID).slice(-150).reverse().map((e) => memoryJournal.view(e));
+      return json(res, 200, { entries });
+    }
+    m = path.match(/^\/api\/memory\/shared\/journal\/([\w-]+)\/undo$/);
+    if (m && method === "POST") {
+      if (asAgent) return json(res, 403, { error: "shared memory is the person's to write; an agent reads it" });
+      const done = memoryJournal.undo(workspace.SHARED_MEMORY_ID, m[1]);
+      if (!done.ok) return json(res, done.status, { error: done.error });
+      broadcast({ kind: "memory.changed", botId: workspace.SHARED_MEMORY_ID, changes: 1 });
+      return json(res, 200, { entry: memoryJournal.view(done.entry) });
+    }
+
+    // The person's search across every agent's memory and the shared
+    // memory, from the same indexes recall keeps (server/recall.ts).
+    // Not an agent's: an agent reaches its own memory and nobody else's.
+    if (method === "GET" && path === "/api/memory/search") {
+      const q = (url.searchParams.get("q") ?? "").trim().slice(0, 300);
+      if (!termsOf(q).length) return json(res, 200, { hits: [] });
+      const limit = Math.max(1, Math.min(20, Number(url.searchParams.get("limit")) || 20));
+      return json(res, 200, { hits: searchMemory(q, limit) });
+    }
+
     // ── memory: what the agent believes, readable and editable ──
+    // How full it is against what a turn loads, for the Memory page's
+    // meter, and each topic with its size and when it last changed.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/stats$/);
+    if (m && method === "GET") {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such agent" });
+      return json(res, 200, workspace.memoryStats(m[1]));
+    }
+    // Another agent's topics, and any lines of its MEMORY.md the person
+    // picked, brought over. Each file is one journal entry, so the copy
+    // shows in Recent changes as the person's and comes back out with Undo.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/copy$/);
+    if (m && method === "POST") {
+      const to = store.bot(m[1]);
+      if (!to) return json(res, 404, { error: "no such agent" });
+      const body = await readBody(req);
+      const from = typeof body.from === "string" ? store.bot(body.from) : undefined;
+      if (!from) return json(res, 404, { error: "no agent to copy from" });
+      if (from.id === to.id) return json(res, 400, { error: "pick another agent to copy from" });
+      const outcome = copyMemory(from.id, to.id, {
+        topics: Array.isArray(body.topics) ? body.topics.filter((t: unknown): t is string => typeof t === "string").slice(0, 200) : [],
+        lines: Array.isArray(body.lines) ? body.lines.filter((n: unknown): n is number => Number.isInteger(n)).slice(0, 2000) : [],
+      });
+      if (outcome.copied.length) broadcast({ kind: "memory.changed", botId: to.id, changes: outcome.copied.length });
+      return json(res, 200, outcome);
+    }
     m = path.match(/^\/api\/bots\/([\w-]+)\/memory$/);
     if (m && method === "GET") {
       if (!store.bot(m[1])) return json(res, 404, { error: "no such agent" });
@@ -14597,7 +14857,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       } catch (error) {
         return json(res, 409, { error: (error as Error).message });
       }
-      if (memoryJournal.record(m[1], "MEMORY.md", "you", was, body.text, undefined, () => {
+      // an agent writing its own memory through the CLI is the agent, once
+      if (memoryJournal.record(m[1], "MEMORY.md", asAgent ? "agent" : "you", was, body.text, undefined, () => {
         if (!workspace.writeMemoryFile(m![1], body.text)) {
           throw Object.assign(new Error("MEMORY.md is a link to somewhere else now, so it was not saved. Look at the agent's workspace."), { status: 409 });
         }
@@ -14658,14 +14919,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       if (method === "DELETE") {
         if (was === null) return json(res, 404, { error: "no such topic" });
-        memoryJournal.record(m[1], file, "you", was, null, undefined, () => rmSync(target, { force: true }));
+        memoryJournal.record(m[1], file, asAgent ? "agent" : "you", was, null, undefined, () => rmSync(target, { force: true }));
       } else {
         const body = await readBody(req);
         if (typeof body.text !== "string") return json(res, 400, { error: "text required" });
         if (Buffer.byteLength(body.text, "utf8") > workspace.MEMORY_FILE_MAX_BYTES) {
           return json(res, 400, { error: "a topic is capped at 256KB" });
         }
-        memoryJournal.record(m[1], file, "you", was, body.text, undefined, () => {
+        memoryJournal.record(m[1], file, asAgent ? "agent" : "you", was, body.text, undefined, () => {
           if (!workspace.writeMemoryTopic(m![1], name, body.text)) {
             throw Object.assign(new Error("a topic is a name ending in .md"), { status: 400 });
           }

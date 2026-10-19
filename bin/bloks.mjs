@@ -503,11 +503,28 @@ const COMMANDS = {
     },
   },
   memory: {
-    use: "memory [--write <text>]",
-    about: "read what you remember between conversations, or replace it",
+    use: "memory [--write <text>] | memory --topics | memory --topic <name> [--write <text> | --forget] | memory --shared",
+    about:
+      "read what you remember between conversations, or replace it; list, read, write or forget a topic file; or read the shared memory the person keeps for every agent (read only)",
     run: async (args) => {
       const flags = parseFlags(args);
+      // the person writes the shared memory; an agent only reads it
+      if (flags.shared !== undefined) {
+        if (flags.write !== undefined) throw new Error("the shared memory is the person's to write; you can read it");
+        return request("GET", "/api/memory/shared");
+      }
       const me = await request("GET", "/api/agent/whoami");
+      if (flags.topics !== undefined) return { topics: (await request("GET", `/api/bots/${me.botId}/memory`)).topics ?? [] };
+      if (flags.topic !== undefined) {
+        // one plain file name, so it is a single safe path part
+        const raw = flags.topic === "true" ? "" : String(flags.topic).trim().replace(/^memory\//, "").replace(/\.md$/i, "");
+        const name = raw.replace(/[^\w.-]+/g, "-").replace(/^[^\w]+/, "").slice(0, 100);
+        if (!name) throw new Error("--topic needs a name, like people");
+        const route = `/api/bots/${me.botId}/memory/topics/${encodeURIComponent(`${name}.md`)}`;
+        if (flags.forget !== undefined) return request("DELETE", route);
+        if (flags.write !== undefined) return request("PUT", route, { text: flags.write });
+        return request("GET", route);
+      }
       if (flags.write === undefined) return request("GET", `/api/bots/${me.botId}/memory`);
       return request("PUT", `/api/bots/${me.botId}/memory`, { text: flags.write });
     },

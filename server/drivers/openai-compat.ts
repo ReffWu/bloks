@@ -234,6 +234,39 @@ function toolSchemas(hasComputer: boolean, hasSandbox: boolean) {
         },
       },
     },
+    // Memory for an engine with no files of its own: the same MEMORY.md
+    // and topic files a CLI engine edits with its file tools, answered by
+    // the workspace like note_about_person, and journaled as the agent's.
+    {
+      type: "function",
+      function: {
+        name: "memory_read",
+        description:
+          "Read your persistent memory: MEMORY.md (loaded into every turn) or one topic file. With no file, lists your topic files.",
+        parameters: {
+          type: "object",
+          properties: {
+            file: { type: "string", description: 'MEMORY.md, or a topic file name such as "people.md". Leave it out to list topics.' },
+          },
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "memory_write",
+        description:
+          "Replace the whole text of MEMORY.md or of one topic file (created if new). Read it first and keep what is still true. Keep MEMORY.md short: only its first 200 lines and 24 KB load each turn; put detail in topic files. An empty text for a topic forgets it.",
+        parameters: {
+          type: "object",
+          properties: {
+            file: { type: "string", description: 'MEMORY.md, or a topic file name ending in .md such as "people.md"' },
+            text: { type: "string", description: "The file's new full text" },
+          },
+          required: ["file", "text"],
+        },
+      },
+    },
     {
       type: "function",
       function: {
@@ -689,7 +722,7 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
               type: "item.started",
               itemType: "tool",
               itemId: call.id,
-              title: name === "ask_user" ? "ask_user" : `${name}: ${String(args.command ?? args.url ?? args.query ?? args.fact ?? "").slice(0, 60)}`,
+              title: name === "ask_user" ? "ask_user" : `${name}: ${String(args.command ?? args.url ?? args.query ?? args.fact ?? args.file ?? "").slice(0, 60)}`,
               // the same malformed text twice is the same call twice
               signature: callSignature(name, parsed ? args : String(call.function?.arguments ?? "")),
             });
@@ -702,7 +735,10 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
               result = await requestConnection(threadId, turnId, args);
             } else if (name === "request_secret") {
               result = await requestSecret(threadId, turnId, args);
-            } else if (name === "search_history" || name === "read_message" || name === "note_about_person") {
+            } else if (
+              name === "search_history" || name === "read_message" || name === "note_about_person" ||
+              name === "memory_read" || name === "memory_write"
+            ) {
               result = await askWorkspace(threadId, turnId, name, args ?? {});
             } else if (name === "sandbox_exec" && sandbox) {
               result = await sandboxExec(sandbox, String(args.command ?? ""));

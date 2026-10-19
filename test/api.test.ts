@@ -2948,6 +2948,12 @@ describe("taking an agent somewhere else", () => {
 
     const memory = await h.json(`/api/bots/${arrived.id}/memory`);
     assert.match(memory.text, /Acme prefers bullets/);
+    // through the journal, so what the file brought can be undone
+    const { entries } = await h.json(`/api/bots/${arrived.id}/memory/journal`);
+    const core = entries.find((e: any) => e.file === "MEMORY.md");
+    assert.equal(core?.by, "you");
+    assert.equal((await h.fetch(`/api/bots/${arrived.id}/memory/journal/${core.id}/undo`, { method: "POST" })).status, 200);
+    assert.doesNotMatch((await h.json(`/api/bots/${arrived.id}/memory`)).text, /Acme prefers bullets/);
     const { skills } = await h.json("/api/skills");
     assert.ok(skills.some((s: any) => s.id === "field-notes"), "the skill joined the library");
   });

@@ -149,7 +149,41 @@ MEMORY.md and topic files are read before and after each turn, and any
 difference becomes an entry with the whole text before and after, as do
 edits made from the Memory panel. Undo follows the checkpoint rule: only
 a file still exactly as that change left it goes back, and a file that
-has become a link is never written through.
+has become a link is never written through. A change recorded through
+Bloks while a turn of that agent runs (the agent's own `bloks memory`
+write, an API engine's `memory_write`, the person's edit) also updates
+the turn's photograph, so the turn's end does not find it again: one
+edit, one entry, by whoever made it. An agent's write through the CLI
+or a tool is the agent's; an agent file's import, a copy from another
+agent and the editor are the person's.
+
+Shared memory is one `DATA_DIR/shared/MEMORY.md` the person keeps for
+every agent, under the same 200 line and 24,000 byte budget, journaled
+under the owner id `_shared` with the same undo (`/api/memory/shared`,
+its `journal` and `journal/:id/undo`). It is the standing prompt's third
+moving part (`server/standing-prompt.ts`), so a resumed Claude Code
+session keeps its cached copy and hears a change in its message, and it
+has the notes' gate: never in a shared room, a stranger's mail or a
+Telegram person's turn. Agents read it (`bloks memory --shared`, and the
+prompt) and never write it; the write route refuses an agent's
+credential and the agent guard does not list it.
+
+The Memory place reads `GET /api/bots/:id/memory/stats` for its meter
+(lines and bytes against the budget, topics with sizes and times),
+searches with `GET /api/memory/search` (every listed agent's memory and
+the shared memory, from recall's own indexes), and copies with
+`POST /api/bots/:id/memory/copy` (picked topics, appended to one the
+agent already has, and picked MEMORY.md lines it does not have yet, each
+file one undoable entry). It follows `memory.changed` on the stream
+rather than polling; `botId` is `_shared` for the shared memory.
+
+API engines with tools keep memory with `memory_read` and `memory_write`
+(`server/drivers/openai-compat.ts`), answered by the workspace like
+`note_about_person`: refused for a stranger's mail and a Telegram
+person, a write refused in any shared room, and a read there only where
+the owner let the agent's memory in. An empty text for a topic forgets
+it. CLI engines have `bloks memory --topics`, `--topic <name>` with
+`--write` or `--forget`, on their own topics only.
 
 Room ids and agent thread ids share one key space, which is why a room
 transcript and a solo transcript are the same kind of file.

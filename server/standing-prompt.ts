@@ -6,9 +6,10 @@
 // tokens after a pause of a few minutes. An agent's MEMORY.md and the
 // notes about the person change far more often than anything else in
 // it, the first whenever the agent curates its memory and the second for
-// every agent at once when a note is kept.
+// every agent at once when a note is kept. The shared memory the person
+// keeps for every agent moves the same way, whenever they edit it.
 //
-// So a resumed session keeps the copy of those two its session started
+// So a resumed session keeps the copy of those three its session started
 // with, and a change since the agent last heard is said in the turn's
 // own message, which comes after the cached history and costs only
 // itself. A fresh session has no cache to keep, and gets the current
@@ -19,6 +20,9 @@
 export interface Standing {
   memory: string | null;
   notes: string | null;
+  /** The workspace's shared memory (server/workspace.ts). Optional so a
+   * record made before it existed reads as never told. */
+  shared?: string | null;
 }
 
 /** What one lane's session has been given. */
@@ -64,6 +68,14 @@ export function standingFor(
       current.notes
         ? `Since your last turn, the notes about the person you work for changed. This replaces the list in your instructions:\n\n${current.notes}`
         : "Since your last turn, the notes about the person you work for were all removed. Disregard the list in your instructions.",
+    );
+  }
+  const shared = current.shared ?? null;
+  if (shared !== (previous.told.shared ?? null)) {
+    changed.push(
+      shared
+        ? `Since your last turn, the shared memory changed. This replaces any copy in your instructions:\n\n${shared}`
+        : "Since your last turn, the shared memory was emptied. Disregard any copy in your instructions.",
     );
   }
   return {
