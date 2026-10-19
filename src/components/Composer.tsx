@@ -31,7 +31,7 @@ import { ApprovalModeMenu } from "./composer/ApprovalMode";
 import { CodexSpeedMenu } from "./CodexSpeed";
 import { NoticeTray, RANK, TrayButton, type Notice } from "./composer/Tray";
 import { SlashMenu } from "./composer/SlashMenu";
-import { guestMailNotice, useApprovalsNotice, useEngineNotice, useOtherLanesNotice } from "./chat/Banners";
+import { guestMailNotice, useApprovalsNotice, useEngineNotice, useOtherLanesNotice, useSuggestionNotice } from "./chat/Banners";
 import { useGoalNotice } from "./Goal";
 import { useQueuedNotice } from "./WaitingStrip";
 import {
@@ -619,6 +619,7 @@ export function Composer({
   const engineNotice = useEngineNotice(bot);
   const lanesNotice = useOtherLanesNotice(bot);
   const goalNotice = useGoalNotice(bot);
+  const suggestionNotice = useSuggestionNotice(bot);
   const queuedNotice = useQueuedNotice({
     messages: waiting,
     threadId: bot.threadId,
@@ -724,6 +725,7 @@ export function Composer({
     lanesNotice,
     goalNotice,
     queuedNotice,
+    suggestionNotice,
     guestMailNotice(bot),
     ...own,
     ...(extra ?? []),

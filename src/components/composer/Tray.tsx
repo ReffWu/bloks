@@ -58,6 +58,7 @@ export const RANK = {
   unsent: 45,
   queued: 50,
   goal: 60,
+  suggestion: 65,
   guestMail: 70,
 } as const;
 
