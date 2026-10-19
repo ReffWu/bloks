@@ -11,7 +11,7 @@
 // Storage is bounded twice: by count, and by age. Old entries go when the
 // store is next touched (an ask, a report, a read), not on a clock.
 import { randomBytes } from "node:crypto";
-import { deviceSettingsSnapshot, type DeviceSettingsSnapshot } from "../src/lib/settings-observation.ts";
+import { deviceSettingsSnapshot, type DeviceSettingsSnapshot } from "./settings-observation.ts";
 import { scalar, type InspectionValue } from "./settings-inspection.ts";
 
 /** How long a read waits for answers before saying what it has. */
