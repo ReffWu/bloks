@@ -1,0 +1,498 @@
+// One message in a conversation as it is read: the bubble, its words,
+// its cards, and the quiet lines that stand in for messages taken back
+// or folded away. Split out of ChatView.tsx, which only wires them in.
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle } from "@/components/icons";
+import { BellOff } from "@/components/icons";
+import { ChevronDown } from "@/components/icons";
+import { History } from "@/components/icons";
+import { Target } from "@/components/icons";
+import type { Message } from "@/state/store";
+import { CarryOn } from "@/components/CarryOn";
+import { quietLine } from "@/lib/transcript";
+import { queuedLine, stamp } from "@/lib/when";
+import { attachmentBasename, splitAttachments } from "@/lib/attachments";
+import { RecalledNotes } from "@/components/RecalledNotes";
+import { Mic } from "@/components/icons";
+import { MessageActionBar, Reactions, ReplyContext, useTapToShow, type ReplyDraft } from "@/components/MessageActions";
+import { Markdownish, withHighlight } from "@/components/Markdown";
+import { cn } from "@/lib/cn";
+import { goalNoteForPerson } from "@/lib/goalNote";
+import { redoLine, type RedoPreview } from "@/lib/redo";
+
+
+/** The line over a goal turn: from Bloks, and which turn of how many. */
+export function goalLabel(text: string): string {
+  const { turn } = goalNoteForPerson(text);
+  return turn ? `From Bloks, toward your goal · step ${turn.of} of ${turn.budget}` : "From Bloks, toward your goal";
+}
+
+/**
+ * A user bubble's text with its attachment tags lifted out: images come
+ * back as thumbnails, files as small name chips, and what remains is
+ * the sentence the user actually typed.
+ */
+export function UserText({ text, highlight }: { text: string; highlight?: string }) {
+  const { display, images, files, voice } = splitAttachments(text);
+  return (
+    <>
+      {/* a voice message: what it was heard as is the text below, and the
+          recording stays playable, because a transcript can be wrong */}
+      {voice.map((path, i) => (
+        <div key={i} className="mb-1 flex flex-col gap-1">
+          <span className="flex items-center gap-1 text-small opacity-80">
+            <Mic size={12} />
+            Voice message, transcribed
+          </span>
+          <audio controls preload="none" src={`/api/attachments/${attachmentBasename(path)}`} className="h-8 max-w-full" />
+        </div>
+      ))}
+      {images.length > 0 && (
+        <div className="mb-1 flex flex-wrap gap-1.5">
+          {images.map((path, i) => (
+            <img
+              key={i}
+              src={`/api/attachments/${attachmentBasename(path)}`}
+              alt="attached image"
+              className="max-h-[220px] max-w-full rounded-xl object-contain"
+            />
+          ))}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="mb-1 flex flex-wrap gap-1">
+          {files.map((path, i) => (
+            <span
+              key={i}
+              title={path}
+              className="rounded-lg bg-black/15 px-1.5 py-0.5 text-small"
+            >
+              {attachmentBasename(path)}
+            </span>
+          ))}
+        </div>
+      )}
+      {withHighlight([display], highlight ?? "")}
+    </>
+  );
+}
+
+/**
+ * A message taken back, whatever shape it used to be.
+ *
+ * The row stays so replies pointing at it still make sense and the
+ * transcript keeps its shape. A card, a chart or an artifact that is
+ * taken back gets the same line as a sentence does: anything else means
+ * some kinds vanish silently and others leave a gap.
+ */
+/** One line for a whole rewind, however many messages it took back.
+ * Opens to show them, faded, because "what did I throw away" is a
+ * question people ask a minute later. */
+export function Rewound({ messages }: { messages: Message[] }) {
+  const [open, setOpen] = useState(false);
+  const words = messages.filter((m) => m.kind === "text" && m.text);
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 rounded-full border border-dashed px-3 py-1 text-small text-muted-foreground transition-colors duration-150 hover:border-foreground/25 hover:text-foreground"
+      >
+        <History size={12} />
+        {/* what was said, not the cards and notes around it */}
+        {(() => {
+          const n = words.length || messages.length;
+          return n === 1 ? "1 message rewound" : `${n} messages rewound`;
+        })()}
+        {words.length > 0 && <ChevronDown size={12} className={cn("transition-transform duration-200", open && "rotate-180")} />}
+      </button>
+      {open && words.length > 0 && (
+        <div className="flex w-full animate-fade-in flex-col gap-1.5">
+          {words.map((m) => (
+            <div key={m.id} className={cn("flex w-full", m.role === "user" ? "justify-end" : "justify-start")}>
+              <div className={cn("min-w-0 whitespace-pre-wrap rounded-2xl border border-dashed px-3 py-1.5 text-body text-muted-foreground line-through decoration-muted-foreground/50 [overflow-wrap:anywhere]", m.role === "user" ? "max-w-[82%] sm:max-w-[68%]" : "max-w-full")}>
+                {m.text}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A run of quiet check-ins as one muted line. It opens to show what was
+ * asked and answered, for whoever wants to see that the routine really is
+ * running, and stays out of the way otherwise. */
+export function QuietCheckIns({ messages }: { messages: Message[] }) {
+  const [open, setOpen] = useState(false);
+  const words = messages.filter((m) => m.kind === "text" && m.text);
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 text-small text-muted-foreground/80 transition-colors duration-150 hover:bg-accent/60 hover:text-foreground"
+      >
+        <BellOff size={12} className="shrink-0" />
+        <span className="truncate">{quietLine(messages, (at) => stamp(at))}</span>
+        {words.length > 0 && <ChevronDown size={12} className={cn("shrink-0 transition-transform duration-200", open && "rotate-180")} />}
+      </button>
+      {open && words.length > 0 && (
+        <div className="flex w-full animate-fade-in flex-col gap-1">
+          {words.map((m) => (
+            <div key={m.id} className={cn("flex w-full", m.role === "user" ? "justify-end" : "justify-start")}>
+              <div className={cn("min-w-0 whitespace-pre-wrap rounded-2xl border border-dashed px-3 py-1.5 text-body text-muted-foreground [overflow-wrap:anywhere]", m.role === "user" ? "max-w-[82%] sm:max-w-[68%]" : "max-w-full")}>
+                {m.text}
+                <span className="ml-2 text-caption text-muted-foreground/70">{stamp(m.at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function TakenBack({ user }: { user: boolean }) {
+  return (
+    <div className={cn("flex w-full", user ? "justify-end" : "justify-start")}>
+      <div className="rounded-2xl border border-dashed px-3 py-1.5 text-body italic text-muted-foreground">
+        Message taken back
+      </div>
+    </div>
+  );
+}
+
+export function Bubble({
+  message,
+  fresh,
+  author,
+  onReply,
+  onForward,
+  onReact,
+  onEdit,
+  onDelete,
+  onRewind,
+  previewRedo,
+  onRedo,
+  redoTick,
+  agentName,
+  nameOf,
+  highlight = "",
+  isHit,
+  hideTime,
+  editNow,
+}: {
+  message: Message;
+  /** The next bubble says the same time, so this one leaves it out. */
+  hideTime?: boolean;
+  /** Changes when ↑ in the empty composer asks to edit this message. */
+  editNow?: number;
+  fresh?: boolean;
+  author: string;
+  onReply: (draft: ReplyDraft) => void;
+  onForward: (message: Message, author: string) => void;
+  onReact?: (messageId: string, emoji: string) => void;
+  onEdit?: (messageId: string, text: string) => void;
+  onDelete?: (messageId: string) => void;
+  onRewind?: (messageId: string) => void;
+  /** What redoing this message would take back, or that it is not
+   * offered: asked of the server, which holds the turns and the files. */
+  previewRedo?: (messageId: string) => Promise<RedoPreview>;
+  /** Redo from the new words. Resolves to why it did not happen, or null. */
+  onRedo?: (messageId: string, text: string) => Promise<string | null>;
+  /** Changes as the conversation moves, so an open editor asks again. */
+  redoTick?: string;
+  agentName?: string;
+  nameOf?: (id: string) => string;
+  highlight?: string;
+  isHit?: boolean;
+}) {
+  const user = message.role === "user";
+  // Editing happens where the message already is. Sending it back to
+  // the composer would lose your place and pretend it is a new message.
+  const [editing, setEditing] = useState<string | null>(null);
+  // Opened from the keyboard, it hands the keyboard back when it closes,
+  // so the next thing typed lands in the composer again.
+  const returnTo = useRef<HTMLElement | null>(null);
+  // A message the agent has already read can be redone from its editor:
+  // the agent stops, the conversation and the folder go back to before
+  // the message, and the new words are sent (GitHub 258). Saving alone
+  // only rewrites the stored words, which the agent never hears. Whether
+  // Redo is offered, and the line that says what it takes back, come
+  // from the server, asked when the editor opens and again as the
+  // conversation moves under it, so the line stays true while the agent
+  // works.
+  const [redo, setRedo] = useState<RedoPreview | null>(null);
+  const [redoing, setRedoing] = useState(false);
+  const [redoError, setRedoError] = useState<string | null>(null);
+  const asked = useRef<Promise<RedoPreview | null> | null>(null);
+  const startEditing = () => {
+    if (editing !== null) return;
+    setEditing(message.text ?? "");
+  };
+  useEffect(() => {
+    if (!editNow) return;
+    returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    startEditing();
+  }, [editNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stopEditing = (text?: string) => {
+    if (text) onEdit?.(message.id, text);
+    setEditing(null);
+    setRedoError(null);
+    returnTo.current?.focus();
+    returnTo.current = null;
+  };
+  const editorOpen = editing !== null;
+  useEffect(() => {
+    if (!editorOpen || !user || !previewRedo) {
+      asked.current = null;
+      setRedo(null);
+      return;
+    }
+    let live = true;
+    const ask = previewRedo(message.id).catch(() => null);
+    asked.current = ask;
+    void ask.then((preview) => {
+      if (live) setRedo(preview);
+    });
+    return () => {
+      live = false;
+    };
+  }, [editorOpen, message.id, redoTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const offer = redo?.offered && onRedo ? redo : null;
+  const redoNow = (text: string) => {
+    if (!onRedo || redoing) return;
+    setRedoing(true);
+    setRedoError(null);
+    void onRedo(message.id, text).then((problem) => {
+      setRedoing(false);
+      // refused with nothing taken back: the editor keeps the words
+      if (problem) return setRedoError(problem);
+      // done: the message was rewound, and the keyboard goes back to
+      // the composer it came from
+      stopEditing();
+    });
+  };
+  // Enter presses the editor's main button. Which one that is is the
+  // server's answer, so a quick Enter waits for it rather than saving
+  // words the person meant to redo.
+  const submit = async () => {
+    const text = editing?.trim();
+    if (!text) return stopEditing();
+    if (redoing) return;
+    const preview = redo ?? (await asked.current);
+    if (preview?.offered && onRedo) redoNow(text);
+    else stopEditing(text);
+  };
+  // where nothing hovers, a tap on the bubble shows the bar
+  const tap = useTapToShow();
+  const saidAt = message.at && !hideTime ? (
+    <time
+      dateTime={new Date(message.at).toISOString()}
+      className="mt-0.5 px-1 text-caption leading-4 tabular-nums text-muted-foreground"
+    >
+      {/* a goal's note goes through the queue only to wait its turn;
+          nobody queued it, so it says when it went, once */}
+      {message.deliveredAt && message.via !== "goal"
+        ? queuedLine(message.queuedAt ?? message.at, message.deliveredAt)
+        : stamp(message.at)}
+    </time>
+  ) : null;
+
+  return (
+    <div
+      ref={user ? undefined : tap.row}
+      className={cn(
+        "flex flex-col",
+        user ? "items-end" : "group relative items-start",
+        // arriving messages rise into place from the side they belong to
+        fresh && (user ? "animate-send-in" : "animate-receive-in"),
+      )}
+    >
+      {/* The person's bar stays beside the bubble on desktop. The agent's
+          bar floats so even an invisible bar reserves no reading width. */}
+      <div ref={user ? tap.row : undefined} className={cn("group relative flex w-full items-center gap-1.5", user ? "justify-end" : "justify-start")}>
+        {user && (
+          <MessageActionBar
+            className="max-sm:absolute max-sm:-top-8 max-sm:right-0 max-sm:z-10"
+            open={tap.open}
+            message={message}
+            author={author}
+            onReply={onReply}
+            onForward={onForward}
+            onReact={onReact ? (emoji) => onReact(message.id, emoji) : undefined}
+            onEdit={user && onEdit && message.via !== "goal" ? startEditing : undefined}
+            onDelete={onDelete ? () => onDelete(message.id) : undefined}
+            onRewind={onRewind ? () => onRewind(message.id) : undefined}
+          />
+        )}
+        {/* A column, so reactions hang under the bubble they belong to
+            rather than beside it where they would push the text around. */}
+        <div className={cn("flex flex-col", user ? "max-w-[82%] items-end sm:max-w-[68%]" : "min-w-0")}>
+          {user && (message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal") && (
+            <div className="mb-0.5 px-1 text-caption text-muted-foreground">
+              {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? "From your watcher" : message.via === "webhook" ? "From a webhook" : message.via === "goal" ? goalLabel(message.text ?? "") : "By email"}
+            </div>
+          )}
+          <div
+            onPointerUp={tap.onPointerUp}
+            className={cn(
+              "px-3.5 py-2 text-lead leading-relaxed",
+              user
+                ? message.via === "goal"
+                  ? // Bloks keeping a goal going, not the person: a quieter
+                    // bubble on their side, so it never reads as their words
+                    "whitespace-pre-wrap rounded-2xl rounded-br-md border border-brand/25 bg-brand-soft text-foreground"
+                  : "whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary text-primary-foreground"
+                : "rounded-2xl rounded-bl-md bg-muted text-foreground",
+              // the hit you are standing on, so n and N feel like movement
+              isHit && "ring-2 ring-warning/70",
+            )}
+          >
+            {message.replyTo && <ReplyContext replyTo={message.replyTo} onDark={user} />}
+            {editing !== null ? (
+              <div className="flex flex-col gap-1.5">
+                <textarea
+                  autoFocus
+                  value={editing}
+                  onChange={(e) => setEditing(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") stopEditing();
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void submit();
+                    }
+                  }}
+                  rows={Math.min(8, editing.split("\n").length + 1)}
+                  className="w-full resize-none rounded-lg bg-black/15 px-2 py-1 text-lead leading-relaxed outline-none"
+                />
+                {offer ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-small opacity-80">
+                      <button
+                        onClick={() => editing.trim() && redoNow(editing.trim())}
+                        disabled={redoing}
+                        className="font-medium underline underline-offset-2 disabled:opacity-60"
+                      >
+                        Redo
+                      </button>
+                      {/* the smaller way out: the words change, and the
+                          agent goes on with the ones it read */}
+                      <button onClick={() => stopEditing(editing.trim() || undefined)} disabled={redoing} className="text-caption">
+                        Save only
+                      </button>
+                      <button onClick={() => stopEditing()} className="text-caption">
+                        Cancel
+                      </button>
+                      <span className="opacity-70">{redoing ? "Redoing…" : "Enter redoes, Escape cancels"}</span>
+                    </div>
+                    <div className="text-small leading-snug opacity-80" role="status">
+                      {redoError ?? redoLine(offer, agentName ?? "the agent")}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 text-small opacity-80">
+                    <button
+                      onClick={() => stopEditing(editing.trim() || undefined)}
+                      className="font-medium underline underline-offset-2"
+                    >
+                      Save
+                    </button>
+                    <button onClick={() => stopEditing()}>Cancel</button>
+                    <span className="opacity-70">Enter saves, Escape cancels</span>
+                  </div>
+                )}
+              </div>
+            ) : user ? (
+              <UserText text={message.via === "goal" ? goalNoteForPerson(message.text ?? "").body : (message.text ?? "")} highlight={highlight} />
+            ) : (
+              <Markdownish text={message.text ?? ""} highlight={highlight} />
+            )}
+            {message.editedAt && editing === null && (
+              <span className="ml-1.5 align-baseline text-caption opacity-60">edited</span>
+            )}
+          </div>
+          <Reactions
+            reactions={message.reactions}
+            onToggle={(emoji: string) => onReact?.(message.id, emoji)}
+            nameOf={nameOf ?? ((id) => (id === "user" ? "You" : author))}
+          />
+          {/* what recall put ahead of these words for the agent */}
+          {user && message.recalled?.length ? <RecalledNotes notes={message.recalled} /> : null}
+        </div>
+      </div>
+      {/* The 36 px action bar fits beside the time without covering
+          words or reactions, even when its hover state changes. */}
+      {user ? saidAt : (
+        <div className="mt-0.5 flex min-h-10 w-full items-center pr-40">
+          {saidAt}
+        </div>
+      )}
+      {!user && (
+        // A normal reply keeps its actions below words and reactions.
+        // A tall reply keeps the bar in reach as it scrolls past.
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 flex flex-col justify-end">
+          <MessageActionBar
+            className="sticky bottom-1"
+            open={tap.open}
+            message={message}
+            author={author}
+            onReply={onReply}
+            onForward={onForward}
+            onReact={onReact ? (emoji) => onReact(message.id, emoji) : undefined}
+            onDelete={onDelete ? () => onDelete(message.id) : undefined}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * Something stopped the turn from running: no engine installed, a CLI
+ * that is not signed in, a machine out of file handles. The message is
+ * usually instructions, so it is readable prose in a card rather than a
+ * truncated line of monospace.
+ */
+export function Notice({ message, fresh }: { message: Message; fresh?: boolean }) {
+  // a compaction is a fact about the conversation, marked like a date line
+  if (message.compaction) {
+    return <div className="py-1 text-center text-small text-muted-foreground">{message.text}</div>;
+  }
+  // The goal's own news. Set and done are not warnings, so they do not
+  // wear one; where it stopped short (blocked, out, paused) still does.
+  if (message.goal) {
+    const short = message.goal === "blocked" || message.goal === "out" || message.goal === "paused";
+    return (
+      <div className={cn("flex justify-start", fresh && "animate-receive-in")}>
+        <div
+          className={cn(
+            "flex max-w-[560px] gap-2.5 rounded-2xl border px-3.5 py-2.5",
+            short ? "border-warning/30 bg-warning/5" : message.goal === "done" ? "border-success/30 bg-success/5" : "bg-card",
+          )}
+        >
+          <Target
+            size={15}
+            className={cn("mt-0.5 shrink-0", short ? "text-warning" : message.goal === "done" ? "text-success" : "text-brand")}
+            aria-hidden
+          />
+          <div className="whitespace-pre-wrap text-ui leading-relaxed text-foreground">{message.text}</div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className={cn("flex justify-start", fresh && "animate-receive-in")}>
+      <div className="flex max-w-[560px] gap-2.5 rounded-2xl border border-warning/30 bg-warning/5 px-3.5 py-2.5">
+        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-warning" />
+        <div className="whitespace-pre-wrap text-ui leading-relaxed text-foreground">
+          {message.text}
+          <CarryOn message={message} />
+        </div>
+      </div>
+    </div>
+  );
+}
