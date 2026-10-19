@@ -23,18 +23,18 @@ const codex: LaneContext = { used: 141_000, limit: 258_400, fraction: 141_000 / 
 
 test("the card says how full, in tokens and as a share", () => {
   assert.deepEqual(contextCard(codex), { share: "55% full", tokens: "141k of 258k tokens", summarised: null, compaction: null });
-  assert.equal(ringLabel(codex), "Context window 55% full");
+  assert.equal(ringLabel(codex), "Context 55% full");
 });
 
 test("a window that is the table's guess is said to be about that", () => {
   const guessed = { ...codex, window: "table" as const, limit: 272_000, fraction: 141_000 / 272_000 };
   assert.deepEqual(contextCard(guessed), { share: "About 52% full", tokens: "141k of about 272k tokens", summarised: null, compaction: null });
-  assert.equal(ringLabel(guessed), "Context window about 52% full");
-  assert.equal(contextTitle(guessed), "About 52% of what this model will take");
+  assert.equal(ringLabel(guessed), "Context about 52% full");
+  assert.equal(contextTitle(guessed), "Context about 52% full");
 });
 
 test("a line says so when Bloks summarised the earlier part", () => {
-  assert.equal(contextCard({ ...codex, summarised: true }).summarised, "Bloks summarised the earlier part of this conversation.");
+  assert.equal(contextCard({ ...codex, summarised: true }).summarised, "Earlier messages were summarised.");
 });
 
 test("no ring rather than a guess", () => {
@@ -58,10 +58,10 @@ test("chips, rows and Activity read the same numbers, with their own thresholds"
   assert.equal(measuredContext({ ...codex, measured: false }), false);
   // an older server's fill stands on the chips, as it always did
   assert.equal(measuredContext({ used: 50_000, limit: 200_000, fraction: 0.25 }), true);
-  assert.equal(contextTitle({ ...codex, summarised: true }), "55% of what this model will take, and the earlier part has been summarised");
-  assert.equal(contextTitle({ used: 0, limit: 0, fraction: 0, measured: false, summarised: true }), "The earlier part has been summarised");
-  assert.equal(activityContext(codex), "55% of the window");
-  assert.equal(activityContext({ ...codex, window: "table" }), "about 55% of the window");
+  assert.equal(contextTitle({ ...codex, summarised: true }), "Context 55% full, earlier messages summarised");
+  assert.equal(contextTitle({ used: 0, limit: 0, fraction: 0, measured: false, summarised: true }), "Earlier messages summarised");
+  assert.equal(activityContext(codex), "context 55% full");
+  assert.equal(activityContext({ ...codex, window: "table" }), "context about 55% full");
   assert.equal(activityContext({ ...codex, used: codex.limit * 0.49, fraction: 0.49 }), null);
   assert.equal(activityContext({ ...codex, measured: false }), null);
 });

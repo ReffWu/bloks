@@ -51,7 +51,7 @@ export function showsSpeedStatus(status: CodexSpeedStatus | undefined): boolean 
 export function speedStatusLine(status: CodexSpeedStatus | undefined): string | null {
   if (!status || !showsSpeedStatus(status)) return null;
   const speed = status.choice.resolved === "fast" ? "Fast" : "Standard";
-  const why = status.choice.source === "agent" ? "this agent's choice" : "the workspace default";
-  const tier = status.configuredTier ? ` Codex configured the ${status.configuredTier} tier.` : "";
-  return `Codex: ${speed}, by ${why}.${tier}`;
+  const why = status.choice.source === "agent" ? "this agent" : "workspace default";
+  const tier = status.configuredTier ? `, ${status.configuredTier} tier` : "";
+  return `Codex speed: ${speed} (${why})${tier}`;
 }

@@ -23,10 +23,10 @@ test("174k measures against the actual 400k before-turn line, with the window pr
   const lane = { ...fill, summarised: false };
   assert.deepEqual(contextCard(lane), {
     share: "44% full", tokens: "174k of 400k tokens", summarised: null,
-    compaction: "Compacts before the next turn at 400k; the model's window is 1M",
+    compaction: "Summarises at 400k. Model max 1M.",
   });
-  assert.equal(ringLabel(lane), "Before-turn compaction 44% full");
-  assert.equal(contextTitle(lane), "44% of the before-turn compaction line");
+  assert.equal(ringLabel(lane), "Context 44% full");
+  assert.equal(contextTitle(lane), "Context 44% full");
   assert.equal(activityContext(fill), null, "Activity keeps its half-full threshold");
 });
 
@@ -52,10 +52,10 @@ test("past the line the card, chips and Activity keep the real share", () => {
   const lane = { ...fill, summarised: true };
   assert.equal(contextCard(lane).share, "113% full");
   assert.equal(contextCard(lane).tokens, "450k of 400k tokens");
-  assert.equal(contextCard(lane).compaction, "Compacts before the next turn at 400k; the model's window is 1M");
-  assert.equal(contextTitle(lane), "113% of the before-turn compaction line, and the earlier part has been summarised");
-  assert.equal(ringLabel(lane), "Before-turn compaction 113% full");
-  assert.equal(activityContext(fill), "113% of the before-turn compaction line");
+  assert.equal(contextCard(lane).compaction, "Summarises at 400k. Model max 1M.");
+  assert.equal(contextTitle(lane), "Context 113% full, earlier messages summarised");
+  assert.equal(ringLabel(lane), "Context 113% full");
+  assert.equal(activityContext(fill), "context 113% full");
   assert.equal(laneFill({ ...reading, used: 1_100_000 }, selection, { ceiling: 0 }).fraction, 1, "off keeps the wire share capped too");
 });
 
@@ -68,9 +68,9 @@ test("the line boundary agrees with compaction, and an under-done compaction kee
   const past = laneFill({ ...reading, used: 400_001 }, selection, settings);
   const pastLane = { ...past, summarised: false };
   assert.equal(contextCard(pastLane).share, "over 100% full", "whole-percent rounding hid the line crossing");
-  assert.equal(ringLabel(pastLane), "Before-turn compaction over 100% full");
-  assert.equal(contextTitle(pastLane), "over 100% of the before-turn compaction line");
-  assert.equal(activityContext(past), "over 100% of the before-turn compaction line");
+  assert.equal(ringLabel(pastLane), "Context over 100% full");
+  assert.equal(contextTitle(pastLane), "Context over 100% full");
+  assert.equal(activityContext(past), "context over 100% full");
   assert.equal(past.fraction, 1);
   assert.equal(compactBeforeTurn({ used: past.used, window: reading.window, ...settings }), true);
   assert.equal(compactBeforeTurn({ used: 450_000, window: reading.window, ...settings, lastFrom: 450_000 }), false);
@@ -82,17 +82,17 @@ test("a table window stays approximate and unknown or stale readings stay unmeas
   assert.equal(guessed.limit, 163_200);
   assert.equal(guessed.modelLimit, 272_000);
   assert.equal(guessed.window, "table");
-  assert.match(contextCard({ ...guessed, summarised: false }).compaction!, /at about 163k; the model's window is about 272k$/);
+  assert.match(contextCard({ ...guessed, summarised: false }).compaction!, /at about 163k\. Model max about 272k\.$/);
   const opus = { instanceId: "claude", model: "claude-opus-5-5" };
   const exact = laneFill({ ...reading, ...opus, window: null }, opus, { ceiling: 400_000 });
   const exactLane = { ...exact, summarised: false };
   assert.equal(exact.limitApproximate, false, "a ceiling is exact even with a guessed window");
   assert.equal(contextCard(exactLane).tokens, "174k of 400k tokens");
   assert.equal(contextCard(exactLane).share, "44% full");
-  assert.equal(contextCard(exactLane).compaction, "Compacts before the next turn at 400k; the model's window is about 1M");
-  assert.equal(ringLabel(exactLane), "Before-turn compaction 44% full");
-  assert.equal(contextTitle(exactLane), "44% of the before-turn compaction line");
-  assert.equal(activityContext({ ...exact, used: 250_000, fraction: 0.625 }), "63% of the before-turn compaction line");
+  assert.equal(contextCard(exactLane).compaction, "Summarises at 400k. Model max about 1M.");
+  assert.equal(ringLabel(exactLane), "Context 44% full");
+  assert.equal(contextTitle(exactLane), "Context 44% full");
+  assert.equal(activityContext({ ...exact, used: 250_000, fraction: 0.625 }), "context 63% full");
   const sonnet = { instanceId: "claude", model: "sonnet" };
   const alias = laneFill({ ...reading, ...sonnet, window: null }, sonnet, { ceiling: 400_000 });
   assert.equal(alias.limit, 120_000);
@@ -200,7 +200,7 @@ test("a request past the compaction line inside a running turn remains 113% on e
   assert.equal(lane.context.limit, 400_000);
   const row = (await f.h.json("/api/activity")).running.find((item: any) => item.threadId === f.bot.threadId);
   assert.equal(row.context.fraction, 1, "Activity API sent an uncapped share");
-  assert.equal(activityContext(row.context), "113% of the before-turn compaction line");
+  assert.equal(activityContext(row.context), "context 113% full");
   assert.equal(row.context.modelLimit, 1_000_000);
   assert.equal(f.calls().some(call => call.method === "thread/compact/start"), false, "displaying a full ring compacted during the turn");
 });

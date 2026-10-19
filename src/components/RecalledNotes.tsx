@@ -48,7 +48,7 @@ export function RecalledNotes({ notes }: { notes: RecalledNote[] }) {
       {open && (
         <div className="mt-1 w-[420px] max-w-full animate-fade-in rounded-2xl border bg-card p-2 text-left shadow-sm">
           <p className="px-1.5 pb-1.5 pt-0.5 text-small leading-snug text-muted-foreground">
-            Found by matching your words and added ahead of them for this turn only. The agent was told it could ignore them.
+            Shared with the agent for this message only. It may ignore them.
           </p>
           <ul className="flex flex-col gap-1">
             {notes.map((note, i) => {

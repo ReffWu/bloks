@@ -38,7 +38,7 @@ interface ExchangeEntry {
   text: string;
 }
 
-const STATUS_WORDS: Record<string, string> = { queued: "waiting for its turn", failed: "not delivered", uncertain: "acceptance uncertain" };
+const STATUS_WORDS: Record<string, string> = { queued: "waiting", failed: "not delivered", uncertain: "may not have arrived" };
 
 /** One compact row in an agent's chat for a message to or from another agent. */
 export function AgentExchangeRow({
@@ -137,7 +137,7 @@ export function AgentExchangeDialog({
     let alive = true;
     api(`/api/bots/${botId}/exchange/${peerId}`)
       .then((r) => alive && setEntries(r.messages ?? []))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : "The exchange could not be loaded."));
+      .catch((e) => alive && setError(e instanceof Error ? e.message : "Couldn't load these messages."));
     return () => {
       alive = false;
     };
@@ -185,7 +185,7 @@ export function AgentExchangeDialog({
                     {/* context, not a message: it stayed in the speaker's own chat */}
                     <span>{entry.dir === "take-back" ? `took back waiting messages to ${entry.toName}` : entry.dir === "reply" ? `in its own chat, not sent to ${entry.toName}` : `to ${entry.toName}`}</span>
                     {entry.status === "failed" && <span className="text-destructive">not delivered</span>}
-                    {entry.status === "uncertain" && <span>acceptance uncertain</span>}
+                    {entry.status === "uncertain" && <span>may not have arrived</span>}
                     <span className="ml-auto shrink-0 tabular-nums">{stamp(entry.at)}</span>
                   </div>
                   {newLane && (

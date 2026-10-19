@@ -161,7 +161,7 @@ export function MessageActionBar({
             () => {
               if (
                 window.confirm(
-                  "Rewind to before this message? It and everything after it are taken back, the agent forgets them, and files it changed since are put back. Your message comes back to the box below.",
+                  "Rewind to before this message? It and everything after are removed, and file changes since then are undone. Your message returns to the box.",
                 )
               ) {
                 onRewind();
@@ -178,7 +178,7 @@ export function MessageActionBar({
             () => {
               // No undo exists for this, so the question is asked once
               // and names what goes.
-              if (window.confirm("Take this message back? The words are removed for good.")) {
+              if (window.confirm("Delete this message? This can't be undone.")) {
                 onDelete();
               }
             },

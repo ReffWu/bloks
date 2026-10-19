@@ -128,7 +128,7 @@ export async function intakeFiles<T extends IncomingFile>(
         // unreadable drag; falls through to the complaint
       }
     }
-    complaints.push(`${file.name || "that file"} has no path Bloks can hand to an agent`);
+    complaints.push(`${file.name || "That file"} can't be attached from here`);
   }
   return { attachments, refused: complaints.length ? complaints.join("; ") : null };
 }

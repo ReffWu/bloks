@@ -36,7 +36,7 @@ function Line({ message }: { message: Message }) {
         "min-w-0 max-w-full py-0.5 text-small",
         tool.ok === false && !tool.stopped ? "text-destructive" : "text-muted-foreground",
       )}
-      title={tool.stopped ? "Stopped before it reported back" : undefined}
+      title={tool.stopped ? "Stopped before it finished" : undefined}
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="shrink-0"><StateIcon tool={tool} /></span>
@@ -66,10 +66,10 @@ function Repeated({ count }: { count: number }) {
   return (
     <span
       className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-caption font-medium text-warning"
-      title="The agent made this call with the same arguments this many times in this turn. It may be stuck; nothing has been stopped."
+      title="Same call, same inputs, again and again. It may be stuck. Nothing was stopped."
     >
       <Repeat size={11} aria-hidden />
-      Same call repeated {count} times
+      Repeated {count} times
     </span>
   );
 }

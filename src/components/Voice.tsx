@@ -147,7 +147,7 @@ export function VoiceCard({ bot }: { bot: Bot }) {
               ? "Add an ElevenLabs or OpenAI key in Settings, Voices first."
               : bot.voice
                 ? `Speaks as ${bot.voice.name ?? bot.voice.id} · calls enabled`
-                : "Pick a voice to enable calls with this agent."}
+                : "Pick a voice to call this agent."}
           </div>
         </div>
         <span className="text-small text-muted-foreground">{open ? "Hide" : "Choose"}</span>
@@ -272,7 +272,7 @@ function startRecognition(handlers: {
       needsManualFinish: true,
     };
   }
-  handlers.onError("No microphone input is available here.");
+  handlers.onError("No microphone available.");
   return null;
 }
 
@@ -655,7 +655,7 @@ export function GroupCallOverlay({
 
   const stateLabel =
     callState === "listening"
-      ? heard || "Listening. Say a name or just talk."
+      ? heard || "Listening. Say a name or start talking."
       : callState === "thinking"
         ? "The room is thinking…"
         : caption;
@@ -747,7 +747,7 @@ export function GroupCallButton({
         title={
           voiced === members.length
             ? `Call ${blok.name}`
-            : `Call ${blok.name} (${members.length - voiced} member${members.length - voiced === 1 ? "" : "s"} without a voice will show as text)`
+            : `Call ${blok.name} (${members.length - voiced} without a voice will reply in text)`
         }
         aria-label={`Call ${blok.name}`}
         onClick={() => setCalling(true)}

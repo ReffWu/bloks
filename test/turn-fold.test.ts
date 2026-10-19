@@ -269,7 +269,7 @@ describe("who started it", () => {
       assert.deepEqual(page(folded.rows), ["fold(start t1)", "reply"], via);
       assert.equal(askerWords(foldsOf(folded)[0].asker!), words);
     }
-    assert.equal(askerWords({ by: "goal", text: "" }, { turn: { of: 3, budget: 10 } }), "Toward your goal, turn 3 of 10");
+    assert.equal(askerWords({ by: "goal", text: "" }, { turn: { of: 3, budget: 10 } }), "Toward your goal, step 3 of 10");
     assert.equal(askerWords({ by: "routine" }), "From your routine");
   });
 

@@ -110,9 +110,9 @@ export function fileBase(name: string): string {
  * server answered. Retrying asks again for the file; it never starts a
  * turn, so it is safe to offer whatever went wrong. */
 export function openFailure(status: number, said?: string): string {
-  if (status === 404) return said?.trim() || "This file is not there any more. It may have been moved or deleted.";
-  if (status === 401 || status === 403) return "This device is not allowed to open that file.";
-  if (status === 413) return said?.trim() || "This file is too large to open from here.";
-  if (status === 0) return "Could not reach the computer running Bloks. Check that it is on and connected, then try again.";
-  return said?.trim() || `The file could not be opened (${status}).`;
+  if (status === 404) return said?.trim() || "This file was moved or deleted.";
+  if (status === 401 || status === 403) return "This device can't open that file.";
+  if (status === 413) return said?.trim() || "This file is too large to open here.";
+  if (status === 0) return "Can't reach the computer running Bloks. Check that it's on and online.";
+  return said?.trim() || `Couldn't open the file (${status}).`;
 }

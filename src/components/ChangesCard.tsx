@@ -172,8 +172,7 @@ export function ChangesCard({ message, fresh }: { message: Message; fresh?: bool
         </div>
         {pending && (
           <p className="mt-2 text-small text-muted-foreground">
-            A rehearsal: made on a copy of the folder, not in it. Apply writes these into the real folder, except any file
-            that changed there since.
+            Made on a copy. Apply copies them into the folder, skipping files changed since.
           </p>
         )}
         {rehearsal === "applied" && !undone && (
@@ -182,16 +181,15 @@ export function ChangesCard({ message, fresh }: { message: Message; fresh?: bool
         {confirming && !undone && (
           <p className="mt-2 text-small text-muted-foreground">
             {sharedTotal > 0
-              ? "This turn's files go back to how they were before it. Anything changed again since, and the files changed while others were working here, are left alone."
-              : "Every file below goes back to how it was before this turn. Anything changed again since is left alone."}
+              ? "These files go back to how they were. Files changed since, or by others, stay as they are."
+              : "Every file below goes back to how it was. Files changed since stay as they are."}
           </p>
         )}
         {ownFiles.length > 0 && <FileList files={ownFiles} onOpen={setOpen} />}
         {sharedFiles.length > 0 && (
           <>
             <div className={cn("px-1.5 text-small text-muted-foreground", ownFiles.length > 0 ? "mt-2.5" : "mt-2")}>
-              Changed while {alongside} {alongside.includes(" and ") ? "were" : "was"} working here. They may not be this
-              turn's, so Undo leaves them alone.
+              Changed while {alongside} {alongside.includes(" and ") ? "were" : "was"} working here. Undo leaves these alone.
             </div>
             <FileList files={sharedFiles} onOpen={setOpen} muted />
           </>
@@ -278,18 +276,18 @@ function DiffDialog({ checkpointId, file, onClose }: { checkpointId: string; fil
     };
   }, [checkpointId, file.path]);
   const note = diff?.big
-    ? "This file is too large to have been kept, so there is no diff to show."
+    ? "Too large to show changes."
     : diff?.binary
-      ? "This is not a text file, so there is no diff to show."
+      ? "Not a text file, so there are no changes to show."
       : diff?.tooLong
-        ? "This change is too long to show here."
+        ? "Too long to show here."
         : null;
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-[760px] flex-col gap-0 overflow-hidden p-0">
         <div className="border-b px-4 py-3">
           <DialogTitle className="truncate font-mono text-body">{file.path}</DialogTitle>
-          <div className="mt-0.5 text-small text-muted-foreground">{VERB[file.status]} in this turn</div>
+          <div className="mt-0.5 text-small text-muted-foreground">{VERB[file.status]}</div>
         </div>
         <div className="flex-1 overflow-auto bg-muted/30 py-2 font-mono text-small leading-[1.55]">
           {error && <div className="px-4 text-destructive">{error}</div>}

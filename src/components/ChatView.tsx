@@ -63,7 +63,7 @@ import { speedStatusLine } from "@/lib/codexSpeed";
 /** The line over a goal turn: from Bloks, and which turn of how many. */
 function goalLabel(text: string): string {
   const { turn } = goalNoteForPerson(text);
-  return turn ? `From Bloks, toward your goal · turn ${turn.of} of ${turn.budget}` : "From Bloks, toward your goal";
+  return turn ? `From Bloks, toward your goal · step ${turn.of} of ${turn.budget}` : "From Bloks, toward your goal";
 }
 
 /**
@@ -420,7 +420,7 @@ function Bubble({
                       {/* the smaller way out: the words change, and the
                           agent goes on with the ones it read */}
                       <button onClick={() => stopEditing(editing.trim() || undefined)} disabled={redoing} className="text-caption">
-                        Save words only
+                        Save only
                       </button>
                       <button onClick={() => stopEditing()} className="text-caption">
                         Cancel
@@ -503,7 +503,7 @@ function GuestMailLine({ bot }: { bot: Bot }) {
   const first = bot.tasks.find((t) => !t.guestMail);
   return (
     <p className="mx-auto w-full max-w-[var(--transcript-width,760px)] px-4 pb-1 text-center text-small leading-snug text-muted-foreground md:px-6">
-      Mail from senders you have not listed is answered here, in conversation only. What you write goes to{" "}
+      Mail from unlisted senders is answered here, in conversation only. What you type goes to{" "}
       {first ? `"${first.title}"` : "the first conversation"}.
     </p>
   );
@@ -608,10 +608,10 @@ function EngineBanner({ bot }: { bot: Bot }) {
           <div className="min-w-0 flex-1">
             <span className="text-foreground">
               {missing
-                ? `${instance.displayName} isn't ready on this computer, so ${bot.name} can't answer yet.`
-                : `${instance.displayName} isn't signed in yet, so ${bot.name} can't answer.`}
+                ? `${instance.displayName} isn't set up, so ${bot.name} can't answer.`
+                : `${instance.displayName} isn't signed in, so ${bot.name} can't answer.`}
             </span>{" "}
-            <span className="text-muted-foreground">Set it up here, or pick another engine at the top right.</span>
+            <span className="text-muted-foreground">Set it up here or pick another engine.</span>
             {alternative && (
               <div className="mt-2">
                 <Button
@@ -737,7 +737,7 @@ function LiveBrowser({ botId, frame }: { botId: string; frame: { png: string; mi
       <div className="max-w-[82%] overflow-hidden rounded-xl border sm:max-w-[68%]">
         <div className="flex items-center gap-1.5 border-b px-2.5 py-1.5 text-small text-muted-foreground">
           <span className="size-1.5 animate-pulse rounded-full bg-success" />
-          Live browser. Click or type to help it along.
+          Live browser. Click or type to help.
         </div>
         <img
           src={`data:${safeMime};base64,${frame.png}`}
@@ -759,7 +759,7 @@ function LiveBrowser({ botId, frame }: { botId: string; frame: { png: string; mi
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Type into the page, Enter to send"
+            placeholder="Type here, Enter to send"
             aria-label="Type into the agent's browser"
             className="w-full bg-transparent px-2.5 py-1.5 text-body outline-none placeholder:text-muted-foreground"
           />
@@ -904,7 +904,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       .then((r) => {
         if (r.sent === false) {
           setPrefill({ text: r.text ?? text, nonce: Date.now() });
-          dispatch({ type: "error", message: r.error ?? "The conversation was rewound, but your message was not sent." });
+          dispatch({ type: "error", message: r.error ?? "Rewound, but your message wasn't sent." });
         }
         return null;
       })
@@ -1205,7 +1205,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               variant="ghost"
               size="icon"
               onClick={() => dispatch({ type: "openMeeting", botId: bot.id })}
-              title={`${bot.name} takes meeting notes`}
+              title="Take meeting notes"
               aria-label="Meeting notes"
             >
               <AudioLines size={17} />

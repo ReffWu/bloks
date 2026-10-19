@@ -19,22 +19,22 @@ export const APPROVAL_MODES: Array<{ id: ApprovalMode; label: string; hint: stri
   {
     id: "ask",
     label: "Ask first",
-    hint: "Anything that changes your files or runs a command waits for your yes.",
+    hint: "Asks before changing files or running commands.",
   },
   {
     id: "edits",
     label: "Accept edits",
-    hint: "File changes go ahead. Commands and everything else still ask.",
+    hint: "Changes files freely. Asks before anything else.",
   },
   {
     id: "auto",
     label: "Auto",
-    hint: "Everything goes ahead unless one of your rules refuses it. Each engine's own sandbox stays on.",
+    hint: "Goes ahead unless your rules block it. The engine's sandbox stays on.",
   },
   {
     id: "full",
     label: "Full access",
-    hint: "The engines' own guards come off too: no prompts and no sandbox. Your rules can't catch anything, because nothing asks.",
+    hint: "No prompts and no sandbox. Your rules can't block anything.",
   },
 ];
 
@@ -97,7 +97,7 @@ export function ApprovalsChooser({
 /** What the info tips beside the chooser say about rules, one sentence
  * shared so it cannot drift from the Full access hint above. */
 export const RULES_AND_MODES =
-  "Anything you have forbidden under Settings, Rules and approvals stays refused in Ask first, Accept edits and Auto. Full access skips those checks, because nothing asks. Answers you chose to remember from approval cards keep working too.";
+  "Your rules apply in every mode except Full access, where nothing asks. Remembered answers keep working too.";
 
 /** The workspace's choice as the server has it, and how many agents are
  * on each mode, for Settings and onboarding. */

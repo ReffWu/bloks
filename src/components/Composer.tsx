@@ -105,11 +105,11 @@ function useAutoSize(value: string) {
 /** What the helper's error words mean to a person. */
 const SPEECH_TROUBLE: Record<string, string> = {
   "speech-not-authorized":
-    "Bloks needs Speech Recognition access to turn your voice into text. It is a separate permission from the microphone.",
+    "Dictation needs Speech Recognition access. It's separate from the microphone.",
   "recognizer-unavailable":
-    "macOS has no speech recognizer available for English on this Mac right now.",
-  "mic-failed": "The microphone could not be opened. Another app may be holding it.",
-  "recognition-error": "Recognition stopped. Try again, and check your input device if it repeats.",
+    "English speech recognition isn't available on this Mac right now.",
+  "mic-failed": "Couldn't open the microphone. Another app may be using it.",
+  "recognition-error": "Dictation stopped. Try again, or check your microphone.",
 };
 
 /**
@@ -472,7 +472,7 @@ export function Composer({
       if (code === 1) {
         setSpeechError((current) =>
           current ??
-          "Dictation needs Microphone and Speech Recognition access in System Settings, under Privacy & Security.",
+          "Allow Microphone and Speech Recognition in System Settings, Privacy & Security.",
         );
       }
     });
@@ -494,7 +494,7 @@ export function Composer({
    */
   const toggleMic = async () => {
     if (!window.bloks) {
-      setSpeechError("Voice input needs the desktop app. Run pnpm dev:desktop.");
+      setSpeechError("Dictation needs the desktop app.");
       return;
     }
     if (recording) return setRecording(false);
@@ -509,7 +509,7 @@ export function Composer({
     if (mic === "denied" || mic === "restricted") {
       setMicDenied(true);
       setSpeechError(
-        "Bloks does not have access to your microphone, so dictation cannot start.",
+        "Bloks doesn't have microphone access.",
       );
       return;
     }
@@ -544,7 +544,7 @@ export function Composer({
             {bot.archivedBy
               ? `${state.bots.find((b) => b.id === bot.archivedBy)?.name ?? "The agent that hired it"} archived ${bot.name}${bot.archiveNote ? `: "${bot.archiveNote}"` : ""}. `
               : `${bot.name} is archived. `}
-            Everything it said is still here, and it will not take new work until you restore it.
+            Restore it to give it new work.
           </span>
           <Button
             size="sm"
@@ -565,8 +565,7 @@ export function Composer({
         <div className="mx-auto flex max-w-[var(--transcript-width,760px)] items-center gap-3 rounded-2xl border border-warning/40 bg-warning/5 px-3.5 py-3">
           <Hand size={15} className="shrink-0 text-warning" />
           <span className="min-w-0 flex-1 text-body leading-relaxed text-foreground">
-            You have {bot.name}&rsquo;s computer ({bot.held.why}). It will not start anything until you
-            hand the wheel back.
+            You have {bot.name}&rsquo;s computer ({bot.held.why}). It waits until you hand it back.
           </span>
           <Button
             size="sm"
@@ -609,11 +608,11 @@ export function Composer({
         </div>
       )}
       {recoveries.length > 0 && (
-        <section aria-label="Saved submissions" className="mx-auto mb-2 max-h-64 max-w-[var(--transcript-width,760px)] space-y-2 overflow-y-auto">
+        <section aria-label="Unsent messages" className="mx-auto mb-2 max-h-64 max-w-[var(--transcript-width,760px)] space-y-2 overflow-y-auto">
           {recoveries.map((item) => (
-            <div key={item.id} role="group" aria-label="Saved submission" className="rounded-xl border bg-card px-3 py-2 text-small">
-              <p className="font-medium">Saved submission</p>
-              <p className="text-muted-foreground">Check the conversation before sending again.</p>
+            <div key={item.id} role="group" aria-label="Unsent message" className="rounded-xl border bg-card px-3 py-2 text-small">
+              <p className="font-medium">Unsent message</p>
+              <p className="text-muted-foreground">Check the chat before sending again.</p>
               {item.draft.text && <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap break-words">{item.draft.text}</p>}
               {item.draft.attachments.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1.5">
@@ -659,7 +658,7 @@ export function Composer({
             <span className="min-w-0 flex-1">
               <span className="font-medium">Rehearse.</span>{" "}
               <span className="text-muted-foreground">
-                {bot.name} works on a copy of its folder. You review the changes, then apply or discard them.
+                {bot.name} works on a copy. You choose what to keep.
               </span>
             </span>
             <button
@@ -731,7 +730,7 @@ export function Composer({
           >
             {offered.length === 0 ? (
               <div className="px-2 py-1.5 text-body text-muted-foreground">
-                {bot.name} has no skills yet. Attach some from Skills, or in {bot.name}&rsquo;s settings.
+                No skills yet. Add some from Skills or agent settings.
               </div>
             ) : (
               offered.map((c, i) => (
@@ -904,10 +903,10 @@ export function Composer({
               ? "Listening…"
               : rehearse
                 ? compareWith.length
-                  ? "Describe the task for each of them to rehearse…"
-                  : `Describe the task for ${bot.name} to rehearse…`
+                  ? "Describe the task to compare…"
+                  : "Describe the task to rehearse…"
                 : openLaneWorking(bot)
-                ? `${bot.name} is working. Enter tells it without stopping, ${modKey()}Enter stops it first.`
+                ? `${bot.name} is working. Enter adds to it, ${modKey()}Enter stops it first.`
                 : // stopped on a card: words typed here are read after it is answered
                   lane?.state === "needs-you"
                   ? `${bot.name} is waiting for your answer above.`
@@ -923,7 +922,7 @@ export function Composer({
             "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-150 active:scale-95",
             rehearse ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
           )}
-          title="Rehearse: try it on a copy first"
+          title="Rehearse on a copy"
         >
           <FlaskConical size={16} />
         </button>

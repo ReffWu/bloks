@@ -131,9 +131,9 @@ describe("what opens a file", () => {
   });
 
   test("a failure reads as what to do about it", () => {
-    assert.match(openFailure(404), /not there/);
+    assert.match(openFailure(404), /moved or deleted/);
     assert.match(openFailure(0), /reach/);
-    assert.match(openFailure(403), /not allowed/);
+    assert.match(openFailure(403), /can.t open/);
     assert.equal(openFailure(404, "Ask the agent to share it."), "Ask the agent to share it.");
   });
 });

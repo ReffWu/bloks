@@ -47,7 +47,7 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
       const result = await api("/api/config", { method: "PATCH", body: JSON.stringify({ codex: { speed: value } }) });
       dispatch({ type: "configStatus", config: result });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save the Codex speed");
+      setError(e instanceof Error ? e.message : "Couldn't save the Codex speed");
     } finally {
       setSaving(false);
     }
@@ -66,7 +66,7 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
     >
       <div className="text-ui font-semibold text-foreground">Codex speed</div>
       <div className="mt-0.5 text-body text-muted-foreground">
-        {bot ? "For this agent's Codex turns, primary and backup. " : "For every agent's Codex turns, unless it has its own. "}
+        {bot ? "For this agent on Codex. " : "For every agent on Codex, unless set per agent. "}
         Fast answers sooner and uses more:{" "}
         <a
           className="underline underline-offset-2 hover:text-foreground"
@@ -101,11 +101,11 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
         })}
       </div>
       {noFastModel && (
-        <p className="mt-2 text-small text-muted-foreground">Codex does not offer Fast for this agent's model.</p>
+        <p className="mt-2 text-small text-muted-foreground">Fast isn't offered for this model.</p>
       )}
       {remote && (
         <p className="mt-2 text-small text-muted-foreground">
-          Codex on a Box or Boat runs at Standard. Fast is not available there yet, and a Fast turn there is not sent.
+          Box and Boat run Codex at Standard only. Fast messages there won't send.
         </p>
       )}
       {error && (

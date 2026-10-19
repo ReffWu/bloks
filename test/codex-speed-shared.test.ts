@@ -36,7 +36,7 @@ test("the running turn's speed is said only for Fast or an agent's own choice", 
   });
   assert.equal(desktop.speedStatusLine(undefined), null);
   assert.equal(desktop.speedStatusLine(status("standard", null)), null, "Standard by default is how Codex always ran");
-  assert.equal(desktop.speedStatusLine(status("fast", null, "priority")), "Codex: Fast, by the workspace default. Codex configured the priority tier.");
-  assert.equal(desktop.speedStatusLine(status("fast", "standard")), "Codex: Standard, by this agent's choice.");
-  assert.equal(desktop.speedStatusLine(status("standard", "fast", "priority")), "Codex: Fast, by this agent's choice. Codex configured the priority tier.");
+  assert.equal(desktop.speedStatusLine(status("fast", null, "priority")), "Codex speed: Fast (workspace default), priority tier");
+  assert.equal(desktop.speedStatusLine(status("fast", "standard")), "Codex speed: Standard (this agent)");
+  assert.equal(desktop.speedStatusLine(status("standard", "fast", "priority")), "Codex speed: Fast (this agent), priority tier");
 });

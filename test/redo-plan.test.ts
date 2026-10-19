@@ -198,30 +198,30 @@ describe("the line under the editor", () => {
   const offer = (over: Partial<RedoOffer> = {}): RedoOffer => ({ offered: true, messages: 3, files: 2, sent: false, working: false, resend: 1, ...over });
 
   test("says what it takes back and puts back", () => {
-    assert.equal(redoLine(offer(), "Kat"), "Takes back 3 messages and puts back 2 files.");
-    assert.equal(redoLine(offer({ messages: 1, files: 1 }), "Kat"), "Takes back 1 message and puts back 1 file.");
+    assert.equal(redoLine(offer(), "Kat"), "Removes 3 messages and restores 2 files.");
+    assert.equal(redoLine(offer({ messages: 1, files: 1 }), "Kat"), "Removes 1 message and restores 1 file.");
   });
 
   test("leaves the files out when there are none to put back", () => {
-    assert.equal(redoLine(offer({ files: 0 }), "Kat"), "Takes back 3 messages.");
+    assert.equal(redoLine(offer({ files: 0 }), "Kat"), "Removes 3 messages.");
   });
 
   test("adds what stays when the turn sent something", () => {
     assert.equal(
       redoLine(offer({ sent: true }), "Kat"),
-      "Takes back 3 messages and puts back 2 files. Messages it sent and anything outside the folder stay.",
+      "Removes 3 messages and restores 2 files. Messages it sent, and anything outside the folder, stay.",
     );
   });
 
   test("while the agent works, says the stop and claims no number of files nobody has counted", () => {
-    assert.equal(redoLine(offer({ working: true, files: 0 }), "Kat"), "Stops Kat, takes back 3 messages and puts back any files it changed.");
-    assert.equal(redoLine(offer({ working: true, files: 5 }), "Kat"), "Stops Kat, takes back 3 messages and puts back any files it changed.");
+    assert.equal(redoLine(offer({ working: true, files: 0 }), "Kat"), "Stops Kat, removes 3 messages and undoes its file changes.");
+    assert.equal(redoLine(offer({ working: true, files: 5 }), "Kat"), "Stops Kat, removes 3 messages and undoes its file changes.");
   });
 
   test("says when more of the person's messages go again", () => {
     assert.equal(
       redoLine(offer({ messages: 4, resend: 2, sent: true }), "Kat"),
-      "Takes back 4 messages and puts back 2 files. Sends your 2 messages from that turn again. Messages it sent and anything outside the folder stay.",
+      "Removes 4 messages and restores 2 files. Resends your 2 messages. Messages it sent, and anything outside the folder, stay.",
     );
   });
 });

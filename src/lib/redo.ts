@@ -44,14 +44,14 @@ const counted = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 export function redoLine(offer: RedoOffer, agent: string): string {
   const messages = counted(offer.messages, "message");
   const takes = offer.working
-    ? `Stops ${agent}, takes back ${messages} and puts back any files it changed.`
+    ? `Stops ${agent}, removes ${messages} and undoes its file changes.`
     : offer.files > 0
-      ? `Takes back ${messages} and puts back ${counted(offer.files, "file")}.`
-      : `Takes back ${messages}.`;
+      ? `Removes ${messages} and restores ${counted(offer.files, "file")}.`
+      : `Removes ${messages}.`;
   return [
     takes,
-    offer.resend > 1 ? `Sends your ${offer.resend} messages from that turn again.` : "",
-    offer.sent ? "Messages it sent and anything outside the folder stay." : "",
+    offer.resend > 1 ? `Resends your ${offer.resend} messages.` : "",
+    offer.sent ? "Messages it sent, and anything outside the folder, stay." : "",
   ]
     .filter(Boolean)
     .join(" ");

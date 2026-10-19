@@ -467,6 +467,6 @@ export function askerWords(asker: Asker, o: { name?: string; turn?: { of: number
     case "webhook":
       return "From a webhook";
     case "goal":
-      return o.turn ? `Toward your goal, turn ${o.turn.of} of ${o.turn.budget}` : "Toward your goal";
+      return o.turn ? `Toward your goal, step ${o.turn.of} of ${o.turn.budget}` : "Toward your goal";
   }
 }

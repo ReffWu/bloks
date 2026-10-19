@@ -100,7 +100,7 @@ export function QuickAsk() {
         hideTimer.current = setTimeout(() => window.bloks?.quickHide(), 900);
       })
       .catch((e) => {
-        const why = `That did not send: ${e instanceof Error ? e.message : String(e)}`;
+        const why = `Not sent: ${e instanceof Error ? e.message : String(e)}`;
         if (visit.current !== mine) {
           // the words from the visit before, back only into an empty box
           setText((now) => (now.trim() ? now : body));

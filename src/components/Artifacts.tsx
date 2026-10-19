@@ -388,8 +388,7 @@ export function ArtifactViewer({
               <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
                 <span className="text-muted-foreground">{kind.icon}</span>
                 <div className="max-w-[420px] text-ui text-muted-foreground">
-                  This video could not play here. Its format may not be one this app can play, or the file may be
-                  missing. Download it to watch it in another player.
+                  This video can't play here. Download it to watch in another player.
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -501,8 +500,7 @@ export function ArtifactViewer({
                     )}
                     {notes.length === 0 && !pinning && (
                       <div className="px-1 py-3 text-small leading-relaxed text-muted-foreground">
-                        Click any cell to pin a note to it. The agent gets the address, not a
-                        description of where you meant.
+                        Click a cell to leave a note on it.
                       </div>
                     )}
                     {notes.map((note) => (
@@ -586,7 +584,7 @@ export function ArtifactViewer({
             <div className="flex size-full flex-col items-center justify-center gap-3 text-center">
               <span className="text-muted-foreground">{kind.icon}</span>
               <div className="text-ui text-muted-foreground">
-                No in-app preview for this format yet.
+                No preview for this file type.
               </div>
               <Button asChild size="sm" variant="secondary">
                 <a href={`${href}?download`} download={fileBase(artifact.name)}>
@@ -664,7 +662,7 @@ export function SharedFileLink({
       {opening.phase === "failed" && (
         <Dialog open onOpenChange={(isOpen) => !isOpen && setOpening({ phase: "idle" })}>
           <DialogContent className="max-w-[420px] gap-3 p-5">
-            <DialogTitle className="text-ui">Could not open this file</DialogTitle>
+            <DialogTitle className="text-ui">Couldn't open this file</DialogTitle>
             <div className="text-body leading-relaxed text-muted-foreground">{opening.message}</div>
             <div className="break-all font-mono text-small text-muted-foreground/80">{href}</div>
             <div className="flex justify-end gap-2">

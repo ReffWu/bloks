@@ -289,7 +289,7 @@ export function ModelPicker({
                 {unlisted && (
                   <div
                     aria-current="true"
-                    title={`${unlisted}\nNot in this list, and still what this agent runs on`}
+                    title={`${unlisted}\nNot listed, but still in use`}
                     className="flex w-full items-center justify-between gap-2 rounded-lg bg-accent px-2 py-1.5 text-left text-body leading-snug text-foreground"
                   >
                     <span className="flex min-w-0 items-center gap-2">
@@ -350,7 +350,7 @@ export function ModelPicker({
               </>
             ) : (
               <div className="px-2 py-3 text-body text-muted-foreground">
-                No providers. Is the server running?
+                No engines found. Is Bloks running?
               </div>
             )}
           </div>

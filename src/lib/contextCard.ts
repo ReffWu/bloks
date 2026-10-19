@@ -86,7 +86,7 @@ export function percent(fraction: number): string {
   return `${Math.round(fraction * 100)}%`;
 }
 
-const SUMMARISED = "Bloks summarised the earlier part of this conversation.";
+const SUMMARISED = "Earlier messages were summarised.";
 
 /** Text keeps the real share; the wire and drawn ring are capped at one. */
 export function contextShare(context: Fill): number {
@@ -112,28 +112,28 @@ export function contextCard(context: LaneContext): { share: string; tokens: stri
     tokens: `${shortTokens(context.used)} of ${about ? "about " : ""}${shortTokens(context.limit)} tokens`,
     summarised: context.summarised ? SUMMARISED : null,
     compaction: context.modelLimit !== undefined
-      ? `Compacts before the next turn at ${about ? "about " : ""}${shortTokens(context.limit)}; the model's window is ${context.window === "table" ? "about " : ""}${shortTokens(context.modelLimit)}`
+      ? `Summarises at ${about ? "about " : ""}${shortTokens(context.limit)}. Model max ${context.window === "table" ? "about " : ""}${shortTokens(context.modelLimit)}.`
       : null,
   };
 }
 
 /** The ring's name for a screen reader, which cannot see the ring. */
 export function ringLabel(context: LaneContext): string {
-  return `${context.modelLimit !== undefined ? "Before-turn compaction" : "Context window"} ${approximateLimit(context) ? "about " : ""}${contextPercent(context)} full`;
+  return `Context ${approximateLimit(context) ? "about " : ""}${contextPercent(context)} full`;
 }
 
 /** What a chip or a sidebar row says on hover. */
 export function contextTitle(context: LaneContext): string {
-  if (!measuredContext(context)) return "The earlier part has been summarised";
-  return `${approximateLimit(context) ? "About " : ""}${contextPercent(context)} of ${context.modelLimit !== undefined ? "the before-turn compaction line" : "what this model will take"}` +
-    (context.summarised ? ", and the earlier part has been summarised" : "");
+  if (!measuredContext(context)) return "Earlier messages summarised";
+  return `Context ${approximateLimit(context) ? "about " : ""}${contextPercent(context)} full` +
+    (context.summarised ? ", earlier messages summarised" : "");
 }
 
 /** What Activity adds to a running lane's line once it is half full, or
  * null when it is not, or nothing measured it. */
 export function activityContext(context: Fill | null | undefined): string | null {
   if (!context || !measuredContext(context) || contextShare(context) < 0.5) return null;
-  return `${approximateLimit(context) ? "about " : ""}${contextPercent(context)} of ${context.modelLimit !== undefined ? "the before-turn compaction line" : "the window"}`;
+  return `context ${approximateLimit(context) ? "about " : ""}${contextPercent(context)} full`;
 }
 
 // ── the plan ───────────────────────────────────────────────────────────
