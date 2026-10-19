@@ -203,7 +203,7 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
         if (typeof frame.b64 === "string") xterm.write(decode(frame.b64));
       };
       source.onerror = () => {
-        if (live) setError("The connection to the shell dropped.");
+        if (live) setError("Lost the connection to the shell.");
       };
       stream.current = source;
     };
@@ -336,7 +336,7 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
           info &&
           !info.pty && (
             <span
-              title="Nothing on this system can open a pseudo-terminal, so full screen programs will not work here."
+              title="Full screen programs won't work here."
               className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-micro text-muted-foreground"
             >
               limited
@@ -346,14 +346,14 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
         <button
           onClick={restart}
           disabled={restarting}
-          title="End this shell and start a new one"
+          title="Restart shell"
           className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
         >
           {restarting ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
         </button>
         <button
           onClick={onClose}
-          title="Close the panel. The shell keeps running."
+          title="Close (the shell keeps running)"
           className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
         >
           <X size={13} />

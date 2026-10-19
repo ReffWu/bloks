@@ -108,7 +108,7 @@ function Shell() {
             <>
               <div className="text-lead font-medium text-foreground">No agents yet</div>
               <div className="max-w-[300px] text-center text-body leading-relaxed">
-                An agent is someone with a job: a researcher, a writer, a chief of staff. Make your first one.
+                An agent has a job, like researcher or writer. Make your first one.
               </div>
               <Button onClick={() => dispatch({ type: "toggleNewAgent", open: true })}>New agent</Button>
             </>

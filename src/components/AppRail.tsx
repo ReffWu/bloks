@@ -162,7 +162,7 @@ export function AppRail() {
           <UpdateRailButton />
           <RailButton
             label="Settings"
-            hint={securityRisky > 0 ? "Settings: the security checkup found something risky" : undefined}
+            hint={securityRisky > 0 ? "Settings: security issue found" : undefined}
             active={place === "settings"}
             dot={securityRisky > 0 ? "destructive" : null}
             onClick={() => go("settings")}

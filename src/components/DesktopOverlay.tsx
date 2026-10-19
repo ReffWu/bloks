@@ -328,7 +328,7 @@ export function DesktopOverlay({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <a href={url} target="_blank" rel="noreferrer" title="Open in a browser window">
+          <a href={url} target="_blank" rel="noreferrer" title="Open in browser">
             <Button variant="ghost" size="icon-sm" aria-label="Open in browser">
               <ExternalLink size={15} />
             </Button>

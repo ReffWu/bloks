@@ -25,7 +25,7 @@ export function MobileNav() {
     <>
       <button
         onClick={() => setOpen(true)}
-        aria-label={unread ? "Open the sidebar, something is unread" : "Open the sidebar"}
+        aria-label={unread ? "Open sidebar, unread messages" : "Open sidebar"}
         aria-expanded={open}
         className="fixed left-3 top-[max(env(safe-area-inset-top),10px)] z-30 flex size-10 items-center justify-center rounded-full border bg-popover/95 text-muted-foreground shadow-md shadow-(color:--shadow-color) backdrop-blur-sm transition-[scale,color] duration-150 ease-out hover:text-foreground active:scale-[0.96] md:hidden"
       >

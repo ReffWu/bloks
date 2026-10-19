@@ -217,8 +217,7 @@ function LocalVmCard({ bot }: { bot: Bot }) {
       ) : status !== null && !status.ready ? (
         <div className="mt-3 rounded-2xl border bg-card p-4">
           <div className="text-body leading-relaxed text-muted-foreground">
-            The Local VM is a Cua Linux desktop in a container on {thisComputer()}. Free, and separate
-            from your own desktop.
+            A free Linux desktop in a container on {thisComputer()}, separate from yours.
           </div>
           <Button
             variant="secondary"
@@ -383,7 +382,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     checking: "Checking…",
     starting: "Starting your agent's computer…",
     unconfigured: "No cloud computer configured",
-    "local-unavailable": "Local preview needs the desktop app. Run pnpm dev:desktop",
+    "local-unavailable": "Local preview needs the desktop app",
     off: "This agent's computer is off",
     error: "Couldn't reach the computer",
   };
@@ -456,15 +455,15 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         {phase === "unconfigured" && (
           <div className="mt-3 rounded-2xl border bg-card p-4">
             <div className="mb-3 text-body leading-relaxed text-muted-foreground">
-              Paste a Boat API key to give this agent a cloud computer. It spins up right here.
+              Add a Boat API key to give this agent a cloud computer.
             </div>
             <ApiKeyRow
               section="box"
               label="Boat API key"
               placeholder="Paste your Boat API key"
               info={{
-                text: "Gives agents an isolated remote Linux computer with a desktop and a terminal. Boat (formerly Box) is a paid service after its trial, so usage can incur charges.",
-                linkLabel: "Open the Boat API key guide",
+                text: "A private cloud Linux computer for your agents. Boat is paid after its trial.",
+                linkLabel: "How to get a Boat API key",
                 linkHref: "https://docs.boat.dev/api-keys",
               }}
               onSaved={(configured) => configured && setRetry((n) => n + 1)}
@@ -509,10 +508,6 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         {/* Computer source */}
         <div className="mt-4 rounded-2xl border bg-card p-4">
           <div className="text-ui font-semibold text-foreground">Runs on</div>
-          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            {bot.computer ? "" : "Auto: the cloud box when one exists, else this computer. "}Pick where
-            this agent's computer lives.
-          </div>
           {/* The same four homes the settings card offers, in the same
               2x2 shape. One setting, two doors; they must never disagree
               about what the options are. */}
@@ -520,7 +515,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             <div>
               <div className="text-body text-foreground">Automatic</div>
               <div className="text-small text-muted-foreground">
-                The cloud box when one exists, else this computer
+                Cloud box if there is one, else this computer
               </div>
             </div>
             <Switch
@@ -532,8 +527,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           </div>
           {!bot.computer && !state.config?.box?.configured && (
             <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2 text-small text-muted-foreground">
-              No cloud computer is set up, so Auto will use this computer. Add a Boat
-              API key below to give this agent a computer of its own.
+              No cloud box yet, so this computer is used.
             </div>
           )}
           <div
@@ -631,7 +625,7 @@ function ComputerPermissions({ visible }: { visible: boolean }) {
       <div className="text-body font-medium text-foreground">Computer use needs permission</div>
       <div className="mt-1 text-body leading-relaxed text-muted-foreground">
         To see and use {thisComputer()}, Bloks needs {missing.map((m) => m.label).join(" and ")}.
-        {asked && " If no prompt appeared, macOS has already asked once. Turn Bloks on in System Settings."}
+        {asked && " No prompt? Turn Bloks on in System Settings."}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {!asked && (
@@ -685,9 +679,9 @@ function TakeTheWheel({ bot }: { bot: Bot }) {
         </div>
         <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
           {hold
-            ? `${bot.name} is waiting. It will not start anything until you hand it back` +
-              (hold.turnedAway ? `, and ${hold.turnedAway} ${hold.turnedAway === 1 ? "thing has" : "things have"} been turned away since.` : ".")
-            : `Drive this yourself. While you do, ${bot.name} stops rather than working around you.`}
+            ? `${bot.name} waits until you hand it back` +
+              (hold.turnedAway ? `. ${hold.turnedAway} ${hold.turnedAway === 1 ? "thing" : "things"} turned away so far.` : ".")
+            : `Use it yourself. ${bot.name} waits while you do.`}
         </div>
       </div>
       <Button

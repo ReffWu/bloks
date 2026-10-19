@@ -153,7 +153,7 @@ export function NewRoomDialog() {
         if (team) hire({ name: team.name, members: team.members });
         else setLinkError("That team is not in the gallery any more.");
       })
-      .catch((e: Error) => setLinkError(`The gallery could not be reached: ${e.message}`));
+      .catch((e: Error) => setLinkError(`Couldn't reach the gallery: ${e.message}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.teamLink]);
 
@@ -207,7 +207,7 @@ export function NewRoomDialog() {
           <div className="min-w-0">
             <DialogTitle className="text-heading">New room</DialogTitle>
             <DialogDescription className="mt-0.5">
-              Agents talk to each other here. The most senior one reviews the rest and makes the call.
+              Agents work together here. The most senior one leads.
             </DialogDescription>
           </div>
           <Segmented
@@ -305,7 +305,7 @@ export function NewRoomDialog() {
                 })}
                 {shown.length === 0 && (
                   <p className="col-span-full py-6 text-center text-body text-muted-foreground">
-                    {agents.length ? `No agent matches “${query.trim()}”.` : "No agents yet. Hire a team from the library instead."}
+                    {agents.length ? `No agent matches “${query.trim()}”.` : "No agents yet. Try the team library."}
                   </p>
                 )}
               </div>
@@ -333,8 +333,8 @@ export function NewRoomDialog() {
                   />
                   <p className="mt-1.5 text-pretty text-small leading-relaxed text-muted-foreground">
                     {leadOnly
-                      ? "Talk to the room and only the lead answers. Name someone with @ to ask them."
-                      : "Talk to the room and everyone answers. Name someone with @ to ask just them."}
+                      ? "Only the lead answers. Use @name to ask someone else."
+                      : "Everyone answers. Use @name to ask one of them."}
                   </p>
                 </div>
 
@@ -355,8 +355,7 @@ export function NewRoomDialog() {
                     <BrowseFolderButton onPick={setFolder} />
                   </div>
                   <p className="mt-1.5 text-pretty text-small leading-relaxed text-muted-foreground">
-                    Every member's room turns run here. It is fixed by the room's first task. You can invite people
-                    from the room once it is open.
+                    Where members work. Fixed once the room starts.
                   </p>
                 </div>
               </div>
@@ -372,7 +371,7 @@ export function NewRoomDialog() {
                 <div className="min-w-0 flex-1">
                   <div className="text-ui font-medium text-foreground">Scout a project folder</div>
                   <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-                    Point at a repo and get a team shaped to what is in it, desk included.
+                    Pick a repo and get a team built for it.
                   </div>
                   {scoutError && <div className="mt-1 text-small text-destructive">{scoutError}</div>}
                 </div>
@@ -386,7 +385,7 @@ export function NewRoomDialog() {
                   <div key={team.id} className="group relative">
                     <TeamCard
                       name={team.name}
-                      blurb="Saved from a room of your own."
+                      blurb="Saved from one of your rooms."
                       members={team.members as HireableTeam["members"]}
                       onHire={() => hire({ name: team.name, members: team.members as HireableTeam["members"] })}
                     />
@@ -426,7 +425,7 @@ export function NewRoomDialog() {
                 <div className="col-span-full rounded-xl border border-dashed p-4 text-body text-muted-foreground">Loading the gallery</div>
               ) : galleryTeams.length === 0 ? (
                 <div className="col-span-full rounded-xl border border-dashed p-4 text-body text-muted-foreground">
-                  {galleryError ? "The gallery could not be reached right now." : "Nothing in the gallery yet."}
+                  {galleryError ? "Couldn't reach the gallery." : "Nothing in the gallery yet."}
                 </div>
               ) : (
                 galleryTeams.map((team) => (
@@ -442,7 +441,7 @@ export function NewRoomDialog() {
               )}
             </Shelf>
             <p className="mt-5 text-small leading-relaxed text-muted-foreground">
-              One step creates the agents and the room. Everything is editable afterwards.
+              Hiring a team creates its agents and room. You can edit them later.
             </p>
           </div>
         )}
@@ -560,7 +559,7 @@ function RoomPreview({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-ui font-medium text-foreground">{lead.name}</span>
                     <span className="block truncate text-small text-muted-foreground">
-                      {ready ? "Leads: reviews the rest, decides" : "Pick one more"}
+                      {ready ? "Leads and decides" : "Pick one more"}
                     </span>
                   </span>
                   <span className="max-w-[90px] shrink-0 truncate text-caption text-muted-foreground">{modelLabel(lead)}</span>
@@ -600,8 +599,7 @@ function RoomPreview({
 
       {ready && (
         <p className="mt-3 border-t pt-3 text-pretty text-small leading-relaxed text-muted-foreground">
-          Seniority is set in each agent's settings. Give the lead your most capable model and the rest cheaper ones,
-          so the expensive thinking is spent on checking the work.
+          Set seniority in each agent's settings. Give the lead your best model and the rest cheaper ones.
         </p>
       )}
     </div>

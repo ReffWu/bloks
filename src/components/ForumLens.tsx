@@ -46,7 +46,7 @@ export function ForumLens({
   if (!threads.length) {
     return (
       <div className="mx-auto max-w-[var(--transcript-width,760px)] px-4 py-16 text-center text-body text-muted-foreground md:px-6">
-        Nothing said yet. Topics appear here as the room fills up.
+        No topics yet.
       </div>
     );
   }

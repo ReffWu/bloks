@@ -618,7 +618,7 @@ export function RoomView({ blok }: { blok: Blok }) {
         <div className="flex shrink-0 items-center gap-1.5">
           <div className="hidden items-center -space-x-1.5 sm:flex">
             {answering.map((m) => (
-              <span key={m.id} title={m.id === lead?.id ? `${m.name} (most senior)` : m.name}>
+              <span key={m.id} title={m.id === lead?.id ? `${m.name} (lead)` : m.name}>
                 <AgentAvatar bot={m} size={24} className="rounded-lg ring-2 ring-background" />
               </span>
             ))}
@@ -628,7 +628,7 @@ export function RoomView({ blok }: { blok: Blok }) {
             size="icon"
             onClick={() => setSharingOpen(true)}
             className={cn("relative", blok.sharing && "text-foreground")}
-            title={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : "Share this room with people"}
+            title={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : "Share room"}
           >
             <UserPlus size={16} />
             {knocking > 0 && (
@@ -651,8 +651,8 @@ export function RoomView({ blok }: { blok: Blok }) {
             className={cn(lens === "forum" && "bg-accent text-foreground")}
             title={
               lens === "stream"
-                ? "Read it as topics: replies gathered under what they answer"
-                : "Read it as it happened, in order"
+                ? "View as topics"
+                : "View in order"
             }
           >
             {lens === "stream" ? <MessagesSquare size={16} /> : <Rows3 size={16} />}
@@ -684,8 +684,7 @@ export function RoomView({ blok }: { blok: Blok }) {
               Close {blok.name}?
             </div>
             <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              Archiving takes the room off your list and keeps everything: the transcript, the
-              members, the work. You can bring it back later. Deleting cannot be undone.
+              Archiving keeps everything, and you can restore it later. Deleting cannot be undone.
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <Button
@@ -703,7 +702,7 @@ export function RoomView({ blok }: { blok: Blok }) {
                   // the second decision, in its own words, naming the room
                   if (
                     window.confirm(
-                      `Permanently delete ${blok.name} and its entire transcript?\n\nThis cannot be undone. Archive instead if you might want it back.`,
+                      `Delete ${blok.name} and its whole transcript?\n\nThis cannot be undone. Archive it instead to keep it.`,
                     )
                   ) {
                     dispatch({ type: "deleteRoom", blokId: blok.id });
@@ -723,7 +722,7 @@ export function RoomView({ blok }: { blok: Blok }) {
       {lead && members.length > 1 && (
         <div className="flex items-center justify-center gap-1.5 border-b bg-muted/30 py-1.5 text-small text-muted-foreground">
           <Crown size={11} />
-          {lead.name} is most senior here and has the final call
+          {lead.name} leads and has the final call
         </div>
       )}
 
@@ -962,13 +961,13 @@ function RoomFolderButton({ blok }: { blok: Blok }) {
                 {blok.pinnedCwd ?? "Each member uses its own folder."}
               </div>
               <div className="mt-1.5 text-small text-muted-foreground/70">
-                Fixed since this room first worked. Make a new room to work elsewhere.
+                Set when the room started. Make a new room to use another folder.
               </div>
             </>
           ) : (
             <>
               <div className="mt-1 text-small text-muted-foreground">
-                Every member's room turns run here. Set it before the room's first task.
+                Where members work in this room. Set it before the first task.
               </div>
               <div className="mt-2 flex gap-1.5">
                 <input
@@ -1039,7 +1038,7 @@ function RoomMenu({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onExport}>
           <Download size={15} />
-          Export as a team file
+          Export team file
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onLeadOnly}>
           <Crown size={15} />

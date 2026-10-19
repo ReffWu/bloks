@@ -83,7 +83,7 @@ export function MessageComponent({ message, threadId }: { message: Message; thre
       });
       dispatch({ type: "messagePatched", threadId, message: result.message });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The answer could not be sent.");
+      setError(e instanceof Error ? e.message : "Couldn't send your answer.");
     } finally {
       sending.current = false;
       setPending(false);

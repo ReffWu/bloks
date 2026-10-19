@@ -45,7 +45,7 @@ export interface ProjectRow {
 
 const WHY: Record<FolderStanding["state"], string | null> = {
   ok: null,
-  missing: "not there any more",
+  missing: "missing",
   "not-a-folder": "not a folder",
 };
 
@@ -84,8 +84,8 @@ export function ProjectsPanel() {
           <div className="text-title font-semibold text-foreground">Projects</div>
           <div className="mt-0.5 text-body text-muted-foreground">
             {editing
-              ? "Where the work happens, who is on it, and what they should know."
-              : "Switch into one and the app shows its people and its folders."}
+              ? "Its folders, people and brief."
+              : "Open one to see only its people and folders."}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -121,7 +121,7 @@ export function ProjectsPanel() {
           </div>
         ) : projects.length === 0 ? (
           <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-body text-muted-foreground">
-            No projects yet. One is a name, some folders, and the people on it.
+            No projects yet.
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -202,9 +202,7 @@ export function ProjectsPanel() {
 
                   {project.broken && (
                     <div className="mt-2 rounded-xl bg-warning/10 px-3 py-2 text-small leading-relaxed text-warning">
-                      Nothing will run in this project until those folders are back, or it points
-                      somewhere else. An agent writing into the wrong directory is worse than one
-                      that will not start.
+                      Nothing runs here until those folders are back or you pick new ones.
                     </div>
                   )}
                 </div>
@@ -296,7 +294,7 @@ function ProjectForm({
       </div>
 
       <label className="text-body text-muted-foreground">
-        The standing brief. Everyone working on this gets it.
+        Brief, shared with everyone on it
         <Textarea
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
@@ -307,7 +305,7 @@ function ProjectForm({
       </label>
 
       <label className="text-body text-muted-foreground">
-        Folders, one per line. The first one that exists is where turns run.
+        Folders, one per line. Work happens in the first one found.
         <div className="mt-1 flex items-start gap-1.5">
           <Textarea
             value={folders}
@@ -325,7 +323,7 @@ function ProjectForm({
       </label>
 
       <label className="text-body text-muted-foreground">
-        What matters inside them, comma separated. Advisory, not a filter.
+        Key paths, comma separated (a hint, not a filter)
         <Input
           value={include}
           onChange={(e) => setInclude(e.target.value)}

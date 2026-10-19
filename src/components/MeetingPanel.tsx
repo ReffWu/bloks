@@ -40,14 +40,14 @@ interface Line {
 }
 
 const NOTICE: Record<string, string> = {
-  "system-sound-unavailable": "The other side of the call cannot be heard: allow Bloks under Screen Recording in System Settings. Your side is still being taken down.",
-  "system-sound-needs-macos-13": "Hearing the other side of a call needs macOS 13 or later. Your side is still being taken down.",
-  "system-sound-stopped": "The other side of the call stopped being heard.",
+  "system-sound-unavailable": "Can't hear the other side. Allow Bloks under Screen Recording in System Settings. Your side is still being transcribed.",
+  "system-sound-needs-macos-13": "Hearing the other side needs macOS 13 or later. Your side is still being transcribed.",
+  "system-sound-stopped": "Lost the other side of the call.",
 };
 const ERROR: Record<string, string> = {
-  "speech-not-authorized": "Bloks is not allowed to use speech recognition. Allow it in System Settings, Privacy and Security, Speech Recognition.",
-  "recognizer-unavailable": "Speech recognition is not available on this Mac right now.",
-  "mic-failed": "The microphone could not be opened. Allow Bloks under Microphone in System Settings.",
+  "speech-not-authorized": "Bloks can't use speech recognition. Allow it in System Settings, Privacy and Security, Speech Recognition.",
+  "recognizer-unavailable": "Speech recognition isn't available right now.",
+  "mic-failed": "Couldn't open the microphone. Allow Bloks under Microphone in System Settings.",
 };
 
 const clock = (ms: number) => {
@@ -201,7 +201,7 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
               <AudioLines size={17} className="text-muted-foreground" /> Meeting notes
             </div>
             <div className="mt-0.5 text-body text-muted-foreground">
-              {bot.name} listens on this Mac and writes it up when you stop. Nothing is recorded.
+              {bot.name} listens on this Mac and writes notes when you stop. No audio is saved.
             </div>
           </div>
           {!recording && (
@@ -214,7 +214,7 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {!available ? (
             <div className="rounded-xl border border-dashed px-4 py-8 text-center text-body text-muted-foreground">
-              Meeting notes need the Bloks app on a Mac, where the listening happens on the device.
+              Meeting notes need the Bloks app on a Mac.
             </div>
           ) : recording ? (
             <div className="flex flex-col gap-3">
@@ -230,7 +230,7 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
               </div>
               {notice && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{notice}</div>}
               <div className="flex max-h-[320px] min-h-[120px] flex-col gap-1.5 overflow-y-auto rounded-xl border bg-muted/30 p-3 text-body leading-relaxed">
-                {lines.length === 0 && !partial && <span className="text-muted-foreground">Listening. Start talking and the words appear here.</span>}
+                {lines.length === 0 && !partial && <span className="text-muted-foreground">Listening. Words appear here as you talk.</span>}
                 {lines.map((line, i) => (
                   <div key={i}>
                     <span className={cn("mr-1.5 font-medium", line.who === "you" ? "text-foreground" : "text-brand-ink")}>
@@ -249,12 +249,12 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What is the meeting? (optional)" className="text-body" />
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Meeting name (optional)" className="text-body" />
               <label className="flex items-center justify-between gap-3 text-body text-foreground">
                 <span>
-                  Also hear the other side of the call
+                  Hear the other side too
                   <span className="block text-small text-muted-foreground">
-                    What your Mac plays, like Zoom or Meet. Needs Screen Recording permission.
+                    From Zoom, Meet and other apps. Needs Screen Recording permission.
                   </span>
                 </span>
                 <Switch checked={system} onCheckedChange={setSystem} aria-label="Hear the call" />

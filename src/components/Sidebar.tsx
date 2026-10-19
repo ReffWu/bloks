@@ -181,7 +181,7 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
           ))}
           {names.length === 0 && (
             <div className="px-1 py-1 text-body text-muted-foreground">
-              No sections yet. Name the first one below.
+              No sections yet.
             </div>
           )}
         </div>
@@ -933,7 +933,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
           {row.pinned && next && !next.pinned && (
             <div
               role="separator"
-              aria-label="Pinned above, most recent with you below"
+              aria-label="Pinned above, recent below"
               className="mx-3 my-1 h-px bg-border/70"
             />
           )}
@@ -987,7 +987,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize the sidebar. Drag narrow to fold it away"
+        aria-label="Resize sidebar"
         aria-valuemin={CHAT_SIDEBAR.min}
         aria-valuemax={CHAT_SIDEBAR.max}
         aria-valuenow={sidebar.width}
@@ -1044,7 +1044,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
       {projectMembers && (
         <button
           onClick={() => dispatch({ type: "openProject", id: null })}
-          title={`Looking through ${projectName}. Click to show the whole workspace again`}
+          title={`Showing ${projectName}. Click to show everything`}
           className="mx-2 mb-1 flex items-center gap-2 rounded-lg bg-accent/70 px-2.5 py-1.5 text-left text-small text-foreground transition-colors duration-150 hover:bg-accent"
         >
           <FolderKanban size={13} className="shrink-0 text-muted-foreground" />
@@ -1096,7 +1096,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                         "rounded p-0.5 transition-colors hover:text-foreground",
                         conversations && "text-foreground",
                       )}
-                      title={conversations ? "Hide conversations" : "Show each agent's conversations"}
+                      title={conversations ? "Hide conversations" : "Show conversations"}
                     >
                       <ListTree size={12} />
                     </button>
@@ -1145,7 +1145,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                 <button
                   onClick={() => toggleFolded(name)}
                   aria-expanded={!isFolded}
-                  title={isFolded ? "Show this section. Drag to reorder" : "Fold this section. Drag to reorder"}
+                  title={isFolded ? "Show section, drag to reorder" : "Fold section, drag to reorder"}
                   // Drag a heading to put the sections in your own order;
                   // Alt with an arrow key does the same from the keyboard.
                   draggable
@@ -1227,8 +1227,7 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
       >
         <div className="text-title font-semibold text-foreground">Archived agents</div>
         <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-          Their conversations, rules and rooms are kept, and so is the key they sign with. Restoring
-          puts one back in the sidebar and back to work.
+          Their chats, rules and rooms are kept. Restore one to put it back to work.
         </div>
         <div className="mt-4 flex max-h-[50vh] flex-col gap-1 overflow-y-auto">
           {archived.map((bot) => (
@@ -1269,7 +1268,7 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
                 className="text-muted-foreground hover:text-destructive"
                 onClick={() => {
                   const sure = confirm(
-                    `Delete ${bot.name} for good?\n\nIts conversations go, and so does the key it signs with, which cannot be remade. What it already signed in the record stays readable but can never be re-signed.\n\nThis cannot be undone.`,
+                    `Delete ${bot.name} for good?\n\nIts conversations and signing key are deleted. What it already signed stays readable.\n\nThis cannot be undone.`,
                   );
                   if (sure) dispatch({ type: "deleteBot", botId: bot.id, forget: true });
                 }}

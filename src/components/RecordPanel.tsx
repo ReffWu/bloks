@@ -97,10 +97,8 @@ export function RecordPanel() {
           <div className="min-w-0">
             <div className="text-ui font-semibold text-foreground">The record</div>
             <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-              What your agents did on your behalf, and what changed about what
-              they can do. Each entry carries the fingerprint of the one before
-              it, so a single edited line does not go unnoticed, and what an
-              agent signed is checked against that agent's own key.
+              What your agents did, and changes to what they can do. Check it
+              to see if anything was edited.
             </div>
           </div>
           <Button variant="secondary" size="sm" disabled={checking} onClick={check}>
@@ -126,8 +124,8 @@ export function RecordPanel() {
             <span>
               {result.ok
                 ? result.entries === 0
-                  ? "Nothing has happened yet. The record is empty and unbroken."
-                  : `All ${result.entries} entries hold. Nothing has been changed since it was written.`
+                  ? "Nothing recorded yet."
+                  : `All ${result.entries} entries check out. Nothing was changed.`
                 : `${result.reason[0].toUpperCase()}${result.reason.slice(1)}${
                     result.seq !== null ? `, at entry ${result.seq}` : ""
                   }.`}
@@ -138,16 +136,14 @@ export function RecordPanel() {
         {stray > 0 && (
           <div className="mt-2 rounded-xl bg-destructive/10 px-3 py-2.5 text-small text-destructive">
             {stray === 1
-              ? "There is a line in the file that is not an entry."
-              : `There are ${stray} lines in the file that are not entries.`}
+              ? "One line in the file isn't an entry."
+              : `${stray} lines in the file aren't entries.`}
           </div>
         )}
 
         <div className="mt-2 rounded-xl bg-muted/50 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
-          This proves nobody quietly changed one line, and that a signed entry
-          is really from the agent it names. It does not stop someone who can
-          write to {thisComputer()} from rewriting the whole file: the agents' keys sit
-          next to it, and whoever can reach one can usually reach the other.
+          This catches edited lines and checks signatures. Someone with access
+          to {thisComputer()} could still rewrite the whole file.
         </div>
       </div>
 
@@ -165,7 +161,7 @@ export function RecordPanel() {
         )}
         {entries?.length === 0 && (
           <div className="px-3 py-6 text-center text-body text-muted-foreground">
-            Nothing yet. Approvals, agents and skills land here as they happen.
+            Nothing yet. Approvals and changes appear here.
           </div>
         )}
         {entries?.map((entry) => (
@@ -200,7 +196,7 @@ export function RecordPanel() {
                 {entry.signature === "bad" && (
                   <span className="text-destructive" title={entry.signedBy}>
                     {" "}
-                    · signature does not hold
+                    · bad signature
                   </span>
                 )}
               </span>

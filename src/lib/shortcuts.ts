@@ -49,10 +49,10 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: "palette",
     group: "navigation",
     keys: [["Mod", "K"]],
-    does: "Jump to an agent, a room, a setting or a message",
+    does: "Search everything",
   },
-  { id: "toggleSidebar", group: "navigation", keys: [["Mod", "B"]], does: "Show or hide the chat sidebar" },
-  { id: "back", group: "navigation", keys: [["Mod", "["]], does: "Back to the place you were before" },
+  { id: "toggleSidebar", group: "navigation", keys: [["Mod", "B"]], does: "Show or hide the sidebar" },
+  { id: "back", group: "navigation", keys: [["Mod", "["]], does: "Back" },
   { id: "forward", group: "navigation", keys: [["Mod", "]"]], does: "Forward again" },
   {
     id: "sidebarStep",
@@ -64,14 +64,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: "sidebarWaiting",
     group: "navigation",
     keys: [["Alt", "Shift", "Up"], ["Alt", "Shift", "Down"]],
-    does: "Previous or next one that is unread or waiting on you",
+    does: "Previous or next unread or waiting",
   },
   {
     id: "recent",
     group: "navigation",
     keys: [["Ctrl", "Tab"], ["Ctrl", "Shift", "Tab"]],
-    does: "Back to the conversation you were just in",
-    when: "hold Ctrl and keep pressing Tab to go further back",
+    does: "Last conversation",
+    when: "keep pressing Tab to go further back",
     desktopOnly: true,
   },
   {
@@ -101,7 +101,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: "conversation",
     keys: [["Up"]],
     does: "Edit your last message",
-    when: "in an empty composer, with an agent",
+    when: "in an empty message box",
   },
 
   // ── composer ──
@@ -119,7 +119,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: "composer",
     keys: [["Esc"]],
     does: "Stop the agent",
-    when: "with an agent, while it is working and nothing else is open",
+    when: "while it is working",
   },
   {
     id: "skill",
@@ -147,7 +147,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: "settings", group: "app", keys: [["Mod", ","]], does: "Settings" },
   { id: "newAgent", group: "app", keys: [["Mod", "N"]], does: "New agent" },
   { id: "shortcuts", group: "app", keys: [["Mod", "/"]], does: "Keyboard shortcuts" },
-  { id: "close", group: "app", keys: [["Esc"]], does: "Close what is on top" },
+  { id: "close", group: "app", keys: [["Esc"]], does: "Close what's open" },
   {
     id: "zoom",
     group: "app",

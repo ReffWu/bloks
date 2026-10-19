@@ -109,8 +109,7 @@ export function TeamHireDialog({
 
         <div className="flex-1 overflow-y-auto px-5 pb-2 pt-3">
           <p className="mb-3 text-body leading-relaxed text-muted-foreground">
-            Every seat starts as a new agent. If someone here already does one of these jobs,
-            give them the seat instead.
+            Each seat gets a new agent, or give it to one you already have.
           </p>
           <div className="flex flex-col gap-1.5">
             {team.members.map((member, i) => {
@@ -129,7 +128,7 @@ export function TeamHireDialog({
                       {member.seniority === 5 && <Crown size={11} className="shrink-0 text-brand-ink" />}
                     </span>
                     <span className="block truncate text-small text-muted-foreground">
-                      {seat.kind === "new" ? `New agent, named ${seat.name}` : chosen?.name}
+                      {seat.kind === "new" ? `New agent: ${seat.name}` : chosen?.name}
                     </span>
                   </span>
                   <select
@@ -194,8 +193,7 @@ export function TeamHireDialog({
               </div>
             </label>
             <p className="mt-2 text-small leading-relaxed text-muted-foreground">
-              Both are optional and can change later. Answering now means the room starts with
-              context instead of asking for it.
+              Both optional. You can change them later.
             </p>
           </div>
           {error && <div className="mt-2 text-small text-destructive">{error}</div>}
