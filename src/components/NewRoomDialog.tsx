@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
+import { roomLead } from "@/lib/roomLead";
 
 interface GalleryTeam {
   slug: string;
@@ -59,6 +60,8 @@ export function NewRoomDialog() {
   const [picked, setPicked] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [leadOnly, setLeadOnly] = useState(false);
+  // the member whose crown was tapped; until then the most senior leads
+  const [leadId, setLeadId] = useState<string | null>(null);
   const [folder, setFolder] = useState("");
   // the error count when Create was pressed, or false while not creating
   const [creating, setCreating] = useState<number | false>(false);
@@ -168,10 +171,9 @@ export function NewRoomDialog() {
     () => picked.map((id) => agents.find((a) => a.id === id)).filter((a): a is Bot => Boolean(a)),
     [agents, picked],
   );
-  const lead = useMemo(
-    () => chosen.reduce<Bot | null>((best, a) => (!best || (a.seniority ?? 1) > (best.seniority ?? 1) ? a : best), null),
-    [chosen],
-  );
+  // the crown the server will honour: a tapped one while that agent is
+  // still picked, the most senior otherwise
+  const lead = useMemo(() => roomLead(chosen, leadId), [chosen, leadId]);
   const defaultName = chosen.map((a) => a.name).join(" + ");
 
   const toggle = (id: string) =>
@@ -186,6 +188,7 @@ export function NewRoomDialog() {
       type: "createRoom",
       name: name.trim() || defaultName,
       memberIds: picked,
+      ...(leadId && picked.includes(leadId) ? { leadId } : {}),
       ...(leadOnly ? { leadOnly: true } : {}),
       ...(folder.trim() ? { cwd: folder.trim() } : {}),
     });
@@ -207,7 +210,7 @@ export function NewRoomDialog() {
           <div className="min-w-0">
             <DialogTitle className="text-heading">New room</DialogTitle>
             <DialogDescription className="mt-0.5">
-              Agents work together here. The most senior one leads.
+              Agents work together here. Tap a crown to choose the lead.
             </DialogDescription>
           </div>
           <Segmented
@@ -266,17 +269,21 @@ export function NewRoomDialog() {
                 {shown.map((agent) => {
                   const on = picked.includes(agent.id);
                   const full = !on && picked.length >= MAX_MEMBERS;
-                  const isLead = on && lead?.id === agent.id && picked.length > 1;
+                  const crownable = on && picked.length > 1;
+                  const isLead = crownable && lead?.id === agent.id;
                   return (
+                    // The crown is a button of its own beside the tile, not
+                    // inside it: one press picks the member, the other the lead.
+                    <div key={agent.id} className="relative min-w-0">
                     <button
-                      key={agent.id}
                       role="checkbox"
                       aria-checked={on}
                       disabled={full}
                       onClick={() => toggle(agent.id)}
                       className={cn(
-                        "group relative flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left outline-none transition-[border-color,background-color,scale,opacity] duration-150 ease-out active:scale-[0.985] disabled:opacity-45",
+                        "group relative flex w-full min-w-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left outline-none transition-[border-color,background-color,scale,opacity] duration-150 ease-out active:scale-[0.985] disabled:opacity-45",
                         on ? "border-brand bg-brand-soft" : "bg-card hover:border-foreground/20 hover:bg-accent/40",
+                        crownable && "pr-12",
                       )}
                     >
                       <span className="relative shrink-0">
@@ -291,16 +298,22 @@ export function NewRoomDialog() {
                         </span>
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5">
-                          <span className="truncate text-ui font-medium text-foreground">{agent.name}</span>
-                          {isLead && <Crown size={12} className="shrink-0 text-brand-ink" aria-label="Leads" />}
-                        </span>
+                        <span className="block truncate text-ui font-medium text-foreground">{agent.name}</span>
                         <span className="block truncate text-small text-muted-foreground">{agent.title || "No stated role"}</span>
                       </span>
                       <span className="max-w-[96px] shrink-0 truncate rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">
                         {modelLabel(agent)}
                       </span>
                     </button>
+                    {crownable && (
+                      <CrownButton
+                        on={isLead}
+                        name={agent.name}
+                        onPick={() => setLeadId(agent.id)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                      />
+                    )}
+                    </div>
                   );
                 })}
                 {shown.length === 0 && (
@@ -317,7 +330,13 @@ export function NewRoomDialog() {
               className="flex flex-col border-t bg-sidebar/50 md:min-h-0 md:border-l md:border-t-0"
             >
               <div className="flex-1 px-5 py-5 md:overflow-y-auto">
-                <RoomPreview name={name.trim() || defaultName} chosen={chosen} lead={lead} modelLabel={modelLabel} />
+                <RoomPreview
+                  name={name.trim() || defaultName}
+                  chosen={chosen}
+                  lead={lead}
+                  onLead={setLeadId}
+                  modelLabel={modelLabel}
+                />
 
                 <div className="mt-5">
                   <div className="mb-1.5 text-body font-medium text-muted-foreground">Who answers</div>
@@ -488,18 +507,20 @@ export function NewRoomDialog() {
 /**
  * The room as it will open: its name, its lead on top with the crown,
  * the others beneath. Members arrive and leave in place, and the crown
- * moves when a more senior agent joins, so the shape of the org chart is
- * seen changing rather than re-read.
+ * moves when a more senior agent joins or another is crowned, so the
+ * shape of the org chart is seen changing rather than re-read.
  */
 function RoomPreview({
   name,
   chosen,
   lead,
+  onLead,
   modelLabel,
 }: {
   name: string;
   chosen: Bot[];
   lead: Bot | null;
+  onLead: (id: string) => void;
   modelLabel: (bot: Bot) => string;
 }) {
   const rest = chosen.filter((a) => a.id !== lead?.id);
@@ -525,7 +546,7 @@ function RoomPreview({
                 ))}
               </div>
               <p className="max-w-[220px] text-pretty text-body leading-relaxed text-muted-foreground">
-                Pick two or more agents. The most senior leads.
+                Pick two or more agents, then crown a lead.
               </p>
             </div>
           ) : (
@@ -581,11 +602,19 @@ function RoomPreview({
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, transition: { duration: 0.12 } }}
                           transition={settle}
-                          className="flex items-center gap-3 px-3 py-1.5"
+                          className="group flex items-center gap-3 px-3 py-1.5"
                         >
                           <AgentAvatar bot={agent} size={28} />
                           <span className="min-w-0 flex-1 truncate text-body text-foreground">{agent.name}</span>
                           <span className="max-w-[90px] shrink-0 truncate text-caption text-muted-foreground">{modelLabel(agent)}</span>
+                          {/* out of the way until the row is pointed at; the
+                              list beside this always shows its crowns */}
+                          <CrownButton
+                            on={false}
+                            name={agent.name}
+                            onPick={() => onLead(agent.id)}
+                            className="-my-1 -mr-1.5 size-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          />
                         </motion.div>
                       ))}
                     </AnimatePresence>
@@ -599,10 +628,43 @@ function RoomPreview({
 
       {ready && (
         <p className="mt-3 border-t pt-3 text-pretty text-small leading-relaxed text-muted-foreground">
-          Set seniority in each agent's settings. Give the lead your best model and the rest cheaper ones.
+          Tap a crown to change the lead. Give the lead your best model and the rest cheaper ones.
         </p>
       )}
     </div>
+  );
+}
+
+/** A member's crown, as the way to make it the lead: filled on the lead,
+ * faint on everyone else until pressed. */
+function CrownButton({
+  on,
+  name,
+  onPick,
+  className,
+}: {
+  on: boolean;
+  name: string;
+  onPick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      aria-label={on ? `${name} leads` : `Make ${name} the lead`}
+      title={on ? "Leads" : "Make lead"}
+      onClick={onPick}
+      className={cn(
+        "flex size-7 shrink-0 items-center justify-center rounded-full outline-none transition-[background-color,color,opacity,scale] duration-150 ease-out active:scale-90",
+        on
+          ? "bg-brand-ink text-brand-foreground"
+          : "text-muted-foreground/55 hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground",
+        className,
+      )}
+    >
+      <Crown size={13} />
+    </button>
   );
 }
 

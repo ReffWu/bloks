@@ -330,7 +330,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 </SettingRow>
                 <SettingRow
                   label="Seniority"
-                  description="In a room, the most senior agent speaks last and makes the final call."
+                  description="In a room, the most senior agent leads, unless the room crowns another."
                 >
                   <Segmented
                     aria-label="Seniority"

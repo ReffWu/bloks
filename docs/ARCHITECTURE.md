@@ -79,7 +79,9 @@ like a workspace rather than a group chat with echoes:
 
 **One speaker at a time.** `postToRoom` runs members sequentially in
 ascending seniority, so each one sees what the last actually said and the
-most senior speaks last. Handoffs raised mid-round queue rather than
+lead speaks last. The lead is the member the person crowned for that room
+(`leadId`), or the most senior when nobody was (`leadOf` in
+`server/bloks.ts`). Handoffs raised mid-round queue rather than
 interrupting, then drain in further rounds, bounded by `MAX_AGENT_HOPS`.
 
 **Sessions belong to agents, not rooms.** An agent's provider session is

@@ -81,6 +81,9 @@ export function inspectRoomSettings(root:unknown,ctx:InspectionContext):Inspecti
   for(const [id,fallback] of [["name",""],["section",null],["pinOrder",null]] as const)f.scalar(id,fallback);
   for(const id of ["leadOnly","archived","pinned"])f.bool(id);
   f.list("memberIds","agent");f.opaque("cwd");f.opaque("pinnedCwd");
+  // the crowned member, as a reference like the roster; null is seniority
+  const lead=get(root,"leadId"),leadValue:InspectionValue=typeof lead==="string"?{status:"value",value:ctx.reference("agent",lead)}:{status:"value",value:null};
+  f.add("leadId",leadValue,own(root,"leadId").present?leadValue:{status:"absent"});
   const desk=own(root,"pinnedCwd");f.add("desk.policy",policy(desk.value===undefined?"fixed on first dispatch":desk.value===null?"each agent keeps its own folder":"fixed room desk; filesystem state not probed"),{status:"absent"});
   const sharing=get(root,"sharing");f.add("sharing",configured(sharing),own(root,"sharing").present?configured(sharing):{status:"absent"});
   if(sharing) {

@@ -79,7 +79,7 @@ import { DEFAULT_STALL_MINUTES, STALL_CHOICES, stallPreface } from "./drivers/st
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { MAX_TASKS, Store, type AgentNote, type BotRecord, type Message, type NewBotProfile, type RecalledNote, type TaskRecord } from "./store.ts";
-import { addressees, BlokStore, currentSpend, MAX_MEMBERS, type BlokRecord, type RoomSharing } from "./bloks.ts";
+import { addressees, BlokStore, currentSpend, leadOf, MAX_MEMBERS, ranksForExport, type BlokRecord, type RoomSharing } from "./bloks.ts";
 import { cleanSectionOrder, placeAt, SidebarStore, sidebarView, upgradePlaces, type Placed } from "./sidebar.ts";
 import { extractTeamPlan, MAX_HIRES, normalizePlan, TEAM_PROTOCOL, type TeamPlan } from "./teams.ts";
 import { houseStyle, HOUSE_STYLE } from "./house-style.ts";
@@ -3851,22 +3851,34 @@ const askThreadByRequest = new Map<string, string>();
  */
 const turnStarted = new Map<string, number>();
 
-/** Highest seniority wins; ties break toward the earliest member listed. */
-function leadOf(members: BotRecord[]): BotRecord | null {
-  return members.reduce<BotRecord | null>(
-    (best, m) => (!best || (m.seniority ?? 1) > (best.seniority ?? 1) ? m : best),
-    null,
-  );
+/** A room's `leadId` as a request gives it: absent says nothing, null
+ * hands the room back to seniority, and an id must be on the roster the
+ * request leaves. The crown is the person's to give. An agent that could
+ * crown itself would take the final call, and the stop that comes with
+ * it, over agents senior to it, which is the same reason it cannot raise
+ * its own seniority. */
+function readLeadId(
+  body: Record<string, unknown>,
+  memberIds: readonly string[],
+  byAgent: boolean,
+): { ok: true; leadId?: string | null } | { ok: false; status: number; error: string } {
+  if (!("leadId" in body) || body.leadId === undefined) return { ok: true };
+  if (byAgent) return { ok: false, status: 403, error: "only the person chooses a room's lead" };
+  if (body.leadId === null) return { ok: true, leadId: null };
+  if (typeof body.leadId !== "string" || !memberIds.includes(body.leadId)) {
+    return { ok: false, status: 400, error: "the lead must be one of the room's members" };
+  }
+  return { ok: true, leadId: body.leadId };
 }
 
 /** The room brief an agent gets before it speaks: who else is here, who
  * decides, and how to address someone. */
 function roomBriefing(blok: BlokRecord, speaker: BotRecord, members: BotRecord[]): string {
-  const lead = leadOf(members);
+  const lead = leadOf(members, blok.leadId);
   const roster = members
     .map((m) => {
       const tag = m.id === speaker.id ? " (you)" : "";
-      const rank = m.id === lead?.id ? ", most senior" : "";
+      const rank = m.id === lead?.id ? ", lead" : "";
       return `- ${m.name}${tag}: ${m.title || "no stated role"}${rank}`;
     })
     .join("\n");
@@ -3881,7 +3893,7 @@ function roomBriefing(blok: BlokRecord, speaker: BotRecord, members: BotRecord[]
   const authority =
     lead?.id === speaker.id
       ? [
-          "You are the most senior agent in this room, and you speak last.",
+          "You lead this room, and you speak last.",
           "Your job is judgement, not volume: delegate the legwork to the right member with @Name, then check what comes back. Verify the substance rather than restating it. Look for what is wrong, missing, or asserted without evidence, and say so directly.",
           "When members disagree, make the call, state it plainly, and give the reason. Do not push the decision back to the user unless it is genuinely theirs.",
           "Do not do a member's task yourself when you can assign it. Your time is the expensive kind.",
@@ -3889,7 +3901,7 @@ function roomBriefing(blok: BlokRecord, speaker: BotRecord, members: BotRecord[]
         ].join(" ")
       : lead
         ? [
-            `${lead.name} is the most senior agent here and has the final say; your work goes to them for review.`,
+            `${lead.name} leads this room and has the final say; your work goes to them for review.`,
             "Do the actual work rather than describing how you would do it. Produce the concrete thing that was asked for, note anything you could not verify, and keep it tight.",
             "Stay in your lane. Deliver your part of the brief and only your part; the other members are covering theirs, and duplicating their work wastes everyone's turn.",
             `End your turn by handing it over: @${lead.name} plus one line on what you did and anything you are unsure of.`,
@@ -6683,14 +6695,18 @@ function speakerFor(bot: BotRecord) {
 
 /** Why `callerId` may stop `targetId`'s turn, or null when it may not:
  * it hired that agent, or it outranks it in a room they are both in. The
- * same seniority that gives the lead the final call in a room (GitHub 141). */
+ * same seniority that gives the lead the final call in a room (GitHub 141),
+ * and the crown the person gave in one, which outranks seniority there. */
 function mayStop(callerId: string, targetId: string): "hired" | "senior" | null {
   const target = store.bot(targetId);
   const caller = store.bot(callerId);
   if (!target || !caller || callerId === targetId) return null;
   if (target.hiredBy === callerId) return "hired";
   const outranks = (caller.seniority ?? 1) > (target.seniority ?? 1);
-  if (outranks && bloks.bloks.some((room) => room.memberIds.includes(callerId) && room.memberIds.includes(targetId))) return "senior";
+  const shared = bloks.bloks.filter((room) => room.memberIds.includes(callerId) && room.memberIds.includes(targetId));
+  if (shared.some((room) => room.leadId === callerId)) return "senior";
+  // seniority counts in a room where the target was not crowned over it
+  if (outranks && shared.some((room) => room.leadId !== targetId)) return "senior";
   return null;
 }
 
@@ -7028,12 +7044,12 @@ async function postToRoomNow(blok: BlokRecord, text: string, author: RoomAuthor,
   // someone it named, otherwise every reply would wake the whole room. The
   // exception is a kickoff brief, which is meant for everyone.
   let reach = forPeopleOnly ? [] : !author.botId ? ids : author.toAll ? awake.map((m) => m.id) : mentioned ? ids : [];
-  // A lead-only room narrows the unaddressed case to its most senior
-  // member. Naming someone still reaches exactly who was named.
+  // A lead-only room narrows the unaddressed case to its lead. Naming
+  // someone still reaches exactly who was named.
   if (blok.leadOnly && !author.botId && !mentioned && !forPeopleOnly) {
-    // the most senior member who can actually answer, or a lead-only
-    // room whose lead is archived swallows every message
-    const lead = leadOf(awake);
+    // the lead among those who can actually answer, or a lead-only room
+    // whose lead is archived swallows every message
+    const lead = leadOf(awake, blok.leadId);
     if (lead) reach = [lead.id];
   }
   const asked = reach.filter((id) => id !== author.botId);
@@ -7340,9 +7356,14 @@ async function speakInTurn(
     .filter((entry): entry is readonly [BotRecord, string, number] => entry[0] !== null);
   // a busy agent hears it when its turn ends, rather than never
   for (const [member, text, hops] of named) if (!idleHere(member)) queueRoomTag(member.id, roomId, text, requester, hops);
+  // Junior first, so the lead speaks last, having heard the rest. A
+  // crowned lead may be junior to someone in the room, so it is put last
+  // by name; a room on seniority gets there by rank, as it always has.
+  const crowned = bloks.get(roomId)?.leadId;
+  const rank = (bot: BotRecord) => (bot.id === crowned ? Number.MAX_SAFE_INTEGER : (bot.seniority ?? 1));
   const ordered = named
     .filter(([member]) => idleHere(member))
-    .sort(([a], [b]) => (a.seniority ?? 1) - (b.seniority ?? 1));
+    .sort(([a], [b]) => rank(a) - rank(b));
 
   for (const [member, text, hops] of ordered) {
     // one agent failing must not silence the rest of the room; one that
@@ -15918,7 +15939,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             : null;
           return bloks.bloks.map((b, i) =>
             !asAgent || b.memberIds.includes(asAgent.botId)
-              ? { ...b, ...(fitted ? fitted[i] : { messages: zero ? [] : trim(store.messagesFor(b.id)) }) }
+              ? { ...b, leadId: b.leadId ?? null, ...(fitted ? fitted[i] : { messages: zero ? [] : trim(store.messagesFor(b.id)) }) }
               : { id: b.id, name: b.name, memberIds: b.memberIds, archived: b.archived, messages: [] },
           );
         })(),
@@ -15940,7 +15961,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // Whoever opened it is in it. An agent that left itself off the
       // roster would have made a room it cannot speak in.
       if (asAgent && !memberIds.includes(asAgent.botId)) memberIds.unshift(asAgent.botId);
-      const blok = bloks.create(clamp(body.name, MAX_NAME_CHARS) ?? "", memberIds, asAgent ? 0 : Date.now());
+      const lead = readLeadId(body, memberIds, Boolean(asAgent));
+      if (!lead.ok) return json(res, lead.status, { error: lead.error });
+      const blok = bloks.create(clamp(body.name, MAX_NAME_CHARS) ?? "", memberIds, asAgent ? 0 : Date.now(), lead.leadId ?? null);
       // open with the roster so the transcript explains itself later
       const names = memberIds.map((id) => store.bot(id)!.name).join(", ");
       store.appendMessage(blok.id, {
@@ -15954,7 +15977,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     m = path.match(/^\/api\/bloks\/([\w-]+)$/);
     if (m && method === "PATCH") {
       const body = await readBody(req);
-      const patch: { name?: string; memberIds?: string[]; leadOnly?: boolean; cwd?: string; archived?: boolean } = {};
+      const patch: { name?: string; memberIds?: string[]; leadOnly?: boolean; leadId?: string | null; cwd?: string; archived?: boolean } = {};
       if (typeof body.name === "string") patch.name = body.name;
       if (typeof body.leadOnly === "boolean") patch.leadOnly = body.leadOnly;
       if (typeof body.archived === "boolean") patch.archived = body.archived;
@@ -15976,6 +15999,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         patch.memberIds = (body.memberIds as unknown[]).filter(
           (id): id is string => typeof id === "string" && Boolean(store.bot(id)),
         );
+      }
+      if ("leadId" in body) {
+        const room = bloks.get(m[1]);
+        if (!room) return json(res, 404, { error: "no such room" });
+        // checked against the roster this same request leaves behind
+        const lead = readLeadId(body, patch.memberIds ?? room.memberIds, Boolean(asAgent));
+        if (!lead.ok) return json(res, lead.status, { error: lead.error });
+        patch.leadId = lead.leadId ?? null;
       }
       const blok = bloks.patch(m[1], patch);
       if (!blok) return json(res, 404, { error: "no such room" });
@@ -16276,15 +16307,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && method === "GET") {
       const blok = bloks.get(m[1]);
       if (!blok) return json(res, 404, { error: "no such room" });
-      const members = blok.memberIds
-        .map((id) => store.bot(id))
-        .filter((b): b is BotRecord => Boolean(b))
+      const roster = blok.memberIds.map((id) => store.bot(id)).filter((b): b is BotRecord => Boolean(b));
+      const ranks = ranksForExport(roster, blok.leadId);
+      const members = roster
         .map((b) => ({
           name: b.name,
           title: b.title,
           description: b.description,
           skills: b.skills ?? [],
-          seniority: b.seniority ?? 1,
+          seniority: ranks.get(b.id) ?? 1,
           color: b.color,
           shape: b.shape,
         }));
@@ -16295,14 +16326,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && method === "GET") {
       const blok = bloks.get(m[1]);
       if (!blok) return json(res, 404, { error: "no such room" });
-      const members = blok.memberIds
-        .map((id) => store.bot(id))
-        .filter((b): b is BotRecord => Boolean(b))
+      const roster = blok.memberIds.map((id) => store.bot(id)).filter((b): b is BotRecord => Boolean(b));
+      const ranks = ranksForExport(roster, blok.leadId);
+      const members = roster
         .map((b) => ({
           title: b.title || b.name,
           description: b.description ?? "",
           skills: b.skills ?? [],
-          seniority: b.seniority ?? 1,
+          seniority: ranks.get(b.id) ?? 1,
           color: b.color,
           shape: b.shape,
         }));

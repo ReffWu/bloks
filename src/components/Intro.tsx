@@ -797,8 +797,8 @@ function JobsStage({ onNext }: { onNext: () => void }) {
         Give every agent a job
       </h2>
       <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:120ms]">
-        Each has its own role, skills and memory. In a room together, the
-        most senior one leads.
+        Each has its own role, skills and memory. In a room together, one
+        of them leads.
       </p>
       <Button className="intro-rise mt-6 [animation-delay:240ms]" onClick={onNext}>
         Next
