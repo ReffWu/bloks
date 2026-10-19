@@ -10,11 +10,13 @@
 // shown with who sent it, and is theirs, not yours to change.
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp } from "@/components/icons";
+import { Hourglass } from "@/components/icons";
 import { Pencil } from "@/components/icons";
 import { Trash2 } from "@/components/icons";
 import { api, type Message } from "@/state/store";
 import { stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
+import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
 
 /** Opens the editor on a queued message: the server holds back the turn
  * it waits for until the editor closes (GitHub 155). What comes back
@@ -68,6 +70,7 @@ function WaitingRow({
   onSendNow,
   onSendAgain,
   editNow,
+  onEditing,
 }: {
   message: Message;
   threadId: string;
@@ -77,9 +80,16 @@ function WaitingRow({
   onSendNow?: () => void;
   onSendAgain?: (message: Message) => void;
   editNow?: number;
+  /** Told when the editor opens and closes, so whatever holds the row
+   * keeps it on screen while it has the words. */
+  onEditing?: (id: string, on: boolean) => void;
 }) {
   const yours = sender === null;
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditingState] = useState<string | null>(null);
+  const setEditing = (next: string | null) => {
+    setEditingState(next);
+    onEditing?.(message.id, next !== null);
+  };
   // how an editor opened on this message closes again: with words to
   // save, or without them to cancel
   const close = useRef<((text?: string) => void) | null>(null);
@@ -107,7 +117,13 @@ function WaitingRow({
   }, [editNow]); // eslint-disable-line react-hooks/exhaustive-deps
   // a row that goes mid-edit, because its turn took it or it was taken
   // back elsewhere, lets go of what it held
-  useEffect(() => () => close.current?.(), []);
+  useEffect(
+    () => () => {
+      if (close.current) onEditing?.(message.id, false);
+      close.current?.();
+    },
+    [], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const queuedAt = message.queuedAt ?? message.at;
   const status = message.unsent
@@ -125,8 +141,8 @@ function WaitingRow({
   return (
     <div
       className={cn(
-        "flex animate-rise-in items-start gap-2 rounded-xl border bg-muted/40 py-1.5 pl-3 pr-1.5",
-        message.unsent && "border-warning/40 bg-warning/5",
+        "flex animate-rise-in items-start gap-2 rounded-xl bg-muted/60 py-1.5 pl-3 pr-1",
+        message.unsent && "bg-warning/8",
       )}
       data-waiting={message.id}
     >
@@ -147,7 +163,7 @@ function WaitingRow({
               }}
               rows={Math.min(6, editing.split("\n").length + 1)}
               aria-label="Edit the waiting message"
-              className="max-h-[calc(6lh+10px)] w-full resize-none rounded-lg border bg-background px-2 py-1 text-ui leading-relaxed text-foreground outline-none [field-sizing:content] focus:border-ring/50"
+              className="max-h-[calc(6lh+10px)] w-full resize-none rounded-lg border bg-background px-2 py-1 text-body text-foreground outline-none [field-sizing:content] focus:border-ring/50"
             />
             <div className="flex items-center gap-2 text-small text-muted-foreground">
               <button
@@ -165,7 +181,7 @@ function WaitingRow({
         ) : (
           <div
             className={cn(
-              "line-clamp-3 whitespace-pre-wrap break-words text-ui leading-relaxed text-foreground",
+              "line-clamp-3 whitespace-pre-wrap break-words text-body text-foreground",
               editable && "cursor-text",
             )}
             // the second press of a double-click would select a word
@@ -227,10 +243,98 @@ function WaitingRow({
   );
 }
 
+/** Who queued a message in an agent's conversation, or null for you. */
+export function waitingSender(m: Message): string | null {
+  if (m.telegramPerson) return `${m.telegramPerson.name} (Telegram)`;
+  if (m.agent?.dir === "in") return m.agent.peerName;
+  switch (m.via) {
+    case "watcher":
+      return "your watcher";
+    case "webhook":
+      return "a webhook";
+    case "email":
+      return "email";
+    case "goal":
+      return "your goal";
+    case "routine":
+      return `your routine${m.routine?.name ? ` ${m.routine.name}` : ""}`;
+    default:
+      return null;
+  }
+}
+
 /**
- * The strip above the composer. Nothing at all when nothing waits. A long
- * queue scrolls inside it rather than pushing the conversation off a
- * phone's screen.
+ * What waits to be said, as one line in the composer's tray with the
+ * messages under it. Send now sits on the line, not on each message: it
+ * stops the turn, and then everything queued goes together, so it was
+ * never a press about one of them. A message being edited keeps the
+ * line open, even when more pressing things would fold it away.
+ */
+export function useQueuedNotice({
+  messages,
+  threadId,
+  senderOf = waitingSender,
+  working,
+  onSendNow,
+  onSendAgain,
+  editAsk,
+}: {
+  messages: Message[] | undefined;
+  threadId: string;
+  senderOf?: (message: Message) => string | null;
+  working: boolean;
+  onSendNow?: () => void;
+  onSendAgain?: (message: Message) => void;
+  editAsk?: { id: string; nonce: number } | null;
+}): Notice | null {
+  const [editing, setEditing] = useState<ReadonlySet<string>>(() => new Set());
+  const onEditing = (id: string, on: boolean) =>
+    setEditing((cur) => {
+      if (cur.has(id) === on) return cur;
+      const next = new Set(cur);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  if (!messages?.length) return null;
+  const unsent = messages.filter((m) => m.unsent).length;
+  const mineQueued = messages.some((m) => m.queued && senderOf(m) === null);
+  const asked = Boolean(editAsk && messages.some((m) => m.id === editAsk.id));
+  return {
+    id: "queued",
+    tone: unsent ? "warn" : "info",
+    rank: unsent ? RANK.unsent : RANK.queued,
+    icon: <Hourglass size={14} />,
+    title:
+      unsent === messages.length
+        ? `${unsent === 1 ? "A message" : `${unsent} messages`} didn't send.`
+        : `${messages.length === 1 ? "A message is" : `${messages.length} messages are`} waiting to send.`,
+    actions: mineQueued && working && onSendNow && <TrayButton onClick={onSendNow}>Send now</TrayButton>,
+    keepOpen: asked || editing.size > 0,
+    body: (
+      <div className="flex max-h-[30vh] flex-col gap-1 overflow-y-auto overscroll-contain" aria-label="Waiting to send">
+        {messages.map((m) => (
+          <WaitingRow
+            key={m.id}
+            message={m}
+            threadId={threadId}
+            sender={senderOf(m)}
+            working={working}
+            onSendAgain={onSendAgain}
+            editNow={editAsk?.id === m.id ? editAsk.nonce : undefined}
+            onEditing={onEditing}
+          />
+        ))}
+      </div>
+    ),
+  };
+}
+
+/**
+ * The strip above a room's composer. Nothing at all when nothing waits.
+ * A long queue scrolls inside it rather than pushing the conversation
+ * off a phone's screen. An agent's conversation shows the same rows in
+ * its composer's tray instead (useQueuedNotice).
  */
 export function WaitingStrip({
   messages,

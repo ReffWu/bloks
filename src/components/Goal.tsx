@@ -1,19 +1,19 @@
-// A conversation's goal, on screen: the chip over the composer until it
-// is done, and the dialog that sets one (server/goals.ts has the rules).
+// A conversation's goal, on screen: its line in the composer's tray until
+// it is done, and the dialog that sets one (server/goals.ts has the rules).
 //
-// The chip is the goal's whole state in one line, because a goal works
+// The line is the goal's whole state, because a goal works
 // while nobody is watching and the first thing anyone wants on coming
 // back is where it got to: which turn of how many, or why it is blocked
 // or out of turns. Its buttons are the two decisions that are the
 // person's alone, whether it goes on and whether it exists at all.
 // A done goal cannot go on and costs nothing while it stays, and its
-// notice in the chat says how it ended, so it has no chip.
+// notice in the chat says how it ended, so it has no line.
 import { useEffect, useState } from "react";
 import { Target } from "@/components/icons";
-import { X } from "@/components/icons";
 import { api, useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { DEFAULT_GOAL_TURNS, MAX_GOAL_TURNS, goalAction, goalState, goalStateShort } from "@/lib/goals";
+import { DEFAULT_GOAL_TURNS, MAX_GOAL_TURNS, goalAction, goalState } from "@/lib/goals";
+import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -24,10 +24,12 @@ function goalPath(botId: string, taskId: string) {
   return `/api/bots/${botId}/tasks/${taskId}/goal`;
 }
 
-/** The chip over the composer, until the open conversation's goal is done. */
 const GOAL_STEPS = numberStops(1, MAX_GOAL_TURNS, (n) => `${n} ${n === 1 ? "step" : "steps"}`);
 
-export function GoalChip({ bot }: { bot: Bot }) {
+/** The goal's line in the composer's tray, until the open conversation's
+ * goal is done. A blocked or spent goal moves up the tray, since the next
+ * step is the person's; a running one sits below anything pressing. */
+export function useGoalNotice(bot: Bot): Notice | null {
   const laneId = bot.activeTaskId ?? bot.threadId;
   const goal = bot.tasks?.find((t) => t.id === laneId)?.goal;
   const [error, setError] = useState<string | null>(null);
@@ -44,63 +46,38 @@ export function GoalChip({ bot }: { bot: Bot }) {
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
-  const tone =
-    goal.status === "active"
-      ? "text-brand"
-      : goal.status === "blocked" || goal.status === "out"
-        ? "text-warning"
-        : "text-muted-foreground";
+  const stuck = goal.status === "blocked" || goal.status === "out";
   const action = goalAction(goal);
-
-  return (
-    // a block around it, as the composer has: an auto margin straight
-    // inside the chat's column would size the chip to its words
-    <div className="px-4 md:px-6">
-      <div className="mx-auto mb-1 max-w-[var(--transcript-width,760px)] animate-rise-in">
-        <div
-          className={cn(
-            "flex items-center gap-2 rounded-xl border bg-card py-1 pl-3 pr-1 text-body",
-            goal.status === "blocked" && "border-warning/40 bg-warning/5",
-          )}
-          title={[goal.text, goal.check && `Done when \`${goal.check}\` passes`, goal.lastReason].filter(Boolean).join("\n")}
-        >
-          <Target
-            size={14}
-            className={cn("shrink-0", tone, goal.status === "active" && goal.judging && "animate-pulse motion-reduce:animate-none")}
-            aria-hidden
-          />
-          {/* the goal gives way to where it stands: a long goal is cut
-              short, never the turn count or how it ended */}
-          <span className="flex min-w-0 flex-1 items-baseline gap-1 py-1" aria-live="polite">
-            <span className="min-w-0 truncate text-foreground">
-              <span className="font-medium">Goal:</span> {goal.text}
-            </span>
-            <span className="shrink-0 text-muted-foreground sm:hidden">· {goalStateShort(goal)}</span>
-            <span className="hidden max-w-[55%] shrink-0 truncate text-muted-foreground sm:inline">· {goalState(goal)}</span>
-          </span>
-          {action && (
-            <button
-              onClick={() => change({ method: "PATCH", body: JSON.stringify(action.body) })}
-              disabled={busy}
-              className="shrink-0 rounded-lg px-2 py-1 font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-            >
-              {action.label}
-            </button>
-          )}
-          <button
-            onClick={() => change({ method: "DELETE" })}
-            disabled={busy}
-            className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-            title="Clear goal"
-            aria-label="Clear goal"
-          >
-            <X size={13} />
-          </button>
-        </div>
-        {error && <div className="mt-1 px-1 text-small text-destructive">{error}</div>}
-      </div>
-    </div>
-  );
+  return {
+    id: "goal",
+    tone: stuck ? "warn" : "info",
+    rank: stuck ? RANK.goalStuck : RANK.goal,
+    icon: (
+      <Target
+        size={14}
+        className={cn(
+          goal.status === "active" && "text-brand",
+          goal.status === "active" && goal.judging && "animate-pulse motion-reduce:animate-none",
+        )}
+      />
+    ),
+    // the goal gives way to where it stands: a long goal is cut short at
+    // two lines, and the whole of it is on hover
+    title: (
+      <span aria-live="polite">
+        <span className="font-medium">Goal</span> {goal.text}
+      </span>
+    ),
+    detail: error ? <span className="text-destructive">{error}</span> : <span className="tabular-nums">{goalState(goal)}</span>,
+    hint: [goal.text, goal.check && `Done when \`${goal.check}\` passes`, goal.lastReason].filter(Boolean).join("\n"),
+    actions: action && (
+      <TrayButton disabled={busy} onClick={() => change({ method: "PATCH", body: JSON.stringify(action.body) })}>
+        {action.label}
+      </TrayButton>
+    ),
+    onDismiss: busy ? undefined : () => change({ method: "DELETE" }),
+    dismissLabel: "Clear goal",
+  };
 }
 
 /**

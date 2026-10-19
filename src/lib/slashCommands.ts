@@ -93,6 +93,27 @@ export function matches(commands: Command[], query: string, limit = 8, atStart =
     .map((x) => x.c);
 }
 
+/** What each source is called in the list. */
+export const SOURCE_LABELS: Record<Command["source"], string> = {
+  bloks: "Bloks",
+  library: "Agent skills",
+  engine: "Engine",
+};
+
+/**
+ * Matches gathered under where they come from, Bloks' own first, then
+ * the agent's skills, then the engine's, each keeping its best-first
+ * order. The list reads by source, so the arrow keys walk it in the same
+ * order: the flat list for picking is these groups end to end, never the
+ * ranking they came in, or ↓ would jump between groups.
+ */
+export function grouped(commands: Command[]): Array<{ source: Command["source"]; label: string; commands: Command[] }> {
+  const order: Array<Command["source"]> = ["bloks", "library", "engine"];
+  return order
+    .map((source) => ({ source, label: SOURCE_LABELS[source], commands: commands.filter((c) => c.source === source) }))
+    .filter((g) => g.commands.length > 0);
+}
+
 /** The text with the half-typed `/word` replaced by the chosen command,
  * and where the caret goes after it. */
 export function insert(text: string, start: number, caret: number, id: string, prefix = "/"): { text: string; caret: number } {

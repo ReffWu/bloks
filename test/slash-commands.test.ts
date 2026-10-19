@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { insert, matches, segments, slashAt, type Command } from "../src/lib/slashCommands.ts";
+import { grouped, insert, matches, segments, slashAt, type Command } from "../src/lib/slashCommands.ts";
 import { agentCommands, readSkillHeader } from "../server/agent-commands.ts";
 
 const cmd = (id: string, name = id, source: Command["source"] = "library"): Command => ({ id, name, description: `${name} does a thing`, source });
@@ -80,4 +80,15 @@ test("built-ins are offered only at the start, while namespaced skills insert an
   const runs = segments(text, new Set(["plugin:review", "mcp__papers__find"]));
   assert.equal(runs.map((r) => r.text).join(""), text);
   assert.deepEqual(runs.filter((r) => r.skill).map((r) => r.text), ["/plugin:review", "/mcp__papers__find", "/plugin:review"]);
+});
+
+test("the list groups by source, Bloks first, and keeps each group's best-first order", () => {
+  const goal: Command = { id: "goal", name: "goal", description: "Keep working", source: "bloks", kind: "command" };
+  const ranked = matches([...all, goal], "");
+  const groups = grouped(ranked);
+  assert.deepEqual(groups.map((g) => g.label), ["Bloks", "Agent skills", "Engine"]);
+  assert.deepEqual(groups[1].commands.map((c) => c.id), ranked.filter((c) => c.source === "library").map((c) => c.id));
+  // nothing lost, nothing doubled, and an empty source draws no heading
+  assert.equal(groups.flatMap((g) => g.commands).length, ranked.length);
+  assert.deepEqual(grouped(matches(all, "tldraw")).map((g) => g.source), ["engine"]);
 });

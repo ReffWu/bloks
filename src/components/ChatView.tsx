@@ -18,11 +18,9 @@ import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { useLanesInSidebar } from "@/lib/conversationsView";
 import { findHits, stepHit } from "@/lib/find";
 import { isApproval } from "@/lib/cardAnswer";
-import { AnimatePresence } from "motion/react";
 import { dayLine, timeSaidBelow } from "@/lib/when";
 import { TaskStrip } from "./TaskStrip";
-import { WaitingStrip } from "./WaitingStrip";
-import { GoalChip, GoalDialog } from "./Goal";
+import { GoalDialog } from "./Goal";
 import { AfterAgentLink, AgentExchangeDialog, AgentExchangeRow } from "./AgentExchange";
 import { CallButton } from "./Voice";
 import { ArtifactCard } from "./Artifacts";
@@ -43,7 +41,6 @@ import { foldHolding, foldTurns, lastFoldKey, rowsFrom, turnRunning } from "@/li
 import { type RedoPreview } from "@/lib/redo";
 
 import { Bubble, Notice, QuietCheckIns, Rewound, TakenBack } from "./chat/Bubble";
-import { ApprovalsBar, EngineBanner, GuestMailLine, OtherLaneWaiting } from "./chat/Banners";
 import { LiveBrowser, ScreenFrame, StreamingBubble, WorkingClock, WorkingLine } from "./chat/Live";
 
 /**
@@ -671,44 +668,9 @@ export function ChatView({ bot }: { bot: Bot }) {
           <TerminalPanel bot={bot} onClose={() => setTerminalOpen(false)} />
         </div>
       )}
-      <AnimatePresence initial={false}>
-        {pendingApprovals.length > 1 && (
-          <ApprovalsBar key="approvals" bot={bot} pending={pendingApprovals} />
-        )}
-      </AnimatePresence>
-      <OtherLaneWaiting bot={bot} />
-      <EngineBanner bot={bot} />
-      <WaitingStrip
-        messages={waiting}
-        threadId={bot.threadId}
-        senderOf={(m) =>
-          m.telegramPerson
-            ? `${m.telegramPerson.name} (Telegram)`
-            : m.agent?.dir === "in"
-            ? m.agent.peerName
-            : m.via === "watcher"
-              ? "your watcher"
-              : m.via === "webhook"
-                ? "a webhook"
-                : m.via === "email"
-                  ? "email"
-                  : m.via === "goal"
-                    ? "your goal"
-                    : m.via === "routine"
-                    ? `your routine${m.routine?.name ? ` ${m.routine.name}` : ""}`
-                    : null
-        }
-        working={working}
-        // the same stop Cmd+Enter makes before it sends: the turn ends,
-        // and what waited behind it goes together in the next one, as
-        // when a turn ends on its own
-        onSendNow={working ? () => dispatch({ type: "interrupt", botId: bot.id }) : undefined}
-        onSendAgain={sendAgain}
-        editAsk={editAsk}
-      />
-      <GuestMailLine bot={bot} />
-      <GoalChip bot={bot} />
       <GoalDialog />
+      {/* approvals, other conversations, the engine, what waits, guest
+          mail and the goal all speak through the composer's one tray */}
       <Composer
         key={`${bot.id}:${bot.activeTaskId ?? bot.threadId}`}
         bot={bot}
@@ -716,6 +678,10 @@ export function ChatView({ bot }: { bot: Bot }) {
         onClearReply={() => setReplyTo(null)}
         prefill={prefill}
         onEditLast={editLast}
+        approvals={pendingApprovals}
+        waiting={waiting}
+        editAsk={editAsk}
+        onSendAgain={sendAgain}
       />
       {exchange && (
         <AgentExchangeDialog

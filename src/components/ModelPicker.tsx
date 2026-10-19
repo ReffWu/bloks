@@ -14,6 +14,12 @@
 // A long list (OpenRouter has hundreds) gets a search box, focused on
 // open, matching every word typed against the name or the id. Enter
 // takes the first match; Escape clears the search, then closes.
+//
+// It lives in two places. The header has had it from the start; the
+// composer's footer has it as a chip, where the choice is made, since
+// what a message runs on is decided while writing it. The chip opens
+// upwards and carries the reasoning effort beside the model, because
+// the two are one decision about how hard this agent thinks.
 import { useEffect, useRef, useState } from "react";
 import { Check } from "@/components/icons";
 import { ChevronDown } from "@/components/icons";
@@ -23,6 +29,7 @@ import { useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/st
 import { ProviderMark } from "./ProviderIcons";
 import { EngineUpdateNote } from "./EngineSetup";
 import { cn } from "@/lib/cn";
+import { Segmented } from "@/components/ui/segmented";
 import { backupOptions, isOwnRun, offersBackup } from "@/lib/backupChoice";
 
 /** Lists this long or shorter are read at a glance, not searched. */
@@ -50,6 +57,13 @@ function effectiveModel(instance: InstanceInfo | undefined, model: string): stri
   return model || (instance?.models.default ?? model);
 }
 
+const EFFORTS: Array<{ value: Bot["effort"]; label: string }> = [
+  { value: undefined, label: "Default" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
+
 /** The characters a model id is made of; the server holds to the same. */
 const MODEL_ID = /^[\w.:@/[\]+-]+$/;
 
@@ -60,6 +74,7 @@ export function ModelPicker({
   onPick,
   noneLabel,
   exclude,
+  variant = "header",
 }: {
   /** Whose model this is. Optional only with `onPick`, which picks
    * for something that is not an agent yet (the new-agent default). */
@@ -73,6 +88,9 @@ export function ModelPicker({
   /** The engine and model not to offer: what the backup stands in for.
    * Other models on that engine are still offered. */
   exclude?: ModelSelection;
+  /** "chip" is the composer's: smaller, opens upwards, and offers the
+   * agent's reasoning effort under the models. */
+  variant?: "header" | "chip";
 }) {
   const { state, dispatch } = useStore();
   const [open, setOpen] = useState(false);
@@ -82,6 +100,9 @@ export function ModelPicker({
   const listRef = useRef<HTMLDivElement>(null);
 
   const custom = onPick !== undefined;
+  const chip = variant === "chip";
+  // effort belongs to an agent, so only a picker for one offers it
+  const effort = chip && bot && !custom ? EFFORTS.find((e) => e.value === bot.effort) : undefined;
   const selection: ModelSelection = (custom ? value : bot?.modelSelection) ?? { instanceId: "", model: "" };
   // an engine whose only model is the excluded one has nothing to offer
   const instances = exclude ? state.instances.filter((i) => offersBackup(i, exclude)) : state.instances;
@@ -155,12 +176,18 @@ export function ModelPicker({
   return (
     <div ref={rootRef} className={cn("relative", className)}>
       <button
+        type="button"
         onClick={() => {
           setRailId(selection.instanceId);
           setQuery("");
           setOpen((o) => !o);
         }}
-        className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-body text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-[0.98]"
+        aria-expanded={open}
+        className={cn(
+          "flex h-7 items-center gap-1.5 rounded-lg px-2 text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground active:scale-[0.98]",
+          chip ? "text-small" : "text-body",
+          chip && open && "bg-accent text-foreground",
+        )}
         title={active ? `${active.displayName} · ${modelLabel(active, effectiveModel(active, selection.model))}` : selection.model}
         aria-label={`Engine: ${active ? `${active.displayName} · ${modelLabel(active, effectiveModel(active, selection.model))}` : selection.model}`}
       >
@@ -177,10 +204,11 @@ export function ModelPicker({
         )}
         {/* on a phone the agent's name, beside it, needs the room more:
             the engine's mark says enough, and the menu says the rest */}
-        <span className="hidden max-w-[140px] truncate sm:inline">
+        <span className={cn("hidden truncate sm:inline", chip ? "max-w-[180px]" : "max-w-[140px]")}>
           {active || !custom ? modelLabel(active, effectiveModel(active, selection.model)) : (noneLabel ?? "None")}
+          {effort?.value && <span className="text-muted-foreground/80"> · {effort.label}</span>}
         </span>
-        <ChevronDown size={13} className="opacity-60" />
+        <ChevronDown size={13} className={cn("opacity-60 transition-transform duration-200 ease-out", chip && !open && "rotate-180")} />
       </button>
 
       {open && (
@@ -188,7 +216,12 @@ export function ModelPicker({
           data-model-picker-content
           // capped to the window, so a long list scrolls instead of running
           // off the bottom where nothing can reach it
-          className="absolute right-0 top-full z-30 mt-1.5 flex max-h-[min(34rem,calc(100dvh-4.5rem))] w-[300px] max-w-[92vw] origin-top-right animate-pop-in flex-col overflow-hidden rounded-xl border bg-popover shadow-lg shadow-(color:--shadow-color)"
+          className={cn(
+            "absolute z-30 flex w-[300px] max-w-[92vw] animate-pop-in flex-col overflow-hidden rounded-xl border bg-popover shadow-lg shadow-(color:--shadow-color)",
+            chip
+              ? "bottom-full left-0 mb-2 max-h-[min(30rem,calc(100dvh-10rem))] origin-bottom-left"
+              : "right-0 top-full mt-1.5 max-h-[min(34rem,calc(100dvh-4.5rem))] origin-top-right",
+          )}
         >
           <div className="flex min-h-0 flex-1">
           {/* instance rail */}
@@ -355,6 +388,19 @@ export function ModelPicker({
             )}
           </div>
           </div>
+          {effort && bot && (
+            <div className="flex shrink-0 items-center gap-2.5 border-t px-2.5 py-2">
+              <span className="text-small text-muted-foreground">Effort</span>
+              <Segmented
+                size="sm"
+                aria-label="Reasoning effort"
+                className="flex-1"
+                value={bot.effort}
+                onChange={(next) => dispatch({ type: "updateBot", botId: bot.id, patch: { effort: next } })}
+                options={EFFORTS.map((e) => ({ value: e.value, label: e.value === "medium" ? "Med" : e.label, title: e.label }))}
+              />
+            </div>
+          )}
           {/* the way to everything this list cannot do: connect an engine,
               sign in, update, add a key */}
           {!custom && (

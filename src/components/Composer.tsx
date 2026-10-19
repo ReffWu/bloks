@@ -1,19 +1,34 @@
+// Where you write to an agent.
+//
+// The frame (composer/Shell.tsx) is the tray, the box and its footer;
+// this fills it for one agent's conversation: the words and what rides
+// with them, the `/` list, dictation, rehearsing, what the agent runs on,
+// and Send, which is Stop while it works. Everything the conversation
+// has to say above the box goes through the one tray, most pressing
+// first, so a busy conversation never stacks strips up the window.
 import { track } from "@/lib/analytics";
-import { useEffect, useLayoutEffect, useRef, useState, type SetStateAction } from "react";
-import { ArrowUp } from "@/components/icons";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type SetStateAction } from "react";
 import { Mic } from "@/components/icons";
 import { Plus } from "@/components/icons";
-import { Square } from "@/components/icons";
 import { Hand } from "@/components/icons";
 import { Archive } from "@/components/icons";
+import { CornerUpLeft } from "@/components/icons";
 import { File as FileIcon } from "@/components/icons";
+import { Undo2 } from "@/components/icons";
 import { X } from "@/components/icons";
 import { FlaskConical } from "@/components/icons";
-import { api, useStore, openLaneWorking, type Bot } from "@/state/store";
-import { ReplyChip, type ReplyDraft } from "./MessageActions";
+import { api, useStore, openLaneWorking, type Bot, type Message } from "@/state/store";
+import { type ReplyDraft } from "./MessageActions";
 import { ComposerRing } from "./ComposerRing";
+import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";
 import { AgentAvatar } from "./Avatar";
+import { ComposerShell, FooterButton, SendStop } from "./composer/Shell";
+import { NoticeTray, RANK, TrayButton, type Notice } from "./composer/Tray";
+import { SlashMenu } from "./composer/SlashMenu";
+import { guestMailNotice, useApprovalsNotice, useEngineNotice, useOtherLanesNotice } from "./chat/Banners";
+import { useGoalNotice } from "./Goal";
+import { useQueuedNotice } from "./WaitingStrip";
 import {
   attachmentBasename,
   composeOutgoing,
@@ -28,7 +43,7 @@ import { Button } from "@/components/ui/button";
 import { modKey } from "@/lib/thisComputer";
 import { composerCeiling, edgeMask } from "@/lib/composerSize";
 import { acceptDraft, boxFor, carryFocus, discardRecovery, isEmptyDraft, keepDraft, readDraft, readRecoveries, recoverDraft, restoreRecovery, showBox, takeFocus, type Draft } from "@/lib/drafts";
-import { insert as insertCommand, matches as matchCommands, segments, slashAt, withBloksCommands, type Command } from "@/lib/slashCommands";
+import { grouped, insert as insertCommand, matches as matchCommands, segments, slashAt, withBloksCommands, type Command } from "@/lib/slashCommands";
 import { escapeTaken } from "@/lib/useEscape";
 
 /** Fade whichever edges have more text beyond them (see edgeMask). */
@@ -134,7 +149,7 @@ function VoiceMeter({ level }: { level: number }) {
 
 function AttachmentChip({ attachment: a, onRemove }: { attachment: Attachment; onRemove?: () => void }) {
   return (
-    <span className="flex max-w-[240px] items-center gap-1.5 rounded-xl border bg-muted/50 py-1 pl-1.5 pr-1 text-small text-foreground">
+    <span className="flex max-w-[240px] animate-pop-in items-center gap-1.5 rounded-xl border bg-muted/50 py-1 pl-1.5 pr-1 text-small text-foreground">
       {a.kind === "image" ? (
         <img src={`/api/attachments/${attachmentBasename(a.path)}`} alt={a.name} className="size-7 shrink-0 rounded-lg object-cover" />
       ) : (
@@ -151,12 +166,37 @@ function AttachmentChip({ attachment: a, onRemove }: { attachment: Attachment; o
   );
 }
 
+/** What the next message answers, inside the box with the files, since it
+ * travels with the words rather than being something to read about. */
+function ReplyTag({ draft, onClear }: { draft: ReplyDraft; onClear: () => void }) {
+  return (
+    <span className="flex min-w-0 max-w-full animate-pop-in items-center gap-1.5 rounded-xl bg-brand-soft py-1 pl-2 pr-1 text-small">
+      <CornerUpLeft size={12} className="shrink-0 text-brand-ink" />
+      <span className="shrink-0 font-medium text-brand-ink">{draft.author}</span>
+      <span className="min-w-0 truncate text-muted-foreground">{draft.excerpt}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors duration-150 hover:bg-background/60 hover:text-foreground"
+        aria-label="Cancel reply"
+      >
+        <X size={12} />
+      </button>
+    </span>
+  );
+}
+
 export function Composer({
   bot,
   replyTo,
   onClearReply,
   prefill,
   onEditLast,
+  approvals,
+  waiting,
+  editAsk,
+  onSendAgain,
+  notices: extra,
 }: {
   bot: Bot;
   /** reply context to send with the next message */
@@ -167,6 +207,16 @@ export function Composer({
   /** ↑ in the empty box: open your last message for editing. False when
    * there is none that can be. */
   onEditLast?: () => boolean;
+  /** Approval cards not yet answered; two or more are a queue, and the
+   * tray offers to answer them together. */
+  approvals?: Message[];
+  /** Messages waiting to join the conversation, in the order sent. */
+  waiting?: Message[];
+  /** ↑ asked to edit this one, which may be waiting. */
+  editAsk?: { id: string; nonce: number } | null;
+  onSendAgain?: (message: Message) => void;
+  /** Anything else for the tray. */
+  notices?: Notice[];
 }) {
   const { state, dispatch } = useStore();
   // One composer per conversation: ChatView keys it by agent and lane, so
@@ -292,7 +342,8 @@ export function Composer({
   const listed = rehearse ? commands : withBloksCommands(commands, lane);
   const commandIds = new Set(listed.filter((c) => !c.prefix).map((c) => c.id));
   const dollarIds = new Set(listed.filter((c) => c.prefix === "$").map((c) => c.id));
-  const offered = slash ? matchCommands(listed, slash.query, 8, slash.start === 0) : [];
+  // in the order the list draws them, by source, so ↑↓ walk what is seen
+  const offered = slash ? grouped(matchCommands(listed, slash.query, 8, slash.start === 0)).flatMap((g) => g.commands) : [];
   // whether the list is on screen: a slash with nothing to offer under it
   // draws nothing
   const slashShown = Boolean(slash && (offered.length > 0 || (listed.length === 0 && slash.query === "")));
@@ -531,60 +582,225 @@ export function Composer({
     if (quiet && recording) setRecording(false);
   }, [quiet, recording]);
 
+  // What the tray says. The conversation's (approvals, the engine, other
+  // conversations, the goal, what waits to send) and the box's own (a
+  // refused file, the microphone, a rehearsal that did not start, words a
+  // failed send handed back). The tray orders them; this only says them.
+  const working = openLaneWorking(bot);
+  const approvalsNotice = useApprovalsNotice(bot, approvals);
+  const engineNotice = useEngineNotice(bot);
+  const lanesNotice = useOtherLanesNotice(bot);
+  const goalNotice = useGoalNotice(bot);
+  const queuedNotice = useQueuedNotice({
+    messages: waiting,
+    threadId: bot.threadId,
+    working,
+    // the same stop Cmd+Enter makes before it sends: the turn ends, and
+    // what waited behind it goes together in the next one, as when a turn
+    // ends on its own
+    onSendNow: () => dispatch({ type: "interrupt", botId: bot.id }),
+    onSendAgain,
+    editAsk,
+  });
+  const own: Array<Notice | null> = [
+    attachNotice
+      ? {
+          id: "attach",
+          tone: "warn",
+          rank: RANK.feedback,
+          icon: <FileIcon size={14} />,
+          title: attachNotice,
+          onDismiss: () => setAttachNotice(null),
+        }
+      : null,
+    speechError
+      ? {
+          id: "speech",
+          tone: "warn",
+          rank: RANK.feedback,
+          icon: <Mic size={14} />,
+          title: speechError,
+          actions: (micDenied || speechPane === "speech") && (
+            <TrayButton onClick={() => void window.bloks?.permOpenSettings(speechPane)}>Open Settings</TrayButton>
+          ),
+          onDismiss: () => setSpeechError(null),
+        }
+      : null,
+    rehearseError
+      ? {
+          id: "rehearse",
+          tone: "warn",
+          rank: RANK.feedback,
+          icon: <FlaskConical size={14} />,
+          title: "The rehearsal didn't start.",
+          detail: rehearseError,
+          onDismiss: () => setRehearseError(null),
+        }
+      : null,
+    ...recoveries.map(
+      (item): Notice => ({
+        id: `unsent:${item.id}`,
+        tone: "warn",
+        rank: RANK.unsent,
+        icon: <Undo2 size={14} />,
+        title: "A message didn't send.",
+        detail:
+          blockedRecovery === item.id ? "Finish or clear the current draft first." : "Check the chat before sending again.",
+        actions: (
+          <>
+            <TrayButton
+              onClick={() => {
+                discardRecovery(draftKey, item.id);
+                setRecoveries(readRecoveries(draftKey));
+                setBlockedRecovery(null);
+              }}
+            >
+              Discard
+            </TrayButton>
+            <TrayButton strong onClick={() => restore(item.id)}>
+              Restore
+            </TrayButton>
+          </>
+        ),
+        body: (item.draft.text || item.draft.attachments.length > 0) && (
+          <div className="rounded-xl bg-muted/60 px-3 py-1.5 text-body">
+            {item.draft.text && (
+              <p className="line-clamp-3 whitespace-pre-wrap break-words text-foreground">{item.draft.text}</p>
+            )}
+            {item.draft.attachments.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {item.draft.attachments.map((a) => (
+                  <AttachmentChip key={a.id} attachment={a} />
+                ))}
+              </div>
+            )}
+          </div>
+        ),
+      }),
+    ),
+  ];
+  const notices = [
+    approvalsNotice,
+    engineNotice,
+    lanesNotice,
+    goalNotice,
+    queuedNotice,
+    guestMailNotice(bot),
+    ...own,
+    ...(extra ?? []),
+  ].filter((n): n is Notice => n !== null);
+
   // Archived reads exactly like the wheel does from here: the transcript
   // is all still there, and the composer says why nothing can be sent and
   // offers the one press that fixes it. The server refuses either way;
-  // this is so nobody types a paragraph into a refusal.
-  if (bot.archivedAt) {
-    return (
-      <div className="px-4 pb-4 pt-1 md:px-6 md:pb-5">
-        <div className="mx-auto flex max-w-[var(--transcript-width,760px)] items-center gap-3 rounded-2xl border bg-muted/40 px-3.5 py-3">
-          <Archive size={15} className="shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 text-body leading-relaxed text-muted-foreground">
-            {bot.archivedBy
-              ? `${state.bots.find((b) => b.id === bot.archivedBy)?.name ?? "The agent that hired it"} archived ${bot.name}${bot.archiveNote ? `: "${bot.archiveNote}"` : ""}. `
-              : `${bot.name} is archived. `}
-            Restore it to give it new work.
-          </span>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="shrink-0"
-            onClick={() => dispatch({ type: "restoreBot", botId: bot.id })}
-          >
-            Restore
-          </Button>
+  // this is so nobody types a paragraph into a refusal. The tray stays:
+  // an approval or a queued message is no less there for it.
+  const standIn = (children: ReactNode, className: string) => (
+    <div className="px-4 pb-4 pt-1 md:px-6 md:pb-5">
+      <div className="mx-auto max-w-[var(--transcript-width,760px)]">
+        <NoticeTray notices={notices} />
+        <div
+          className={cn(
+            "relative z-10 flex items-center gap-3 rounded-[22px] border px-3.5 py-3",
+            notices.length > 0 && "-mt-3",
+            className,
+          )}
+        >
+          {children}
         </div>
       </div>
+    </div>
+  );
+
+  if (bot.archivedAt) {
+    return standIn(
+      <>
+        <Archive size={15} className="shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 text-body leading-relaxed text-muted-foreground">
+          {bot.archivedBy
+            ? `${state.bots.find((b) => b.id === bot.archivedBy)?.name ?? "The agent that hired it"} archived ${bot.name}${bot.archiveNote ? `: "${bot.archiveNote}"` : ""}. `
+            : `${bot.name} is archived. `}
+          Restore it to give it new work.
+        </span>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="shrink-0"
+          onClick={() => dispatch({ type: "restoreBot", botId: bot.id })}
+        >
+          Restore
+        </Button>
+      </>,
+      "bg-muted",
     );
   }
 
   if (bot.held) {
-    return (
-      <div className="px-4 pb-4 pt-1 md:px-6 md:pb-5">
-        <div className="mx-auto flex max-w-[var(--transcript-width,760px)] items-center gap-3 rounded-2xl border border-warning/40 bg-warning/5 px-3.5 py-3">
-          <Hand size={15} className="shrink-0 text-warning" />
-          <span className="min-w-0 flex-1 text-body leading-relaxed text-foreground">
-            You have {bot.name}&rsquo;s computer ({bot.held.why}). It waits until you hand it back.
-          </span>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="shrink-0"
-            onClick={() => {
-              void api(`/api/bots/${bot.id}/wheel`, { method: "DELETE" }).catch(() => {});
-            }}
-          >
-            Hand it back
-          </Button>
-        </div>
-      </div>
+    return standIn(
+      <>
+        <Hand size={15} className="shrink-0 text-warning" />
+        <span className="min-w-0 flex-1 text-body leading-relaxed text-foreground">
+          You have {bot.name}&rsquo;s computer ({bot.held.why}). It waits until you hand it back.
+        </span>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="shrink-0"
+          onClick={() => {
+            void api(`/api/bots/${bot.id}/wheel`, { method: "DELETE" }).catch(() => {});
+          }}
+        >
+          Hand it back
+        </Button>
+      </>,
+      "border-warning/40 bg-background",
     );
   }
 
+  const chips = (replyTo || attachments.length > 0 || rehearse) && (
+    <>
+      {replyTo && <ReplyTag draft={replyTo} onClear={() => onClearReply?.()} />}
+      {attachments.map((a) => (
+        <AttachmentChip key={a.id} attachment={a} onRemove={() => setAttachments((cur) => cur.filter((x) => x.id !== a.id))} />
+      ))}
+      {rehearse && (
+        // what rehearsing means, said where the words go, with who else
+        // could try the same task beside it
+        <div className="flex w-full animate-pop-in flex-wrap items-center gap-1.5 text-small">
+          <span className="text-muted-foreground">
+            {bot.name} works on a copy. You choose what to keep.
+            {others.length > 0 && " Compare with"}
+          </span>
+          {others.slice(0, 8).map((other) => {
+            const on = compareWith.includes(other.id);
+            return (
+              <button
+                key={other.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() =>
+                  setCompareWith((cur) =>
+                    on ? cur.filter((id) => id !== other.id) : cur.length >= 2 ? cur : [...cur, other.id],
+                  )
+                }
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 transition-[background-color,color,border-color,transform] duration-150 active:scale-95",
+                  on ? "border-brand/40 bg-brand-soft text-brand-ink" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <AgentAvatar bot={other} size={18} />
+                {other.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
   return (
-    <div
-      className="px-4 pb-4 pt-1 md:px-6 md:pb-5"
+    <ComposerShell
+      notices={notices}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("Files")) e.preventDefault();
       }}
@@ -593,199 +809,79 @@ export function Composer({
         e.preventDefault();
         intake([...e.dataTransfer.files]);
       }}
-    >
-      {dropping && (
-        // the whole window is the target, so say so where the eye is
-        <div className="pointer-events-none fixed inset-2 z-50 flex animate-pop-in items-center justify-center rounded-2xl border-2 border-dashed border-brand/50 bg-background/70">
-          <span className="rounded-xl bg-popover px-3.5 py-2 text-body text-foreground shadow-lg shadow-(color:--shadow-color)">
-            Drop to attach to {bot.name}
-          </span>
-        </div>
-      )}
-      {replyTo && (
-        <div className="mx-auto mb-2 max-w-[var(--transcript-width,760px)]">
-          <ReplyChip draft={replyTo} onClear={() => onClearReply?.()} />
-        </div>
-      )}
-      {recoveries.length > 0 && (
-        <section aria-label="Unsent messages" className="mx-auto mb-2 max-h-64 max-w-[var(--transcript-width,760px)] space-y-2 overflow-y-auto">
-          {recoveries.map((item) => (
-            <div key={item.id} role="group" aria-label="Unsent message" className="rounded-xl border bg-card px-3 py-2 text-small">
-              <p className="font-medium">Unsent message</p>
-              <p className="text-muted-foreground">Check the chat before sending again.</p>
-              {item.draft.text && <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap break-words">{item.draft.text}</p>}
-              {item.draft.attachments.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {item.draft.attachments.map((a) => <AttachmentChip key={a.id} attachment={a} />)}
-                </div>
-              )}
-              <div className="mt-1 flex gap-2">
-                <button type="button" onClick={() => restore(item.id)} className="rounded-lg px-2 py-1 hover:bg-accent">Restore draft</button>
-                <button type="button" onClick={() => {
-                  discardRecovery(draftKey, item.id);
-                  setRecoveries(readRecoveries(draftKey));
-                  setBlockedRecovery(null);
-                }} className="rounded-lg px-2 py-1 text-muted-foreground hover:bg-accent">Discard</button>
-              </div>
-              {blockedRecovery === item.id && <p className="mt-1 text-muted-foreground">Finish or clear the current draft first.</p>}
-            </div>
-          ))}
-        </section>
-      )}
-      {attachNotice && (
-        <div className="mx-auto mb-2 flex max-w-[var(--transcript-width,760px)] animate-rise-in items-center gap-2 rounded-xl bg-warning/10 px-3 py-2 text-small text-warning">
-          <span className="min-w-0 flex-1">{attachNotice}</span>
-          <button
-            onClick={() => setAttachNotice(null)}
-            className="shrink-0 rounded-lg px-1.5 py-1 opacity-60 transition-opacity hover:opacity-100"
-            aria-label="Dismiss"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-      {attachments.length > 0 && (
-        <div className="mx-auto mb-2 flex max-w-[var(--transcript-width,760px)] flex-wrap gap-1.5">
-          {attachments.map((a) => (
-            <AttachmentChip key={a.id} attachment={a} onRemove={() => setAttachments((cur) => cur.filter((x) => x.id !== a.id))} />
-          ))}
-        </div>
-      )}
-      {rehearse && (
-        <div className="mx-auto mb-2 max-w-[var(--transcript-width,760px)] animate-rise-in rounded-xl border bg-card px-3 py-2">
-          <div className="flex items-center gap-2 text-body text-foreground">
-            <FlaskConical size={14} className="shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1">
-              <span className="font-medium">Rehearse.</span>{" "}
-              <span className="text-muted-foreground">
-                {bot.name} works on a copy. You choose what to keep.
-              </span>
+      overlay={
+        dropping && (
+          // the whole window is the target, so say so where the eye is
+          <div className="pointer-events-none fixed inset-2 z-50 flex animate-pop-in items-center justify-center rounded-2xl border-2 border-dashed border-brand/50 bg-background/70">
+            <span className="rounded-xl bg-popover px-3.5 py-2 text-body text-foreground shadow-lg shadow-(color:--shadow-color)">
+              Drop to attach to {bot.name}
             </span>
-            <button
-              onClick={() => {
-                setRehearse(false);
-                setCompareWith([]);
-              }}
-              className="shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="Stop rehearsing"
-            >
-              <X size={13} />
-            </button>
           </div>
-          {others.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-small text-muted-foreground">Compare with</span>
-              {others.slice(0, 8).map((other) => {
-                const on = compareWith.includes(other.id);
-                return (
-                  <button
-                    key={other.id}
-                    aria-pressed={on}
-                    onClick={() =>
-                      setCompareWith((cur) =>
-                        on ? cur.filter((id) => id !== other.id) : cur.length >= 2 ? cur : [...cur, other.id],
-                      )
-                    }
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-small transition-colors",
-                      on ? "border-foreground/40 bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <AgentAvatar bot={other} size={18} />
-                    {other.name}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {rehearseError && <div className="mt-1.5 text-small text-destructive">{rehearseError}</div>}
-        </div>
-      )}
-      {speechError && (
-        <div className="mx-auto mb-2 flex max-w-[var(--transcript-width,760px)] animate-rise-in items-center gap-2 rounded-xl bg-warning/10 px-3 py-2 text-small text-warning">
-          <span className="min-w-0 flex-1">{speechError}</span>
-          {(micDenied || speechPane === "speech") && (
-            <button
-              onClick={() => void window.bloks?.permOpenSettings(speechPane)}
-              className="shrink-0 rounded-lg bg-warning/15 px-2 py-1 font-medium underline-offset-2 transition-colors hover:bg-warning/25"
-            >
-              Open Settings
-            </button>
-          )}
-          <button
-            onClick={() => setSpeechError(null)}
-            className="shrink-0 rounded-lg px-1.5 py-1 opacity-60 transition-opacity hover:opacity-100"
-            aria-label="Dismiss"
+        )
+      }
+      popover={
+        slash &&
+        slashShown && (
+          <SlashMenu
+            label={`${bot.name}'s commands`}
+            offered={offered}
+            pick={pick}
+            onHover={setPick}
+            onChoose={choose}
+            empty="No skills yet. Add some from Skills or agent settings."
+          />
+        )
+      }
+      chips={chips || undefined}
+      footerStart={
+        <>
+          <input
+            ref={pickerRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              intake([...(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
+          <FooterButton title="Attach a file or image" onClick={() => pickerRef.current?.click()}>
+            <Plus size={18} />
+          </FooterButton>
+          <ModelPicker bot={bot} variant="chip" className="min-w-0" />
+          <FooterButton
+            title={rehearse ? "Stop rehearsing" : "Rehearse on a copy"}
+            pressed={rehearse}
+            label="Rehearse"
+            onClick={() => {
+              if (rehearse) setCompareWith([]);
+              setRehearse((on) => !on);
+            }}
           >
-            ✕
-          </button>
-        </div>
-      )}
-      {slash && slashShown && (
-        <div className="mx-auto mb-1.5 max-w-[var(--transcript-width,760px)]">
-          <div
-            role="listbox"
-            aria-label={`${bot.name}'s commands`}
-            className="overflow-hidden rounded-xl border bg-popover p-1 shadow-lg shadow-(color:--shadow-color)"
+            <FlaskConical size={15} />
+          </FooterButton>
+        </>
+      }
+      footerEnd={
+        <>
+          <ComposerRing bot={bot} />
+          <FooterButton
+            title={recording ? "Stop dictation (Esc)" : "Dictate"}
+            onClick={() => void toggleMic()}
+            className={cn(recording && "animate-pulse bg-destructive/15 text-destructive hover:bg-destructive/20 hover:text-destructive motion-reduce:animate-none")}
           >
-            {offered.length === 0 ? (
-              <div className="px-2 py-1.5 text-body text-muted-foreground">
-                No skills yet. Add some from Skills or agent settings.
-              </div>
-            ) : (
-              offered.map((c, i) => (
-                <button
-                  key={`${c.source}:${c.id}`}
-                  role="option"
-                  aria-selected={i === pick}
-                  onMouseEnter={() => setPick(i)}
-                  // mousedown, not click, so the textarea keeps its caret
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    choose(c);
-                  }}
-                  className={cn(
-                    "flex w-full items-baseline gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors",
-                    i === pick ? "bg-accent" : "hover:bg-accent/60",
-                  )}
-                >
-                  <span className="shrink-0 font-mono text-body font-medium text-brand-ink">{c.prefix ?? "/"}{c.id}</span>
-                  <span className="min-w-0 flex-1 truncate text-body text-muted-foreground">
-                    {c.description || c.name}
-                  </span>
-                  <span className="shrink-0 text-caption text-muted-foreground/70">
-                    {c.source === "bloks" ? "Bloks" : c.source === "library" ? "Agent skill" : c.kind === "command" ? "Engine command" : "Engine skill"}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-      <div
-        className={cn(
-          "mx-auto flex max-w-[var(--transcript-width,760px)] items-end gap-1 rounded-[22px] border bg-background p-1.5 pl-2 shadow-[0_1px_3px_var(--shadow-color)] transition-[border-color,box-shadow] duration-150",
-          "focus-within:border-ring/50",
-        )}
-      >
-        <input
-          ref={pickerRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            intake([...(e.target.files ?? [])]);
-            e.target.value = "";
-          }}
-        />
-        <button
-          className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
-          title="Attach a file or image"
-          onClick={() => pickerRef.current?.click()}
-        >
-          <Plus size={18} />
-        </button>
-        <div className="relative min-w-0 flex-1 self-center">
+            {recording ? <VoiceMeter level={level} /> : <Mic size={17} />}
+          </FooterButton>
+          <SendStop
+            mode={canSend ? "send" : working ? "stop" : "idle"}
+            sendLabel={working ? `Send, ${modKey()}Enter stops ${bot.name} first` : "Send"}
+            onSend={() => send()}
+            onStop={() => dispatch({ type: "interrupt", botId: bot.id })}
+          />
+        </>
+      }
+    >
+      <div className="relative min-w-0">
         {/* The skills a message carries, marked behind the text (#51). The
             layer has the textarea's exact type and padding and transparent
             text, so each mark sits under its own word; shadeEdges keeps
@@ -793,7 +889,7 @@ export function Composer({
         <div
           data-skill-layer="1"
           aria-hidden
-          className="pointer-events-none absolute inset-0 overflow-hidden px-1 py-1 text-lead leading-relaxed text-transparent [overflow-wrap:break-word] [white-space:pre-wrap]"
+          className="pointer-events-none absolute inset-0 overflow-hidden px-1 py-1 text-lead text-transparent [overflow-wrap:break-word] [white-space:pre-wrap]"
         >
           <div>
             {segments(text, commandIds, dollarIds).map((run, i) =>
@@ -805,13 +901,14 @@ export function Composer({
                 <span key={i}>{run.text}</span>
               ),
             )}
-            {"\u200b"}
+            {"​"}
           </div>
         </div>
         <textarea
           ref={inputRef}
           rows={1}
           value={text}
+          aria-label={`Message ${bot.name}`}
           onChange={(e) => {
             setText(e.target.value);
             readSlash(e.target);
@@ -905,64 +1002,22 @@ export function Composer({
                 ? compareWith.length
                   ? "Describe the task to compare…"
                   : "Describe the task to rehearse…"
-                : openLaneWorking(bot)
-                ? `${bot.name} is working. Enter adds to it, ${modKey()}Enter stops it first.`
-                : // stopped on a card: words typed here are read after it is answered
-                  lane?.state === "needs-you"
-                  ? `${bot.name} is waiting for your answer above.`
-                  : `Message ${bot.name}`
+                : // the transcript and the header already say it is
+                  // working; this says what typing does about it, and the
+                  // Send button's own hint has the stop-first shortcut
+                  working
+                  ? `Add to what ${bot.name} is doing`
+                  : // stopped on a card: words typed here are read after it is answered
+                    lane?.state === "needs-you"
+                    ? `${bot.name} is waiting for your answer above.`
+                    : `Message ${bot.name}`
           }
-          className="relative block w-full min-w-0 resize-none bg-transparent px-1 py-1 text-lead leading-relaxed text-foreground outline-none placeholder:truncate placeholder:text-muted-foreground placeholder-shown:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]"
+          // the scale's own leading for lead text, a whole 24px: a
+          // fractional line left the box a fraction short of its words,
+          // and a scrollbar stood beside the very first line
+          className="relative block w-full min-w-0 resize-none bg-transparent px-1 py-1 text-lead text-foreground outline-none placeholder:truncate placeholder:text-muted-foreground placeholder-shown:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]"
         />
-        </div>
-        <button
-          onClick={() => setRehearse((on) => !on)}
-          aria-pressed={rehearse}
-          className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-150 active:scale-95",
-            rehearse ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
-          )}
-          title="Rehearse on a copy"
-        >
-          <FlaskConical size={16} />
-        </button>
-        <ComposerRing bot={bot} />
-        <button
-          onClick={() => void toggleMic()}
-          className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-150 active:scale-95",
-            recording
-              ? "animate-pulse bg-destructive/15 text-destructive"
-              : "text-muted-foreground hover:bg-accent hover:text-foreground",
-          )}
-          title={recording ? "Stop dictation (Esc)" : "Dictate"}
-        >
-          {recording ? <VoiceMeter level={level} /> : <Mic size={17} />}
-        </button>
-        {openLaneWorking(bot) && !canSend ? (
-          <button
-            onClick={() => dispatch({ type: "interrupt", botId: bot.id })}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
-            title="Stop (Esc)"
-          >
-            <Square size={13} className="fill-current" />
-          </button>
-        ) : (
-          <button
-            onClick={() => send()}
-            disabled={!canSend}
-            className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,transform,opacity] duration-150 ease-out active:scale-95",
-              canSend
-                ? "bg-primary text-primary-foreground hover:opacity-90"
-                : "cursor-not-allowed bg-muted text-muted-foreground/60",
-            )}
-            title="Send"
-          >
-            <ArrowUp size={17} strokeWidth={2.4} />
-          </button>
-        )}
       </div>
-    </div>
+    </ComposerShell>
   );
 }
