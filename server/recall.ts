@@ -35,6 +35,8 @@ export interface RecallMessage {
   agent?: { dir: string; peerId: string; peerName: string };
   /** set when someone let in on Telegram said it (store.ts) */
   telegramPerson?: { name: string };
+  /** set when it was said in a session brought over from before Bloks */
+  imported?: "claude" | "codex";
   deleted?: boolean;
   /** still waiting for a turn, or never sent: not said yet */
   queued?: boolean;

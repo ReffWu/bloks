@@ -966,7 +966,24 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             approvalPolicy: full ? "never" : "on-request",
           };
 
-          if (cursor) {
+          // A thread from before Bloks is carried on in a fork of it, so
+          // the person's own rollout file is never written. A Codex that
+          // cannot fork it gets a new thread told the story instead, the
+          // way a thread it has forgotten does: never the thread itself.
+          let target = cursor;
+          if (cursor && turn.forkFrom === cursor && !turn.compactOnly) {
+            let forked: any = null;
+            try {
+              forked = await within(rpc.request("thread/fork", { threadId: cursor }), "copying the conversation", "Codex");
+            } catch {
+              forked = null;
+            }
+            const id = typeof forked?.thread?.id === "string" ? forked.thread.id : null;
+            target = id && id !== cursor ? id : null;
+            if (!target) abandoned.add(cursor);
+          }
+
+          if (target) {
             // The picked model is stated on resume too. Without it a thread
             // keeps the model and the provider it started with, so a model
             // picked later never reached Codex. With it, Codex serves the
@@ -976,7 +993,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             // history of a long thread is tens of megabytes on one line,
             // which took long enough to read that the resume timed out
             // and the agent lost its session (GitHub 230).
-            const resumeParams: Record<string, unknown> = { threadId: cursor, ...guard, excludeTurns: true };
+            const resumeParams: Record<string, unknown> = { threadId: target, ...guard, excludeTurns: true };
             if (turn.model) resumeParams.model = turn.model;
             // Standard says nothing about the tier, as before there was a
             // choice; only Fast is asked for, and checked.
@@ -999,7 +1016,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
               }
               if (fast) requireFastTier(resumed);
               if (typeof resumed?.serviceTier === "string") configuredTier = resumed.serviceTier;
-              codexThread = resumed?.thread?.id ?? cursor;
+              codexThread = resumed?.thread?.id ?? target;
               if (turn.compactOnly && (typeof resumed?.thread?.id !== "string" || codexThread !== cursor)) throw new Error("That Codex conversation is no longer available to compact.");
               reportedModel = resumed?.model ?? null;
               carriedOn = true;
@@ -1008,7 +1025,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
               if (error instanceof CodexSpeedUnavailable) throw error;
               // forgotten or unsupported; a fresh thread below. Anything
               // still to come about the old one is not about this turn.
-              abandoned.add(cursor);
+              abandoned.add(target);
               if (turn.compactOnly) throw error;
             }
           }

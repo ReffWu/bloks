@@ -6,7 +6,8 @@
 //   2. your agents: the work you do, and who that suggests
 //   3. approvals: how much they ask, shown rather than described
 //   then, only when there is something to say: your setup from other
-//   tools, and the Mac's own permissions
+//   tools, your past conversations with them, and the Mac's own
+//   permissions
 //
 // It ends on the team just made, and lands in the app with the first of
 // them. Bloks never asks who you are. Everything is skippable: setup must
@@ -36,6 +37,7 @@ import { ThisComputer, thisComputer } from "@/lib/thisComputer";
 import { ApprovalsChooser, confirmWidening, type ApprovalMode } from "./ApprovalsChooser";
 import { EngineSetupActions } from "./EngineSetup";
 import { SetupPrivacyLine, SetupReviewList, useSetupReview } from "./BringYourSetup";
+import { PastSessionsImport, PastSessionsPrivacyLine, usePastSessionPlaces } from "./PastSessions";
 import { BeatHeading, BeatLabel, PreviewCard, Stepper, beat, settleEase } from "./Beats";
 
 type InstanceRow = {
@@ -52,12 +54,12 @@ type InstanceRow = {
 
 type Readiness = "checking" | "ready" | "signed-out" | "missing";
 
-type StepId = "engines" | "agents" | "approvals" | "setup" | "permissions";
+type StepId = "engines" | "agents" | "approvals" | "setup" | "history" | "permissions";
 
 /** The numbers these steps have always reported as, so a funnel read
  * across this redesign still lines up. Work types and suggestions were
  * two steps and are one now; they report as the first of them. */
-const STEP_NUMBER: Record<StepId, number> = { engines: 0, agents: 1, approvals: 2, permissions: 4, setup: 5 };
+const STEP_NUMBER: Record<StepId, number> = { engines: 0, agents: 1, approvals: 2, permissions: 4, setup: 5, history: 6 };
 
 const isElectron = navigator.userAgent.includes("Electron");
 
@@ -156,6 +158,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     if (fresh > 0) setOfferSetup(true);
   }, [fresh]);
+  /** Whether Claude Code or Codex keep sessions on this Mac. Only that is
+   * asked here: the sessions themselves are read when the step opens. */
+  const places = usePastSessionPlaces();
+  const offerHistory = Boolean(places?.claude || places?.codex);
+  const [broughtHistory, setBroughtHistory] = useState(false);
 
   const steps = useMemo(() => {
     const list: Array<{ id: StepId; label: string }> = [
@@ -166,10 +173,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     // Last of the agent steps, so the agents just added can be chosen as
     // where an imported memory goes.
     if (offerSetup) list.push({ id: "setup", label: "Your setup" });
+    // after it, so the agents made by now can be where conversations go
+    if (offerHistory) list.push({ id: "history", label: "Your history" });
     // only the desktop app can ask the Mac for these
     if (isElectron) list.push({ id: "permissions", label: "Permissions" });
     return list;
-  }, [offerSetup]);
+  }, [offerSetup, offerHistory]);
   const at = stage === "team" ? steps.length : steps.findIndex((s) => s.id === stage);
   const next = () => setStage(steps[at + 1]?.id ?? "team");
   const back = () => {
@@ -279,9 +288,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
-    // Reaching the setup step would say another tool was found here, and
-    // that screen promises nothing about the person's setup leaves.
-    if (stage !== "team" && stage !== "setup") track("setup_step", { step: STEP_NUMBER[stage] });
+    // Reaching the setup or history step would say another tool was found
+    // here, and those screens promise nothing about the person leaves.
+    if (stage !== "team" && stage !== "setup" && stage !== "history") track("setup_step", { step: STEP_NUMBER[stage] });
     if (stage === "engines") {
       void checkEngines();
       // the user may install a CLI in another window and come back
@@ -495,6 +504,24 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 </div>
               </Column>
             </motion.div>
+          ) : stage === "history" ? (
+            <motion.div key="history" {...beat}>
+              <Column>
+                <BeatHeading
+                  title="Bring your past conversations"
+                  says={`Your ${[places?.claude && "Claude Code", places?.codex && "Codex"].filter(Boolean).join(" and ")} conversations, by project. Pick any to carry on here, now or later in Settings.`}
+                />
+                <PastSessionsPrivacyLine />
+                <div className="mt-6">
+                  <PastSessionsImport
+                    compact
+                    onImported={(count) => {
+                      if (count) setBroughtHistory(true);
+                    }}
+                  />
+                </div>
+              </Column>
+            </motion.div>
           ) : stage === "permissions" ? (
             <motion.div key="permissions" {...beat}>
               <PermissionsBeat perms={perms} setPerms={setPerms} />
@@ -586,6 +613,23 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   Everything here is in Settings too.
                 </span>
                 {brought ? (
+                  <Button size="lg" onClick={next}>
+                    Continue
+                    <ArrowRight size={15} />
+                  </Button>
+                ) : (
+                  <Button variant="ghost" size="lg" onClick={next}>
+                    Skip this
+                  </Button>
+                )}
+              </>
+            )}
+            {stage === "history" && (
+              <>
+                <span className="mr-auto min-w-0 truncate text-body text-muted-foreground max-sm:invisible">
+                  This is in Settings too, under Past conversations.
+                </span>
+                {broughtHistory ? (
                   <Button size="lg" onClick={next}>
                     Continue
                     <ArrowRight size={15} />

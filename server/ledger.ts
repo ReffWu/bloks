@@ -53,7 +53,8 @@ export type LedgerKind =
   | "control.taken"
   | "control.released"
   | "conversation.rewound"
-  | "setup.imported";
+  | "setup.imported"
+  | "sessions.imported";
 
 export interface LedgerEntry {
   /** Counts from zero, one per entry, no gaps. */

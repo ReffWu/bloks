@@ -262,12 +262,17 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
     // turns can start, and refresh with the normal health check after a CLI
     // update. An older or unrecognised CLI keeps its existing arguments.
     let snapshotOffSupported = false;
+    // --fork-session came well before 2.0. Unknown means no: a session
+    // brought over from before Bloks is then told as a story rather than
+    // resumed in place, which would write to the person's own file.
+    let forkSupported = false;
     const readVersion = () => new Promise<string | null>((resolve) => {
       execFile(config.cli, ["--version"], { timeout: 8_000, windowsHide: true }, (error, stdout) => {
         const version = error ? null : stdout.trim();
         const parts = version?.match(/^(\d+)\.(\d+)\.(\d+)(?:\s|$)/);
         const [major, minor, patch] = parts?.slice(1).map(Number) ?? [];
         snapshotOffSupported = major > 2 || (major === 2 && (minor > 1 || (minor === 1 && patch >= 257)));
+        forkSupported = major >= 2;
         resolve(version);
       });
     });
@@ -313,7 +318,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       if (running.has(threadId)) throw new Error("a turn is already running on this thread");
 
       const turnId = newId();
-      const resume = !turn.person && typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
+      // A session brought over from before Bloks is carried on in a copy,
+      // or, where this CLI cannot copy one, not resumed at all.
+      const cursor = !turn.person && typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
+      const forking = cursor !== null && turn.forkFrom === cursor;
+      const resume = forking && !forkSupported ? null : cursor;
+      const words = forking && !resume ? (turn.handoff ?? turn.text) : turn.text;
 
       // Tool calls the engine has started and not yet reported back on,
       // whether somebody is being asked something, and when the engine
@@ -356,6 +366,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       // one ourselves so the id exists before its first event arrives.
       if (resume) {
         argv.push("--resume", resume);
+        if (forking) argv.push("--fork-session");
         // Continue the same history, but use this turn's current persona
         // rather than the system prompt the session started with.
         if (snapshotOffSupported) argv.push("--system-prompt-snapshot", "off");
@@ -1090,7 +1101,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
             abort(); finish(false, "person_guard");
           }
         })();
-      } else say(turn.text);
+      } else say(words);
 
       return { turnId };
     };

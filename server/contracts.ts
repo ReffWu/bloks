@@ -294,6 +294,16 @@ export interface SendTurnInput {
    */
   handoff?: string;
   /**
+   * A session that belongs to another program: one the person had in
+   * this engine before Bloks and brought over (server/session-import.ts).
+   * When `resumeCursor` is still this id, the driver continues it in a
+   * copy (Claude Code's --fork-session, Codex's thread/fork) and never in
+   * place, so the person's own session file is not written. A driver that
+   * cannot copy it does not resume it at all, and sends `handoff`, the
+   * conversation told, in a new session instead.
+   */
+  forkFrom?: string;
+  /**
    * The resumed session has grown past the lane's line (compactBeforeTurn
    * in server/context.ts). A driver that says it can (`compactsFirst`)
    * compacts it by the engine's own means before the words go, and
