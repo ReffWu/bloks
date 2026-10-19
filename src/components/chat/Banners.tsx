@@ -8,10 +8,13 @@ import { AlertTriangle } from "@/components/icons";
 import { Info } from "@/components/icons";
 import { MessagesSquare } from "@/components/icons";
 import { ShieldAlert } from "@/components/icons";
+import { ShieldCheck } from "@/components/icons";
 import { api, useStore, type Bot, type Message } from "@/state/store";
 import { readApproval } from "@/lib/approvalCard";
+import { suggestionsFor, useRuleSuggestions, whatParts, type RuleSuggestion } from "@/lib/ruleSuggestions";
 import { EngineSetupActions } from "@/components/EngineSetup";
 import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
+import { toast } from "@/components/ui/toast";
 
 /**
  * The lane mail from senders the person has not listed is answered in.
@@ -74,6 +77,79 @@ export function useApprovalsNotice(bot: Bot, pending: Message[] | undefined): No
             ) : (
               "Allow all"
             )}
+          </TrayButton>
+        )}
+      </>
+    ),
+  };
+}
+
+/** What a suggestion lets through, with its command or path in type. */
+export function SuggestionWhat({ what }: { what: string }) {
+  return (
+    <>
+      {whatParts(what).map((part, i) =>
+        part.code ? (
+          <code key={i} className="rounded bg-muted px-1 font-mono text-small text-foreground">
+            {part.text}
+          </code>
+        ) : (
+          <span key={i}>{part.text}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+/** Saying yes to a suggestion, with what happened said once. */
+export function takeSuggestion(
+  accept: (id: string, scope: "agent" | "everyone") => Promise<unknown>,
+  suggestion: RuleSuggestion,
+  scope: "agent" | "everyone",
+) {
+  accept(suggestion.id, scope).then(
+    () =>
+      toast.success(
+        scope === "agent" && suggestion.forAgent ? `${suggestion.forAgent.name} won't ask about this again` : "No agent will ask about this again",
+        { description: "Saved as a rule. Remove it in Settings, Rules and approvals." },
+      ),
+    (e: Error) => toast.error(`The rule wasn't saved: ${e.message}`),
+  );
+}
+
+/**
+ * The person keeps approving the same thing for this agent, and a rule
+ * could answer it (server/rule-suggestions.ts). One at a time, after
+ * anything that is actually waiting, and quiet in tone: it is an offer,
+ * not a question the agent is stuck on. Not now keeps it away for a
+ * month; the server decides what may be offered, including whether
+ * "everyone" is, so this never offers more than was approved.
+ */
+export function useSuggestionNotice(bot: Bot): Notice | null {
+  const { suggestions, accept, dismiss } = useRuleSuggestions();
+  const mine = suggestionsFor(suggestions, bot.id);
+  const first = mine[0];
+  if (!first) return null;
+  const forThis = first.forAgent?.botId === bot.id;
+  return {
+    id: `suggestion:${first.id}`,
+    tone: "info",
+    rank: RANK.suggestion,
+    icon: <ShieldCheck size={14} />,
+    title: first.title,
+    detail: <SuggestionWhat what={first.what} />,
+    hint: `${first.title} ${first.what.replace(/`/g, "")}`,
+    actions: (
+      <>
+        <TrayButton onClick={() => void dismiss(first.id)}>Not now</TrayButton>
+        {first.forEveryone && (
+          <TrayButton strong={!forThis} onClick={() => takeSuggestion(accept, first, "everyone")}>
+            Allow for everyone
+          </TrayButton>
+        )}
+        {forThis && (
+          <TrayButton strong onClick={() => takeSuggestion(accept, first, "agent")}>
+            Allow <span className="max-sm:hidden">for this agent</span>
           </TrayButton>
         )}
       </>

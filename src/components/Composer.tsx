@@ -31,9 +31,10 @@ import { ApprovalModeMenu } from "./composer/ApprovalMode";
 import { CodexSpeedMenu } from "./CodexSpeed";
 import { NoticeTray, RANK, TrayButton, type Notice } from "./composer/Tray";
 import { SlashMenu } from "./composer/SlashMenu";
-import { guestMailNotice, useApprovalsNotice, useEngineNotice, useOtherLanesNotice } from "./chat/Banners";
+import { guestMailNotice, useApprovalsNotice, useEngineNotice, useOtherLanesNotice, useSuggestionNotice } from "./chat/Banners";
 import { useGoalNotice } from "./Goal";
 import { useQueuedNotice } from "./WaitingStrip";
+import { useDeliveryPreview, type DeliveryPreview } from "@/lib/delivery";
 import {
   attachmentBasename,
   composeOutgoing,
@@ -212,6 +213,31 @@ function ReplyTag({ draft, onClear }: { draft: ReplyDraft; onClear: () => void }
   );
 }
 
+/**
+ * How the words in the box will meet the turn running now, said before
+ * they go, with the one press that sends them the other way: in now
+ * rather than after, or after rather than now. Quiet, because most of
+ * the time it is right and nobody needs to look at it.
+ */
+function DeliveryLine({ preview, onFlip }: { preview: DeliveryPreview; onFlip: () => void }) {
+  const waits = preview.route === "queue";
+  return (
+    <div className="flex w-full animate-pop-in flex-wrap items-center gap-x-2 gap-y-0.5 text-small" role="status">
+      <span className="text-muted-foreground">{preview.line}.</span>
+      <button
+        type="button"
+        onClick={onFlip}
+        // the box keeps the keyboard: this is a choice about the words in
+        // it, and the next key is still meant for them
+        onMouseDown={(e) => e.preventDefault()}
+        className="rounded-md font-medium text-foreground underline-offset-2 transition-colors duration-150 hover:underline"
+      >
+        {waits ? "Send now" : "Wait instead"}
+      </button>
+    </div>
+  );
+}
+
 export function Composer({
   bot,
   replyTo,
@@ -274,6 +300,13 @@ export function Composer({
   // Rehearse: the next message runs on a copy of the folder, optionally
   // by other agents too, and comes back as changes to apply or discard
   const [rehearse, setRehearse] = useState(false);
+  // The person's one tap on how the words in the box will meet the turn
+  // running now (server/delivery.ts). For this message only: it goes when
+  // the message does, or when the box is emptied.
+  const [deliveryChoice, setDeliveryChoice] = useState<"now" | "wait" | null>(null);
+  useEffect(() => {
+    if (!text.trim()) setDeliveryChoice(null);
+  }, [text]);
   const [compareWith, setCompareWith] = useState<string[]>([]);
   const [rehearsing, setRehearsing] = useState(false);
   const [rehearseError, setRehearseError] = useState<string | null>(null);
@@ -472,8 +505,10 @@ export function Composer({
       text: composeOutgoing(text, attachments),
       replyTo: replyTo ?? undefined,
       stopFirst,
+      ...(deliveryChoice ? { delivery: deliveryChoice } : {}),
       onFailed: () => giveBack(sent),
     });
+    setDeliveryChoice(null);
     track("message_sent", { driver: bot.modelSelection?.instanceId });
     // Empty now, before a quick refusal can hand the input back.
     setDraft({ text: "", attachments: [] });
@@ -615,18 +650,24 @@ export function Composer({
   // refused file, the microphone, a rehearsal that did not start, words a
   // failed send handed back). The tray orders them; this only says them.
   const working = openLaneWorking(bot);
+  const delivery = useDeliveryPreview(bot.id, laneId, rehearse ? "" : text, working, deliveryChoice);
   const approvalsNotice = useApprovalsNotice(bot, approvals);
   const engineNotice = useEngineNotice(bot);
   const lanesNotice = useOtherLanesNotice(bot);
   const goalNotice = useGoalNotice(bot);
+  const suggestionNotice = useSuggestionNotice(bot);
   const queuedNotice = useQueuedNotice({
     messages: waiting,
     threadId: bot.threadId,
     working,
-    // the same stop Cmd+Enter makes before it sends: the turn ends, and
-    // what waited behind it goes together in the next one, as when a turn
-    // ends on its own
-    onSendNow: () => dispatch({ type: "interrupt", botId: bot.id }),
+    // Into the running turn when its engine can take words mid-turn,
+    // each as it was said; otherwise the same stop Cmd+Enter makes, and
+    // what waited goes together in the next turn (server/delivery.ts).
+    onSendNow: () => {
+      api(`/api/bots/${bot.id}/queued/now`, { method: "POST", body: JSON.stringify({ taskId: laneId }) }).catch((e: Error) =>
+        dispatch({ type: "error", message: e.message }),
+      );
+    },
     onSendAgain,
     editAsk,
   });
@@ -724,6 +765,7 @@ export function Composer({
     lanesNotice,
     goalNotice,
     queuedNotice,
+    suggestionNotice,
     guestMailNotice(bot),
     ...own,
     ...(extra ?? []),
@@ -802,8 +844,14 @@ export function Composer({
     inputRef.current?.focus();
   };
 
-  const chips = (replyTo || attachments.length > 0 || rehearse) && (
+  const chips = (replyTo || attachments.length > 0 || rehearse || delivery) && (
     <>
+      {delivery && (
+        <DeliveryLine
+          preview={delivery}
+          onFlip={() => setDeliveryChoice(delivery.route === "queue" ? "now" : "wait")}
+        />
+      )}
       {replyTo && <ReplyTag draft={replyTo} onClear={() => onClearReply?.()} />}
       {attachments.map((a) => (
         <AttachmentChip key={a.id} attachment={a} onRemove={() => setAttachments((cur) => cur.filter((x) => x.id !== a.id))} />

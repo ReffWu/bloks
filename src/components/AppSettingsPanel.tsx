@@ -44,6 +44,7 @@ import { BoxSleep } from "./BoxSleep";
 import { AgentDefaults } from "./AgentDefaults";
 import { SettingRow, SettingsGroup, SettingsPageHeader } from "./SettingsLayout";
 import { Segmented } from "@/components/ui/segmented";
+import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
 import { Slider, numberStops } from "@/components/ui/slider";
 import { useConversationsView } from "@/lib/conversationsView";
 import { useTranscriptWidth } from "@/lib/useTranscriptWidth";
@@ -372,6 +373,58 @@ function IncidentDesk() {
       )}
       {error && <p role="alert" className="mt-2 text-small text-destructive">{error}</p>}
     </>
+  );
+}
+
+/**
+ * What happens to what you send while an agent is in the middle of
+ * something, for every agent that has not chosen for itself
+ * (server/delivery.ts). Automatic unless changed.
+ */
+function MidTurnMessages() {
+  const { state, dispatch } = useStore();
+  const mode = state.config?.delivery?.mode ?? "auto";
+  const askModel = state.config?.delivery?.askModel === true;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const save = (next: { mode?: DeliveryMode; askModel?: boolean }) => {
+    setSaving(true);
+    setError("");
+    api("/api/config", { method: "PUT", body: JSON.stringify({ delivery: next }) })
+      .then((status) => dispatch({ type: "configStatus", config: status }))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
+      .finally(() => setSaving(false));
+  };
+  return (
+    <SettingRow
+      label="Messages while an agent works"
+      info="A stop stops the agent. A correction or an answer goes into what it is doing, or restarts it if its engine can't take words midway. Each agent can choose for itself in its own settings."
+      description={modeWords(mode).says}
+    >
+      <div className="mt-3 max-w-[460px]">
+        <Segmented<DeliveryMode>
+          aria-label="Messages while an agent works"
+          size="sm"
+          value={mode}
+          onChange={(next) => !saving && next !== mode && save({ mode: next })}
+          options={DELIVERY_MODES.map((m) => ({ value: m.value, label: m.label }))}
+        />
+      </div>
+      {mode === "auto" && (
+        // Only for words the rules cannot read, and only on an agent whose
+        // own engine has a small model; each ask is one small call.
+        <label className="mt-3 flex max-w-[460px] items-center justify-between gap-3">
+          <span className="text-body text-muted-foreground">When unsure, ask the agent's small model</span>
+          <Switch
+            aria-label="When unsure, ask the agent's small model"
+            checked={askModel}
+            disabled={saving}
+            onCheckedChange={(on: boolean) => save({ askModel: on })}
+          />
+        </label>
+      )}
+      {error && <p role="alert" className="mt-2 text-small text-destructive">{error}</p>}
+    </SettingRow>
   );
 }
 
@@ -811,7 +864,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "General",
         icon: SlidersHorizontal,
         description: `How Bloks looks and behaves on ${thisComputer()}.`,
-        keywords: "width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain reply replies stuck silent tool call tidy nightly archive dated expire incident incidents desk failure failed fails lead retry",
+        keywords: "width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain reply replies stuck silent tool call tidy nightly archive dated expire incident incidents desk failure failed fails lead retry interrupt queue messages while working steer correction",
       },
       {
         id: "about-you",
@@ -858,7 +911,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "Rules and approvals",
         icon: ShieldCheck,
         description: "When agents ask first, and what they never do.",
-        keywords: "deny allow permissions safety approval gate full access auto ask conservative",
+        keywords: "deny allow permissions safety approval gate full access auto ask conservative suggestions always allow habit",
       },
       {
         id: "security",
@@ -1016,6 +1069,7 @@ function GeneralPage() {
         <MemoryTidy />
         <AgentTurnLimit />
         <IncidentDesk />
+        <MidTurnMessages />
         <SharedChanges />
         <Compaction />
         <IdleCompaction />

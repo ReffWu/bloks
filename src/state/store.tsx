@@ -853,6 +853,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "incidents":
           rawDispatch({ type: "tick", key: frame.kind });
           break;
+        // a rule changed, or an approval was answered: what is offered as
+        // a rule may have changed with it (src/lib/ruleSuggestions.ts)
+        case "rules":
+          rawDispatch({ type: "tick", key: "rules" });
+          rawDispatch({ type: "tick", key: "suggestions" });
+          break;
+        case "suggestions":
+          rawDispatch({ type: "tick", key: "suggestions" });
+          break;
         case "bot": {
           const bot = frame.bot as Partial<Bot> & { id: string };
           // an unread badge on the conversation already open is wrong the

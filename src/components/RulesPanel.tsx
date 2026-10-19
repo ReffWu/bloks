@@ -13,20 +13,27 @@
 //
 //   Deny wins. The list is ordered the way it runs, denies first, so that
 //   reading it top to bottom is reading what actually happens.
+//
+// Above the rules, what the person keeps approving, offered as a rule
+// (server/rule-suggestions.ts). Taking one adds it to the list below like
+// any other, so this is where it is read and removed again.
 import { useCallback, useEffect, useState } from "react";
 import { Ban } from "@/components/icons";
 import { Check } from "@/components/icons";
 import { Plus } from "@/components/icons";
+import { ShieldCheck } from "@/components/icons";
 import { Trash2 } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
+import { useRuleSuggestions } from "@/lib/ruleSuggestions";
+import { SuggestionWhat, takeSuggestion } from "@/components/chat/Banners";
 
 type Effect = "allow" | "deny";
 type Field = "tool" | "command" | "path" | "url" | "agent";
-type Op = "contains" | "not-contains" | "equals" | "starts-with" | "ends-with";
+type Op = "contains" | "not-contains" | "equals" | "starts-with" | "ends-with" | "runs" | "in-folder" | "on-site";
 
 interface Rule {
   id: string;
@@ -35,6 +42,9 @@ interface Rule {
   op: Op;
   value: string;
   botId?: string;
+  /** Only this tool; absent is any tool. Rules made from a suggestion
+   * carry one. */
+  tool?: string;
   enabled: boolean;
   summary: string;
 }
@@ -54,6 +64,15 @@ const OP_WORDS: Array<[Op, string]> = [
   ["equals", "is exactly"],
   ["starts-with", "starts with"],
   ["ends-with", "ends with"],
+];
+
+/** The narrow comparisons a suggestion writes. Read back here, not
+ * offered in the form: each belongs to one field and reads it rather
+ * than only comparing (server/policy.ts). */
+const NARROW_WORDS: Array<[Op, string]> = [
+  ["runs", "is one plain command starting with"],
+  ["in-folder", "is in the folder"],
+  ["on-site", "is on the site"],
 ];
 
 const PLACEHOLDER: Record<Field, string> = {
@@ -81,9 +100,11 @@ export function RulesPanel() {
     [],
   );
 
+  // a rule taken from a suggestion, or changed in another window
+  const rulesTick = state.ticks.rules ?? 0;
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, rulesTick]);
 
   // Naming looks at everyone, so a rule about an agent that has since
   // been archived still reads. Choosing offers only the ones that can
@@ -113,6 +134,8 @@ export function RulesPanel() {
           Refuse always wins over allow.
         </div>
       </div>
+
+      <Suggested />
 
       {adding && (
         <RuleForm
@@ -160,11 +183,12 @@ export function RulesPanel() {
                 <div className="text-body text-foreground">
                   {rule.effect === "deny" ? "Refuse" : "Allow"} when{" "}
                   {FIELD_WORDS.find(([f]) => f === rule.field)?.[1] ?? rule.field}{" "}
-                  {OP_WORDS.find(([o]) => o === rule.op)?.[1] ?? rule.op}{" "}
+                  {[...OP_WORDS, ...NARROW_WORDS].find(([o]) => o === rule.op)?.[1] ?? rule.op}{" "}
                   <span className="font-mono text-small">{rule.value}</span>
                 </div>
                 <div className="mt-0.5 text-small text-muted-foreground">
                   {rule.botId ? `Only ${nameOf(rule.botId)}` : "Every agent"}
+                  {rule.tool ? `, only ${rule.tool}` : ""}
                   {rule.enabled ? "" : " · off"}
                 </div>
               </div>
@@ -294,6 +318,50 @@ function RuleForm({
           Cancel
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * What the person keeps approving, each with the three answers. Taken,
+ * one becomes a rule in the list below; Not now keeps it away for a
+ * month. Nothing at all when nothing is on offer.
+ */
+function Suggested() {
+  const { suggestions, accept, dismiss } = useRuleSuggestions();
+  if (!suggestions.length) return null;
+  return (
+    <div className="mt-3 flex flex-col gap-1.5" aria-label="Suggested rules">
+      <div className="px-1 text-small font-medium text-muted-foreground">You keep approving these</div>
+      {suggestions.map((s) => (
+        <div key={s.id} className="flex animate-rise-in items-start gap-2.5 rounded-xl border bg-card px-3 py-2.5">
+          <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand-ink">
+            <ShieldCheck size={13} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-body text-foreground">{s.title}</div>
+            <div className="mt-0.5 text-small text-muted-foreground">
+              <SuggestionWhat what={s.what} />
+              {s.agents.length > 1 ? `. Approved for ${s.agents.map((a) => a.name).join(", ")}.` : ""}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {s.forAgent && (
+                <Button size="sm" onClick={() => takeSuggestion(accept, s, "agent")}>
+                  Allow for {s.forAgent.name}
+                </Button>
+              )}
+              {s.forEveryone && (
+                <Button size="sm" variant={s.forAgent ? "secondary" : "default"} onClick={() => takeSuggestion(accept, s, "everyone")}>
+                  Allow for everyone
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => void dismiss(s.id)}>
+                Not now
+              </Button>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

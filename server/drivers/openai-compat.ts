@@ -1042,6 +1042,7 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
             return () => listeners.delete(listener);
           },
         },
+        smallText: Boolean(spec.small),
         generateText: async (prompt: string) => {
           const { text } = await complete([{ role: "user", content: prompt }], spec.small || models.default, {
             stream: false,

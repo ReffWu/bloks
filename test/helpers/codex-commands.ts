@@ -29,7 +29,7 @@ export async function codexCommands(t: TestContext, extraEnv: Record<string, str
   //     before turn/start is answered, or after the turn has started
   const spec = { auto: false, hold: false, compact: "ok", refuseSteer: false, used: 40_000, window: 1_000_000, forgotten: false, holdSkills: false, refuseSkills: false };
   mkdirSync(join(root, ".bloks"), { recursive: true });
-  writeFileSync(join(root, ".bloks/config.json"), JSON.stringify({ instances: {
+  writeFileSync(join(root, ".bloks/config.json"), JSON.stringify({ delivery: { mode: "interrupt" }, instances: {
     codex: { driver: "codex", config: { cli } }, other: { driver: "codex", config: { cli } },
   } }));
   writeFileSync(join(root, "spec.json"), JSON.stringify(spec));

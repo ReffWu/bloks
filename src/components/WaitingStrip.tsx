@@ -142,7 +142,11 @@ function WaitingRow({
         : message.waitsFor === "pause"
           ? `Queued at ${stamp(queuedAt)}, sends when the pause ends${message.waitsUntil ? ` at ${stamp(message.waitsUntil)}` : ""}`
         : working
-          ? `Queued at ${stamp(queuedAt)}, sends when this reply finishes`
+          ? message.delivery?.route === "queued"
+            ? // why it waits, when that was decided: read as work for
+              // after this turn, chosen, or the agent's setting
+              `${message.delivery.line}, queued at ${stamp(queuedAt)}`
+            : `Queued at ${stamp(queuedAt)}, sends when this reply finishes`
           : `Queued at ${stamp(queuedAt)}`;
 
   return (
@@ -277,9 +281,11 @@ export function waitingSender(m: Message): string | null {
 /**
  * What waits to be said, as one line in the composer's tray with the
  * messages under it. Send now sits on the line, not on each message: it
- * stops the turn, and then everything queued goes together, so it was
- * never a press about one of them. A message being edited keeps the
- * line open, even when more pressing things would fold it away.
+ * is about all of your waiting words together, which go into the running
+ * turn in the order they were said when its engine can take them, or
+ * stop it and go together in the next one when it cannot. A message
+ * being edited keeps the line open, even when more pressing things would
+ * fold it away.
  */
 export function useQueuedNotice({
   messages,

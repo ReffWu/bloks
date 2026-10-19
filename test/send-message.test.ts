@@ -91,3 +91,15 @@ test("a plain send while a stop-then-send waits goes after it, not into the turn
   assert.equal(calls[2]!.body.steer, false);
   assert.equal(calls[3]!.body.steer, undefined);
 });
+
+test("the person's tap on how words meet a running turn rides along, except on a stop-and-send", async () => {
+  const calls: Array<{ path: string; body: any }> = [];
+  const api = async (path: string, init?: RequestInit) => {
+    calls.push({ path, body: JSON.parse(String(init?.body)) });
+    return { ok: true };
+  };
+  await sendMessage(api, { botId: "river", taskId: "plans", text: "add a chart", delivery: "now" });
+  await sendMessage(api, { botId: "river", taskId: "plans", text: "and a table", delivery: "wait", stopFirst: true });
+  assert.deepEqual(calls[0], { path: "/api/bots/river/messages", body: { text: "add a chart", taskId: "plans", delivery: "now" } });
+  assert.deepEqual(calls.at(-1), { path: "/api/bots/river/messages", body: { text: "and a table", taskId: "plans", steer: false } });
+});

@@ -44,6 +44,7 @@ import { join } from "node:path";
 import { DATA_DIR } from "./config.ts";
 import { newId } from "./contracts.ts";
 import { readSaved } from "./atomic-write.ts";
+import { dangerous } from "./safety-floor.ts";
 
 export type Effect = "allow" | "deny";
 
@@ -52,11 +53,36 @@ export type Effect = "allow" | "deny";
 export type Field = "tool" | "command" | "path" | "url" | "agent";
 
 /** The same vocabulary as a workflow condition, for the same reason: a
- * comparison a person can read, and nothing that evaluates. */
-export type Op = "contains" | "not-contains" | "equals" | "starts-with" | "ends-with";
+ * comparison a person can read, and nothing that evaluates.
+ *
+ * The last three are narrower than the rest, and exist for the rules
+ * Bloks offers to write from what a person keeps approving
+ * (server/rule-suggestions.ts), which must never be broader than what
+ * was approved. "starts with" cannot say that about a command: a rule
+ * that lets through anything starting `pnpm test` also lets through
+ * `pnpm test; curl ... | sh`. So each of these reads its field rather
+ * than only comparing text, and each belongs to one field:
+ *
+ *   runs       a command that is one plain command, nothing chained,
+ *              piped, redirected or substituted, whose words begin with
+ *              these words.
+ *   in-folder  a file whose folder is exactly this one. Not a folder
+ *              under it, and not a sibling whose name happens to start
+ *              the same.
+ *   on-site    an address on exactly this scheme, host and port.
+ *
+ * A build that does not know one of them treats it the way it treats
+ * any operator it does not know: a deny with it denies, and an allow
+ * with it does not allow. That is the safe direction for a rule made to
+ * let things through. */
+export type Op = "contains" | "not-contains" | "equals" | "starts-with" | "ends-with" | "runs" | "in-folder" | "on-site";
 
 export const FIELDS: Field[] = ["tool", "command", "path", "url", "agent"];
-export const OPS: Op[] = ["contains", "not-contains", "equals", "starts-with", "ends-with"];
+export const OPS: Op[] = ["contains", "not-contains", "equals", "starts-with", "ends-with", "runs", "in-folder", "on-site"];
+
+/** The field each narrow operator reads. A rule pairing one with any
+ * other field is refused at the door and never applies. */
+export const NARROW_OPS: Partial<Record<Op, Field>> = { runs: "command", "in-folder": "path", "on-site": "url" };
 
 export interface Rule {
   id: string;
@@ -66,6 +92,10 @@ export interface Rule {
   value: string;
   /** Only this agent. Absent means every agent. */
   botId?: string;
+  /** Only this tool, by name, as the engine sent it. Absent means any
+   * tool. A rule about a folder that reading was approved in should not
+   * also wave through writing there. */
+  tool?: string;
   enabled: boolean;
   createdAt: number;
 }
@@ -167,6 +197,7 @@ export function applies(rule: Rule, ask: Ask): boolean | "unknown" {
   if (!FIELDS.includes(rule.field)) return "unknown";
   if (!OPS.includes(rule.op)) return "unknown";
   if (rule.botId && rule.botId !== ask.botId) return false;
+  if (rule.tool && rule.tool.trim().toLowerCase() !== ask.tool.trim().toLowerCase()) return false;
 
   const found = valueOf(rule.field, ask);
   // A rule about a path says nothing about a request that has no path,
@@ -187,15 +218,92 @@ export function applies(rule: Rule, ask: Ask): boolean | "unknown" {
       return Boolean(right) && left.startsWith(right);
     case "ends-with":
       return Boolean(right) && left.endsWith(right);
+    case "runs":
+      return NARROW_OPS.runs === rule.field && runsWords(found, rule.value ?? "");
+    case "in-folder":
+      return NARROW_OPS["in-folder"] === rule.field && inFolder(found, rule.value ?? "");
+    case "on-site":
+      return NARROW_OPS["on-site"] === rule.field && onSite(found, rule.value ?? "");
     default:
       return "unknown";
   }
 }
 
+/** Anything that makes a command line more than one plain command: a
+ * second command, a pipe, a redirect, a substitution, a background job,
+ * a variable, or a line break. Quotes too, since a quoted `;` is still a
+ * character this does not try to read the meaning of. */
+const NOT_PLAIN = /[;&|<>`$(){}\\\n\r'"*?!~]/;
+
+/** The words of one plain command, or null when it is not one. */
+export function plainWords(command: string): string[] | null {
+  const text = command.trim();
+  if (!text || NOT_PLAIN.test(text)) return null;
+  return text.split(/\s+/);
+}
+
+/** Whether a command is one plain command whose words begin with these. */
+export function runsWords(command: string, prefix: string): boolean {
+  const words = plainWords(command);
+  const want = plainWords(prefix);
+  if (!words || !want || want.length > words.length) return false;
+  return want.every((word, i) => words[i].toLowerCase() === word.toLowerCase());
+}
+
+/** A path with its . and .. read, and its slashes tidied, or null for one
+ * that is not absolute: a relative path is relative to a folder this
+ * cannot see, so it cannot be shown to be anywhere in particular. */
+export function cleanPath(path: string): string | null {
+  const p = path.trim().replace(/\\/g, "/");
+  if (!p.startsWith("/")) return null;
+  const out: string[] = [];
+  for (const part of p.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (!out.length) return null;
+      out.pop();
+    } else out.push(part);
+  }
+  return `/${out.join("/")}`;
+}
+
+/** The folder a file is in, read the same way. */
+export function folderOf(path: string): string | null {
+  const clean = cleanPath(path);
+  if (!clean || clean === "/") return null;
+  return clean.slice(0, clean.lastIndexOf("/")) || "/";
+}
+
+/** Whether a file sits directly in this folder. */
+export function inFolder(path: string, folder: string): boolean {
+  const here = folderOf(path);
+  const there = cleanPath(folder);
+  return Boolean(here && there && here === there);
+}
+
+/** Scheme, host and port, the part of an address a site is. */
+export function siteOf(url: string): string | null {
+  try {
+    const parsed = new URL(url.trim());
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    if (parsed.username || parsed.password) return null;
+    return parsed.origin.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** Whether an address is on exactly this site. */
+export function onSite(url: string, site: string): boolean {
+  const here = siteOf(url);
+  const there = siteOf(site);
+  return Boolean(here && there && here === there);
+}
+
 /** How a rule reads back, for the card, the record and the refusal. */
 export function describe(rule: Rule): string {
   const op = rule.op.replace(/-/g, " ");
-  return `${rule.effect} when ${rule.field} ${op} "${rule.value}"`;
+  return `${rule.effect} when ${rule.field} ${op} "${rule.value}"${rule.tool ? ` (${rule.tool} only)` : ""}`;
 }
 
 /**
@@ -266,6 +374,12 @@ export function decide(rules: Rule[], ask: Ask): Decision {
     }
   }
   for (const rule of allows) {
+    // A narrow rule, or one held to a single tool, is the kind written
+    // from what a person approved, and what they approved was never on
+    // the floor (server/safety-floor.ts). It stays that way: "runs git"
+    // does not grow into a force push. A rule somebody wrote by hand
+    // without either means what it says, as it always has.
+    if ((NARROW_OPS[rule.op] || rule.tool) && dangerous(ask)) continue;
     if (applies(rule, ask) === true) {
       return { verdict: "allow", rule, because: describe(rule) };
     }
@@ -299,6 +413,7 @@ export interface NewRule {
   op?: unknown;
   value?: unknown;
   botId?: unknown;
+  tool?: unknown;
   enabled?: unknown;
 }
 
@@ -314,10 +429,18 @@ export function cleanRule(input: NewRule): { rule: Omit<Rule, "id" | "createdAt"
   if (!effect) return { error: "a rule has to allow or deny" };
   if (!FIELDS.includes(input.field as Field)) return { error: "a rule has to be about something we can look at" };
   if (!OPS.includes(input.op as Op)) return { error: "a rule has to compare in a way we can check" };
+  const narrow = NARROW_OPS[input.op as Op];
+  if (narrow && narrow !== input.field) return { error: `that comparison only reads the ${narrow}` };
   const value = String(input.value ?? "").trim().slice(0, MAX_VALUE);
   if (!value) return { error: "a rule needs something to compare against" };
+  // what each narrow comparison reads has to read, or it is a rule
+  // that can never apply and looks like one that does
+  if (input.op === "runs" && !plainWords(value)) return { error: "a command to run is plain words, nothing chained" };
+  if (input.op === "in-folder" && !cleanPath(value)) return { error: "a folder is a full path" };
+  if (input.op === "on-site" && !siteOf(value)) return { error: "a site is an address such as https://example.com" };
   const botId =
     typeof input.botId === "string" && /^[\w-]{1,64}$/.test(input.botId) ? input.botId : undefined;
+  const tool = typeof input.tool === "string" && input.tool.trim() ? input.tool.trim().slice(0, 120) : undefined;
   return {
     rule: {
       effect,
@@ -325,6 +448,7 @@ export function cleanRule(input: NewRule): { rule: Omit<Rule, "id" | "createdAt"
       op: input.op as Op,
       value,
       ...(botId ? { botId } : {}),
+      ...(tool ? { tool } : {}),
       enabled: input.enabled !== false,
     },
   };

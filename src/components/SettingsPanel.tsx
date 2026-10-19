@@ -64,6 +64,7 @@ import { sameEngineBackup } from "@/lib/backupChoice";
 import { useEscape } from "@/lib/useEscape";
 import { EngineSuggestionCard, useEngineReport } from "./EngineReport";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, RULES_AND_MODES, type ApprovalMode } from "./ApprovalsChooser";
+import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
 
 type Patch = Partial<
   Pick<
@@ -84,6 +85,7 @@ type Patch = Partial<
     | "backupSelection"
     | "engineHooks"
     | "recallBeforeTurn"
+    | "delivery"
   >
 >;
 
@@ -420,6 +422,9 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
 
             <Section id="behaviour" title="Behaviour and approvals">
               <ApprovalsCard bot={bot} />
+              <Group>
+                <DeliveryRow bot={bot} patch={patch} />
+              </Group>
               <WorkingFolderCard bot={bot} />
               <AnswersCard bot={bot} patch={patch} />
             </Section>
@@ -891,6 +896,37 @@ const COMPONENTS: Array<[string, string]> = [
  * The shapes under it hold either way: off, a chart is not taught as
  * interface or as the older gallery card.
  */
+/**
+ * What happens to what you send while this agent is in the middle of
+ * something (server/delivery.ts). Its own choice, or the workspace's,
+ * which Settings, General sets for every agent that has not chosen.
+ */
+function DeliveryRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
+  const { state } = useStore();
+  const workspace = state.config?.delivery?.mode ?? "auto";
+  const own = bot.delivery ?? null;
+  const shown = modeWords(own ?? workspace);
+  return (
+    <SettingRow
+      label="Messages while it works"
+      description={own ? shown.says : `Same as your other agents: ${shown.label}. ${shown.says}`}
+    >
+      <div className="mt-3 max-w-[460px]">
+        <Segmented<"default" | DeliveryMode>
+          aria-label="Messages while it works"
+          size="sm"
+          value={own ?? "default"}
+          onChange={(next) => patch({ delivery: next === "default" ? null : next })}
+          options={[
+            { value: "default", label: "Default", title: "Follow Settings, General" },
+            ...DELIVERY_MODES.map((m) => ({ value: m.value, label: m.label })),
+          ]}
+        />
+      </div>
+    </SettingRow>
+  );
+}
+
 function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   const without = bot.withoutComponents ?? [];
   const interactive = !without.includes("openui");

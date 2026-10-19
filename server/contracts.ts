@@ -445,6 +445,11 @@ export interface ProviderInstance {
    * engine skips any thinking it would do before writing, which it may
    * ignore when it has none to skip. */
   generateText?(prompt: string, options?: { quick?: boolean }): Promise<string>;
+  /** Whether generateText runs on a model its provider names as small and
+   * cheap, rather than the engine's main one. What a decision made on
+   * every message is allowed to use (server/delivery.ts); a slower or
+   * dearer one is left to the work that is worth it. */
+  smallText?: boolean;
   /** The latest the engine said about its plan's limits, kept in memory
    * on the instance and null until it says anything. Optional: only an
    * engine signed in to a subscription has limits to report. For the

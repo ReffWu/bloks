@@ -176,6 +176,13 @@ export interface AppConfig {
    * who leads incidents: "auto" (a room's lead, else the workspace's most
    * senior agent), "person" (always the person), or an agent's id. */
   incidents?: { enabled?: boolean; lead?: string };
+  /** What happens to words sent while an agent is mid-turn, for every
+   * agent that has not chosen for itself (server/delivery.ts). Unset is
+   * auto: stops, corrections, answers and urgent words go in now, the
+   * rest waits for the turn to end. `askModel` lets Automatic ask the
+   * agent's own small model about words its rules cannot read; off
+   * unless turned on, since each ask is a call on the person's key. */
+  delivery?: { mode?: "auto" | "interrupt" | "queue"; askModel?: boolean };
   /** Show a card for files changed during an overlapping turn even when
    * none are named as its own. On unless turned off; own-file cards stay. */
   changes?: { showShared?: boolean };
@@ -321,6 +328,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "memory",
     "agents",
     "incidents",
+    "delivery",
     "changes",
     "telegram",
     "chat",

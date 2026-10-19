@@ -59,6 +59,7 @@ export function inspectAgentSettings(root:unknown, ctx:InspectionContext):Inspec
   for (const [id,fallback] of [["name",""],["title",""],["description",""],["color",null],["shape",null],["seniority",1],["mascotExpression",null],["section",null],["pinOrder",null]] as const) f.scalar(id,fallback);
   f.bool("notifications",true);f.bool("pinned");f.add("browser",{status:"value",value:get(root,"browser")===true});f.bool("speakReplies");f.bool("engineHooks",true);
   f.scalar("approvals","ask");
+  f.scalar("delivery",null);f.add("delivery.context",policy("unset follows the workspace's delivery.mode; it decides how the person's words meet a running turn, not whether they are delivered"),{status:"absent"});
   f.add("approvals.context",policy("saved preference; deny rules, shared-room, guest, rehearsal and hiring restrictions still apply"),{status:"absent"});
   const computer=get(root,"computer");f.add("computer",{status:"value",value:typeof computer === "string" && ["cloud","sandbox","local","off"].includes(computer)?computer:"auto"});f.add("computer.context",policy("automatic selection and room/routine overrides resolve at turn dispatch; inspection does not create or discover a computer"),{status:"absent"});
   const effort=get(root,"effort");f.add("effort",policy(effort?"explicit preference; engine support and turn dispatch determine application":"engine default"));
@@ -178,7 +179,7 @@ export function inspectSkillSettings(root:unknown,ctx:InspectionContext):Inspect
 export function inspectRuleSettings(root:unknown,ctx:InspectionContext):InspectionField[]{
   const f=fields('workspace',root,'Settings > Rules and approvals',ctx);
   for(const [id,fallback] of [['effect',null],['field',null],['op',null]] as const)f.scalar(id,fallback);
-  f.bool('enabled');f.opaque('value');const id=get(root,'botId');f.add('botId',typeof id==='string'?{status:'value',value:ctx.reference('agent',id)}:policy('all agents'),own(root,'botId').present?configured(id):{status:'absent'});
+  f.bool('enabled');f.opaque('value');f.add('tool',typeof get(root,'tool')==='string'?scalar(get(root,'tool'),ctx.redact):policy('any tool'),own(root,'tool').present?configured(get(root,'tool')):{status:'absent'});const id=get(root,'botId');f.add('botId',typeof id==='string'?{status:'value',value:ctx.reference('agent',id)}:policy('all agents'),own(root,'botId').present?configured(id):{status:'absent'});
   f.add('evaluation.policy',policy('enabled deny rules precede allows; inspection never evaluates a command or grants permission'),{status:'absent'});
   return f.out;
 }

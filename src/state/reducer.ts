@@ -111,6 +111,9 @@ export interface Message {
   /** Went into the turn already running rather than starting one, so a
    * finished turn's work folds around it (src/lib/turnFold.ts). */
   midTurn?: boolean;
+  /** Sent while a turn ran: whether it went in, stopped the turn, or
+   * waited, and the quiet line that says so (server/delivery.ts). */
+  delivery?: { route: "steered" | "stopped" | "queued"; why: string; line: string };
   /** Queued, but still waiting when Bloks restarted and too old to send
    * on its own (server/index.ts, recoverQueued). */
   unsent?: boolean;
@@ -347,6 +350,9 @@ export interface Bot {
   engineHooks?: boolean;
   /** False: no notes from its other conversations before your turns. */
   recallBeforeTurn?: boolean;
+  /** Words sent mid-turn: read them, always go in now, or always wait.
+   * Unset follows the workspace's choice. */
+  delivery?: "auto" | "interrupt" | "queue" | null;
   /** The public half of this agent's key, hex. What its signatures in
    * the record are checked against. */
   fingerprint?: string;
@@ -408,6 +414,9 @@ export interface ConfigStatus {
   /** The incident desk (server/incidents.ts): on unless turned off, and
    * who leads incidents: "auto", "person" or an agent's id. */
   incidents?: { enabled: boolean; lead: string };
+  /** What happens to words sent mid-turn, for agents that have not
+   * chosen (server/delivery.ts). */
+  delivery?: { mode: "auto" | "interrupt" | "queue"; askModel?: boolean };
   /** Count-only cards for overlapping turns with no own files. On by default. */
   changes?: { showShared: boolean };
   /** How long a silent tool call may hold a turn, in minutes; 0 is never. */
@@ -774,7 +783,7 @@ export type Action =
   | { type: "configStatus"; config: ConfigStatus }
   /** `lane` opens that conversation; without it, the one that pinged. */
   | { type: "select"; id: string; lane?: string }
-  | { type: "send"; botId: string; text: string; replyTo?: Message["replyTo"]; stopFirst?: boolean; onFailed?: () => void }
+  | { type: "send"; botId: string; text: string; replyTo?: Message["replyTo"]; stopFirst?: boolean; delivery?: "now" | "wait"; onFailed?: () => void }
   | { type: "answerCard"; botId: string; messageId: string; answer: string; roomId?: string }
   | { type: "dismissCard"; botId: string; messageId: string; roomId?: string }
   /** An answer that did not go: the card can be answered again. */

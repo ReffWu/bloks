@@ -1,4 +1,5 @@
 // Safe observations over already-loaded settings. No stores, providers or IO.
+import { resolveMode } from "./delivery.ts";
 import { agentTurnLimit } from "./agent-chain.ts";
 
 export type InspectionScalar = string | number | boolean | null;
@@ -92,6 +93,8 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   // who leads, which is "auto" unless the person chose
   add("incidents", "enabled", general, value("incidents", "enabled") !== false);
   add("incidents", "lead", general, typeof value("incidents", "lead") === "string" ? value("incidents", "lead") : "auto");
+  add("delivery", "mode", general, resolveMode(undefined, value("delivery", "mode")));
+  add("delivery", "askModel", general, value("delivery", "askModel") === true);
   add("skills", "propose", general, Boolean(value("skills", "propose")));
   add("changes", "showShared", general, value("changes", "showShared") !== false);
   add("shortcuts", "quickAsk", "Settings > General > Quick ask shortcut", value("shortcuts", "quickAsk") ?? null);
