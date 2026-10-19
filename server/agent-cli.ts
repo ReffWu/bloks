@@ -160,6 +160,14 @@ export const RULES: Rule[] = [
   { method: "GET", path: "/api/engine-pauses", why: "see the engine pauses that apply to it, and until when" },
   { method: "POST", path: "/api/engine-pauses", why: "pause an engine or a model for itself, up to a day, so its own work waits until then" },
   { method: "DELETE", path: "/api/engine-pauses/:id", why: "call off a pause it made on itself" },
+  // The incident desk (server/incidents.ts): something failed and this
+  // agent leads, so it reads the incident and takes one of three ways out.
+  // The routes refuse an incident that is not this agent's to lead, and
+  // one that is with the person now; the list itself is the person's.
+  { method: "GET", path: "/api/incidents/:id", why: "read an incident Bloks handed you because you lead" },
+  { method: "POST", path: "/api/incidents/:id/retry", why: "try a failed thing you lead once more, once" },
+  { method: "POST", path: "/api/incidents/:id/hand", why: "hand a failed thing you lead to a teammate, with what to do" },
+  { method: "POST", path: "/api/incidents/:id/tell", why: "tell the person what a failed thing you lead needs from them, in a card they will see" },
   { method: "GET", path: "/api/jobs", why: "read the job board" },
   { method: "POST", path: "/api/jobs", why: "post work to the board" },
 

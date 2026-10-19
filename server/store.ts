@@ -135,7 +135,19 @@ export interface Message {
   afterAgent?: { peerId: string; peerName: string };
   /** Set on a room message that was said in the room's linked chat
    * channel, so the bridge does not say it there a second time. */
-  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal";
+  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal" | "incident";
+  /** The incident desk (server/incidents.ts). On a lead's quiet turn
+   * (`via: "incident"`), the note that handed it the incident; on a
+   * notice, the person's card for one ("needs-you"), or the one card
+   * that stands for many while the desk is quiet ("summary"). A card's
+   * `state` turns to resolved, with a few words on how, when it is
+   * over. A client that does not know the field shows the notice's
+   * text, which says the same thing. */
+  incident?: { id: string; kind: "note" | "needs-you" | "summary"; state?: "open" | "resolved"; resolution?: string };
+  /** A notice that a routine or a watcher stopped running on its own
+   * after failing again and again, so the chat can offer what to do
+   * about it (fix it, pause it, remove it) where the person reads it. */
+  failing?: { kind: "routine" | "watcher"; id: string; name: string };
   /** The routine's name and start mode when this message was written,
    * and `quiet` when its agent was told it may answer QUIET. */
   routine?: { name?: string; manual: boolean; quiet?: boolean };

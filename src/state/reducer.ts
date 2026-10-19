@@ -124,8 +124,16 @@ export interface Message {
   /** Taken back: the row stays, the words are gone. */
   deleted?: boolean;
   /** Came in some other way than you typing it here. "goal" is Bloks
-   * starting the next turn toward the conversation's goal. */
-  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal";
+   * starting the next turn toward the conversation's goal; "incident" is
+   * the incident desk handing a lead something that failed. */
+  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal" | "incident";
+  /** The incident desk (server/incidents.ts): the note on a lead's quiet
+   * turn, the person's card for an incident, or the one card that stands
+   * for many while the desk is quiet. */
+  incident?: { id: string; kind: "note" | "needs-you" | "summary"; state?: "open" | "resolved"; resolution?: string };
+  /** A notice that a routine or a watcher stopped running on its own
+   * after failing again and again. */
+  failing?: { kind: "routine" | "watcher"; id: string; name: string };
   /** The routine's name and start mode when this message was written,
    * and whether its agent was told it may answer QUIET. */
   routine?: { name?: string; manual: boolean; quiet?: boolean };

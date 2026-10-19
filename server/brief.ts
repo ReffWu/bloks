@@ -36,6 +36,27 @@ export interface BriefWaiting {
   kind: "approval" | "question";
 }
 
+/** An incident still open (server/incidents.ts), as the brief says it. */
+export interface BriefIncident {
+  id: string;
+  title: string;
+  why: string;
+  state: string;
+  /** Where its card is, or where it happened. */
+  threadId?: string;
+  /** What the person is asked, when they are. */
+  needs?: string;
+}
+
+/** A routine or a watcher whose automatic runs stopped for failing. */
+export interface BriefFailing {
+  kind: "routine" | "watcher";
+  id: string;
+  name: string;
+  error: string;
+  since: number;
+}
+
 export interface BriefInput {
   since: number;
   now: number;
@@ -46,6 +67,10 @@ export interface BriefInput {
   /** Other things ready for a look: rehearsals, suggested notes, skills.
    * `many` is the plural when adding an s would be wrong. */
   ready?: Array<{ label: string; many?: string; count: number }>;
+  /** Incidents still open, newest first. */
+  incidents?: BriefIncident[];
+  /** Automations stopped for failing. */
+  failing?: BriefFailing[];
 }
 
 export interface BriefItem {
@@ -71,6 +96,10 @@ export interface Brief {
   waiting: BriefWaiting[];
   spend: BriefInput["spend"];
   ready: Array<{ label: string; many?: string; count: number }>;
+  /** Open incidents and automations stopped for failing. Absent on a
+   * brief made before they were said, which a client reads as none. */
+  incidents?: BriefIncident[];
+  failing?: BriefFailing[];
   /** Nothing happened and nothing is waiting. */
   quiet: boolean;
 }
@@ -157,7 +186,16 @@ export function composeBrief(input: BriefInput, id: string): Brief {
   const things = said.reduce((n, p) => n + p.work, 0);
   const waiting = input.waiting.slice(0, 20);
   const ready = (input.ready ?? []).filter((r) => r.count > 0);
-  const quiet = worked === 0 && waiting.length === 0;
+  const incidents = (input.incidents ?? []).slice(0, 20);
+  const failing = (input.failing ?? []).slice(0, 20);
+  // Something that failed is never a quiet night, whatever else happened:
+  // a brief that said "nothing waiting" over a routine that stopped is
+  // the late news this exists to bring early.
+  const quiet = worked === 0 && waiting.length === 0 && incidents.length === 0 && failing.length === 0;
+  const broke = [
+    incidents.length ? `${plural(incidents.length, "open incident")}` : "",
+    failing.length ? `${plural(failing.length, "automation")} paused for failing` : "",
+  ].filter(Boolean);
 
   const who = input.person ? `, ${input.person}` : "";
   const headline = quiet
@@ -165,6 +203,7 @@ export function composeBrief(input: BriefInput, id: string): Brief {
     : [
         worked ? `${plural(worked, "agent")} worked on ${plural(things, "thing")}` : "Nothing new overnight",
         waiting.length ? `${plural(waiting.length, "thing")} waiting on you` : "nothing waiting on you",
+        ...broke,
       ].join(", ") + ".";
 
   const cost =
@@ -178,6 +217,8 @@ export function composeBrief(input: BriefInput, id: string): Brief {
 
   const closingLines = [
     ...waiting.slice(0, 5).map((w) => `${w.name} ${w.kind === "approval" ? "wants your OK to" : "asks"}: ${gist(w.title, 1, 140)}`),
+    ...incidents.slice(0, 5).map((i) => `${i.title} failed: ${gist(i.why, 1, 140)}.${i.needs ? ` It needs you: ${gist(i.needs, 1, 140)}` : ""}`),
+    ...failing.slice(0, 5).map((f) => `The ${f.kind} ${f.name} kept failing, so it is paused: ${gist(f.error, 1, 140)}.`),
     ...ready.map((r) => `${plural(r.count, r.label, r.many)} ready for a look.`),
   ];
   const closing: BriefPart | null = closingLines.length
@@ -198,6 +239,8 @@ export function composeBrief(input: BriefInput, id: string): Brief {
     waiting,
     spend: input.spend,
     ready,
+    ...(incidents.length ? { incidents } : {}),
+    ...(failing.length ? { failing } : {}),
     quiet,
   };
 }

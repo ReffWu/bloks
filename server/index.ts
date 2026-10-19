@@ -312,7 +312,7 @@ import {
 } from "./local-vm.ts";
 import { widenPath } from "./path.ts";
 import { claimDataFolder, inUseMessage } from "./data-lock.ts";
-import { describe as describeRoutine, isQuiet as quietRoutine, isQuietReply, lastReportNote, MAX_ROUTINES, normalize as normalizeRoutine, nextScheduledAfter, lastScheduledBefore, promptTooLong, QUIET_ASK, type Routine, RoutineStore, scheduleProblem } from "./routines.ts";
+import { describe as describeRoutine, FAILS_TO_PAUSE, isQuiet as quietRoutine, isQuietReply, lastReportNote, MAX_ROUTINES, normalize as normalizeRoutine, nextScheduledAfter, lastScheduledBefore, promptTooLong, QUIET_ASK, type Routine, RoutineStore, scheduleProblem } from "./routines.ts";
 import { catchUpText, engineIsFresh, freshTurnText } from "./turn-context.ts";
 import { standingFor, type Standing, type StandingRecord } from "./standing-prompt.ts";
 import { Checkpoints, diffLines, trackable, type CheckpointRecord } from "./checkpoints.ts";
@@ -342,6 +342,7 @@ import {
   checkAllowed,
   checkOutcome,
   cleanWatcher,
+  countLook,
   describeFolderChanges,
   folderChanges,
   folderSnapshot,
@@ -359,6 +360,25 @@ import {
   type Watcher,
 } from "./watchers.ts";
 import { MemoryJournal, readMemoryText } from "./memory-journal.ts";
+import {
+  cardText,
+  chooseLead,
+  handText,
+  IncidentStore,
+  incidentView,
+  isOpen as incidentOpen,
+  LEAD_WAIT_MS,
+  leadNote,
+  NEEDS_MAX,
+  retryRefusal,
+  summaryText,
+  type CardReason,
+  type Incident,
+  type IncidentLead,
+  type IncidentWhere,
+  type LeadCandidate,
+  type RaiseInput,
+} from "./incidents.ts";
 import { applyImport, detectSetup, ImportRecord, reviewOf, type ImportDeps, type McpEntry } from "./setup-import.ts";
 import { Rehearsals, type Rehearsal } from "./rehearsals.ts";
 import { RoomTagQueues } from "./room-tags.ts";
@@ -840,6 +860,32 @@ function installedMarks() {
 }
 const routines = new RoutineStore();
 routines.settleOrphanRuns();
+/** The incident desk's list (server/incidents.ts). */
+const incidents = new IncidentStore();
+/** What a failed turn was asked, by the incident it raised, so its one
+ * retry asks the same thing the same way. In memory: after a restart a
+ * turn's incident can no longer be retried, only handed on or told. */
+interface DeskAsk {
+  text: string;
+  byYou: boolean;
+  from?: { botId: string; name: string };
+  routine?: Message["routine"];
+  replyTo?: ReplyRef;
+  answering?: { peerId: string; peerName: string };
+}
+const deskAsked = new Map<string, DeskAsk>();
+/** What each lane's latest turn was asked, rooms included, which
+ * turnAsked keeps only for a solo turn that can be asked again. */
+const lastAsked = new Map<string, DeskAsk>();
+/** Lanes whose running turn is a lead's quiet turn for these incidents. */
+const deskTurns = new Map<string, string[]>();
+/** Lanes whose running turn is an incident's one retry: it is not asked
+ * again or handed to a backup on top, since the retry was the one. */
+const deskRetries = new Set<string>();
+/** A failed turn's own words while what waited on it settles, so a
+ * routine's or a workflow's incident says what went wrong rather than
+ * only that something did. */
+const failedWords = new Map<string, string>();
 const usage = new UsageStore();
 // What each turn did to the files in its folder, and the way back.
 const checkpoints = new Checkpoints(join(DATA_DIR, "checkpoints"));
@@ -1934,7 +1980,13 @@ function recoverTurn(
   // A Telegram person's turn is never asked again or handed on: a backup
   // engine may not be able to hold its approvals for the owner, and the
   // person is told once that it is held.
-  const goesOn = Boolean(!end.person && roomId === laneId && asked && fresh && !fresh.archivedAt && !wheel.heldBy(bot.id));
+  // Nor an incident's one retry, or a lead's quiet turn about one: the
+  // desk (server/incidents.ts) has had its one try, and a failure there
+  // goes to the person rather than round again.
+  const goesOn = Boolean(
+    !end.person && roomId === laneId && asked && fresh && !fresh.archivedAt && !wheel.heldBy(bot.id) &&
+    !deskRetries.has(laneId) && !deskTurns.has(laneId),
+  );
   const at = Date.now();
   const tried = [...(recovery?.tried ?? []), { selection: used, at, said }];
   const told = (did: string) => failureNotes.set(laneId, { text: speedRefusal ? `(A note from Bloks: this message was not submitted to ${engineName(used)} because ${said}. ${did})` : failureLine(used, at, said, did) });
@@ -2253,6 +2305,15 @@ function makeBrief(now = Date.now()): Brief {
         { label: "note about you", many: "notes about you", count: profileNotes.suggested().length },
         { label: "suggested skill", count: proposals.list().length },
       ],
+      incidents: incidents.open().map((i) => ({
+        id: i.id,
+        title: i.title,
+        why: i.why,
+        state: i.state,
+        threadId: i.card?.threadId ?? i.where.roomId ?? i.where.laneId,
+        ...(i.needs ? { needs: i.needs } : {}),
+      })),
+      failing: failingAutomations().map(({ kind, id, name, error, since }) => ({ kind, id, name, error, since })),
     },
     newId(),
   );
@@ -2349,6 +2410,12 @@ function wakeFor(payload: unknown): Wake | undefined {
   if (message.kind === "notice" && message.goal === "blocked" && !message.chainHeld) {
     return owner ? { reason: "needs-you", clients: [owner], preview: true } : { reason: "needs-you", preview: true };
   }
+  // An incident put to the person (server/incidents.ts), or the one card
+  // for many while the desk is quiet: the person is the one who can
+  // settle it now. The owner's alone, as the desk is.
+  if (message.kind === "notice" && message.incident && message.incident.kind !== "note" && message.incident.state !== "resolved") {
+    return owner ? { reason: "needs-you", clients: [owner], preview: true } : { reason: "needs-you", preview: true };
+  }
   if (message.kind === "options" && card && !card.answered && !card.dismissed && (card.requestId || card.runId)) {
     // Workflow controls are the owner's. Their card opens the run's
     // existing answer route, never an engine permission request.
@@ -2429,6 +2496,9 @@ function previewOf(frame: unknown): WakePreview | null {
       };
     }
     return { title: `${who} has a question`, body: clip(m.card.subtitle || m.card.title), category: "question", threadId: f.threadId };
+  }
+  if (m.kind === "notice" && m.text && m.incident && m.incident.kind !== "note" && m.incident.state !== "resolved") {
+    return { title: room ? `Something failed in ${room.name}` : `Something failed for ${bot?.name ?? "an agent"}`, body: clip(m.text), category: "question", threadId: f.threadId };
   }
   if (m.kind === "notice" && m.text && m.goal === "blocked") {
     return { title: room ? `${room.name} is waiting for you` : `${bot?.name ?? "An agent"} is waiting for you`, body: clip(m.text), category: "question", threadId: f.threadId };
@@ -3328,6 +3398,10 @@ bus.subscribe((event: RuntimeEvent) => {
         const said = turnErrors.get(event.threadId)?.at(-1);
         if (said) stalledSince.set(event.threadId, said);
       }
+      // What the incident desk reads of this end, taken before recoverTurn
+      // clears it.
+      const endedErrors = [...(turnErrors.get(event.threadId) ?? [])];
+      const endedAsked = turnAsked.get(event.threadId) ?? lastAsked.get(event.threadId);
       const handedOver = recoverTurn(
         bot,
         event.threadId,
@@ -3335,6 +3409,25 @@ bus.subscribe((event: RuntimeEvent) => {
         { ok: event.ok !== false, stopReason: event.stopReason ?? null, pickingUp, rebuilt: Boolean(rebuilt), person: laneTelegramPerson.has(event.threadId), preInputRefusal: event.preInputRefusal },
         (text, phoneText) => pushMessage({ role: "bot", kind: "notice", text, ...(phoneText ? { phoneText } : {}) }),
       );
+      // The incident desk (server/incidents.ts): a turn nothing else will
+      // pick up that failed or stalled is an incident, and one that worked
+      // settles the retry it was. Before settleOwners, which closes a
+      // routine's or a workflow's run: theirs speak for themselves.
+      const deskNotes = deskTurns.get(event.threadId);
+      if (!handedOver) {
+        noteTurnEnd(bot, event.threadId, roomId, {
+          ok: event.ok !== false,
+          stopReason: event.stopReason ?? null,
+          skip: command || pickingUp || Boolean(rebuilt) || refolding || Boolean(event.preInputRefusal) || Boolean(deskNotes),
+          errors: endedErrors,
+          asked: endedAsked,
+        });
+      }
+      deskRetries.delete(event.threadId);
+      if (deskNotes && !handedOver && !pickingUp && !refolding) {
+        deskTurns.delete(event.threadId);
+        for (const id of deskNotes) deskTurnEnded(id, event.ok !== false);
+      }
       if (!pickingUp && !handedOver) telegramReturns.finish(event.threadId, event.preInputRefusal?.reason);
       if (!pickingUp && !handedOver && !refolding) telegramWorking.get(event.threadId)?.ended();
       const heldPerson = laneTelegramPerson.get(event.threadId);
@@ -3360,7 +3453,11 @@ bus.subscribe((event: RuntimeEvent) => {
       // a turn asked again or handed to the backup is not over yet, so what
       // waits on how it ends (a routine's run, a workflow step, a meeting's
       // write-up, a mail's reply) waits for the attempt that ends it
+      // the failure in its own words, for a routine's or a workflow's
+      // incident, where the run itself keeps only the stop reason
+      if (!handedOver && event.ok === false) failedWords.set(event.threadId, lastWords(endedErrors, event.stopReason ?? null));
       if (!handedOver) settleOwners(bot, event.threadId, { ok: event.ok !== false, why: event.preInputRefusal?.reason ?? event.stopReason ?? null, quiet: quietRun, ...(event.preInputRefusal ? { unsent: true } : {}) });
+      failedWords.delete(event.threadId);
       if (mailQueue.length) setTimeout(() => void drainMail(), 0);
       // whatever the agent was given to act with is spent
       agentTokens.revokeTask(event.threadId);
@@ -4347,6 +4444,12 @@ async function startClaimedTurn(
      * its lane, other than one going on with it, ends that: its words
      * are not the mail's reply (replyByMail). */
     answersMail?: boolean;
+    /** A lead's turn about these incidents (server/incidents.ts): its
+     * end settles each one the lead left undecided. */
+    incidentNotes?: string[];
+    /** Nothing but incident notes, so the turn is quiet the way a
+     * check-in is: QUIET folds it away. */
+    incidentQuiet?: boolean;
   } = {},
   claim: LaneClaim = {},
 ): Promise<void> {
@@ -4607,9 +4710,18 @@ async function startClaimedTurn(
   // A quiet routine's turn, in the agent's own lane. Never a room's turn
   // or a command, where there is nobody to be quiet for, or nothing to
   // answer QUIET with.
-  const checkIn = Boolean(opts.routine?.quiet) && !blok && !command;
+  const checkIn = (Boolean(opts.routine?.quiet) || Boolean(opts.incidentQuiet)) && !blok && !command;
   if (checkIn) checkInTurns.add(task.id);
   else checkInTurns.delete(task.id);
+  if (opts.incidentNotes?.length) deskTurns.set(task.id, opts.incidentNotes);
+  // what it was asked, rooms included, for an incident's one retry
+  lastAsked.set(task.id, {
+    text,
+    byYou: opts.byYou === true,
+    ...(opts.from ? { from: opts.from } : opts.answering ? { answering: opts.answering } : {}),
+    ...(opts.routine ? { routine: opts.routine } : {}),
+    ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
+  });
 
   // What the agent said elsewhere that bears on what the person just
   // said (recallAhead), found before their words are written so the
@@ -4874,6 +4986,7 @@ async function startClaimedTurn(
     if (forYouBefore) turnsForYou.add(task.id);
     else turnsForYou.delete(task.id);
     checkInTurns.delete(task.id);
+    deskTurns.delete(task.id);
   };
   const stillHeld = wheel.heldBy(bot.id);
   if (personSource && !telegramSenderCurrent(telegramBinding(botId), personSource)) {
@@ -4987,6 +5100,9 @@ async function startClaimedTurn(
     claim.cancelPrimaryTry?.();
     commandTurns.delete(task.id);
     checkInTurns.delete(task.id);
+    // a lead's quiet turn or an incident's retry that never ran settles
+    // its incident the way a failed one would
+    deskTurnUnsent(task.id, failure);
     activeRoom.delete(task.id);
     laneRequester.delete(task.id);
     laneTelegramPerson.delete(task.id);
@@ -6171,6 +6287,9 @@ async function checkWatcher(id: string, manual = false): Promise<{ fired: boolea
   // and moved its last look on for work nobody was there to do.
   const owner = store.bot(w.botId);
   if (owner?.archivedAt) return { fired: false, note: `${owner.name} is archived, so this watcher is paused until it is restored.` };
+  // Stopped for failing (countLook): only a look by hand, or the person
+  // changing it, starts it again.
+  if (w.failing && !manual) return { fired: false, note: "It stopped looking after failing again and again. Change it, or look by hand, to start it again." };
   if (checking.has(id)) return { fired: false, note: "already looking" };
   checking.add(id);
   try {
@@ -6259,6 +6378,10 @@ async function checkWatcher(id: string, manual = false): Promise<{ fired: boolea
     }
     w.lastCheck = Date.now();
     w.lastError = undefined;
+    // a look that worked: the count of failures starts over, and an
+    // incident about it is over
+    countLook(w, true, "", Date.now());
+    thingWorked(`watcher:${w.id}`, "It looked fine on its next look.");
     let fired = false;
     if (what) {
       if (mayFire(w, Date.now())) {
@@ -6273,8 +6396,9 @@ async function checkWatcher(id: string, manual = false): Promise<{ fired: boolea
     if (next.seenItems) w.seenItems = next.seenItems;
     return { fired, note: fired ? "changed, and the agent is on it" : what ? w.lastError ?? "" : manual ? "no change since the last look" : "" };
   } catch (e) {
-    w.lastError = (e as Error).message.slice(0, 200);
+    w.lastError = redactSecrets((e as Error).message).slice(0, 200);
     w.lastCheck = Date.now();
+    watcherFailed(w, w.lastError);
     return { fired: false, note: w.lastError };
   } finally {
     checking.delete(id);
@@ -6354,7 +6478,7 @@ setInterval(sweepRehearsals, 60 * 60_000).unref?.();
 setInterval(() => {
   const now = Date.now();
   for (const w of watchers) {
-    if (!w.enabled || suspendedFor(w.botId)) continue;
+    if (!w.enabled || w.failing || suspendedFor(w.botId)) continue;
     if ((w.lastCheck ?? 0) + w.every * 60_000 <= now) void checkWatcher(w.id);
   }
 }, 60_000).unref?.();
@@ -8468,7 +8592,7 @@ function closeRun(threadId: string, outcome: { ok: boolean; summary?: string; er
   const open = openRuns.get(threadId);
   if (!open) return;
   openRuns.delete(threadId);
-  routines.endRun(open.routineId, open.runId, {
+  const stopped = routines.endRun(open.routineId, open.runId, {
     state: outcome.ok ? "ok" : "failed",
     summary: outcome.summary,
     error: outcome.error,
@@ -8477,6 +8601,9 @@ function closeRun(threadId: string, outcome: { ok: boolean; summary?: string; er
   // Work that happened without anyone asking for it, which is exactly the
   // kind a person wants an account of afterwards.
   const routine = routines.get(open.routineId);
+  // the incident desk hears how it went, and the person hears once if
+  // this failure is the one that stopped it
+  if (routine) routineEnded(routine, threadId, outcome, stopped);
   // Not a quiet check-in: it found nothing, and one every quarter of an
   // hour would push everything else out of the record's recent view. Its
   // run history has it, and any approval it needed is recorded on its own.
@@ -8499,6 +8626,496 @@ function closeRun(threadId: string, outcome: { ok: boolean; summary?: string; er
   });
   broadcast({ kind: "routines" });
 }
+
+/**
+ * Runs a routine now, by hand or as an incident's one retry: the same
+ * run a scheduled one is, recorded in its history, without spending a
+ * scheduled slot. Throws with a status when it cannot start.
+ */
+async function runRoutineNow(routine: Routine, manual: boolean): Promise<void> {
+  if (drain.on) throw Object.assign(new Error("Bloks is finishing what is running before it restarts. Run this again once it is back."), { status: 503 });
+  // the person running it by hand starts it over (MAX_AGENT_CHAIN)
+  if (routine.chain) routines.patch(routine.id, { chain: undefined });
+  // A hand-run is still a run. It is how anybody checks that a
+  // routine does what they meant, so it belongs in the history at
+  // least as much as the scheduled ones do.
+  if (routine.targetKind === "room") {
+    const blok = bloks.get(routine.targetId);
+    if (!blok) throw Object.assign(new Error("that room is gone"), { status: 404 });
+    const run = routines.beginRun(routine.id, blok.id);
+    if (run) openRuns.set(blok.id, { routineId: routine.id, runId: run.id });
+    broadcast({ kind: "routines" });
+    void postToRoom(blok, routine.prompt, { hops: 0 })
+      .then(() => closeRun(blok.id, { ok: true, summary: "Posted to the room." }))
+      .catch((e) =>
+        closeRun(blok.id, {
+          ok: false,
+          error: redactSecrets(e instanceof Error ? e.message : String(e)),
+        }),
+      );
+    return;
+  }
+  const laneId = workLaneId(routine.targetId, routine.thread);
+  if (!laneId) {
+    const target = store.bot(routine.targetId);
+    const lane = (target && namedLane(target, routine.thread)?.title) ?? routine.thread ?? "General";
+    throw Object.assign(new Error(`that agent's ${lane} lane is busy. Try again when it settles`), { status: 409 });
+  }
+  // a run by hand is for now, so a paused engine refuses it rather
+  // than leaving it for later
+  const target = store.bot(routine.targetId);
+  const paused = target ? pauseHolding(target, laneId) : null;
+  if (target && paused) throw Object.assign(new Error(`${pausedWhy(target, paused)} Run it again once the pause ends.`), { status: 409 });
+  const run = routines.beginRun(routine.id, laneId);
+  if (run) openRuns.set(laneId, { routineId: routine.id, runId: run.id });
+  broadcast({ kind: "routines" });
+  try {
+    await startTurn(routine.targetId, routine.prompt, {
+      taskId: laneId,
+      computerOverride: routine.runsOn,
+      routine: routineMark(routine, manual),
+    });
+  } catch (e) {
+    closeRun(laneId, {
+      ok: false,
+      error: redactSecrets(e instanceof Error ? e.message : String(e)),
+    });
+    throw e;
+  }
+}
+
+// ── the incident desk (server/incidents.ts) ───────────────────────────
+// Failure as something somebody hears about. The rules for who leads and
+// how often anything is tried again are there, pure; this is where they
+// meet the turns, routines, watchers and workflows that fail, and the
+// cards, notes and retries that follow. None of it may throw into the
+// end of a turn: the desk is about failures, and must not be one.
+
+function deskOn(): boolean {
+  return cfg.incidents?.enabled !== false;
+}
+
+/** The desk's settings as the clients read them. */
+function deskStatus() {
+  return { enabled: deskOn(), lead: cfg.incidents?.lead ?? "auto" };
+}
+
+/** Whether an agent could take an incident now: listed, here, not
+ * held, and on an engine whose turns get the command line the three
+ * choices are made with. One that could only answer in words would be
+ * handed a choice it has no way to make. */
+function leadCandidate(bot: BotRecord): LeadCandidate {
+  const kind = registry.get(bot.modelSelection.instanceId)?.driverKind;
+  return {
+    id: bot.id,
+    name: bot.name,
+    seniority: bot.seniority,
+    able: !bot.hidden && !bot.archivedAt && !wheel.heldBy(bot.id) && Boolean(kind && runsAProcess(kind)),
+  };
+}
+
+function leadFor(where: IncidentWhere): IncidentLead {
+  const blok = where.roomId ? bloks.get(where.roomId) : null;
+  const members = blok ? (blok.memberIds.map((id) => store.bot(id)).filter(Boolean) as BotRecord[]).filter((m) => !m.archivedAt) : [];
+  const roomLead = blok ? leadOf(members, blok.leadId) : null;
+  return chooseLead({
+    setting: cfg.incidents?.lead ?? "auto",
+    failing: where.botId,
+    roomLead: roomLead ? leadCandidate(roomLead) : null,
+    agents: store.bots.filter((b) => !b.hidden && !b.archivedAt).map(leadCandidate),
+  });
+}
+
+/** Where an incident's card goes: the room or conversation it happened
+ * in, or the failing agent's first conversation for work that has none
+ * of its own (a workflow's step, say). Null when there is nowhere, and
+ * then Activity and the brief are where it is found. */
+function cardThreadOf(incident: Incident): string | null {
+  const room = incident.where.roomId;
+  if (room && bloks.get(room)) return room;
+  const lane = incident.where.laneId;
+  if (lane && store.taskByThread(lane)) return lane;
+  const bot = incident.where.botId ? store.bot(incident.where.botId) : null;
+  return bot && !bot.archivedAt ? (mainLaneOf(bot)?.id ?? null) : null;
+}
+
+/** A failure arrives at the desk. */
+function raiseIncident(input: RaiseInput, asked?: DeskAsk): void {
+  if (!deskOn()) return;
+  try {
+    const raised = incidents.raise(input, leadFor(input.where), Date.now());
+    if (raised.outcome === "new") {
+      if (asked) deskAsked.set(raised.incident.id, asked);
+      if (raised.incident.lead.kind === "agent") handToLead(raised.incident);
+      else putToPerson(raised.incident, "direct");
+    } else if (raised.outcome === "retry-failed") {
+      putToPerson(raised.incident, "retry-failed");
+    } else if (raised.outcome === "muted") {
+      sayQuiet(raised.incident, raised.summary.count, raised.first);
+    }
+    broadcast({ kind: "incidents" });
+  } catch (error) {
+    console.error("[incidents]", error instanceof Error ? error.message : error);
+  }
+}
+
+/** The lead's quiet turn: a note from Bloks into its first conversation,
+ * through the queue a person's message would wait in, so a lead in the
+ * middle of something hears it when that is done. */
+function handToLead(incident: Incident) {
+  const lead = incident.lead.kind === "agent" ? store.bot(incident.lead.id) : null;
+  const lane = lead && !lead.archivedAt ? mainLaneOf(lead) : null;
+  if (!lead || !lane) return putToPerson(incident, "lead-failed");
+  queueOnLane(lead.id, lane.id, leadNote(incident, CLI_COMMAND), { via: "incident", incident: { id: incident.id, kind: "note" } });
+  drainSteer(lane.id);
+}
+
+/** A lead's quiet turn is over. One that made a choice moved the
+ * incident on already; one that did not leaves it with the person. */
+function deskTurnEnded(id: string, ok: boolean) {
+  const incident = incidents.get(id);
+  if (!incident || incident.state !== "with-lead") return;
+  putToPerson(incident, ok ? "unsettled" : "lead-failed");
+  broadcast({ kind: "incidents" });
+}
+
+/** A lead's quiet turn, or an incident's retry, that never reached its
+ * engine. */
+function deskTurnUnsent(laneId: string, why?: string) {
+  const notes = deskTurns.get(laneId);
+  deskTurns.delete(laneId);
+  for (const id of notes ?? []) deskTurnEnded(id, false);
+  if (!deskRetries.delete(laneId)) return;
+  const retrying = incidents.openFor(`lane:${laneId}`);
+  if (retrying?.state === "retrying") {
+    raiseIncident({ kind: retrying.kind, subject: retrying.subject, thread: retrying.thread, title: retrying.title, why: why ?? "it could not start", where: retrying.where });
+  }
+}
+
+/** The person's card: a notice in the conversation where it happened,
+ * which reads as waiting on them. A card already there is brought up to
+ * date rather than joined by another. */
+function putToPerson(incident: Incident, reason: CardReason) {
+  incidents.update(incident.id, (i) => {
+    i.state = "needs-you";
+  });
+  const text = cardText(incident, reason);
+  const mark = { id: incident.id, kind: "needs-you" as const, state: "open" as const };
+  const card = incident.card;
+  const existing = card ? store.messagesFor(card.threadId).find((m) => m.id === card.messageId && !m.deleted) : undefined;
+  let threadId: string | null;
+  if (existing && card) {
+    threadId = card.threadId;
+    const patched = store.patchMessage(threadId, existing.id, { text, incident: mark });
+    if (patched) broadcast({ kind: "message.patch", threadId, message: patched });
+  } else {
+    threadId = cardThreadOf(incident);
+    if (!threadId) return;
+    const shown = store.appendMessage(threadId, { role: "bot", kind: "notice", text, incident: mark });
+    broadcast({ kind: "message", threadId, message: shown });
+    incidents.update(incident.id, (i) => {
+      i.card = { threadId: threadId!, messageId: shown.id };
+    });
+  }
+  // the conversation it is in reads as waiting on the person, as a lane
+  // whose engine ran out does
+  const owner = store.botByThread(threadId);
+  if (owner?.tasks.some((t) => t.id === threadId)) {
+    store.markLane(owner.id, threadId, true);
+    broadcast({ kind: "bot", bot: clientBot(store.bot(owner.id)) });
+  }
+}
+
+/** The one card while the desk is quiet: said once, then kept counting. */
+function sayQuiet(incident: Incident, count: number, first: boolean) {
+  const text = summaryText(count);
+  const card = incidents.summary?.card;
+  const existing = !first && card ? store.messagesFor(card.threadId).find((m) => m.id === card.messageId && !m.deleted) : undefined;
+  if (existing && card) {
+    const patched = store.patchMessage(card.threadId, existing.id, { text });
+    if (patched) broadcast({ kind: "message.patch", threadId: card.threadId, message: patched });
+    return;
+  }
+  const threadId = cardThreadOf(incident);
+  if (!threadId) return;
+  const shown = store.appendMessage(threadId, { role: "bot", kind: "notice", text, incident: { id: incident.id, kind: "summary", state: "open" } });
+  broadcast({ kind: "message", threadId, message: shown });
+  incidents.setSummaryCard({ threadId, messageId: shown.id });
+}
+
+/** An incident is over: on the list, and on its card. */
+function resolveIncident(id: string, resolution: string) {
+  const incident = incidents.resolve(id, resolution, Date.now());
+  const card = incident?.card;
+  if (card) {
+    const existing = store.messagesFor(card.threadId).find((m) => m.id === card.messageId && !m.deleted);
+    if (existing?.incident) {
+      const patched = store.patchMessage(card.threadId, existing.id, { incident: { ...existing.incident, state: "resolved", resolution } });
+      if (patched) broadcast({ kind: "message.patch", threadId: card.threadId, message: patched });
+    }
+  }
+  broadcast({ kind: "incidents" });
+  return incident;
+}
+
+/**
+ * The thing worked. A routine, a watcher or a workflow that runs fine
+ * has stopped failing, so its incident is over whatever state it was in.
+ * A conversation's turn working is a different question from the failed
+ * one being done, so for a turn only its retry counts (`only`).
+ */
+function thingWorked(subject: string, resolution: string, only?: readonly Incident["state"][]) {
+  const open = incidents.openFor(subject);
+  if (!open || (only && !only.includes(open.state))) return;
+  resolveIncident(open.id, resolution);
+}
+
+/**
+ * The one retry, for the lead or for the person. The lead's counts
+ * against the storm rules; the person's is theirs to make. How it goes
+ * is heard where the thing ends anyway: a run that works settles the
+ * incident (thingWorked), one that fails again finds it retrying and
+ * puts it to the person (raiseIncident).
+ */
+async function retryIncident(incident: Incident, by: "lead" | "person"): Promise<string> {
+  if (!incidentOpen(incident)) throw Object.assign(new Error("this incident is already resolved"), { status: 409 });
+  if (by === "lead") {
+    const refused = retryRefusal(incidents.incidents, incident, Date.now());
+    if (refused) throw Object.assign(new Error(`${refused}. Hand it to a teammate or tell the person instead.`), { status: 409 });
+  }
+  const retrying = () => {
+    incidents.update(incident.id, (i) => {
+      i.state = "retrying";
+      if (by === "lead") i.retriedAt = Date.now();
+    });
+    broadcast({ kind: "incidents" });
+  };
+  const gone = (what: string) => Object.assign(new Error(what), { status: 404 });
+  if (incident.kind === "routine") {
+    const routine = incident.where.routineId ? routines.get(incident.where.routineId) : null;
+    if (!routine) throw gone("that routine is gone");
+    retrying();
+    await runRoutineNow(routine, by === "person");
+    return `Running the routine ${routineLabel(routine)} again now.`;
+  }
+  if (incident.kind === "watcher") {
+    const w = watchers.find((x) => x.id === incident.where.watcherId);
+    if (!w) throw gone("that watcher is gone");
+    retrying();
+    void checkWatcher(w.id, true);
+    return `The watcher ${w.name} is looking again now.`;
+  }
+  if (incident.kind === "workflow") {
+    const failed = incident.where.runId ? workflows.run(incident.where.runId) : null;
+    const workflowId = incident.where.workflowId;
+    if (!workflowId || !workflows.get(workflowId)) throw gone("that workflow is gone");
+    retrying();
+    if (!fireWorkflow(workflowId, failed?.run.trigger ?? {})) throw Object.assign(new Error("that workflow could not start"), { status: 409 });
+    return "Running the workflow again now.";
+  }
+  // a turn, or a stalled one: asked again, the same thing the same way
+  const asked = deskAsked.get(incident.id);
+  const bot = incident.where.botId ? store.bot(incident.where.botId) : null;
+  if (!asked || !bot) {
+    throw Object.assign(new Error("this turn cannot be tried again from here, since Bloks restarted after it failed. Hand it to a teammate or tell the person instead."), { status: 409 });
+  }
+  if (bot.archivedAt || wheel.heldBy(bot.id)) throw Object.assign(new Error(`${bot.name} cannot take work right now`), { status: 409 });
+  const room = incident.where.roomId ? bloks.get(incident.where.roomId) : null;
+  if (incident.where.roomId) {
+    if (!room) throw gone("that room is gone");
+    retrying();
+    void dispatchRound(room.id, [[bot.id, asked.text]], 0, "owner", false, by === "lead").catch(() => {});
+    return `${bot.name} is answering in ${room.name} again.`;
+  }
+  const lane = bot.tasks.find((t) => t.id === incident.where.laneId);
+  if (!lane) throw gone("that conversation is closed");
+  if (laneWaits(lane)) throw Object.assign(new Error(`${bot.name} is busy in that conversation. Hand it on or tell the person instead.`), { status: 409 });
+  retrying();
+  deskRetries.add(lane.id);
+  void startTurn(bot.id, asked.text, {
+    taskId: lane.id,
+    presetMessage: true,
+    retry: true,
+    byYou: asked.byYou,
+    ...(asked.from ? { from: asked.from } : {}),
+    ...(asked.answering ? { answering: asked.answering } : {}),
+    ...(asked.routine ? { routine: asked.routine } : {}),
+    ...(asked.replyTo ? { replyTo: asked.replyTo } : {}),
+  }).catch((e) => {
+    // it never started, which is its retry failing
+    deskRetries.delete(lane.id);
+    raiseIncident({ kind: incident.kind, subject: incident.subject, thread: incident.thread, title: incident.title, why: redactSecrets(e instanceof Error ? e.message : String(e)), where: incident.where });
+  });
+  return `Asking ${bot.name} again in ${lane.title}.`;
+}
+
+/**
+ * The end of a turn nothing else will pick up, read for the desk. A
+ * failed or stalled one is an incident; one that worked settles the
+ * retry it was. Left alone: a stop, a command, a turn going on with
+ * another or folded and asked again, a lead's own quiet turn (settled
+ * by deskTurnEnded, never an incident of its own), and a routine's,
+ * a workflow's, a rehearsal's, a stranger's or a Telegram person's
+ * turn, which are said where they belong or are nobody's to lead.
+ */
+function noteTurnEnd(
+  bot: BotRecord,
+  laneId: string,
+  roomId: string,
+  end: { ok: boolean; stopReason: string | null; skip: boolean; errors: string[]; asked?: DeskAsk },
+) {
+  const room = roomId !== laneId ? bloks.get(roomId) : null;
+  const subject = room ? `room:${room.id}:${bot.id}` : `lane:${laneId}`;
+  if (end.ok) {
+    if (!end.skip) thingWorked(subject, "It worked when it was tried again.", ["retrying"]);
+    return;
+  }
+  if (end.skip || end.stopReason === "interrupted") return;
+  const stalled = end.stopReason === "tool_stalled";
+  if (!stalled && end.errors.some((said) => isContextError(said))) return;
+  if (openRuns.has(laneId) || workflowTurns.has(laneId)) return;
+  const lane = store.taskByThread(laneId)?.task;
+  if (rehearsals.byTask(laneId) || lane?.guestMail || laneTelegramPerson.has(laneId) || laneRequester.get(laneId) === MAIL_FROM_ANYONE) return;
+  const where = room ? ` in ${room.name}` : lane && lane.title !== "General" ? ` in ${lane.title}` : "";
+  const why = stalled ? (stalledSince.get(laneId) ?? "a tool call made no progress") : lastWords(end.errors, end.stopReason);
+  raiseIncident(
+    {
+      kind: stalled ? "stall" : "turn",
+      subject,
+      thread: room ? room.id : laneId,
+      title: `${bot.name}'s turn${where}`,
+      why: redactSecrets(why),
+      where: { botId: bot.id, botName: bot.name, laneId, ...(room ? { roomId: room.id } : {}) },
+    },
+    end.asked,
+  );
+}
+
+/** A routine's name as a sentence says it. */
+function routineLabel(routine: Routine): string {
+  const said = routine.name?.trim() || routine.prompt.replace(/\s+/g, " ").trim();
+  return said.length > 48 ? `${said.slice(0, 47).trimEnd()}…` : said;
+}
+
+/** A routine's run ended: its incident, and the one notice when this
+ * failure is the one that stopped its automatic runs. */
+function routineEnded(routine: Routine, threadId: string, outcome: { ok: boolean; error?: string }, stopped: boolean) {
+  const subject = `routine:${routine.id}`;
+  const why = failedWords.get(threadId) ?? outcome.error ?? "the run did not finish";
+  if (outcome.ok) thingWorked(subject, "It ran fine on its next run.");
+  else {
+    const agent = routine.targetKind === "agent" ? store.bot(routine.targetId) : null;
+    raiseIncident({
+      kind: "routine",
+      subject,
+      thread: threadId,
+      title: `The routine ${routineLabel(routine)}`,
+      why: redactSecrets(why),
+      where: {
+        routineId: routine.id,
+        ...(routine.targetKind === "room" ? { roomId: routine.targetId } : { botId: routine.targetId, botName: agent?.name, laneId: threadId }),
+      },
+    });
+  }
+  if (stopped) {
+    // the run keeps the stop reason; what it stopped for says the words
+    if (routine.failing) routines.patch(routine.id, { failing: { at: routine.failing.at, error: redactSecrets(why).slice(0, 300) } });
+    sayFailing({ kind: "routine", id: routine.id, name: routineLabel(routine) }, threadId, redactSecrets(why));
+  }
+}
+
+/** Where a watcher says things: the conversation it names, else its
+ * agent's first. */
+function watcherToldIn(w: Watcher, bot: BotRecord) {
+  const speaksIn = w.laneId && w.thread ? bot.tasks.find((t) => t.id === w.laneId && t.title === w.thread) : undefined;
+  return speaksIn ?? namedLane(bot, w.thread) ?? mainLaneOf(bot);
+}
+
+/** A look failed: counted toward the watcher stopping, and an incident. */
+function watcherFailed(w: Watcher, why: string) {
+  const stopped = countLook(w, false, why, Date.now());
+  const bot = store.bot(w.botId);
+  const lane = bot ? watcherToldIn(w, bot) : null;
+  raiseIncident({
+    kind: "watcher",
+    subject: `watcher:${w.id}`,
+    thread: lane?.id ?? `watcher:${w.id}`,
+    title: `The watcher ${w.name}`,
+    why,
+    where: { watcherId: w.id, botId: w.botId, botName: bot?.name, ...(lane ? { laneId: lane.id } : {}) },
+  });
+  if (stopped && lane) sayFailing({ kind: "watcher", id: w.id, name: w.name }, lane.id, why);
+}
+
+/** A workflow's run failed: an incident about the step that did. */
+function workflowFailed(workflow: Workflow, runId: string, error?: string) {
+  const run = workflows.run(runId)?.run;
+  const step = run ? [...run.steps].reverse().find((s) => s.state === "failed" || s.state === "timed-out") : undefined;
+  const def = step ? workflow.steps.find((s) => s.id === step.stepId) : undefined;
+  const agent = def?.action === "ask" && def.targetId ? store.bot(def.targetId) : null;
+  const room = def?.action === "post" && def.targetId ? bloks.get(def.targetId) : null;
+  const lane = agent ? mainLaneOf(agent) : null;
+  const said = lane ? failedWords.get(lane.id) : undefined;
+  raiseIncident({
+    kind: "workflow",
+    subject: `workflow:${workflow.id}`,
+    thread: room?.id ?? lane?.id ?? `workflow:${workflow.id}`,
+    title: `The workflow ${workflow.name}`,
+    why: redactSecrets(said ?? error ?? step?.error ?? "a step did not finish"),
+    where: {
+      workflowId: workflow.id,
+      runId,
+      ...(agent ? { botId: agent.id, botName: agent.name, ...(lane ? { laneId: lane.id } : {}) } : {}),
+      ...(room ? { roomId: room.id } : {}),
+    },
+  });
+}
+
+/** Said once, where the routine or watcher speaks, when it stops for
+ * failing: what happened and the three things to do about it, which the
+ * app offers on the notice and in Automations. */
+function sayFailing(what: NonNullable<Message["failing"]>, threadId: string, error: string) {
+  const said = error.replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "");
+  const text =
+    `The ${what.kind} ${what.name} failed ${FAILS_TO_PAUSE} times in a row, so it has stopped running on its own` +
+    `${said ? `. The last time: ${said.slice(0, 240)}` : ""}. Fix it, pause it or remove it in Automations.`;
+  const shown = store.appendMessage(threadId, { role: "bot", kind: "notice", text, failing: what });
+  broadcast({ kind: "message", threadId, message: shown });
+  const owner = store.botByThread(threadId);
+  if (owner?.tasks.some((t) => t.id === threadId)) {
+    store.markLane(owner.id, threadId, true);
+    broadcast({ kind: "bot", bot: clientBot(store.bot(owner.id)) });
+  }
+  broadcast({ kind: what.kind === "routine" ? "routines" : "watchers" });
+}
+
+/** Routines and watchers stopped for failing, for Activity and the brief. */
+function failingAutomations() {
+  return [
+    ...routines.routines.flatMap((r) =>
+      r.failing ? [{ kind: "routine" as const, id: r.id, name: routineLabel(r), error: r.failing.error, since: r.failing.at, failures: r.failures ?? FAILS_TO_PAUSE, targetId: r.targetId }] : [],
+    ),
+    ...watchers.flatMap((w) =>
+      w.failing ? [{ kind: "watcher" as const, id: w.id, name: w.name, error: w.failing.error, since: w.failing.at, failures: w.failures ?? FAILS_TO_PAUSE, botId: w.botId }] : [],
+    ),
+  ];
+}
+
+/** An incident a lead has had for too long without its quiet turn
+ * running or ending, after a restart say, is the person's. */
+function sweepDesk() {
+  const now = Date.now();
+  let changed = false;
+  for (const incident of incidents.open()) {
+    if (incident.state !== "with-lead" || now - incident.lastAt < LEAD_WAIT_MS) continue;
+    const running = [...deskTurns].some(([lane, ids]) => ids.includes(incident.id) && store.taskByThread(lane)?.task.busy);
+    if (running) continue;
+    putToPerson(incident, "unsettled");
+    changed = true;
+  }
+  if (changed) broadcast({ kind: "incidents" });
+}
+setInterval(sweepDesk, 60_000).unref?.();
 
 // ── workflows: more than one step, and a place to say yes ─────────────
 // See server/workflows.ts for the shape and for why a run is state on
@@ -8553,6 +9170,8 @@ function finishRun(runId: string, state: "done" | "failed" | "stopped", error?: 
     if (error) run.error = error.slice(0, 300);
   });
   const workflow = found.workflow;
+  if (state === "failed") workflowFailed(workflow, runId, error);
+  else if (state === "done") thingWorked(`workflow:${workflow.id}`, "It ran fine on its next run.");
   const ran = found.run.steps.filter((s) => s.state === "ok").length;
   record({
     at: Date.now(),
@@ -10674,8 +11293,11 @@ function queueOnLane(
     replyTo?: ReplyRef;
     from?: { botId: string; name: string };
     admission?: DirectAdmission;
-    /** Not the person: a webhook, a watcher, or Bloks keeping a goal going. */
-    via?: "webhook" | "watcher" | "goal";
+    /** Not the person: a webhook, a watcher, Bloks keeping a goal going,
+     * or the incident desk handing a lead what failed. */
+    via?: "webhook" | "watcher" | "goal" | "incident";
+    /** The incident a desk note is about (server/incidents.ts). */
+    incident?: Message["incident"];
     routine?: Message["routine"];
     telegramReply?: TelegramReply;
     /** The person said it from Telegram (Message.fromTelegram). */
@@ -10704,6 +11326,7 @@ function queueOnLane(
     ...(options.replyTo ? { replyTo: options.replyTo } : {}),
     ...(options.from ? { agent: { dir: "in" as const, peerId: options.from.botId, peerName: options.from.name } } : {}),
     ...(options.via ? { via: options.via } : {}),
+    ...(options.incident ? { incident: options.incident } : {}),
     ...(options.routine ? { via: "routine" as const, routine: options.routine } : {}),
     ...(options.telegramReply ? { telegramReply: options.telegramReply } : {}),
     ...(options.fromTelegram ? { fromTelegram: true } : {}),
@@ -11187,8 +11810,13 @@ function drainSteer(threadId: string) {
   const telegramPerson = said[0]?.telegramPerson ?? alive[0].item.telegramPerson;
   const requester = telegramPerson?.requester ?? alive[0].item.requester;
   const chain = burstChain(threadId, alive.map(({ item }) => item));
+  // The incident desk's notes to a lead (server/incidents.ts): the turn
+  // that takes them settles them, and is quiet when it is only them.
+  const incidentNotes = said.flatMap((m) => (m?.via === "incident" && m.incident ? [m.incident.id] : []));
+  const incidentQuiet = incidentNotes.length > 0 && incidentNotes.length === said.length;
   queueStarts.add(threadId);
-  void startTurn(entry.botId, joined, { taskId: threadId, presetMessage: true, answering, byYou, telegramMessages, telegramBinding, telegramPerson, requester, personalMessages: telegramMessages, commandInstance: queuedCommand(threadId, alive[0].item), chain }).catch((e) => {
+  void startTurn(entry.botId, joined, { taskId: threadId, presetMessage: true, answering, byYou, telegramMessages, telegramBinding, telegramPerson, requester, personalMessages: telegramMessages, commandInstance: queuedCommand(threadId, alive[0].item), chain, ...(incidentNotes.length ? { incidentNotes, incidentQuiet } : {}) }).catch((e) => {
+    for (const id of incidentNotes) deskTurnEnded(id, false);
     if (telegramPerson) tellTelegramPersonHeld(telegramPerson, (e as Error).message);
     telegramReturns.finish(threadId, `Could not answer: ${redactSecrets(e instanceof Error ? e.message : String(e))}`, telegramMessages);
     const failure = store.appendMessage(threadId, {
@@ -11769,6 +12397,8 @@ function configStatus() {
     // ahead of the person's turn (recallAhead)
     recall: { beforeTurn: cfg.recall?.beforeTurn !== false },
     agents: { turnLimit: agentLimit() },
+    // on unless turned off, and who leads incidents (server/incidents.ts)
+    incidents: deskStatus(),
     changes: { showShared: cfg.changes?.showShared !== false },
     // how long a silent tool call may hold a turn, in minutes; 0 is never
     turns: { stallMinutes: stallLimitMs() / 60_000 },
@@ -16646,6 +17276,78 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       });
     }
 
+    // ── the incident desk (server/incidents.ts) ──
+    // The person reads every incident and settles any of them. An agent
+    // reads and acts on only the ones it leads, and only while they are
+    // with it: once one is the person's, the lead has had its turn.
+    if (method === "GET" && path === "/api/incidents") {
+      if (asAgent) return json(res, 403, { error: "the list of incidents is the person's" });
+      return json(res, 200, { incidents: incidents.list().map(incidentView), summary: incidents.summary, desk: deskStatus(), failing: failingAutomations() });
+    }
+    m = path.match(/^\/api\/incidents\/([\w-]+)(?:\/(resolve|retry|hand|tell))?$/);
+    if (m) {
+      const incident = incidents.get(m[1]);
+      const leads = incident?.lead.kind === "agent" && incident.lead.id === asAgent?.botId;
+      if (!incident || (asAgent && !leads)) return json(res, 404, { error: "no such incident" });
+      const action = m[2];
+      if (!action) {
+        if (method !== "GET") return json(res, 405, { error: "an incident is read with GET" });
+        return json(res, 200, { incident: incidentView(incident) });
+      }
+      if (method !== "POST") return json(res, 405, { error: `${action} is a POST` });
+      if (action === "resolve") {
+        if (asAgent) return json(res, 403, { error: "only the person resolves an incident. Retry it, hand it to a teammate, or tell the person instead." });
+        if (!incidentOpen(incident)) return json(res, 200, { incident: incidentView(incident) });
+        const resolved = resolveIncident(incident.id, "Resolved by you.");
+        return json(res, 200, { incident: incidentView(resolved ?? incident) });
+      }
+      if (asAgent && incident.state !== "with-lead") {
+        return json(res, 409, {
+          error: incident.state === "resolved"
+            ? "this incident is settled already"
+            : "this incident is with the person now, so there is nothing more to do about it here",
+        });
+      }
+      if (action === "retry") {
+        const note = await retryIncident(incident, asAgent ? "lead" : "person");
+        return json(res, 202, { ok: true, note, incident: incidentView(incidents.get(incident.id) ?? incident) });
+      }
+      // handing on and telling the person are the lead's to do; the
+      // person has the card for what they would say
+      if (!asAgent) return json(res, 403, { error: `${action} is for the agent that leads this incident` });
+      const body = await readBody(req);
+      if (action === "hand") {
+        const to = typeof body.to === "string" ? store.bot(body.to) : null;
+        const note = typeof body.note === "string" ? body.note.trim() : "";
+        if (!to || to.hidden || to.archivedAt) return json(res, 404, { error: "no such agent to hand it to. `bloks agents` lists who is here." });
+        if (to.id === asAgent.botId) return json(res, 400, { error: "hand it to someone else, or retry it, or tell the person" });
+        if (note.length > NEEDS_MAX) return json(res, 400, { error: `what to do is at most ${NEEDS_MAX} characters` });
+        const lead = store.bot(asAgent.botId)!;
+        // the same message any agent sends another, held to the same
+        // chain of agents' turns
+        await sendUserMessage(to.id, handText(incident, lead.name, note), {
+          from: { botId: lead.id, name: lead.name },
+          personal: false,
+          chain: chainFrom(lead, asAgent.taskId),
+        });
+        incidents.update(incident.id, (i) => {
+          i.handedTo = { id: to.id, name: to.name, ...(note ? { note } : {}) };
+        });
+        const settled = resolveIncident(incident.id, `Handed to ${to.name}.`);
+        return json(res, 202, { ok: true, incident: incidentView(settled ?? incident) });
+      }
+      // tell
+      const text = typeof body.text === "string" ? body.text.replace(/\s+/g, " ").trim() : "";
+      if (!text) return json(res, 400, { error: "say what you need from the person" });
+      if (text.length > NEEDS_MAX) return json(res, 400, { error: `what you need is at most ${NEEDS_MAX} characters` });
+      incidents.update(incident.id, (i) => {
+        i.needs = text;
+      });
+      putToPerson(incidents.get(incident.id)!, "lead");
+      broadcast({ kind: "incidents" });
+      return json(res, 202, { ok: true, incident: incidentView(incidents.get(incident.id)!) });
+    }
+
     // ── watchers ──
     // An agent may file and drop its own watchers (a person saying "keep
     // an eye on this page" in a chat is the common way one is made), and
@@ -16752,6 +17454,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (asAgent) w.chain = nextAgentChain(asAgent.taskId);
       else delete w.chain;
       if (wasHeld && !(chainPastLimit(w.chain ?? 0))) w.lastError = undefined;
+      // Changed is had a say: one stopped for failing looks again on its
+      // schedule, its count started over (countLook).
+      if (w.failing || w.failures) {
+        delete w.failing;
+        delete w.failures;
+      }
       saveWatchers();
       armWatcher(w);
       // approving a check takes its baseline straight away
@@ -17892,10 +18600,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         if (bucket.costKnown) costKnown = true;
       }
 
-      return json(
-        res,
-        200,
-        assembleActivity({
+      return json(res, 200, {
+        // what failed and is still open, and what stopped for failing
+        // (server/incidents.ts), joined on beside the lanes
+        incidents: incidents.open().map(incidentView),
+        failing: failingAutomations(),
+        ...assembleActivity({
           paused: wheel.all().map((hold) => ({
             botId: hold.botId,
             botName: store.bot(hold.botId)?.name ?? "an agent",
@@ -17911,7 +18621,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           costKnown,
           at: Date.now(),
         }),
-      );
+      });
     }
 
     // ── answering with something other than a paragraph ──
@@ -18485,7 +19195,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (unnamed) return json(res, 400, { error: unnamed });
       // the person changing it has had their say; an agent changing it
       // carries its own turn's place
-      const routine = routines.patch(m[1], { ...merged, chain: asAgent ? nextAgentChain(asAgent.taskId) : undefined });
+      // Changed is had a say: one stopped for failing runs again on its
+      // schedule, its count started over (countRun in server/routines.ts).
+      const routine = routines.patch(m[1], {
+        ...merged,
+        chain: asAgent ? nextAgentChain(asAgent.taskId) : undefined,
+        failing: undefined,
+        failures: undefined,
+      });
       broadcast({ kind: "routines" });
       return json(res, 200, { routine: { ...routine!, summary: describeRoutine(routine!) } });
     }
@@ -18501,55 +19218,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && method === "POST") {
       const routine = routines.get(m[1]);
       if (!routine) return json(res, 404, { error: "no such routine" });
-      if (drain.on) return json(res, 503, { error: "Bloks is finishing what is running before it restarts. Run this again once it is back." });
-      // the person running it by hand starts it over (MAX_AGENT_CHAIN)
-      if (routine.chain) routines.patch(routine.id, { chain: undefined });
-      // A hand-run is still a run. It is how anybody checks that a
-      // routine does what they meant, so it belongs in the history at
-      // least as much as the scheduled ones do.
-      if (routine.targetKind === "room") {
-        const blok = bloks.get(routine.targetId);
-        if (!blok) return json(res, 404, { error: "that room is gone" });
-        const run = routines.beginRun(routine.id, blok.id);
-        if (run) openRuns.set(blok.id, { routineId: routine.id, runId: run.id });
-        broadcast({ kind: "routines" });
-        void postToRoom(blok, routine.prompt, { hops: 0 })
-          .then(() => closeRun(blok.id, { ok: true, summary: "Posted to the room." }))
-          .catch((e) =>
-            closeRun(blok.id, {
-              ok: false,
-              error: redactSecrets(e instanceof Error ? e.message : String(e)),
-            }),
-          );
-      } else {
-        const laneId = workLaneId(routine.targetId, routine.thread);
-        if (!laneId) {
-          const target = store.bot(routine.targetId);
-          const lane = (target && namedLane(target, routine.thread)?.title) ?? routine.thread ?? "General";
-          return json(res, 409, { error: `that agent's ${lane} lane is busy. Try again when it settles` });
-        }
-        // a run by hand is for now, so a paused engine refuses it rather
-        // than leaving it for later
-        const target = store.bot(routine.targetId);
-        const paused = target ? pauseHolding(target, laneId) : null;
-        if (target && paused) return json(res, 409, { error: `${pausedWhy(target, paused)} Run it again once the pause ends.` });
-        const run = routines.beginRun(routine.id, laneId);
-        if (run) openRuns.set(laneId, { routineId: routine.id, runId: run.id });
-        broadcast({ kind: "routines" });
-        try {
-          await startTurn(routine.targetId, routine.prompt, {
-            taskId: laneId,
-            computerOverride: routine.runsOn,
-            routine: routineMark(routine, true),
-          });
-        } catch (e) {
-          closeRun(laneId, {
-            ok: false,
-            error: redactSecrets(e instanceof Error ? e.message : String(e)),
-          });
-          throw e;
-        }
-      }
+      await runRoutineNow(routine, true);
       return json(res, 202, { ok: true });
     }
 
@@ -18686,6 +19355,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (body.agents !== undefined && (!isRecord(body.agents) || !validTurnLimit(body.agents.turnLimit))) {
         return json(res, 400, { error: `agents.turnLimit must be a whole number from ${MIN_AGENT_CHAIN_LIMIT} to ${MAX_AGENT_CHAIN_LIMIT}` });
       }
+      // The incident desk: a switch, and who leads, which has to be
+      // someone who is here or one of the two words.
+      if (body.incidents !== undefined) {
+        const desk = isRecord(body.incidents) ? body.incidents : null;
+        const lead = desk?.lead;
+        const named = typeof lead === "string" && lead !== "auto" && lead !== "person" ? store.bot(lead) : null;
+        if (
+          !desk ||
+          Object.keys(desk).some((key) => key !== "enabled" && key !== "lead") ||
+          (desk.enabled !== undefined && typeof desk.enabled !== "boolean") ||
+          (lead !== undefined && lead !== "auto" && lead !== "person" && (!named || named.hidden || named.archivedAt))
+        ) {
+          return json(res, 400, { error: 'incidents takes enabled (true or false) and lead ("auto", "person", or an agent\'s id)' });
+        }
+      }
       if (body.changes !== undefined && (
         !body.changes || typeof body.changes !== "object" || Array.isArray(body.changes) ||
         typeof (body.changes as Record<string, unknown>).showShared !== "boolean"
@@ -18753,6 +19437,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       if (isRecord(body.agents)) {
         Object.assign(cfg, saveConfig({ agents: { turnLimit: body.agents.turnLimit as number } }));
+        wroteSomething = true;
+      }
+      if (isRecord(body.incidents)) {
+        const { enabled, lead } = body.incidents;
+        Object.assign(cfg, saveConfig({
+          incidents: {
+            ...(typeof enabled === "boolean" ? { enabled } : {}),
+            ...(typeof lead === "string" ? { lead } : {}),
+          },
+        }));
         wroteSomething = true;
       }
       if (body.recall && typeof body.recall === "object" && !Array.isArray(body.recall)) {

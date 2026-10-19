@@ -108,6 +108,16 @@ export interface Routine {
    * (see lastReportNote) so a run that lands in a fresh session, or one
    * summarised since, still knows what it reported before. */
   lastReport?: { at: number; summary: string };
+  /** Runs that failed in a row, held slots aside. A run that went fine
+   * puts it back to none. */
+  failures?: number;
+  /** Its automatic runs stopped after FAILS_TO_PAUSE failures in a row,
+   * since when, and the last failure's words. A routine that fails every
+   * morning is a bill and a notice every morning, and nobody reads the
+   * fifth one. It stays on the books, switched on, and runs again only
+   * once the person has had a say: changed it, run it by hand and seen it
+   * work, or switched it off and back on. */
+  failing?: { at: number; error: string };
 }
 
 /** One firing: when it went out, how it ended, and what came back. */
@@ -131,6 +141,11 @@ export interface RoutineRun {
   /** Where to look for the whole thing. */
   threadId?: string;
 }
+
+/** Failures in a row before a routine's automatic runs stop. Three is
+ * a pattern rather than a bad night: one failure is the network, two
+ * can be a coincidence, three is the routine. */
+export const FAILS_TO_PAUSE = 3;
 
 /** How many runs a routine remembers. Enough to see a pattern, not
  * enough to turn a settings file into a log store. */
@@ -292,6 +307,8 @@ export function nextScheduledAfter(routine: Routine, now: Date): Date | null {
  */
 export function isDue(routine: Routine, now: Date, graceMs: number = graceFor(routine)): boolean {
   if (!routine.enabled) return false;
+  // stopped for failing until the person has had a say (`failing`)
+  if (routine.failing) return false;
   const slot = lastScheduledBefore(routine, now);
   if (!slot) return false;
   // Missed by too much to be useful. Wait for the next one.
@@ -573,6 +590,8 @@ export class RoutineStore {
     if ("activeHours" in patch) routine.activeHours = patch.activeHours;
     if ("quiet" in patch) routine.quiet = patch.quiet || undefined;
     if ("chain" in patch) routine.chain = patch.chain || undefined;
+    if ("failures" in patch) routine.failures = patch.failures || undefined;
+    if ("failing" in patch) routine.failing = patch.failing;
     this.save();
     return routine;
   }
@@ -641,15 +660,16 @@ export class RoutineStore {
 
   /** Closes a run. Unknown ids are ignored: a restart between the start
    * and the end of a turn is normal, and inventing a row for it would
-   * be worse than the gap. */
+   * be worse than the gap. True when this run's failure is the one that
+   * stopped the routine's automatic runs (`failing`). */
   endRun(
     routineId: string,
     runId: string,
     outcome: { state: "ok" | "failed"; summary?: string; error?: string; quiet?: boolean },
-  ): void {
+  ): boolean {
     const routine = this.get(routineId);
     const run = routine?.runs?.find((r) => r.id === runId);
-    if (!routine || !run) return;
+    if (!routine || !run) return false;
     run.state = outcome.state;
     run.endedAt = Date.now();
     // a quiet run said one word, which is not a summary of anything
@@ -661,7 +681,9 @@ export class RoutineStore {
     if (outcome.state === "ok" && !outcome.quiet && outcome.summary?.trim()) {
       routine.lastReport = { at: run.endedAt, summary: outcome.summary.trim().slice(0, LAST_REPORT_MAX * 2) };
     }
+    const paused = countRun(routine, outcome.state === "ok", run.error ?? "the run did not finish", run.endedAt);
     this.save();
+    return paused;
   }
 
   /** A run left open by a crash is not running; it is unknown. Called at
@@ -684,6 +706,24 @@ export class RoutineStore {
   due(now: Date): Routine[] {
     return this.routines.filter((r) => isDue(r, now));
   }
+}
+
+/**
+ * One finished run, counted toward the routine stopping for failing.
+ * A run that went fine clears the count and, if it had stopped, starts
+ * it again: it works now, which is what the stop was waiting to hear.
+ * True when this failure is the one that stopped it.
+ */
+export function countRun(routine: Pick<Routine, "failures" | "failing">, ok: boolean, error: string, at: number): boolean {
+  if (ok) {
+    delete routine.failures;
+    delete routine.failing;
+    return false;
+  }
+  routine.failures = (routine.failures ?? 0) + 1;
+  if (routine.failing || routine.failures < FAILS_TO_PAUSE) return false;
+  routine.failing = { at, error: error.slice(0, 300) };
+  return true;
 }
 
 /** routines.json is a file a person can open and edit, so it is checked

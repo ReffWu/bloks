@@ -169,6 +169,10 @@ export interface AppConfig {
   /** Agent-started turns in a row, 1 to 50, default 12. There is no Off;
    * anything else stored here is read as 12 (agentTurnLimit). */
   agents?: { turnLimit?: number };
+  /** The incident desk (server/incidents.ts): on unless turned off, and
+   * who leads incidents: "auto" (a room's lead, else the workspace's most
+   * senior agent), "person" (always the person), or an agent's id. */
+  incidents?: { enabled?: boolean; lead?: string };
   /** Show a card for files changed during an overlapping turn even when
    * none are named as its own. On unless turned off; own-file cards stay. */
   changes?: { showShared?: boolean };
@@ -312,6 +316,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "turns",
     "recall",
     "agents",
+    "incidents",
     "changes",
     "telegram",
     "chat",
