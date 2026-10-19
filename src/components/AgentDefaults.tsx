@@ -1,6 +1,8 @@
-// Where a new agent starts: a folder, approvals, a model and an effort, applied
+// Where a new agent starts: a folder, a model and an effort, applied
 // before its first turn, because a chat's folder is pinned on that turn
-// and cannot be moved after it.
+// and cannot be moved after it. Approvals are chosen once, on the Rules
+// and approvals page, which shows how many agents are on each mode and
+// can move them; here they are only said, with the way there.
 //
 // Set by the person only. Agents cannot read or write /api/config, so an
 // agent that hires another cannot hand it more than the person chose
@@ -12,7 +14,7 @@
 // and the card is not drawn at all rather than offering a form that
 // saves nowhere.
 import { useEffect, useRef, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
+import { Check } from "@/components/icons";
 import { api, useStore, type AgentDefaults as Defaults } from "@/state/store";
 import { ModelPicker } from "./ModelPicker";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
@@ -21,14 +23,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { Segmented } from "@/components/ui/segmented";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
-import { confirmWidening } from "./ApprovalsChooser";
-
-const APPROVALS = [
-  [undefined, "Ask"],
-  ["edits", "Accept edits"],
-  ["auto", "Auto"],
-  ["full", "Full access"],
-] as const;
+import { APPROVAL_MODES, useWorkspaceApprovals } from "./ApprovalsChooser";
 
 const EFFORTS = [
   [undefined, "Default"],
@@ -43,7 +38,7 @@ export function AgentDefaults() {
   const [folder, setFolder] = useState(saved?.cwd ?? "");
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
-  const [refused, setRefused] = useState(false);
+  const approvals = useWorkspaceApprovals().state;
   const hydrated = useRef(false);
 
   // adopt the server value once it arrives, without stomping an edit
@@ -74,19 +69,7 @@ export function AgentDefaults() {
   };
 
   const saveFolder = (value: string) => save({ cwd: value.trim() || undefined });
-  const anySet = Boolean(saved.cwd || saved.approvals || saved.modelSelection || saved.effort);
-
-  /** Auto for every new agent asks who is there, exactly as Auto for one
-   * agent does in its own settings. Without that, this card would be the
-   * way around the check. Narrowing never asks. */
-  const chooseApprovals = async (next: Defaults["approvals"]) => {
-    setRefused(false);
-    if (!(await confirmWidening(saved.approvals ?? "ask", next ?? "ask", "new agents"))) {
-      setRefused(true);
-      return;
-    }
-    save({ approvals: next });
-  };
+  const anySet = Boolean(saved.cwd || saved.modelSelection || saved.effort);
 
   return (
     <>
@@ -160,28 +143,21 @@ export function AgentDefaults() {
       <SettingsGroup title="What they may do">
         <SettingRow
           label="Approvals"
-          info="An agent that hires another never hands on more approvals than it has itself. Choosing Auto asks for Touch ID, the same as it does for one agent."
           description={
-            refused ? (
-              <span className="text-warning">Not confirmed, so approvals are unchanged.</span>
-            ) : (
-              "How much a new agent does before asking you."
-            )
+            approvals
+              ? `New agents start on ${APPROVAL_MODES.find((m) => m.id === approvals.mode)?.label ?? approvals.mode}.`
+              : "How much a new agent does before asking you."
           }
           control={
-            <Segmented
-              size="sm"
-              aria-label="Approvals for new agents"
-              value={saved.approvals}
-              onChange={(mode) => void chooseApprovals(mode)}
-              options={APPROVALS.map(([value, label]) => ({ value, label }))}
-            />
+            <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "rules" })}>
+              Change in Rules and approvals
+            </Button>
           }
         />
       </SettingsGroup>
       {anySet && (
         <button
-          onClick={() => save({ cwd: undefined, approvals: undefined, modelSelection: undefined, effort: undefined })}
+          onClick={() => save({ cwd: undefined, modelSelection: undefined, effort: undefined })}
           className="px-1 text-[12.5px] text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
         >
           Reset to the built-in start

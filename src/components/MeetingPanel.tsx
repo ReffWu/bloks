@@ -7,11 +7,11 @@
 // items in its Meetings lane, and an item that belongs to one of your
 // agents can be handed to it from here with one press.
 import { useCallback, useEffect, useRef, useState } from "react";
-import AudioLines from "lucide-react/dist/esm/icons/audio-lines.mjs";
-import CircleStop from "lucide-react/dist/esm/icons/circle-stop.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Send from "lucide-react/dist/esm/icons/send.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { AudioLines } from "@/components/icons";
+import { CircleStop } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Send } from "@/components/icons";
+import { X } from "@/components/icons";
 import { api, useStore, type Bot } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

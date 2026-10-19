@@ -1,8 +1,8 @@
 // Bloks from Claude Desktop, Claude Code, Cursor and the rest
 // (bin/bloks-mcp.mjs): what to paste where, with the path filled in.
 import { useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Copy from "lucide-react/dist/esm/icons/copy.mjs";
+import { Check } from "@/components/icons";
+import { Copy } from "@/components/icons";
 import { api } from "@/state/store";
 import { cn } from "@/lib/cn";
 

@@ -11,16 +11,16 @@
 // first-run flow when something was found. The step is the same list in
 // a smaller box.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Brain from "lucide-react/dist/esm/icons/brain.mjs";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.mjs";
-import FileText from "lucide-react/dist/esm/icons/file-text.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Scale from "lucide-react/dist/esm/icons/scale.mjs";
-import Server from "lucide-react/dist/esm/icons/server.mjs";
-import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.mjs";
-import Sparkles from "lucide-react/dist/esm/icons/sparkles.mjs";
-import UserRound from "lucide-react/dist/esm/icons/user-round.mjs";
+import { Brain } from "@/components/icons";
+import { Check } from "@/components/icons";
+import { ChevronRight } from "@/components/icons";
+import { FileText } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Scale } from "@/components/icons";
+import { Server } from "@/components/icons";
+import { ShieldCheck } from "@/components/icons";
+import { Sparkles } from "@/components/icons";
+import { UserRound } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";

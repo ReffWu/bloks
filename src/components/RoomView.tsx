@@ -2,20 +2,20 @@
 // every line is attributed, because who said it is half the meaning.
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.mjs";
-import ArrowUp from "lucide-react/dist/esm/icons/arrow-up.mjs";
-import BookmarkPlus from "lucide-react/dist/esm/icons/bookmark-plus.mjs";
-import FolderOpen from "lucide-react/dist/esm/icons/folder-open.mjs";
-import CalendarClock from "lucide-react/dist/esm/icons/calendar-clock.mjs";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Crown from "lucide-react/dist/esm/icons/crown.mjs";
-import Rows3 from "lucide-react/dist/esm/icons/rows-3.mjs";
-import MessagesSquare from "lucide-react/dist/esm/icons/messages-square.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Download from "lucide-react/dist/esm/icons/download.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
-import Users from "lucide-react/dist/esm/icons/users.mjs";
-import UserPlus from "lucide-react/dist/esm/icons/user-plus.mjs";
+import { AlertTriangle } from "@/components/icons";
+import { ArrowUp } from "@/components/icons";
+import { BookmarkPlus } from "@/components/icons";
+import { FolderOpen } from "@/components/icons";
+import { CalendarClock } from "@/components/icons";
+import { Check } from "@/components/icons";
+import { Crown } from "@/components/icons";
+import { Rows3 } from "@/components/icons";
+import { MessagesSquare } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Download } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { Users } from "@/components/icons";
+import { UserPlus } from "@/components/icons";
 import type { RoomPerson } from "@/state/reducer";
 import { SharePanel } from "./SharePanel";
 import { api, useStore, workingInRoom, type Blok, type Bot, type Message } from "@/state/store";
@@ -45,7 +45,7 @@ import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { ForumLens } from "./ForumLens";
 import { WaitingStrip } from "./WaitingStrip";
 import { MessageComponent } from "./Gallery";
-import MoreHorizontal from "lucide-react/dist/esm/icons/more-horizontal.mjs";
+import { MoreHorizontal } from "@/components/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,

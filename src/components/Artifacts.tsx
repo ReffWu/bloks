@@ -15,15 +15,15 @@
 // The xlsx parser is imported lazily: it is heavier than every other
 // viewer combined and most conversations never open a spreadsheet.
 import { useEffect, useState, useCallback } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
-import Download from "lucide-react/dist/esm/icons/download.mjs";
-import FileCode from "lucide-react/dist/esm/icons/file-code.mjs";
-import FileImage from "lucide-react/dist/esm/icons/file-image.mjs";
-import FileSpreadsheet from "lucide-react/dist/esm/icons/file-spreadsheet.mjs";
-import FileText from "lucide-react/dist/esm/icons/file-text.mjs";
-import FileVideo from "lucide-react/dist/esm/icons/file-video.mjs";
-import Presentation from "lucide-react/dist/esm/icons/presentation.mjs";
+import { Check } from "@/components/icons";
+import { X } from "@/components/icons";
+import { Download } from "@/components/icons";
+import { FileCode } from "@/components/icons";
+import { FileImage } from "@/components/icons";
+import { FileSpreadsheet } from "@/components/icons";
+import { FileText } from "@/components/icons";
+import { FileVideo } from "@/components/icons";
+import { Presentation } from "@/components/icons";
 import { type Message } from "@/state/store";
 import { Markdownish } from "@/components/Markdown";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";

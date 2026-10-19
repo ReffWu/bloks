@@ -7,14 +7,14 @@
 // kept before anything does, and then the page stays to show each step
 // until Bloks restarts.
 import { useCallback, useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import FolderOpen from "lucide-react/dist/esm/icons/folder-open.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Lock from "lucide-react/dist/esm/icons/lock.mjs";
-import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw.mjs";
-import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
-import TriangleAlert from "lucide-react/dist/esm/icons/triangle-alert.mjs";
+import { Check } from "@/components/icons";
+import { FolderOpen } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Lock } from "@/components/icons";
+import { RotateCcw } from "@/components/icons";
+import { ShieldCheck } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { TriangleAlert } from "@/components/icons";
 import { api } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

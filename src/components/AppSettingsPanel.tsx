@@ -8,10 +8,10 @@
 // people look for them (you, your agents, what they connect to, what they
 // leave behind), and search finds the page a word lives on.
 import { useEffect, useRef, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Monitor from "lucide-react/dist/esm/icons/monitor.mjs";
-import Moon from "lucide-react/dist/esm/icons/moon.mjs";
-import Sun from "lucide-react/dist/esm/icons/sun.mjs";
+import { Check } from "@/components/icons";
+import { Monitor } from "@/components/icons";
+import { Moon } from "@/components/icons";
+import { Sun } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { DEFAULT_TURN_LIMIT, MAX_TURN_LIMIT, MIN_TURN_LIMIT } from "@/lib/turn-limit";
 import { useTheme, type Theme } from "@/lib/theme";
@@ -44,23 +44,22 @@ import { SettingRow, SettingsGroup, SettingsPageHeader } from "./SettingsLayout"
 import { Segmented } from "@/components/ui/segmented";
 import { useConversationsView } from "@/lib/conversationsView";
 import { useTranscriptWidth } from "@/lib/useTranscriptWidth";
-import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left.mjs";
-import Archive from "lucide-react/dist/esm/icons/archive.mjs";
-import CloudIcon from "lucide-react/dist/esm/icons/cloud.mjs";
-import Cpu from "lucide-react/dist/esm/icons/cpu.mjs";
-import History from "lucide-react/dist/esm/icons/history.mjs";
-import Info from "lucide-react/dist/esm/icons/info.mjs";
-import LayoutGrid from "lucide-react/dist/esm/icons/layout-grid.mjs";
-import MessageCircle from "lucide-react/dist/esm/icons/message-circle.mjs";
-import Mic from "lucide-react/dist/esm/icons/mic.mjs";
-import SearchIcon from "lucide-react/dist/esm/icons/search.mjs";
-import ShieldAlert from "lucide-react/dist/esm/icons/shield-alert.mjs";
-import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.mjs";
-import SlidersHorizontal from "lucide-react/dist/esm/icons/sliders-horizontal.mjs";
-import Smartphone from "lucide-react/dist/esm/icons/smartphone.mjs";
-import UserIcon from "lucide-react/dist/esm/icons/user.mjs";
-import UserPlus from "lucide-react/dist/esm/icons/user-plus.mjs";
-import Luggage from "lucide-react/dist/esm/icons/luggage.mjs";
+import { Archive } from "@/components/icons";
+import { Cloud as CloudIcon } from "@/components/icons";
+import { Cpu } from "@/components/icons";
+import { History } from "@/components/icons";
+import { Info } from "@/components/icons";
+import { LayoutGrid } from "@/components/icons";
+import { MessageCircle } from "@/components/icons";
+import { Mic } from "@/components/icons";
+import { Search as SearchIcon } from "@/components/icons";
+import { ShieldAlert } from "@/components/icons";
+import { ShieldCheck } from "@/components/icons";
+import { SlidersHorizontal } from "@/components/icons";
+import { Smartphone } from "@/components/icons";
+import { User as UserIcon } from "@/components/icons";
+import { UserPlus } from "@/components/icons";
+import { Luggage } from "@/components/icons";
 import { useEscape } from "@/lib/useEscape";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, useWorkspaceApprovals, type ApprovalMode } from "./ApprovalsChooser";
 
@@ -1095,15 +1094,10 @@ export function AppSettingsPanel() {
         aria-label="Settings"
         className="flex shrink-0 flex-col border-b bg-sidebar/60 md:w-[248px] md:border-b-0 md:border-r"
       >
-        <div className="flex items-center gap-1.5 px-3 pb-2 pt-3.5">
-          <button
-            onClick={close}
-            aria-label="Back to your agents"
-            title="Back (Esc)"
-            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
-          >
-            <ArrowLeft size={17} />
-          </button>
+        {/* No back button of its own: the title bar's Back (or Esc) leaves,
+            and on a phone the pill's drawer does; the room on the left
+            there is the pill's. */}
+        <div className="flex h-[52px] items-center px-4 max-md:pl-[92px]">
           <span className="text-[15px] font-semibold text-foreground">Settings</span>
         </div>
         <div className="px-3 pb-2">

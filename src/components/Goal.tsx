@@ -9,8 +9,8 @@
 // A done goal cannot go on and costs nothing while it stays, and its
 // notice in the chat says how it ended, so it has no chip.
 import { useEffect, useState } from "react";
-import Target from "lucide-react/dist/esm/icons/target.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Target } from "@/components/icons";
+import { X } from "@/components/icons";
 import { api, useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { DEFAULT_GOAL_TURNS, goalAction, goalState, goalStateShort } from "@/lib/goals";

@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Crown from "lucide-react/dist/esm/icons/crown.mjs";
-import Download from "lucide-react/dist/esm/icons/download.mjs";
-import Fingerprint from "lucide-react/dist/esm/icons/fingerprint-pattern.mjs";
-import Library from "lucide-react/dist/esm/icons/library.mjs";
-import Plus from "lucide-react/dist/esm/icons/plus.mjs";
-import Sparkles from "lucide-react/dist/esm/icons/sparkles.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Check } from "@/components/icons";
+import { Crown } from "@/components/icons";
+import { Download } from "@/components/icons";
+import { FingerprintPattern as Fingerprint } from "@/components/icons";
+import { Library } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { Sparkles } from "@/components/icons";
+import { X } from "@/components/icons";
 import { api, useStore, type Bot, type Skill } from "@/state/store";
 import { useMcpServers, type McpServerRow } from "./McpServers";
 import { AgentAvatar, BlokAvatar } from "./Avatar";
@@ -80,7 +80,7 @@ function AttachedSkills({ bot }: { bot: Bot }) {
           <span className="text-[13.5px] font-semibold text-foreground">From the library</span>
           <span className="text-[12px] text-muted-foreground">{attached.length}</span>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => dispatch({ type: "toggleSkills", open: true })}>
+        <Button variant="ghost" size="sm" onClick={() => dispatch({ type: "openCustomize", tab: "skills" })}>
           Manage
         </Button>
       </div>
@@ -1179,10 +1179,10 @@ function MemoryCard({ bot }: { bot: Bot }) {
               className="text-foreground underline-offset-2 hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
-                dispatch({ type: "toggleMemory", open: true, botId: bot.id });
+                dispatch({ type: "openLibrary", shelf: "memory", botId: bot.id });
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") dispatch({ type: "toggleMemory", open: true, botId: bot.id });
+                if (e.key === "Enter") dispatch({ type: "openLibrary", shelf: "memory", botId: bot.id });
               }}
             >
               Every change, with undo

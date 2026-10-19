@@ -21,7 +21,9 @@ const quiet = (ms = 800) => new Promise((r) => setTimeout(r, ms));
 function home(t: { after: (fn: () => void) => void }) {
   const dir = mkdtempSync(join(tmpdir(), "bloks-pause-turns-"));
   mkdirSync(join(dir, ".bloks"), { recursive: true });
-  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5 }));
+  // registered before the server's own stop, so it can run while the
+  // server is still writing its last file; retrying outlasts that
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
   return dir;
 }
 

@@ -11,14 +11,14 @@
 // not say it edited (GitHub 153). They are listed apart, under who else
 // was working there, and Undo leaves them alone.
 import { useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import FileDiff from "lucide-react/dist/esm/icons/file-diff.mjs";
-import FlaskConical from "lucide-react/dist/esm/icons/flask-conical.mjs";
-import FileMinus from "lucide-react/dist/esm/icons/file-minus.mjs";
-import FilePen from "lucide-react/dist/esm/icons/file-pen.mjs";
-import FilePlus from "lucide-react/dist/esm/icons/file-plus.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Undo2 from "lucide-react/dist/esm/icons/undo-2.mjs";
+import { Check } from "@/components/icons";
+import { FileDiff } from "@/components/icons";
+import { FlaskConical } from "@/components/icons";
+import { FileMinus } from "@/components/icons";
+import { FilePen } from "@/components/icons";
+import { FilePlus } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Undo2 } from "@/components/icons";
 import { api, useStore, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { changedLine } from "@/lib/preview";

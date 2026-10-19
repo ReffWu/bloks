@@ -3,10 +3,10 @@
 // The updater downloads a release on its own and installs it on the next
 // quit, but most people leave Bloks open for days, and the only place that
 // said an update was waiting was the About card in Settings. So once one
-// has downloaded, a small card sits above the sidebar's footer with the
-// one button that matters. Closing it hides that version only; the next
-// release asks again. In a plain browser tab there is no updater, so there
-// is never a card.
+// has downloaded, an orange button sits on the main rail above Settings,
+// and pressing it opens a card with the one button that matters. "Not
+// now" hides that version only; the next release asks again. In a plain
+// browser tab there is no updater, so there is never a button.
 //
 // Relaunching waits for running turns to finish first (server/drain.ts),
 // which can take a while, so meanwhile the card says what it is waiting
@@ -16,10 +16,13 @@
 // with the two ways forward, where it would have offered the same button
 // as if it had never been pressed (GitHub 267).
 import { useEffect, useState } from "react";
-import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { ArrowDownToLine } from "@/components/icons";
+import { RefreshCw } from "@/components/icons";
+import { X } from "@/components/icons";
 import type { UpdateState } from "@/types/bridge";
 import { cn } from "@/lib/cn";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const DISMISSED = "bloks.updateCardDismissed";
 
@@ -40,7 +43,58 @@ export function drainingLine(draining: NonNullable<UpdateState["draining"]>, now
   return `Finishing ${what} before restarting…${left}`;
 }
 
-export function UpdateCard({ rail }: { rail: boolean }) {
+/**
+ * The update, from the main rail: an orange button above Settings while a
+ * release waits for a relaunch, and the card itself one press away. The
+ * card says what pressing will do, and while it waits for running turns
+ * it is the way to restart now or call it off.
+ */
+export function UpdateRailButton() {
+  const [update, setUpdate] = useState<UpdateState>({ state: "idle" });
+  const [hidden, setHidden] = useState<string | null>(dismissedVersion);
+  useEffect(() => {
+    void window.bloks?.updateState?.().then(setUpdate);
+    return window.bloks?.onUpdateState?.(setUpdate);
+  }, []);
+  // the card's own storage event is not heard here, so read the dismissal
+  // again whenever the update changes
+  useEffect(() => setHidden(dismissedVersion()), [update]);
+  const ready = update.state === "ready";
+  const missed = update.notInstalled;
+  if (!ready && !missed) return null;
+  const version = update.version ?? "";
+  if (hidden !== null && hidden === version && !update.draining && !missed) return null;
+  const label = update.draining
+    ? "Restarting to update"
+    : missed
+      ? "The update did not install"
+      : "Update available";
+  return (
+    <DropdownMenu onOpenChange={(open) => !open && setHidden(dismissedVersion())}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger
+            aria-label={version ? `${label}: Bloks ${version}` : label}
+            className="flex size-8 items-center justify-center rounded-full bg-update text-update-foreground outline-none transition-[scale,opacity] duration-150 ease-out hover:opacity-90 active:scale-[0.96]"
+          >
+            {update.draining ? (
+              <RefreshCw size={15} strokeWidth={2.25} className="animate-spin motion-reduce:animate-none" />
+            ) : (
+              <ArrowDownToLine size={15} strokeWidth={2.25} />
+            )}
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent side="right" align="end" sideOffset={10} className="w-[260px] p-0">
+        <UpdateCard />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** What the update button opens: what pressing will do, and the button. */
+function UpdateCard() {
   const [update, setUpdate] = useState<UpdateState>({ state: "idle" });
   const [hidden, setHidden] = useState<string | null>(dismissedVersion);
   const [restarting, setRestarting] = useState(false);
@@ -75,36 +129,10 @@ export function UpdateCard({ rail }: { rail: boolean }) {
     }
   };
 
-  // the narrow rail has room for a button and nothing else
-  if (rail) {
-    // nothing to press until the update is ready to try again
-    if (!ready) return null;
-    return (
-      <div className="flex shrink-0 justify-center pb-1">
-        <button
-          onClick={relaunch}
-          disabled={restarting || Boolean(draining)}
-          title={
-            draining
-              ? drainingLine(draining)
-              : missed
-                ? "The update did not install. Try again"
-                : `Bloks ${version} is ready. Relaunch to update`
-          }
-          aria-label={`Relaunch to update to Bloks ${version}`}
-          className="relative flex size-10 items-center justify-center rounded-lg text-brand transition-[background-color,scale] duration-150 ease-out hover:bg-accent active:scale-[0.96]"
-        >
-          <RefreshCw size={17} className={cn((restarting || draining) && "animate-spin motion-reduce:animate-none")} />
-          <span className="absolute right-2 top-2 size-1.5 rounded-full bg-brand ring-2 ring-sidebar" />
-        </button>
-      </div>
-    );
-  }
-
   if (draining) {
     return (
-      <div className="shrink-0 px-2 pb-2">
-        <div className="relative animate-rise-in rounded-xl border bg-background/60 px-3 py-2.5">
+      <div className="shrink-0">
+        <div className="relative px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[12.5px] font-medium text-foreground">
             <RefreshCw size={12} className="animate-spin text-brand-ink motion-reduce:animate-none" />
             Restarting to update
@@ -137,8 +165,8 @@ export function UpdateCard({ rail }: { rail: boolean }) {
 
   if (missed) {
     return (
-      <div className="shrink-0 px-2 pb-2">
-        <div className="relative animate-rise-in rounded-xl border bg-background/60 px-3 py-2.5">
+      <div className="shrink-0">
+        <div className="relative px-3 py-2.5">
           <button
             onClick={() => void window.bloks?.updateNotInstalledSeen?.()}
             aria-label="Dismiss"
@@ -176,8 +204,8 @@ export function UpdateCard({ rail }: { rail: boolean }) {
   }
 
   return (
-    <div className="shrink-0 px-2 pb-2">
-      <div className="relative animate-rise-in rounded-xl border bg-background/60 px-3 py-2.5">
+    <div className="shrink-0">
+      <div className="relative px-3 py-2.5">
         <button
           onClick={dismiss}
           aria-label="Dismiss"

@@ -51,6 +51,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
     keys: [["Mod", "K"]],
     does: "Jump to an agent, a room, a setting or a message",
   },
+  { id: "toggleSidebar", group: "navigation", keys: [["Mod", "B"]], does: "Show or hide the chat sidebar" },
+  { id: "back", group: "navigation", keys: [["Mod", "["]], does: "Back to the place you were before" },
+  { id: "forward", group: "navigation", keys: [["Mod", "]"]], does: "Forward again" },
   {
     id: "sidebarStep",
     group: "navigation",

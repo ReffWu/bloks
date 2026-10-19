@@ -10,7 +10,7 @@
 // The list itself lives in src/lib/recent.ts. Only this window keeps it,
 // and only for as long as it is open.
 import { useEffect, useRef, useState } from "react";
-import Users from "lucide-react/dist/esm/icons/users.mjs";
+import { Users } from "@/components/icons";
 import { useStore } from "@/state/store";
 import { cycle, prune, sameView, visit, type Viewed } from "@/lib/recent";
 import { AgentAvatar } from "./Avatar";

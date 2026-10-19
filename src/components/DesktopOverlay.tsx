@@ -8,13 +8,13 @@
 // stay fixed.
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import ExternalLink from "lucide-react/dist/esm/icons/external-link.mjs";
-import GripHorizontal from "lucide-react/dist/esm/icons/grip-horizontal.mjs";
-import PanelBottom from "lucide-react/dist/esm/icons/panel-bottom.mjs";
-import PanelLeft from "lucide-react/dist/esm/icons/panel-left.mjs";
-import PanelRight from "lucide-react/dist/esm/icons/panel-right.mjs";
-import PictureInPicture2 from "lucide-react/dist/esm/icons/picture-in-picture-2.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { ExternalLink } from "@/components/icons";
+import { GripHorizontal } from "@/components/icons";
+import { PanelBottom } from "@/components/icons";
+import { PanelLeft } from "@/components/icons";
+import { PanelRight } from "@/components/icons";
+import { PictureInPicture2 } from "@/components/icons";
+import { X } from "@/components/icons";
 import { api, useStore, type Bot } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Button } from "@/components/ui/button";

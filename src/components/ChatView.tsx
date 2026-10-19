@@ -1,16 +1,16 @@
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
 import { useEffect, useRef, useState, useMemo } from "react";
-import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.mjs";
-import BellOff from "lucide-react/dist/esm/icons/bell-off.mjs";
-import Search from "lucide-react/dist/esm/icons/search.mjs";
-import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.mjs";
-import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.mjs";
-import History from "lucide-react/dist/esm/icons/history.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Monitor from "lucide-react/dist/esm/icons/monitor.mjs";
-import SquareTerminal from "lucide-react/dist/esm/icons/square-terminal.mjs";
-import Target from "lucide-react/dist/esm/icons/target.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { AlertTriangle } from "@/components/icons";
+import { BellOff } from "@/components/icons";
+import { Search } from "@/components/icons";
+import { ChevronUp } from "@/components/icons";
+import { ChevronDown } from "@/components/icons";
+import { History } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Monitor } from "@/components/icons";
+import { SquareTerminal } from "@/components/icons";
+import { Target } from "@/components/icons";
+import { X } from "@/components/icons";
 import { api, useStore, laneHasMessages, openLaneWorking, type Bot, type Message } from "@/state/store";
 import { CarryOn } from "@/components/CarryOn";
 import { AgentAvatar } from "./Avatar";
@@ -38,8 +38,8 @@ import { ToolRun } from "./ToolRun";
 import { TurnFoldLine } from "./TurnFold";
 import { RecalledNotes } from "./RecalledNotes";
 import { MeetingPanel } from "./MeetingPanel";
-import AudioLines from "lucide-react/dist/esm/icons/audio-lines.mjs";
-import Mic from "lucide-react/dist/esm/icons/mic.mjs";
+import { AudioLines } from "@/components/icons";
+import { Mic } from "@/components/icons";
 import {
   ForwardDialog,
   MessageActionBar,
@@ -1043,7 +1043,11 @@ export function ChatView({ bot }: { bot: Bot }) {
   // One conversation is the usual agent (GitHub 237): with nothing to
   // switch to, the strip would only be a "+" inviting a second. New
   // conversation and Clear stay on the agent's row in the sidebar.
-  const strip = !lanesInSidebar && (bot.tasks?.length ?? 0) > 1;
+  // The conversations as tabs, wherever the sidebar is not listing them:
+  // its conversations switched off, or the sidebar folded away. Even one
+  // shows, as a browser shows its one tab, so a new one is always a +
+  // away.
+  const strip = !lanesInSidebar && (bot.tasks?.length ?? 0) > 0;
 
 
   const first = said[0];
@@ -1173,19 +1177,14 @@ export function ChatView({ bot }: { bot: Bot }) {
     });
 
   return (
-    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      {/* Header. Its line comes from the tab strip below it when there is
-          one; with the conversations in the sidebar, or only one of them,
-          there is no strip, so the header draws its own. */}
-      <div
-        className={cn(
-          "titlebar-drag flex h-[52px] shrink-0 items-center justify-between gap-2 px-3 md:px-4",
-          !strip && "border-b",
-        )}
-      >
+    <main className="@container/chat relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+      {/* Header. Who you are talking to sits in the middle once there is
+          room for it to sit clear of the buttons; narrower, it moves to
+          the left, where a name has the most room. */}
+      <div className="titlebar-drag relative flex h-[52px] shrink-0 items-center justify-between gap-2 px-3 max-md:pl-[92px] md:px-4">
         <button
           onClick={() => dispatch({ type: "toggleSettings" })}
-          className="flex min-w-0 items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors duration-150 hover:bg-accent"
+          className="flex min-w-0 items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors duration-150 hover:bg-accent @[760px]/chat:absolute @[760px]/chat:left-1/2 @[760px]/chat:max-w-[40%] @[760px]/chat:-translate-x-1/2"
           title="Agent settings"
         >
           <AgentAvatar bot={bot} size={28} />
@@ -1198,7 +1197,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             )}
           </span>
         </button>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <ModelPicker bot={bot} />
           <CallButton bot={bot} />
           {window.bloks?.meetingStart && (
@@ -1232,6 +1231,10 @@ export function ChatView({ bot }: { bot: Bot }) {
           </Button>
         </div>
       </div>
+
+      {/* A hairline under the header, faint and fading out at both ends,
+          so the header and what follows read as one surface. */}
+      <div aria-hidden className="h-px shrink-0 bg-linear-to-r from-transparent via-border to-transparent" />
 
       {/* The running turn's Codex speed, only when it is worth saying:
           Fast, or an agent's own choice. Gone when the turn ends. */}

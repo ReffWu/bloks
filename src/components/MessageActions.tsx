@@ -8,16 +8,16 @@
 // bubble; forward re-posts the message into another conversation with
 // its origin named.
 import { useEffect, useRef, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import CornerUpLeft from "lucide-react/dist/esm/icons/corner-up-left.mjs";
-import Copy from "lucide-react/dist/esm/icons/copy.mjs";
-import SmilePlus from "lucide-react/dist/esm/icons/smile-plus.mjs";
-import Pencil from "lucide-react/dist/esm/icons/pencil.mjs";
-import History from "lucide-react/dist/esm/icons/history.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
-import Send from "lucide-react/dist/esm/icons/send.mjs";
-import Users from "lucide-react/dist/esm/icons/users.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Check } from "@/components/icons";
+import { CornerUpLeft } from "@/components/icons";
+import { Copy } from "@/components/icons";
+import { SmilePlus } from "@/components/icons";
+import { Pencil } from "@/components/icons";
+import { History } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { Send } from "@/components/icons";
+import { Users } from "@/components/icons";
+import { X } from "@/components/icons";
 import { useStore, type Message } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";

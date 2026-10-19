@@ -2,9 +2,9 @@
 // the model each agent runs on is shown here: the lead does judgement on
 // the expensive model, everyone else does volume on cheaper ones.
 import { useEffect, useMemo, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Crown from "lucide-react/dist/esm/icons/crown.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Check } from "@/components/icons";
+import { Crown } from "@/components/icons";
+import { X } from "@/components/icons";
 import { api, useStore, type Bot } from "@/state/store";
 import { AgentAvatar, BlokAvatar } from "./Avatar";
 import { TEAM_LIBRARY } from "@/lib/teamLibrary";

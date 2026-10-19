@@ -6,10 +6,10 @@
 // is what makes letting someone in safe, so the phrase is the biggest
 // thing on the card that asks.
 import { useCallback, useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Copy from "lucide-react/dist/esm/icons/copy.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Check } from "@/components/icons";
+import { Copy } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { X } from "@/components/icons";
 import QRCode from "qrcode";
 import { api, useStore, type Blok } from "@/state/store";
 import type { RoomPerson, RoomSharing } from "@/state/reducer";

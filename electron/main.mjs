@@ -536,15 +536,16 @@ function persistWindowState(win) {
 /**
  * Where the three window buttons sit.
  *
- * The cluster is 52px wide (three 12px buttons, 20px apart). At x:22 it
- * ends at 74, which leaves exactly 22px to the 96px rail's edge: the
- * group sits centred, with even margins on both sides. macOS
+ * The cluster is 52px wide (three 12px buttons, 20px apart). It sits in
+ * the 44px title bar (TitleBar.tsx), y:16 centring the 12px buttons in
+ * it, and reaches past the slim 56px main rail below (AppRail.tsx); the
+ * title bar keeps 78px clear for it before its own buttons. macOS
  * forgets this position on its own: leaving full screen, changing
  * display scale and some resizes all reset it, which is how the green
  * button ends up back over the divider after a while. So it is applied
  * again on each of those, rather than only at creation.
  */
-const BUTTONS = { x: 22, y: 16 };
+const BUTTONS = { x: 16, y: 16 };
 
 function keepButtonsInPlace(win) {
   if (process.platform !== "darwin") return;
@@ -688,9 +689,9 @@ function createWindow() {
     // default, which makes this right nearly always.
     backgroundColor: nativeTheme.shouldUseDarkColors ? DARK_BACKDROP : LIGHT_BACKDROP,
     titleBarStyle: "hiddenInset",
-    // macOS draws its three buttons as a 52px cluster. The collapsed
-    // sidebar has to be wider than that plus both insets, or the green
-    // one sits on the divider; see BUTTONS below for the arithmetic.
+    // macOS draws its three buttons as a 52px cluster. The main rail has
+    // to be wider than that plus both insets, or the green one sits on the
+    // panel's edge; see BUTTONS below for the arithmetic.
     trafficLightPosition: BUTTONS,
     webPreferences: {
       // Written out rather than inherited: these are the settings that

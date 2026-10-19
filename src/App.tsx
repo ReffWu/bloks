@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { MotionConfig } from "motion/react";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
+import { Loader2 } from "@/components/icons";
 import { StoreProvider, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Onboarding } from "@/components/Onboarding";
@@ -8,21 +8,18 @@ import { Intro, introPending } from "@/components/Intro";
 import { initAnalytics, setupDone, workspaceSetupDone } from "@/lib/analytics";
 import { unreadCount } from "@/lib/unread";
 import { Sidebar } from "@/components/Sidebar";
+import { AppRail } from "@/components/AppRail";
+import { RailPageView } from "@/components/RailPages";
+import { TitleBar } from "@/components/TitleBar";
+import { MobileNav } from "@/components/MobileNav";
 import { ChatView } from "@/components/ChatView";
 import { NewAgentScreen } from "@/components/NewAgentScreen";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { PluginsPanel } from "@/components/PluginsPanel";
-import { SkillsPanel } from "@/components/SkillsPanel";
 import { RoomView } from "@/components/RoomView";
 import { NewRoomDialog } from "@/components/NewRoomDialog";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { AutomationsPanel } from "@/components/AutomationsPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
-import { ProjectsPanel } from "@/components/ProjectsPanel";
-import { MemoryPanel } from "./components/MemoryPanel";
-import { BriefPanel } from "./components/BriefPanel";
-import { RehearsalsPanel } from "./components/RehearsalsPanel";
-import { ActivityPanel } from "@/components/Activity";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutKeys } from "@/components/Shortcuts";
 import { Switcher } from "@/components/Switcher";
@@ -71,15 +68,29 @@ function Shell() {
   useEffect(() => {
     window.bloks?.badgeSet?.(waiting);
   }, [waiting]);
+  // The main rail is always there (beside a phone-narrow window's header
+  // there is no room for it, and that header carries the same doors);
+  // the chat's own sidebar only while Chat is the place.
+  const chatPlace = !state.appSettingsOpen && !state.routinesOpen && !state.page;
   return (
-    <div className="relative flex h-full min-w-0 flex-col overflow-hidden md:flex-row">
-      <Sidebar />
-      {/* Settings and Automations live beside the sidebar like any other
-          view, so opening one never hides the agent list. */}
+    <div className="relative flex h-full min-w-0 flex-col overflow-hidden bg-sidebar">
+      <TitleBar />
+      <MobileNav />
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+      <div className="hidden h-full md:flex">
+        <AppRail />
+      </div>
+      {/* Everything beside the rail sits on one panel, set in from the
+          window's top with a rounded corner, so the rail reads as the
+          frame and the panel as the work. */}
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background md:flex-row md:rounded-tl-xl md:border-l md:border-t">
+      {chatPlace ? <Sidebar /> : <div className="md:hidden"><Sidebar /></div>}
       {state.appSettingsOpen ? (
         <AppSettingsPanel />
       ) : state.routinesOpen ? (
         <AutomationsPanel onClose={() => dispatch({ type: "toggleRoutines", open: false })} />
+      ) : state.page ? (
+        <RailPageView page={state.page} />
       ) : room ? (
         <RoomView key={room.id} blok={room} />
       ) : bot ? (
@@ -111,17 +122,12 @@ function Shell() {
           )}
         </main>
       )}
+      </div>
+      </div>
       {state.settingsOpen && bot && <SettingsPanel bot={bot} />}
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
-      {state.pluginsOpen && <PluginsPanel />}
-      {state.skillsOpen && <SkillsPanel />}
       {state.newRoomOpen && <NewRoomDialog />}
       {state.newAgentOpen && <NewAgentScreen />}
-      {state.projectsOpen && <ProjectsPanel />}
-      {state.memoryOpen && <MemoryPanel />}
-      {state.rehearsalsOpen && <RehearsalsPanel />}
-      {state.briefOpen && <BriefPanel />}
-      {state.activityOpen && <ActivityPanel />}
       <CommandPalette />
       <ShortcutKeys />
       <ErrorNotice />

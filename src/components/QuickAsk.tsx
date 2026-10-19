@@ -7,7 +7,7 @@
 // you when it does, which is the job the notification policy already
 // does well. Anything more here would be a second, worse app.
 import { useEffect, useRef, useState } from "react";
-import CornerDownLeft from "lucide-react/dist/esm/icons/corner-down-left.mjs";
+import { CornerDownLeft } from "@/components/icons";
 import { AgentAvatar } from "./Avatar";
 import { cn } from "@/lib/cn";
 import { api } from "@/state/store";

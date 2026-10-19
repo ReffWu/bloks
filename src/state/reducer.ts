@@ -12,6 +12,13 @@ import type { CodexSpeed, CodexSpeedStatus } from "@/lib/codexSpeed";
 
 export type { BlokColor, BlokShape } from "@/lib/mascot";
 
+/** The full pages the main rail opens besides Chat, Automations and Settings. */
+export type RailPage = "overview" | "library" | "plugins";
+/** The two pages of Customize, the rail's Plugins place (Customize.tsx). */
+export type CustomizeTab = "plugins" | "skills";
+/** Library's two shelves. */
+export type LibraryShelf = "memory" | "rehearsals";
+
 export interface OptionCardData {
   title: string;
   subtitle: string;
@@ -610,8 +617,13 @@ export interface AppState {
   providers: ProviderRow[];
   config: ConfigStatus | null;
   selectedId: string;
+  /** Which of the main rail's full pages covers the chat (AppRail): the
+   * overview, the library or plugins. Settings and Automations keep their
+   * own flags; null with both of those closed is the chat. */
+  page: RailPage | null;
+  /** Which Customize page shows when Plugins is the place. */
+  customize: CustomizeTab;
   settingsOpen: boolean;
-  pluginsOpen: boolean;
   computerOpen: boolean;
   appSettingsOpen: boolean;
   /** Which Settings page is showing, so a link can open the right one. */
@@ -619,18 +631,16 @@ export interface AppState {
   newAgentOpen: boolean;
   /** the new-agent screen is the last step of setup, not a normal visit */
   newAgentFirstRun: boolean;
-  skillsOpen: boolean;
-  /** The Memory panel, and which agent it opens on (null: the first). */
-  memoryOpen: boolean;
+  /** Which agent Library's Memory opens on (null: the first), when a
+   * link asked for one. */
   memoryBotId: string | null;
-  /** The Rehearsals panel, and a counter bumped when any rehearsal moves. */
-  rehearsalsOpen: boolean;
-  /** The morning brief panel (BriefPanel). */
-  briefOpen: boolean;
+  /** Which of Library's two shelves shows (RailPages.tsx). */
+  library: LibraryShelf;
   /** The agent taking meeting notes, while its panel is open. */
   meetingFor: string | null;
   /** The conversation whose "Set a goal" dialog is open (GoalDialog). */
   goalFor: { botId: string; taskId: string } | null;
+  /** Bumped when any rehearsal moves, so Library re-reads them. */
   rehearsalsTick: number;
   /** Bumped when the server says a kind of thing changed (notes about
    * you, briefs, watchers, meetings), so whatever shows it re-reads. */
@@ -641,9 +651,6 @@ export interface AppState {
   /** The tab Automations opens on, when something linked to one. */
   routinesTab: AutomationsTab | null;
   newRoomOpen: boolean;
-  projectsOpen: boolean;
-  /** The one place that says what is running and what wants you. */
-  activityOpen: boolean;
   /** The sheet of every keyboard shortcut (⌘/). */
   shortcutsOpen: boolean;
   /** The project the app is looking through, or null for everything.
@@ -737,10 +744,8 @@ export type Action =
   | { type: "hireTeam"; botId: string; messageId: string }
   | { type: "newBot"; profile?: NewAgentProfile }
   | { type: "toggleNewAgent"; open?: boolean; firstRun?: boolean }
-  | { type: "toggleSkills"; open?: boolean }
   /** `tab` opens Automations on that tab, for a link from elsewhere. */
   | { type: "toggleRoutines"; open?: boolean; tab?: AutomationsTab }
-  | { type: "toggleActivity"; open?: boolean }
   | { type: "toggleShortcuts"; open?: boolean }
   | { type: "newTask"; botId: string }
   | { type: "selectTask"; botId: string; taskId: string }
@@ -774,16 +779,14 @@ export type Action =
   /** `at` on a clear: only the error shown as that one (see errorAt). */
   | { type: "error"; message: string | null; at?: number }
   | { type: "toggleSettings"; open?: boolean }
-  | { type: "togglePlugins"; open?: boolean }
+  | { type: "openPage"; page: RailPage | null }
+  | { type: "openCustomize"; tab: CustomizeTab }
+  | { type: "openLibrary"; shelf: LibraryShelf; botId?: string | null }
   | { type: "toggleComputer"; open?: boolean }
   /** `page` opens Settings on that page (see SETTINGS_PAGES). */
   | { type: "toggleAppSettings"; open?: boolean; page?: string }
-  | { type: "toggleProjects"; open?: boolean }
-  | { type: "toggleMemory"; open?: boolean; botId?: string | null }
-  | { type: "toggleRehearsals"; open?: boolean }
   | { type: "rehearsalsChanged" }
   | { type: "tick"; key: string }
-  | { type: "toggleBrief"; open?: boolean }
   | { type: "openMeeting"; botId: string | null }
   | { type: "openGoal"; botId: string; taskId: string }
   | { type: "closeGoal" }
@@ -953,8 +956,6 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, teamLink: action.slug, newRoomOpen: action.slug ? true : state.newRoomOpen };
     case "toggleNewRoom":
       return { ...state, newRoomOpen: action.open ?? !state.newRoomOpen };
-    case "toggleRehearsals":
-      return { ...state, rehearsalsOpen: action.open ?? !state.rehearsalsOpen };
     case "rehearsalsChanged":
       return { ...state, rehearsalsTick: state.rehearsalsTick + 1 };
     case "openMeeting":
@@ -963,18 +964,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, goalFor: { botId: action.botId, taskId: action.taskId } };
     case "closeGoal":
       return { ...state, goalFor: null };
-    case "toggleBrief":
-      return { ...state, briefOpen: action.open ?? !state.briefOpen };
     case "tick":
       return { ...state, ticks: { ...state.ticks, [action.key]: (state.ticks[action.key] ?? 0) + 1 } };
-    case "toggleMemory":
-      return {
-        ...state,
-        memoryOpen: action.open ?? !state.memoryOpen,
-        memoryBotId: action.botId === undefined ? state.memoryBotId : action.botId,
-      };
-    case "toggleProjects":
-      return { ...state, projectsOpen: action.open ?? !state.projectsOpen };
     case "openProject": {
       try {
         if (action.id) localStorage.setItem("bloks-project", action.id);
@@ -996,7 +987,7 @@ export function reducer(state: AppState, action: Action): AppState {
       writeSelected(action.id);
       // choosing a conversation in the sidebar means looking at it, so a
       // full page covering the chat steps aside
-      return updateBot({ ...state, selectedId: action.id, routinesOpen: false, appSettingsOpen: false }, action.id, (b) =>
+      return updateBot({ ...state, selectedId: action.id, routinesOpen: false, appSettingsOpen: false, page: null }, action.id, (b) =>
         action.lane && b.tasks
           ? (() => {
               const tasks = b.tasks.map((t) => (t.id === action.lane ? { ...t, unread: false } : t));
@@ -1033,8 +1024,6 @@ export function reducer(state: AppState, action: Action): AppState {
         // it, so a later visit never inherits setup's copy
         newAgentFirstRun: (action.open ?? !state.newAgentOpen) ? (action.firstRun ?? false) : false,
       };
-    case "toggleSkills":
-      return { ...state, skillsOpen: action.open ?? !state.skillsOpen };
     case "toggleRoutines":
       {
         const open = action.open ?? !state.routinesOpen;
@@ -1043,10 +1032,9 @@ export function reducer(state: AppState, action: Action): AppState {
           routinesOpen: open,
           routinesTab: open ? (action.tab ?? null) : null,
           appSettingsOpen: open ? false : state.appSettingsOpen,
+          page: open ? null : state.page,
         };
       }
-    case "toggleActivity":
-      return { ...state, activityOpen: action.open ?? !state.activityOpen };
     case "toggleShortcuts":
       return { ...state, shortcutsOpen: action.open ?? !state.shortcutsOpen };
     case "newTask":
@@ -1264,8 +1252,28 @@ export function reducer(state: AppState, action: Action): AppState {
         appSettingsOpen: open ? false : state.appSettingsOpen,
       };
     }
-    case "togglePlugins":
-      return { ...state, pluginsOpen: action.open ?? !state.pluginsOpen };
+    case "openPage":
+      // one full page at a time, the rail's own and Settings or Automations
+      return action.page
+        ? { ...state, page: action.page, routinesOpen: false, appSettingsOpen: false, settingsOpen: false }
+        : { ...state, page: null };
+    case "openCustomize":
+      return { ...state, page: "plugins", customize: action.tab, routinesOpen: false, appSettingsOpen: false, settingsOpen: false };
+    case "openLibrary":
+      try {
+        localStorage.setItem("bloks-library-shelf", action.shelf);
+      } catch {
+        /* private mode: holds for this visit */
+      }
+      return {
+        ...state,
+        page: "library",
+        library: action.shelf,
+        memoryBotId: action.botId === undefined ? state.memoryBotId : action.botId,
+        routinesOpen: false,
+        appSettingsOpen: false,
+        settingsOpen: false,
+      };
     case "toggleComputer": {
       const open = action.open ?? !state.computerOpen;
       return {
@@ -1283,9 +1291,9 @@ export function reducer(state: AppState, action: Action): AppState {
         settingsPage: action.page ?? (open && !state.appSettingsOpen ? "general" : state.settingsPage),
         // a full page, like Automations: one of them at a time
         routinesOpen: open ? false : state.routinesOpen,
+        page: open ? null : state.page,
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
-        pluginsOpen: open ? false : state.pluginsOpen,
       };
     }
     case "updateBot":
@@ -1359,17 +1367,21 @@ export const initialState: AppState = {
   config: null,
   selectedId: readSelected(),
   settingsOpen: false,
-  pluginsOpen: false,
+  page: null,
+  customize: "plugins",
   computerOpen: false,
   appSettingsOpen: false,
   settingsPage: "general",
   newAgentOpen: false,
   newAgentFirstRun: false,
-  skillsOpen: false,
-  memoryOpen: false,
   memoryBotId: null,
-  rehearsalsOpen: false,
-  briefOpen: false,
+  library: (() => {
+    try {
+      return localStorage.getItem("bloks-library-shelf") === "rehearsals" ? "rehearsals" : "memory";
+    } catch {
+      return "memory";
+    }
+  })(),
   meetingFor: null,
   goalFor: null,
   rehearsalsTick: 0,
@@ -1378,8 +1390,6 @@ export const initialState: AppState = {
   routinesOpen: false,
   routinesTab: null,
   newRoomOpen: false,
-  projectsOpen: false,
-  activityOpen: false,
   shortcutsOpen: false,
   projectId: (() => {
     try {

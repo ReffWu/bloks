@@ -7,7 +7,7 @@
 // its name is the way into the exchange between the two, which the
 // "After a message from" link used to be.
 import type { ReactNode } from "react";
-import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.mjs";
+import { ChevronRight } from "@/components/icons";
 import { useStore } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { askerWords, foldWords, type Asker, type TurnFold } from "@/lib/turnFold";

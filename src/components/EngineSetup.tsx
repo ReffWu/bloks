@@ -6,12 +6,12 @@
 // cannot finish the job, the command is still here to copy, so there is
 // always a next step and never a dead end.
 import { useEffect, useRef, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.mjs";
-import Copy from "lucide-react/dist/esm/icons/copy.mjs";
-import Download from "lucide-react/dist/esm/icons/download.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import LogIn from "lucide-react/dist/esm/icons/log-in.mjs";
+import { Check } from "@/components/icons";
+import { ChevronRight } from "@/components/icons";
+import { Copy } from "@/components/icons";
+import { Download } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { LogIn } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { api, useStore } from "@/state/store";

@@ -8,12 +8,12 @@
 // A turn that has made one call over and over carries a chip saying so
 // (server/repeats.ts), on the run holding the row the server marked.
 import { useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Minus from "lucide-react/dist/esm/icons/minus.mjs";
-import Repeat from "lucide-react/dist/esm/icons/repeat.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Check } from "@/components/icons";
+import { ChevronRight } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Minus } from "@/components/icons";
+import { Repeat } from "@/components/icons";
+import { X } from "@/components/icons";
 import type { Message } from "@/state/store";
 import { repeatedIn, running, summarize, toolLabel } from "@/lib/tool-summary";
 import { cn } from "@/lib/cn";

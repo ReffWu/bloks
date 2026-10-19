@@ -1,28 +1,24 @@
-// Cmd+K: everything, one field away.
+// Search: everything, one field away, from the sidebar's search button or
+// ⌘K.
 //
-// Empty query is a switcher, every agent and room, ready to jump to.
-// Typing filters those by name (prefix matches first) and, after a short
-// debounce, searches every transcript on the server, best match first
-// (ranked as an agent's own recall is); a message hit jumps to the exact
-// conversation and lane it lives in. One flat keyboard
-// cursor runs across all sections, because reaching for arrow keys
-// should never care about headings.
-//
-// The few things the app can be told to do sit under the agents and
-// rooms, each with its key beside it (from src/lib/shortcuts.ts), so the
-// palette teaches the shortcut that would have skipped it next time.
+// Empty, it is a switcher: the chats you were most recently in, each a
+// Ctrl+number away, then the few things the app can be told to do and the
+// settings people reach for most. Typing filters the agents and rooms by
+// name (prefix matches first) and, after a short debounce, searches every
+// transcript on the server, best match first (ranked as an agent's own
+// recall is); a message hit jumps to the exact conversation and lane it
+// lives in. One flat keyboard cursor runs across all sections, because
+// reaching for arrow keys should never care about headings.
 import { useEffect, useMemo, useRef, useState } from "react";
-import BotIcon from "lucide-react/dist/esm/icons/bot.mjs";
-import CornerDownLeft from "lucide-react/dist/esm/icons/corner-down-left.mjs";
-import Keyboard from "lucide-react/dist/esm/icons/keyboard.mjs";
-import MessageSquare from "lucide-react/dist/esm/icons/message-square.mjs";
-import Search from "lucide-react/dist/esm/icons/search.mjs";
-import SettingsIcon from "lucide-react/dist/esm/icons/settings-2.mjs";
-import Users from "lucide-react/dist/esm/icons/users.mjs";
-import { api, useStore, type Action, type Bot } from "@/state/store";
+import { Bot as BotIcon } from "@/components/icons";
+import { Keyboard } from "@/components/icons";
+import { MessageSquare } from "@/components/icons";
+import { Settings2 as SettingsIcon } from "@/components/icons";
+import { SquarePen } from "@/components/icons";
+import { Users } from "@/components/icons";
+import { api, useStore, type Action, type Blok, type Bot } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { SETTINGS_PAGES } from "./AppSettingsPanel";
-import { Keys } from "./Shortcuts";
 import { keysFor, platformOf } from "@/lib/shortcuts";
 import { cn } from "@/lib/cn";
 
@@ -37,6 +33,13 @@ interface MessageHit {
   task?: string;
 }
 
+const OPEN_EVENT = "bloks:search";
+
+/** Opens the search window from anywhere: the sidebar's button, a menu. */
+export function openSearch() {
+  window.dispatchEvent(new Event(OPEN_EVENT));
+}
+
 /** Things to do rather than places to go. `id` is the command's line in
  * the shortcuts list, when it has a key. */
 const COMMANDS: ReadonlyArray<{
@@ -44,14 +47,20 @@ const COMMANDS: ReadonlyArray<{
   label: string;
   /** Words people search for that the label does not say. */
   keywords: string;
-  icon: React.ComponentType<{ size?: number }>;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
   action: Action;
 }> = [
-  { id: "newAgent", label: "New agent", keywords: "create add hire bot", icon: BotIcon, action: { type: "toggleNewAgent", open: true } },
+  { id: "newAgent", label: "New agent", keywords: "create add hire bot chat", icon: SquarePen, action: { type: "toggleNewAgent", open: true } },
   { id: "newRoom", label: "New room", keywords: "create add group team", icon: Users, action: { type: "toggleNewRoom", open: true } },
   { id: "settings", label: "Settings", keywords: "preferences options", icon: SettingsIcon, action: { type: "toggleAppSettings", open: true } },
   { id: "shortcuts", label: "Keyboard shortcuts", keywords: "keys hotkeys help", icon: Keyboard, action: { type: "toggleShortcuts", open: true } },
 ];
+
+/** The Settings pages shown before anything is typed. */
+const FIRST_PAGES = ["general", "engines", "devices"];
+
+/** How many recent chats an empty search offers, each with its Ctrl key. */
+const RECENT = 6;
 
 /** Name ranking: prefix beats substring, and input order (recency,
  * pinning) survives inside each tier. */
@@ -68,6 +77,8 @@ function rankByName<T>(items: T[], nameOf: (item: T) => string, query: string): 
   return [...prefix, ...inside];
 }
 
+type Chat = { kind: "agent"; bot: Bot } | { kind: "room"; room: Blok };
+
 export function CommandPalette() {
   const { state, dispatch } = useStore();
   const [open, setOpen] = useState(false);
@@ -76,19 +87,28 @@ export function CommandPalette() {
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const platform = platformOf();
 
   useEffect(() => {
+    const show = (toggle: boolean) => {
+      setOpen((was) => (toggle ? !was : true));
+      setQuery("");
+      setHits([]);
+      setCursor(0);
+    };
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        setOpen((was) => !was);
-        setQuery("");
-        setHits([]);
-        setCursor(0);
+        show(true);
       }
     };
+    const onOpen = () => show(false);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(OPEN_EVENT, onOpen);
+    };
   }, []);
 
   useEffect(() => {
@@ -113,31 +133,29 @@ export function CommandPalette() {
     };
   }, [open, query]);
 
-  const bots = useMemo(
-    () => rankByName(state.bots.filter((b) => !b.hidden), (b) => b.name, query.trim()),
-    [state.bots, query],
-  );
-  const rooms = useMemo(
-    () => rankByName(state.bloks, (r) => r.name, query.trim()),
-    [state.bloks, query],
-  );
-  // Every command on an empty query, at the foot of the switcher where
-  // they cost the jump-to-an-agent habit nothing; the matching ones once
-  // something is typed.
+  const q = query.trim();
+  // Agents and rooms together, as the sidebar lists them: most recently
+  // with you first. Empty, only the latest few; typed, every match.
+  const chats = useMemo<Chat[]>(() => {
+    const all: Array<Chat & { at: number; name: string }> = [
+      ...state.bots.filter((b) => !b.hidden).map((bot) => ({ kind: "agent" as const, bot, at: bot.activeWithYouAt ?? 0, name: bot.name })),
+      ...state.bloks.map((room) => ({ kind: "room" as const, room, at: room.activeWithYouAt ?? 0, name: room.name })),
+    ].sort((a, b) => b.at - a.at);
+    return q ? rankByName(all, (c) => c.name, q) : all.slice(0, RECENT);
+  }, [state.bots, state.bloks, q]);
   const commands = useMemo(() => {
-    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     return COMMANDS.filter((c) => words.every((w) => `${c.label} ${c.keywords}`.toLowerCase().includes(w)));
-  }, [query]);
+  }, [q]);
   // Settings pages by what they hold, so "voice" or "telegram" goes
   // straight to the page rather than through the Settings menu.
   const pages = useMemo(() => {
-    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (!words.length) return [];
-    return SETTINGS_PAGES.flatMap((g) => g.pages).filter((p) =>
-      words.every((w) => `${p.label} ${p.keywords}`.toLowerCase().includes(w)),
-    );
-  }, [query]);
-  const total = bots.length + rooms.length + commands.length + pages.length + hits.length;
+    const all = SETTINGS_PAGES.flatMap((g) => g.pages);
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return FIRST_PAGES.map((id) => all.find((p) => p.id === id)).filter((p) => p !== undefined);
+    return all.filter((p) => words.every((w) => `${p.label} ${p.keywords}`.toLowerCase().includes(w)));
+  }, [q]);
+  const total = chats.length + commands.length + pages.length + hits.length;
 
   useEffect(() => {
     setCursor((c) => Math.min(c, Math.max(0, total - 1)));
@@ -146,15 +164,14 @@ export function CommandPalette() {
   if (!open) return null;
 
   // where each section starts in the one flat cursor
-  const commandsAt = bots.length + rooms.length;
+  const commandsAt = chats.length;
   const pagesAt = commandsAt + commands.length;
   const hitsAt = pagesAt + pages.length;
 
   const activate = (index: number) => {
-    if (index < bots.length) {
-      dispatch({ type: "select", id: bots[index].id });
-    } else if (index < commandsAt) {
-      dispatch({ type: "select", id: rooms[index - bots.length].id });
+    if (index < commandsAt) {
+      const chat = chats[index];
+      dispatch({ type: "select", id: chat.kind === "agent" ? chat.bot.id : chat.room.id });
     } else if (index < pagesAt) {
       dispatch(commands[index - commandsAt].action);
     } else if (index < hitsAt) {
@@ -178,124 +195,100 @@ export function CommandPalette() {
     if (!total) return;
     const next = (cursor + delta + total) % total;
     setCursor(next);
-    listRef.current
-      ?.querySelector(`[data-index="${next}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+    listRef.current?.querySelector(`[data-index="${next}"]`)?.scrollIntoView({ block: "nearest" });
   };
 
-  const row = (index: number, content: React.ReactNode, onPick: () => void) => (
+  const ctrl = platform === "mac" ? "⌃" : "Ctrl+";
+  const row = (index: number, icon: React.ReactNode, label: React.ReactNode, meta?: React.ReactNode, keys?: string[]) => (
     <button
       key={index}
       data-index={index}
-      onClick={onPick}
+      onClick={() => activate(index)}
       onMouseMove={() => setCursor(index)}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left",
-        index === cursor ? "bg-accent" : "",
+        "flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left outline-none",
+        index === cursor && "bg-accent",
       )}
     >
-      {content}
-      {index === cursor && (
-        <CornerDownLeft size={13} className="ml-auto shrink-0 text-muted-foreground/60" />
+      <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">{icon}</span>
+      <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{label}</span>
+      {meta && <span className="max-w-[40%] shrink-0 truncate text-[12.5px] text-muted-foreground">{meta}</span>}
+      {keys && keys.length > 0 && (
+        <span className="flex shrink-0 items-center gap-1">
+          {keys.map((k) => (
+            <kbd
+              key={k}
+              className="min-w-[26px] rounded-md bg-muted px-1.5 py-0.5 text-center font-sans text-[11px] tabular-nums text-muted-foreground"
+            >
+              {k}
+            </kbd>
+          ))}
+        </span>
       )}
     </button>
   );
 
-  let index = -1;
-  const platform = platformOf();
-
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-fade-in items-start justify-center bg-black/40 pt-[14vh] dark:bg-black/60"
+      className="fixed inset-0 z-50 flex animate-fade-in items-start justify-center bg-black/30 pt-[18vh] dark:bg-black/50"
       onMouseDown={() => setOpen(false)}
     >
       <div
-        className="flex max-h-[60vh] w-[560px] max-w-[92vw] animate-pop-in flex-col overflow-hidden rounded-2xl border bg-popover shadow-2xl"
+        role="dialog"
+        aria-label="Search"
+        className="flex max-h-[min(560px,64vh)] w-[680px] max-w-[92vw] animate-pop-in flex-col overflow-hidden rounded-2xl border bg-popover shadow-2xl shadow-(color:--shadow-color)"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2.5 border-b px-4">
-          <Search size={16} className="shrink-0 text-muted-foreground" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowDown") (e.preventDefault(), move(1));
-              else if (e.key === "ArrowUp") (e.preventDefault(), move(-1));
-              else if (e.key === "Enter") activate(cursor);
-              else if (e.key === "Escape") {
-                e.preventDefault();
-                e.stopPropagation();
-                setOpen(false);
-              }
-            }}
-            placeholder="Jump to an agent, a room, a setting, or anything anyone said…"
-            className="h-12 w-full bg-transparent text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
-          />
-          <kbd className="shrink-0 rounded-md border px-1.5 py-0.5 text-[10.5px] text-muted-foreground">
-            esc
-          </kbd>
-        </div>
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search chats, settings and messages"
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") (e.preventDefault(), move(1));
+            else if (e.key === "ArrowUp") (e.preventDefault(), move(-1));
+            else if (e.key === "Enter") activate(cursor);
+            else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            } else if (e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key)) {
+              // Ctrl+number opens that chat, as its key says
+              const n = Number(e.key) - 1;
+              if (n < Math.min(chats.length, RECENT)) (e.preventDefault(), activate(n));
+            }
+          }}
+          placeholder="Search chats"
+          className="h-14 w-full shrink-0 bg-transparent px-5 text-[15px] text-foreground outline-none placeholder:text-muted-foreground"
+        />
 
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-2">
-          {bots.length > 0 && (
-            <Section label="Agents">
-              {bots.map((bot: Bot) =>
-                row(
-                  ++index,
-                  <>
-                    <AgentAvatar bot={bot} size={26} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-medium text-foreground">
-                        {bot.name}
-                      </span>
-                      {bot.title && (
-                        <span className="block truncate text-[11.5px] text-muted-foreground">
-                          {bot.title}
-                        </span>
-                      )}
-                    </span>
-                  </>,
-                  () => activate(bots.indexOf(bot)),
-                ),
-              )}
-            </Section>
-          )}
-          {rooms.length > 0 && (
-            <Section label="Rooms">
-              {rooms.map((room) =>
-                row(
-                  ++index,
-                  <>
-                    <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <Users size={13} />
-                    </span>
-                    <span className="truncate text-[13.5px] font-medium text-foreground">
-                      {room.name}
-                    </span>
-                  </>,
-                  () => activate(bots.length + rooms.indexOf(room)),
-                ),
+        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+          {chats.length > 0 && (
+            <Section label="Chats">
+              {chats.map((chat, i) =>
+                chat.kind === "agent"
+                  ? row(
+                      i,
+                      <AgentAvatar bot={chat.bot} size={20} />,
+                      chat.bot.name,
+                      chat.bot.section ?? chat.bot.title,
+                      i < RECENT ? [`${ctrl}${i + 1}`] : undefined,
+                    )
+                  : row(
+                      i,
+                      <Users size={16} strokeWidth={1.75} />,
+                      chat.room.name,
+                      chat.room.section ?? "Room",
+                      i < RECENT ? [`${ctrl}${i + 1}`] : undefined,
+                    ),
               )}
             </Section>
           )}
           {commands.length > 0 && (
-            <Section label="Commands">
+            <Section label="Quick actions">
               {commands.map((command, i) => {
                 const Icon = command.icon;
-                return row(
-                  ++index,
-                  <>
-                    <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <Icon size={13} />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-foreground">
-                      {command.label}
-                    </span>
-                    <Keys keys={keysFor(command.id, platform)} />
-                  </>,
-                  () => activate(commandsAt + i),
-                );
+                return row(commandsAt + i, <Icon size={16} strokeWidth={1.75} />, command.label, undefined, keysFor(command.id, platform));
               })}
             </Section>
           )}
@@ -303,19 +296,7 @@ export function CommandPalette() {
             <Section label="Settings">
               {pages.map((page, i) => {
                 const Icon = page.icon;
-                return row(
-                  ++index,
-                  <>
-                    <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <Icon size={13} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-medium text-foreground">{page.label}</span>
-                      <span className="block truncate text-[11.5px] text-muted-foreground">{page.description}</span>
-                    </span>
-                  </>,
-                  () => activate(pagesAt + i),
-                );
+                return row(pagesAt + i, <Icon size={16} />, page.label, q ? page.description : undefined);
               })}
             </Section>
           )}
@@ -323,29 +304,18 @@ export function CommandPalette() {
             <Section label="Messages">
               {hits.map((hit, i) =>
                 row(
-                  ++index,
-                  <>
-                    <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <MessageSquare size={12} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12.5px] text-foreground">
-                        {hit.snippet}
-                      </span>
-                      <span className="block truncate text-[11px] text-muted-foreground">
-                        {hit.name}
-                        {hit.task ? ` · ${hit.task}` : ""}
-                      </span>
-                    </span>
-                  </>,
-                  () => activate(hitsAt + i),
+                  hitsAt + i,
+                  <MessageSquare size={15} strokeWidth={1.75} />,
+                  hit.snippet,
+                  `${hit.name}${hit.task ? ` · ${hit.task}` : ""}`,
                 ),
               )}
             </Section>
           )}
           {total === 0 && (
-            <div className="px-3 py-8 text-center text-[13px] text-muted-foreground">
-              Nothing matches yet.
+            <div className="flex flex-col items-center gap-1 px-3 py-10 text-center">
+              <BotIcon size={18} className="text-muted-foreground" />
+              <div className="text-[13.5px] text-muted-foreground">Nothing matches “{q}”</div>
             </div>
           )}
         </div>
@@ -356,10 +326,8 @@ export function CommandPalette() {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="mb-1">
-      <div className="px-3 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </div>
+    <div className="pb-1">
+      <div className="px-3 pb-1.5 pt-2.5 text-[12.5px] font-medium text-muted-foreground">{label}</div>
       {children}
     </div>
   );

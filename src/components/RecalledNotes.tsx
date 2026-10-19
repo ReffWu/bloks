@@ -6,11 +6,11 @@
 // one press away, because something added to what you said should never
 // be invisible. A note from a conversation or a room opens it.
 import { useState } from "react";
-import BookOpen from "lucide-react/dist/esm/icons/book-open.mjs";
-import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.mjs";
-import FileText from "lucide-react/dist/esm/icons/file-text.mjs";
-import MessagesSquare from "lucide-react/dist/esm/icons/messages-square.mjs";
-import Users from "lucide-react/dist/esm/icons/users.mjs";
+import { BookOpen } from "@/components/icons";
+import { ChevronDown } from "@/components/icons";
+import { FileText } from "@/components/icons";
+import { MessagesSquare } from "@/components/icons";
+import { Users } from "@/components/icons";
 import { useStore, type RecalledNote } from "@/state/store";
 import { stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";

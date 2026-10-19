@@ -5,10 +5,10 @@
 // next turn. It never lands in the transcript, never echoes back over
 // the API, and the input clears itself the moment the save succeeds.
 import { useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Check } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { ShieldCheck } from "@/components/icons";
+import { X } from "@/components/icons";
 import { type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";

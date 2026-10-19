@@ -9,7 +9,7 @@
 // A server too old to know pauses answers the list with an error, and
 // then this card is not shown at all.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Pause from "lucide-react/dist/esm/icons/pause.mjs";
+import { Pause } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -10,11 +10,11 @@
 // should read as part of the conversation, not as a dashboard that landed
 // in it, so the type sizes and the borders are the ones the chat already
 // uses.
-import Ban from "lucide-react/dist/esm/icons/ban.mjs";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import CircleDot from "lucide-react/dist/esm/icons/circle-dot.mjs";
-import Quote from "lucide-react/dist/esm/icons/quote.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Ban } from "@/components/icons";
+import { Check } from "@/components/icons";
+import { CircleDot } from "@/components/icons";
+import { Quote } from "@/components/icons";
+import { X } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { InlineMarkdown } from "./Markdown";
 import { TableScroll } from "./TableScroll";

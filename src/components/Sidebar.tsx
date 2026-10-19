@@ -1,43 +1,33 @@
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import BellDot from "lucide-react/dist/esm/icons/bell-dot.mjs";
-import ClipboardCopy from "lucide-react/dist/esm/icons/clipboard-copy.mjs";
-import Copy from "lucide-react/dist/esm/icons/copy.mjs";
-import Eraser from "lucide-react/dist/esm/icons/eraser.mjs";
-import Pencil from "lucide-react/dist/esm/icons/pencil.mjs";
-import PanelLeftClose from "lucide-react/dist/esm/icons/panel-left-close.mjs";
-import PanelLeftOpen from "lucide-react/dist/esm/icons/panel-left-open.mjs";
-import Pin from "lucide-react/dist/esm/icons/pin.mjs";
-import PinOff from "lucide-react/dist/esm/icons/pin-off.mjs";
-import Plus from "lucide-react/dist/esm/icons/plus.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Archive from "lucide-react/dist/esm/icons/archive.mjs";
-import Puzzle from "lucide-react/dist/esm/icons/puzzle.mjs";
-import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.mjs";
-import Folder from "lucide-react/dist/esm/icons/folder.mjs";
-import FolderKanban from "lucide-react/dist/esm/icons/folder-kanban.mjs";
-import Activity from "lucide-react/dist/esm/icons/activity.mjs";
-import Brain from "lucide-react/dist/esm/icons/brain.mjs";
-import FlaskConical from "lucide-react/dist/esm/icons/flask-conical.mjs";
-import BotIcon from "lucide-react/dist/esm/icons/bot.mjs";
-import CalendarClock from "lucide-react/dist/esm/icons/calendar-clock.mjs";
-import Search from "lucide-react/dist/esm/icons/search.mjs";
-import SettingsIcon from "lucide-react/dist/esm/icons/settings-2.mjs";
-import Sparkles from "lucide-react/dist/esm/icons/sparkles.mjs";
-import Users from "lucide-react/dist/esm/icons/users.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
-import Target from "lucide-react/dist/esm/icons/target.mjs";
+import { BellDot } from "@/components/icons";
+import { ClipboardCopy } from "@/components/icons";
+import { Copy } from "@/components/icons";
+import { Eraser } from "@/components/icons";
+import { Pencil } from "@/components/icons";
+import { Pin } from "@/components/icons";
+import { PinOff } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Archive } from "@/components/icons";
+import { ChevronRight } from "@/components/icons";
+import { Folder } from "@/components/icons";
+import { FolderKanban } from "@/components/icons";
+import { Bot as BotIcon } from "@/components/icons";
+import { Search } from "@/components/icons";
+import { Users } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { Target } from "@/components/icons";
 import { api, sidebarRows, useStore, formatWhen, workingInRoom, type Action, type Blok, type Bot } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { AgentAvatar } from "./Avatar";
-import { BloksLogo, BloksMark } from "./Brand";
+import { BloksLogo } from "./Brand";
 import { cn } from "@/lib/cn";
 import { usePageVisible } from "@/lib/pageVisible";
 import { agentPreview, lastHeardAt, lastSaid, previewLine } from "@/lib/preview";
 import {
   acceptsRow,
   landingOver,
-  layoutRows,
   moveSection,
   movesRow,
   orderSections,
@@ -53,14 +43,12 @@ import {
   type Listed,
   type Place,
 } from "@/lib/sections";
-import { useProfileNotes } from "./AboutYou";
 import { refreshCheckup, riskyCount, useSecurityCheckup } from "@/lib/securityCheckup";
-import { useBriefs } from "./BriefPanel";
-import { ConversationRows, LaneRing, SidebarFooter, WaitingRow } from "./SidebarParts";
-import { UpdateCard } from "./UpdateCard";
+import { ConversationRows, LaneRing, WaitingRow } from "./SidebarParts";
+import { CHAT_SIDEBAR, setChatSidebarOpen, setChatSidebarWidth, toggleChatSidebar, useChatSidebar } from "@/lib/chatSidebar";
+import { openSearch } from "./CommandPalette";
 import { setLanesInSidebar, useConversationsView } from "@/lib/conversationsView";
-import ListTree from "lucide-react/dist/esm/icons/list-tree.mjs";
-import Sunrise from "lucide-react/dist/esm/icons/sunrise.mjs";
+import { ListTree } from "@/components/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,7 +57,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { plural } from "@/lib/plural";
 
-const isElectron = navigator.userAgent.includes("Electron");
 
 
 interface MenuState {
@@ -383,14 +370,12 @@ function BotListItem({
   bot,
   onMenu,
   onDrag,
-  rail,
   compact,
 }: {
   bot: Bot;
   onMenu: (menu: MenuState) => void;
   /** Given in the full list, where a row can be dragged to a place. */
   onDrag?: (row: FilingState | null) => void;
-  rail?: boolean;
   /** The conversations view: one line per agent, with its other
    * conversations listed underneath instead of one conversation's preview. */
   compact?: boolean;
@@ -399,33 +384,6 @@ function BotListItem({
   const selected = state.selectedId === bot.id;
   const heardAt = lastHeardAt(bot);
   const drag = rowDrag(filingOf("agent", bot), onDrag);
-  if (rail) {
-    // the collapsed sidebar: just the face, with the unread dot riding
-    // the avatar the way the phone app does it
-    return (
-      <button
-        // what ⌥↑ and ⌥↓ step through (Shortcuts.tsx): which row this
-        // is, and whether it is unread or waiting on you
-        data-sidebar-row={bot.id}
-        data-sidebar-waiting={Boolean(bot.unread || bot.tasks?.some((t) => t.state === "needs-you"))}
-        onClick={() => dispatch({ type: "select", id: bot.id })}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onMenu({ kind: "agent", id: bot.id, x: e.clientX, y: e.clientY });
-        }}
-        title={bot.name}
-        className={cn(
-          "relative flex shrink-0 self-center rounded-xl p-1.5 transition-[background-color,transform] duration-150 active:scale-95",
-          selected ? "bg-accent" : "hover:bg-accent/60",
-        )}
-      >
-        <AgentAvatar bot={bot} size={36} />
-        {bot.unread && (
-          <span className="absolute bottom-1 right-1 size-2.5 rounded-full bg-brand ring-2 ring-sidebar" />
-        )}
-      </button>
-    );
-  }
   if (compact) {
     // the agent's row is General; the others are listed beneath it
     const general = bot.tasks?.[0];
@@ -536,12 +494,10 @@ function BotListItem({
 
 function RoomListItem({
   blok,
-  rail,
   onMenu,
   onDrag,
 }: {
   blok: Blok;
-  rail?: boolean;
   onMenu?: (menu: MenuState) => void;
   /** Given in the full list, where a row can be dragged to a place. */
   onDrag?: (row: FilingState | null) => void;
@@ -555,27 +511,6 @@ function RoomListItem({
   // working in this room, as the room itself shows it (workingInRoom)
   const working = members.filter((m) => workingInRoom(m, blok.id));
 
-  if (rail) {
-    return (
-      <button
-        data-sidebar-row={blok.id}
-        onClick={() => dispatch({ type: "select", id: blok.id })}
-        title={blok.name}
-        className={cn(
-          "flex shrink-0 self-center rounded-xl p-1.5 transition-[background-color,transform] duration-150 active:scale-95",
-          selected ? "bg-accent" : "hover:bg-accent/60",
-        )}
-      >
-        <span className="flex size-9 items-center justify-center rounded-xl bg-muted">
-          <span className="flex -space-x-1.5">
-            {members.slice(0, 2).map((m) => (
-              <AgentAvatar key={m.id} bot={m} size={16} className="rounded-md ring-2 ring-muted" />
-            ))}
-          </span>
-        </span>
-      </button>
-    );
-  }
   return (
     <button
       data-sidebar-row={blok.id}
@@ -636,7 +571,7 @@ function RoomListItem({
  * on purpose, because this is an ambient number and not a readout.
  */
 /** Rehearsals waiting on a decision, re-read whenever one moves. */
-function useRehearsalsReady(): number {
+export function useRehearsalsReady(): number {
   const { state } = useStore();
   const [ready, setReady] = useState(0);
   useEffect(() => {
@@ -651,43 +586,13 @@ function useRehearsalsReady(): number {
   return ready;
 }
 
-function useActivityCount(): { running: number; waiting: number; suggested: number } {
-  const [count, setCount] = useState({ running: 0, waiting: 0, suggested: 0 });
-  const visible = usePageVisible();
-  useEffect(() => {
-    if (!visible) return;
-    let alive = true;
-    const load = () =>
-      Promise.all([
-        fetch("/api/activity").then((r) => (r.ok ? r.json() : null)),
-        fetch("/api/skills/proposals").then((r) => (r.ok ? r.json() : null)),
-      ])
-        .then(([a, s]) => {
-          if (!alive) return;
-          setCount({
-            running: a?.running?.length ?? 0,
-            waiting: a?.waiting?.length ?? 0,
-            suggested: s?.proposals?.length ?? 0,
-          });
-        })
-        .catch(() => {});
-    load();
-    const timer = setInterval(load, 5_000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, [visible]);
-  return count;
-}
-
 /**
  * How many security checkup findings are risky, for the dot on Settings.
  * Asked again every ten minutes while the window shows, when Settings
  * closes (where most fixes are made), and when an agent goes into or out
  * of full access from its own settings, the commonest risky finding.
  */
-function useSecurityRisky(): number {
+export function useSecurityRisky(): number {
   const { state } = useStore();
   const { report } = useSecurityCheckup();
   const visible = usePageVisible();
@@ -710,57 +615,40 @@ function useSecurityRisky(): number {
   return riskyCount(report);
 }
 
-export function Sidebar() {
+/** The chat sidebar: a column beside the chat, or, on a phone, the same
+ * column inside the drawer the pill opens (MobileNav.tsx). */
+export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
   const { state, dispatch } = useStore();
   const [conversations, setConversations] = useConversationsView();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [filing, setFiling] = useState<FilingState | null>(null);
-  const activity = useActivityCount();
-  const rehearsalsReady = useRehearsalsReady();
-  const notesWaiting = (useProfileNotes().notes ?? []).filter((n) => n.state === "suggested").length;
-  const securityRisky = useSecurityRisky();
-  const latestBrief = useBriefs().data?.briefs[0];
-  const briefNew = Boolean(latestBrief && !latestBrief.readAt && !latestBrief.quiet);
   const [showArchived, setShowArchived] = useState(false);
-  const [query, setQuery] = useState("");
-  const searchRef = useRef<HTMLInputElement>(null);
-  // Three layouts by width and choice: the full column, a rail of faces
-  // (chosen, or forced when a 320px column would crowd the window), and
-  // a top header on phone-narrow windows where no column fits at all.
-  // null means "no opinion yet", so width decides; once the person
-  // clicks, their choice is the answer at any width. Without this a
-  // narrow window pinned the rail open and the expand control did
-  // nothing, which reads as a broken button.
-  const [choice, setChoice] = useState<boolean | null>(() => {
-    const saved = localStorage.getItem("bloks-sidebar");
-    return saved === "rail" ? true : saved === "full" ? false : null;
-  });
-  const [narrow, setNarrow] = useState(() => window.innerWidth < 1000);
+  const sidebar = useChatSidebar();
+  const [resizing, setResizing] = useState(false);
+  // Phone-narrow windows have no room for two columns, so the sidebar
+  // becomes a header (below); everywhere else it is a column whose width
+  // is dragged, never collapsed to a rail of faces.
   const [mobile, setMobile] = useState(() => window.innerWidth < 768);
   useEffect(() => {
-    const narrowMedia = window.matchMedia("(max-width: 999px)");
     const mobileMedia = window.matchMedia("(max-width: 767px)");
-    const onChange = () => {
-      setNarrow(narrowMedia.matches);
-      setMobile(mobileMedia.matches);
-    };
-    narrowMedia.addEventListener("change", onChange);
+    const onChange = () => setMobile(mobileMedia.matches);
     mobileMedia.addEventListener("change", onChange);
-    return () => {
-      narrowMedia.removeEventListener("change", onChange);
-      mobileMedia.removeEventListener("change", onChange);
-    };
+    return () => mobileMedia.removeEventListener("change", onChange);
   }, []);
-  const rail = choice ?? narrow;
   useEffect(() => {
-    setLanesInSidebar(conversations && !rail && !mobile);
-  }, [conversations, rail, mobile]);
-  const [logoHover, setLogoHover] = useState(false);
-  const toggleCollapsed = () => {
-    const next = !rail;
-    setChoice(next);
-    localStorage.setItem("bloks-sidebar", next ? "rail" : "full");
-  };
+    setLanesInSidebar(conversations && sidebar.open && !mobile);
+  }, [conversations, sidebar.open, mobile]);
+  // ⌘B folds the sidebar away and brings it back, as the rail's Chat does.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleChatSidebar();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // Folded sections, by name. Kept on this device like the rail choice:
   // how much of the list you want in view depends on the screen, not on
   // the workspace. A name that stops existing just sits here unused.
@@ -773,11 +661,11 @@ export function Sidebar() {
     }
   });
   useSettingsObservation({
-    "sidebar.preference": { status: "observed", value: choice === null ? null : choice ? "rail" : "full" },
-    "sidebar.applied": { status: "observed", value: mobile ? "mobile" : rail ? "rail" : "full" },
+    "sidebar.preference": { status: "observed", value: sidebar.open ? "full" : "rail" },
+    "sidebar.applied": { status: "observed", value: mobile ? "mobile" : sidebar.open ? "full" : "rail" },
     "sidebar.foldsConfigured": { status: "observed", value: folded.length > 0 },
     "conversations.preference": { status: "observed", value: conversations },
-    "conversations.applied": { status: "observed", value: conversations && !rail && !mobile },
+    "conversations.applied": { status: "observed", value: conversations && sidebar.open && !mobile },
   });
   const toggleFolded = (name: string) => {
     const next = folded.includes(name) ? folded.filter((n) => n !== name) : [...folded, name];
@@ -953,13 +841,8 @@ export function Sidebar() {
     () =>
       state.bots
         .filter((b) => !b.hidden)
-        .filter((b) => !projectMembers || projectMembers.includes(b.id))
-        .filter(
-          (b) =>
-            !query.trim() ||
-            `${b.name} ${b.title}`.toLowerCase().includes(query.trim().toLowerCase()),
-        ),
-    [state.bots, query, projectMembers],
+        .filter((b) => !projectMembers || projectMembers.includes(b.id)),
+    [state.bots, projectMembers],
   );
 
   // The whole list in the one order every surface follows (sidebarLayout
@@ -1000,57 +883,6 @@ export function Sidebar() {
         <Users size={15} />
         New room
       </DropdownMenuItem>
-      {/* On a phone the footer is gone, so everything behind it has to
-          be here instead: a surface with no way in on the device somebody
-          is holding is a surface that does not exist for them. */}
-      {mobile && (
-        <DropdownMenuItem onClick={() => dispatch({ type: "toggleBrief", open: true })}>
-          <Sunrise size={15} />
-          Morning brief
-        </DropdownMenuItem>
-      )}
-      {mobile && (
-        <DropdownMenuItem onClick={() => dispatch({ type: "toggleActivity", open: true })}>
-          <Activity size={15} />
-          Activity
-        </DropdownMenuItem>
-      )}
-      {mobile && (
-        <DropdownMenuItem onClick={() => dispatch({ type: "toggleProjects", open: true })}>
-          <FolderKanban size={15} />
-          Projects
-        </DropdownMenuItem>
-      )}
-      {mobile && (
-        <DropdownMenuItem onClick={() => dispatch({ type: "toggleRehearsals", open: true })}>
-          <FlaskConical size={15} />
-          Rehearsals
-        </DropdownMenuItem>
-      )}
-      {mobile && (
-        <DropdownMenuItem onClick={() => dispatch({ type: "toggleMemory", open: true, botId: null })}>
-          <Brain size={15} />
-          Memory
-        </DropdownMenuItem>
-      )}
-      {mobile && (
-        <DropdownMenuItem onClick={() => dispatch({ type: "toggleRoutines", open: true })}>
-          <CalendarClock size={15} />
-          Routines
-        </DropdownMenuItem>
-      )}
-      {mobile && (
-        <DropdownMenuItem onClick={() => dispatch({ type: "toggleSkills", open: true })}>
-          <Sparkles size={15} />
-          Skills
-        </DropdownMenuItem>
-      )}
-      {mobile && (
-        <DropdownMenuItem onClick={() => dispatch({ type: "togglePlugins", open: true })}>
-          <Puzzle size={15} />
-          Plugins
-        </DropdownMenuItem>
-      )}
       {state.bots.some((b) => b.hidden) && (
         <DropdownMenuItem onClick={() => setShowArchived(true)}>
           <Archive size={15} />
@@ -1063,60 +895,19 @@ export function Sidebar() {
     </DropdownMenuContent>
   );
 
-  // Phone-narrow: no column fits, so the sidebar becomes a header: the
-  // roster as a horizontal strip, everything else behind + and settings.
-  if (mobile) {
-    return (
-      <>
-        <header className="flex h-[54px] w-full shrink-0 items-center gap-1 border-b bg-sidebar pl-3 pr-1.5">
-          <BloksMark size={17} />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="rounded-lg p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
-                title="New…"
-              >
-                <Plus size={17} strokeWidth={2} />
-              </button>
-            </DropdownMenuTrigger>
-            {newMenuItems}
-          </DropdownMenu>
-          <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {layoutRows(layout).map((row) =>
-              row.kind === "room" ? (
-                <RoomListItem key={row.id} blok={row.room} rail />
-              ) : (
-                <BotListItem key={row.id} bot={row.bot} onMenu={setMenu} rail />
-              ),
-            )}
-          </div>
-          <button
-            onClick={() => dispatch({ type: "toggleAppSettings" })}
-            title="Settings"
-            aria-label={securityRisky > 0 ? "Settings, security checkup found something risky" : "Settings"}
-            className="relative rounded-lg p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
-          >
-            <SettingsIcon size={16} />
-            {securityRisky > 0 && <span className="absolute right-1 top-1 size-1.5 rounded-full bg-destructive ring-2 ring-sidebar" />}
-          </button>
-        </header>
-        {menu && <RowMenu menu={menu} onClose={() => setMenu(null)} onFile={setFiling} />}
-        {filing && <SectionPicker filing={filing} onClose={() => setFiling(null)} />}
-        {showArchived && <ArchivedAgents onClose={() => setShowArchived(false)} />}
-      </>
-    );
-  }
+  // A phone has no room for a column beside the chat; there the list lives
+  // in the drawer the pill opens, which draws this same column.
+  if (mobile && !drawer) return null;
 
   const unfiledRooms = layout.unfiled.rooms;
   const unfiledBots = layout.unfiled.agents;
   // Rows drag wherever there is a place to put them: into a section, or
-  // to a place among the pins of their own list. Never on the rail.
-  const fileDrag = !rail ? onRowDrag : undefined;
+  // to a place among the pins of their own list.
+  const fileDrag = onRowDrag;
   // The unfiled list is the way out of a section. With everything on
   // show filed it has no rows to let go over, so while a filed row is in
   // hand it opens a place for one.
   const unfiling = !unfiledRooms.length && !unfiledBots.length ? (dragging?.current ?? null) : null;
-  const searching = Boolean(query.trim());
 
   /** One list as it is drawn: each row with the line a drop would land
    * on, and a hairline under the last pin when rows sorted by activity
@@ -1150,159 +941,130 @@ export function Sidebar() {
       );
     });
 
+  if (!sidebar.open && !drawer) return null;
+
+  // Dragging the right edge sizes the column; let go narrower than it can
+  // usefully be and it folds away, as ⌘B does. Pointer capture keeps the
+  // drag when the pointer runs ahead of the edge.
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const left = handle.parentElement!.getBoundingClientRect().left;
+    // folded, it opens again at the width it had before this drag, not
+    // the minimum the drag passed through on its way to folding
+    const before = sidebar.width;
+    setResizing(true);
+    const move = (ev: PointerEvent) => setChatSidebarWidth(ev.clientX - left, false);
+    const up = (ev: PointerEvent) => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      setResizing(false);
+      const width = ev.clientX - left;
+      if (width < CHAT_SIDEBAR.foldBelow) {
+        setChatSidebarWidth(before);
+        setChatSidebarOpen(false);
+      } else setChatSidebarWidth(width);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  };
+
   return (
     <aside
+      aria-label="Agents and rooms"
       className={cn(
-        "flex h-full shrink-0 flex-col border-r bg-sidebar transition-[width] duration-200",
-        // 96px is not arbitrary: macOS draws its three buttons as a 52px
-        // cluster, so a 22px inset leaves exactly 22px on the other side
-        // and the group sits centred with real air around it. See BUTTONS
-        // in electron/main.mjs, which holds the matching inset.
-        rail ? "w-[96px]" : "w-[320px]",
+        "relative flex h-full shrink-0 flex-col bg-sidebar",
+        drawer ? "min-w-0 flex-1" : "border-r",
+        resizing && "select-none",
       )}
+      style={drawer ? undefined : { width: sidebar.width }}
     >
-      {/* macOS draws its traffic lights into the top-left corner of the
-          desktop shell; they get a slim strip of their own so nothing
-          below ever has to dodge them. */}
-      {isElectron && (
-        <div className="h-[44px] shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+      {!drawer && (
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the sidebar. Drag narrow to fold it away"
+        aria-valuemin={CHAT_SIDEBAR.min}
+        aria-valuemax={CHAT_SIDEBAR.max}
+        aria-valuenow={sidebar.width}
+        tabIndex={0}
+        onPointerDown={startResize}
+        onDoubleClick={() => setChatSidebarWidth(CHAT_SIDEBAR.initial)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") (e.preventDefault(), setChatSidebarWidth(sidebar.width - 16));
+          else if (e.key === "ArrowRight") (e.preventDefault(), setChatSidebarWidth(sidebar.width + 16));
+        }}
+        className="group absolute inset-y-0 -right-1.5 z-10 w-3 cursor-col-resize outline-none"
+      >
+        <span
+          className={cn(
+            "absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors duration-150 group-hover:bg-ring/60 group-focus-visible:bg-ring",
+            resizing && "bg-ring",
+          )}
+        />
+      </div>
       )}
-      {rail ? (
-        <div
-          className={cn("flex flex-col items-center gap-1 px-2 pb-1", isElectron ? "pt-0.5" : "pt-3.5")}
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          {/* the mark doubles as the way back: hovering it reveals the
-              open-sidebar control, the way ChatGPT's logo does */}
-          <button
-            onMouseEnter={() => setLogoHover(true)}
-            onMouseLeave={() => setLogoHover(false)}
-            onClick={toggleCollapsed}
-            title="Open sidebar"
-            aria-label="Open sidebar"
-            className="flex size-8 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-accent" 
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
-            {logoHover ? (
-              <PanelLeftOpen size={17} className="text-muted-foreground" />
-            ) : (
-              <BloksMark size={17} />
-            )}
-          </button>
-          {/* new things live right above the first face */}
+      {/* the same height as the chat's header beside it, so the two read
+          as one strip; it is the window's handle too */}
+      <div
+        className="flex h-[52px] shrink-0 items-center justify-between pl-4 pr-2.5"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      >
+        <BloksLogo className="h-[19px]" />
+        <div className="flex items-center gap-0.5" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="rounded-lg p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                title="New…"
+                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96] data-[state=open]:bg-accent data-[state=open]:text-foreground"
+                title="New agent or room"
+                aria-label="New agent or room"
               >
-                <Plus size={17} strokeWidth={2} />
+                <Plus size={17} strokeWidth={1.9} />
               </button>
             </DropdownMenuTrigger>
             {newMenuItems}
           </DropdownMenu>
-        </div>
-      ) : (
-        <div
-          className={cn("flex items-center justify-between pl-4 pr-3 pb-2", isElectron ? "pt-1" : "pt-3.5")}
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          {/* the full lockup, flush left, same as the phone's header */}
-          <BloksLogo className="h-[20px]" />
-          <div
-            className="flex items-center gap-0.5"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          <button
+            onClick={openSearch}
+            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
+            title="Search (⌘K)"
+            aria-label="Search"
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="rounded-lg p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
-                  title="New…"
-                >
-                  <Plus size={17} strokeWidth={2} />
-                </button>
-              </DropdownMenuTrigger>
-              {newMenuItems}
-            </DropdownMenu>
-            <button
-              onClick={toggleCollapsed}
-              title="Close sidebar"
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
-            >
-              <PanelLeftClose size={16} />
-            </button>
-          </div>
+            <Search size={16} strokeWidth={1.9} />
+          </button>
         </div>
-      )}
-
-      {/* Search */}
-      {!rail && (
-        <div className="px-3 pb-2 pt-1">
-          <div className="flex items-center gap-2 rounded-xl bg-accent/70 px-3 py-[7px] transition-colors duration-150 focus-within:bg-accent">
-            <Search size={15} className="shrink-0 text-muted-foreground" />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Escape" && (setQuery(""), e.currentTarget.blur())}
-              placeholder="Search"
-              className="w-full bg-transparent text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Looking through a project: say which, and how to stop. Without
-          this a filtered sidebar reads as agents having gone missing,
-          which is why the collapsed rail gets it too rather than only the
-          version with room for words. */}
+          this a filtered sidebar reads as agents having gone missing. */}
       {projectMembers && (
         <button
           onClick={() => dispatch({ type: "openProject", id: null })}
           title={`Looking through ${projectName}. Click to show the whole workspace again`}
-          className={cn(
-            "mb-1 flex items-center rounded-lg bg-accent/70 text-foreground transition-colors duration-150 hover:bg-accent",
-            rail ? "mx-auto justify-center p-1.5" : "mx-2 gap-2 px-2.5 py-1.5 text-left text-[12px]",
-          )}
+          className="mx-2 mb-1 flex items-center gap-2 rounded-lg bg-accent/70 px-2.5 py-1.5 text-left text-[12px] text-foreground transition-colors duration-150 hover:bg-accent"
         >
           <FolderKanban size={13} className="shrink-0 text-muted-foreground" />
-          {!rail && (
-            <>
-              <span className="min-w-0 flex-1 truncate">{projectName}</span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">leave</span>
-            </>
-          )}
+          <span className="min-w-0 flex-1 truncate">{projectName}</span>
+          <span className="shrink-0 text-[11px] text-muted-foreground">leave</span>
         </button>
       )}
 
-      <WaitingRow rail={rail} />
+      <WaitingRow />
 
       {/* The list. Filed rows stand under their section's heading; the
           unfiled majority keeps the plain Rooms and Agents lists it has
           always had, so sections cost nothing until the first one is
           named. Inside each list, pins first in your order, then the
-          rest by recent activity with you. The rail has no room for
-          headings and runs the same order flat. */}
+          rest by recent activity with you. */}
       <div
         className="flex-1 overflow-y-auto px-2 pt-1"
         onMouseEnter={holdActivity}
         onMouseLeave={() => setHeldActivity(null)}
       >
-        {rail ? (
-          <div className="flex flex-col gap-1">
-            {unfiledRooms.map((row) => row.kind === "room" && <RoomListItem key={row.id} blok={row.room} rail />)}
-            {/* the rooms at the top keep the line that always set them apart */}
-            {unfiledRooms.length > 0 && <div className="mx-3 my-1 border-t" />}
-            {[...unfiledBots, ...layout.sections.flatMap((s) => s.rows)].map((row) =>
-              row.kind === "room" ? (
-                <RoomListItem key={row.id} blok={row.room} rail />
-              ) : (
-                <BotListItem key={row.id} bot={row.bot} onMenu={setMenu} rail />
-              ),
-            )}
-          </div>
-        ) : (
         <div className="flex flex-col gap-px">
           {(unfiledRooms.length > 0 || unfiledBots.length > 0 || unfiling) && (
             <div
@@ -1357,9 +1119,9 @@ export function Sidebar() {
           {layout.sections.map(({ name, rows }, index) => {
             const shownSections = layout.sections.map((s) => s.name);
             const isFolded = folded.includes(name);
-            const shown = shownInSection(rows, isFolded, state.selectedId, searching);
+            const shown = shownInSection(rows, isFolded, state.selectedId, false);
             // A folded heading still says something is waiting inside.
-            const waiting = isFolded && !searching && rows.some((row) => row.kind === "agent" && row.bot.unread);
+            const waiting = isFolded && rows.some((row) => row.kind === "agent" && row.bot.unread);
             const hint = sectionDrop?.name === name ? sectionDrop.place : null;
             return (
               <div
@@ -1417,7 +1179,7 @@ export function Sidebar() {
                 >
                   <Folder size={11} className="shrink-0" />
                   <span className="truncate">{name}</span>
-                  {isFolded && !searching && (
+                  {isFolded && (
                     <span className="shrink-0 normal-case tracking-normal">{rows.length}</span>
                   )}
                   {waiting && <span className="size-1.5 shrink-0 rounded-full bg-brand" />}
@@ -1430,28 +1192,11 @@ export function Sidebar() {
               </div>
             );
           })}
-          {visibleBots.length === 0 && (query || state.hydrated) && (
-            <div className="px-3 py-8 text-center text-[13px] text-muted-foreground">
-              {query ? "No agents match" : "No agents yet. Create one with +"}
-            </div>
+          {visibleBots.length === 0 && state.hydrated && (
+            <div className="px-3 py-8 text-center text-[13px] text-muted-foreground">No agents yet. Create one with +</div>
           )}
         </div>
-        )}
       </div>
-
-      <UpdateCard rail={rail} />
-      <SidebarFooter
-        rail={rail}
-        counts={{
-          briefNew,
-          waiting: activity.waiting,
-          running: activity.running,
-          rehearsalsReady,
-          skillsSuggested: activity.suggested,
-          notesWaiting,
-          securityRisky,
-        }}
-      />
 
       {menu && <RowMenu menu={menu} onClose={() => setMenu(null)} onFile={setFiling} />}
       {filing && <SectionPicker filing={filing} onClose={() => setFiling(null)} />}

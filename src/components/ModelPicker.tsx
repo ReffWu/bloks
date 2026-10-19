@@ -15,10 +15,10 @@
 // open, matching every word typed against the name or the id. Enter
 // takes the first match; Escape clears the search, then closes.
 import { useEffect, useRef, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.mjs";
-import SettingsIcon from "lucide-react/dist/esm/icons/settings-2.mjs";
-import Search from "lucide-react/dist/esm/icons/search.mjs";
+import { Check } from "@/components/icons";
+import { ChevronDown } from "@/components/icons";
+import { Settings2 as SettingsIcon } from "@/components/icons";
+import { Search } from "@/components/icons";
 import { useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
 import { ProviderMark } from "./ProviderIcons";
 import { EngineUpdateNote } from "./EngineSetup";

@@ -8,15 +8,15 @@
 // watched, what the agent is told, how often it looks, and the last few
 // times it fired. A new one is a sentence and an address.
 import { useCallback, useEffect, useState } from "react";
-import Eye from "lucide-react/dist/esm/icons/eye.mjs";
-import FlaskConical from "lucide-react/dist/esm/icons/flask-conical.mjs";
-import Folder from "lucide-react/dist/esm/icons/folder.mjs";
-import Globe from "lucide-react/dist/esm/icons/globe.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Rss from "lucide-react/dist/esm/icons/rss.mjs";
-import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.mjs";
-import SquareTerminal from "lucide-react/dist/esm/icons/square-terminal.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
+import { Eye } from "@/components/icons";
+import { FlaskConical } from "@/components/icons";
+import { Folder } from "@/components/icons";
+import { Globe } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Rss } from "@/components/icons";
+import { ShieldCheck } from "@/components/icons";
+import { SquareTerminal } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Button } from "@/components/ui/button";

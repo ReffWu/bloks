@@ -13,10 +13,10 @@
 // readable without being decoded.
 // Creation happens in the shared RoutinesDialog, pinned to this agent.
 import { useCallback, useEffect, useState } from "react";
-import CalendarClock from "lucide-react/dist/esm/icons/calendar-clock.mjs";
-import Play from "lucide-react/dist/esm/icons/play.mjs";
-import Plus from "lucide-react/dist/esm/icons/plus.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
+import { CalendarClock } from "@/components/icons";
+import { Play } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { RoutinesDialog } from "./RoutinesDialog";
 import { Switch } from "@/components/ui/switch";

@@ -15,6 +15,9 @@
   --foreground: #18181b;
 
   --sidebar: #f7f7f8;
+  /* the band browser-style tabs sit on, set off from the page the open
+     tab joins (TaskStrip.tsx) */
+  --tab-strip: #efeff2;
   --card: #ffffff;
   --card-foreground: #18181b;
   --popover: #ffffff;
@@ -32,6 +35,10 @@
   --accent-foreground: #18181b;
 
   --brand: #5b6cff;
+  /* the mark's orange, kept for the one thing that asks to be noticed
+     from the rail: an update waiting for a relaunch */
+  --update: #ff751f;
+  --update-foreground: #ffffff;
   --brand-foreground: #ffffff;
   --brand-soft: #eef0ff;
   /* The same blue, dark enough to be read. Brand colour as a fill is a
@@ -72,6 +79,7 @@
   --foreground: #ededf0;
 
   --sidebar: #131316;
+  --tab-strip: #1a1a1f;
   --card: #17171a;
   --card-foreground: #ededf0;
   --popover: #1a1a1e;
@@ -107,6 +115,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-sidebar: var(--sidebar);
+  --color-tab-strip: var(--tab-strip);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -120,6 +129,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-brand: var(--brand);
+  --color-update: var(--update);
+  --color-update-foreground: var(--update-foreground);
   --color-brand-ink: var(--brand-ink);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-soft: var(--brand-soft);
@@ -496,4 +507,25 @@
   .streaming-text > :last-child::after {
     animation: none;
   }
+}
+
+/* A browser's open tab: it joins the page below, and where it meets the
+ * band it curves out on each side, a quarter circle cut from a square of
+ * the page's colour (TaskStrip.tsx). */
+.tab-joined::before,
+.tab-joined::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+}
+.tab-joined::before {
+  left: -10px;
+  background: radial-gradient(circle at 0 0, transparent 9.5px, var(--background) 10px);
+}
+.tab-joined::after {
+  right: -10px;
+  background: radial-gradient(circle at 100% 0, transparent 9.5px, var(--background) 10px);
 }

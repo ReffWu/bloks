@@ -2,7 +2,7 @@
 // kept, what it costs where the provider says, and, for an agent that has
 // tried more than one, a lighter model that has been doing as well.
 import { useEffect, useState } from "react";
-import Gauge from "lucide-react/dist/esm/icons/gauge.mjs";
+import { Gauge } from "@/components/icons";
 import { api, useStore, type Bot } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Button } from "@/components/ui/button";

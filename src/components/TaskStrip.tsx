@@ -22,8 +22,8 @@
 // A lane names itself from the first words of its first message, which
 // often say nothing about what it became. A double click renames it.
 import { useRef, useState } from "react";
-import Plus from "lucide-react/dist/esm/icons/plus.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Plus } from "@/components/icons";
+import { X } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
 import { contextTitle, measuredContext, type LaneContext } from "@/lib/contextCard";
@@ -88,7 +88,7 @@ function RenameChip({ title, onDone }: { title: string; onDone: (next: string | 
         if (e.key === "Escape") end(null);
       }}
       size={Math.max(8, Math.min(MAX_TITLE, value.length + 1))}
-      className="shrink-0 rounded-full border border-foreground/40 bg-background px-2.5 py-1 text-[12px] font-medium text-foreground outline-none ring-2 ring-foreground/10"
+      className="w-full min-w-0 rounded-md bg-accent px-2 py-1 text-[12.5px] font-medium text-foreground outline-none"
     />
   );
 }
@@ -180,95 +180,109 @@ export function TaskStrip({
   const running = tasks.filter((t) => t.state === "working").length;
   const needsYou = tasks.filter((t) => t.state === "needs-you").length;
 
+  // Tabs the way a browser draws them: a band, each conversation a tab on
+  // it, and the open one lifted into the page below with a curve where it
+  // meets the band on each side (.tab-joined in styles.css). Thin lines
+  // part the others, except beside the open tab, where the curve does.
+  const activeIndex = tasks.findIndex((t) => t.id === activeId);
   return (
-    <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b bg-background/95 px-3 py-2.5 max-md:[scrollbar-width:none] md:px-4 max-md:[&::-webkit-scrollbar]:hidden">
+    <div
+      role="tablist"
+      aria-label="Conversations"
+      className="flex h-[38px] shrink-0 items-end gap-0 overflow-x-auto bg-tab-strip px-3 pt-1.5 max-md:[scrollbar-width:none] md:px-4 max-md:[&::-webkit-scrollbar]:hidden"
+    >
       {tasks.map((task, index) => {
         const active = task.id === activeId;
         // General, the first, is cleared rather than closed
         const isGeneral = index === 0;
+        const parted = !active && index !== activeIndex - 1 && index !== tasks.length - 1;
+        const total = (task.usage?.input ?? 0) + (task.usage?.output ?? 0);
+        const usage = formatTokens(total)
+          ? ` · ${task.usage!.input.toLocaleString()} in, ${task.usage!.output.toLocaleString()} out, ${plural(task.usage!.turns, "turn")}`
+          : "";
         if (renaming === task.id) {
           return (
-            <RenameChip
-              key={task.id}
-              title={task.title}
-              onDone={(next) => {
-                setRenaming(null);
-                if (next) onRename?.(task.id, next);
-              }}
-            />
+            <div key={task.id} className="tab-joined relative flex h-full min-w-[140px] items-center rounded-t-[10px] bg-background px-2">
+              <RenameChip
+                title={task.title}
+                onDone={(next) => {
+                  setRenaming(null);
+                  if (next) onRename?.(task.id, next);
+                }}
+              />
+            </div>
           );
         }
         return (
-          <button
+          <div
             key={task.id}
+            role="tab"
+            aria-selected={active}
+            tabIndex={0}
             onClick={() => onSelect(task.id)}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(task.id))}
             onDoubleClick={onRename ? () => setRenaming(task.id) : undefined}
-            title={onRename ? "Double-click to rename" : undefined}
+            title={`${task.title}${onRename ? ". Double-click to rename" : ""}${usage}`}
             className={cn(
-              "group/chip flex max-w-[220px] shrink-0 items-center gap-2 rounded-full border py-1 text-[12px] transition-[background-color,border-color,color,box-shadow,scale] duration-150 ease-out active:scale-[0.97]",
-              "pl-2.5 pr-1.5",
+              "group/tab relative flex h-full min-w-[96px] max-w-[220px] flex-1 basis-[200px] cursor-default items-center gap-2 rounded-t-[10px] pl-3 pr-1.5 text-[12.5px] outline-none transition-colors duration-150",
               active
-                ? "border-foreground/25 bg-foreground text-background shadow-sm"
-                : "text-muted-foreground hover:border-foreground/25 hover:text-foreground",
-              task.state === "needs-you" && !active && "border-warning/50 bg-warning/10 text-foreground",
+                ? "tab-joined z-[1] bg-background text-foreground"
+                : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
             )}
           >
             <StateDot state={task.state} />
-            <span className="truncate font-medium">{task.title}</span>
+            <span className={cn("min-w-0 flex-1 truncate", active && "font-medium")}>{task.title}</span>
             {task.context && ((measuredContext(task.context) && task.context.fraction >= RING_FROM) || task.context.summarised) && (
-              <span
-                className={cn("shrink-0", active ? "opacity-80" : "text-muted-foreground")}
-                title={contextTitle(task.context)}
-              >
+              <span className="shrink-0 text-muted-foreground" title={contextTitle(task.context)}>
                 <ContextRing fraction={measuredContext(task.context) ? task.context.fraction : 0} summarised={task.context.summarised} />
               </span>
             )}
-            {(() => {
-              const total = (task.usage?.input ?? 0) + (task.usage?.output ?? 0);
-              const label = formatTokens(total);
-              return label ? (
-                <span
-                  className={cn("shrink-0 text-[10.5px] tabular-nums", active ? "opacity-70" : "text-muted-foreground/70")}
-                  title={`${task.usage!.input.toLocaleString()} in · ${task.usage!.output.toLocaleString()} out · ${plural(task.usage!.turns, "turn")}`}
-                >
-                  {label}
-                </span>
-              ) : null;
-            })()}
-            {/* Quiet until the chip is hovered, which a touch screen never
-                does: there the X was invisible and still took a tap, so it
-                shows, a little larger, wherever the pointer is a finger. */}
-            <span
-              role="button"
+            {/* Shown on the open tab and under the pointer, as a browser's
+                is; a touch screen never hovers, so there it always shows. */}
+            {/* A running conversation cannot be closed or cleared (the
+                server refuses), so its × says so instead of trying; the
+                sidebar's menu says the same. */}
+            <button
               tabIndex={-1}
+              disabled={task.state === "working"}
               aria-label={isGeneral ? `Clear ${task.title}` : `Close ${task.title}`}
-              title={isGeneral ? "Clear this conversation" : "Close this conversation"}
+              title={
+                task.state === "working"
+                  ? "Stop it before closing"
+                  : isGeneral
+                    ? "Clear this conversation"
+                    : "Close this conversation"
+              }
               onClick={(e) => {
                 e.stopPropagation();
                 (isGeneral ? onClear : onClose)(task.id);
               }}
               className={cn(
-                "flex size-4 items-center justify-center rounded-full opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100 pointer-coarse:size-5 pointer-coarse:opacity-100",
-                active ? "hover:bg-background/20" : "hover:bg-accent",
+                "flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-[opacity,background-color] duration-150 hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30 pointer-coarse:opacity-100",
+                active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
               )}
             >
-              <X size={11} />
-            </span>
-          </button>
+              <X size={12} />
+            </button>
+            {parted && (
+              <span aria-hidden className="pointer-events-none absolute right-0 top-1/2 h-4 w-px -translate-y-1/2 bg-border transition-opacity duration-150 group-hover/tab:opacity-0" />
+            )}
+          </div>
         );
       })}
 
       {tasks.length < MAX_TASKS && (
         <button
           onClick={onNew}
-          title="New task: a separate thread, running in parallel"
-          className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed text-muted-foreground transition-colors duration-150 hover:border-foreground/30 hover:text-foreground"
+          aria-label="New conversation"
+          title="New conversation: a separate thread, running in parallel"
+          className="mb-1 ml-1 flex size-7 shrink-0 items-center justify-center self-center rounded-full text-muted-foreground transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.94]"
         >
-          <Plus size={13} />
+          <Plus size={15} />
         </button>
       )}
 
-      <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground/70">
+      <span className="mb-2 ml-auto shrink-0 self-center pl-3 text-[11px] text-muted-foreground/80">
         {needsYou > 0
           ? `${needsYou} waiting on you`
           : running > 0

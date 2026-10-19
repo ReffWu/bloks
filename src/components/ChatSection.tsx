@@ -5,8 +5,8 @@
 // chosen in that room's Share panel, next to who is let in, because the
 // two decisions are made together.
 import { useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Copy from "lucide-react/dist/esm/icons/copy.mjs";
+import { Check } from "@/components/icons";
+import { Copy } from "@/components/icons";
 import { api } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -12,11 +12,11 @@
 // computer Bloks runs on: on a phone or at bloks.dev/web the page says so
 // rather than guessing.
 import { useState } from "react";
-import ExternalLink from "lucide-react/dist/esm/icons/external-link.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.mjs";
-import ShieldAlert from "lucide-react/dist/esm/icons/shield-alert.mjs";
-import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.mjs";
+import { ExternalLink } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { RefreshCw } from "@/components/icons";
+import { ShieldAlert } from "@/components/icons";
+import { ShieldCheck } from "@/components/icons";
 import { useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";

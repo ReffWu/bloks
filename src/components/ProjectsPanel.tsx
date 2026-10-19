@@ -9,11 +9,10 @@
 // on the card, in the words somebody would use: this is not there any
 // more, and nothing will run in it until it is.
 import { useCallback, useEffect, useState } from "react";
-import FolderOpen from "lucide-react/dist/esm/icons/folder-open.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Plus from "lucide-react/dist/esm/icons/plus.mjs";
-import TriangleAlert from "lucide-react/dist/esm/icons/triangle-alert.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { FolderOpen } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { TriangleAlert } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { BLOK_COLOR_NAMES, BLOK_SHAPES, type BlokColor, type BlokShape } from "@/lib/mascot";
 import { BlokAvatar } from "./Avatar";
@@ -22,7 +21,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { cn } from "@/lib/cn";
-import { useEscape } from "@/lib/useEscape";
 
 interface FolderStanding {
   path: string;
@@ -71,163 +69,152 @@ export function ProjectsPanel() {
     void load();
   }, [load]);
 
-  const close = () => dispatch({ type: "toggleProjects", open: false });
-  useEscape(close);
 
   const open = (project: ProjectRow) => {
     void api(`/api/projects/${project.id}/open`, { method: "POST" }).catch(() => {});
     dispatch({ type: "openProject", id: project.id });
-    close();
   };
 
   return (
     <div
-      className="absolute inset-0 z-20 flex animate-fade-in items-center justify-center bg-black/40 dark:bg-black/60"
-      onClick={close}
+      className="flex min-w-0 flex-col rounded-2xl border bg-card p-5"
     >
-      <div
-        className="flex h-[76%] w-[600px] max-w-[92vw] animate-pop-in flex-col rounded-2xl border bg-popover p-5 shadow-2xl shadow-(color:--shadow-color)"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-[16px] font-semibold text-foreground">Projects</div>
-            <div className="mt-0.5 text-[13px] text-muted-foreground">
-              {editing
-                ? "Where the work happens, who is on it, and what they should know."
-                : "Switch into one and the app shows its people and its folders."}
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            {!editing && (
-              <Button variant="secondary" size="sm" onClick={() => setEditing("new")}>
-                <Plus size={13} />
-                New
-              </Button>
-            )}
-            <Button variant="ghost" size="icon-sm" aria-label="Close projects" onClick={close}>
-              <X size={16} />
-            </Button>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-[16px] font-semibold text-foreground">Projects</div>
+          <div className="mt-0.5 text-[13px] text-muted-foreground">
+            {editing
+              ? "Where the work happens, who is on it, and what they should know."
+              : "Switch into one and the app shows its people and its folders."}
           </div>
         </div>
-
-        {error && (
-          <div className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">
-            {error}
-          </div>
-        )}
-
-        <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
-          {editing ? (
-            <ProjectForm
-              project={editing === "new" ? null : editing}
-              onDone={() => {
-                setEditing(null);
-                void load();
-              }}
-              onCancel={() => setEditing(null)}
-            />
-          ) : projects === null ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" />
-              Reading projects
-            </div>
-          ) : projects.length === 0 ? (
-            <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-[13px] text-muted-foreground">
-              No projects yet. One is a name, some folders, and the people on it.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {projects.map((project) => {
-                const members = project.memberIds
-                  .map((id) => state.bots.find((b) => b.id === id))
-                  .filter(Boolean);
-                return (
-                  <div
-                    key={project.id}
-                    className={cn(
-                      "rounded-2xl border bg-card p-3.5",
-                      state.projectId === project.id && "border-foreground/25",
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <BlokAvatar color={project.color} shape={project.shape} expression="focused" size={30} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-[13.5px] font-medium text-foreground">
-                            {project.name}
-                          </span>
-                          {state.projectId === project.id && (
-                            <span className="shrink-0 text-[11px] text-brand-ink">open</span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 text-[12px] text-muted-foreground">
-                          {members.length
-                            ? members.map((b) => b!.name).join(", ")
-                            : "nobody on it yet"}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => setEditing(project)}>
-                          Edit
-                        </Button>
-                        <Button
-                          variant={state.projectId === project.id ? "ghost" : "secondary"}
-                          size="sm"
-                          onClick={() =>
-                            state.projectId === project.id
-                              ? dispatch({ type: "openProject", id: null })
-                              : open(project)
-                          }
-                        >
-                          {state.projectId === project.id ? "Leave" : "Open"}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {project.brief && (
-                      <p className="mt-2 line-clamp-2 text-[12.5px] leading-relaxed text-muted-foreground">
-                        {project.brief}
-                      </p>
-                    )}
-
-                    {project.folderStates.length > 0 && (
-                      <div className="mt-2 flex flex-col gap-1">
-                        {project.folderStates.map((folder) => (
-                          <div
-                            key={folder.path}
-                            className={cn(
-                              "flex items-center gap-1.5 text-[11.5px]",
-                              folder.state === "ok" ? "text-muted-foreground" : "text-warning",
-                            )}
-                          >
-                            {folder.state === "ok" ? (
-                              <FolderOpen size={12} className="shrink-0" />
-                            ) : (
-                              <TriangleAlert size={12} className="shrink-0" />
-                            )}
-                            <span className="truncate font-mono">{folder.path}</span>
-                            {WHY[folder.state] && <span className="shrink-0">· {WHY[folder.state]}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {project.broken && (
-                      <div className="mt-2 rounded-xl bg-warning/10 px-3 py-2 text-[12px] leading-relaxed text-warning">
-                        Nothing will run in this project until those folders are back, or it points
-                        somewhere else. An agent writing into the wrong directory is worse than one
-                        that will not start.
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+        <div className="flex items-center gap-1">
+          {!editing && (
+            <Button variant="secondary" size="sm" onClick={() => setEditing("new")}>
+              <Plus size={13} />
+              New
+            </Button>
           )}
         </div>
       </div>
+
+      {error && (
+        <div className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">
+          {error}
+        </div>
+      )}
+
+      <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+        {editing ? (
+          <ProjectForm
+            project={editing === "new" ? null : editing}
+            onDone={() => {
+              setEditing(null);
+              void load();
+            }}
+            onCancel={() => setEditing(null)}
+          />
+        ) : projects === null ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted-foreground">
+            <Loader2 size={14} className="animate-spin" />
+            Reading projects
+          </div>
+        ) : projects.length === 0 ? (
+          <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-[13px] text-muted-foreground">
+            No projects yet. One is a name, some folders, and the people on it.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {projects.map((project) => {
+              const members = project.memberIds
+                .map((id) => state.bots.find((b) => b.id === id))
+                .filter(Boolean);
+              return (
+                <div
+                  key={project.id}
+                  className={cn(
+                    "rounded-2xl border bg-card p-3.5",
+                    state.projectId === project.id && "border-foreground/25",
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <BlokAvatar color={project.color} shape={project.shape} expression="focused" size={30} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-[13.5px] font-medium text-foreground">
+                          {project.name}
+                        </span>
+                        {state.projectId === project.id && (
+                          <span className="shrink-0 text-[11px] text-brand-ink">open</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-[12px] text-muted-foreground">
+                        {members.length
+                          ? members.map((b) => b!.name).join(", ")
+                          : "nobody on it yet"}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(project)}>
+                        Edit
+                      </Button>
+                      <Button
+                        variant={state.projectId === project.id ? "ghost" : "secondary"}
+                        size="sm"
+                        onClick={() =>
+                          state.projectId === project.id
+                            ? dispatch({ type: "openProject", id: null })
+                            : open(project)
+                        }
+                      >
+                        {state.projectId === project.id ? "Leave" : "Open"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {project.brief && (
+                    <p className="mt-2 line-clamp-2 text-[12.5px] leading-relaxed text-muted-foreground">
+                      {project.brief}
+                    </p>
+                  )}
+
+                  {project.folderStates.length > 0 && (
+                    <div className="mt-2 flex flex-col gap-1">
+                      {project.folderStates.map((folder) => (
+                        <div
+                          key={folder.path}
+                          className={cn(
+                            "flex items-center gap-1.5 text-[11.5px]",
+                            folder.state === "ok" ? "text-muted-foreground" : "text-warning",
+                          )}
+                        >
+                          {folder.state === "ok" ? (
+                            <FolderOpen size={12} className="shrink-0" />
+                          ) : (
+                            <TriangleAlert size={12} className="shrink-0" />
+                          )}
+                          <span className="truncate font-mono">{folder.path}</span>
+                          {WHY[folder.state] && <span className="shrink-0">· {WHY[folder.state]}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {project.broken && (
+                    <div className="mt-2 rounded-xl bg-warning/10 px-3 py-2 text-[12px] leading-relaxed text-warning">
+                      Nothing will run in this project until those folders are back, or it points
+                      somewhere else. An agent writing into the wrong directory is worse than one
+                      that will not start.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
+
   );
 }
 

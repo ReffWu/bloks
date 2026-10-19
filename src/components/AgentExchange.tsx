@@ -14,9 +14,9 @@
 // small "after a message from QA" link above it. Compacting it as
 // "Replied to QA" claimed a delivery that never happened.
 import { useEffect, useRef, useState } from "react";
-import ArrowDownLeft from "lucide-react/dist/esm/icons/arrow-down-left.mjs";
-import ArrowUpRight from "lucide-react/dist/esm/icons/arrow-up-right.mjs";
-import CornerDownRight from "lucide-react/dist/esm/icons/corner-down-right.mjs";
+import { ArrowDownLeft } from "@/components/icons";
+import { ArrowUpRight } from "@/components/icons";
+import { CornerDownRight } from "@/components/icons";
 import { api, useStore, type Message } from "@/state/store";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AgentAvatar } from "./Avatar";

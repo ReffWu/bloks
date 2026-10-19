@@ -11,15 +11,15 @@
 // slower than typing for anything under a dozen steps, and a dozen steps
 // is the cap.
 import { useCallback, useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.mjs";
-import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.mjs";
-import CircleDot from "lucide-react/dist/esm/icons/circle-dot.mjs";
-import Hourglass from "lucide-react/dist/esm/icons/hourglass.mjs";
-import Play from "lucide-react/dist/esm/icons/play.mjs";
-import Plus from "lucide-react/dist/esm/icons/plus.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Check } from "@/components/icons";
+import { ChevronDown } from "@/components/icons";
+import { ChevronRight } from "@/components/icons";
+import { CircleDot } from "@/components/icons";
+import { Hourglass } from "@/components/icons";
+import { Play } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { X } from "@/components/icons";
 import { useStore, type Bot } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -17,20 +17,19 @@
 // with a tick for each check-in, a chip in the month, and a row in the
 // Check-ins strip under the grid that says it in words.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import CalendarClock from "lucide-react/dist/esm/icons/calendar-clock.mjs";
-import ChevronLeft from "lucide-react/dist/esm/icons/chevron-left.mjs";
-import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.mjs";
-import Copy from "lucide-react/dist/esm/icons/copy.mjs";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Play from "lucide-react/dist/esm/icons/play.mjs";
-import Plus from "lucide-react/dist/esm/icons/plus.mjs";
-import Repeat from "lucide-react/dist/esm/icons/repeat.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
-import Users from "lucide-react/dist/esm/icons/users.mjs";
-import Webhook from "lucide-react/dist/esm/icons/webhook.mjs";
-import Briefcase from "lucide-react/dist/esm/icons/briefcase.mjs";
-import Workflow from "lucide-react/dist/esm/icons/workflow.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { CalendarClock } from "@/components/icons";
+import { ChevronLeft } from "@/components/icons";
+import { ChevronRight } from "@/components/icons";
+import { Copy } from "@/components/icons";
+import { Check } from "@/components/icons";
+import { Play } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { Repeat } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { Users } from "@/components/icons";
+import { Webhook } from "@/components/icons";
+import { Briefcase } from "@/components/icons";
+import { Workflow } from "@/components/icons";
 import { useStore, type AutomationsTab, type Bot } from "@/state/store";
 import { AgentAvatar, BlokAvatar } from "./Avatar";
 import { type Routine, type RoutineRun } from "./RoutinesSection";
@@ -42,7 +41,7 @@ import { JobBoard } from "./JobBoard";
 import { Workflows } from "./Workflows";
 import { cn } from "@/lib/cn";
 import { WatchersTab } from "./WatchersTab";
-import Eye from "lucide-react/dist/esm/icons/eye.mjs";
+import { Eye } from "@/components/icons";
 import { thisComputer } from "@/lib/thisComputer";
 import { gridHours } from "@/lib/dayGrid";
 import { checkInBand, foldQuietRuns, intervalShort } from "@/lib/checkIns";
@@ -100,6 +99,10 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
   useEscape(onClose);
   // a link from elsewhere (the security checkup's webhooks) opens its tab
   const [tab, setTab] = useState<AutomationsTab>(state.routinesTab ?? "schedules");
+  // and so does one that arrives while the page is already open
+  useEffect(() => {
+    if (state.routinesTab) setTab(state.routinesTab);
+  }, [state.routinesTab]);
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [mode, setMode] = useState<"day" | "week" | "month">("week");
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
@@ -267,11 +270,12 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
   return (
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 animate-fade-in flex-col bg-background">
       {/* ── header ── */}
-      <div className="flex h-[58px] shrink-0 items-center justify-between border-b px-5">
+      <div className="flex h-[58px] shrink-0 items-center justify-between border-b px-5 max-md:pl-[92px]">
         {/* The panel sits beside the sidebar, so it is narrower than the
             window and a viewport breakpoint cannot see that. The title
-            gives up its width instead: the tabs and the close are the
-            controls, and a subtitle is the first thing that can go. */}
+            gives up its width instead: the tabs are the controls, and a
+            subtitle is the first thing that can go. Leaving is the title
+            bar's Back, or Esc. */}
         <div className="flex min-w-0 items-center gap-2.5">
           <CalendarClock size={18} className="shrink-0 text-brand-ink" />
           <div className="min-w-0">
@@ -309,9 +313,6 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
-          <Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}>
-            <X size={17} />
-          </Button>
         </div>
       </div>
 

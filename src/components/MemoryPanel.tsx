@@ -7,15 +7,14 @@
 // own, every change it makes lands in a journal (server/memory-journal.ts)
 // with its diff, and any one of them can be undone.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Brain from "lucide-react/dist/esm/icons/brain.mjs";
-import FileText from "lucide-react/dist/esm/icons/file-text.mjs";
-import History from "lucide-react/dist/esm/icons/history.mjs";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2.mjs";
-import Plus from "lucide-react/dist/esm/icons/plus.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
-import Undo2 from "lucide-react/dist/esm/icons/undo-2.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
-import UserRound from "lucide-react/dist/esm/icons/user-round.mjs";
+import { Brain } from "@/components/icons";
+import { FileText } from "@/components/icons";
+import { History } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { Undo2 } from "@/components/icons";
+import { UserRound } from "@/components/icons";
 import { AboutYou, useProfileNotes } from "./AboutYou";
 import { api, useStore, type Bot } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
@@ -23,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
-import { useEscape } from "@/lib/useEscape";
 
 interface DiffLine {
   kind: "same" | "add" | "del" | "gap";
@@ -48,7 +46,7 @@ interface Entry {
 type Tab = "files" | "changes";
 
 export function MemoryPanel() {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const agents = useMemo(() => state.bots.filter((b) => !b.hidden), [state.bots]);
   // opens on the agent being looked at, when that is an agent
   const viewing = agents.find((a) => a.id === state.selectedId)?.id;
@@ -70,125 +68,115 @@ export function MemoryPanel() {
   }, [picked, waiting]);
   const [tab, setTab] = useState<Tab>("files");
   const bot = agents.find((b) => b.id === botId) ?? null;
-  const close = () => dispatch({ type: "toggleMemory", open: false, botId: null });
 
-  useEscape(close);
 
   return (
     <div
-      className="absolute inset-0 z-20 flex animate-fade-in items-center justify-center bg-black/40 dark:bg-black/60"
-      onClick={close}
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card"
+      role="dialog"
+      aria-label="Memory"
     >
-      <div
-        className="flex h-[82%] w-[900px] max-w-[94vw] animate-pop-in flex-col overflow-hidden rounded-2xl border bg-popover shadow-2xl shadow-(color:--shadow-color)"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="Memory"
-      >
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <div>
-            <div className="flex items-center gap-2 text-[16px] font-semibold text-foreground">
-              <Brain size={17} className="text-muted-foreground" />
-              Memory
-            </div>
-            <div className="mt-0.5 text-[13px] text-muted-foreground">
-              What each agent keeps between conversations, as plain files. Every change is recorded and can be undone.
-            </div>
+      <div className="flex items-center justify-between border-b px-5 py-4">
+        <div>
+          <div className="flex items-center gap-2 text-[16px] font-semibold text-foreground">
+            <Brain size={17} className="text-muted-foreground" />
+            Memory
           </div>
-          <Button variant="ghost" size="icon-sm" aria-label="Close memory" onClick={close}>
-            <X size={16} />
-          </Button>
+          <div className="mt-0.5 text-[13px] text-muted-foreground">
+            What each agent keeps between conversations, as plain files. Every change is recorded and can be undone.
+          </div>
         </div>
+      </div>
 
-        <div className="flex min-h-0 flex-1">
-          <nav className="hidden w-[200px] shrink-0 overflow-y-auto border-r p-2 sm:block" aria-label="Agents">
+      <div className="flex min-h-0 flex-1">
+        <nav className="hidden w-[200px] shrink-0 overflow-y-auto border-r p-2 sm:block" aria-label="Agents">
+          <button
+            onClick={() => {
+              setPicked(true);
+              setBotId("you");
+            }}
+            className={cn(
+              "mb-1 flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors",
+              aboutYou ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+            )}
+          >
+            <span className="flex size-[22px] items-center justify-center rounded-md bg-muted">
+              <UserRound size={13} />
+            </span>
+            <span className="min-w-0 flex-1 truncate">About you</span>
+            {waiting > 0 && (
+              <span className="rounded-md bg-primary/12 px-1.5 py-0.5 text-[10.5px] tabular-nums text-foreground">{waiting}</span>
+            )}
+          </button>
+          {agents.map((agent) => (
             <button
+              key={agent.id}
               onClick={() => {
                 setPicked(true);
-                setBotId("you");
+                setBotId(agent.id);
               }}
               className={cn(
-                "mb-1 flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors",
-                aboutYou ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors",
+                agent.id === botId ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
               )}
             >
-              <span className="flex size-[22px] items-center justify-center rounded-md bg-muted">
-                <UserRound size={13} />
-              </span>
-              <span className="min-w-0 flex-1 truncate">About you</span>
-              {waiting > 0 && (
-                <span className="rounded-md bg-primary/12 px-1.5 py-0.5 text-[10.5px] tabular-nums text-foreground">{waiting}</span>
-              )}
+              <AgentAvatar bot={agent} size={22} />
+              <span className="min-w-0 truncate">{agent.name}</span>
             </button>
-            {agents.map((agent) => (
-              <button
-                key={agent.id}
-                onClick={() => {
-                  setPicked(true);
-                  setBotId(agent.id);
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors",
-                  agent.id === botId ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                )}
-              >
-                <AgentAvatar bot={agent} size={22} />
-                <span className="min-w-0 truncate">{agent.name}</span>
-              </button>
-            ))}
-          </nav>
+          ))}
+        </nav>
 
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex items-center gap-2 border-b px-4 py-2.5">
-              <select
-                className="rounded-md border bg-background px-2 py-1 text-[13px] sm:hidden"
-                value={botId ?? ""}
-                onChange={(e) => setBotId(e.target.value)}
-                aria-label="Agent"
-              >
-                <option value="you">About you</option>
-                {agents.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-              <div className={cn("flex gap-1 rounded-lg bg-muted p-0.5", aboutYou && "hidden")}>
-                {(
-                  [
-                    ["files", "Files", FileText],
-                    ["changes", "Changes", History],
-                  ] as const
-                ).map(([key, label, Icon]) => (
-                  <button
-                    key={key}
-                    onClick={() => setTab(key)}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] transition-colors",
-                      tab === key ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <Icon size={13} />
-                    {label}
-                  </button>
-                ))}
-              </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center gap-2 border-b px-4 py-2.5">
+            <select
+              className="rounded-md border bg-background px-2 py-1 text-[13px] sm:hidden"
+              value={botId ?? ""}
+              onChange={(e) => setBotId(e.target.value)}
+              aria-label="Agent"
+            >
+              <option value="you">About you</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            <div className={cn("flex gap-1 rounded-lg bg-muted p-0.5", aboutYou && "hidden")}>
+              {(
+                [
+                  ["files", "Files", FileText],
+                  ["changes", "Changes", History],
+                ] as const
+              ).map(([key, label, Icon]) => (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] transition-colors",
+                    tab === key ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Icon size={13} />
+                  {label}
+                </button>
+              ))}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              {aboutYou ? (
-                <AboutYou />
-              ) : !bot ? (
-                <div className="py-10 text-center text-[13px] text-muted-foreground">No agents yet.</div>
-              ) : tab === "files" ? (
-                <Files key={bot.id} bot={bot} />
-              ) : (
-                <Changes key={bot.id} bot={bot} />
-              )}
-            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {aboutYou ? (
+              <AboutYou />
+            ) : !bot ? (
+              <div className="py-10 text-center text-[13px] text-muted-foreground">No agents yet.</div>
+            ) : tab === "files" ? (
+              <Files key={bot.id} bot={bot} />
+            ) : (
+              <Changes key={bot.id} bot={bot} />
+            )}
           </div>
         </div>
       </div>
     </div>
+
   );
 }
 

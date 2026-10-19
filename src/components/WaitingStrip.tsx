@@ -9,9 +9,9 @@
 // or taken back; what another agent or a person in a room queued is
 // shown with who sent it, and is theirs, not yours to change.
 import { useEffect, useRef, useState } from "react";
-import ArrowUp from "lucide-react/dist/esm/icons/arrow-up.mjs";
-import Pencil from "lucide-react/dist/esm/icons/pencil.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
+import { ArrowUp } from "@/components/icons";
+import { Pencil } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
 import { api, type Message } from "@/state/store";
 import { stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";

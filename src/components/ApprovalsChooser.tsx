@@ -9,7 +9,7 @@
 // Widening asks who is there, the same as it does for one agent in its
 // own settings; narrowing never does.
 import { useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
+import { Check } from "@/components/icons";
 import { api } from "@/state/store";
 import { cn } from "@/lib/cn";
 

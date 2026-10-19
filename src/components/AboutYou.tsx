@@ -4,11 +4,11 @@
 // as it is, change the words and keep it, or let it go. Below, what every
 // agent has been told, each note removable, and a line to add your own.
 import { useCallback, useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check.mjs";
-import Pencil from "lucide-react/dist/esm/icons/pencil.mjs";
-import Plus from "lucide-react/dist/esm/icons/plus.mjs";
-import Trash2 from "lucide-react/dist/esm/icons/trash-2.mjs";
-import X from "lucide-react/dist/esm/icons/x.mjs";
+import { Check } from "@/components/icons";
+import { Pencil } from "@/components/icons";
+import { Plus } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { X } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
