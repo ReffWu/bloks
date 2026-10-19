@@ -172,9 +172,12 @@ function Shell() {
         </main>
       )}
       </PlaceFade>
-      </div>
-      </div>
+      {/* In the panel's row, to the right of the work. Left outside it,
+          as a child of the window's column, it took the full height and
+          squeezed the chat and the sidebar to nothing. */}
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
+      </div>
+      </div>
       {state.newRoomOpen && <NewRoomDialog />}
       {state.newAgentOpen && <NewAgentScreen />}
       <CommandPalette />
