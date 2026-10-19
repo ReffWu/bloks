@@ -20,6 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { confirm } from "@/components/ui/confirm";
+import { Skeleton, SkeletonGroup, SkeletonLines } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { usePageVisible } from "@/lib/pageVisible";
 import { deviceWord } from "@/lib/thisComputer";
@@ -166,10 +169,31 @@ function Backups() {
 
   if (refused) return <Elsewhere />;
   if (!status) {
+    if (error) return <div className="px-1 py-6 text-body text-destructive">{error}</div>;
+    // the page's own outline, so nothing jumps when it arrives
     return (
-      <div className="flex items-center gap-2 px-1 py-6 text-body text-muted-foreground">
-        {error ? <span className="text-destructive">{error}</span> : <Loader2 size={14} className="animate-spin" />}
-      </div>
+      <SkeletonGroup label="Loading backups">
+        {[1, 3, 2].map((rows, i) => (
+          <section key={i} className="mb-9">
+            <div className="mb-2.5 flex h-5 items-center px-1">
+              <Skeleton className="h-2.5 w-24 rounded-full" />
+            </div>
+            <div className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
+              {Array.from({ length: rows }, (_, r) => (
+                <div key={r} className="flex items-center gap-6 px-5 py-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex h-[22px] items-center">
+                      <Skeleton className="h-2.5 w-36 rounded-full" />
+                    </div>
+                    <SkeletonLines lines={1} className="mt-0.5 w-3/4" />
+                  </div>
+                  <Skeleton className={i === 0 ? "h-5 w-9 rounded-full" : "h-7 w-24 rounded-md"} />
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </SkeletonGroup>
     );
   }
 
@@ -321,7 +345,10 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
       body: JSON.stringify({ undo, ...(seal ? { passphrase, secrets: keys } : {}) }),
     })
       .then(({ backup }: { backup: BackupItem }) => {
-        setResult({ ok: true, text: `Backed up, ${sizeText(backup.size)}.${seal ? " Keep the passphrase safe: without it, this backup can't be opened." : ""}` });
+        // Done is said once and goes; the passphrase warning is the part
+        // worth keeping on the page, so only that one stays.
+        toast.success(`Backed up, ${sizeText(backup.size)}`);
+        setResult(seal ? { ok: true, text: "Keep the passphrase safe: without it, this backup can't be opened." } : null);
         setPassphrase("");
         setAgain("");
         onDone();
@@ -444,10 +471,19 @@ function BackupRow({
       })
       .catch((e) => setLine({ ok: false, text: errorOf(e) }));
 
-  const remove = () => {
-    if (!window.confirm(`Delete the backup from ${when(backup.created)}?\n\nThis can't be undone.`)) return;
+  const remove = async () => {
+    const yes = await confirm({
+      title: `Delete the backup from ${when(backup.created)}?`,
+      body: "This can't be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!yes) return;
     void api(base, { method: "DELETE" })
-      .then(onChanged)
+      .then(() => {
+        onChanged();
+        toast("Backup deleted");
+      })
       .catch((e) => setLine({ ok: false, text: errorOf(e) }));
   };
 

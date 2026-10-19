@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
 import { AgentAvatar } from "./Avatar";
 import { cn } from "@/lib/cn";
 
@@ -320,10 +322,19 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
-  const uninstall = () => {
-    if (!window.confirm(`Remove ${server.name}? Agents using it lose its tools.`)) return;
+  const uninstall = async () => {
+    const yes = await confirm({
+      title: `Remove ${server.name}?`,
+      body: "Agents using it lose its tools.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!yes) return;
     void api(`/api/mcp-servers/${server.id}`, { method: "DELETE" })
-      .then(onBack)
+      .then(() => {
+        onBack();
+        toast(`Removed ${server.name}`);
+      })
       .catch((e: Error) => setError(e.message));
   };
 

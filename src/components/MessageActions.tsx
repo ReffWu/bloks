@@ -21,6 +21,7 @@ import { X } from "@/components/icons";
 import { useStore, type Message } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { confirm } from "@/components/ui/confirm";
 import { cn } from "@/lib/cn";
 
 export type ReplyDraft = { id?: string; author: string; excerpt: string };
@@ -158,15 +159,13 @@ export function MessageActionBar({
           [
             "Rewind to here",
             <History key="w" size={13} strokeWidth={1.8} />,
-            () => {
-              if (
-                window.confirm(
-                  "Rewind to before this message? It and everything after are removed, and file changes since then are undone. Your message returns to the box.",
-                )
-              ) {
-                onRewind();
-              }
-            },
+            () =>
+              void confirm({
+                title: "Rewind to before this message?",
+                body: "It and everything after are removed, and file changes since then are undone. Your message returns to the box.",
+                confirmLabel: "Rewind",
+                destructive: true,
+              }).then((yes) => yes && onRewind()),
           ],
         ] as Array<[string, React.ReactNode, () => void]>)
       : []),
@@ -175,13 +174,15 @@ export function MessageActionBar({
           [
             "Delete",
             <Trash2 key="d" size={13} strokeWidth={1.8} />,
-            () => {
+            () =>
               // No undo exists for this, so the question is asked once
               // and names what goes.
-              if (window.confirm("Delete this message? This can't be undone.")) {
-                onDelete();
-              }
-            },
+              void confirm({
+                title: "Delete this message?",
+                body: "This can't be undone.",
+                confirmLabel: "Delete",
+                destructive: true,
+              }).then((yes) => yes && onDelete()),
           ],
         ] as Array<[string, React.ReactNode, () => void]>)
       : []),

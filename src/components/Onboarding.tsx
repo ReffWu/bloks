@@ -27,6 +27,7 @@ import { ProviderMark } from "./ProviderIcons";
 import { api, useStore, type Bot } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { setSetupDone, track } from "@/lib/analytics";
+import { confirm } from "@/components/ui/confirm";
 import { cn } from "@/lib/cn";
 import { recommendedFor, WORK_TYPES } from "@/lib/recommend";
 import { AGENT_TEMPLATES, type AgentTemplate } from "@/lib/agentTemplates";
@@ -211,13 +212,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
    * come back (a supervisor restarts it) and then loads the new one. */
   const [resetNote, setResetNote] = useState<string | null>(null);
   const startFresh = async () => {
-    if (
-      !window.confirm(
-        "Start fresh?\n\nYour agents, rooms and conversations move to a dated folder beside this one. Nothing is deleted. Keys, engines and Bloks Cloud stay set up. Bloks will restart.",
-      )
-    ) {
-      return;
-    }
+    // Nothing is deleted, so it is not drawn as destructive, but Bloks
+    // restarts, which is reason enough to ask
+    const yes = await confirm({
+      title: "Start fresh?",
+      body: "Your agents, rooms and conversations move to a dated folder beside this one. Nothing is deleted. Keys, engines and Bloks Cloud stay set up.\n\nBloks will restart.",
+      confirmLabel: "Start fresh",
+    });
+    if (!yes) return;
     setResetting(true);
     setResetNote(null);
     const before = await fetch("/api/health")

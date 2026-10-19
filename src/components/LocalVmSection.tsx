@@ -14,6 +14,7 @@ import { ExternalLink } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
 import { RefreshCw } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { confirm, type ConfirmOptions } from "@/components/ui/confirm";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
 import { usePageVisible } from "@/lib/pageVisible";
@@ -126,8 +127,8 @@ export function LocalVmSection() {
     return () => clearInterval(t);
   }, [load, visible]);
 
-  const act = (verb: "prepare" | "create" | "remove", confirmText?: string) => {
-    if (confirmText && !window.confirm(confirmText)) return;
+  const act = async (verb: "prepare" | "create" | "remove", ask?: ConfirmOptions) => {
+    if (ask && !(await confirm(ask))) return;
     setActing(verb);
     setError(null);
     api(`/api/local-vm/${verb}`, { method: "POST" })
@@ -182,7 +183,14 @@ export function LocalVmSection() {
               size="sm"
               className="text-muted-foreground"
               disabled={acting !== null}
-              onClick={() => act("remove", "Remove the Local VM? Files in its workspace are kept.")}
+              onClick={() =>
+                void act("remove", {
+                  title: "Remove the Local VM?",
+                  body: "Files in its workspace are kept.",
+                  confirmLabel: "Remove",
+                  destructive: true,
+                })
+              }
             >
               Remove
             </Button>
@@ -224,10 +232,12 @@ export function LocalVmSection() {
                   className="mt-1.5"
                   disabled={acting !== null}
                   onClick={() =>
-                    act(
-                      "remove",
-                      "Recreate the Local VM? Files in its workspace are kept, everything else resets.",
-                    )
+                    void act("remove", {
+                      title: "Recreate the Local VM?",
+                      body: "Files in its workspace are kept. Everything else resets.",
+                      confirmLabel: "Remove",
+                      destructive: true,
+                    })
                   }
                 >
                   {acting === "remove" && <Loader2 size={12} className="animate-spin" />}

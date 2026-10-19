@@ -70,6 +70,12 @@
   --ring: #4a59e6;
 
   --shadow-color: rgba(24, 24, 27, 0.08);
+
+  /* A loading shape: a shade off the page and every surface it sits on
+     (white, the card, the sidebar grey), never so dark it reads as
+     content. The shine is the band that crosses it (ui/skeleton.tsx). */
+  --skeleton: #ececef;
+  --skeleton-shine: rgba(255, 255, 255, 0.75);
 }
 
 .dark {
@@ -109,6 +115,9 @@
   --ring: #7c8aff;
 
   --shadow-color: rgba(0, 0, 0, 0.45);
+
+  --skeleton: #1f1f24;
+  --skeleton-shine: rgba(255, 255, 255, 0.045);
 }
 
 @theme inline {
@@ -317,6 +326,38 @@
   0% { transform: scale(0.86); }
   60% { transform: scale(1.04); }
   100% { transform: scale(1); }
+}
+
+/* A loading shape (ui/skeleton.tsx). The band is a pseudo-element moved
+   by transform, so a page full of them costs the compositor and nothing
+   else. It is slow and soft on purpose: a skeleton should sit there, not
+   shout that it is busy. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--skeleton);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+  animation: skeleton-shine 1.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes skeleton-shine {
+  to { transform: translateX(100%); }
+}
+/* Held back a beat before it shows, so a load that answers at once never
+   flashes grey at all. */
+.skeleton-group {
+  animation: fade-in 0.2s ease-out 0.12s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 /* the halo an agent wears while its voice plays, in its own color */
