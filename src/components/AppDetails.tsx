@@ -103,8 +103,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
           ) : (
             <button
               onClick={() => connectors.connect(card.slug)}
-              disabled={!connectors.configured || busy}
-              title={connectors.configured ? undefined : "Add a Composio key in Settings first"}
+              disabled={busy}
               className={cn(pill, "bg-foreground text-background hover:opacity-90")}
             >
               {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
@@ -162,10 +161,17 @@ function BackToPlugins({ onBack }: { onBack: () => void }) {
 }
 
 /**
- * The header behind the prompts: the app's own colour, washed out over a
- * dark ground, so a page of Slack and a page of Stripe feel like
+ * The header behind the prompts: the app's own colour, washed out over
+ * the ground, so a page of Slack and a page of Stripe feel like
  * themselves. The prompts sit on it as glass, each with the app's name in
  * front, the way it reads once it is in the box.
+ *
+ * Each theme gets its own version of the same wash. Dark keeps the deep
+ * ground with the colour glowing out of it; light lays a softer wash over
+ * the card colour, with white glass and dark text, so the page does not
+ * suddenly turn to night in the middle. Both are handed over as custom
+ * properties and picked by the dark variant, since the accent is per app
+ * and cannot live in the stylesheet.
  */
 function Hero({
   card,
@@ -182,17 +188,28 @@ function Hero({
 }) {
   const agent = useStore().state;
   const to = agentForApps(agent);
+  const wash = {
+    "--hero-light": [
+      `radial-gradient(120% 90% at 12% 0%, color-mix(in srgb, ${accent} 24%, transparent) 0%, transparent 60%)`,
+      `radial-gradient(90% 80% at 100% 100%, color-mix(in srgb, ${accent} 16%, transparent) 0%, transparent 65%)`,
+      `radial-gradient(70% 60% at 85% 10%, color-mix(in srgb, #7c8aff 14%, transparent) 0%, transparent 70%)`,
+      `color-mix(in srgb, ${accent} 5%, var(--card))`,
+    ].join(", "),
+    "--hero-dark": [
+      `radial-gradient(120% 90% at 12% 0%, color-mix(in srgb, ${accent} 70%, transparent) 0%, transparent 60%)`,
+      `radial-gradient(90% 80% at 100% 100%, color-mix(in srgb, ${accent} 45%, transparent) 0%, transparent 65%)`,
+      `radial-gradient(70% 60% at 85% 10%, color-mix(in srgb, #7c8aff 25%, transparent) 0%, transparent 70%)`,
+      "#14141b",
+    ].join(", "),
+    // the name in front of each prompt: the accent darkened enough to read
+    // on white glass, or lifted enough to read on dark glass
+    "--hero-name-light": `color-mix(in srgb, ${accent} 60%, black)`,
+    "--hero-name-dark": `color-mix(in srgb, ${accent} 40%, white)`,
+  } as React.CSSProperties;
   return (
     <div
-      className="relative mt-8 overflow-hidden rounded-[28px] px-5 py-10 sm:px-14"
-      style={{
-        background: [
-          `radial-gradient(120% 90% at 12% 0%, color-mix(in srgb, ${accent} 70%, transparent) 0%, transparent 60%)`,
-          `radial-gradient(90% 80% at 100% 100%, color-mix(in srgb, ${accent} 45%, transparent) 0%, transparent 65%)`,
-          `radial-gradient(70% 60% at 85% 10%, color-mix(in srgb, #7c8aff 25%, transparent) 0%, transparent 70%)`,
-          "#14141b",
-        ].join(", "),
-      }}
+      className="relative mt-8 overflow-hidden rounded-[28px] border border-black/[0.06] px-5 py-10 [background:var(--hero-light)] sm:px-14 dark:border-transparent dark:[background:var(--hero-dark)]"
+      style={wash}
     >
       <div className="mx-auto flex max-w-[680px] flex-col gap-3">
         {prompts.map((prompt) => (
@@ -200,16 +217,16 @@ function Hero({
             key={prompt}
             onClick={() => onPick(prompt)}
             title={connected ? (to ? `Write this to ${to.name}` : undefined) : `Connect ${card.label} first`}
-            className="group flex items-center gap-4 rounded-2xl bg-black/45 px-5 py-4 text-left text-lead leading-relaxed text-white/90 ring-1 ring-white/10 backdrop-blur-md transition-[background-color,scale] duration-150 ease-out hover:bg-black/55 active:scale-[0.99]"
+            className="group flex items-center gap-4 rounded-2xl bg-white/80 px-5 py-4 text-left text-lead leading-relaxed text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.07] backdrop-blur-md transition-[background-color,scale] duration-150 ease-out hover:bg-white active:scale-[0.99] dark:bg-black/45 dark:text-white/90 dark:shadow-none dark:ring-white/10 dark:hover:bg-black/55"
           >
             <span className="min-w-0 flex-1">
-              <span className="mr-1.5 inline-flex translate-y-[3px] items-center gap-1.5 font-medium" style={{ color: `color-mix(in srgb, ${accent} 40%, white)` }}>
+              <span className="mr-1.5 inline-flex translate-y-[3px] items-center gap-1.5 font-medium [color:var(--hero-name-light)] dark:[color:var(--hero-name-dark)]">
                 <ServiceIcon card={card} size={16} />
                 {card.label}
               </span>
               {prompt}
             </span>
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition-colors group-hover:bg-white/20">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-black/[0.05] text-foreground transition-colors group-hover:bg-black/10 dark:bg-white/10 dark:text-white dark:group-hover:bg-white/20">
               <ArrowRight size={17} />
             </span>
           </button>

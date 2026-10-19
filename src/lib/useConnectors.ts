@@ -4,8 +4,12 @@
 // The server returns either the live catalogue or a shorter shipped list,
 // depending on which credential is configured, and nothing here minds
 // which it got.
+//
+// Connect never needs a key to be pressed. Without one it asks for the key
+// instead (ComposioKeyDialog, drawn by whoever holds this hook), and once
+// the key lands it carries straight on into the sign-in it was asked for.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/state/store";
+import { api, useStore } from "@/state/store";
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 
@@ -17,7 +21,14 @@ export interface ToolkitCard {
   domain: string | null;
 }
 
+/** What the key dialog is open for: an app to connect once the key is
+ * saved, or none when it was opened to add a key on its own. */
+export interface KeyAsk {
+  slug: string | null;
+}
+
 export function useConnectors() {
+  const { state } = useStore();
   const [cards, setCards] = useState<ToolkitCard[] | null>(null);
   const [source, setSource] = useState<"api" | "curated">("curated");
   const [configured, setConfigured] = useState(true);
@@ -25,6 +36,7 @@ export function useConnectors() {
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [keyAsk, setKeyAsk] = useState<KeyAsk | null>(null);
 
   // What comes back covers only the slugs asked about, so it is merged in:
   // replacing the map made every other connected app read as disconnected
@@ -43,6 +55,21 @@ export function useConnectors() {
       .finally(() => setRefreshing(false));
   }, []);
 
+  // A key saved anywhere (this dialog, Settings, another window) arrives
+  // as a new config status, and the catalogue is asked again: which list
+  // comes back, and whether apps can connect at all, both hang on it.
+  const keyed = state.config?.composio.configured;
+  const catalogued = state.config?.composio.apiKeyConfigured;
+  const [catalogTurn, setCatalogTurn] = useState(0);
+  const seen = useRef<string | null>(null);
+  useEffect(() => {
+    if (keyed === undefined) return;
+    const now = `${keyed}/${Boolean(catalogued)}`;
+    // the first status to arrive is the one the first fetch already saw
+    if (seen.current !== null && seen.current !== now) setCatalogTurn((n) => n + 1);
+    seen.current = now;
+  }, [keyed, catalogued]);
+
   useEffect(() => {
     let alive = true;
     api("/api/connectors/catalog")
@@ -57,9 +84,12 @@ export function useConnectors() {
     return () => {
       alive = false;
     };
-  }, [refreshStatus]);
+  }, [refreshStatus, catalogTurn]);
 
-  const connect = (slug: string) => {
+  const configuredRef = useRef(configured);
+  configuredRef.current = configured;
+
+  const signIn = (slug: string) => {
     setBusySlug(slug);
     setError(null);
     api(`/api/connectors/${slug}/authorize`, { method: "POST" })
@@ -77,6 +107,24 @@ export function useConnectors() {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusySlug(null));
+  };
+
+  /** Connect, or ask for the key first when there is none to connect with. */
+  const connect = (slug: string) => {
+    if (!configuredRef.current) return setKeyAsk({ slug });
+    signIn(slug);
+  };
+
+  const askForKey = (slug: string | null = null) => setKeyAsk({ slug });
+  const closeKeyAsk = () => setKeyAsk(null);
+
+  /** The key was accepted: apps can connect now, and the app the dialog
+   * was opened for goes straight on to its sign-in. */
+  const keySaved = () => {
+    const slug = keyAsk?.slug ?? null;
+    setConfigured(true);
+    setKeyAsk(null);
+    if (slug) signIn(slug);
   };
 
   const disconnect = async (slug: string) => {
@@ -128,6 +176,10 @@ export function useConnectors() {
     connect,
     disconnect,
     statusRef,
+    keyAsk,
+    askForKey,
+    closeKeyAsk,
+    keySaved,
   };
 }
 

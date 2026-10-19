@@ -25,6 +25,7 @@ import { useConnectors, type Connectors, type ToolkitCard } from "@/lib/useConne
 import { McpAppsCard } from "./McpApps";
 import { AddMcpServerDialog, useMcpServers } from "./McpServers";
 import { AppDetailsPage } from "./AppDetails";
+import { ComposioKeyDialog } from "./ComposioKeyDialog";
 import { detailsFor } from "@/lib/appDetails";
 import { tryPrompt } from "@/lib/tryPrompt";
 import { SkillCatalog } from "./SkillCatalog";
@@ -288,7 +289,7 @@ function PluginsPage({
   searchRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const { state, dispatch } = useStore();
-  const { ordered, installed, configured, source, status, busySlug, refreshing, error, refreshStatus, connect, disconnect, statusRef, cards } =
+  const { ordered, installed, configured, source, status, busySlug, refreshing, error, refreshStatus, connect, disconnect, statusRef, cards, askForKey } =
     connectors;
   const { servers, reload: reloadServers } = useMcpServers();
   const [view, setView] = useState<"apps" | "mcp">("apps");
@@ -328,13 +329,7 @@ function PluginsPage({
         <Loader2 size={15} className="animate-spin motion-reduce:animate-none" />
       </span>
     ) : (
-      <button
-        onClick={() => connect(card.slug)}
-        disabled={!configured}
-        aria-label={`Connect ${card.label}`}
-        title={configured ? `Connect ${card.label}` : "Add a Composio key in Settings first"}
-        className={ROUND}
-      >
+      <button onClick={() => connect(card.slug)} aria-label={`Connect ${card.label}`} title={`Connect ${card.label}`} className={ROUND}>
         <Plus size={17} />
       </button>
     );
@@ -419,7 +414,7 @@ function PluginsPage({
                 <span className="text-muted-foreground"> One key works for every agent.</span>
               </span>
               <button
-                onClick={toKeys}
+                onClick={() => askForKey()}
                 className={cn(pill, "h-8 bg-foreground px-3.5 text-body font-medium text-background hover:opacity-90")}
               >
                 Add a key
@@ -879,6 +874,7 @@ export function CustomizeView() {
           </div>
         </div>
       </main>
+      <ComposioKeyDialog connectors={connectors} />
     </>
   );
 }
