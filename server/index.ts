@@ -226,6 +226,7 @@ import {
   parseComponent,
   type ComponentKind,
 } from "./components.ts";
+import { extractUi, genuiPrompt, GENUI_SWITCH } from "./genui.ts";
 import {
   FIELDS as POLICY_FIELDS,
   OPS as POLICY_OPS,
@@ -3253,10 +3254,15 @@ bus.subscribe((event: RuntimeEvent) => {
         // that reads it, before the turn has even ended.
         const quiet = !inRoom && checkInTurns.has(event.threadId) && isQuietReply(text);
         if (text) {
+          const said = houseStyle(text);
+          // The reply's interface, settled and checked, for a client
+          // that draws it without parsing it (server/genui.ts).
+          const ui = extractUi(said);
           const savedReply = pushMessage({
             role: "bot",
             kind: "text",
-            text: houseStyle(text),
+            text: said,
+            ...(ui ? { ui } : {}),
             ...(event.codexText ? { codexText: event.codexText } : {}),
             ...(answering ? { afterAgent: answering } : {}),
             ...(quiet ? { quiet: true } : {}),
@@ -5503,8 +5509,15 @@ async function startClaimedTurn(
     !guestMail &&
       attached.length > 0 &&
       "When a message names one of your skills with a slash and its id, like /id, the person is asking for that skill: follow it.",
-    // Every engine gets the gallery; only the route differs. One with a
-    // shell calls the CLI. One without writes the component into its own
+    // Answers drawn as interface (server/genui.ts), when the reply is
+    // read in the app. Every engine writes it the same way, as a fenced
+    // block in its own answer, so there is no route to choose. A
+    // Telegram person and a stranger's mail read the reply as a message,
+    // where interface cannot be drawn, and an agent switched off from it
+    // falls back to the gallery below, whose own switches still apply.
+    (!personSource && !guestMail && genuiPrompt(bot.withoutComponents)) ||
+    // Otherwise the gallery; only the route differs. One with a shell
+    // calls the CLI. One without writes the component into its own
     // answer as a fenced block, which is the only shape a model with no
     // tools can reliably produce.
     galleryPrompt(
@@ -14599,8 +14612,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         // Only kinds that exist: a withheld name nobody ships would read
         // as protection that is not doing anything.
         patch.withoutComponents = (body.withoutComponents as unknown[])
-          .filter((kind): kind is ComponentKind => COMPONENT_KINDS.includes(kind as ComponentKind))
-          .slice(0, COMPONENT_KINDS.length);
+          .filter((kind): kind is string => COMPONENT_KINDS.includes(kind as ComponentKind) || kind === GENUI_SWITCH)
+          .slice(0, COMPONENT_KINDS.length + 1);
       }
       if (body.voice !== undefined) {
         const voice = speech.parseBotVoice(body.voice);
@@ -15815,6 +15828,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           artifact: undefined,
           png: undefined,
           component: undefined,
+          ui: undefined,
         });
         broadcast({ kind: "message.patch", threadId: m[1], message: patched! });
         // taken back from under its own editor: nothing left to wait for

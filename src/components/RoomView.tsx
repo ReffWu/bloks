@@ -33,6 +33,7 @@ import { JumpToLatest } from "./chat/JumpToLatest";
 import { RoomComposer } from "./room/RoomComposer";
 import { OptionCard } from "./OptionCard";
 import { Markdownish } from "./Markdown";
+import { GenUiHost } from "./genui/host";
 import { ChangesCard } from "./ChangesCard";
 import { ToolRun } from "./ToolRun";
 import { TurnFoldLine } from "./TurnFold";
@@ -277,7 +278,7 @@ function LiveWords({ bot, text, showSpeaker, mentions }: { bot: Bot; text: strin
           </div>
         )}
         <div className="streaming-text min-w-0 text-lead leading-relaxed text-foreground">
-          <Markdownish text={text} mentions={mentions} />
+          <Markdownish text={text} mentions={mentions} streaming />
         </div>
       </div>
     </div>
@@ -569,7 +570,10 @@ function RoomMessage({
           <>
             <div onPointerUp={tap.onPointerUp} className="min-w-0 text-lead leading-relaxed text-foreground">
               {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
-              <Markdownish text={message.text ?? ""} mentions={names} />
+              {/* a click in the answer goes back to this agent, in this room */}
+              <GenUiHost target={{ kind: "room", roomId, agentName: speaker.name }}>
+                <Markdownish text={message.text ?? ""} mentions={names} />
+              </GenUiHost>
             </div>
             <Reactions
               reactions={message.reactions}

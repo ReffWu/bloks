@@ -25,6 +25,9 @@ there is nothing to install and nothing to configure.
 | `workflows.test.ts` | Steps, conditions, and what a bad one is refused for. |
 | `activity.test.ts` | What a lane has stopped on, and what still wants you. |
 | `components.test.ts` | Model-written JSON, checked before it reaches a screen. |
+| `genui.test.ts` | Interface answers: the library, the parse, the tree kept for the phone. |
+| `genui-actions.test.ts` | What a click in an interface answer may do, and what it may not. |
+| `genui-briefing.test.ts` | What an agent is taught, behind its switch, end to end. |
 | `palette.test.ts` | The colours, against the contrast they promise. |
 | `api.test.ts` | The real harness over real HTTP. |
 

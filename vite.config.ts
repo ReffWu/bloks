@@ -8,6 +8,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // The OpenUI renderer's development inspector, swapped for nothing:
+      // see the note in the file it points at.
+      "@openuidev/devtools": fileURLToPath(new URL("./src/lib/genui/no-devtools.ts", import.meta.url)),
     },
   },
   server: {
