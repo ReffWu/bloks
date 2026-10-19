@@ -71,7 +71,7 @@ export function OptionCard({
           )}
           {card.cutOff && (
             <div className="mt-1 text-small text-muted-foreground">
-              Cut off when Bloks stopped. Nothing waits on this any more, and an answer here would not be used.
+              Closed when Bloks stopped. No answer needed.
             </div>
           )}
           {/* Closed with nobody having answered: the card stays and says
@@ -80,8 +80,8 @@ export function OptionCard({
         </div>
         <button
           onClick={() => dispatch({ type: "dismissCard", botId, roomId, messageId: message.id })}
-          aria-label="Put this question aside"
-          title="Put this question aside"
+          aria-label="Dismiss question"
+          title="Dismiss"
           className="rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
         >
           <X size={15} />
@@ -198,8 +198,7 @@ function TeamProposal({
           {leadName} wants {plural(plan.members.length, "person", "people")} for “{plan.room}”
         </div>
         <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-          They run on the cheaper model and do the legwork. {leadName} reviews everything and reports
-          back to you.
+          They use a cheaper model. {leadName} reviews their work and reports to you.
         </div>
       </div>
 
@@ -242,7 +241,7 @@ function TeamProposal({
             onClick={() => setOpen((v) => !v)}
             className="text-small font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
-            {open ? "Hide the brief" : "See the brief they get"}
+            {open ? "Hide brief" : "Show brief"}
           </button>
           {open && (
             <p className="mt-2 whitespace-pre-wrap text-body leading-relaxed text-muted-foreground">
@@ -255,7 +254,7 @@ function TeamProposal({
       <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-3">
         {hired ? (
           <span className="text-body text-muted-foreground">
-            Hired. The room is open and {leadName} has briefed them.
+            Hired. {leadName} has briefed them in the room.
           </span>
         ) : settled ? (
           <span className="text-body text-muted-foreground">Declined.</span>

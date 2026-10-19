@@ -16,7 +16,7 @@ const D: Record<string, AppDetails> = {
   slack: {
     category: "Communication",
     accent: "#4a154b",
-    about: "Agents read channels and threads, catch you up on what you missed, and post updates where your team already talks.",
+    about: "Agents catch you up on channels and threads, and post updates for you.",
     prompts: [
       "Catch me up on #general since yesterday: decisions, open questions, and anything that mentions me",
       "Draft an update for #team on this week's progress, short enough to read on a phone",
@@ -26,7 +26,7 @@ const D: Record<string, AppDetails> = {
   github: {
     category: "Developer tools",
     accent: "#24292f",
-    about: "Agents triage issues, review pull requests, and keep an eye on what changed in your repositories.",
+    about: "Agents triage issues, review pull requests and track changes.",
     prompts: [
       "List the open pull requests waiting on my review, oldest first, with one line on each",
       "Triage this week's new issues: label them, and flag anything that looks like a regression",
@@ -36,7 +36,7 @@ const D: Record<string, AppDetails> = {
   gmail: {
     category: "Communication",
     accent: "#3b3fa8",
-    about: "Agents summarise your inbox, draft replies in your voice, and turn long threads into something you can act on.",
+    about: "Agents summarise your inbox and draft replies in your voice.",
     prompts: [
       "Summarise the last 5 messages in my inbox and capture decisions, open questions, and what I should follow up on next",
       "Draft a polite, firm reply to the most recent email that needs an answer from me",
@@ -46,7 +46,7 @@ const D: Record<string, AppDetails> = {
   googlecalendar: {
     category: "Productivity",
     accent: "#1a62d6",
-    about: "Agents look up your schedule, find time that works, and book or move meetings for you.",
+    about: "Agents check your schedule and book or move meetings.",
     prompts: [
       "What does my week look like? Flag back to back blocks and anything I should prepare for",
       "Find three 30 minute slots next week when I am free in the afternoon",
@@ -56,7 +56,7 @@ const D: Record<string, AppDetails> = {
   googlesheets: {
     category: "Productivity",
     accent: "#0f8a4c",
-    about: "Agents read and update spreadsheets: pull numbers, clean up columns, and add the rows you would have typed by hand.",
+    about: "Agents read and update spreadsheets, from totals to new rows.",
     prompts: [
       "Read my budget sheet and tell me which categories are over for this month",
       "Add this week's results as new rows in the tracking sheet",
@@ -66,7 +66,7 @@ const D: Record<string, AppDetails> = {
   googledocs: {
     category: "Productivity",
     accent: "#2f6fe0",
-    about: "Agents draft, revise and summarise documents, and leave them where your team already works.",
+    about: "Agents draft, revise and summarise documents.",
     prompts: [
       "Draft a one page project brief from our last conversation and save it as a new doc",
       "Summarise the latest version of the planning doc in five bullets",
@@ -76,7 +76,7 @@ const D: Record<string, AppDetails> = {
   googledrive: {
     category: "Files",
     accent: "#1c8a5a",
-    about: "Agents find files across Drive, Docs, Sheets and Slides, and work with what is in them.",
+    about: "Agents find files across Drive and work with what is in them.",
     prompts: [
       "Find the most recent contract I shared and tell me when it renews",
       "List the files I edited this week, newest first",
@@ -86,7 +86,7 @@ const D: Record<string, AppDetails> = {
   outlook: {
     category: "Communication",
     accent: "#0f5fb8",
-    about: "Agents triage Outlook mail and calendar: summaries, replies, and time found or booked.",
+    about: "Agents handle Outlook mail and calendar: summaries, replies and bookings.",
     prompts: [
       "Triage my Outlook inbox: what needs a reply today, and what can wait",
       "Draft replies to the three oldest unanswered emails",
@@ -96,7 +96,7 @@ const D: Record<string, AppDetails> = {
   microsoft_teams: {
     category: "Communication",
     accent: "#4b53bc",
-    about: "Agents follow chats and channels, summarise meetings, and post where your team works.",
+    about: "Agents follow chats, summarise meetings and post for you.",
     prompts: [
       "Catch me up on the team channel since my last message",
       "Summarise yesterday's chats that mention me, with what I owe",
@@ -126,7 +126,7 @@ const D: Record<string, AppDetails> = {
   notion: {
     category: "Productivity",
     accent: "#2f2f2f",
-    about: "Agents read and write pages and databases: notes, plans and trackers kept up to date.",
+    about: "Agents read and update pages and databases.",
     prompts: [
       "Summarise my roadmap page and list what is overdue",
       "Add today's meeting notes as a new page under Meetings",
@@ -136,7 +136,7 @@ const D: Record<string, AppDetails> = {
   linear: {
     category: "Developer tools",
     accent: "#5e6ad2",
-    about: "Agents track issues and cycles: triage, updates, and what is at risk this cycle.",
+    about: "Agents triage issues and flag what is at risk.",
     prompts: [
       "What is at risk in the current cycle, and why?",
       "Triage the untriaged issues in my team and set priorities",
@@ -331,7 +331,7 @@ export function detailsFor(card: { slug: string; label: string; blurb: string })
     D[card.slug] ?? {
       category: "App",
       accent: "#3b3f58",
-      about: `${card.blurb.replace(/\.$/, "")}. Connect it once, and any agent with connected apps can use it.`,
+      about: `${card.blurb.replace(/\.$/, "")}.`,
       prompts: [
         `What can you do with ${card.label}?`,
         `Summarise what changed in ${card.label} this week`,

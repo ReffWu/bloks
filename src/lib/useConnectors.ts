@@ -80,7 +80,7 @@ export function useConnectors() {
   const disconnect = (slug: string) => {
     const label = cards?.find((c) => c.slug === slug)?.label ?? slug;
     // every account behind it goes, and agents stop being able to use it
-    if (!window.confirm(`Disconnect ${label}? Your agents will no longer be able to use it until you connect it again.`)) {
+    if (!window.confirm(`Disconnect ${label}? Agents can't use it until you reconnect.`)) {
       return;
     }
     setBusySlug(slug);

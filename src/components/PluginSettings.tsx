@@ -148,7 +148,7 @@ export function PluginSettings() {
               <Loader2 size={14} className="animate-spin" /> Loading
             </>
           ) : (
-            "That app is not in the catalogue."
+            "App not found."
           )}
         </div>
       </div>
@@ -168,7 +168,7 @@ export function PluginSettings() {
     ) : (
       <div>
         <BackLink onBack={() => setFocus(null)} />
-        <p className="mt-6 text-ui text-muted-foreground">{skills === null ? "Loading" : "That skill is no longer installed."}</p>
+        <p className="mt-6 text-ui text-muted-foreground">{skills === null ? "Loading" : "Skill not found."}</p>
       </div>
     );
   }
@@ -255,7 +255,7 @@ export function PluginSettings() {
             <Loading />
           ) : !connectors.configured ? (
             <Empty>
-              Connecting apps needs a Composio Connect key.{" "}
+              Connecting apps needs a Composio key.{" "}
               <button onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })} className="text-foreground underline underline-offset-2">
                 Add one in Apps and keys
               </button>
@@ -303,7 +303,7 @@ export function PluginSettings() {
             <Loading />
           ) : shownServers.length === 0 ? (
             <Empty>
-              {q ? `No servers match “${query.trim()}”.` : "No MCP servers yet. Anything that speaks MCP works: a local command or a remote URL."}{" "}
+              {q ? `No servers match “${query.trim()}”.` : "No MCP servers yet."}{" "}
               {!q && (
                 <button onClick={() => setAddingServer(true)} className="text-foreground underline underline-offset-2">
                   Add one
@@ -496,8 +496,8 @@ function AppSettings({
         </Section>
 
         <Section
-          title="Agents that can use connected apps"
-          says={`One switch per agent covers every connected app, ${card.label} included.`}
+          title="Agents that can use apps"
+          says="Each switch covers all connected apps."
         >
           <div className="flex flex-col divide-y">
             {agents.map((bot) => (
@@ -506,7 +506,7 @@ function AppSettings({
                 <span className="min-w-0 flex-1 truncate text-ui text-foreground">{bot.name}</span>
                 <Switch
                   checked={bot.composio !== false}
-                  aria-label={`${bot.name} can use connected apps`}
+                  aria-label={`${bot.name} can use apps`}
                   onCheckedChange={(on) => dispatch({ type: "updateBot", botId: bot.id, patch: { composio: on } })}
                 />
               </div>
@@ -523,7 +523,7 @@ function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () 
   const { state, dispatch } = useStore();
   const agents = state.bots.filter((b) => !b.hidden);
   const remove = () => {
-    if (!window.confirm(`Remove ${skill.name}? Agents using it stop.`)) return;
+    if (!window.confirm(`Remove ${skill.name}? Agents will stop using it.`)) return;
     void api(`/api/skills/${skill.id}`, { method: "DELETE" }).then(onRemoved).catch(() => {});
   };
   return (
@@ -534,7 +534,7 @@ function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () 
           <Tile size={14}>{skill.source === "builtin" ? <Lock size={20} /> : <Sparkles size={22} />}</Tile>
           <div className="min-w-0">
             <h2 className="truncate text-display font-semibold text-foreground">{skill.name}</h2>
-            <p className="mt-0.5 text-ui text-muted-foreground">{skill.source === "builtin" ? "Built in, part of Bloks" : "Yours, on this computer"}</p>
+            <p className="mt-0.5 text-ui text-muted-foreground">{skill.source === "builtin" ? "Built in" : "Yours"}</p>
           </div>
         </div>
         {skill.source === "user" && (
@@ -550,7 +550,7 @@ function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () 
       {skill.description && <p className="mt-4 text-pretty text-ui text-foreground">{skill.description}</p>}
 
       <div className="mt-6 flex flex-col gap-4">
-        <Section title="Agents that use it" says="A skill goes into every turn of the agents it is switched on for.">
+        <Section title="Agents that use it">
           <div className="flex flex-col divide-y">
             {agents.map((bot) => {
               const ids = bot.skillIds ?? [];

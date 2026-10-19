@@ -39,7 +39,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
               <Loader2 size={15} className="animate-spin" /> Loading
             </>
           ) : (
-            "That app is not in the catalogue."
+            "App not found."
           )}
         </div>
       </div>
@@ -53,7 +53,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
   const send = (prompt: string) => {
     if (!connected) return connectors.connect(card.slug);
     const bot = tryPrompt(state, dispatch, `Using ${card.label}: ${prompt}`);
-    if (!bot) setNote("No agent can use connected apps yet. Switch it on in an agent's settings, then try again.");
+    if (!bot) setNote("No agent can use apps yet. Turn it on in an agent's settings.");
   };
 
   return (
@@ -104,7 +104,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
             <button
               onClick={() => connectors.connect(card.slug)}
               disabled={!connectors.configured || busy}
-              title={connectors.configured ? undefined : "Add a Composio Connect key in Settings first"}
+              title={connectors.configured ? undefined : "Add a Composio key in Settings first"}
               className={cn(pill, "bg-foreground text-background hover:opacity-90")}
             >
               {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
@@ -117,7 +117,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
       <Hero card={card} accent={details.accent} prompts={details.prompts} connected={connected} onPick={send} />
       {note && <p className="mt-3 text-body text-destructive">{note}</p>}
       {!connected && (
-        <p className="mt-3 text-body text-muted-foreground">Connect {card.label} and any of these goes to an agent, ready to send.</p>
+        <p className="mt-3 text-body text-muted-foreground">Connect {card.label} to try these.</p>
       )}
 
       <p className="mt-8 text-pretty text-lead leading-relaxed text-foreground">{details.about}</p>
@@ -140,7 +140,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
         )}
         <dt className="text-muted-foreground">Agents</dt>
         <dd className="text-foreground">
-          {users === 0 ? "No agent can use connected apps yet" : `${users} ${users === 1 ? "agent" : "agents"} can use connected apps`}
+          {users === 0 ? "None yet" : `${users} ${users === 1 ? "agent" : "agents"} can use apps`}
         </dd>
         <dt className="text-muted-foreground">Status</dt>
         <dd className="flex items-center gap-2 text-foreground">

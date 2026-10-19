@@ -138,7 +138,7 @@ export function ApiKeyRow({
           onClick={save}
           disabled={saving || (!value.trim() && !configured)}
           className="w-[72px]"
-          title={clearing ? "Remove the saved key" : "Save"}
+          title={clearing ? "Remove saved key" : "Save"}
         >
           {saving ? (
             <Loader2 size={13} className="animate-spin" />

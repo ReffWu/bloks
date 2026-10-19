@@ -142,7 +142,7 @@ export function EngineSetupActions({
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
               {busy ? "Installing…" : `Install ${name}`}
             </Button>
-            {busy && <span className="text-small text-muted-foreground">Can take a minute. No password needed.</span>}
+            {busy && <span className="text-small text-muted-foreground">Can take a minute.</span>}
           </div>
         ) : (
           command && <CopyCommand command={command} />
@@ -156,7 +156,7 @@ export function EngineSetupActions({
                 className="mt-1 flex items-center gap-1 text-small text-muted-foreground hover:text-foreground"
               >
                 <ChevronRight size={11} className={cn("transition-transform duration-150", showLog && "rotate-90")} />
-                {showLog ? "Hide" : "Show"} what the installer said
+                {showLog ? "Hide" : "Show"} details
               </button>
             )}
             {showLog && (
@@ -187,13 +187,12 @@ export function EngineSetupActions({
         </div>
         {signingIn === "opened" && (
           <div className="text-small leading-relaxed text-muted-foreground">
-            Finish in the Terminal window that just opened. This turns green by itself once you are
-            signed in.
+            Finish in the Terminal window that opened. This updates on its own.
           </div>
         )}
         {signingIn === "manual" && (
           <div className="text-small leading-relaxed text-muted-foreground">
-            Run this in a terminal and follow its steps:
+            Run this in a terminal:
             <CopyCommand command={entry.signIn} className="mt-1" />
           </div>
         )}
@@ -235,7 +234,7 @@ export function EngineUpdateNote({ kind, name, className }: { kind: string; name
       if (!result.ok) {
         setNote(result.problem ?? `${name} did not update.`);
       } else if (!result.reloaded) {
-        setNote(`Updated. The new models appear once the agents working with ${name} now have finished.`);
+        setNote(`Updated. New models appear once current work on ${name} finishes.`);
       }
       const [{ updates }, { instances }] = await Promise.all([api("/api/engines/updates"), api("/api/instances")]);
       if (updates) dispatch({ type: "engineUpdates", updates });
@@ -254,7 +253,7 @@ export function EngineUpdateNote({ kind, name, className }: { kind: string; name
           {name} {update.latest} is out.
         </span>{" "}
         <span className="text-muted-foreground">
-          You have {update.installed}, so newer models may be missing here.
+          You have {update.installed}. Update to get the newest models.
         </span>
       </div>
       {local ? (

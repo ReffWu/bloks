@@ -101,7 +101,7 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
             </div>
             <div className="mt-1.5 flex items-center gap-1 text-caption text-muted-foreground/80">
               <ShieldCheck size={11} />
-              Stored on {thisComputer()}, handed to your agent's tools, never shown in chat.
+              Kept on {thisComputer()}, never shown in chat.
             </div>
             {error && <div className="mt-1 text-small text-destructive">{error}</div>}
           </>

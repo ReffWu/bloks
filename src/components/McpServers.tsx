@@ -174,7 +174,7 @@ export function AddMcpServerDialog({
                   placeholder="npx -y @example/mcp-server --flag"
                   className={cn(field, "font-mono text-body")}
                 />
-                <p className="mt-1.5 text-body text-muted-foreground">Runs on this computer, the way you would run it in a terminal.</p>
+                <p className="mt-1.5 text-body text-muted-foreground">Runs on this computer.</p>
               </>
             )}
           </div>
@@ -227,7 +227,7 @@ export function AddMcpServerDialog({
 
           <div className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-ui text-foreground">
             <AlertTriangle size={17} className="shrink-0 text-warning" />
-            Custom MCP servers introduce risk.
+            Custom MCP servers can be risky.
           </div>
 
           <label className="flex cursor-pointer gap-3 rounded-xl border bg-background px-4 py-3.5">
@@ -240,8 +240,8 @@ export function AddMcpServerDialog({
             <span>
               <span className="block text-ui font-medium text-foreground">I understand and want to continue</span>
               <span className="mt-1 block text-pretty text-body leading-relaxed text-muted-foreground">
-                Only connect servers you trust. An untrusted server can read what agents send it, or lead an agent into
-                using tools in ways you did not intend, including changing or deleting data.
+                Only add servers you trust. A bad server can read what agents send it and steer them into changing or
+                deleting data.
               </span>
             </span>
           </label>
@@ -298,7 +298,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
     return (
       <div>
         <BackLink onBack={onBack} />
-        <p className="mt-6 text-ui text-muted-foreground">This server is no longer installed.</p>
+        <p className="mt-6 text-ui text-muted-foreground">Server not found.</p>
       </div>
     );
   }
@@ -321,7 +321,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
       .finally(() => setBusy(false));
   };
   const uninstall = () => {
-    if (!window.confirm(`Uninstall ${server.name}? Agents using it lose its tools.`)) return;
+    if (!window.confirm(`Remove ${server.name}? Agents using it lose its tools.`)) return;
     void api(`/api/mcp-servers/${server.id}`, { method: "DELETE" })
       .then(onBack)
       .catch((e: Error) => setError(e.message));
@@ -334,7 +334,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
         <div className="min-w-0">
           <h2 className="truncate text-display font-semibold text-foreground">{server.name}</h2>
           <p className="mt-1.5 text-ui text-muted-foreground">
-            To change how it connects, uninstall it and add it again.
+            To change the connection, remove it and add it again.
           </p>
         </div>
         <button
@@ -342,7 +342,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
           className="flex h-9 items-center gap-1.5 rounded-xl bg-destructive/10 px-3.5 text-ui font-medium text-destructive transition-colors duration-150 hover:bg-destructive/15"
         >
           <Trash2 size={15} />
-          Uninstall
+          Remove
         </button>
       </div>
 
@@ -363,7 +363,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
         </Section>
 
         {needs.length > 0 && (
-          <Section title="Finish setup" says="It came over without these values. They stay on this computer and never come back out.">
+          <Section title="Finish setup" says="Add the missing values. They stay on this computer.">
             <div className="flex flex-col gap-3">
               {needs.map((name) => (
                 <label key={name} className="flex flex-col gap-1.5">
@@ -387,7 +387,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
           </Section>
         )}
 
-        <Section title="Agents that can use it" says="An agent uses a server only when it is switched on here, or in that agent's own settings.">
+        <Section title="Agents that can use it">
           {agents.length === 0 ? (
             <p className="text-ui text-muted-foreground">No agents yet.</p>
           ) : (

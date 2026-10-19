@@ -114,8 +114,7 @@ export function CustomEndpoints() {
           <div>
             <div className="text-ui font-semibold text-foreground">Your endpoints</div>
             <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-              Any OpenAI-compatible host. Several keys can share one URL; the marked one is what
-              agents use.
+              Any OpenAI-compatible host.
             </div>
           </div>
           {!adding && (
@@ -182,7 +181,7 @@ export function CustomEndpoints() {
                       .then(({ endpoints: rows }) => apply(rows))
                       .catch((e: Error) => setError(e.message))
                   }
-                  title="Remove this key"
+                  title="Remove key"
                   className="shrink-0 rounded-lg p-1 text-muted-foreground/60 transition-colors hover:text-destructive"
                 >
                   <Trash2 size={12} />
@@ -203,7 +202,7 @@ export function CustomEndpoints() {
                     if (e.key === "Enter") addKey(endpoint.id);
                     if (e.key === "Escape") setKeyFor(null);
                   }}
-                  placeholder="Another key for this host"
+                  placeholder="Another key"
                   autoComplete="off"
                   className="h-8 text-body"
                 />
@@ -220,7 +219,7 @@ export function CustomEndpoints() {
               <Input
                 value={extraLabel}
                 onChange={(e) => setExtraLabel(e.target.value)}
-                placeholder="Label (optional), e.g. backup"
+                placeholder="Label (optional)"
                 className="h-8 text-body"
               />
             </div>
@@ -240,7 +239,7 @@ export function CustomEndpoints() {
 
       {endpoints !== null && endpoints.length === 0 && !adding && (
         <div className="border-t px-4 py-3 text-body text-muted-foreground">
-          Nothing added yet. LiteLLM, vLLM, a proxy, or any host that answers /v1/models.
+          Nothing added yet. Works with LiteLLM, vLLM or a proxy.
         </div>
       )}
 

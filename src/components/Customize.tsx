@@ -140,7 +140,7 @@ function PageHeader({
         </button>
         <button
           onClick={onSettings}
-          aria-label="Settings for these"
+          aria-label="Settings"
           title="Settings"
           className={cn(pill, "size-9 justify-center text-muted-foreground hover:bg-accent hover:text-foreground")}
         >
@@ -277,7 +277,7 @@ function PluginsPage({
   const unfinished = (servers ?? []).filter((server) => (server.needs ?? []).length > 0);
   const tryNow = (card: ToolkitCard) => {
     const bot = tryPrompt(state, dispatch, `Using ${card.label}: ${detailsFor(card).prompts[0]}`);
-    if (!bot) setTried("No agent can use connected apps. Switch it on in an agent's settings first.");
+    if (!bot) setTried("No agent can use apps yet. Turn it on in an agent's settings.");
   };
 
   const q = search.trim().toLowerCase();
@@ -307,7 +307,7 @@ function PluginsPage({
         onClick={() => connect(card.slug)}
         disabled={!configured}
         aria-label={`Connect ${card.label}`}
-        title={configured ? `Connect ${card.label}` : "Add a Composio Connect key in Settings first"}
+        title={configured ? `Connect ${card.label}` : "Add a Composio key in Settings first"}
         className={ROUND}
       >
         <Plus size={17} />
@@ -342,7 +342,7 @@ function PluginsPage({
     <>
       <PageHeader
         title="Plugins"
-        says="Connect apps so your agents can work across your tools."
+        says="Connect apps your agents can use."
         search={search}
         onSearch={setSearch}
         searchRef={searchRef}
@@ -390,8 +390,8 @@ function PluginsPage({
           {!configured && (
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
               <span className="text-ui text-foreground">
-                Connect apps by adding a Composio Connect key.
-                <span className="text-muted-foreground"> Your agents sign in through it, once for all of them.</span>
+                Add a Composio key to connect apps.
+                <span className="text-muted-foreground"> One key works for every agent.</span>
               </span>
               <button
                 onClick={toKeys}
@@ -403,11 +403,11 @@ function PluginsPage({
           )}
           {configured && source === "curated" && (
             <p className="mt-5 text-body text-muted-foreground">
-              Showing a curated set.{" "}
+              Showing popular apps.{" "}
               <button onClick={toKeys} className="underline underline-offset-2 hover:text-foreground">
                 Add a Composio API key
               </button>{" "}
-              to browse the full catalogue.
+              to see them all.
             </p>
           )}
           {(error || tried) && <p className="mt-4 text-body text-destructive">{error ?? tried}</p>}
@@ -565,7 +565,7 @@ function SkillsPage({
   ].filter((g) => g.rows.length > 0);
 
   const remove = (skill: Skill) => {
-    if (!window.confirm(`Remove ${skill.name}? Agents it is attached to stop using it.`)) return;
+    if (!window.confirm(`Remove ${skill.name}? Agents will stop using it.`)) return;
     void api(`/api/skills/${skill.id}`, { method: "DELETE" })
       .then(() => setOpen(null))
       .then(load)
@@ -633,7 +633,7 @@ function SkillsPage({
         <>
           {proposals.length > 0 && !q && (
             <>
-              <SectionTitle>Suggested from your conversations</SectionTitle>
+              <SectionTitle>Suggested from your chats</SectionTitle>
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 {proposals.map((proposal) => (
                   <ProposedSkill key={proposal.id} proposal={proposal} onDone={() => void load()} />
@@ -684,7 +684,7 @@ function SkillsPage({
             })
           )}
           <p className="mt-10 text-body text-muted-foreground">
-            Attach a skill to an agent from that agent's settings. Skills live in{" "}
+            Attach skills in an agent's settings. Stored in{" "}
             <code className="rounded bg-muted px-1 py-px font-mono text-small">~/.bloks/skills</code>.
           </p>
         </>
@@ -703,7 +703,7 @@ function SkillsPage({
               </pre>
               <div className="mt-4 flex items-center justify-between gap-3">
                 <span className="text-body text-muted-foreground">
-                  {open.source === "builtin" ? "Built in, part of Bloks." : "Yours, on this machine."}
+                  {open.source === "builtin" ? "Built in" : "Yours"}
                 </span>
                 {open.source === "user" && (
                   <button

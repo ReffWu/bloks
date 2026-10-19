@@ -120,7 +120,7 @@ export function SetupPrivacyLine({ className }: { className?: string }) {
           Nothing leaves {thisComputer()} and no keys or passwords are copied.
         </div>
         <div className="text-muted-foreground">
-          Bloks only reads these files to show you what is there. Nothing is added until you bring it over.
+          Nothing is added until you choose.
         </div>
       </div>
     </div>
@@ -209,12 +209,12 @@ function WhereItGoes({ item, source, choice, onChange }: { item: SetupItem; sour
   }
   const line =
     item.kind === "skill"
-      ? "Goes to your skills library. No agent uses it until you attach it."
+      ? "Added to Skills. Attach it to an agent to use it."
       : item.kind === "mcp"
-        ? "Goes to your MCP servers, on no agent. Attach it to an agent when you want it used."
+        ? "Added to MCP servers. Attach it to an agent to use it."
         : item.kind === "rule"
           ? `Becomes a rule: ${item.rule?.summary ?? item.preview}.`
-          : "Suggested in About you, for you to keep or not.";
+          : "Suggested in About you.";
   return <div className="text-small leading-relaxed text-muted-foreground">{line}</div>;
 }
 
@@ -282,9 +282,6 @@ function ItemRow({
           >
             <ChevronRight size={12} className={cn("transition-transform duration-150", open && "rotate-90")} />
             {open ? "Hide preview" : "Preview"}
-            {item.chars > item.preview.length && !open && (
-              <span className="text-muted-foreground/70">({item.chars.toLocaleString()} characters)</span>
-            )}
           </button>
         )}
         {open && (
@@ -296,9 +293,9 @@ function ItemRow({
           <div className={cn("mt-1.5 text-small", result.ok ? "text-success" : "text-destructive")} aria-live="polite">
             {result.ok
               ? result.did === "unchanged"
-                ? "Already here, nothing to change."
+                ? "Already here."
                 : result.did === "updated"
-                  ? "Updated with what is there now."
+                  ? "Updated."
                   : "Brought over."
               : `Not brought over: ${result.error}`}
           </div>
@@ -370,7 +367,7 @@ export function SetupReviewList({
       setSummary(
         [
           brought ? `Brought over ${brought} ${brought === 1 ? "item" : "items"}.` : "Nothing new to bring over.",
-          failed ? `${failed} could not be, and ${failed === 1 ? "says" : "each says"} why below.` : "",
+          failed ? `${failed} failed, see below.` : "",
         ]
           .filter(Boolean)
           .join(" "),
@@ -378,7 +375,7 @@ export function SetupReviewList({
       onReview(outcome.review);
       onImported?.({ brought, created: outcome.created.length });
     } catch (e) {
-      setProblem(e instanceof Error ? e.message : "That did not work. Nothing was changed.");
+      setProblem(e instanceof Error ? e.message : "Something went wrong. Nothing changed.");
     } finally {
       setBusy(false);
     }
@@ -449,9 +446,9 @@ export function SetupReviewList({
         )}
         {needsKeys && !compact && (
           <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground">
-            Some servers are waiting for a key.
+            Some servers need a key.
             <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })}>
-              Fill them in
+              Add keys
             </Button>
           </div>
         )}
@@ -470,7 +467,7 @@ export function SetupReviewList({
                 <Loader2 size={14} className="animate-spin" /> Bringing over…
               </>
             ) : picked.length === 0 ? (
-              "Nothing ticked"
+              "Nothing selected"
             ) : (
               `Bring over ${picked.length} ${picked.length === 1 ? "item" : "items"}`
             )}
@@ -492,15 +489,12 @@ export function BringYourSetupPage() {
           <Loader2 size={15} className="animate-spin" /> Looking…
         </div>
       ) : error ? (
-        <div className="rounded-2xl border bg-card p-4 text-body text-destructive">Couldn't look: {error}</div>
+        <div className="rounded-2xl border bg-card p-4 text-body text-destructive">Couldn't check: {error}</div>
       ) : review.sources.length === 0 ? (
         <div className="rounded-2xl border bg-card p-4">
           <div className="text-ui font-medium text-foreground">Nothing found to bring over</div>
           <div className="mt-1 text-body leading-relaxed text-muted-foreground">
-            Bloks looks for Claude Code in <code className="font-mono text-small">~/.claude</code>, Codex in{" "}
-            <code className="font-mono text-small">~/.codex</code>, OpenClaw in{" "}
-            <code className="font-mono text-small">~/.openclaw/workspace</code> and Hermes in{" "}
-            <code className="font-mono text-small">~/.hermes</code>.
+            Bloks checks for Claude Code, Codex, OpenClaw and Hermes.
           </div>
           <Button size="sm" variant="secondary" className="mt-3" onClick={reload}>
             Look again

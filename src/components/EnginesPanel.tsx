@@ -23,7 +23,7 @@ import { EngineSetupActions, EngineUpdateNote } from "./EngineSetup";
 const AUTH_NOTE: Record<ProviderRow["auth"], string> = {
   oauth: "Browser sign-in",
   key: "API key",
-  cli: "Signs in through its own CLI",
+  cli: "Uses its own sign-in",
   none: "Runs on this machine",
 };
 
@@ -138,7 +138,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
             {/* installed without a login cannot answer, so it is not
                 "Connected", however green that would look */}
             {down
-              ? (instance!.snapshot.reason ?? "unavailable")
+              ? (instance!.snapshot.reason ?? "Unavailable")
               : provider.needsSignIn
                 ? "Installed, not signed in"
                 : provider.connected
@@ -253,12 +253,12 @@ export function EnginesPanel() {
         </div>
         <Group
           title="Agents"
-          note="Run commands and read files. Install the CLI, then sign in."
+          note="Can run commands and work with files."
           rows={agents}
         />
         <Group
           title="Chat models"
-          note="Write and reason, but cannot act on your machine."
+          note="Chat only. Cannot act on your computer."
           rows={chat}
         />
       </div>

@@ -94,7 +94,7 @@ export function SkillCatalog({ onInstalled }: { onInstalled: () => void }) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex shrink-0 items-start gap-2 pb-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => setOpen(null)} aria-label="Back to the catalog">
+          <Button variant="ghost" size="icon-sm" onClick={() => setOpen(null)} aria-label="Back">
             <ArrowLeft size={15} />
           </Button>
           <div className="min-w-0 flex-1">
@@ -124,7 +124,7 @@ export function SkillCatalog({ onInstalled }: { onInstalled: () => void }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center justify-between pb-2">
         <span className="text-body text-muted-foreground">
-          Skills anyone can install. They live on your machine once they are here.
+          Ready-made skills to install.
         </span>
         <Button variant="ghost" size="sm" disabled={refreshing} onClick={() => load(true)}>
           {refreshing ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
@@ -142,7 +142,7 @@ export function SkillCatalog({ onInstalled }: { onInstalled: () => void }) {
         {skills === null && !error && (
           <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
-            Reading the catalog
+            Loading
           </div>
         )}
         {skills?.length === 0 && (
@@ -231,7 +231,7 @@ function Says({ standing }: { standing: Standing }) {
       {standing.destructive && <TriangleAlert size={14} className="mt-[2px] shrink-0" />}
       <span>
         {standing.says}
-        {standing.destructive ? ". Going ahead replaces what is on this machine." : "."}
+        {standing.destructive ? ". This replaces your copy." : "."}
       </span>
     </div>
   );

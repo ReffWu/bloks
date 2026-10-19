@@ -81,7 +81,7 @@ export function ConnectorCard({ botId, message }: { botId: string; message: Mess
               : status === "authorizing"
                 ? "Waiting for your sign-in…"
                 : status === "failed"
-                  ? (connector.error ?? "The connection failed.")
+                  ? (connector.error ?? "Connection failed.")
                   : status === "dismissed"
                     ? "Dismissed"
                     : "Sign in so your agent can use it"}

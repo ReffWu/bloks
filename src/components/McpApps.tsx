@@ -70,12 +70,11 @@ export function McpAppsCard() {
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <div className="text-ui font-semibold text-foreground">Apps</div>
       <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-        Some MCP servers ship an interface as well as tools. Those show up here,
-        framed with no network of their own and no way to read anything in Bloks.
+        Apps from your MCP servers. They run sealed off from the internet and from Bloks.
       </div>
       {servers.length === 0 ? (
         <div className="mt-3 rounded-xl border border-dashed px-3 py-4 text-center text-small text-muted-foreground">
-          No MCP servers yet. Add one from Add, or in Settings, Plugins.
+          No MCP servers yet. Use Add to connect one.
         </div>
       ) : (
         <div className="mt-3 flex flex-col gap-2">
@@ -121,13 +120,13 @@ function ServerApps({
             {apps === null
               ? server.target
               : apps.length === 0
-                ? `${plural(tools, "tool")}, no interface`
+                ? `${plural(tools, "tool")}, no app`
                 : `${apps.length} app${apps.length === 1 ? "" : "s"}, ${tools} tools`}
           </span>
         </span>
         <Button variant="ghost" size="sm" disabled={asking} onClick={ask}>
           {asking ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
-          {apps === null ? "Look" : "Again"}
+          {apps === null ? "Check" : "Check again"}
         </Button>
       </div>
 
@@ -191,7 +190,7 @@ function AppFrame({
       body: JSON.stringify({ uri: app.uri, theme: paletteNow(resolvedTheme === "dark") }),
     })
       .then(async (res) => {
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "could not open that app");
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not open this app");
         return res.text();
       })
       .then(setHtml)
@@ -226,13 +225,13 @@ function AppFrame({
   return (
     <div className="mt-4 flex flex-col overflow-hidden rounded-2xl border bg-card">
       <div className="flex h-[42px] shrink-0 items-center gap-2 border-b px-2.5">
-        <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to the list">
+        <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back">
           <ArrowLeft size={15} />
         </Button>
         <span className="min-w-0 flex-1 truncate text-body font-medium text-foreground">{app.name}</span>
         <span className="shrink-0 truncate text-small text-muted-foreground">{server.name}</span>
         {busy && <Loader2 size={13} className="shrink-0 animate-spin text-muted-foreground" />}
-        <Button variant="ghost" size="icon-sm" onClick={load} aria-label="Reload the app">
+        <Button variant="ghost" size="icon-sm" onClick={load} aria-label="Reload app">
           <RotateCw size={13} />
         </Button>
       </div>
@@ -248,7 +247,7 @@ function AppFrame({
         {html === null && !error ? (
           <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
-            Asking {server.name} for it
+            Loading from {server.name}
           </div>
         ) : (
           html !== null && (
@@ -266,9 +265,8 @@ function AppFrame({
       <div className="flex items-start gap-2 border-t px-3 py-2 text-small leading-relaxed text-muted-foreground">
         <ShieldCheck size={13} className="mt-[2px] shrink-0" />
         <span>
-          Written by {server.name}, not by Bloks. It runs with no origin of its
-          own and no network at all, and can only run the tools that server
-          published.
+          Made by {server.name}, not Bloks. No internet access, and it can only
+          use {server.name}'s tools.
         </span>
       </div>
     </div>

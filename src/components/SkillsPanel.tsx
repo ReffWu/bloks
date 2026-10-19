@@ -80,8 +80,8 @@ function ReviewImport({
       <div className="flex items-start gap-2.5 rounded-xl bg-warning/10 px-3 py-2.5">
         <ShieldAlert size={15} className="mt-0.5 shrink-0 text-warning" />
         <div className="text-body leading-relaxed text-warning">
-          These instructions go into every turn of any agent you attach this to. Read them before
-          installing, and only add skills from a source you trust.
+          Agents using this skill follow these instructions. Read them first, and only add skills
+          you trust.
         </div>
       </div>
 
@@ -95,7 +95,7 @@ function ReviewImport({
       </label>
 
       <div className="mb-1.5 mt-3 text-body font-medium text-muted-foreground">
-        Instructions to be installed
+        Instructions
       </div>
       <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/50 p-3 font-mono text-small leading-relaxed text-foreground">
         {draft.markdown}
@@ -103,8 +103,7 @@ function ReviewImport({
 
       {tooLong && (
         <div className="mt-2 text-small text-destructive">
-          Too long. This skill is {length.toLocaleString()} characters, and skills are capped at{" "}
-          {MAX_SKILL_CHARS.toLocaleString()}.
+          Too long: {length.toLocaleString()} of {MAX_SKILL_CHARS.toLocaleString()} characters.
         </div>
       )}
       {error && <div className="mt-2 text-small text-destructive">{error}</div>}
@@ -157,10 +156,7 @@ export function AddSkill({
         className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed py-6 transition-colors duration-150 hover:border-ring/50 hover:bg-accent/50"
       >
         <FileText size={18} className="text-muted-foreground" />
-        <span className="text-body font-medium text-foreground">Drop a .md file, or click to pick</span>
-        <span className="text-small text-muted-foreground">
-          Markdown, with optional name/description frontmatter
-        </span>
+        <span className="text-body font-medium text-foreground">Drop a .md file, or click to choose</span>
       </button>
       <input
         ref={fileRef}
@@ -220,7 +216,7 @@ export function AddSkillDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[84vh] max-w-[620px] flex-col">
         <DialogTitle>Add a skill</DialogTitle>
-        <DialogDescription>Teach your agents something new: drop a Markdown file, or write it here.</DialogDescription>
+        <DialogDescription>Drop a Markdown file, or write one.</DialogDescription>
         <div className="mt-4 flex min-h-0 flex-1 flex-col">
           <AddSkill
             onBack={() => onOpenChange(false)}
@@ -299,7 +295,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           {proposal.because}
         </div>
         <div className="mt-1 text-small text-muted-foreground/80">
-          From {proposal.botName}. {open ? "Hide it" : "Read it"}
+          From {proposal.botName}. {open ? "Hide" : "Show"}
         </div>
       </button>
 
@@ -307,13 +303,13 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           would land on top of it should say so before it is approved. */}
       {proposal.overwritesEdits && (
         <div className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-small leading-relaxed text-warning">
-          You have your own changes in that skill. Keeping this replaces them.
+          Keeping this replaces your own edits to this skill.
         </div>
       )}
 
       {open && patch && proposal.stale && (
         <div className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-small leading-relaxed text-warning">
-          The skill has changed since this was suggested, and the change no longer fits. Discard it.
+          The skill changed since this was suggested. Discard it.
         </div>
       )}
 
@@ -327,7 +323,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
               onClick={() => setEditing(true)}
               className="mt-1.5 text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
-              Edit the result before keeping it
+              Edit before keeping
             </button>
           )}
         </div>

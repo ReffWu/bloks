@@ -30,17 +30,17 @@ export function UseFromOtherApps() {
   const text = which === "code" ? code : json;
   const where =
     which === "desktop"
-      ? "In Claude Desktop: Settings, Developer, Edit Config, and add this to claude_desktop_config.json. Then restart Claude."
+      ? "In Claude Desktop: Settings, Developer, Edit Config. Add this to claude_desktop_config.json and restart Claude."
       : which === "cursor"
-        ? "In Cursor: Settings, MCP, Add new global MCP server, and paste this."
+        ? "In Cursor: Settings, MCP, Add new global MCP server. Paste this."
         : "In a terminal:";
 
   return (
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <div className="text-ui font-semibold text-foreground">Use Bloks from other AI apps</div>
       <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-        Let Claude, Cursor or another MCP app hand your agents work, read their conversations, and see what is waiting on
-        you. It cannot answer approvals, delete anything or change settings; those stay here. Bloks has to be running.
+        Let Claude, Cursor and other MCP apps give your agents work and read their chats. Approvals, deleting and settings
+        stay here. Bloks must be running.
       </div>
       <div className="mt-3 flex gap-1 rounded-lg bg-muted p-0.5 text-body">
         {(
