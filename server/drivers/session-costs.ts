@@ -59,3 +59,14 @@ export class SessionCosts {
     }
   }
 }
+
+/** Every Claude Code session whose cost a turn here has noted: sessions
+ * Bloks ran, from before it kept a list of its own (server/session-import.ts
+ * leaves them out of what there is to bring over). */
+export function sessionsWithCosts(dir: string = DATA_DIR): Set<string> {
+  try {
+    return new Set(Object.keys(readSaved<Record<string, unknown>>(join(dir, "claude-session-costs.json"), {}, isRecord)));
+  } catch {
+    return new Set();
+  }
+}

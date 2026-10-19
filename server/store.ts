@@ -273,6 +273,9 @@ export interface Message {
   carryOn?: { laneId: string; done?: boolean };
   /** When this message was last edited. Absent means never. */
   editedAt?: number;
+  /** Brought over from a session in that engine before Bloks
+   * (server/session-import.ts): said there, at the time it keeps. */
+  imported?: "claude" | "codex";
   /** What recall found in the agent's other conversations and memory
    * files and added to the turn this message started, in the turn's own
    * words and never its standing prompt. Only on the person's own message
@@ -390,6 +393,28 @@ export interface TaskRecord {
    * done, blocked or out of turns (server/goals.ts). Goes with the lane:
    * closed or cleared, the goal is gone too. */
   goal?: Goal;
+  /** Brought over from a session the person had in Claude Code or Codex
+   * before Bloks (server/session-import.ts). Goes with the lane: a lane
+   * cleared is not that conversation any more. */
+  imported?: ImportedLane;
+}
+
+/** Where an imported lane came from, and whether it carries on there. */
+export interface ImportedLane {
+  engine: "claude" | "codex";
+  /** The engine's own id for the session. */
+  sessionId: string;
+  /** Its file, with the home folder written as ~. */
+  from: string;
+  at: number;
+  /** Whether the lane's engine carries on that very session. Its first
+   * turn forks it, so the person's own file is never written; from then
+   * on the lane's cursor is the fork, and only a cursor that is still
+   * this id is ever forked again. */
+  resumes: boolean;
+  /** Set once a turn has gone in this lane since the import, so only the
+   * first is told where the conversation came from. */
+  carried?: boolean;
 }
 
 /** How many lanes an agent keeps open. Once three, which ran out as soon
@@ -922,6 +947,61 @@ export class Store {
     bot.tasks.push(task);
     this.setActiveTask(botId, task.id);
     return task;
+  }
+
+  /**
+   * A lane holding a conversation brought over from another tool, with
+   * its messages written in one go: a long session is thousands of them,
+   * and appending one at a time would write the transcript once for
+   * each. Null when the agent has no room for another lane. The agent's
+   * active lane stays where it was unless `activate` says otherwise.
+   */
+  importLane(
+    botId: string,
+    input: {
+      title: string;
+      cwd?: string | null;
+      imported: ImportedLane;
+      cursor?: { instanceId: string; sessionId: string };
+      messages: Array<Omit<Message, "id">>;
+      activate?: boolean;
+    },
+  ): TaskRecord | null {
+    const bot = this.bot(botId);
+    if (!bot || bot.tasks.length >= MAX_TASKS) return null;
+    const task: TaskRecord = {
+      id: newId(),
+      title: input.title,
+      resumeCursors: input.cursor ? { [input.cursor.instanceId]: input.cursor.sessionId } : {},
+      // Carrying on the engine's session: this engine has heard all of
+      // it. Otherwise no engine has, and the next turn is a new session
+      // told the conversation, as a dropped session's is.
+      lastInstanceId: input.cursor?.instanceId ?? "",
+      ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+      createdAt: Date.now(),
+      imported: input.imported,
+    };
+    const list: Message[] = input.messages.map((message) => ({ ...message, id: newId() }));
+    this.messages.set(task.id, list);
+    writeWhole(messagesFile(task.id), JSON.stringify(list, null, 2));
+    bot.tasks.push(task);
+    if (input.activate) {
+      bot.activeTaskId = task.id;
+      bot.threadId = task.id;
+    }
+    // Not told to onAppend, message by message: these were said before
+    // Bloks, so none of them moves the agent up the sidebar, and a lane
+    // nobody has searched yet has no index to grow.
+    this.saveBots();
+    return task;
+  }
+
+  /** The first turn since an import has gone (ImportedLane.carried). */
+  markImportCarried(threadId: string) {
+    const found = this.taskByThread(threadId);
+    if (!found?.task.imported || found.task.imported.carried) return;
+    found.task.imported = { ...found.task.imported, carried: true };
+    this.saveBots();
   }
 
   /** Mark the lane strangers' mail is answered in (TaskRecord.guestMail). */

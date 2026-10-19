@@ -225,6 +225,8 @@ export const NEVER = [
   "/api/mcp-servers",
   // reading the person's other tools out of their home folder
   "/api/setup-import",
+  // and their past conversations with those tools
+  "/api/session-import",
   "/api/ledger",
   "/api/relay",
   "/api/calls",

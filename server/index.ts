@@ -360,6 +360,22 @@ import {
 } from "./watchers.ts";
 import { MemoryJournal, readMemoryText } from "./memory-journal.ts";
 import { applyImport, detectSetup, ImportRecord, reviewOf, type ImportDeps, type McpEntry } from "./setup-import.ts";
+import {
+  cleanDestination,
+  cleanPicks as cleanSessionPicks,
+  discoverSessions,
+  ENGINE_NAMES as SESSION_ENGINE_NAMES,
+  importSessions,
+  OwnSessions,
+  reviewSessions,
+  SessionImportRecord,
+  sessionPlaces,
+  type Located,
+  type ReadSession,
+  type SessionEngine,
+  type SessionImportDeps,
+} from "./session-import.ts";
+import { sessionsWithCosts } from "./drivers/session-costs.ts";
 import { Rehearsals, type Rehearsal } from "./rehearsals.ts";
 import { RoomTagQueues } from "./room-tags.ts";
 import { MAX_AGENT_HOPS, heldMention, hopsNotice } from "./room-hops.ts";
@@ -1267,6 +1283,141 @@ const memoryJournal = new MemoryJournal(join(DATA_DIR, "memory-journal"), (id) =
 // What was brought over from other agent tools, and where it went, so a
 // second import updates the first (server/setup-import.ts).
 const setupRecord = new ImportRecord(join(DATA_DIR, "setup-import.json"));
+// Which past sessions became which conversations (server/session-import.ts),
+// and the engine sessions Bloks ran itself, which are conversations here
+// already and never something to bring over.
+const sessionRecord = new SessionImportRecord(join(DATA_DIR, "session-import.json"));
+const ownSessions = new OwnSessions(join(DATA_DIR, "engine-sessions.json"));
+
+/** The engine an agent's own selection runs on, as session-import names it. */
+const SESSION_DRIVERS: Record<SessionEngine, string> = { claude: "claudeAgent", codex: "codex" };
+
+/** Whether an engine session is one of Bloks' own: noted as engines
+ * report them, the Claude Code sessions whose costs were kept from before
+ * that, and every lane's cursor, except a lane still holding the session
+ * it was brought over from, which is the person's. */
+function bloksSession(id: string): boolean {
+  if (ownSessions.has(id) || sessionsWithCosts().has(id)) return true;
+  return store.bots.some((bot) => bot.tasks.some((task) => task.imported?.sessionId !== id && Object.values(task.resumeCursors).includes(id)));
+}
+
+/** Notes an engine's session as Bloks' own, unless it is a session a lane
+ * was brought over from (only a fork of one is ever run). */
+function noteOwnSession(id: string) {
+  if (store.bots.some((bot) => bot.tasks.some((task) => task.imported?.sessionId === id))) return;
+  ownSessions.note(id);
+}
+
+/** An instance that runs this engine, for an agent hired to carry its
+ * sessions on: signed in first, then installed, then any configured. */
+async function selectionForEngine(engine: SessionEngine): Promise<ModelSelection | null> {
+  const described = (await registry.describe()).filter((d) => d.driverKind === SESSION_DRIVERS[engine]);
+  const available = described.filter((d) => d.snapshot.state === "available");
+  const pick = available.find((d) => d.snapshot.authenticated !== false) ?? available[0] ?? described[0];
+  return pick ? { instanceId: pick.instanceId, model: pick.models.default } : null;
+}
+
+/**
+ * Whether a session brought to this agent carries on in its engine's own
+ * session. It needs the folder it was worked in (Claude Code finds a
+ * session by it), an agent on this Mac rather than a cloud computer, and
+ * the agent's own engine being that engine. `engine` stands in for the
+ * agent's when it is about to be hired.
+ */
+function sessionResumes(bot: BotRecord | null, session: Located, engine?: SessionEngine): { resumes: boolean; why?: string } {
+  const from = SESSION_ENGINE_NAMES[session.engine];
+  const who = bot?.name ?? "The new agent";
+  if (!session.folder || !workspace.validateWorkingFolder(session.folder).ok) {
+    return { resumes: false, why: `Its folder is not there any more, so ${who} is told the conversation so far instead.` };
+  }
+  if (bot?.computer === "cloud") return { resumes: false, why: `${who} works on a cloud computer, so it is told the conversation so far instead.` };
+  const kind = bot ? registry.get(bot.modelSelection.instanceId)?.driverKind : engine ? SESSION_DRIVERS[engine] : undefined;
+  if (kind !== SESSION_DRIVERS[session.engine]) return { resumes: false, why: `${who} does not run on ${from}, so it is told the conversation so far instead.` };
+  return { resumes: true };
+}
+
+/**
+ * The import's way into the workspace. A session becomes a lane like any
+ * other, with its messages at the times they were said, marked as brought
+ * over, and a line at the end saying from where and how it carries on.
+ */
+function sessionImportDeps(): SessionImportDeps {
+  return {
+    agent(id) {
+      const bot = store.bot(id);
+      if (!bot || bot.archivedAt) return null;
+      return { id: bot.id, name: bot.name, room: Math.max(0, MAX_TASKS - bot.tasks.length) };
+    },
+    laneThere: (botId, laneId) => Boolean(store.bot(botId)?.tasks.some((task) => task.id === laneId)),
+    resumes(botId, session, engine) {
+      return sessionResumes(botId ? (store.bot(botId) ?? null) : null, session, engine);
+    },
+    async hire(folder, engine) {
+      // Scouting maps a folder to a team; one agent carries the folder's
+      // past, so it is the team's lead, named for the project.
+      const there = folder && workspace.validateWorkingFolder(folder).ok ? folder : null;
+      const team = there
+        ? scout.scoutFolder(there)
+        : scout.proposeTeam({ name: folder ? folder.split(/[\\/]/).filter(Boolean).pop() || "Past sessions" : "Past sessions", entries: [], dependencies: [], extensions: {} });
+      const lead = team.members[0];
+      const name = team.name.replace(/ team$/, "").trim().slice(0, MAX_NAME_CHARS) || "Past sessions";
+      const bot = store.createBot({
+        name,
+        title: lead.title.slice(0, MAX_TITLE_CHARS),
+        description: lead.description.slice(0, MAX_DESCRIPTION_CHARS),
+        skills: lead.skills.slice(0, MAX_SKILLS),
+        seniority: lead.seniority,
+        greeting: `I'm ${name}. The conversations you brought over from ${SESSION_ENGINE_NAMES[engine]} are in my list, and I can carry any of them on.`,
+      });
+      const settings = await newAgentSettings();
+      const selection = await selectionForEngine(engine);
+      store.patchBot(bot.id, {
+        ...settings,
+        ...(selection ? { modelSelection: selection } : {}),
+        ...(there ? { cwd: there } : {}),
+        activeWithYouAt: Date.now(),
+      });
+      record({ at: Date.now(), kind: "agent.created", actor: "you", summary: `Made ${bot.name}, ${bot.title}`, detail: { agent: bot.name } });
+      return bot.id;
+    },
+    addLane(botId, session: ReadSession) {
+      const bot = store.bot(botId);
+      if (!bot) throw new Error("that agent is not here any more");
+      const { summary } = session;
+      const plan = sessionResumes(bot, summary);
+      const engine = summary.engine;
+      const from = SESSION_ENGINE_NAMES[engine];
+      const instanceId = bot.modelSelection.instanceId;
+      const folder = summary.folder && workspace.validateWorkingFolder(summary.folder).ok ? summary.folder : undefined;
+      const messages: Array<Omit<Message, "id">> = session.rows.map((row) =>
+        row.role === "tool"
+          ? { role: "bot", kind: "activity", tool: { name: row.name, command: row.line, ok: row.ok }, imported: engine, at: row.at }
+          : { role: row.role === "user" ? "user" : "bot", kind: "text", text: row.role === "user" ? row.text : houseStyle(row.text), imported: engine, at: row.at },
+      );
+      const day = (at: number) => new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const said = [
+        day(summary.startedAt) === day(summary.lastAt)
+          ? `Brought over from ${from}, where it ran on ${day(summary.lastAt)}.`
+          : `Brought over from ${from}, where it ran from ${day(summary.startedAt)} to ${day(summary.lastAt)}.`,
+        session.left ? `The ${session.left.toLocaleString("en-US")} earliest messages were left out to keep it to the latest ${session.rows.length.toLocaleString("en-US")}.` : "",
+        session.removed ? `${session.removed === 1 ? "One line" : `${session.removed} lines`} that looked like keys or passwords stayed behind.` : "",
+        plan.resumes
+          ? `${bot.name} carries on the same ${from} session, in a copy, so your own stays as it is.`
+          : `${plan.why ?? ""} Your ${from} session stays as it is.`.trim(),
+      ].filter(Boolean);
+      messages.push({ role: "bot", kind: "notice", event: true, imported: engine, text: said.join(" "), at: Math.max(Date.now(), summary.lastAt + 1) });
+      const lane = store.importLane(botId, {
+        title: summary.title.slice(0, 60),
+        ...(folder ? { cwd: folder } : {}),
+        imported: { engine, sessionId: summary.id, from: summary.from, at: Date.now(), resumes: plan.resumes },
+        ...(plan.resumes ? { cursor: { instanceId, sessionId: summary.id } } : {}),
+        messages,
+      });
+      if (!lane) throw new Error(`${bot.name} has as many conversations open as one agent keeps. Close one, or bring this to another agent.`);
+      return lane.id;
+    },
+  };
+}
 
 /**
  * The import's way into the rest of the workspace. Every write goes the
@@ -1683,6 +1834,10 @@ function clientBot(bot: BotRecord | null) {
         // own words never land there (activeLaneOf), so the app says so in
         // it rather than letting what is typed seem to vanish.
         ...(task.guestMail ? { guestMail: true } : {}),
+        // Brought over from a session before Bloks: from which engine,
+        // when, and whether it carries on that session. Never the file's
+        // path or the engine's id for it.
+        ...(task.imported ? { imported: { engine: task.imported.engine, at: task.imported.at, resumes: task.imported.resumes } } : {}),
         // The room this lane's turn is speaking in, while it runs. A room
         // shows who is thinking from this, not from the agent's own flag,
         // which is up whenever any of its lanes works, here or not.
@@ -2598,6 +2753,7 @@ bus.subscribe((event: RuntimeEvent) => {
       if (event.sessionId && event.providerInstanceId) {
         if (!laneTelegramPerson.has(event.threadId)) store.setResumeCursor(event.threadId, event.providerInstanceId, event.sessionId);
         cutOff.session(event.threadId, event.providerInstanceId, event.sessionId);
+        noteOwnSession(event.sessionId);
       }
       break;
     case "item.completed":
@@ -5273,7 +5429,12 @@ async function startClaimedTurn(
         const told = await story(!personSource);
         // no engine served it last when its session was dropped
         // (store.dropSession), which is a new session, not another engine
-        turnText = freshTurnText(told.turns, turnText, { left: told.left, ...(task.lastInstanceId === "" ? { why: "session" as const } : {}) });
+        // the first turn in a lane brought over from before Bloks says so
+        const broughtFrom = task.imported && !task.imported.carried ? SESSION_ENGINE_NAMES[task.imported.engine] : undefined;
+        turnText = freshTurnText(told.turns, turnText, {
+          left: told.left,
+          ...(broughtFrom ? { from: broughtFrom } : task.lastInstanceId === "" ? { why: "session" as const } : {}),
+        });
       } else if (replaceSession) {
         const told = await story(true);
         turnText = freshTurnText(told.turns, turnText, { left: told.left, why: "session" });
@@ -5317,7 +5478,12 @@ async function startClaimedTurn(
       // in another one: it would only be refused the same way
       if (!blok && !command && resumeCursor === undefined) newSessionTurns.add(task.id);
       else newSessionTurns.delete(task.id);
-      if (!command && credential && resumeCursor && task.briefedCli !== CLI_COMMAND) {
+      // The session the person brought over, carried on: told once where
+      // it is now. It never ran the CLI from anywhere, so nothing moved.
+      const carriedOver = !command && task.imported && !task.imported.carried && typeof resumeCursor === "string" && resumeCursor === task.imported.sessionId;
+      if (carriedOver) {
+        turnText = `(This conversation was brought over into Bloks from ${SESSION_ENGINE_NAMES[task.imported!.engine]}. You carry it on here as ${bot.name}.)\n\n${turnText}`;
+      } else if (!command && credential && resumeCursor && task.briefedCli !== CLI_COMMAND) {
         turnText = `${cliMovedNote(CLI_COMMAND, task.briefedCli)}\n\n${turnText}`;
       }
 
@@ -5431,10 +5597,15 @@ async function startClaimedTurn(
         effort: bot.effort,
         ...(bot.engineHooks === false ? { noHooks: true } : {}),
         resumeCursor,
+        // A session from before Bloks is only ever carried on in a copy
+        // (SendTurnInput.forkFrom), so the person's own file is not written.
+        ...(task.imported?.resumes ? { forkFrom: task.imported.sessionId } : {}),
         // If the session behind the cursor turns out to be gone, the new
         // one is told the bounded story rather than nothing. Claude Code
-        // does not open a new session on its own, so it is not given one.
-        ...(typeof resumeCursor === "string" && !nativeReplay && instance.driverKind !== "claudeAgent"
+        // does not open a new session on its own, so it is not given one,
+        // except for a session from before Bloks, which a CLI that cannot
+        // copy it does not resume at all.
+        ...(typeof resumeCursor === "string" && !nativeReplay && (instance.driverKind !== "claudeAgent" || resumeCursor === task.imported?.sessionId)
           ? (() => {
               const told = boundHandoff(transcript, handoffTokens);
               return { handoff: freshTurnText(told.turns, turnText, { left: told.left, why: "session" }) };
@@ -5609,6 +5780,7 @@ async function startClaimedTurn(
       if (integrations.computer) startScreenPoller(bot.id);
       // A local command has not heard a pending engine handoff or CLI note.
       if (!command) store.markTaskDispatched(bot.id, task.id, instanceId, credential ? CLI_COMMAND : undefined);
+      if (!command && task.imported && !task.imported.carried) store.markImportCarried(task.id);
     } catch (e) {
       if (e instanceof CodexSpeedUnavailable) {
         // An early remote guard runs before preparation records an engine.
@@ -6458,7 +6630,14 @@ function recallPlaces(bot: BotRecord, laneId?: string | null): { places: RecallP
   const sharedLanes = new Set(bloks.bloks.filter((b) => b.sharing).map((b) => b.lanes?.[bot.id]).filter(Boolean));
   const places: RecallPlace[] = bot.tasks
     .filter((task) => !sharedLanes.has(task.id) && !task.guestMail)
-    .map((task) => ({ threadId: task.id, where: `your conversation "${task.title}"`, kind: "conversation" as const, label: task.title }));
+    .map((task) => ({
+      threadId: task.id,
+      // a conversation brought over says where it was had, so an agent
+      // does not take something said in Codex for something it said here
+      where: task.imported ? `your conversation "${task.title}" (had in ${SESSION_ENGINE_NAMES[task.imported.engine]} before Bloks)` : `your conversation "${task.title}"`,
+      kind: "conversation" as const,
+      label: task.title,
+    }));
   for (const room of bloks.bloks) {
     if (room.sharing || !room.memberIds.includes(bot.id)) continue;
     places.push({ threadId: room.id, where: `room ${room.name}`, kind: "room", label: room.name });
@@ -6730,6 +6909,9 @@ function speakerFor(bot: BotRecord) {
       return { who: person, by: "person" };
     }
     if (message.from && message.from !== bot.id) return { who: store.bot(message.from)?.name ?? "an agent", by: "agent", agentId: message.from };
+    // what the engine said in a session brought over: the same
+    // conversation this agent now carries on, said under another name
+    if (message.imported) return { who: SESSION_ENGINE_NAMES[message.imported], by: "self", agentId: bot.id };
     return { who: bot.name, by: "self", agentId: bot.id };
   };
 }
@@ -8121,6 +8303,7 @@ function onIdleCompaction(event: RuntimeEvent) {
     case "session.started":
       if (event.sessionId && event.providerInstanceId) {
         store.setResumeCursor(event.threadId, event.providerInstanceId, event.sessionId);
+        noteOwnSession(event.sessionId);
       }
       break;
     case "thread.token-usage.updated": {
@@ -14208,6 +14391,66 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         created: outcome.created,
         review: reviewOf(detectSetup(), setupRecord, setupImportDeps()),
       });
+    }
+
+    // ── bring your past sessions: Claude Code and Codex conversations ──
+    // The same rule as bringing a setup over: only the person at this
+    // computer, never an agent, a phone or a remote window, since what is
+    // read is their conversations out of their home folder. Nothing is
+    // read until the screen asks; `places` only says whether the two
+    // folders are there, without opening either.
+    if (path === "/api/session-import/places" && method === "GET") {
+      if (!local || asAgent) return json(res, 403, { error: "only Bloks on this computer can bring past sessions over" });
+      return json(res, 200, { places: sessionPlaces() });
+    }
+    if ((path === "/api/session-import" && (method === "GET" || method === "POST")) || (path === "/api/session-import/review" && method === "POST")) {
+      if (!local || asAgent) return json(res, 403, { error: "only Bloks on this computer can bring past sessions over" });
+      const redact = inspectionRedactor(savedConfigObservation()?.value, cfg);
+      const { discovery, located } = await discoverSessions({ own: (_engine, id) => bloksSession(id), redact });
+      if (method === "GET") {
+        // each session says whether it is a conversation here already
+        const projects = discovery.projects.map((project) => ({
+          ...project,
+          sessions: project.sessions.map((session) => {
+            const before = sessionRecord.get(session.key);
+            const bot = before ? store.bot(before.botId) : undefined;
+            const there = bot && !bot.archivedAt && bot.tasks.some((task) => task.id === before!.laneId);
+            return there ? { ...session, imported: { botId: bot.id, laneId: before!.laneId, name: bot.name } } : session;
+          }),
+        }));
+        return json(res, 200, { ...discovery, projects });
+      }
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const picks = cleanSessionPicks(body.picks);
+      const to = cleanDestination(body.to);
+      if (!picks.length) return json(res, 400, { error: "choose at least one conversation" });
+      if (!to) return json(res, 400, { error: "choose an agent for these, or a new one" });
+      if ("botId" in to && !sessionImportDeps().agent(to.botId)) return json(res, 400, { error: "that agent is not here any more" });
+      if (path === "/api/session-import/review") {
+        return json(res, 200, await reviewSessions(located, picks, to, sessionImportDeps(), sessionRecord, { redact }));
+      }
+      const outcome = await importSessions(located, picks, to, sessionImportDeps(), sessionRecord, { redact });
+      const touched = new Set(outcome.results.filter((r) => r.ok && r.botId).map((r) => r.botId!));
+      for (const id of outcome.created) {
+        const made = store.bot(id);
+        if (!made) continue;
+        // a new agent opens on the latest conversation it was given
+        const latest = outcome.results.filter((r) => r.ok && r.botId === id).at(-1)?.laneId;
+        if (latest) store.setActiveTask(id, latest);
+        broadcast({ kind: "bot", bot: { ...clientBot(store.bot(id))!, messages: store.messagesFor(store.bot(id)!.threadId) } });
+      }
+      for (const id of touched) if (!outcome.created.includes(id)) broadcast({ kind: "bot", bot: clientBot(store.bot(id)) });
+      const brought = outcome.results.filter((r) => r.ok).length;
+      if (brought) {
+        record({
+          at: Date.now(),
+          kind: "sessions.imported",
+          actor: "you",
+          summary: `Brought over ${brought} past ${brought === 1 ? "conversation" : "conversations"} from Claude Code and Codex`,
+          detail: { conversations: brought },
+        });
+      }
+      return json(res, 200, outcome);
     }
 
     // ── user MCP servers: bring your own tools ──
