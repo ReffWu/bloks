@@ -230,3 +230,44 @@ export function planName(plan: string | null | undefined): string | null {
   const name = (plan ?? "").trim();
   return name ? name.charAt(0).toUpperCase() + name.slice(1) : null;
 }
+
+// ── what it used ───────────────────────────────────────────────────────
+
+/** Tokens and replies, as a lane keeps them (its usage) and as Activity
+ * counts a day per agent (server/usage.ts). */
+export interface Spent {
+  turns: number;
+  input: number;
+  output: number;
+  /** In dollars, where the engine gives a price. */
+  cost?: number;
+  /** Replies whose engine said nothing about tokens. */
+  unmeasured?: number;
+}
+
+/** "12 replies", "1 reply". */
+export function repliesPhrase(turns: number): string {
+  return `${turns} ${turns === 1 ? "reply" : "replies"}`;
+}
+
+/**
+ * What the composer's card says something cost. Only a price the engine
+ * gave is a price: a subscription engine reports none, and zero would
+ * read as free, so that is "Not reported". `costKnown` is Activity's word
+ * that some engine priced something today; this agent's own zero still
+ * means its engine did not.
+ */
+export function spendPhrase(spent: Spent | null | undefined, costKnown: boolean): string {
+  if (!spent || spent.turns <= 0) return "Nothing yet";
+  const cost = spent.cost ?? 0;
+  if (!costKnown || !(cost > 0)) return "Not reported";
+  if (cost < 0.01) return "Under $0.01";
+  return `$${cost.toFixed(2)}`;
+}
+
+/** A token count for the card, or "Not reported" when every reply came
+ * from an engine that counted none, which a bare 0 would hide. */
+export function tokensPhrase(n: number, spent: Spent | null | undefined): string {
+  if (n > 0) return shortTokens(n);
+  return spent && spent.turns > 0 && (spent.unmeasured ?? 0) >= spent.turns ? "Not reported" : "0";
+}
