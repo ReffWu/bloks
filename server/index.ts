@@ -1292,13 +1292,27 @@ const ownSessions = new OwnSessions(join(DATA_DIR, "engine-sessions.json"));
 /** The engine an agent's own selection runs on, as session-import names it. */
 const SESSION_DRIVERS: Record<SessionEngine, string> = { claude: "claudeAgent", codex: "codex" };
 
-/** Whether an engine session is one of Bloks' own: noted as engines
- * report them, the Claude Code sessions whose costs were kept from before
- * that, and every lane's cursor, except a lane still holding the session
- * it was brought over from, which is the person's. */
-function bloksSession(id: string): boolean {
-  if (ownSessions.has(id) || sessionsWithCosts().has(id)) return true;
-  return store.bots.some((bot) => bot.tasks.some((task) => task.imported?.sessionId !== id && Object.values(task.resumeCursors).includes(id)));
+/** Which engine sessions are Bloks' own, worked out once for a look:
+ * noted as engines report them, the Claude Code sessions whose costs were
+ * kept from before that, and every lane's cursor, except a lane still
+ * holding the session it was brought over from, which is the person's. */
+function bloksSessions(): (id: string) => boolean {
+  const costs = sessionsWithCosts();
+  const cursors = new Set<string>();
+  for (const bot of store.bots) {
+    for (const task of bot.tasks) {
+      for (const cursor of Object.values(task.resumeCursors)) {
+        if (typeof cursor === "string" && cursor !== task.imported?.sessionId) cursors.add(cursor);
+      }
+    }
+  }
+  return (id) => ownSessions.has(id) || costs.has(id) || cursors.has(id);
+}
+
+/** A lane an import made, still holding that conversation: there, and not
+ * cleared since (a cleared lane is not that conversation any more). */
+function importedLaneThere(botId: string, laneId: string): boolean {
+  return Boolean(store.bot(botId)?.tasks.some((task) => task.id === laneId && task.imported));
 }
 
 /** Notes an engine's session as Bloks' own, unless it is a session a lane
@@ -1348,7 +1362,7 @@ function sessionImportDeps(): SessionImportDeps {
       if (!bot || bot.archivedAt) return null;
       return { id: bot.id, name: bot.name, room: Math.max(0, MAX_TASKS - bot.tasks.length) };
     },
-    laneThere: (botId, laneId) => Boolean(store.bot(botId)?.tasks.some((task) => task.id === laneId)),
+    laneThere: importedLaneThere,
     resumes(botId, session, engine) {
       return sessionResumes(botId ? (store.bot(botId) ?? null) : null, session, engine);
     },
@@ -14412,7 +14426,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if ((path === "/api/session-import" && (method === "GET" || method === "POST")) || (path === "/api/session-import/review" && method === "POST")) {
       if (!local || asAgent) return json(res, 403, { error: "only Bloks on this computer can bring past sessions over" });
       const redact = inspectionRedactor(savedConfigObservation()?.value, cfg);
-      const { discovery, located } = await discoverSessions({ own: (_engine, id) => bloksSession(id), redact });
+      const own = bloksSessions();
+      const { discovery, located } = await discoverSessions({ own: (_engine, id) => own(id), redact });
       if (method === "GET") {
         // each session says whether it is a conversation here already
         const projects = discovery.projects.map((project) => ({
@@ -14420,7 +14435,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           sessions: project.sessions.map((session) => {
             const before = sessionRecord.get(session.key);
             const bot = before ? store.bot(before.botId) : undefined;
-            const there = bot && !bot.archivedAt && bot.tasks.some((task) => task.id === before!.laneId);
+            const there = bot && !bot.archivedAt && importedLaneThere(bot.id, before!.laneId);
             return there ? { ...session, imported: { botId: bot.id, laneId: before!.laneId, name: bot.name } } : session;
           }),
         }));

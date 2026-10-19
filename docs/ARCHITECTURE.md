@@ -125,6 +125,8 @@ Plain JSON under `~/.bloks`, written synchronously. No database.
 | `config.json` | Connected providers and keys, `0600` |
 | `skills/*.md` | Installed skills |
 | `setup-import.json` | What was brought over from other agent tools, by item: a digest, where it went, and the exact text added |
+| `session-import.json` | Which past Claude Code and Codex sessions became which lanes, with the digest of what came over |
+| `engine-sessions.json` | Engine session ids Bloks itself ran, so they are never offered back as past sessions |
 | `events/`, `native/` | Canonical events, and raw provider traffic |
 | `checkpoints/` | Content-addressed file versions, one photograph per folder, and the undo records |
 
@@ -1495,6 +1497,72 @@ nothing changed, rather than adding a second copy. Both routes answer
 only Bloks on this computer, never an agent's credential, a paired phone
 or a remote window. The first run offers the review as an optional step
 when something new was found, and Settings has it as a page.
+
+## Bringing past sessions over
+
+`server/session-import.ts` is the sibling of bringing a setup over, for
+conversations: Claude Code's transcripts under
+`~/.claude/projects/<folder>/*.jsonl` and Codex's under
+`~/.codex/sessions/**/rollout-*.jsonl`. Nothing in either is read until
+the import screen asks (Settings, Past conversations, and an optional
+step of the first run, offered when `GET /api/session-import/places`
+says either folder is there, which it answers without listing them).
+Files are only opened for reading; a link is never followed to one, a
+helper's transcript (`agent-*.jsonl`) is part of a session rather than
+one, and a file past 256 MB is named as left alone. Each line is read for
+the few fields that matter and anything else, a line that is not JSON
+included, is skipped and counted. Codex writes what the person typed
+twice, as an event and as an item among the instructions it injects, so
+the events are read and the items only for a file old enough to have
+none; Claude Code's own lines (a slash command's echo, its caveat, a
+reminder, a helper's sidechain, an API error it stands in for) are not
+the person's or the model's words and stay out.
+
+`GET /api/session-import` lists every session by its folder, newest
+first, with a title (the first thing the person said), its dates, how
+many messages and which engine, and whether it is a conversation here
+already. Sessions Bloks ran itself are left out: every session id an
+engine reports is noted in `engine-sessions.json`, the Claude Code
+sessions whose costs were kept before that count too, as does every
+lane's cursor, and a Codex session whose originator is Bloks' own client.
+`POST /api/session-import/review` with `{ picks, to }` reads each picked
+session whole and returns it exactly as it will land, with a digest, how
+it will carry on, and what stays behind. `POST /api/session-import` with
+the same shape and the digests imports, reading the files again and
+refusing one whose digest moved. `to` is `{ botId }` or `{ hire: true }`,
+which makes one agent per project folder through `server/scout.ts`
+(the team's lead, named for the project, working in the folder, on the
+engine most of its sessions ran on). All three answer only Bloks on this
+computer, never an agent's credential, a paired phone or a remote window.
+
+Each session becomes a lane (`Store.importLane`, its messages written in
+one go): the person's and the engine's words as text messages and each
+tool call as an activity row with one readable line, all at the times
+they were said and marked `imported` with the engine, then one notice
+saying where it came from and how it carries on. A lane keeps the latest
+3,000 rows. Every line of every message goes through setup-import's
+scrub and the person's own stored keys through the inspection redactor;
+a line either finds anything in is left out whole, with a marker.
+`TaskRecord.imported` keeps the engine, the session id, the file (as ~)
+and whether it resumes; `clientBot` ships `imported: { engine, at,
+resumes }` on the lane, never the path or the id.
+
+A lane carries on the engine's own session when the agent's engine is
+that engine, the folder is still there (pinned as the lane's `cwd`,
+since Claude Code finds a session by it) and the agent is not on a cloud
+computer: the session id is the lane's cursor, and its first turn is
+sent with `forkFrom`, so Claude Code resumes it with `--fork-session`
+(2.0 and later; an older or unknown CLI starts a new session told the
+story instead) and Codex with `thread/fork` (one that cannot fork starts
+a new thread with the handoff). The person's own file is never written,
+and only a cursor that is still the imported id is ever forked; from the
+first turn the fork is the cursor, and is noted as Bloks' own. That
+first turn is told once that the conversation was brought over. Anywhere
+else the lane has no cursor and an empty `lastInstanceId`, so its first
+turn is a new session told the bounded story, opening with where the
+conversation was had. Recall reaches imported lanes like any other; a
+hit says the conversation was had in that engine before Bloks, and its
+replies are said by the engine's name.
 
 ## Engine scout
 
