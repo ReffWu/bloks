@@ -23,6 +23,8 @@ import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { useLanesInSidebar } from "@/lib/conversationsView";
 import { findHits, stepHit } from "@/lib/find";
 import { isApproval } from "@/lib/cardAnswer";
+import { readApproval } from "@/lib/approvalCard";
+import { AnimatePresence, motion } from "motion/react";
 import { dayLine, queuedLine, stamp, timeSaidBelow } from "@/lib/when";
 import { attachmentBasename, splitAttachments } from "@/lib/attachments";
 import { TaskStrip } from "./TaskStrip";
@@ -506,6 +508,66 @@ function GuestMailLine({ bot }: { bot: Bot }) {
       Mail from unlisted senders is answered here, in conversation only. What you type goes to{" "}
       {first ? `"${first.title}"` : "the first conversation"}.
     </p>
+  );
+}
+
+/**
+ * Approvals stacked up while the person was away, answered as a queue.
+ * The ones that can delete or overwrite something are left out of
+ * "Allow all" and said to be: a yes to those is given one at a time,
+ * looking at each. Denying is always safe, so Deny all takes them too.
+ */
+function ApprovalsBar({ bot, pending }: { bot: Bot; pending: Message[] }) {
+  const { dispatch } = useStore();
+  const risky = pending.filter((m) => m.card && readApproval(m.card, bot).risk);
+  const allowable = pending.filter((m) => !risky.includes(m));
+  const answerAll = (list: Message[], answer: string) => {
+    for (const m of list) dispatch({ type: "answerCard", botId: bot.id, messageId: m.id, answer });
+  };
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 6, transition: { duration: 0.12 } }}
+      transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+      className="px-4 md:px-6"
+    >
+      <div
+        role="region"
+        aria-label="Approvals waiting"
+        className="mx-auto mb-2 flex max-w-[var(--transcript-width,760px)] flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border bg-card py-2 pl-2.5 pr-2 shadow-[0_1px_3px_var(--shadow-color)]"
+      >
+        <span className="flex h-6 min-w-6 items-center justify-center overflow-hidden rounded-full bg-warning/12 px-1.5 text-small font-semibold tabular-nums text-warning">
+          <motion.span
+            key={pending.length}
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+          >
+            {pending.length}
+          </motion.span>
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-body font-medium text-foreground">approvals waiting</p>
+          {risky.length > 0 && (
+            <p className="text-pretty text-small text-warning">
+              {risky.length === 1 ? "One can" : `${risky.length} can`} delete or overwrite things. Answer{" "}
+              {risky.length === 1 ? "it" : "those"} on {risky.length === 1 ? "its" : "their"} own.
+            </p>
+          )}
+        </div>
+        <div className="flex gap-1.5 max-sm:w-full">
+          <Button variant="secondary" size="sm" onClick={() => answerAll(pending, "Deny")} className="max-sm:flex-1">
+            Deny all
+          </Button>
+          {allowable.length > 0 && (
+            <Button variant="brand" size="sm" onClick={() => answerAll(allowable, "Allow")} className="max-sm:flex-1">
+              {risky.length ? `Allow the other ${allowable.length}` : "Allow all"}
+            </Button>
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -1098,7 +1160,13 @@ export function ChatView({ bot }: { bot: Bot }) {
       }
       switch (m.kind) {
         case "options":
-          return <OptionCard key={m.id} botId={bot.id} message={m} />;
+          // marked like any other row, so Find and the approvals bar can
+          // reach a card by its message
+          return (
+            <div key={m.id} data-msg-index={absolute} data-message-id={m.id}>
+              <OptionCard botId={bot.id} message={m} />
+            </div>
+          );
         case "activity": {
           // a run of tool calls is one line; it starts at the first
           const before = list[offset - 1];
@@ -1425,33 +1493,11 @@ export function ChatView({ bot }: { bot: Bot }) {
           <TerminalPanel bot={bot} onClose={() => setTerminalOpen(false)} />
         </div>
       )}
-      {pendingApprovals.length > 1 && (
-        <div className="flex items-center justify-center gap-2 px-4 pb-1">
-          <span className="text-small text-muted-foreground">
-            {pendingApprovals.length} approvals waiting
-          </span>
-          <button
-            onClick={() => {
-              for (const m of pendingApprovals) {
-                dispatch({ type: "answerCard", botId: bot.id, messageId: m.id, answer: "Allow" });
-              }
-            }}
-            className="rounded-lg bg-brand-soft px-2.5 py-1 text-small font-medium text-brand-ink transition-colors hover:opacity-90"
-          >
-            Allow all
-          </button>
-          <button
-            onClick={() => {
-              for (const m of pendingApprovals) {
-                dispatch({ type: "answerCard", botId: bot.id, messageId: m.id, answer: "Deny" });
-              }
-            }}
-            className="rounded-lg px-2.5 py-1 text-small text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            Deny all
-          </button>
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {pendingApprovals.length > 1 && (
+          <ApprovalsBar key="approvals" bot={bot} pending={pendingApprovals} />
+        )}
+      </AnimatePresence>
       <OtherLaneWaiting bot={bot} />
       <EngineBanner bot={bot} />
       <WaitingStrip
