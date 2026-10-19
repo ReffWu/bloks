@@ -1,10 +1,9 @@
 // A room: several agents and you, in one transcript. Unlike a solo chat,
 // every line is attributed, because who said it is half the meaning.
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
 import { AlertTriangle } from "@/components/icons";
-import { ArrowUp } from "@/components/icons";
 import { BookmarkPlus } from "@/components/icons";
 import { FolderOpen } from "@/components/icons";
 import { CalendarClock } from "@/components/icons";
@@ -27,15 +26,10 @@ import { GroupCallButton } from "./Voice";
 import { splitWaiting } from "@/lib/transcript";
 import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { ArtifactCard } from "./Artifacts";
-import {
-  ForwardDialog,
-  MessageActionBar,
-  Reactions,
-  ReplyChip,
-  ReplyContext,
-  useTapToShow,
-  type ReplyDraft,
-} from "./MessageActions";
+import { ForwardDialog, MessageActionBar, Reactions, ReplyContext, useTapToShow, type ReplyDraft } from "./MessageActions";
+import { UserText } from "./chat/Bubble";
+import { JumpToLatest } from "./chat/JumpToLatest";
+import { RoomComposer } from "./room/RoomComposer";
 import { OptionCard } from "./OptionCard";
 import { Markdownish } from "./Markdown";
 import { ChangesCard } from "./ChangesCard";
@@ -44,7 +38,6 @@ import { TurnFoldLine } from "./TurnFold";
 import { Button } from "@/components/ui/button";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { ForumLens } from "./ForumLens";
-import { WaitingStrip } from "./WaitingStrip";
 import { MessageComponent } from "./Gallery";
 import { MoreHorizontal } from "@/components/icons";
 import {
@@ -55,7 +48,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { replyCounts, replyLabel } from "@/lib/threads";
-import { boxFor, carryFocus, keepDraft, readDraft, showBox, takeBack, takeFocus, type Draft } from "@/lib/drafts";
 import { queuedLine, stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
 import { useStickToBottom } from "@/lib/useStickToBottom";
@@ -66,6 +58,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useHoldPlace } from "@/lib/useHoldPlace";
 import { foldHolding, foldRoom, lastFoldKey, rowsFrom } from "@/lib/turnFold";
 import { confirm } from "@/components/ui/confirm";
+import { onAsk, peekRoomAsk, takeAsk } from "@/lib/chatAsk";
 
 /** A reaction in a room is the cheapest thing anyone can say, and often
  * the right thing: agreeing with a plan should not wake six agents. */
@@ -128,6 +121,25 @@ function ringShape(bot: Bot) {
 }
 
 const SETTLE = [0.23, 1, 0.32, 1] as const;
+/** The brief wash behind a message you were sent to, the chat's own: a
+ * little wider than its row, behind the words, faded in and out rather
+ * than painted, so it costs no layout. */
+function LandMark({ on }: { on: boolean }) {
+  return (
+    <AnimatePresence>
+      {on && (
+        <motion.span
+          aria-hidden
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 0.15, ease: "easeOut" } }}
+          exit={{ opacity: 0, transition: { duration: 0.28, ease: "easeOut" } }}
+          className="pointer-events-none absolute -inset-x-2 -inset-y-1 -z-10 rounded-xl bg-warning/12"
+        />
+      )}
+    </AnimatePresence>
+  );
+}
+
 /** How many faces the header shows before it counts the rest. */
 const FACES = 6;
 
@@ -360,6 +372,15 @@ function RoomWelcome({
   );
 }
 
+/**
+ * The verbs under a room message, in the chat's row. A room is compact,
+ * a name and a face for each speaker and lines close together, so the
+ * row lends most of its height to the gap below rather than pushing the
+ * next message down by all of it: what it borrows is the icons' own
+ * padding and the gap, never a line of words.
+ */
+const ROOM_ROW = "-mb-2.5";
+
 function RoomMessage({
   message,
   members,
@@ -383,15 +404,17 @@ function RoomMessage({
   const speaker = message.from ? members.find((m) => m.id === message.from) : null;
   const nameOfReactor = (id: string) =>
     id === "user" ? "You" : (members.find((m) => m.id === id)?.name ?? "An agent");
-  // where nothing hovers, a tap on the words shows the bar
+  // where nothing hovers, a tap on the words shows the row
   const tap = useTapToShow();
 
-  // Floating is for the agents' side: there the text fills the row, and
-  // an invisible bar beside it used to hold 150px of every line empty,
-  // which on a phone halved the width a message could use.
-  const verbs = (author: string, floating = false) => (
+  // The time is in the header over a speaker's first message, so the
+  // row says it only under the ones that follow, where nothing else does.
+  const verbs = (author: string, align: "start" | "end" = "start") => (
     <MessageActionBar
-      className={floating ? "absolute -top-3.5 right-0 z-10" : undefined}
+      look="row"
+      align={align}
+      at={showSpeaker && align === "start" ? undefined : message.at}
+      className={ROOM_ROW}
       open={tap.open}
       message={message}
       author={author}
@@ -416,25 +439,28 @@ function RoomMessage({
   if (message.role === "user" && message.author) {
     const who = people.find((p) => p.id === message.author)?.name ?? "A former member";
     return (
-      <div className="flex gap-2.5">
+      <div ref={tap.row} className="group flex gap-2.5">
         <div className="w-8 shrink-0 pt-0.5">{showSpeaker && <PersonDot name={who} />}</div>
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col items-start">
           {showSpeaker && (
             <div className="mb-0.5 flex items-baseline gap-1.5">
               <span className="text-body font-semibold text-foreground">{who}</span>
               <span className="text-caption tabular-nums text-muted-foreground">{stamp(message.at)}</span>
             </div>
           )}
-          <div ref={tap.row} className="group relative flex items-center gap-1.5">
-            <div
-              onPointerUp={tap.onPointerUp}
-              className="min-w-0 rounded-2xl rounded-tl-md bg-muted px-3.5 py-2 text-lead leading-relaxed text-foreground"
-            >
-              {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
-              <Markdownish text={message.text ?? ""} mentions={names} />
-            </div>
-            {verbs(who, true)}
+          <div
+            onPointerUp={tap.onPointerUp}
+            className="min-w-0 max-w-full rounded-2xl rounded-tl-md bg-muted px-3.5 py-2 text-lead leading-relaxed text-foreground"
+          >
+            {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
+            <Markdownish text={message.text ?? ""} mentions={names} />
           </div>
+          <Reactions
+            reactions={message.reactions}
+            onToggle={(emoji: string) => reactTo(roomId, message.id, emoji)}
+            nameOf={nameOfReactor}
+          />
+          {verbs(who)}
         </div>
       </div>
     );
@@ -442,8 +468,7 @@ function RoomMessage({
 
   if (message.role === "user") {
     return (
-      <div ref={tap.row} className="group flex items-center justify-end gap-1.5">
-        {verbs("You")}
+      <div ref={tap.row} className="group flex flex-col items-end">
         <div className="flex max-w-[76%] flex-col items-end">
           <div
             onPointerUp={tap.onPointerUp}
@@ -451,7 +476,7 @@ function RoomMessage({
             className="min-w-0 whitespace-pre-wrap rounded-2xl bg-secondary px-4 py-2.5 text-lead text-foreground [overflow-wrap:anywhere]"
           >
             {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
-            {message.text}
+            <UserText text={message.text ?? ""} />
           </div>
           <Reactions
             reactions={message.reactions}
@@ -464,6 +489,7 @@ function RoomMessage({
             </div>
           )}
         </div>
+        {verbs("You", "end")}
       </div>
     );
   }
@@ -502,8 +528,9 @@ function RoomMessage({
     );
   }
 
+  const prose = message.kind !== "component" && message.kind !== "changes" && message.kind !== "options";
   return (
-    <div className="flex gap-2.5">
+    <div ref={prose ? tap.row : undefined} className={cn("flex gap-2.5", prose && "group")}>
       <div className="w-8 shrink-0 pt-0.5">
         {showSpeaker && (
           <AgentAvatar bot={speaker} size={30} />
@@ -524,18 +551,18 @@ function RoomMessage({
           // an agent can need you mid-room; the ask has to be answerable here
           <OptionCard botId={speaker.id} roomId={roomId} message={message} />
         ) : (
-          <div ref={tap.row} className="group relative flex items-center gap-1.5">
-            <div onPointerUp={tap.onPointerUp} className="min-w-0 flex-1 text-lead leading-relaxed text-foreground">
+          <>
+            <div onPointerUp={tap.onPointerUp} className="min-w-0 text-lead leading-relaxed text-foreground">
               {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
               <Markdownish text={message.text ?? ""} mentions={names} />
-              <Reactions
-                reactions={message.reactions}
-                onToggle={(emoji: string) => reactTo(roomId, message.id, emoji)}
-                nameOf={nameOfReactor}
-              />
             </div>
-            {verbs(speaker.name, true)}
-          </div>
+            <Reactions
+              reactions={message.reactions}
+              onToggle={(emoji: string) => reactTo(roomId, message.id, emoji)}
+              nameOf={nameOfReactor}
+            />
+            {verbs(speaker.name)}
+          </>
         )}
       </div>
     </div>
@@ -544,38 +571,10 @@ function RoomMessage({
 
 export function RoomView({ blok }: { blok: Blok }) {
   const { state, dispatch } = useStore();
-  // One view per room (App keys it), so a half-written line and a reply
-  // quote stay with the room they were written in. The line is kept when
-  // the room goes, and found again when it comes back.
-  const draftKey = `room:${blok.id}`;
-  const [text, setText] = useState(() => readDraft(draftKey).text);
-  const latestText = useRef(text);
-  latestText.current = text;
-  const mounted = useRef(true);
-  // a line a failed send hands back, into this box when it is the one on
-  // screen for this room (see showBox in lib/drafts)
-  const receive = (sent: Draft) => {
-    const back = takeBack({ text: latestText.current, attachments: [] }, sent);
-    if (back) setText(back.text);
-  };
-  const receiveRef = useRef(receive);
-  receiveRef.current = receive;
-  useEffect(() => {
-    mounted.current = true;
-    const hide = showBox(draftKey, (sent) => receiveRef.current(sent));
-    return () => {
-      mounted.current = false;
-      hide();
-      keepDraft(draftKey, { text: latestText.current, attachments: [] });
-    };
-  }, [draftKey]);
-  // Typing @ opens a list of the people in this room. Naming somebody is
-  // how a room decides who answers, so guessing the spelling should
-  // never be part of it: the list filters as you type, Tab or Enter
-  // completes, Escape gets out of the way.
+  // One view per room (App keys it). The box (room/RoomComposer.tsx)
+  // keeps its own words and files for the room; the view keeps the
+  // reply being written, since a message's own row starts it.
   const [closing, setClosing] = useState(false);
-  const [mentionAt, setMentionAt] = useState<number | null>(null);
-  const [mentionPick, setMentionPick] = useState(0);
   // Two ways to read the same transcript. A device preference rather than
   // a room setting: which one helps depends on what you are doing, not on
   // which room you are in.
@@ -593,13 +592,6 @@ export function RoomView({ blok }: { blok: Blok }) {
   };
   const [highlightId, setHighlightId] = useState<string | null>(null);
 
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  // the keyboard follows from the box this one replaced (lib/drafts)
-  useLayoutEffect(() => {
-    if (takeFocus()) inputRef.current?.focus();
-    const input = inputRef.current;
-    return () => carryFocus(Boolean(input) && document.activeElement === input);
-  }, [draftKey]);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [ownerName, setOwnerName] = useState<string | undefined>(undefined);
   const roomPeople = state.roomPeople[blok.id] ?? [];
@@ -635,30 +627,6 @@ export function RoomView({ blok }: { blok: Blok }) {
   // somebody, but the roster and the crown and the mention list all
   // describe the present.
   const answering = members.filter((m) => !m.archivedAt);
-  const mentionQuery =
-    mentionAt === null ? null : text.slice(mentionAt + 1, inputRef.current?.selectionStart ?? text.length);
-  const mentionable: Array<{ id: string; name: string; title?: string; bot?: Bot }> = [
-    ...answering.map((b) => ({ id: b.id, name: b.name, title: b.title, bot: b })),
-    ...roomPeople.map((p) => ({ id: p.id, name: p.name, title: p.role === "viewer" ? "Viewer" : "Collaborator" })),
-  ];
-  const mentionMatches =
-    mentionQuery === null || /\s/.test(mentionQuery)
-      ? []
-      : mentionable.filter((m) => m.name.toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 6);
-
-  /** Replace the half-typed @name with the chosen one. */
-  const completeMention = (name: string) => {
-    if (mentionAt === null) return;
-    const caret = inputRef.current?.selectionStart ?? text.length;
-    const next = `${text.slice(0, mentionAt)}@${name} ${text.slice(caret)}`;
-    setText(next);
-    setMentionAt(null);
-    requestAnimationFrame(() => {
-      const at = mentionAt + name.length + 2;
-      inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(at, at);
-    });
-  };
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [forwarding, setForwarding] = useState<{ message: Message; author: string } | null>(null);
   const [showRoutines, setShowRoutines] = useState(false);
@@ -730,34 +698,65 @@ export function RoomView({ blok }: { blok: Blok }) {
   // at work with nothing to read yet: one line says who
   const quiet = working.filter((m) => !voices.some((v) => v.bot.id === m.id));
 
-  // A handoff line was pressed: the message that made it, brought into
-  // view and lit for a moment.
+  // ── landing on a message ──
+  // A handoff line pressed, a topic found in the stream, or a message
+  // picked in the palette: the message is drawn (the whole room when it
+  // is above what is drawn, its fold opened when it is under one), then
+  // brought into view once it is on the page, and lit for a moment so
+  // the eye knows which line it was sent to.
+  const [landing, setLanding] = useState<{ id: string; nonce: number } | null>(null);
+  const landed = useRef<number | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
-  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(flashTimer.current), []);
   const reduced = useReducedMotion();
-  /** Brings a message into view: the whole room drawn when it is above
-   * what is drawn, and its fold opened when it is under one. */
-  const bringIntoView = (messageId: string, whole: boolean) => {
+  const land = (messageId: string, whole: boolean) => {
     const index = said.findIndex((m) => m.id === messageId);
     pinned.current = false;
     if (whole || (index !== -1 && index < start)) earlier.showAll();
     const fold = foldHolding(folded.rows, index);
     if (fold) setOpenFolds((open) => new Set(open).add(fold));
-    const scroller = scrollRef.current;
-    requestAnimationFrame(() => {
-      if (!scroller || scrollRef.current !== scroller) return;
-      scroller
-        .querySelector(`[data-room-msg="${messageId}"]`)
-        ?.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
-    });
+    setLanding({ id: messageId, nonce: Date.now() });
   };
-  const openHandoff = (handoff: Handoff) => {
-    bringIntoView(handoff.sourceId, false);
-    setFlashId(handoff.sourceId);
-    clearTimeout(flashTimer.current);
-    flashTimer.current = setTimeout(() => setFlashId(null), 1400);
-  };
+  useEffect(() => {
+    if (!landing || landed.current === landing.nonce) return;
+    const el = scrollRef.current;
+    const row = el?.querySelector(`[data-room-msg="${landing.id}"]`);
+    if (!el || !row) return;
+    landed.current = landing.nonce;
+    pinned.current = false;
+    // From far away at once, since a long glide is only waiting. From
+    // the very end at once too: the first steps of a glide up from there
+    // are still close enough to the end to read as following it, and the
+    // room would be taken straight back down.
+    const far = Math.abs(row.getBoundingClientRect().top - el.getBoundingClientRect().top) > el.clientHeight * 2;
+    const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    row.scrollIntoView({ block: "center", behavior: far || atEnd || reduced ? "auto" : "smooth" });
+    setFlashId(landing.id);
+  });
+  // the light is a moment, not a state
+  useEffect(() => {
+    if (!flashId) return;
+    const t = setTimeout(() => setFlashId(null), 1600);
+    return () => clearTimeout(t);
+  }, [flashId, landing]);
+  const openHandoff = (handoff: Handoff) => land(handoff.sourceId, false);
+
+  // Asks from outside, the palette's (src/lib/chatAsk.ts): taken once
+  // the message is in hand, and one further back than what has arrived
+  // is paged in until it is.
+  const [askTick, setAskTick] = useState(0);
+  useEffect(() => onAsk(() => setAskTick((n) => n + 1)), []);
+  useEffect(() => {
+    const ask = peekRoomAsk(blok.id);
+    if (!ask) return;
+    if (said.some((m) => m.id === ask.messageId)) {
+      takeAsk(ask);
+      // a message is found in the stream, where it can be answered
+      if (lens === "forum") setLensAnd("stream");
+      land(ask.messageId, false);
+    } else if (earlier.remaining > 0 && !earlier.loading) {
+      earlier.showEarlier();
+    }
+  }, [askTick, blok.id, said, earlier.remaining, earlier.loading]); // eslint-disable-line react-hooks/exhaustive-deps
   const handoffLine = (handoff: Handoff) => (
     <HandoffLine
       key={`handoff:${handoff.sourceId}:${handoff.toId}`}
@@ -777,18 +776,24 @@ export function RoomView({ blok }: { blok: Blok }) {
     !waiting.length &&
     said.every((m) => m.role === "bot" && !m.from && m.kind === "text");
   /** Puts @name in the box, for a member picked on the welcome. */
-  const mention = (name: string) => {
-    const base = text.trimEnd();
-    const next = base ? `${base} @${name} ` : `@${name} `;
-    setText(next);
-    setMentionAt(null);
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(next.length, next.length);
-    });
-  };
+  const [mentionAsk, setMentionAsk] = useState<{ name: string; nonce: number } | null>(null);
+  const mention = (name: string) => setMentionAsk({ name, nonce: Date.now() });
 
-  useStickToBottom(scrollRef, pinned);
+  const { away, toLatest } = useStickToBottom(scrollRef, pinned);
+  // What stood at the end the last time the reader was following it.
+  // What anyone else says after that, while they read further up, is
+  // what the way back counts as new: a member's words, or a person's in
+  // a shared room, and never a tool call or a notice.
+  const seenThrough = useRef<string | undefined>(undefined);
+  if (pinned.current) seenThrough.current = said[said.length - 1]?.id;
+  const seenAt = seenThrough.current ? said.findIndex((m) => m.id === seenThrough.current) : -1;
+  const freshBelow =
+    !away || seenAt < 0
+      ? 0
+      : said
+          .slice(seenAt + 1)
+          .filter((m) => !m.deleted && (m.role === "bot" ? Boolean(m.from) && (m.kind === "text" || m.kind === "options") : Boolean(m.author)))
+          .length;
 
   // When a turn ends its work folds, and the reply stays where it is on
   // screen for a reader who is not at the end. After the effect above:
@@ -816,42 +821,6 @@ export function RoomView({ blok }: { blok: Blok }) {
     if (!pinned.current) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [blok.id, said.length, waiting.length, working.length, voices.length]);
-
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    // Empty is one row (rows=1): measured, a placeholder too long for the
-    // line wraps and stands the box two rows tall before anything is typed.
-    if (!text) {
-      el.style.height = "";
-      return;
-    }
-    el.style.height = "0px";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [text]);
-
-  const send = () => {
-    if (!text.trim()) return;
-    const sent = { text: text.trim(), attachments: [] };
-    dispatch({
-      type: "sendToRoom",
-      blokId: blok.id,
-      text: sent.text,
-      replyTo: replyTo ?? undefined,
-      // a line that did not go comes back to the box, or to the room's
-      // kept draft when the room was left meanwhile
-      onFailed: () => {
-        if (mounted.current) return receive(sent);
-        const box = boxFor(draftKey);
-        if (box) return box(sent);
-        const back = takeBack(readDraft(draftKey), sent);
-        if (back) keepDraft(draftKey, back);
-      },
-    });
-    setText("");
-    latestText.current = "";
-    setReplyTo(null);
-  };
 
   // Named rather than inline, because the header shows them as buttons on
   // a desktop and as menu items on a phone, and the two must not drift.
@@ -934,19 +903,11 @@ export function RoomView({ blok }: { blok: Blok }) {
       }
       const showSpeaker = !prev || prev.from !== m.from || prev.role !== m.role;
       const answers = replyLabel(counts.get(m.id) ?? 0);
-      const lit = highlightId === m.id || flashId === m.id;
+      const lit = flashId === m.id;
       return [
         ...handoffsBefore(indices[i]),
         <div key={m.id} data-room-msg={m.id} className="relative isolate">
-          {/* the light behind a message found from elsewhere, faded in
-              and out rather than painted, so it costs no layout */}
-          <span
-            aria-hidden
-            className={cn(
-              "pointer-events-none absolute -inset-x-2 -inset-y-1 -z-10 rounded-2xl bg-brand/10 opacity-0 transition-opacity duration-300 ease-out",
-              lit && "opacity-100",
-            )}
-          />
+          <LandMark on={lit} />
           <RoomMessage
             message={m}
             members={members}
@@ -1087,6 +1048,7 @@ export function RoomView({ blok }: { blok: Blok }) {
         </div>
       )}
 
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={scrollRef}
         onScroll={earlier.onScroll}
@@ -1102,7 +1064,7 @@ export function RoomView({ blok }: { blok: Blok }) {
               setHighlightId(messageId);
               // the stream may be windowed to its tail, so the whole of
               // it is drawn rather than scrolling to something not there
-              bringIntoView(messageId, true);
+              land(messageId, true);
             }}
           />
         ) : fresh ? (
@@ -1170,9 +1132,18 @@ export function RoomView({ blok }: { blok: Blok }) {
         )}
       </div>
 
-      <WaitingStrip
-        messages={waiting}
-        threadId={blok.id}
+      <JumpToLatest show={away && lens === "stream" && !fresh} fresh={freshBelow} onJump={toLatest} />
+      </div>
+
+      <RoomComposer
+        blok={blok}
+        members={members}
+        answering={byLead(answering, lead)}
+        lead={answering.length > 1 ? lead : null}
+        working={working}
+        people={roomPeople}
+        ownerName={blok.sharing ? ownerName : undefined}
+        waiting={waiting}
         senderOf={(m) =>
           m.role === "bot"
             ? (members.find((b) => b.id === m.from)?.name ?? "An agent")
@@ -1182,98 +1153,15 @@ export function RoomView({ blok }: { blok: Blok }) {
                 ? (CHANNEL_NAMES[m.via] ?? "the linked chat")
                 : null
         }
-        working={working.length > 0}
+        replyTo={replyTo}
+        onClearReply={() => setReplyTo(null)}
+        mentionAsk={mentionAsk}
+        // what you send is followed to the end, wherever you were reading:
+        // the answers you are now waiting for arrive down there
+        onSent={() => {
+          if (!pinned.current) toLatest();
+        }}
       />
-      <div className="relative px-4 pb-4 pt-1 md:px-6 md:pb-5">
-        {replyTo && (
-          <div className="mx-auto mb-2 max-w-[var(--transcript-width,760px)]">
-            <ReplyChip draft={replyTo} onClear={() => setReplyTo(null)} />
-          </div>
-        )}
-        {mentionMatches.length > 0 && (
-          <div className="mx-auto mb-1.5 max-w-[var(--transcript-width,760px)]">
-            <div className="overflow-hidden rounded-xl border bg-popover p-1 shadow-lg shadow-(color:--shadow-color)">
-              {mentionMatches.map((m, i) => (
-                <button
-                  key={m.id}
-                  onMouseEnter={() => setMentionPick(i)}
-                  onClick={() => completeMention(m.name)}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors",
-                    i === mentionPick ? "bg-accent" : "hover:bg-accent/60",
-                  )}
-                >
-                  {m.bot ? <AgentAvatar bot={m.bot} size={22} /> : <PersonDot name={m.name} size={22} />}
-                  <span className="text-body font-medium text-foreground">{m.name}</span>
-                  {m.title && (
-                    <span className="truncate text-small text-muted-foreground">{m.title}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="mx-auto flex max-w-[var(--transcript-width,760px)] items-end gap-1 rounded-[22px] border bg-background p-1.5 pl-4 shadow-[0_1px_3px_var(--shadow-color)] transition-[border-color,box-shadow] duration-150 focus-within:border-ring/50">
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={text}
-            onChange={(e) => {
-              const value = e.target.value;
-              setText(value);
-              // an @ that starts a word opens the picker; anything that
-              // ends the word closes it again
-              const caret = e.target.selectionStart ?? value.length;
-              const at = value.lastIndexOf("@", caret - 1);
-              const startsWord = at === 0 || /\s/.test(value[at - 1] ?? "");
-              const stillTyping = at !== -1 && startsWord && !/\s/.test(value.slice(at + 1, caret));
-              setMentionAt(stillTyping ? at : null);
-              setMentionPick(0);
-            }}
-            onKeyDown={(e) => {
-              if (mentionMatches.length > 0) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  return setMentionPick((i) => (i + 1) % mentionMatches.length);
-                }
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  return setMentionPick((i) => (i - 1 + mentionMatches.length) % mentionMatches.length);
-                }
-                if (e.key === "Enter" || e.key === "Tab") {
-                  e.preventDefault();
-                  return completeMention(mentionMatches[mentionPick].name);
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  return setMentionAt(null);
-                }
-              }
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder={
-              replyTo ? `Reply to ${replyTo.author}…` : `Message ${blok.name}, or @name someone`
-            }
-            className="w-full min-w-0 resize-none self-center bg-transparent py-1 text-lead leading-relaxed text-foreground outline-none placeholder:truncate placeholder:text-muted-foreground placeholder-shown:overflow-hidden placeholder-shown:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]"
-          />
-          <button
-            onClick={send}
-            disabled={!text.trim()}
-            className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,opacity] duration-150 active:scale-95",
-              text.trim()
-                ? "bg-primary text-primary-foreground hover:opacity-90"
-                : "cursor-not-allowed bg-muted text-muted-foreground/60",
-            )}
-            title="Send"
-          >
-            <ArrowUp size={17} strokeWidth={2.4} />
-          </button>
-        </div>
-      </div>
       {forwarding && (
         <ForwardDialog
           message={forwarding.message}
