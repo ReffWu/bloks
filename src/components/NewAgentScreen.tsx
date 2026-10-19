@@ -38,6 +38,7 @@ import {
   type AgentTemplate,
 } from "@/lib/agentTemplates";
 import { BLOK_COLORS, BLOK_COLOR_NAMES, BLOK_SHAPES, type BlokColor, type BlokShape } from "@/lib/mascot";
+import { AvatarLanding, BeatHeading, BeatLabel as Label, PreviewCard, Stepper, beat } from "./Beats";
 import { TEAM_LIBRARY } from "@/lib/teamLibrary";
 import { BlokAvatar } from "./Avatar";
 import { BlockField } from "./Brand";
@@ -88,14 +89,6 @@ function randomIdentity(): { color: BlokColor; shape: BlokShape } {
     shape: BLOK_SHAPES[Math.floor(Math.random() * BLOK_SHAPES.length)],
   };
 }
-
-/** Quick, and over before the eye has finished moving: a beat changing is
- * a page turning, not a show. Reduce motion keeps only the fade. */
-const beat = {
-  initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.24, ease: [0.23, 1, 0.32, 1] as const } },
-  exit: { opacity: 0, y: -6, transition: { duration: 0.12, ease: "easeOut" as const } },
-};
 
 export function NewAgentScreen() {
   const { state, dispatch } = useStore();
@@ -426,7 +419,7 @@ export function NewAgentScreen() {
             </Button>
           ) : null}
         </div>
-        <Stepper step={step} ready={ready} onGo={goTo} />
+        <Stepper steps={STEPS} step={step} isOpen={(i) => i === 0 || ready} onGo={goTo} layoutId="new-agent-step" />
         <div className="flex items-center gap-1 justify-self-end">
           <Button variant="ghost" className="max-sm:hidden" onClick={() => fileRef.current?.click()} title="Import an agent from a file">
             <Upload size={14} />
@@ -534,9 +527,11 @@ export function NewAgentScreen() {
                 title={previewTitle}
                 greeting={greeting}
                 skills={previewSkills}
-                engine={engineLabel}
-                approvals={APPROVAL_MODES.find((m) => m.id === mode)?.label ?? "Ask first"}
-                folder={folder.trim() || defaults?.cwd || ""}
+                facts={[
+                  ["Engine", engineLabel],
+                  ["Asks", APPROVAL_MODES.find((m) => m.id === mode)?.label ?? "Ask first"],
+                  ["Works in", folder.trim() || defaults?.cwd || "Their own workspace"],
+                ]}
                 creating={creating}
                 empty={step === "job" && !ready}
               />
@@ -574,93 +569,6 @@ export function NewAgentScreen() {
 
       {arriving !== null && <ImportAgentDialog text={arriving} onClose={() => setArriving(null)} />}
       {hiring && <TeamHireDialog team={hiring} onClose={() => setHiring(null)} onHired={close} />}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-/** Where you are in the three beats; the ones already open are a click away. */
-function Stepper({ step, ready, onGo }: { step: Step; ready: boolean; onGo: (step: Step) => void }) {
-  const at = STEPS.findIndex((s) => s.id === step);
-  return (
-    <nav aria-label="Steps" className="flex items-center gap-1 rounded-full border bg-card/80 p-1 backdrop-blur-sm">
-      {STEPS.map((s, i) => {
-        const on = s.id === step;
-        const open = i === 0 || ready;
-        return (
-          <button
-            key={s.id}
-            onClick={() => open && onGo(s.id)}
-            disabled={!open}
-            aria-current={on ? "step" : undefined}
-            className={cn(
-              "relative flex h-7 items-center gap-1.5 rounded-full px-2.5 text-body font-medium outline-none transition-colors duration-150 disabled:opacity-45",
-              on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {on && (
-              <motion.span
-                layoutId="new-agent-step"
-                transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-                className="absolute inset-0 z-0 rounded-full bg-accent"
-              />
-            )}
-            <span
-              className={cn(
-                "relative z-[1] flex size-4 items-center justify-center rounded-full text-micro tabular-nums transition-colors duration-150",
-                i < at ? "bg-brand-ink text-brand-foreground" : on ? "bg-foreground text-background" : "border border-current",
-              )}
-            >
-              {i < at ? <Check size={9} strokeWidth={3} /> : i + 1}
-            </span>
-            <span className="relative z-[1] max-sm:hidden">{s.label}</span>
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
-/** A face that lands when it changes: a small settle, never a cut. */
-function AvatarLanding({
-  color,
-  shape,
-  size,
-  excited,
-}: {
-  color: BlokColor;
-  shape: BlokShape;
-  size: number;
-  excited?: boolean;
-}) {
-  return (
-    <motion.span
-      key={`${color}-${shape}`}
-      initial={{ scale: 0.86, opacity: 0.6 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: "spring", duration: 0.42, bounce: 0.4 }}
-      className="block shrink-0"
-    >
-      <BlokAvatar color={color} shape={shape} expression={excited ? "excited" : "friendly"} size={size} />
-    </motion.span>
-  );
-}
-
-function BeatHeading({ title, says }: { title: string; says: string }) {
-  return (
-    <header className="mb-7">
-      <h1 className="text-balance text-display font-semibold text-foreground">{title}</h1>
-      <p className="mt-1.5 text-pretty text-ui text-muted-foreground">{says}</p>
-    </header>
-  );
-}
-
-function Label({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
-  return (
-    <div className="mb-3 flex items-baseline justify-between gap-3">
-      <h2 className="text-body font-semibold text-foreground">{children}</h2>
-      {aside}
     </div>
   );
 }
@@ -1344,96 +1252,3 @@ function EngineOption({
   );
 }
 
-// ---------------------------------------------------------------------------
-
-/**
- * The agent as it will be, before it is: the face, the name and line, the
- * first thing it will say, and the few facts that decide how it works.
- * Everything chosen on the left lands here as it is chosen.
- */
-function PreviewCard({
-  identity,
-  name,
-  title,
-  greeting,
-  skills,
-  engine,
-  approvals,
-  folder,
-  creating,
-  empty,
-}: {
-  identity: { color: BlokColor; shape: BlokShape };
-  name: string;
-  title: string;
-  greeting: string;
-  skills: string[];
-  engine: string;
-  approvals: string;
-  folder: string;
-  creating: boolean;
-  empty: boolean;
-}) {
-  const shownSkills = skills.filter((s) => s.trim());
-  return (
-    <div className="overflow-hidden rounded-3xl border bg-card shadow-[0_12px_40px_-16px_var(--shadow-color)]">
-      {/* the agent's own colour, faint, behind its face */}
-      <div
-        className="relative flex flex-col items-center px-6 pb-5 pt-8 transition-[background-color] duration-300"
-        style={{ backgroundColor: `color-mix(in srgb, ${BLOK_COLORS[identity.color]} 13%, transparent)` }}
-      >
-        <motion.div
-          animate={creating ? { y: [0, -6, 0] } : { y: 0 }}
-          transition={creating ? { duration: 0.9, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}
-        >
-          <AvatarLanding color={identity.color} shape={identity.shape} size={88} excited={creating} />
-        </motion.div>
-        <div className="mt-4 w-full text-center">
-          <div className={cn("truncate text-title font-semibold tracking-tight", name ? "text-foreground" : "text-muted-foreground")}>
-            {name || "Your agent"}
-          </div>
-          <div className="mt-0.5 line-clamp-2 min-h-[20px] text-body text-muted-foreground">
-            {empty ? "Describe a job and they take shape here." : title || " "}
-          </div>
-        </div>
-      </div>
-
-      <div className="px-5 pb-5 pt-4">
-        {/* the first thing they will say, as it will look in the chat */}
-        <div className="text-small font-medium text-muted-foreground">First words</div>
-        <div className="mt-2 flex items-end gap-2">
-          <BlokAvatar color={identity.color} shape={identity.shape} expression="friendly" size={22} />
-          <div className="min-w-0 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-body leading-relaxed text-foreground">
-            <span className={cn(empty && "text-muted-foreground")}>{greeting}</span>
-          </div>
-        </div>
-
-        {shownSkills.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            {shownSkills.slice(0, 3).map((skill, i) => (
-              <span key={i} className="max-w-full truncate rounded-full border px-2.5 py-0.5 text-small text-muted-foreground">
-                {skill.split(":")[0].slice(0, 32)}
-              </span>
-            ))}
-            {shownSkills.length > 3 && (
-              <span className="rounded-full border px-2.5 py-0.5 text-small text-muted-foreground">+{shownSkills.length - 3}</span>
-            )}
-          </div>
-        )}
-
-        <dl className="mt-4 flex flex-col divide-y rounded-xl border text-small">
-          {[
-            ["Engine", engine],
-            ["Asks", approvals],
-            ["Works in", folder || "Their own workspace"],
-          ].map(([term, value]) => (
-            <div key={term} className="flex items-center justify-between gap-3 px-3 py-2">
-              <dt className="shrink-0 text-muted-foreground">{term}</dt>
-              <dd className="min-w-0 truncate text-right font-medium text-foreground">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </div>
-  );
-}
