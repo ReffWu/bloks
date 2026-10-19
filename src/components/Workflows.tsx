@@ -789,12 +789,19 @@ function Editor({
     setKeys(swap);
   };
 
+  // A new workflow written down by a try is kept switched off. One set off
+  // by messages would otherwise start firing on real ones before Create,
+  // and keep firing if you closed instead; a try runs it by hand, which
+  // works on a workflow that is off (server/index.ts, the run route).
+  // Create is what turns it on.
+  const [held, setHeld] = useState(false);
+
   /** Write the draft down, and carry on from what the server kept: it
    * names steps and trims words, and the next save starts from that. */
-  const persist = async (): Promise<Workflow> => {
+  const persist = async (enabled?: boolean): Promise<Workflow> => {
     // the space a pill leaves for the caret is for typing, not keeping
     const steps = draft.steps.map((s) => ({ ...s, text: s.text.replace(/[ \t]+$/, "") }));
-    const body = JSON.stringify({ ...draft, steps, id: undefined });
+    const body = JSON.stringify({ ...draft, steps, id: undefined, ...(enabled === undefined ? {} : { enabled }) });
     const saved = draft.id
       ? await api(`/api/workflows/${draft.id}`, { method: "PATCH", body })
       : await api("/api/workflows", { method: "POST", body });
@@ -806,13 +813,17 @@ function Editor({
   };
 
   const save = () => {
-    // nothing changed since the last save, so there is nothing to send
-    if (draft.id && !dirty) return onSaved();
+    // nothing changed since the last save, so there is nothing to send,
+    // unless a try left it switched off and this is the Create that means on
+    if (draft.id && !dirty && !held) return onSaved();
     if (!ready()) return;
     setBusy(true);
     setProblems([]);
-    persist()
-      .then(onSaved)
+    persist(held ? true : undefined)
+      .then(() => {
+        setHeld(false);
+        onSaved();
+      })
       .catch((e: Error) => setProblems([e.message]))
       .finally(() => setBusy(false));
   };
@@ -826,8 +837,17 @@ function Editor({
     setBusy(true);
     setProblems([]);
     setAsking(false);
-    // a try runs what is on screen, so what is on screen is saved first
-    (dirty || !draft.id ? persist() : Promise.resolve(draft))
+    // a try runs what is on screen, so what is on screen is saved first;
+    // a first save for a try is a switched-off one
+    const first = !draft.id;
+    const written =
+      dirty || first
+        ? persist(first ? false : undefined).then((kept) => {
+            if (first) setHeld(true);
+            return kept;
+          })
+        : Promise.resolve(draft);
+    written
       .then((saved) =>
         api(`/api/workflows/${saved.id}/run`, { method: "POST", body: JSON.stringify(text ? { text } : {}) }),
       )
@@ -864,6 +884,15 @@ function Editor({
       .then(() => setRun({ ...run, state: reply === "Approve" ? "running" : "stopped" }))
       .catch((e: Error) => setProblems([e.message]));
   };
+
+  // what a try will really do, said before it does it: a post in a room is
+  // the part other people may see
+  const postsIn = [
+    ...new Set(draft.steps.filter((s) => s.action === "post" && s.targetId).map((s) => rooms.find((r) => r.id === s.targetId)?.name ?? "a room")),
+  ];
+  const tryNote = held
+    ? "Saved and switched off. Create turns it on."
+    : `Try it runs it once for real${postsIn.length ? `, and posts in ${postsIn.length > 2 ? `${postsIn.slice(0, 2).join(", ")} and more` : postsIn.join(" and ")}` : ""}.${!draft.id && draft.trigger.kind !== "manual" ? " It stays off until you press Create." : ""}`;
 
   const close = () => {
     if (dirty && !confirm("Close without saving your changes?")) return;
@@ -1047,7 +1076,7 @@ function Editor({
                 problems.length ? "text-destructive" : attempted && firstProblem ? "text-warning" : "text-muted-foreground max-sm:hidden",
               )}
             >
-              {problems[0] ?? ((attempted && firstProblem) || "Try it runs the workflow for real.")}
+              {problems[0] ?? ((attempted && firstProblem) || tryNote)}
             </span>
             <div className="flex gap-2 max-sm:w-full">
               <Button
@@ -1055,12 +1084,12 @@ function Editor({
                 disabled={busy || (run !== null && !settled)}
                 onClick={() => ready() && (readsTrigger ? setAsking((v) => !v) : startTry(""))}
                 className="max-sm:flex-1"
-                title="Saves, then runs it for real"
+                title={draft.id && !held ? "Saves, then runs it once for real" : "Saves it switched off, then runs it once for real"}
               >
                 <Play size={13} /> Try it
               </Button>
               <Button disabled={busy} onClick={save} className="min-w-[96px] max-sm:flex-1">
-                {draft.id ? (dirty ? "Save" : "Done") : "Create"}
+                {draft.id && !held ? (dirty ? "Save" : "Done") : "Create"}
               </Button>
             </div>
           </footer>
