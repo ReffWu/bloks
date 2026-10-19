@@ -17,7 +17,7 @@ export function MobileNav() {
 
   // Going somewhere is what the drawer was opened for, so it closes on
   // arrival: a chat picked, a page opened from the rail.
-  const where = `${state.selectedId}|${state.page}|${state.appSettingsOpen}|${state.routinesOpen}`;
+  const where = `${state.selectedId}|${state.page}|${state.appSettingsOpen}|${state.routinesOpen}|${state.settingsOpen}`;
   useEffect(() => setOpen(false), [where]);
 
   const unread = state.bots.some((b) => !b.hidden && b.unread);

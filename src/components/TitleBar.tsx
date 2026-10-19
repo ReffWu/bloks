@@ -58,7 +58,8 @@ export function TitleBar() {
   const history = useNavHistory(state, dispatch);
   const sidebar = useChatSidebar();
   const mac = platformOf() === "mac";
-  const chat = !state.appSettingsOpen && !state.routinesOpen && !state.page;
+  // an agent's settings cover the chat sidebar too, so its toggle rests
+  const chat = !state.appSettingsOpen && !state.routinesOpen && !state.page && !state.settingsOpen;
 
   // ⌘[ and ⌘] as in a browser, and the mouse's own back and forward
   useEffect(() => {

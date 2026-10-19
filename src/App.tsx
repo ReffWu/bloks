@@ -14,7 +14,7 @@ import { TitleBar } from "@/components/TitleBar";
 import { MobileNav } from "@/components/MobileNav";
 import { ChatView } from "@/components/ChatView";
 import { NewAgentScreen } from "@/components/NewAgentScreen";
-import { SettingsPanel } from "@/components/SettingsPanel";
+import { AgentSettingsPage } from "@/components/SettingsPanel";
 import { RoomView } from "@/components/RoomView";
 import { NewRoomDialog } from "@/components/NewRoomDialog";
 import { ComputerPanel } from "@/components/ComputerPanel";
@@ -71,7 +71,10 @@ function Shell() {
   // The main rail is always there (beside a phone-narrow window's header
   // there is no room for it, and that header carries the same doors);
   // the chat's own sidebar only while Chat is the place.
-  const chatPlace = !state.appSettingsOpen && !state.routinesOpen && !state.page;
+  // An agent's settings are a page like the others, in the panel where
+  // its chat was, so they have the panel to themselves.
+  const agentSettings = state.settingsOpen && bot !== null && !room;
+  const chatPlace = !state.appSettingsOpen && !state.routinesOpen && !state.page && !agentSettings;
   return (
     <div className="relative flex h-full min-w-0 flex-col overflow-hidden bg-sidebar">
       <TitleBar />
@@ -91,6 +94,8 @@ function Shell() {
         <AutomationsPanel onClose={() => dispatch({ type: "toggleRoutines", open: false })} />
       ) : state.page ? (
         <RailPageView page={state.page} />
+      ) : agentSettings && bot ? (
+        <AgentSettingsPage key={bot.id} bot={bot} />
       ) : room ? (
         <RoomView key={room.id} blok={room} />
       ) : bot ? (
@@ -124,7 +129,6 @@ function Shell() {
       )}
       </div>
       </div>
-      {state.settingsOpen && bot && <SettingsPanel bot={bot} />}
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
       {state.newRoomOpen && <NewRoomDialog />}
       {state.newAgentOpen && <NewAgentScreen />}
