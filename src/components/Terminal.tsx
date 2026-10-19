@@ -1,42 +1,43 @@
-// The terminal panel: a place to type, in the folder the agent works in.
+// The terminal: a place to type, in the folder the agent works in.
 //
-// The shell lives on the server and outlives this component. Opening the
-// panel attaches to whatever is already running and replays what it
-// printed while you were away; closing it detaches and leaves the shell
-// alone. That is the point of it being here rather than a spawn per open:
-// a build you started is still going when you come back.
+// The shells live on the server and outlive this component. Opening the
+// panel attaches to whatever is already running and replays what each
+// shell printed while you were away; closing it detaches and leaves them
+// alone. That is the point of them being there rather than a spawn per
+// open: a build you started is still going when you come back.
 //
-// Output arrives as base64 over an event stream, because the stream is
-// bytes and a multi-byte character or an escape sequence split across two
-// frames would arrive broken. Input goes back as a POST per keystroke
-// burst, which is more requests than a socket would take and exactly as
-// many round trips, over loopback to this same machine.
-import { useEffect, useRef, useState } from "react";
+// An agent can have several shells, drawn as tabs. Every tab keeps its own
+// xterm alive while another is showing, laid out at full size and only
+// made invisible, so switching tabs is instant, nothing reflows, and a
+// hidden tab's screen is current the moment it is shown again.
+//
+// Output arrives as base64 on one event stream for all of an agent's
+// shells (useTerminalStream), because the stream is bytes and a multi-byte
+// character or an escape sequence split across two frames would arrive
+// broken. Input goes back as a POST per keystroke burst, which is more
+// requests than a socket would take and exactly as many round trips, over
+// loopback to this same machine.
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as Xterm, type ITheme } from "@xterm/xterm";
-import { Loader2 } from "@/components/icons";
-import { RotateCw } from "@/components/icons";
-import { X } from "@/components/icons";
 import "@xterm/xterm/css/xterm.css";
-import { api, type Bot } from "@/state/store";
+import { ArrowDown, Minimize2, Plus, X } from "@/components/icons";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
+import { HeaderButton, LayoutMenu, MoreMenu } from "@/components/terminal/TerminalMenus";
 import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/cn";
-
-interface TerminalInfo {
-  botId: string;
-  cwd: string;
-  shell: string;
-  pty: boolean;
-  provider: string;
-  cols: number;
-  rows: number;
-  startedAt: number;
-  exitedAt?: number;
-  exitCode?: number | null;
-}
+import { chordLabel, platformOf } from "@/lib/shortcuts";
+import { arrangeTerminal } from "@/lib/terminalLayout";
+import { activeAfterClose, stepTab, terminalChord } from "@/lib/terminalTabs";
+import { useTerminalLayout, useTerminalPrefs } from "@/lib/useTerminalSettings";
+import { terminalApi, useTerminalStream, type TerminalInfo, type TerminalScreen } from "@/lib/useTerminalStream";
 
 const MONO = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace';
+/** As many as the server allows one agent (MAX_PER_AGENT). */
+const MAX_TABS = 8;
 
 /** A colour the app uses, as something a canvas can paint with. A token
  * may be written in any form CSS accepts, so it is put on a real element
@@ -101,32 +102,46 @@ function themeFor(dark: boolean): ITheme {
   };
 }
 
-/** The last two parts of a path under a home tilde. A workspace folder is
- * named after an id nobody can read, so the whole thing in a header is
- * noise where the end of it is the answer. */
-function shorten(path: string): string {
-  const trimmed = path.replace(/\/+$/, "");
-  const parts = trimmed.split("/").filter(Boolean);
-  if (parts.length <= 2) return trimmed || path;
-  return `…/${parts.slice(-2).join("/")}`;
+/** What the panel can ask of one tab's screen. */
+interface ViewHandle {
+  focus(): void;
+  clear(): void;
+  size(): { cols: number; rows: number };
 }
 
-/** base64 off the wire to the bytes xterm decodes. */
-function decode(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void }) {
+/**
+ * One shell's screen. `info` is null for the moment before the first
+ * shell exists: the screen is drawn anyway, so it can be measured, and the
+ * shell is opened at exactly the size it will be shown at rather than at
+ * a guess that has to be corrected by typing a resize into it.
+ */
+function TerminalView({
+  botId,
+  info,
+  visible,
+  register,
+  onHandle,
+  onSized,
+  onRestart,
+}: {
+  botId: string;
+  info: TerminalInfo | null;
+  visible: boolean;
+  register: (id: string, screen: TerminalScreen) => () => void;
+  onHandle?: (handle: ViewHandle | null) => void;
+  onSized?: (cols: number, rows: number) => void;
+  onRestart?: () => void;
+}) {
+  const id = info?.id ?? null;
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<Xterm | null>(null);
-  const fit = useRef<FitAddon | null>(null);
-  const stream = useRef<EventSource | null>(null);
-  const [info, setInfo] = useState<TerminalInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [restarting, setRestarting] = useState(false);
+  const refit = useRef<() => void>(() => {});
+  const [prefs] = useTerminalPrefs();
+  const prefsNow = useRef(prefs);
+  prefsNow.current = prefs;
+  const callbacks = useRef({ onHandle, onSized });
+  callbacks.current = { onHandle, onSized };
+  const [away, setAway] = useState(false);
   const { resolvedTheme } = useTheme();
 
   useEffect(() => {
@@ -134,16 +149,27 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
     let live = true;
     let pending = "";
     let flushing: number | null = null;
+    // what the shell was last told its size is, so the same size is never
+    // typed into it twice
+    let told = info ? { cols: info.cols, rows: info.rows } : null;
+    const platform = platformOf();
+    // One request at a time, in order. Two in flight can arrive the other
+    // way round, and keystrokes out of order are a different command.
+    let sending: Promise<unknown> = Promise.resolve();
+    const send = (body: { data?: string; cols?: number; rows?: number }) => {
+      if (!id) return;
+      sending = sending.then(() => terminalApi.input(botId, id, body).catch(() => {}));
+    };
 
     const xterm = new Xterm({
       allowTransparency: false,
-      cursorBlink: true,
-      cursorStyle: "bar",
+      cursorBlink: prefsNow.current.cursorBlink,
+      cursorStyle: prefsNow.current.cursorStyle,
       fontFamily: MONO,
-      fontSize: 13,
+      fontSize: prefsNow.current.fontSize,
       lineHeight: 1.3,
       letterSpacing: 0,
-      scrollback: 10_000,
+      scrollback: prefsNow.current.scrollback,
       // the panel draws its own frame, so the terminal gets none
       theme: themeFor(document.documentElement.classList.contains("dark")),
     });
@@ -152,16 +178,41 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
     xterm.loadAddon(new WebLinksAddon());
     xterm.open(host.current);
     term.current = xterm;
-    fit.current = fitAddon;
+
+    // The app's own terminal keys (new tab, next tab and the rest) pass
+    // through to the panel instead of being typed into the shell. Every
+    // other key is the shell's.
+    xterm.attachCustomKeyEventHandler((event) => terminalChord(event, platform) === null);
+
+    const measureAway = () => {
+      const buffer = xterm.buffer.active;
+      setAway(buffer.viewportY < buffer.baseY);
+    };
+    xterm.onScroll(measureAway);
+    xterm.onWriteParsed(measureAway);
+
+    // Copy on select, when asked for: the selection is the clipboard, the
+    // way it is in a Linux terminal.
+    xterm.onSelectionChange(() => {
+      if (!prefsNow.current.copyOnSelect || !xterm.hasSelection()) return;
+      void navigator.clipboard?.writeText(xterm.getSelection()).catch(() => {});
+    });
+
+    const unregister = id
+      ? register(id, {
+          write: (bytes) => xterm.write(bytes),
+          reset: () => xterm.reset(),
+        })
+      : () => {};
 
     /**
      * Fit, but only against a box that has been laid out.
      *
-     * The drawer is inserted and this effect runs before the browser has
-     * given it a size, so fitting here measures nothing and the terminal
-     * comes up two columns wide, which is not a subtle failure: every
-     * line wraps to rubble. Nothing is fitted until the element has a
-     * width, and the session is not opened until it has been.
+     * The panel is inserted and this effect runs before the browser has
+     * given it a size, so fitting here can measure nothing and the
+     * terminal would come up two columns wide, which is not a subtle
+     * failure: every line wraps to rubble. Nothing is fitted until the
+     * element has a width.
      */
     const fitNow = (): boolean => {
       const box = host.current?.getBoundingClientRect();
@@ -173,6 +224,16 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
       }
       return true;
     };
+    /** Fit, and tell the shell if that changed its size. */
+    const tell = () => {
+      if (!live || !fitNow()) return;
+      const size = { cols: xterm.cols, rows: xterm.rows };
+      callbacks.current.onSized?.(size.cols, size.rows);
+      if (!id || (told && told.cols === size.cols && told.rows === size.rows)) return;
+      told = size;
+      send(size);
+    };
+    refit.current = tell;
 
     /** Keystrokes go out on the next tick: holding a key down should not
      * be one request per repeat. */
@@ -180,95 +241,63 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
       const data = pending;
       pending = "";
       flushing = null;
-      if (!data) return;
-      void api(`/api/bots/${bot.id}/terminal/input`, {
-        method: "POST",
-        body: JSON.stringify({ data }),
-      }).catch(() => {});
+      if (data) send({ data });
     };
     xterm.onData((data) => {
       pending += data;
       if (flushing === null) flushing = window.setTimeout(flush, 8);
     });
 
-    const listen = () => {
-      stream.current?.close();
-      const source = new EventSource(`/api/bots/${bot.id}/terminal/stream`);
-      source.onmessage = (event) => {
-        const frame = JSON.parse(event.data);
-        if (frame.hello || frame.bye) {
-          setInfo(frame.hello ?? frame.bye);
-          return;
-        }
-        if (typeof frame.b64 === "string") xterm.write(decode(frame.b64));
-      };
-      source.onerror = () => {
-        if (live) setError("Lost the connection to the shell.");
-      };
-      stream.current = source;
-    };
-
-    const open = async () => {
-      // Fit if the drawer already has a size, and do not wait around if
-      // it does not: eighty by twenty four is a sane terminal, and the
-      // observer below corrects it the moment there is a box to measure.
-      // Waiting on a frame would mean waiting forever in a window that is
-      // not on screen, because animation frames stop there.
-      fitNow();
-      try {
-        const { terminal } = await api(`/api/bots/${bot.id}/terminal`, {
-          method: "POST",
-          body: JSON.stringify({ cols: xterm.cols, rows: xterm.rows }),
-        });
-        if (!live) return;
-        setInfo(terminal);
-        setError(null);
-        listen();
-        xterm.focus();
-        // The drawer has certainly been laid out by now even if it had
-        // not when this started, so this is where the pty is told the
-        // size the panel actually is.
-        window.setTimeout(() => {
-          if (!live || !fitNow()) return;
-          void api(`/api/bots/${bot.id}/terminal/input`, {
-            method: "POST",
-            body: JSON.stringify({ cols: xterm.cols, rows: xterm.rows }),
-          }).catch(() => {});
-        }, 120);
-      } catch (e) {
-        if (live) setError((e as Error).message);
-      }
-    };
-    void open();
+    // Fit if the panel already has a size, and again once it certainly
+    // has. Waiting on an animation frame instead would wait forever in a
+    // window that is not on screen, because frames stop there.
+    tell();
+    const settled = window.setTimeout(tell, 120);
 
     // Resize follows the panel, debounced: the pty's size is a line typed
     // into the shell, not something to send on every frame of a drag.
     let settle: number | null = null;
     const observer = new ResizeObserver(() => {
       if (settle) window.clearTimeout(settle);
-      settle = window.setTimeout(() => {
-        if (!fitNow()) return;
-        void api(`/api/bots/${bot.id}/terminal/input`, {
-          method: "POST",
-          body: JSON.stringify({ cols: xterm.cols, rows: xterm.rows }),
-        }).catch(() => {});
-      }, 180);
+      settle = window.setTimeout(tell, 180);
     });
     observer.observe(host.current);
+
+    callbacks.current.onHandle?.({
+      focus: () => xterm.focus(),
+      clear: () => xterm.clear(),
+      size: () => ({ cols: xterm.cols, rows: xterm.rows }),
+    });
 
     return () => {
       live = false;
       if (flushing !== null) window.clearTimeout(flushing);
       if (settle) window.clearTimeout(settle);
+      window.clearTimeout(settled);
       observer.disconnect();
-      stream.current?.close();
-      stream.current = null;
+      unregister();
+      callbacks.current.onHandle?.(null);
+      refit.current = () => {};
       xterm.dispose();
       term.current = null;
-      fit.current = null;
     };
-    // one shell per agent: a different agent is a different terminal
-  }, [bot.id]);
+    // one xterm per shell; a restarted shell keeps its id and its screen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [botId, id, register]);
+
+  // Preferences change for every tab at once, live.
+  useEffect(() => {
+    const xterm = term.current;
+    if (!xterm) return;
+    xterm.options.cursorStyle = prefs.cursorStyle;
+    xterm.options.cursorBlink = prefs.cursorBlink;
+    xterm.options.scrollback = prefs.scrollback;
+    if (xterm.options.fontSize !== prefs.fontSize) {
+      xterm.options.fontSize = prefs.fontSize;
+      // a new cell size is a new number of columns
+      refit.current();
+    }
+  }, [prefs]);
 
   // The app's theme can change while this is open, and a terminal left in
   // the old one is the most obvious thing on the screen.
@@ -276,109 +305,529 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
     if (term.current) term.current.options.theme = themeFor(resolvedTheme === "dark");
   }, [resolvedTheme]);
 
-  /** Ends the shell and opens a new one. The way out of a wedged program
-   * without having to know which key it wants. */
-  const restart = async () => {
-    setRestarting(true);
-    try {
-      await api(`/api/bots/${bot.id}/terminal`, { method: "DELETE" }).catch(() => {});
-      term.current?.reset();
-      const { terminal } = await api(`/api/bots/${bot.id}/terminal`, {
-        method: "POST",
-        body: JSON.stringify({ cols: term.current?.cols ?? 80, rows: term.current?.rows ?? 24 }),
-      });
-      setInfo(terminal);
-      setError(null);
-      stream.current?.close();
-      const source = new EventSource(`/api/bots/${bot.id}/terminal/stream`);
-      source.onmessage = (event) => {
-        const frame = JSON.parse(event.data);
-        if (frame.hello || frame.bye) {
-          setInfo(frame.hello ?? frame.bye);
-          return;
-        }
-        if (typeof frame.b64 === "string") term.current?.write(decode(frame.b64));
-      };
-      stream.current = source;
-      term.current?.focus();
-    } finally {
-      setRestarting(false);
-    }
-  };
+  // Shown again: the box may have changed size while it was hidden.
+  useEffect(() => {
+    if (visible) refit.current();
+  }, [visible]);
 
-  const alive = Boolean(info && !info.exitedAt) && !error;
-
+  const exited = info?.exitedAt;
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-card">
-      <div className="flex h-[34px] shrink-0 items-center gap-2 px-2.5">
-        <span
-          aria-hidden
-          className={cn(
-            "size-1.5 shrink-0 rounded-full transition-colors duration-300",
-            alive ? "bg-success" : "bg-muted-foreground/40",
-          )}
-        />
-        <span className="shrink-0 text-small font-medium text-foreground">Terminal</span>
-        <span
-          title={info?.cwd}
-          className="min-w-0 flex-1 truncate font-mono text-caption text-muted-foreground"
-        >
-          {info ? shorten(info.cwd) : ""}
-        </span>
-        {info?.exitedAt ? (
-          <button
-            onClick={restart}
-            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-caption text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
-          >
-            {info.exitCode ? `exited ${info.exitCode}` : "exited"} · start a new one
-          </button>
-        ) : (
-          info &&
-          !info.pty && (
-            <span
-              title="Full screen programs won't work here."
-              className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-micro text-muted-foreground"
-            >
-              limited
-            </span>
-          )
-        )}
-        <button
-          onClick={restart}
-          disabled={restarting}
-          title="Restart shell"
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
-        >
-          {restarting ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
-        </button>
-        <button
-          onClick={onClose}
-          title="Close (the shell keeps running)"
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
-        >
-          <X size={13} />
-        </button>
-      </div>
-
-      {error && (
-        <div className="flex items-center justify-between gap-3 border-t bg-destructive/10 px-3 py-1.5 text-small text-destructive">
-          <span className="min-w-0 truncate">{error}</span>
-          <button onClick={restart} className="shrink-0 font-medium underline underline-offset-2">
-            Start a new one
-          </button>
-        </div>
-      )}
-
+    <div
+      role="tabpanel"
+      id={id ? `terminal-panel-${id}` : undefined}
+      aria-labelledby={id ? `terminal-tab-${id}` : undefined}
+      // invisible rather than unmounted or display:none, so a hidden tab
+      // keeps its size and its screen, and showing it moves nothing
+      className={cn("absolute inset-0 flex flex-col", !visible && "invisible")}
+    >
       {/* The host is what xterm measures to decide how many columns fit,
           so it carries no padding of its own: see .term-host in
           styles.css, where the room goes inside the terminal instead.
           Clicking anywhere in here means you want to type. */}
-      <div
-        className="term-host min-h-0 flex-1 overflow-hidden pb-1.5"
-        onMouseDown={() => term.current?.focus()}
-      >
+      <div className="term-host relative min-h-0 flex-1 overflow-hidden pb-1.5" onMouseDown={() => term.current?.focus()}>
         <div ref={host} className="h-full min-h-0 w-full overflow-hidden" />
+        <ScrollToBottom
+          show={visible && away}
+          onClick={() => {
+            term.current?.scrollToBottom();
+            term.current?.focus();
+          }}
+        />
+      </div>
+      {exited && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-muted/60 px-3 py-1.5 text-small text-muted-foreground">
+          <span className="min-w-0 truncate">
+            The shell exited{info?.exitCode ? ` with ${info.exitCode}` : ""}.
+          </span>
+          <button
+            type="button"
+            onClick={onRestart}
+            className="shrink-0 font-medium text-foreground underline underline-offset-2"
+          >
+            Start a new one
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The way back to the end of a terminal you scrolled up in. The same
+ * pill the conversation has (chat/JumpToLatest.tsx), in the corner so it
+ * never sits on the line being typed. */
+function ScrollToBottom({ show, onClick }: { show: boolean; onClick: () => void }) {
+  return (
+    <div className="pointer-events-none absolute bottom-3 right-4 z-10">
+      <AnimatePresence initial={false}>
+        {show && (
+          <motion.div
+            key="bottom"
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98, transition: { duration: 0.12, ease: "easeOut" } }}
+            transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+            className="pointer-events-auto rounded-full shadow-[0_6px_20px_-6px_var(--shadow-color)]"
+          >
+            <button
+              type="button"
+              onClick={onClick}
+              // keep the terminal's focus: a click here is not leaving it
+              onMouseDown={(e) => e.preventDefault()}
+              aria-label="Scroll to the bottom"
+              title="Scroll to the bottom"
+              className="flex size-8 items-center justify-center rounded-full border border-foreground/10 bg-background text-foreground transition-[background-color,scale] duration-150 ease-out hover:bg-accent active:scale-[0.96]"
+            >
+              <ArrowDown size={14} strokeWidth={2.25} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** Stands for whichever tab is open, in a request for the keyboard. */
+const OPEN_TAB = "*";
+
+/** The tab you had open for each agent, for as long as the app is. */
+const lastActive = new Map<string, string>();
+
+export type TerminalMode = "docked" | "fill" | "window";
+
+/**
+ * The panel: a strip of tabs, the menus, and the open tab's screen.
+ *
+ * Used in three places, which differ only in the header: docked beside
+ * the chat, covering the whole window, and alone in a window of its own,
+ * where there is nowhere to move it and the window's close is the close.
+ */
+export function TerminalPanel({
+  botId,
+  botName,
+  mode,
+  onClose,
+  onPopOut,
+  askNew = 0,
+  focusNonce = 0,
+}: {
+  botId: string;
+  botName: string;
+  mode: TerminalMode;
+  /** Hide the panel. The shells keep running. */
+  onClose: () => void;
+  onPopOut?: () => void;
+  /** Bumped to ask for a new tab (⌃⇧` while the panel was closed). */
+  askNew?: number;
+  /** Bumped to put the keyboard in the open tab, after the panel moved. */
+  focusNonce?: number;
+}) {
+  const { list, lost, register } = useTerminalStream(botId);
+  const [layout, setLayout] = useTerminalLayout();
+  const [prefs, setPrefs] = useTerminalPrefs();
+  const [active, setActiveState] = useState<string | null>(() => lastActive.get(botId) ?? null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const handles = useRef(new Map<string, ViewHandle>());
+  const size = useRef<{ cols: number; rows: number } | null>(null);
+  // the tab the keyboard should land in once its screen exists
+  const wantsFocus = useRef<string | null>(null);
+  const opening = useRef(false);
+  const closingLast = useRef(false);
+  const platform = platformOf();
+
+  const tabs = list ?? [];
+  const current = tabs.find((t) => t.id === active) ?? tabs[0] ?? null;
+  const ids = tabs.map((t) => t.id);
+
+  const setActive = useCallback(
+    (id: string | null) => {
+      if (id) lastActive.set(botId, id);
+      setActiveState(id);
+    },
+    [botId],
+  );
+
+  // Focus is asked for here and given after the render that shows the
+  // tab: a hidden tab's screen cannot take the keyboard, and the tab being
+  // switched to is still hidden at the moment it is chosen.
+  const [focusTick, setFocusTick] = useState(0);
+  // No id means whichever tab is open, once there is one: the panel can
+  // be asked for the keyboard before the server has said what its tabs are.
+  const focusTab = useCallback((id: string | null) => {
+    wantsFocus.current = id ?? OPEN_TAB;
+    setFocusTick((n) => n + 1);
+  }, []);
+  useEffect(() => {
+    const id = wantsFocus.current === OPEN_TAB ? (current?.id ?? null) : wantsFocus.current;
+    const handle = id ? handles.current.get(id) : undefined;
+    if (!handle || id !== current?.id) return;
+    wantsFocus.current = null;
+    handle.focus();
+  }, [focusTick, current?.id]);
+
+  // A different agent is a different set of tabs.
+  useEffect(() => {
+    setActiveState(lastActive.get(botId) ?? null);
+    size.current = null;
+    opening.current = false;
+    closingLast.current = false;
+  }, [botId]);
+
+  /** The first shell, opened at the size the pending screen measured. */
+  const ensure = useCallback(
+    (cols: number, rows: number) => {
+      size.current = { cols, rows };
+      if (opening.current || closingLast.current) return;
+      opening.current = true;
+      terminalApi
+        .ensure(botId, cols, rows)
+        .then(({ terminal }) => {
+          setActive(terminal.id);
+          focusTab(terminal.id);
+        })
+        .catch((e: Error) => toast.error(e.message))
+        .finally(() => {
+          opening.current = false;
+        });
+    },
+    [botId, setActive, focusTab],
+  );
+
+  const newTab = useCallback(async () => {
+    if (tabs.length >= MAX_TABS) {
+      toast(`${MAX_TABS} terminals is the most one agent can have open.`);
+      return;
+    }
+    const { cols, rows } = size.current ?? { cols: 80, rows: 24 };
+    try {
+      const { terminal } = await terminalApi.create(botId, cols, rows);
+      setActive(terminal.id);
+      focusTab(terminal.id);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }, [botId, tabs.length, setActive, focusTab]);
+
+  const closeTab = useCallback(
+    async (id: string) => {
+      const tab = tabs.find((t) => t.id === id);
+      if (!tab) return;
+      const busy = await terminalApi.busy(botId, id).catch(() => ({ running: false, command: undefined }));
+      if (busy.running) {
+        const yes = await confirm({
+          title: `Close ${tab.title}?`,
+          body: `${busy.command ? `${busy.command} is` : "Something is"} still running in it, and closing the tab ends it.`,
+          confirmLabel: "Close",
+          destructive: true,
+        });
+        if (!yes) return focusTab(current?.id ?? null);
+      }
+      const last = tabs.length === 1;
+      if (last) closingLast.current = true;
+      const next = activeAfterClose(ids, id, current?.id ?? null);
+      setActive(next);
+      try {
+        await terminalApi.close(botId, id);
+      } catch (e) {
+        closingLast.current = false;
+        toast.error((e as Error).message);
+        return;
+      }
+      if (last) onClose();
+      else focusTab(next);
+    },
+    [botId, tabs, ids, current, setActive, focusTab, onClose],
+  );
+
+  const rename = useCallback(
+    (id: string, title: string) => {
+      setRenaming(null);
+      const before = tabs.find((t) => t.id === id)?.title;
+      if (!title.trim() || title.trim() === before) return focusTab(id);
+      terminalApi.rename(botId, id, title).catch((e: Error) => toast.error(e.message));
+      focusTab(id);
+    },
+    [botId, tabs, focusTab],
+  );
+
+  const restart = useCallback(
+    async (id: string) => {
+      const { cols, rows } = handles.current.get(id)?.size() ?? size.current ?? { cols: 80, rows: 24 };
+      try {
+        await terminalApi.restart(botId, id, cols, rows);
+        focusTab(id);
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
+    },
+    [botId, focusTab],
+  );
+
+  const clear = useCallback(
+    (id: string) => {
+      handles.current.get(id)?.clear();
+      // and on the server, or the next time this is opened it all comes back
+      void terminalApi.clear(botId, id).catch(() => {});
+    },
+    [botId],
+  );
+
+  const select = (id: string) => {
+    setActive(id);
+    focusTab(id);
+  };
+
+  // The keys, while the panel is open. ⌃` itself belongs to the
+  // conversation, which is what shows and hides this.
+  const keys = useRef({ newTab, closeTab, select, ids, current, mode, setLayout });
+  keys.current = { newTab, closeTab, select, ids, current, mode, setLayout };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      const chord = terminalChord(e, platform);
+      if (!chord || chord === "toggle") return;
+      const k = keys.current;
+      const inside = Boolean(root.current?.contains(document.activeElement));
+      // closing is the one that ends something, so it is only heard from
+      // inside the terminal
+      if (chord === "close" && !inside) return;
+      if (chord === "fill" && k.mode === "window") return;
+      e.preventDefault();
+      if (chord === "new") void k.newTab();
+      else if (chord === "close" && k.current) void k.closeTab(k.current.id);
+      else if (chord === "next" || chord === "previous") {
+        const next = stepTab(k.ids, k.current?.id ?? null, chord === "next" ? 1 : -1);
+        if (next) k.select(next);
+      } else if (chord === "fill") k.setLayout((l) => arrangeTerminal(l, "fill"));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [platform]);
+
+  // ⌃⇧` while the panel was closed opened it; once the tabs are known, a
+  // new one is added unless the panel is about to open the first anyway.
+  const askedNew = useRef(0);
+  const loaded = list !== null;
+  useEffect(() => {
+    if (!loaded || askNew === askedNew.current) return;
+    askedNew.current = askNew;
+    if (tabs.length > 0) void newTab();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askNew, loaded]);
+
+  useEffect(() => {
+    if (focusNonce) focusTab(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce]);
+
+  // the title of a window that is only this terminal
+  useEffect(() => {
+    if (mode !== "window") return;
+    document.title = current ? `${current.title} · ${botName}` : `Terminal · ${botName}`;
+  }, [mode, current, botName]);
+
+  const fill = mode === "fill";
+  const mac = platform === "mac";
+  // Covering the whole window, the header is the window's handle, and in
+  // the Mac app it starts after the traffic lights (BUTTONS in
+  // electron/main.mjs) rather than under them.
+  const underLights = fill && mac && navigator.userAgent.includes("Electron");
+  const stepKeys = `${chordLabel(["Mod", "Shift", "["], platform)} ${chordLabel(["Mod", "Shift", "]"], platform)}`;
+
+  return (
+    <div
+      ref={root}
+      role="region"
+      aria-label={`Terminal for ${botName}`}
+      className="flex h-full min-h-0 w-full min-w-0 flex-col bg-card"
+    >
+      <div
+        className={cn(
+          "flex h-[38px] shrink-0 items-center gap-1 px-1.5",
+          fill && "titlebar-drag",
+          underLights && "pl-[84px]",
+        )}
+      >
+        <div
+          role="tablist"
+          aria-label="Terminal tabs"
+          aria-orientation="horizontal"
+          className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
+          onKeyDown={(e) => {
+            // the arrows move between tabs, as in any tab strip
+            if (!current || renaming) return;
+            const by = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+            if (by) {
+              e.preventDefault();
+              const next = stepTab(ids, current.id, by as 1 | -1);
+              if (next) {
+                setActive(next);
+                document.getElementById(`terminal-tab-${next}`)?.focus();
+              }
+            } else if (e.key === "Home" || e.key === "End") {
+              e.preventDefault();
+              const next = e.key === "Home" ? ids[0] : ids[ids.length - 1];
+              setActive(next);
+              document.getElementById(`terminal-tab-${next}`)?.focus();
+            } else if (e.key === "F2") {
+              e.preventDefault();
+              setRenaming(current.id);
+            }
+          }}
+        >
+          {tabs.map((tab) => {
+            const open = tab.id === current?.id;
+            if (renaming === tab.id) {
+              return <RenameField key={tab.id} title={tab.title} onDone={(title) => rename(tab.id, title)} />;
+            }
+            return (
+              <div key={tab.id} className="group relative flex shrink-0 items-center">
+                <button
+                  type="button"
+                  role="tab"
+                  id={`terminal-tab-${tab.id}`}
+                  aria-selected={open}
+                  aria-controls={`terminal-panel-${tab.id}`}
+                  tabIndex={open ? 0 : -1}
+                  onClick={() => select(tab.id)}
+                  onDoubleClick={() => setRenaming(tab.id)}
+                  title={`${tab.title}\n${tab.cwd}\nDouble-click to rename. ${stepKeys} to switch.`}
+                  className={cn(
+                    "flex h-7 max-w-[176px] items-center gap-1.5 rounded-md pl-2.5 pr-7 text-body outline-none transition-colors duration-150",
+                    open ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  )}
+                >
+                  {tab.exitedAt && (
+                    <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
+                  )}
+                  <span className="truncate">{tab.title}</span>
+                  {tab.exitedAt && <span className="sr-only">(exited)</span>}
+                </button>
+                <button
+                  type="button"
+                  // the keyboard closes a tab with ⌃⇧W or from the menu,
+                  // so these stay out of the tab order
+                  tabIndex={-1}
+                  aria-label={`Close ${tab.title}`}
+                  title={`Close ${tab.title}`}
+                  onClick={() => void closeTab(tab.id)}
+                  className={cn(
+                    "absolute right-1 flex size-5 items-center justify-center rounded text-muted-foreground transition-[opacity,background-color,color] duration-150 hover:bg-foreground/10 hover:text-foreground",
+                    open ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                  )}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <HeaderButton label="New terminal tab" onClick={() => void newTab()} disabled={!loaded || tabs.length >= MAX_TABS}>
+          <Plus size={16} />
+        </HeaderButton>
+        <div className="min-w-2 flex-1 self-stretch" />
+        {current && !current.pty && (
+          <span
+            title="Full screen programs won't work here."
+            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-micro text-muted-foreground"
+          >
+            limited
+          </span>
+        )}
+        <MoreMenu
+          prefs={prefs}
+          onPrefs={setPrefs}
+          hasTab={Boolean(current)}
+          onClear={() => current && clear(current.id)}
+          onRestart={() => current && void restart(current.id)}
+          onRename={() => current && setRenaming(current.id)}
+          onCloseTab={() => current && void closeTab(current.id)}
+          onClosed={() => !renaming && focusTab(current?.id ?? null)}
+        />
+        {mode !== "window" && (
+          <LayoutMenu
+            layout={layout}
+            onLayout={setLayout}
+            onPopOut={onPopOut}
+            onClosed={() => focusTab(current?.id ?? null)}
+          />
+        )}
+        {fill && (
+          <HeaderButton label="Leave the full window" onClick={() => setLayout((l) => arrangeTerminal(l, "fill"))}>
+            <Minimize2 size={15} />
+          </HeaderButton>
+        )}
+        {mode !== "window" && (
+          <HeaderButton label="Hide the terminal (its shells keep running)" onClick={onClose}>
+            <X size={16} />
+          </HeaderButton>
+        )}
+      </div>
+
+      {lost && (
+        <div role="status" className="shrink-0 border-t bg-destructive/10 px-3 py-1.5 text-small text-destructive">
+          Lost the connection to the shells. Trying again.
+        </div>
+      )}
+
+      <div className="relative min-h-0 flex-1">
+        {loaded && tabs.length === 0 && (
+          // Nothing open yet: a screen to measure, and the first shell is
+          // opened at its size (see TerminalView).
+          <TerminalView key="first" botId={botId} info={null} visible register={register} onSized={ensure} />
+        )}
+        {tabs.map((tab) => (
+          <TerminalView
+            key={tab.id}
+            botId={botId}
+            info={tab}
+            visible={tab.id === current?.id}
+            register={register}
+            onSized={(cols, rows) => {
+              if (tab.id === current?.id) size.current = { cols, rows };
+            }}
+            onHandle={(handle) => {
+              if (handle) {
+                handles.current.set(tab.id, handle);
+                if (wantsFocus.current === tab.id || wantsFocus.current === OPEN_TAB) setFocusTick((n) => n + 1);
+              } else handles.current.delete(tab.id);
+            }}
+            onRestart={() => void restart(tab.id)}
+          />
+        ))}
       </div>
     </div>
+  );
+}
+
+/** A tab being renamed: Enter or leaving keeps the name, Escape does not. */
+function RenameField({ title, onDone }: { title: string; onDone: (title: string) => void }) {
+  const done = useRef(false);
+  const finish = (value: string) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(value);
+  };
+  return (
+    <input
+      autoFocus
+      defaultValue={title}
+      aria-label="Tab name"
+      maxLength={40}
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={(e) => finish(e.currentTarget.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          finish(e.currentTarget.value);
+        } else if (e.key === "Escape") {
+          // handled here, so it neither closes the panel nor the window
+          e.preventDefault();
+          finish(title);
+        }
+      }}
+      className="h-7 w-[150px] shrink-0 rounded-md border bg-background px-2 text-body text-foreground outline-none"
+    />
   );
 }

@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld("bloks", {
   shortcutApply: (accelerator) => ipcRenderer.invoke("shortcut:apply", accelerator),
   quickHide: () => ipcRenderer.invoke("quick:hide"),
   quickOpenMain: () => ipcRenderer.invoke("quick:open-main"),
+  // an agent's terminal in a window of its own (electron/terminal-window.mjs)
+  terminalWindow: (botId) => ipcRenderer.invoke("terminal:window", botId),
   onQuickOpened: subscription("quick:opened"),
   onNotifyActivate: subscription("notify:activate"),
   // bloks:// links from the website (electron/main.mjs)

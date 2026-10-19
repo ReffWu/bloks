@@ -32,6 +32,8 @@ const FIELDS = {
   "terminal.height": nonnegative,
   "terminal.open": boolean,
   "terminal.savedHeight": nullableNumber,
+  "terminal.position": oneOf("left", "right", "top", "bottom"),
+  "terminal.arrangement": oneOf("docked", "split", "fill"),
   "room.lens": oneOf("stream", "forum"),
   "room.savedLens": oneOf("stream", "forum", null),
   "viewport.width": nonnegative,

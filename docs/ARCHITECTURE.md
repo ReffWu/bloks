@@ -1545,6 +1545,34 @@ stretch of speech is a segment. The renderer posts segments to
 turn in its Meetings lane with `notesPrompt`, and `actionItems` reads
 "- Owner: task" lines back out of the reply for one-press handoff.
 
+## Terminals
+
+`server/terminal.ts` keeps up to eight shells per agent, each in the
+agent's folder, each with an id, a name ("Terminal 2" until renamed) and
+its own scrollback, in the order they were opened. They outlive the panel
+and are ended when the tab is closed, when the agent is archived, or
+after eight hours with nobody watching. The pty comes from `expect`,
+`python3` or `script`; a resize sets the pty's size from outside with
+`stty -f` on its device, and falls back to typing `stty` into the shell
+only where the device cannot be found.
+
+The routes are local only. `/api/bots/:id/terminals` lists and opens;
+`/terminals/:sid` reads, renames (PATCH) and closes (DELETE);
+`/terminals/:sid/input`, `/restart`, `/clear` and `/busy` do what they say,
+`busy` reading the pty's foreground process group so a tab can ask before
+it ends a running program. `/terminals/stream` is one event stream for
+every shell an agent has, frames tagged with the shell's id, so tabs never
+cost a connection each. The older `/api/bots/:id/terminal` routes act on
+the first shell.
+
+In the app (`src/components/Terminal.tsx` and `src/components/terminal/`)
+every tab keeps its xterm alive while hidden. The panel is drawn once into
+a detached element that moves between slots on each side of the chat, a
+full-window overlay, or, in the desktop app, a window of its own
+(`?terminal=<agent>`, `electron/terminal-window.mjs`), so moving it never
+rebuilds a screen. Where it sits and how it draws are kept in
+localStorage (`src/lib/terminalLayout.ts`, `src/lib/terminalPrefs.ts`).
+
 ## Recall and notes about the person
 
 `server/recall.ts` searches an agent's own lanes, the rooms it is in and

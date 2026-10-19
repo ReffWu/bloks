@@ -2,8 +2,9 @@
 // to one part of it, and the sheet that lists every key there is.
 //
 // The other window-wide keys stay with what they open (⌘K in the
-// palette, ⌘N in the sidebar, ⌘F in the conversation), and so does
-// Ctrl+Tab, in Switcher.tsx. What they all have in common is the list in
+// palette, ⌘N in the sidebar, ⌘F and ⌃` in the conversation, a terminal
+// tab's keys in the terminal panel), and so does Ctrl+Tab, in
+// Switcher.tsx. What they all have in common is the list in
 // src/lib/shortcuts.ts, which is what the sheet draws.
 //
 // Nothing here moves. Stepping through the sidebar is something people do

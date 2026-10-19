@@ -272,7 +272,15 @@ import {
   textOf,
   themeFrom,
 } from "./mcp-apps.ts";
-import { MAX_INPUT_BYTES, TerminalStore, clampCols, clampRows } from "./terminal.ts";
+import {
+  MAX_INPUT_BYTES,
+  MAX_PER_AGENT as MAX_TERMINALS_PER_AGENT,
+  TerminalLimitError,
+  TerminalStore,
+  clampCols,
+  clampRows,
+  type TerminalSession,
+} from "./terminal.ts";
 import { WebhookStore, cleanThread, webhookMessage } from "./webhooks.ts";
 import {
   WorkflowStore,
@@ -642,9 +650,29 @@ const artifactComments = new ArtifactCommentStore();
 // fails because of it: a record is worth having and never worth losing
 // an action over.
 const ledger = new Ledger();
-// Shells, one per agent, in the folder that agent works in. Local only:
-// see the route.
+// Shells, a few per agent, in the folder that agent works in. Local only:
+// see the routes.
 const terminals = new TerminalStore();
+
+/** Where an agent's shells open: its chosen folder if it has one, its own
+ * workspace if not, which is the same rule a turn runs under. */
+function terminalFolder(bot: BotRecord): string {
+  return bot.cwd || workspace.ensureWorkspace(bot.id);
+}
+
+/** Keystrokes for a shell, a new size for it, or both. */
+function terminalInput(res: ServerResponse, session: TerminalSession, body: Record<string, unknown>) {
+  if (typeof body.data === "string") {
+    if (Buffer.byteLength(body.data, "utf8") > MAX_INPUT_BYTES) {
+      return json(res, 413, { error: "that is more than a terminal takes at once" });
+    }
+    if (!session.write(body.data)) return json(res, 409, { error: "the shell has gone" });
+  }
+  if (body.cols !== undefined || body.rows !== undefined) {
+    session.resize(clampCols(body.cols ?? session.cols), clampRows(body.rows ?? session.rows));
+  }
+  return json(res, 200, { ok: true });
+}
 // Our own connection to a registered MCP server, for the app's sake
 // rather than a turn's: an engine calls these servers during a turn and
 // never shows us either side of it.
@@ -18718,30 +18746,171 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
 
     // ── skills (markdown instruction sets, shared across agents) ──
-    // ── a terminal, in the agent's folder ──
+    // ── terminals, in the agent's folder ──
     // Local only, every one of them. This is a shell on this Mac with
     // this account's privileges, and a paired phone reaching it over the
     // relay would be a remote shell on somebody's laptop. Whatever else
     // pairing is for, it is not for that.
+    //
+    // An agent can have several (tabs), each with an id. The routes under
+    // /terminals name one by that id; the older /terminal routes below
+    // them mean the agent's first, so a client that only knows about one
+    // shell keeps working.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/terminals$/);
+    if (m && method === "GET") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such agent" });
+      return json(res, 200, { terminals: terminals.list(m[1]), max: MAX_TERMINALS_PER_AGENT });
+    }
+    if (m && method === "POST") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      if (bot.archivedAt) return json(res, 409, { error: `${bot.name} is archived` });
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      try {
+        const session = terminals.create({
+          botId: bot.id,
+          cwd: terminalFolder(bot),
+          cols: clampCols(body.cols),
+          rows: clampRows(body.rows),
+          now: Date.now(),
+          title: typeof body.title === "string" ? body.title : undefined,
+        });
+        return json(res, 200, { terminal: session.info() });
+      } catch (e) {
+        if (e instanceof TerminalLimitError) return json(res, 409, { error: e.message });
+        return json(res, 500, { error: e instanceof Error ? e.message : "no terminal" });
+      }
+    }
+
+    // Every one of an agent's shells on one stream. One per shell would be
+    // simpler and would not work: a browser holds six connections to a
+    // server at once, the app's own event stream is one of them, and a
+    // seventh request waits for one to close, which an event stream never
+    // does. Five tabs would have hung the whole app. So the frames carry
+    // the shell's id, and the stream also says when the tabs themselves
+    // change, which is how a second window sees a tab opened in the first.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/terminals\/stream$/);
+    if (m && method === "GET") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const botId = m[1];
+      if (!store.bot(botId)) return json(res, 404, { error: "no such agent" });
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      const send = (frame: unknown) => {
+        try {
+          res.write(`data: ${JSON.stringify(frame)}\n\n`);
+        } catch {
+          /* the client went away mid-write; the close handler tidies up */
+        }
+      };
+      const sendList = () => send({ list: terminals.list(botId) });
+      const attached = new Map<string, () => void>();
+      const attachTo = (session: TerminalSession, fresh: boolean) => {
+        attached.get(session.id)?.();
+        const { replay, detach } = session.attach(
+          // base64, because the stream is bytes and SSE is lines
+          (chunk) => send({ id: session.id, b64: chunk.toString("base64") }),
+          () => send({ id: session.id, bye: session.info() }),
+        );
+        attached.set(session.id, detach);
+        // a restarted shell is a new screen in the same tab
+        if (fresh) send({ id: session.id, reset: true });
+        send({ id: session.id, hello: session.info() });
+        if (replay.length) send({ id: session.id, b64: replay.toString("base64") });
+      };
+      sendList();
+      for (const session of terminals.sessions(botId)) attachTo(session, false);
+      const unwatch = terminals.watch(botId, (event) => {
+        if (event.kind === "opened") attachTo(event.session, false);
+        else if (event.kind === "replaced") attachTo(event.session, true);
+        else if (event.kind === "closed") {
+          attached.get(event.id)?.();
+          attached.delete(event.id);
+          send({ id: event.id, closed: true });
+        }
+        sendList();
+      });
+      const keepalive = setInterval(() => {
+        try {
+          res.write(": keepalive\n\n");
+        } catch {}
+      }, 25_000);
+      req.on("close", () => {
+        clearInterval(keepalive);
+        unwatch();
+        for (const detach of attached.values()) detach();
+        attached.clear();
+      });
+      return;
+    }
+
+    m = path.match(/^\/api\/bots\/([\w-]+)\/terminals\/([\w-]+)$/);
+    if (m && (method === "GET" || method === "PATCH" || method === "DELETE")) {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const session = terminals.get(m[1], m[2]);
+      if (!session) return json(res, 404, { error: "no such terminal" });
+      if (method === "GET") return json(res, 200, { terminal: session.info() });
+      if (method === "DELETE") {
+        terminals.close(m[1], m[2]);
+        return json(res, 200, { ok: true });
+      }
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const renamed = terminals.rename(m[1], m[2], body.title);
+      if (!renamed) return json(res, 400, { error: "a terminal needs a name" });
+      return json(res, 200, { terminal: renamed.info() });
+    }
+
+    m = path.match(/^\/api\/bots\/([\w-]+)\/terminals\/([\w-]+)\/(input|busy|restart|clear)$/);
+    if (m && ((m[3] === "busy" && method === "GET") || (m[3] !== "busy" && method === "POST"))) {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const session = terminals.get(m[1], m[2]);
+      if (!session) return json(res, 404, { error: "no such terminal" });
+      if (m[3] === "busy") return json(res, 200, await session.foreground());
+      if (m[3] === "clear") {
+        session.clearScrollback();
+        return json(res, 200, { ok: true });
+      }
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      if (m[3] === "restart") {
+        const bot = store.bot(m[1]);
+        if (!bot) return json(res, 404, { error: "no such agent" });
+        if (bot.archivedAt) return json(res, 409, { error: `${bot.name} is archived` });
+        const fresh = terminals.restart(m[1], m[2], {
+          cwd: terminalFolder(bot),
+          cols: clampCols(body.cols ?? session.cols),
+          rows: clampRows(body.rows ?? session.rows),
+          now: Date.now(),
+        });
+        return fresh ? json(res, 200, { terminal: fresh.info() }) : json(res, 404, { error: "no such terminal" });
+      }
+      return terminalInput(res, session, body);
+    }
+
+    // The single-shell routes, from before there were tabs: each means the
+    // agent's first shell.
     m = path.match(/^\/api\/bots\/([\w-]+)\/terminal$/);
     if (m && method === "POST") {
       if (!local) return json(res, 403, { error: "not from here" });
       const bot = store.bot(m[1]);
       if (!bot) return json(res, 404, { error: "no such agent" });
+      if (bot.archivedAt) return json(res, 409, { error: `${bot.name} is archived` });
       const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
-      // the agent's chosen folder if it has one, its own workspace if not,
-      // which is the same rule a turn runs under
-      const cwd = bot.cwd || workspace.ensureWorkspace(bot.id);
       try {
         const session = terminals.open({
           botId: bot.id,
-          cwd,
+          cwd: terminalFolder(bot),
           cols: clampCols(body.cols),
           rows: clampRows(body.rows),
           now: Date.now(),
         });
         return json(res, 200, { terminal: session.info() });
       } catch (e) {
+        if (e instanceof TerminalLimitError) return json(res, 409, { error: e.message });
         return json(res, 500, { error: e instanceof Error ? e.message : "no terminal" });
       }
     }
@@ -18752,7 +18921,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
     if (m && method === "DELETE") {
       if (!local) return json(res, 403, { error: "not from here" });
-      terminals.close(m[1]);
+      // the first shell only: the others are tabs this client never knew about
+      const first = terminals.get(m[1]);
+      if (first) terminals.close(m[1], first.id);
       return json(res, 200, { ok: true });
     }
 
@@ -18762,21 +18933,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const session = terminals.get(m[1]);
       if (!session) return json(res, 409, { error: "no terminal open" });
       const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
-      if (typeof body.data === "string") {
-        if (Buffer.byteLength(body.data, "utf8") > MAX_INPUT_BYTES) {
-          return json(res, 413, { error: "that is more than a terminal takes at once" });
-        }
-        if (!session.write(body.data)) return json(res, 409, { error: "the shell has gone" });
-      }
-      if (body.cols !== undefined || body.rows !== undefined) {
-        session.resize(clampCols(body.cols ?? session.cols), clampRows(body.rows ?? session.rows));
-      }
-      return json(res, 200, { ok: true });
+      return terminalInput(res, session, body);
     }
 
-    // The output, as its own stream. Not the app's event bus: this is one
-    // client watching one shell, and terminal bytes have no business in a
-    // ring buffer every other client replays.
+    // The first shell's output, as its own stream. Not the app's event
+    // bus: this is one client watching one shell, and terminal bytes have
+    // no business in a ring buffer every other client replays.
     m = path.match(/^\/api\/bots\/([\w-]+)\/terminal\/stream$/);
     if (m && method === "GET") {
       if (!local) return json(res, 403, { error: "not from here" });
