@@ -240,6 +240,7 @@ import {
   refusal,
   targetsOf,
 } from "./policy.ts";
+import { RuleSuggestionStore, ruleFor, type Suggestion } from "./rule-suggestions.ts";
 import {
   ProposalStore,
   fingerprintOf,
@@ -638,6 +639,18 @@ function suggestNote(bot: BotRecord, text: unknown, laneId?: string | null): str
 }
 const policy = new PolicyStore();
 const wheel = new Wheel();
+// What the person keeps approving, so Bloks can offer to make it a rule
+// (server/rule-suggestions.ts). Suggestions are read from it on demand.
+const habits = new RuleSuggestionStore();
+
+/** What to offer now: the habits of agents that can still act. */
+function ruleSuggestions(now = Date.now()): Suggestion[] {
+  return habits.suggestions({
+    rules: policy.list(),
+    now,
+    agents: store.bots.filter((b) => !b.archivedAt && !b.hidden).map((b) => ({ id: b.id, name: b.name })),
+  });
+}
 
 /** A project with the disk's opinion of its folders attached. */
 function standingOf(project: Project): ProjectStanding {
@@ -2252,6 +2265,8 @@ function makeBrief(now = Date.now()): Brief {
         { label: "rehearsal", count: rehearsals.all().filter((r) => r.state === "ready").length },
         { label: "note about you", many: "notes about you", count: profileNotes.suggested().length },
         { label: "suggested skill", count: proposals.list().length },
+        // approvals the person keeps giving, which a rule could answer
+        { label: "rule suggestion", count: ruleSuggestions(now).length },
       ],
     },
     newId(),
@@ -2479,6 +2494,10 @@ const askEngineByRequest = new Map<string, string>();
 /** A collaborator who answered an approval, by request, so the record and
  * the card say who decided rather than "you". */
 const decidedByMember = new Map<string, string>();
+/** What each live approval asked to do, read the way a rule reads it,
+ * for the owner's own requests only: the person's answer to one of these
+ * is what a rule suggestion is made from (server/rule-suggestions.ts). */
+const askTargets = new Map<string, { botId: string; tool: string; command?: string; path?: string; url?: string }>();
 /** The asks settled in this run, the latest few hundred, with where each
  * one's card is. An answer that arrives after (another window, a phone
  * that had not heard yet) is told so beside the card it was pressed on. */
@@ -2498,6 +2517,7 @@ function forgetAsk(requestId: string) {
   askThreadByRequest.delete(requestId);
   askEngineByRequest.delete(requestId);
   decidedByMember.delete(requestId);
+  askTargets.delete(requestId);
 }
 
 /** What a card says under its question once it closed with nobody having
@@ -3009,6 +3029,16 @@ bus.subscribe((event: RuntimeEvent) => {
       if (event.requestId) {
         askMessageByRequest.set(event.requestId, message.id);
         askCardThread.set(event.requestId, roomId);
+        // The owner's own approval, naming one thing: what a habit is made
+        // of. Not a question, and not one somebody else asked for, whose
+        // answer is the owner deciding for them.
+        if (!asking && event.tool && !byMember && !byMail && !telegramPerson) {
+          const named = targetsOf(event.tool, (event.input as Record<string, unknown>) ?? {}, { botId: bot.id, agent: bot.name });
+          if (named.length === 1) {
+            const { command, path, url } = named[0];
+            askTargets.set(event.requestId, { botId: bot.id, tool: named[0].tool, ...(command ? { command } : {}), ...(path ? { path } : {}), ...(url ? { url } : {}) });
+          }
+        }
         // answers must reach the lane that asked, not the active one
         askThreadByRequest.set(event.requestId, event.threadId);
         if (event.providerInstanceId) askEngineByRequest.set(event.requestId, event.providerInstanceId);
@@ -3088,6 +3118,15 @@ bus.subscribe((event: RuntimeEvent) => {
             );
           }
           const decider = event.requestId ? decidedByMember.get(event.requestId) : undefined;
+          // The person's own yes or no, kept for noticing a habit. A
+          // timeout, a turn ending or the engine closing it decided
+          // nothing, and neither did a collaborator.
+          const target = event.requestId ? askTargets.get(event.requestId) : undefined;
+          if (target && event.source === "user" && !decider && (event.behavior === "allow" || event.behavior === "deny")) {
+            const now = Date.now();
+            habits.note({ at: now, ...target, answer: event.behavior }, now);
+            broadcast({ kind: "suggestions" });
+          }
           const patched = store.patchMessage(cardThread, messageId, {
             card:
               event.source === "user"
@@ -13491,6 +13530,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       watchers = watchers.filter((x) => x.botId !== bot.id);
       saveWatchers();
       policy.removeForBot(bot.id);
+      habits.forgetBot(bot.id);
       artifactComments.removeForBot(bot.id);
       projects.removeMember(bot.id);
       bloks.removeMember(bot.id);
@@ -18352,6 +18392,52 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         detail: { rule: rule.id, effect: rule.effect },
       });
       broadcast({ kind: "rules" });
+      return json(res, 201, { rule: { ...rule, summary: describeRule(rule) } });
+    }
+    // What the person keeps approving, offered as a rule
+    // (server/rule-suggestions.ts). The same list the desktop shows in an
+    // agent's tray and in Settings, the phone shows, and the morning
+    // brief counts. Taking one writes an ordinary rule, which then reads,
+    // switches off and goes away like any other.
+    if (method === "GET" && path === "/api/rules/suggestions") {
+      return json(res, 200, { suggestions: ruleSuggestions() });
+    }
+    m = path.match(/^\/api\/rules\/suggestions\/([a-f0-9]{16})\/(accept|dismiss)$/);
+    if (m && method === "POST") {
+      const found = ruleSuggestions().find((s) => s.id === m![1]);
+      // Gone since the screen drew it: a rule now covers it, a refusal
+      // came in, or it was turned down somewhere else.
+      if (!found) return json(res, 404, { error: "that suggestion is no longer on offer" });
+      if (m[2] === "dismiss") {
+        const quietUntil = habits.dismiss(found.id, Date.now());
+        broadcast({ kind: "suggestions" });
+        return json(res, 200, { ok: true, quietUntil });
+      }
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const scope = body.scope === "everyone" ? "everyone" : body.scope === "agent" ? "agent" : null;
+      if (!scope) return json(res, 400, { error: "scope is agent or everyone" });
+      const wanted = ruleFor(found, scope);
+      if (!wanted) {
+        return json(res, 400, {
+          error: scope === "everyone"
+            ? "only one agent was approved for this, so it can only be allowed for that agent"
+            : "no one agent was approved for this often enough; allow it for every agent instead",
+        });
+      }
+      // through the same door as a rule written by hand
+      const cleaned = cleanRule(wanted);
+      if ("error" in cleaned) return json(res, 400, { error: cleaned.error });
+      const rule = policy.add(cleaned.rule, Date.now());
+      if (!rule) return json(res, 409, { error: "that is as many rules as one workspace holds" });
+      record({
+        at: Date.now(),
+        kind: "policy.changed",
+        actor: "you",
+        summary: `Added a rule you kept approving: ${describeRule(rule)}`,
+        detail: { rule: rule.id, effect: rule.effect, suggested: true, approvals: found.count },
+      });
+      broadcast({ kind: "rules" });
+      broadcast({ kind: "suggestions" });
       return json(res, 201, { rule: { ...rule, summary: describeRule(rule) } });
     }
     m = path.match(/^\/api\/rules\/([\w-]+)$/);

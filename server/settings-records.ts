@@ -178,7 +178,7 @@ export function inspectSkillSettings(root:unknown,ctx:InspectionContext):Inspect
 export function inspectRuleSettings(root:unknown,ctx:InspectionContext):InspectionField[]{
   const f=fields('workspace',root,'Settings > Rules and approvals',ctx);
   for(const [id,fallback] of [['effect',null],['field',null],['op',null]] as const)f.scalar(id,fallback);
-  f.bool('enabled');f.opaque('value');const id=get(root,'botId');f.add('botId',typeof id==='string'?{status:'value',value:ctx.reference('agent',id)}:policy('all agents'),own(root,'botId').present?configured(id):{status:'absent'});
+  f.bool('enabled');f.opaque('value');f.add('tool',typeof get(root,'tool')==='string'?scalar(get(root,'tool'),ctx.redact):policy('any tool'),own(root,'tool').present?configured(get(root,'tool')):{status:'absent'});const id=get(root,'botId');f.add('botId',typeof id==='string'?{status:'value',value:ctx.reference('agent',id)}:policy('all agents'),own(root,'botId').present?configured(id):{status:'absent'});
   f.add('evaluation.policy',policy('enabled deny rules precede allows; inspection never evaluates a command or grants permission'),{status:'absent'});
   return f.out;
 }
