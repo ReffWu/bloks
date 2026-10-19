@@ -4,7 +4,7 @@
 // can see it and until when, and lets it go when the pause ends or is
 // ended, after a restart too. A running turn finishes unless the owner
 // asked for it to stop. A saved file that cannot be read stops nothing.
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,12 +18,19 @@ const pause = (h: Harness, body: Record<string, unknown>) =>
   h.fetch("/api/engine-pauses", { method: "POST", body: JSON.stringify(body) });
 const quiet = (ms = 800) => new Promise((r) => setTimeout(r, ms));
 
-function home(t: { after: (fn: () => void) => void }) {
+// Each test's own after hooks run in the order they were registered, and
+// a home is made before its server, so removing it there raced the server
+// still writing its last file. The homes go once the whole file is done,
+// when every server has stopped.
+const homes: string[] = [];
+after(() => {
+  for (const dir of homes) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+});
+
+function home(_t: unknown) {
   const dir = mkdtempSync(join(tmpdir(), "bloks-pause-turns-"));
   mkdirSync(join(dir, ".bloks"), { recursive: true });
-  // registered before the server's own stop, so it can run while the
-  // server is still writing its last file; retrying outlasts that
-  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
+  homes.push(dir);
   return dir;
 }
 
