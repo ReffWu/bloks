@@ -316,6 +316,63 @@ function AgentTurnLimit() {
   );
 }
 
+/**
+ * The incident desk (server/incidents.ts): whether a failure is handed to
+ * whoever leads, and who that is outside a room. On, since what it saves
+ * is the person finding out late; a room's own lead always goes first.
+ */
+function IncidentDesk() {
+  const { state, dispatch } = useStore();
+  const desk = state.config?.incidents ?? { enabled: true, lead: "auto" };
+  const agents = state.bots.filter((b) => !b.hidden && !b.archivedAt);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = (incidents: { enabled?: boolean; lead?: string }) => {
+    setSaving(true);
+    setError("");
+    api("/api/config", { method: "PUT", body: JSON.stringify({ incidents }) })
+      .then((status) => dispatch({ type: "configStatus", config: status }))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <>
+      <SettingRow
+        label="Incident desk"
+        info="When a reply fails, a tool call gets stuck, or a routine, watcher or workflow fails, whoever leads gets a quiet turn to deal with it: try it once more, pass it to a teammate, or ask you. Nothing is tried again more than once, and if many things fail in an hour you get one summary instead of a card each."
+        description="Hand failures to a lead, and show you what needs you."
+        control={<Switch aria-label="Incident desk" checked={desk.enabled} disabled={saving} onCheckedChange={(enabled) => save({ enabled })} />}
+      />
+      {desk.enabled && (
+        <SettingRow
+          label="Who leads incidents"
+          description="In a room, the room's lead goes first. Elsewhere, this."
+          control={
+            <select
+              aria-label="Who leads incidents"
+              value={desk.lead}
+              disabled={saving}
+              onChange={(e) => save({ lead: e.target.value })}
+              className="max-w-[220px] rounded-lg border border-input bg-background px-2 py-1.5 text-body text-foreground outline-none focus:border-ring/60"
+            >
+              <option value="auto">The most senior agent</option>
+              <option value="person">Always me</option>
+              {agents.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          }
+        />
+      )}
+      {error && <p role="alert" className="mt-2 text-small text-destructive">{error}</p>}
+    </>
+  );
+}
+
 const TURN_LIMIT_STOPS = numberStops(MIN_TURN_LIMIT, MAX_TURN_LIMIT, (n) => `${n} ${n === 1 ? "reply" : "replies"}`);
 
 /**
@@ -723,7 +780,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "General",
         icon: SlidersHorizontal,
         description: `How Bloks looks and behaves on ${thisComputer()}.`,
-        keywords: "width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain reply replies stuck silent tool call",
+        keywords: "width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain reply replies stuck silent tool call incident incidents desk failure failed fails lead retry",
       },
       {
         id: "about-you",
@@ -919,6 +976,7 @@ function GeneralPage() {
         <ProposeSkills />
         <RecallBeforeTurn />
         <AgentTurnLimit />
+        <IncidentDesk />
         <SharedChanges />
         <Compaction />
         <IdleCompaction />

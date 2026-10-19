@@ -361,6 +361,7 @@ import {
 } from "./watchers.ts";
 import { MemoryJournal, readMemoryText } from "./memory-journal.ts";
 import {
+  cardLine,
   cardText,
   chooseLead,
   handText,
@@ -2392,6 +2393,13 @@ function wakeFor(payload: unknown): Wake | undefined {
     const owner = ownerClientDigest();
     return owner ? { reason: "spend", clients: [owner] } : "spend";
   }
+  // A failure's own notice turned into the person's card is a patch, not
+  // a new message, and it asks them as much as a new card would. Not the
+  // quiet desk's one card, whose patches only keep its count.
+  if (p?.kind === "message.patch" && p.message?.kind === "notice" && p.message.incident?.kind === "needs-you" && p.message.incident.state !== "resolved" && !p.message.deleted) {
+    const owner = ownerClientDigest();
+    return owner ? { reason: "needs-you", clients: [owner], preview: true } : { reason: "needs-you", preview: true };
+  }
   if (p?.kind !== "message" || !p.message) return undefined;
   const message = p.message;
   if (itemProgress(message)) return undefined;
@@ -2465,7 +2473,8 @@ function previewOf(frame: unknown): WakePreview | null {
   const brief = frame as { kind?: string; headline?: string } | null;
   if (brief?.kind === "brief.ready") return { title: "Your morning brief", body: String(brief.headline ?? "").slice(0, 180), category: "brief" };
   const f = frame as { kind?: string; threadId?: string; message?: Message } | null;
-  if (f?.kind !== "message" || !f.message || !f.threadId) return null;
+  const card = f?.kind === "message.patch" && f.message?.incident?.kind === "needs-you";
+  if ((f?.kind !== "message" && !card) || !f?.message || !f.threadId) return null;
   const m = f.message;
   if (itemProgress(m)) return null;
   const bot = m.from ? store.bot(m.from) : store.botByThread(f.threadId);
@@ -8588,7 +8597,7 @@ async function reviewForSkill(botId: string, threadId: string): Promise<boolean>
   return true;
 }
 
-function closeRun(threadId: string, outcome: { ok: boolean; summary?: string; error?: string; quiet?: boolean }) {
+function closeRun(threadId: string, outcome: { ok: boolean; summary?: string; error?: string; quiet?: boolean; refused?: boolean }) {
   const open = openRuns.get(threadId);
   if (!open) return;
   openRuns.delete(threadId);
@@ -8597,6 +8606,7 @@ function closeRun(threadId: string, outcome: { ok: boolean; summary?: string; er
     summary: outcome.summary,
     error: outcome.error,
     ...(outcome.quiet ? { quiet: true } : {}),
+    ...(outcome.refused ? { refused: true } : {}),
   });
   // Work that happened without anyone asking for it, which is exactly the
   // kind a person wants an account of afterwards.
@@ -8679,6 +8689,8 @@ async function runRoutineNow(routine: Routine, manual: boolean): Promise<void> {
     closeRun(laneId, {
       ok: false,
       error: redactSecrets(e instanceof Error ? e.message : String(e)),
+      // pressed by the person, who is told why in the answer
+      ...(manual ? { refused: true } : {}),
     });
     throw e;
   }
@@ -8793,29 +8805,49 @@ function deskTurnUnsent(laneId: string, why?: string) {
 }
 
 /** The person's card: a notice in the conversation where it happened,
- * which reads as waiting on them. A card already there is brought up to
- * date rather than joined by another. */
+ * which reads as waiting on them. Where the failure already said itself
+ * in a notice there (a failed turn's error, a stalled call), that notice
+ * becomes the card and only what is new is added to its words (cardLine),
+ * rather than a second notice saying the same thing. A card already there
+ * is brought up to date rather than joined by another. */
 function putToPerson(incident: Incident, reason: CardReason) {
   incidents.update(incident.id, (i) => {
     i.state = "needs-you";
   });
-  const text = cardText(incident, reason);
   const mark = { id: incident.id, kind: "needs-you" as const, state: "open" as const };
+  const line = cardLine(incident, reason);
   const card = incident.card;
   const existing = card ? store.messagesFor(card.threadId).find((m) => m.id === card.messageId && !m.deleted) : undefined;
   let threadId: string | null;
   if (existing && card) {
     threadId = card.threadId;
+    const text = card.base !== undefined ? (line ? `${card.base}\n\n${line}` : card.base) : cardText(incident, reason);
     const patched = store.patchMessage(threadId, existing.id, { text, incident: mark });
     if (patched) broadcast({ kind: "message.patch", threadId, message: patched });
   } else {
     threadId = cardThreadOf(incident);
     if (!threadId) return;
-    const shown = store.appendMessage(threadId, { role: "bot", kind: "notice", text, incident: mark });
-    broadcast({ kind: "message", threadId, message: shown });
-    incidents.update(incident.id, (i) => {
-      i.card = { threadId: threadId!, messageId: shown.id };
-    });
+    const own = failureNoticeIn(threadId, incident.at);
+    if (own) {
+      const base = own.text ?? "";
+      const patched = store.patchMessage(threadId, own.id, { text: line ? `${base}\n\n${line}` : base, incident: mark });
+      if (patched) broadcast({ kind: "message.patch", threadId, message: patched });
+      incidents.update(incident.id, (i) => {
+        i.card = { threadId: threadId!, messageId: own.id, base };
+      });
+    } else if (reason === "direct") {
+      // Nothing was said where it happened (a watcher's look, a run that
+      // never reached its engine): the conversation is left as it was, and
+      // the incident waits in Activity and the brief. A card of its own is
+      // for when someone asks the person something.
+      return;
+    } else {
+      const shown = store.appendMessage(threadId, { role: "bot", kind: "notice", text: cardText(incident, reason), incident: mark });
+      broadcast({ kind: "message", threadId, message: shown });
+      incidents.update(incident.id, (i) => {
+        i.card = { threadId: threadId!, messageId: shown.id };
+      });
+    }
   }
   // the conversation it is in reads as waiting on the person, as a lane
   // whose engine ran out does
@@ -8824,6 +8856,23 @@ function putToPerson(incident: Incident, reason: CardReason) {
     store.markLane(owner.id, threadId, true);
     broadcast({ kind: "bot", bot: clientBot(store.bot(owner.id)) });
   }
+}
+
+/** The notice a failure left in this conversation, to be its card: the
+ * newest plain notice since the conversation last heard something asked
+ * of it, said around when the incident was (a retry waits a minute, so a
+ * little either side), and not already anything else's card. */
+function failureNoticeIn(threadId: string, at: number): Message | null {
+  const said = store.messagesFor(threadId);
+  for (let i = said.length - 1; i >= 0; i--) {
+    const m = said[i];
+    if (m.role === "user" && !m.queued && !m.unsent) return null;
+    if (m.role !== "bot" || m.kind !== "notice" || m.deleted) continue;
+    if (m.incident || m.failing || m.compaction || m.event || m.goal || m.chainHeld) continue;
+    if (Math.abs((m.at ?? 0) - at) > 10 * 60_000) return null;
+    return m;
+  }
+  return null;
 }
 
 /** The one card while the desk is quiet: said once, then kept counting. */
@@ -8846,6 +8895,8 @@ function sayQuiet(incident: Incident, count: number, first: boolean) {
 /** An incident is over: on the list, and on its card. */
 function resolveIncident(id: string, resolution: string) {
   const incident = incidents.resolve(id, resolution, Date.now());
+  // what it was asked is kept only while it might still be asked again
+  deskAsked.delete(id);
   const card = incident?.card;
   if (card) {
     const existing = store.messagesFor(card.threadId).find((m) => m.id === card.messageId && !m.deleted);
@@ -8883,6 +8934,7 @@ async function retryIncident(incident: Incident, by: "lead" | "person"): Promise
     const refused = retryRefusal(incidents.incidents, incident, Date.now());
     if (refused) throw Object.assign(new Error(`${refused}. Hand it to a teammate or tell the person instead.`), { status: 409 });
   }
+  const was = incident.state;
   const retrying = () => {
     incidents.update(incident.id, (i) => {
       i.state = "retrying";
@@ -8890,12 +8942,26 @@ async function retryIncident(incident: Incident, by: "lead" | "person"): Promise
     });
     broadcast({ kind: "incidents" });
   };
+  // a retry refused before it started is no retry: the incident is where
+  // it was, and whoever asked is told why
+  const unstarted = (error: unknown) => {
+    // unless it got as far as failing, which has said so already
+    incidents.update(incident.id, (i) => {
+      if (i.state !== "retrying") return;
+      i.state = was;
+      delete i.retriedAt;
+    });
+    broadcast({ kind: "incidents" });
+    return error;
+  };
   const gone = (what: string) => Object.assign(new Error(what), { status: 404 });
   if (incident.kind === "routine") {
     const routine = incident.where.routineId ? routines.get(incident.where.routineId) : null;
     if (!routine) throw gone("that routine is gone");
     retrying();
-    await runRoutineNow(routine, by === "person");
+    await runRoutineNow(routine, false).catch((e) => {
+      throw unstarted(e);
+    });
     return `Running the routine ${routineLabel(routine)} again now.`;
   }
   if (incident.kind === "watcher") {
@@ -8910,7 +8976,7 @@ async function retryIncident(incident: Incident, by: "lead" | "person"): Promise
     const workflowId = incident.where.workflowId;
     if (!workflowId || !workflows.get(workflowId)) throw gone("that workflow is gone");
     retrying();
-    if (!fireWorkflow(workflowId, failed?.run.trigger ?? {})) throw Object.assign(new Error("that workflow could not start"), { status: 409 });
+    if (!fireWorkflow(workflowId, failed?.run.trigger ?? {})) throw unstarted(Object.assign(new Error("that workflow could not start"), { status: 409 }));
     return "Running the workflow again now.";
   }
   // a turn, or a stalled one: asked again, the same thing the same way
@@ -8970,7 +9036,9 @@ function noteTurnEnd(
     if (!end.skip) thingWorked(subject, "It worked when it was tried again.", ["retrying"]);
     return;
   }
-  if (end.skip || end.stopReason === "interrupted") return;
+  // a hidden agent is the workspace's own helper, with no conversation
+  // the person reads, so there is nowhere a card about it would be seen
+  if (end.skip || end.stopReason === "interrupted" || bot.hidden) return;
   const stalled = end.stopReason === "tool_stalled";
   if (!stalled && end.errors.some((said) => isContextError(said))) return;
   if (openRuns.has(laneId) || workflowTurns.has(laneId)) return;
@@ -8999,7 +9067,9 @@ function routineLabel(routine: Routine): string {
 
 /** A routine's run ended: its incident, and the one notice when this
  * failure is the one that stopped its automatic runs. */
-function routineEnded(routine: Routine, threadId: string, outcome: { ok: boolean; error?: string }, stopped: boolean) {
+function routineEnded(routine: Routine, threadId: string, outcome: { ok: boolean; error?: string; refused?: boolean }, stopped: boolean) {
+  // refused as the person pressed Run, and told so there and then
+  if (outcome.refused) return;
   const subject = `routine:${routine.id}`;
   const why = failedWords.get(threadId) ?? outcome.error ?? "the run did not finish";
   if (outcome.ok) thingWorked(subject, "It ran fine on its next run.");
@@ -9221,7 +9291,10 @@ function foldQuietRun(laneId: string): boolean {
   let at = said.length - 1;
   while (at >= 0 && said[at].role !== "user") at--;
   const prompt = said[at];
-  if (!prompt || prompt.deleted || prompt.via !== "routine" || !prompt.routine?.quiet) return false;
+  // a quiet routine's prompt, or the incident desk's note to a lead,
+  // which asks for QUIET the same way (server/incidents.ts)
+  const quietAsk = (prompt?.via === "routine" && prompt.routine?.quiet) || (prompt?.via === "incident" && prompt.incident?.kind === "note");
+  if (!prompt || prompt.deleted || !quietAsk) return false;
   const turn = said.slice(at + 1);
   const quietKind = (m: Message) =>
     m.role === "bot" && !m.deleted && (m.kind === "text" || m.kind === "activity" || m.kind === "screen" || (m.kind === "notice" && Boolean(m.compaction)));
@@ -19118,7 +19191,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           return {
             ...r,
             summary: describeRoutine(r),
-            nextRunAt: r.enabled && !suspended ? (nextScheduledAfter(r, now)?.getTime() ?? null) : null,
+            // one stopped for failing runs again only once the person has a say
+            nextRunAt: r.enabled && !suspended && !r.failing ? (nextScheduledAfter(r, now)?.getTime() ?? null) : null,
             ...(suspended ? { suspended: "archived" as const } : {}),
           };
         }),

@@ -104,8 +104,10 @@ export interface Incident {
   handedTo?: { id: string; name: string; note?: string };
   /** What the person is asked, in the lead's words or Bloks' own. */
   needs?: string;
-  /** The needs-you card in a chat, once there is one. */
-  card?: { threadId: string; messageId: string };
+  /** The needs-you card in a chat, once there is one. `base` is the
+   * words of the failure's own notice when the card is that notice (see
+   * cardLine), so what is added later is added to them, not over them. */
+  card?: { threadId: string; messageId: string; base?: string };
   resolvedAt?: number;
   /** How it ended, in a few words, for the list. */
   resolution?: string;
@@ -289,6 +291,30 @@ export function cardText(incident: Incident, reason: CardReason): string {
   }
 }
 
+/**
+ * What a card adds to the failure's own notice when it is that notice.
+ * A failed turn has already said what went wrong, in a notice, and a
+ * second notice saying it again is the "one per layer" the conversation
+ * keeps out; so the desk marks that notice as the card, and only says
+ * what is new: what the lead needs, that a retry failed too, or that the
+ * lead did not settle it. Null when there is nothing to add.
+ */
+export function cardLine(incident: Incident, reason: CardReason): string | null {
+  const lead = incident.lead.kind === "agent" ? incident.lead.name : "";
+  switch (reason) {
+    case "lead":
+      return `${lead} looked at it and needs you: ${incident.needs ?? "a decision"}`;
+    case "retry-failed":
+      return `It failed again when it was tried once more: ${incident.why}.`;
+    case "unsettled":
+      return `${lead} did not settle it, so it is with you.`;
+    case "lead-failed":
+      return `${lead} could not look at it, so it is with you.`;
+    default:
+      return null;
+  }
+}
+
 /** The one card while the desk is quiet. */
 export function summaryText(count: number): string {
   return `${count} things failed in the last hour, so Bloks has stopped handing them to leads for now. Each one is listed in Activity.`;
@@ -425,7 +451,7 @@ export class IncidentStore {
     return this.resolve(open.id, resolution, now);
   }
 
-  setSummaryCard(card: { threadId: string; messageId: string }) {
+  setSummaryCard(card: { threadId: string; messageId: string; base?: string }) {
     if (!this.summary) return;
     this.summary.card = card;
     this.save();

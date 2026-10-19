@@ -665,7 +665,7 @@ export class RoutineStore {
   endRun(
     routineId: string,
     runId: string,
-    outcome: { state: "ok" | "failed"; summary?: string; error?: string; quiet?: boolean },
+    outcome: { state: "ok" | "failed"; summary?: string; error?: string; quiet?: boolean; refused?: boolean },
   ): boolean {
     const routine = this.get(routineId);
     const run = routine?.runs?.find((r) => r.id === runId);
@@ -681,7 +681,10 @@ export class RoutineStore {
     if (outcome.state === "ok" && !outcome.quiet && outcome.summary?.trim()) {
       routine.lastReport = { at: run.endedAt, summary: outcome.summary.trim().slice(0, LAST_REPORT_MAX * 2) };
     }
-    const paused = countRun(routine, outcome.state === "ok", run.error ?? "the run did not finish", run.endedAt);
+    // A run by hand that was refused before it started (its agent held,
+    // its engine gone) was said to the person who pressed Run, and is not
+    // the routine failing on its own.
+    const paused = outcome.refused ? false : countRun(routine, outcome.state === "ok", run.error ?? "the run did not finish", run.endedAt);
     this.save();
     return paused;
   }

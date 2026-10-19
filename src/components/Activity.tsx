@@ -71,7 +71,38 @@ interface Paused {
   turnedAway?: number;
 }
 
+/** Something that failed and is still open (server/incidents.ts). */
+interface Incident {
+  id: string;
+  kind: "turn" | "stall" | "routine" | "watcher" | "workflow";
+  title: string;
+  why: string;
+  state: "with-lead" | "retrying" | "needs-you" | "muted" | "resolved";
+  at: number;
+  lastAt: number;
+  count: number;
+  lead: { kind: "agent"; id: string; name: string } | { kind: "person" };
+  needs?: string;
+  card?: { threadId: string; messageId: string };
+  where: { botId?: string; botName?: string; laneId?: string; roomId?: string };
+}
+
+/** A routine or a watcher that stopped running on its own for failing. */
+interface Failing {
+  kind: "routine" | "watcher";
+  id: string;
+  name: string;
+  error: string;
+  since: number;
+  failures: number;
+  botId?: string;
+  targetId?: string;
+}
+
 export interface Activity {
+  /** Absent from a server older than the incident desk. */
+  incidents?: Incident[];
+  failing?: Failing[];
   waiting: Waiting[];
   running: Running[];
   paused: Paused[];
@@ -192,8 +223,40 @@ export function ActivityPanel() {
       .finally(() => setBusy(null));
   };
 
+  const resolve = (row: Incident) => {
+    setBusy(row.id);
+    api(`/api/incidents/${row.id}/resolve`, { method: "POST" })
+      .then(load)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(null));
+  };
+
+  /** Where an incident's card is, or where it happened. */
+  const openIncident = (row: Incident) => {
+    const room = row.where.roomId;
+    if (room) return dispatch({ type: "select", id: room });
+    const lane = row.card?.threadId ?? row.where.laneId;
+    if (row.where.botId) dispatch({ type: "select", id: row.where.botId, ...(lane ? { lane } : {}) });
+  };
+
+  const pauseFailing = (row: Failing) => {
+    setBusy(row.id);
+    api(row.kind === "routine" ? `/api/routines/${row.id}` : `/api/watchers/${row.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled: false }),
+    })
+      .then(load)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(null));
+  };
+
   const quiet =
-    activity && !activity.waiting.length && !activity.running.length && !activity.paused?.length;
+    activity &&
+    !activity.waiting.length &&
+    !activity.running.length &&
+    !activity.paused?.length &&
+    !activity.incidents?.length &&
+    !activity.failing?.length;
 
   // Somewhere to go when nothing is happening: the agent you were last
   // with, or making a first one.
@@ -326,6 +389,87 @@ export function ActivityPanel() {
           </Section>
         ) : null}
 
+        {activity?.incidents?.length ? (
+          <Section title="Something failed">
+            {activity.incidents.map((row) => (
+              <Row
+                key={row.id}
+                bot={row.where.botId ? botOf(row.where.botId) : undefined}
+                name={row.where.botName ?? row.title}
+                main={
+                  <div className="min-w-0 flex-1">
+                    <div className="text-body text-foreground">
+                      {row.title}
+                      {row.count > 1 ? <span className="text-muted-foreground"> · {row.count} times</span> : null}
+                    </div>
+                    <div className="mt-0.5 text-small">
+                      <span className={cn(row.state === "needs-you" ? "text-warning" : "text-muted-foreground")}>{incidentState(row)}</span>
+                      <span className="text-muted-foreground"> · {elapsed(row.lastAt, now)} ago</span>
+                    </div>
+                    {/* the failure's own words can be long; two lines are
+                        enough to recognise it, and the card has the rest */}
+                    <div className="mt-0.5 line-clamp-2 break-words text-small text-muted-foreground">{row.why}</div>
+                  </div>
+                }
+                actions={
+                  <>
+                    {(row.where.botId || row.where.roomId) && (
+                      <Button variant="secondary" size="sm" onClick={() => openIncident(row)}>
+                        Open
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="sm" disabled={busy === row.id} onClick={() => resolve(row)}>
+                      Mark resolved
+                    </Button>
+                  </>
+                }
+              />
+            ))}
+          </Section>
+        ) : null}
+
+        {activity?.failing?.length ? (
+          <Section title="Stopped for failing">
+            {activity.failing.map((row) => {
+              const who = row.botId ?? row.targetId;
+              return (
+                <Row
+                  key={row.id}
+                  bot={who ? botOf(who) : undefined}
+                  name={row.name}
+                  main={
+                    <div className="min-w-0 flex-1">
+                      <div className="text-body text-foreground">
+                        The {row.kind} {row.name}
+                      </div>
+                      <div className="mt-0.5 text-small text-warning">
+                        Failed {row.failures} times in a row, stopped {elapsed(row.since, now)} ago
+                      </div>
+                      <div className="mt-0.5 line-clamp-2 break-words text-small text-muted-foreground">{row.error}</div>
+                    </div>
+                  }
+                  actions={
+                    <>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() =>
+                          dispatch({ type: "toggleRoutines", open: true, tab: row.kind === "routine" ? "schedules" : "watchers", focus: { kind: row.kind, id: row.id } })
+                        }
+                      >
+                        Fix it
+                      </Button>
+                      <Button variant="ghost" size="sm" disabled={busy === row.id} onClick={() => pauseFailing(row)}>
+                        Pause
+                      </Button>
+                    </>
+                  }
+                />
+              );
+            })}
+          </Section>
+        ) : null}
+
         {activity?.paused?.length ? (
           <Section title="You have the wheel">
             {activity.paused.map((row) => (
@@ -443,6 +587,22 @@ export function ActivityPanel() {
       </div>
     </section>
   );
+}
+
+/** Where an incident is, in a few words. */
+function incidentState(row: Incident): string {
+  switch (row.state) {
+    case "with-lead":
+      return row.lead.kind === "agent" ? `With ${row.lead.name}` : "With you";
+    case "retrying":
+      return "Trying again";
+    case "needs-you":
+      return row.needs ? `Needs you: ${row.needs}` : "Needs you";
+    case "muted":
+      return "Listed while many things failed";
+    default:
+      return "Resolved";
+  }
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

@@ -823,9 +823,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             announce(frame.threadId, frame.message, true);
           }
           break;
-        case "message.patch":
+        case "message.patch": {
           rawDispatch({ type: "messagePatched", threadId: frame.threadId, message: frame.message, moved: frame.moved === true });
+          // A failure's own notice turned into the person's card arrives
+          // as a patch (server/incidents.ts). Said once per incident, as
+          // a new card would be; its later updates are not news again.
+          const card = frame.message as Message | undefined;
+          if (card?.kind === "notice" && card.incident?.kind === "needs-you" && card.incident.state !== "resolved" &&
+            noticeDelivery.current.take(frame._seq, `incident:${card.incident.id}`)) announce(frame.threadId, card);
           break;
+        }
         case "rehearsals":
           rawDispatch({ type: "rehearsalsChanged" });
           break;
@@ -841,6 +848,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "watchers":
         case "meetings":
         case "enginePauses":
+        case "routines":
+        case "incidents":
           rawDispatch({ type: "tick", key: frame.kind });
           break;
         case "bot": {

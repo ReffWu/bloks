@@ -52,6 +52,11 @@ interface WatcherRow {
   approvedBy?: "person" | "mode";
   /** On, but its agent is archived, so it does not look until restored. */
   suspended?: "archived";
+  /** Looks that failed in a row. */
+  failures?: number;
+  /** Stopped looking on its own after failing again and again. Any
+   * change, or a look by hand that works, starts it again. */
+  failing?: { at: number; error: string };
 }
 
 const KIND: Record<
@@ -441,7 +446,26 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           Paused while {bot?.name ?? "its agent"} is archived. Resumes when restored.
         </div>
       )}
-      {w.lastError && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{w.lastError}</div>}
+      {/* Stopped for failing: said apart from the last error, since it is
+          the reason nothing happens on its own any more. Changing it here
+          starts it again, and so does Check now when the look works. */}
+      {w.failing && (
+        <div className="flex flex-col gap-2 rounded-xl border bg-card px-3.5 py-3 text-body">
+          <div className="font-medium text-warning">Stopped after failing {w.failures ?? 3} times in a row</div>
+          <div className="text-muted-foreground">
+            It does not look on its own until you change it, or a look by hand works. The last time: {w.failing.error}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <Button variant="secondary" size="sm" disabled={checking} onClick={check}>
+              Look again now
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => patch({ enabled: false })}>
+              Pause
+            </Button>
+          </div>
+        </div>
+      )}
+      {w.lastError && !w.failing && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{w.lastError}</div>}
       <div>
         <div className="mb-1.5 text-small font-medium text-muted-foreground">Triggered</div>
         {w.fires.length === 0 ? (
@@ -491,7 +515,8 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
 export function WatchersTab() {
   const { state } = useStore();
   const [rows, setRows] = useState<WatcherRow[] | null>(null);
-  const [selected, setSelected] = useState<string | "new" | null>(null);
+  // a card about a watcher that stopped for failing opens it here
+  const [selected, setSelected] = useState<string | "new" | null>(() => (state.routinesFocus?.kind === "watcher" ? state.routinesFocus.id : null));
   const load = useCallback(() => {
     api("/api/watchers")
       .then((r) => setRows(r.watchers ?? []))
@@ -528,8 +553,8 @@ export function WatchersTab() {
                     <Icon size={12} className="shrink-0 text-muted-foreground" />
                     <span className="truncate">{w.name}</span>
                   </span>
-                  <span className={cn("block truncate text-caption", waiting || w.lastError ? "text-warning" : w.enabled ? "text-muted-foreground" : "text-muted-foreground/70")}>
-                    {!w.enabled ? "Paused" : w.suspended === "archived" ? "Paused while archived" : waiting ? "Needs your approval" : w.lastError ? "Needs a look" : w.fires[0] ? `Triggered ${ago(w.fires[0].at)}` : `Checked ${ago(w.lastCheck)}`}
+                  <span className={cn("block truncate text-caption", waiting || w.lastError || w.failing ? "text-warning" : w.enabled ? "text-muted-foreground" : "text-muted-foreground/70")}>
+                    {!w.enabled ? "Paused" : w.suspended === "archived" ? "Paused while archived" : w.failing ? "Stopped for failing" : waiting ? "Needs your approval" : w.lastError ? "Needs a look" : w.fires[0] ? `Triggered ${ago(w.fires[0].at)}` : `Checked ${ago(w.lastCheck)}`}
                   </span>
                 </span>
               </button>

@@ -210,7 +210,19 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
       .then(({ routines }: { routines: Routine[] }) => setRoutines(routines))
       .catch(() => setRoutines([]));
   }, []);
-  useEffect(load, [load]);
+  // and again when the server says routines changed, so one that has
+  // just stopped for failing shows here without a reopen
+  useEffect(load, [load, state.ticks.routines]);
+  // A card about a routine that stopped for failing opens it here, once:
+  // later reloads must not keep opening it over whatever is in view.
+  const focused = useRef<string | null>(null);
+  useEffect(() => {
+    const focus = state.routinesFocus;
+    if (focus?.kind !== "routine" || !routines || focused.current === focus.id) return;
+    focused.current = focus.id;
+    const routine = routines.find((r) => r.id === focus.id);
+    if (routine) setSelected(routine);
+  }, [routines, state.routinesFocus]);
 
   const [writeError, setWriteError] = useState<string | null>(null);
   const write = (run: Promise<unknown>) =>
@@ -390,6 +402,17 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
               {writeError}
             </div>
           )}
+          {/* ── stopped for failing: above the calendar, since a routine
+              that will not run is the thing on it that needs a person ── */}
+          {(routines ?? []).filter((r) => r.failing).map((routine) => (
+            <FailingRoutine
+              key={routine.id}
+              routine={routine}
+              target={targetOf(routine.targetId)}
+              onOpen={() => setSelected(routine)}
+              onWrite={write}
+            />
+          ))}
           {/* ── the grid ── */}
           {routines !== null && routines.length === 0 ? (
             <EmptyRhythm onCreate={() => setCreating({})} />
@@ -655,6 +678,60 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
         />
       )}
     </main>
+  );
+}
+
+/**
+ * A routine that stopped running on its own after failing again and
+ * again: what it last said, and the three things to do about it. Fix it
+ * opens the routine, where saving any change starts it again; Pause
+ * switches it off; Remove takes it away. Each is the ordinary route.
+ */
+function FailingRoutine({
+  routine,
+  target,
+  onOpen,
+  onWrite,
+}: {
+  routine: Routine;
+  target: { name: string; bot?: Bot } | null;
+  onOpen: () => void;
+  onWrite: (run: Promise<unknown>) => void;
+}) {
+  const name = routine.name || routine.prompt;
+  const remove = async () => {
+    const yes = await confirm({
+      title: `Remove ${name}?`,
+      body: "The routine and its history go. What it said stays in the conversation.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (yes) onWrite(api(`/api/routines/${routine.id}`, { method: "DELETE" }));
+  };
+  return (
+    <div className="mx-5 mt-2.5 flex shrink-0 flex-col gap-2 rounded-xl border bg-card px-3.5 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+      <div className="flex min-w-0 flex-1 items-start gap-2.5">
+        {target?.bot ? <AgentAvatar bot={target.bot} size={22} /> : <Repeat size={14} className="mt-0.5 shrink-0 text-warning" />}
+        <div className="min-w-0">
+          <div className="truncate text-body font-medium text-foreground">{name}</div>
+          <div className="text-small text-muted-foreground">
+            <span className="text-warning">Stopped after failing {routine.failures ?? 3} times in a row.</span>{" "}
+            {routine.failing?.error}
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button variant="secondary" size="sm" onClick={onOpen}>
+          Fix it
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => onWrite(api(`/api/routines/${routine.id}`, { method: "PATCH", body: JSON.stringify({ enabled: false }) }))}>
+          Pause
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => void remove()}>
+          Remove
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -966,6 +1043,27 @@ function RoutineDetails({
             {routine.enabled && routine.suspended === "archived" && (
               <div className="mt-0.5 text-small text-warning">
                 Paused while {target?.name ?? "its agent"} is archived. Resumes when restored.
+              </div>
+            )}
+            {/* Stopped for failing: why, and the way back. A run now that
+                works starts it again on its own; so does any change. */}
+            {routine.failing && (
+              <div className="mt-2 flex flex-col gap-1.5 rounded-lg bg-warning/10 px-2.5 py-2 text-small">
+                <span className="text-warning">
+                  Stopped after failing {routine.failures ?? 3} times in a row. Run it now to check it works, or start it again once it is fixed.
+                </span>
+                <span className="line-clamp-3 break-words text-muted-foreground">{routine.failing.error}</span>
+                <span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      onWrite(api(`/api/routines/${routine.id}`, { method: "PATCH", body: JSON.stringify({ enabled: true }) }).then(onClose))
+                    }
+                  >
+                    Start it again
+                  </Button>
+                </span>
               </div>
             )}
           </div>

@@ -19,6 +19,7 @@ import { Markdownish, withHighlight } from "@/components/Markdown";
 import { cn } from "@/lib/cn";
 import { goalNoteForPerson } from "@/lib/goalNote";
 import { redoLine, type RedoPreview } from "@/lib/redo";
+import { FailingNotice, IncidentNotice } from "./IncidentCard";
 
 
 /** The line over a goal turn: from Bloks, and which turn of how many. */
@@ -293,7 +294,9 @@ export function Bubble({
   // A message that waited its turn says so under it, always: that is
   // news about the message, not a timestamp. A goal's note goes through
   // the queue only to wait its turn; nobody queued it, so it never does.
-  const queued = Boolean(message.deliveredAt && message.via !== "goal");
+  // The incident desk's note to a lead is the same: Bloks', never queued
+  // by anybody.
+  const queued = Boolean(message.deliveredAt && message.via !== "goal" && message.via !== "incident");
 
   if (!user) {
     return (
@@ -358,9 +361,9 @@ export function Bubble({
       {/* A column, so reactions hang under the bubble they belong to
           rather than beside it where they would push the text around. */}
       <div className={cn("flex max-w-[82%] flex-col items-end sm:max-w-[68%]", editing !== null && "w-full")}>
-        {(message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal") && (
+        {(message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal" || message.via === "incident") && (
           <div className="mb-1 px-1 text-caption text-muted-foreground">
-            {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? "From your watcher" : message.via === "webhook" ? "From a webhook" : message.via === "goal" ? goalLabel(message.text ?? "") : "By email"}
+            {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? "From your watcher" : message.via === "webhook" ? "From a webhook" : message.via === "goal" ? goalLabel(message.text ?? "") : message.via === "incident" ? "From Bloks, about something that failed" : "By email"}
           </div>
         )}
         <div
@@ -371,9 +374,10 @@ export function Bubble({
             "min-w-0 whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-lead text-foreground [overflow-wrap:anywhere]",
             // an editor gets the room the words may grow into
             editing !== null && "w-full",
-            message.via === "goal"
-              ? // Bloks keeping a goal going, not the person: a quieter
-                // bubble on their side, so it never reads as their words
+            message.via === "goal" || message.via === "incident"
+              ? // Bloks keeping a goal going, or handing a lead what
+                // failed, not the person: a quieter bubble on their side,
+                // so it never reads as their words
                 "border border-brand/25 bg-brand-soft"
               : "bg-secondary",
             // the hit you are standing on, so n and N feel like movement
@@ -470,7 +474,7 @@ export function Bubble({
         onReply={onReply}
         onForward={onForward}
         onReact={onReact ? (emoji) => onReact(message.id, emoji) : undefined}
-        onEdit={onEdit && message.via !== "goal" ? startEditing : undefined}
+        onEdit={onEdit && message.via !== "goal" && message.via !== "incident" ? startEditing : undefined}
         onDelete={onDelete ? () => onDelete(message.id) : undefined}
         onRewind={onRewind ? () => onRewind(message.id) : undefined}
       />
@@ -490,6 +494,9 @@ export function Notice({ message, fresh }: { message: Message; fresh?: boolean }
   if (message.compaction) {
     return <div className="py-1 text-center text-small text-muted-foreground">{message.text}</div>;
   }
+  // what failed, put to the person (server/incidents.ts)
+  if (message.incident && message.incident.kind !== "note") return <IncidentNotice message={message} fresh={fresh} />;
+  if (message.failing) return <FailingNotice message={message} fresh={fresh} />;
   // The goal's own news. Set and done are not warnings, so they do not
   // wear one; where it stopped short (blocked, out, paused) still does.
   if (message.goal) {

@@ -106,11 +106,16 @@ test("a turn that fails for good is a card for the person, and resolving it sett
   assert.deepEqual(incident.lead, { kind: "person" });
   assert.match(incident.why, /having a moment/);
   await idle(h, sage);
-  const card = (await messagesOf(h, sage)).find((m) => m.incident?.kind === "needs-you");
+  const said = await messagesOf(h, sage);
+  const card = said.find((m) => m.incident?.kind === "needs-you");
   assert.ok(card, "no card in the conversation");
   assert.equal(card.kind, "notice");
   assert.equal(card.incident.state, "open");
-  assert.match(card.text, /Sage's turn failed/);
+  // the failure's own notice is the card: the error is said once, not
+  // once by the turn and again by the desk
+  assert.match(card.text, /having a moment/);
+  assert.equal(said.filter((m) => m.kind === "notice" && /stopped here/.test(m.text ?? "")).length, 1);
+  assert.equal(incident.card.messageId, card.id);
   // the activity list and the incident itself say the same
   assert.ok((await h.json("/api/activity")).incidents.some((i: any) => i.id === incident.id));
   assert.equal((await h.json(`/api/incidents/${incident.id}`)).incident.id, incident.id);
@@ -143,10 +148,14 @@ test("with a lead, the lead gets a quiet turn and what it says reaches the perso
   assert.ok(note, "no note in the lead's conversation");
   assert.equal(note.incident.id, incident.id);
   assert.match(note.text, /not from the person/);
-  await waitFor(async () => {
+  const folded = await waitFor(async () => {
     const now = (await h.json(`/api/bots/${chief.id}/messages?thread=${chief.threadId}&limit=500`)).messages as any[];
-    return now.find((m) => m.id === note.id)?.quiet ? true : null;
+    return now.find((m) => m.id === note.id)?.quiet ? now : null;
   });
+  assert.ok(folded, "the lead's QUIET answer was not folded away");
+  const turn = folded.slice(folded.findIndex((m) => m.id === note.id));
+  assert.ok(turn.some((m) => m.role === "bot" && m.kind === "text"), "the lead never answered");
+  assert.ok(turn.filter((m) => m.role === "bot" && m.kind === "text").every((m) => m.quiet), "its answer stayed on the page");
   // the lead cannot act on it again now it is with the person, nor settle it
   const statuses = await h.json(`/api/incidents/${incident.id}`);
   assert.equal(statuses.incident.state, "needs-you");
@@ -166,7 +175,12 @@ test("a lead's one retry that fails again goes to the person, and starts nothing
   // the person may still try it; the lead has had its one
   const again = await h.fetch(`/api/incidents/${incident.id}/retry`, { method: "POST" });
   assert.equal(again.status, 202);
-  await waitFor(async () => (await h.json(`/api/incidents/${incident.id}`)).incident.state === "needs-you" || null, 20_000);
+  // failing again brings it back to the person, counted on the same one
+  const back = await waitFor(async () => {
+    const now = (await h.json(`/api/incidents/${incident.id}`)).incident;
+    return now.state === "needs-you" && now.count === 3 ? now : null;
+  }, 20_000);
+  assert.ok(back, "the person's retry did not come back to them");
   await idle(h, rita);
   await h.json(`/api/incidents/${incident.id}/resolve`, { method: "POST" });
 });

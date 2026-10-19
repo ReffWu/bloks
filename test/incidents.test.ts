@@ -14,6 +14,7 @@ process.env.USERPROFILE = home;
 after(() => rmSync(home, { recursive: true, force: true }));
 
 const {
+  cardLine,
   cardText,
   chooseLead,
   DAY_MS,
@@ -165,6 +166,11 @@ test("the words: a lead's note offers the three ways out and asks for QUIET; not
   ];
   for (const said of words) assert.doesNotMatch(said, /[\u2013\u2014]/);
   assert.match(cardText({ ...incident, needs: "a new key" }, "lead"), /Chief looked at it and needs you: a new key/);
+  // added to a failure's own notice, only what is new is said
+  assert.equal(cardLine(incident, "direct"), null);
+  assert.equal(cardLine({ ...incident, needs: "a new key" }, "lead"), "Chief looked at it and needs you: a new key");
+  assert.match(cardLine(incident, "retry-failed")!, /failed again when it was tried once more/);
+  for (const reason of ["lead", "retry-failed", "unsettled", "lead-failed"] as const) assert.doesNotMatch(cardLine(incident, reason)!, /[\u2013\u2014]/);
 });
 
 test("a failure's words are kept to one short line", () => {

@@ -14,6 +14,8 @@ export type { BlokColor, BlokShape } from "@/lib/mascot";
 
 /** The full pages the main rail opens besides Chat, Automations and Settings. */
 export type RailPage = "overview" | "memory" | "plugins";
+/** One routine or watcher, for a link into Automations. */
+export type AutomationsFocus = { kind: "routine" | "watcher"; id: string };
 /** The two pages of Customize, the rail's Plugins place (Customize.tsx). */
 export type CustomizeTab = "plugins" | "skills";
 /** One thing on Settings' Plugins page with a page of its own. */
@@ -394,6 +396,9 @@ export interface ConfigStatus {
   recall?: { beforeTurn: boolean };
   /** Agents' turn limit, 1 to 50 (server/agent-chain.ts). */
   agents?: { turnLimit: number };
+  /** The incident desk (server/incidents.ts): on unless turned off, and
+   * who leads incidents: "auto", "person" or an agent's id. */
+  incidents?: { enabled: boolean; lead: string };
   /** Count-only cards for overlapping turns with no own files. On by default. */
   changes?: { showShared: boolean };
   /** How long a silent tool call may hold a turn, in minutes; 0 is never. */
@@ -669,6 +674,9 @@ export interface AppState {
   routinesOpen: boolean;
   /** The tab Automations opens on, when something linked to one. */
   routinesTab: AutomationsTab | null;
+  /** The routine or watcher Automations opens on, when something linked
+   * to one (a card about one that stopped for failing). */
+  routinesFocus: AutomationsFocus | null;
   newRoomOpen: boolean;
   /** The sheet of every keyboard shortcut (⌘/). */
   shortcutsOpen: boolean;
@@ -766,7 +774,7 @@ export type Action =
   | { type: "newBot"; profile?: NewAgentProfile }
   | { type: "toggleNewAgent"; open?: boolean; firstRun?: boolean }
   /** `tab` opens Automations on that tab, for a link from elsewhere. */
-  | { type: "toggleRoutines"; open?: boolean; tab?: AutomationsTab }
+  | { type: "toggleRoutines"; open?: boolean; tab?: AutomationsTab; focus?: AutomationsFocus }
   | { type: "toggleShortcuts"; open?: boolean }
   | { type: "newTask"; botId: string }
   | { type: "selectTask"; botId: string; taskId: string }
@@ -1055,6 +1063,7 @@ export function reducer(state: AppState, action: Action): AppState {
           ...state,
           routinesOpen: open,
           routinesTab: open ? (action.tab ?? null) : null,
+          routinesFocus: open ? (action.focus ?? null) : null,
           appSettingsOpen: open ? false : state.appSettingsOpen,
           page: open ? null : state.page,
           settingsOpen: open ? false : state.settingsOpen,
@@ -1426,6 +1435,7 @@ export const initialState: AppState = {
   teamLink: null,
   routinesOpen: false,
   routinesTab: null,
+  routinesFocus: null,
   newRoomOpen: false,
   shortcutsOpen: false,
   projectId: (() => {
