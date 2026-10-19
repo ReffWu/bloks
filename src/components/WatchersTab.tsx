@@ -6,8 +6,11 @@
 //
 // The list on the left, the one you are looking at on the right: what is
 // watched, what the agent is told, how often it looks, and the last few
-// times it fired. A new one is a sentence and an address.
+// times it fired. A new one is a kind, an address, who acts and what they
+// do, and how often to look, read back as one plain sentence before it is
+// filed.
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { Eye } from "@/components/icons";
 import { FlaskConical } from "@/components/icons";
 import { Folder } from "@/components/icons";
@@ -21,9 +24,11 @@ import { api, useStore } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Slider, type SliderStop } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
+import { intervalLabel, intervalPhrase } from "@/lib/checkIns";
 
 type Kind = "folder" | "page" | "feed" | "check";
 
@@ -49,12 +54,73 @@ interface WatcherRow {
   suspended?: "archived";
 }
 
-const KIND: Record<Kind, { icon: typeof Folder; label: string; placeholder: string }> = {
-  folder: { icon: Folder, label: "Folder", placeholder: "/Users/you/Invoices" },
-  page: { icon: Globe, label: "Web page", placeholder: "https://example.com/pricing" },
-  feed: { icon: Rss, label: "Feed", placeholder: "https://example.com/blog/rss.xml" },
-  check: { icon: SquareTerminal, label: "Check", placeholder: "python3 scripts/supplier_replied.py" },
+const KIND: Record<
+  Kind,
+  { icon: typeof Folder; label: string; example: string; field: string; placeholder: string; instruction: string }
+> = {
+  folder: {
+    icon: Folder,
+    label: "Folder",
+    example: "New files land in it",
+    field: "Which folder",
+    placeholder: "/Users/you/Invoices",
+    instruction: "When a new invoice arrives, rename it by date and vendor and add it to the expenses sheet.",
+  },
+  page: {
+    icon: Globe,
+    label: "Page",
+    example: "A price or a page changes",
+    field: "Which page",
+    placeholder: "https://example.com/pricing",
+    instruction: "If the price drops below $400, tell me.",
+  },
+  feed: {
+    icon: Rss,
+    label: "Feed",
+    example: "A blog posts something new",
+    field: "Which feed",
+    placeholder: "https://example.com/blog/rss.xml",
+    instruction: "Summarise each new post in two lines and tell me if it mentions us.",
+  },
+  check: {
+    icon: SquareTerminal,
+    label: "Check",
+    example: "A script says it is time",
+    field: "Command to run",
+    placeholder: "python3 scripts/supplier_replied.py",
+    instruction: "A supplier replied: read it and decide the next step.",
+  },
 };
+
+/** How often a page, a feed or a check is looked at: the steps the
+ * server's bounds allow (server/watchers.ts, 5 minutes to a day). */
+const LOOK_EVERY = [5, 15, 30, 60, 180, 720, 1440];
+
+/** The stops for a watcher already looking at `every`, which an agent may
+ * have filed off the usual steps; it gets a stop of its own rather than
+ * the slider pretending it is at the first one. */
+function lookStops(every: number): SliderStop<number>[] {
+  const values = LOOK_EVERY.includes(every) ? LOOK_EVERY : [...LOOK_EVERY, every].sort((a, b) => a - b);
+  return values.map((m) => ({ value: m, label: intervalLabel(m) }));
+}
+
+/** Room for a Slider in a scrolling pane: its thumb rides a rail that is
+ * moved rather than resized, and a moved box still widens the scroller.
+ * Clipped sideways only, so the focus ring still shows. */
+function SliderRoom({ children }: { children: React.ReactNode }) {
+  return <div className="-mx-1.5 overflow-x-clip px-1.5">{children}</div>;
+}
+
+/** What is being watched, in as few words as a sentence can carry: a
+ * folder's last name, a page without its scheme. */
+function shortTarget(kind: Kind, target: string): string {
+  const t = target.trim();
+  if (!t) return "";
+  if (kind === "folder") return t.split(/[\\/]/).filter(Boolean).pop() ?? t;
+  if (kind === "check") return t.length > 40 ? `${t.slice(0, 39)}…` : t;
+  const bare = t.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  return bare.length > 40 ? `${bare.slice(0, 39)}…` : bare;
+}
 
 /** Whether a check may run now: approved here, or filed by an agent that
  * still runs commands without asking. Mirrors checkAllowed on the server. */
@@ -83,80 +149,200 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
     const path = await window.bloks?.pickFolder?.();
     if (path) setTarget(path);
   };
+  const [every, setEvery] = useState(30);
+  const bot = bots.find((b) => b.id === botId);
+  const ready = Boolean(botId && target.trim() && instruction.trim());
   const make = () => {
+    if (!ready || busy) return;
     setBusy(true);
     setError(null);
-    api("/api/watchers", { method: "POST", body: JSON.stringify({ botId, kind, target, instruction }) })
+    // a folder is watched as it changes, so how often means nothing to it
+    const body = { botId, kind, target, instruction, ...(kind === "folder" ? {} : { every }) };
+    api("/api/watchers", { method: "POST", body: JSON.stringify(body) })
       .then((r) => onMade(r.watcher.id))
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
+
+  // the watcher read back as one plain sentence, as it is filled in
+  const who = bot?.name ?? "The agent";
+  const what = shortTarget(kind, target);
+  const often = intervalPhrase(every);
+  const readback =
+    kind === "folder"
+      ? `${who} will watch ${what || "the folder"} and act within seconds of a change.`
+      : kind === "page"
+        ? `${who} will look at ${what || "the page"} ${often} and act when it changes.`
+        : kind === "feed"
+          ? `${who} will read ${what || "the feed"} ${often} and act on each new post.`
+          : `${who} will run ${what ? `“${what}”` : "the command"} ${often} and act when it exits 0.`;
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="text-lead font-semibold text-foreground">New watcher</div>
-      <div className="flex gap-1 rounded-xl bg-muted p-1">
-        {(Object.keys(KIND) as Kind[]).map((k) => {
+    <div
+      className="mx-auto flex w-full max-w-[640px] flex-col"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          make();
+        }
+      }}
+    >
+      <h2 className="text-heading font-semibold text-foreground">New watcher</h2>
+      <p className="mt-1 text-body text-muted-foreground">An agent keeps an eye on something and acts when it changes.</p>
+
+      <div role="radiogroup" aria-label="What to watch" className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {(Object.keys(KIND) as Kind[]).map((k, i) => {
           const Icon = KIND[k].icon;
+          const on = kind === k;
           return (
-            <button
+            <motion.button
               key={k}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03, duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
               onClick={() => setKind(k)}
               className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-body transition-colors",
-                kind === k ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                "flex min-w-0 flex-col items-start gap-2 rounded-xl border p-3 text-left outline-none transition-[border-color,background-color,scale] duration-150 ease-out active:scale-[0.985]",
+                on ? "border-brand bg-brand-soft" : "bg-card hover:border-foreground/20 hover:bg-accent/40",
               )}
             >
-              <Icon size={13} /> {KIND[k].label}
-            </button>
+              <span
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-lg transition-colors duration-150",
+                  on ? "bg-brand-ink text-brand-foreground" : "bg-muted text-muted-foreground",
+                )}
+              >
+                <Icon size={14} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-body font-medium text-foreground">{KIND[k].label}</span>
+                <span className="block text-small leading-snug text-muted-foreground">{KIND[k].example}</span>
+              </span>
+            </motion.button>
           );
         })}
       </div>
+
+      <label className="mt-6 mb-2 text-body font-medium text-foreground" htmlFor="watch-target">
+        {KIND[kind].field}
+      </label>
       <div className="flex gap-2">
-        <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder={KIND[kind].placeholder} className="text-body" />
+        <Input
+          id="watch-target"
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          placeholder={KIND[kind].placeholder}
+          spellCheck={false}
+          className="rounded-xl font-mono text-body"
+        />
         {kind === "folder" && window.bloks?.pickFolder && (
-          <Button variant="secondary" onClick={pick}>
+          <Button variant="secondary" onClick={pick} className="h-9 rounded-xl">
             Choose
           </Button>
         )}
       </div>
+      {/* a check runs a command with nobody watching; say so where the
+          command is written, not after it is filed */}
+      <AnimatePresence initial={false}>
+        {kind === "check" && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0, transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] } }}
+            exit={{ opacity: 0, transition: { duration: 0.1 } }}
+            className="mt-2 flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5 text-small leading-relaxed text-foreground"
+          >
+            <ShieldCheck size={14} className="mt-0.5 shrink-0 text-warning" />
+            <span>
+              A check is a command, and it runs on its own {often} without asking. Exit 0 means act on its output,
+              exit 1 means nothing to do.
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="mt-6 mb-2 text-body font-medium text-foreground">Who acts on it</div>
+      <div role="radiogroup" aria-label="Who acts on it" className="flex flex-wrap gap-1.5">
+        {bots.map((b) => {
+          const on = b.id === botId;
+          return (
+            <button
+              key={b.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => setBotId(b.id)}
+              className={cn(
+                "flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-body outline-none transition-[border-color,background-color,scale] duration-150 ease-out active:scale-[0.97]",
+                on ? "border-brand bg-brand-soft font-medium text-foreground" : "bg-card text-foreground/90 hover:border-foreground/20",
+              )}
+            >
+              <AgentAvatar bot={b} size={22} />
+              {b.name}
+            </button>
+          );
+        })}
+        {bots.length === 0 && <span className="text-body text-muted-foreground">No agents yet. Make one first.</span>}
+      </div>
+
+      <label className="mt-6 mb-2 text-body font-medium text-foreground" htmlFor="watch-instruction">
+        What {bot?.name ?? "the agent"} does when it changes
+      </label>
       <Textarea
+        id="watch-instruction"
         value={instruction}
         onChange={(e) => setInstruction(e.target.value)}
-        placeholder={
-          kind === "folder"
-            ? "When a new invoice arrives, rename it by date and vendor and add it to the expenses sheet."
-            : kind === "page"
-              ? "If the price drops below $400, tell me."
-              : kind === "check"
-                ? "A supplier replied: read it and decide the next step."
-                : "Summarise each new post in two lines and tell me if it mentions us."
-        }
-        className="min-h-[90px] text-body"
+        placeholder={KIND[kind].instruction}
+        className="min-h-[90px] rounded-xl text-body"
       />
-      <label className="flex items-center gap-2 text-body text-muted-foreground">
-        Who acts on it
-        <select
-          value={botId}
-          onChange={(e) => setBotId(e.target.value)}
-          className="rounded-lg border bg-background px-2 py-1 text-body text-foreground"
-        >
-          {bots.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {error && <div className="text-body text-destructive">{error}</div>}
-      <div>
-        <Button disabled={busy || !botId || !target.trim() || !instruction.trim()} onClick={make}>
-          {busy && <Loader2 size={14} className="animate-spin" />} Start watching
-        </Button>
+
+      <div className="mt-6 mb-2 text-body font-medium text-foreground">How often it looks</div>
+      {kind === "folder" ? (
+        <div className="text-body text-muted-foreground">As it changes. Folders are watched within seconds.</div>
+      ) : (
+        <SliderRoom>
+          <Slider aria-label="How often it looks" stops={lookStops(every)} value={every} onChange={setEvery} onCommit={setEvery} />
+        </SliderRoom>
+      )}
+
+      <div className="mt-6 flex items-start gap-3 rounded-xl bg-muted/60 px-3.5 py-3">
+        {bot ? <AgentAvatar bot={bot} size={26} /> : <Eye size={16} className="mt-1 text-muted-foreground" />}
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.p
+            // a new kind, agent or pace swaps the sentence; typing the
+            // address only rewrites it, so it never flickers per key
+            key={`${kind}-${every}-${botId}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            className="min-w-0 flex-1 text-pretty break-words text-body leading-relaxed text-foreground"
+          >
+            {readback}
+          </motion.p>
+        </AnimatePresence>
       </div>
-      <p className="text-small leading-relaxed text-muted-foreground">
-        Pages, feeds and checks are looked at every 30 minutes, folders within seconds. A check is a command: exit 0
-        means act on its output, exit 1 means nothing to do.
-      </p>
+
+      {error && <div className="mt-3 text-body text-destructive">{error}</div>}
+      <div className="mt-5 flex items-center gap-3">
+        <Button size="lg" disabled={busy || !ready} onClick={make}>
+          {busy ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}
+          {busy ? "Starting" : "Start watching"}
+        </Button>
+        {!ready && (
+          <span className="text-small text-muted-foreground">
+            {!target.trim()
+              ? kind === "check"
+                ? "Add the command."
+                : `Add the ${KIND[kind].label.toLowerCase()}.`
+              : !instruction.trim()
+                ? "Say what to do when it changes."
+                : ""}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -245,23 +431,16 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           Leave blank for the main chat. A new name starts a new one.
         </span>
       </label>
+      {w.kind !== "folder" && (
+        <div className="max-w-[460px]">
+          <div className="mb-1.5 text-body text-muted-foreground">How often it looks</div>
+          {/* saved where the finger lets go, not at every stop on the way */}
+          <SliderRoom>
+            <Slider aria-label="How often it looks" stops={lookStops(w.every)} value={w.every} onCommit={(every) => patch({ every })} />
+          </SliderRoom>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-body text-muted-foreground">
-        {w.kind !== "folder" && (
-          <label className="flex items-center gap-1.5">
-            Every
-            <select
-              value={w.every}
-              onChange={(e) => patch({ every: Number(e.target.value) })}
-              className="rounded-md border bg-background px-1.5 py-0.5 text-foreground"
-            >
-              {[5, 15, 30, 60, 180, 720, 1440].map((m) => (
-                <option key={m} value={m}>
-                  {m < 60 ? `${m} min` : m < 1440 ? `${m / 60} h` : "day"}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
         <label className="flex items-center gap-1.5">
           <Switch checked={w.mode === "rehearse"} onCheckedChange={(on) => patch({ mode: on ? "rehearse" : "act" })} aria-label="Rehearse first" />
           <FlaskConical size={13} /> Try it on a copy first
