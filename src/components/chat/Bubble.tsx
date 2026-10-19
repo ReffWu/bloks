@@ -294,28 +294,21 @@ export function Bubble({
   // news about the message, not a timestamp. A goal's note goes through
   // the queue only to wait its turn; nobody queued it, so it never does.
   const queued = Boolean(message.deliveredAt && message.via !== "goal");
-  // The time rides in the action pill, so it shows with the actions and
-  // reserves no row of its own. The full date is a hover away.
-  const saidAt = message.at ? (
-    <time
-      dateTime={new Date(message.at).toISOString()}
-      title={new Date(message.at).toLocaleString()}
-      className="px-2 text-caption tabular-nums whitespace-nowrap text-muted-foreground"
-    >
-      {stamp(message.at)}
-    </time>
-  ) : null;
-  // The bar shows on hover, on a tap, and whenever the keyboard is
-  // inside the message, so Tab finds actions it can see.
-  const reachable = "group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:opacity-100";
+  // The newest reply keeps its row in view without a hover, since the
+  // last thing said is the one most often acted on. Read off the page
+  // rather than the store: a reply is the newest when no row after its
+  // own holds another message, and nothing inside an opened fold is.
+  const newest =
+    "[[data-message-id]:not([data-turn-fold]_*):not(:has(~_*_[data-bubble]))_&]:pointer-events-auto [[data-message-id]:not([data-turn-fold]_*):not(:has(~_*_[data-bubble]))_&]:opacity-100";
 
   if (!user) {
     return (
       <div
         ref={tap.row}
+        data-bubble="agent"
         // an arriving reply fades in where it will stay: it is often the
         // streamed words settling, and those should not move
-        className={cn("group relative flex flex-col items-start py-1.5", fresh && "animate-fade-in")}
+        className={cn("group relative flex flex-col items-start pt-1", fresh && "animate-fade-in")}
       >
         <div
           onPointerUp={tap.onPointerUp}
@@ -335,153 +328,156 @@ export function Bubble({
           onToggle={(emoji: string) => onReact?.(message.id, emoji)}
           nameOf={nameOf ?? ((id) => (id === "user" ? "You" : author))}
         />
-        {/* The bar floats over the end of the reply, so an invisible bar
-            costs no space at all, and on a tall reply it rides the
-            bottom of the screen until the reply has scrolled past. */}
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 flex flex-col justify-end">
-          <MessageActionBar
-            className={cn("sticky bottom-1", reachable)}
-            lead={saidAt}
-            open={tap.open}
-            message={message}
-            author={author}
-            onReply={onReply}
-            onForward={onForward}
-            onReact={onReact ? (emoji) => onReact(message.id, emoji) : undefined}
-            onDelete={onDelete ? () => onDelete(message.id) : undefined}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={cn(
-        "flex flex-col items-end",
-        // your own words rise into place from your side
-        fresh && "animate-send-in",
-      )}
-    >
-      {/* The bar stays beside the bubble on desktop, and sits above it on
-          a phone where there is no room beside it. */}
-      <div ref={tap.row} className="group relative flex w-full items-center justify-end gap-1.5">
+        {/* Under the words and lined up with them, in a row that keeps its
+            height when it is not showing, so a hover never moves the page.
+            Its icons carry padding of their own, so it lends a little of
+            that to the gap below rather than doubling it. */}
         <MessageActionBar
-          // while the editor has the keyboard, the actions stay out of its way
-          className={cn("max-sm:absolute max-sm:-top-8 max-sm:right-0 max-sm:z-10", editing === null && reachable)}
-          lead={saidAt}
+          look="row"
+          align="start"
+          at={message.at}
+          className={cn("mt-0.5 -mb-1.5", newest)}
           open={tap.open}
           message={message}
           author={author}
           onReply={onReply}
           onForward={onForward}
           onReact={onReact ? (emoji) => onReact(message.id, emoji) : undefined}
-          onEdit={onEdit && message.via !== "goal" ? startEditing : undefined}
           onDelete={onDelete ? () => onDelete(message.id) : undefined}
-          onRewind={onRewind ? () => onRewind(message.id) : undefined}
         />
-        {/* A column, so reactions hang under the bubble they belong to
-            rather than beside it where they would push the text around. */}
-        <div className={cn("flex max-w-[82%] flex-col items-end sm:max-w-[68%]", editing !== null && "w-full")}>
-          {(message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal") && (
-            <div className="mb-1 px-1 text-caption text-muted-foreground">
-              {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? "From your watcher" : message.via === "webhook" ? "From a webhook" : message.via === "goal" ? goalLabel(message.text ?? "") : "By email"}
-            </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={tap.row}
+      data-bubble="user"
+      className={cn(
+        "group flex flex-col items-end",
+        // your own words rise into place from your side
+        fresh && "animate-send-in",
+      )}
+    >
+      {/* A column, so reactions hang under the bubble they belong to
+          rather than beside it where they would push the text around. */}
+      <div className={cn("flex max-w-[82%] flex-col items-end sm:max-w-[68%]", editing !== null && "w-full")}>
+        {(message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal") && (
+          <div className="mb-1 px-1 text-caption text-muted-foreground">
+            {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? "From your watcher" : message.via === "webhook" ? "From a webhook" : message.via === "goal" ? goalLabel(message.text ?? "") : "By email"}
+          </div>
+        )}
+        <div
+          onPointerUp={tap.onPointerUp}
+          className={cn(
+            // a soft bubble on your side: set apart from the replies
+            // around it without shouting louder than them
+            "min-w-0 whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-lead text-foreground [overflow-wrap:anywhere]",
+            // an editor gets the room the words may grow into
+            editing !== null && "w-full",
+            message.via === "goal"
+              ? // Bloks keeping a goal going, not the person: a quieter
+                // bubble on their side, so it never reads as their words
+                "border border-brand/25 bg-brand-soft"
+              : "bg-secondary",
+            // the hit you are standing on, so n and N feel like movement
+            isHit && "ring-2 ring-warning/70",
           )}
-          <div
-            onPointerUp={tap.onPointerUp}
-            className={cn(
-              // a soft bubble on your side: set apart from the replies
-              // around it without shouting louder than them
-              "min-w-0 whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-lead text-foreground [overflow-wrap:anywhere]",
-              // an editor gets the room the words may grow into
-              editing !== null && "w-full",
-              message.via === "goal"
-                ? // Bloks keeping a goal going, not the person: a quieter
-                  // bubble on their side, so it never reads as their words
-                  "border border-brand/25 bg-brand-soft"
-                : "bg-secondary",
-              // the hit you are standing on, so n and N feel like movement
-              isHit && "ring-2 ring-warning/70",
-            )}
-          >
-            {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
-            {editing !== null ? (
-              <div className="flex flex-col gap-1.5">
-                <textarea
-                  autoFocus
-                  value={editing}
-                  onChange={(e) => setEditing(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") stopEditing();
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void submit();
-                    }
-                  }}
-                  rows={Math.min(8, editing.split("\n").length + 1)}
-                  className="w-full resize-none rounded-lg border bg-background px-2.5 py-1.5 text-lead outline-none"
-                />
-                {offer ? (
-                  <>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-small text-muted-foreground">
-                      <button
-                        onClick={() => editing.trim() && redoNow(editing.trim())}
-                        disabled={redoing}
-                        className="font-medium text-foreground underline underline-offset-2 disabled:opacity-60"
-                      >
-                        Redo
-                      </button>
-                      {/* the smaller way out: the words change, and the
-                          agent goes on with the ones it read */}
-                      <button onClick={() => stopEditing(editing.trim() || undefined)} disabled={redoing} className="text-caption hover:text-foreground">
-                        Save only
-                      </button>
-                      <button onClick={() => stopEditing()} className="text-caption hover:text-foreground">
-                        Cancel
-                      </button>
-                      <span>{redoing ? "Redoing…" : "Enter redoes, Escape cancels"}</span>
-                    </div>
-                    <div className="text-small leading-snug text-muted-foreground" role="status">
-                      {redoError ?? redoLine(offer, agentName ?? "the agent")}
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-2 text-small text-muted-foreground">
+        >
+          {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
+          {editing !== null ? (
+            <div className="flex flex-col gap-1.5">
+              <textarea
+                autoFocus
+                value={editing}
+                onChange={(e) => setEditing(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") stopEditing();
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void submit();
+                  }
+                }}
+                rows={Math.min(8, editing.split("\n").length + 1)}
+                className="w-full resize-none rounded-lg border bg-background px-2.5 py-1.5 text-lead outline-none"
+              />
+              {offer ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-small text-muted-foreground">
                     <button
-                      onClick={() => stopEditing(editing.trim() || undefined)}
-                      className="font-medium text-foreground underline underline-offset-2"
+                      onClick={() => editing.trim() && redoNow(editing.trim())}
+                      disabled={redoing}
+                      className="font-medium text-foreground underline underline-offset-2 disabled:opacity-60"
                     >
-                      Save
+                      Redo
                     </button>
-                    <button onClick={() => stopEditing()} className="hover:text-foreground">
+                    {/* the smaller way out: the words change, and the
+                        agent goes on with the ones it read */}
+                    <button onClick={() => stopEditing(editing.trim() || undefined)} disabled={redoing} className="text-caption hover:text-foreground">
+                      Save only
+                    </button>
+                    <button onClick={() => stopEditing()} className="text-caption hover:text-foreground">
                       Cancel
                     </button>
-                    <span>Enter saves, Escape cancels</span>
+                    <span>{redoing ? "Redoing…" : "Enter redoes, Escape cancels"}</span>
                   </div>
-                )}
-              </div>
-            ) : (
-              <UserText text={message.via === "goal" ? goalNoteForPerson(message.text ?? "").body : (message.text ?? "")} highlight={highlight} />
-            )}
-            {message.editedAt && editing === null && (
-              <span className="ml-1.5 align-baseline text-caption text-muted-foreground">edited</span>
-            )}
-          </div>
-          <Reactions
-            reactions={message.reactions}
-            onToggle={(emoji: string) => onReact?.(message.id, emoji)}
-            nameOf={nameOf ?? ((id) => (id === "user" ? "You" : author))}
-          />
-          {/* what recall put ahead of these words for the agent */}
-          {message.recalled?.length ? <RecalledNotes notes={message.recalled} /> : null}
-          {queued && message.at && message.deliveredAt && (
-            <div className="mt-1 px-1 text-caption tabular-nums text-muted-foreground">
-              {queuedLine(message.queuedAt ?? message.at, message.deliveredAt)}
+                  <div className="text-small leading-snug text-muted-foreground" role="status">
+                    {redoError ?? redoLine(offer, agentName ?? "the agent")}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 text-small text-muted-foreground">
+                  <button
+                    onClick={() => stopEditing(editing.trim() || undefined)}
+                    className="font-medium text-foreground underline underline-offset-2"
+                  >
+                    Save
+                  </button>
+                  <button onClick={() => stopEditing()} className="hover:text-foreground">
+                    Cancel
+                  </button>
+                  <span>Enter saves, Escape cancels</span>
+                </div>
+              )}
             </div>
+          ) : (
+            <UserText text={message.via === "goal" ? goalNoteForPerson(message.text ?? "").body : (message.text ?? "")} highlight={highlight} />
+          )}
+          {message.editedAt && editing === null && (
+            <span className="ml-1.5 align-baseline text-caption text-muted-foreground">edited</span>
           )}
         </div>
+        <Reactions
+          reactions={message.reactions}
+          onToggle={(emoji: string) => onReact?.(message.id, emoji)}
+          nameOf={nameOf ?? ((id) => (id === "user" ? "You" : author))}
+        />
+        {/* what recall put ahead of these words for the agent */}
+        {message.recalled?.length ? <RecalledNotes notes={message.recalled} /> : null}
+        {queued && message.at && message.deliveredAt && (
+          <div className="mt-1 px-1 text-caption tabular-nums text-muted-foreground">
+            {queuedLine(message.queuedAt ?? message.at, message.deliveredAt)}
+          </div>
+        )}
       </div>
+      {/* The same row as a reply's, under your bubble and lined up with
+          its right edge. While the editor has the keyboard the row keeps
+          its place and stays out of the way. */}
+      <MessageActionBar
+        look="row"
+        align="end"
+        at={message.at}
+        className={cn("mt-0.5 -mb-1.5", editing !== null && "invisible")}
+        open={tap.open}
+        message={message}
+        author={author}
+        onReply={onReply}
+        onForward={onForward}
+        onReact={onReact ? (emoji) => onReact(message.id, emoji) : undefined}
+        onEdit={onEdit && message.via !== "goal" ? startEditing : undefined}
+        onDelete={onDelete ? () => onDelete(message.id) : undefined}
+        onRewind={onRewind ? () => onRewind(message.id) : undefined}
+      />
     </div>
   );
 }
