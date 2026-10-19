@@ -47,6 +47,8 @@ import { JumpToLatest } from "./chat/JumpToLatest";
 import { onAsk, peekAsk, takeAsk } from "@/lib/chatAsk";
 import { keysFor, platformOf } from "@/lib/shortcuts";
 import { confirm } from "@/components/ui/confirm";
+import { createPortal } from "react-dom";
+import { useTitlebarSlot } from "@/lib/titlebarSlot";
 
 /**
  * Which messages should animate in: ones that arrive while you're
@@ -127,6 +129,10 @@ function LandMark({ on }: { on: boolean }) {
 }
 
 export function ChatView({ bot }: { bot: Bot }) {
+  // On a desktop the conversation's tabs sit up in the title bar, in the
+  // row with the window's own buttons; on a phone they stay under the header
+  const titleSlot = useTitlebarSlot();
+  const inTitleBar = (tabs: React.ReactNode) => (titleSlot ? createPortal(tabs, titleSlot) : tabs);
   const { state, dispatch } = useStore();
   // Only a frame that arrived during this turn is live. The one held from
   // the last turn is already in the transcript, and showing it again as
@@ -653,7 +659,8 @@ export function ChatView({ bot }: { bot: Bot }) {
       {/* Messages. The strip repeats what the sidebar lists when it lists
           conversations, so it only shows when the sidebar does not, and
           only once there is more than one to choose between. */}
-      {strip && <TaskStrip
+      {strip && inTitleBar(<TaskStrip
+        inTitleBar={!!titleSlot}
         tasks={bot.tasks ?? []}
         activeId={bot.activeTaskId ?? bot.threadId}
         onSelect={(taskId) => taskId !== bot.activeTaskId && dispatch({ type: "selectTask", botId: bot.id, taskId })}
@@ -682,7 +689,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           }).then((yes) => yes && dispatch({ type: "clearTask", botId: bot.id, taskId }));
         }}
         onRename={(taskId, title) => dispatch({ type: "renameTask", botId: bot.id, taskId, title })}
-      />}
+      />)}
       {finding && (
         <div className="flex shrink-0 items-center gap-2 border-b bg-background/95 px-4 py-2 md:px-6">
           <Search size={14} className="shrink-0 text-muted-foreground" />

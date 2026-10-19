@@ -11,8 +11,11 @@ import { toggleChatSidebar, useChatSidebar } from "@/lib/chatSidebar";
 import { platformOf } from "@/lib/shortcuts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
+import { TITLEBAR_TABS_ID } from "@/lib/titlebarSlot";
 
 const isElectron = navigator.userAgent.includes("Electron");
+/** The main rail's width (AppRail.tsx, w-14). */
+const RAIL = 56;
 
 function BarButton({
   label,
@@ -83,7 +86,7 @@ export function TitleBar() {
   const mod = mac ? "⌘" : "Ctrl+";
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="titlebar-drag hidden h-11 shrink-0 items-center bg-sidebar md:flex">
+      <div className="titlebar-drag relative hidden h-11 shrink-0 items-center bg-sidebar md:flex">
         {/* room for the traffic lights on a Mac (BUTTONS in
             electron/main.mjs), which reach past the slim rail below; a
             browser has none, so its buttons start at the rail's edge */}
@@ -105,6 +108,16 @@ export function TitleBar() {
             <PanelLeft size={17} strokeWidth={1.75} />
           </BarButton>
         </div>
+        {/* An open conversation puts its tabs here (lib/titlebarSlot.ts),
+            starting where the conversation itself starts so the open tab
+            joins the page under it rather than the sidebar; with the
+            sidebar closed they start after these buttons instead. The
+            rest of the strip stays a handle for moving the window. */}
+        <div
+          id={TITLEBAR_TABS_ID}
+          className="absolute inset-y-0 right-0 flex min-w-0 items-end"
+          style={{ left: Math.max(RAIL + (chat && sidebar.open ? sidebar.width : 0) + 12, (isElectron ? 78 : 56) + 120) }}
+        />
       </div>
     </TooltipProvider>
   );

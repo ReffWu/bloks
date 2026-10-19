@@ -294,12 +294,6 @@ export function Bubble({
   // news about the message, not a timestamp. A goal's note goes through
   // the queue only to wait its turn; nobody queued it, so it never does.
   const queued = Boolean(message.deliveredAt && message.via !== "goal");
-  // The newest reply keeps its row in view without a hover, since the
-  // last thing said is the one most often acted on. Read off the page
-  // rather than the store: a reply is the newest when no row after its
-  // own holds another message, and nothing inside an opened fold is.
-  const newest =
-    "[[data-message-id]:not([data-turn-fold]_*):not(:has(~_*_[data-bubble]))_&]:pointer-events-auto [[data-message-id]:not([data-turn-fold]_*):not(:has(~_*_[data-bubble]))_&]:opacity-100";
 
   if (!user) {
     return (
@@ -336,7 +330,9 @@ export function Bubble({
           look="row"
           align="start"
           at={message.at}
-          className={cn("mt-0.5 -mb-1.5", newest)}
+          // shown only while the pointer is over the message or focus is in it,
+          // the newest included: a resting transcript is words and nothing else
+          className="mt-0.5 -mb-1.5"
           open={tap.open}
           message={message}
           author={author}

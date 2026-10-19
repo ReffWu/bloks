@@ -167,7 +167,11 @@ export function TaskStrip({
   onClose,
   onClear,
   onRename,
+  inTitleBar,
 }: {
+  /** Up in the window's title bar (lib/titlebarSlot.ts): the bar is the
+   * band, so the strip draws none of its own and fills the bar's height. */
+  inTitleBar?: boolean;
   tasks: TaskChipData[];
   activeId: string;
   onSelect: (id: string) => void;
@@ -189,7 +193,10 @@ export function TaskStrip({
     <div
       role="tablist"
       aria-label="Conversations"
-      className="flex h-[38px] shrink-0 items-end gap-0 overflow-x-auto bg-tab-strip px-3 pt-1.5 max-md:[scrollbar-width:none] md:px-4 max-md:[&::-webkit-scrollbar]:hidden"
+      className={cn(
+        "flex shrink-0 items-end gap-0 overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden",
+        inTitleBar ? "h-full min-w-0 flex-1 pt-1.5 pr-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "h-[38px] bg-tab-strip px-3 pt-1.5 md:px-4",
+      )}
     >
       {tasks.map((task, index) => {
         const active = task.id === activeId;
