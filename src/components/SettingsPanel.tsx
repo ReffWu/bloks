@@ -886,11 +886,28 @@ const COMPONENTS: Array<[string, string]> = [
  * alone. All on by default: the point of the gallery is that an answer
  * that is really a table arrives as a table, and making somebody opt into
  * that one shape at a time would mean nobody ever sees it.
+ *
+ * The first switch is the whole of interface answers (server/genui.ts).
+ * The shapes under it hold either way: off, a chart is not taught as
+ * interface or as the older gallery card.
  */
 function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   const without = bot.withoutComponents ?? [];
+  const interactive = !without.includes("openui");
   return (
     <Group>
+      <SettingRow
+        label="Interactive answers"
+        description="Cards, tables, charts and buttons right in the chat, instead of long paragraphs."
+        control={
+          <Switch
+            checked={interactive}
+            onCheckedChange={(next) =>
+              patch({ withoutComponents: next ? without.filter((k) => k !== "openui") : [...without, "openui"] })
+            }
+          />
+        }
+      />
       <SettingRow
         label="Answers"
         description="Turn one off and it answers in plain text instead."

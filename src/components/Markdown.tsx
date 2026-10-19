@@ -25,6 +25,8 @@ import { splitHighlight } from "@/lib/find";
 import { looksShared } from "@/lib/sharedFile";
 import { TableScroll } from "./TableScroll";
 import { SharedFileLink } from "./Artifacts";
+import { GenUIBlock, useInsideGenUi } from "./genui/GenUIBlock";
+import { isOpenUiLang } from "@/lib/genui/schema";
 
 /** The gap every block keeps from the one above it, tighter under a
  * heading, and none at all for the first. */
@@ -352,6 +354,12 @@ function MarkdownCode({ block, highlight }: { block: CodeBlock; highlight: strin
   );
 }
 
+/** Code on its own, outside a reply: an interface answer's CodeBlock,
+ * or the text of one that could not be drawn. */
+export function CodeView({ lang, code }: { lang: string; code: string }) {
+  return <MarkdownCode block={{ kind: "code", lang, code }} highlight="" />;
+}
+
 /** The pattern that picks out a room's @mentions, or null for none. */
 function mentionPattern(names: string[] | undefined): RegExp | null {
   if (!names?.length) return null;
@@ -490,6 +498,9 @@ interface MarkdownishProps {
   highlight?: string;
   /** Names whose @mentions are picked out, in a room. */
   mentions?: string[];
+  /** The reply is still arriving: an interface answer in it is drawn as
+   * it grows, and waits to be clicked until it is done. */
+  streaming?: boolean;
 }
 
 /**
@@ -503,18 +514,29 @@ export const Markdownish = memo(
   MarkdownishBlocks,
   (a, b) =>
     a.text === b.text &&
+    Boolean(a.streaming) === Boolean(b.streaming) &&
     (a.highlight ?? "") === (b.highlight ?? "") &&
     (a.mentions ?? []).length === (b.mentions ?? []).length &&
     (a.mentions ?? []).every((name, i) => name === b.mentions![i]),
 );
 
-function MarkdownishBlocks({ text, highlight = "", mentions }: MarkdownishProps) {
+function MarkdownishBlocks({ text, highlight = "", mentions, streaming }: MarkdownishProps) {
   const names = mentionPattern(mentions);
+  // an answer's own markdown draws a fence of its own as code
+  const nested = useInsideGenUi();
   return (
     <>
       {splitBlocks(text).flatMap((block, b) =>
         block.kind === "table" ? (
           [<MarkdownTable key={`t${b}`} block={block} highlight={highlight} />]
+        ) : block.kind === "code" && isOpenUiLang(block.lang) && !nested ? (
+          // An answer drawn as interface (src/components/genui). The
+          // gap above it is the one every block keeps.
+          [
+            <div key={`u${b}`} data-genui className={FLOW}>
+              <GenUIBlock code={block.code} streaming={streaming} />
+            </div>,
+          ]
         ) : block.kind === "code" ? (
           [<MarkdownCode key={`c${b}`} block={block} highlight={highlight} />]
         ) : (

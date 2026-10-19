@@ -76,6 +76,16 @@
      content. The shine is the band that crosses it (ui/skeleton.tsx). */
   --skeleton: #ececef;
   --skeleton-shine: rgba(255, 255, 255, 0.75);
+
+  /* Chart series, in a fixed order: the brand first, then four hues
+     checked as a set for colour blind separation and for telling apart
+     at a glance. Three of them sit under 3:1 on white, so a chart that
+     uses them labels its values directly (src/components/genui/charts.tsx). */
+  --series-1: #5b6cff;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
 }
 
 .dark {
@@ -118,6 +128,15 @@
 
   --skeleton: #1f1f24;
   --skeleton-shine: rgba(255, 255, 255, 0.045);
+
+  /* The same five, stepped for the dark ground and checked again there.
+     The brand comes down a shade: at full brightness it outshines the
+     others and reads as the one that matters. */
+  --series-1: #7282fb;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
 }
 
 @theme inline {
@@ -592,6 +611,11 @@
   .streaming-text > :last-child::after {
     animation: none;
   }
+}
+/* An interface answer has no line of text to ride the end of; it shows
+   itself arriving part by part instead. */
+.streaming-text > [data-genui]:last-child::after {
+  content: none;
 }
 
 /* A browser's open tab: it joins the page below, and where it meets the

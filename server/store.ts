@@ -195,6 +195,11 @@ export interface Message {
    * server/components.ts before it ever reaches a screen, because what
    * arrives is JSON an agent wrote. */
   component?: Record<string, unknown>;
+  /** text messages: the interface the reply drew, one entry per openui
+   * fence that parsed, as a plain tree for a client that draws it
+   * without a parser (server/genui.ts, docs/GENERATIVE_UI.md). Written
+   * by the server from the reply's own text, never from a client body. */
+  ui?: import("./genui.ts").UiEntry[];
   /** changes messages: what a turn did to the files in its folder, and
    * whether it has been undone. See server/checkpoints.ts. */
   changes?: ChangesSummary;

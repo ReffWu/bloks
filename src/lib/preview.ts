@@ -95,8 +95,14 @@ export function previewLine(last: Message | undefined): string {
         ? `Would change ${last.changes.total} file${last.changes.total === 1 ? "" : "s"}`
         : changedLine(last.changes.total - (last.changes.shared?.total ?? 0), last.changes.shared?.total);
     default:
-      return last.text ? plainText(last.text) : "";
+      return last.text ? plainText(withoutInterface(last.text)) || "An interactive answer" : "";
   }
+}
+
+/** A reply's words without the interface drawn in it, which as text is
+ * code (src/components/genui). A fence still open runs to the end. */
+export function withoutInterface(text: string): string {
+  return text.replace(/^[ \t]*```[ \t]*openui(?:-lang)?[ \t]*$[\s\S]*?(?:^[ \t]*```[ \t]*$|(?![\s\S]))/gim, "");
 }
 
 /** "Changed 3 files", for a list row. A turn that ran beside other

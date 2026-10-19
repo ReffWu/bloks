@@ -11,6 +11,7 @@ import { api, useStore, laneHasMessages, openLaneWorking, type Bot, type Message
 import { AgentAvatar } from "./Avatar";
 import { OptionCard } from "./OptionCard";
 import { MessageComponent } from "./Gallery";
+import { GenUiHost } from "./genui/host";
 import { Composer } from "./Composer";
 import { TerminalPanel } from "./Terminal";
 import { lastEditable, quietRunAt, splitWaiting } from "@/lib/transcript";
@@ -783,28 +784,32 @@ export function ChatView({ bot }: { bot: Bot }) {
               </div>
             )
           )}
-          {visibleRows.flatMap((row) =>
-            row.kind === "said"
-              ? rowsOf(
-                  row.items.map((item) => item.message),
-                  (offset) => row.items[offset].index,
-                )
-              : [
-                  <TurnFoldLine
-                    key={`fold:${row.fold.key}`}
-                    fold={row.fold}
-                    open={openFolds.has(row.fold.key)}
-                    onToggle={() => toggleFold(row.fold.key)}
-                    onOpenExchange={(asker) =>
-                      setExchange({ peerId: asker.peerId, messageId: asker.message.id, text: asker.message.text ?? "" })
-                    }
-                  >
-                    {openFolds.has(row.fold.key) && rowsOf(row.fold.messages, (offset) => row.fold.indices[offset])}
-                  </TurnFoldLine>,
-                ],
-          )}
-          {liveBrowser && <LiveBrowser botId={bot.id} frame={liveBrowser} />}
-          {streaming && <StreamingBubble text={streaming} />}
+          {/* a click in an answer drawn as interface goes back to this
+              agent, in the conversation on screen (genui/host.tsx) */}
+          <GenUiHost target={{ kind: "chat", botId: bot.id }}>
+            {visibleRows.flatMap((row) =>
+              row.kind === "said"
+                ? rowsOf(
+                    row.items.map((item) => item.message),
+                    (offset) => row.items[offset].index,
+                  )
+                : [
+                    <TurnFoldLine
+                      key={`fold:${row.fold.key}`}
+                      fold={row.fold}
+                      open={openFolds.has(row.fold.key)}
+                      onToggle={() => toggleFold(row.fold.key)}
+                      onOpenExchange={(asker) =>
+                        setExchange({ peerId: asker.peerId, messageId: asker.message.id, text: asker.message.text ?? "" })
+                      }
+                    >
+                      {openFolds.has(row.fold.key) && rowsOf(row.fold.messages, (offset) => row.fold.indices[offset])}
+                    </TurnFoldLine>,
+                  ],
+            )}
+            {liveBrowser && <LiveBrowser botId={bot.id} frame={liveBrowser} />}
+            {streaming && <StreamingBubble text={streaming} />}
+          </GenUiHost>
           <WorkingLine
             threadKey={threadKey}
             working={working}

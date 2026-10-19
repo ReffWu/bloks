@@ -1,4 +1,5 @@
 import type { Message } from "./store.ts";
+import { withoutUi } from "./genui.ts";
 
 export interface TelegramText { text: string; markdown: boolean }
 
@@ -34,7 +35,9 @@ export function replySpan(messages: readonly Message[], requestId: string | unde
 }
 
 export function telegramReply(messages: readonly Message[], redact: (text: string) => string): TelegramText {
-  const text = messages.findLast(botWords)?.text?.trim() ?? "";
+  // Interface the app draws would arrive as code; the words around it
+  // are the reply here, or a line saying where the rest of it is.
+  const text = withoutUi(messages.findLast(botWords)?.text ?? "");
   return text ? { text, markdown: true } : telegramFallback(messages, redact);
 }
 

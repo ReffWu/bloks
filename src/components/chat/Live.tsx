@@ -371,7 +371,7 @@ export function StreamingBubble({ text }: { text: string }) {
   return (
     <div className="flex w-full justify-start">
       <div className="streaming-text w-full min-w-0 py-1.5 text-lead text-foreground">
-        <Markdownish text={text} />
+        <Markdownish text={text} streaming />
       </div>
     </div>
   );
