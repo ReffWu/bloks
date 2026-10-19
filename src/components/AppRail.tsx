@@ -91,6 +91,7 @@ export function AppRail() {
       dispatch({ type: "openPage", page: null });
       dispatch({ type: "toggleAppSettings", open: false });
       dispatch({ type: "toggleRoutines", open: false });
+      dispatch({ type: "toggleSettings", open: false });
     } else if (to === "settings") dispatch({ type: "toggleAppSettings", open: true });
     else if (to === "automations") dispatch({ type: "toggleRoutines", open: true });
     else dispatch({ type: "openPage", page: to });

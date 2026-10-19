@@ -1,11 +1,35 @@
-import { useEffect, useState } from "react";
+// One agent's settings, as a page of its own in the panel where its chat
+// was. Who it is sits at the top, large and editable where it stands; the
+// rest is one scroll in the order people reach for it (who it is, what it
+// thinks with, how much it asks, what it can touch, what it remembers,
+// how it reaches you, when it runs, and the doors out), with a list of
+// those groups on the left that follows the scroll and jumps on a click.
+//
+// One scroll rather than a page per group because an agent is one thing:
+// seeing its engine a flick below its instructions is part of knowing it,
+// and nothing here is so long that it needs hiding behind a tab.
+import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { Archive } from "@/components/icons";
+import { BellDot } from "@/components/icons";
+import { BookOpen } from "@/components/icons";
+import { CalendarClock } from "@/components/icons";
 import { Check } from "@/components/icons";
-import { Crown } from "@/components/icons";
+import { Cpu } from "@/components/icons";
 import { Download } from "@/components/icons";
 import { FingerprintPattern as Fingerprint } from "@/components/icons";
 import { Library } from "@/components/icons";
+import { MessageCircle } from "@/components/icons";
+import { Mic } from "@/components/icons";
+import { Pencil } from "@/components/icons";
 import { Plus } from "@/components/icons";
-import { Sparkles } from "@/components/icons";
+import { Puzzle } from "@/components/icons";
+import { RefreshCw } from "@/components/icons";
+import { RotateCcw } from "@/components/icons";
+import { SlidersHorizontal } from "@/components/icons";
+import { Trash2 } from "@/components/icons";
+import { TriangleAlert } from "@/components/icons";
+import { User } from "@/components/icons";
 import { X } from "@/components/icons";
 import { api, useStore, type Bot, type Skill } from "@/state/store";
 import { useMcpServers, type McpServerRow } from "./McpServers";
@@ -20,210 +44,554 @@ import {
 } from "@/lib/mascot";
 import { CodexSpeedControl } from "./CodexSpeed";
 import { ModelPicker } from "./ModelPicker";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { VoiceCard } from "./Voice";
 import { TelegramSection } from "./TelegramSection";
+import { RoutinesSection } from "./RoutinesSection";
+import { SettingRow } from "./SettingsLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
-import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
+import { plural } from "@/lib/plural";
+import { stamp } from "@/lib/when";
 import { thisComputer } from "@/lib/thisComputer";
 import { sameEngineBackup } from "@/lib/backupChoice";
+import { useEscape } from "@/lib/useEscape";
 import { EngineSuggestionCard, useEngineReport } from "./EngineReport";
-import { ApprovalsChooser, confirmWidening, RULES_AND_MODES, type ApprovalMode } from "./ApprovalsChooser";
+import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, RULES_AND_MODES, type ApprovalMode } from "./ApprovalsChooser";
 
-function Field({
-  label,
+type Patch = Partial<
+  Pick<
+    Bot,
+    | "name"
+    | "title"
+    | "description"
+    | "notifications"
+    | "computer"
+    | "color"
+    | "shape"
+    | "seniority"
+    | "withoutComponents"
+    | "effort"
+    | "mascotExpression"
+    | "composio"
+    | "browser"
+    | "backupSelection"
+    | "engineHooks"
+    | "recallBeforeTurn"
+  >
+>;
+
+type SectionId =
+  | "identity"
+  | "engine"
+  | "behaviour"
+  | "tools"
+  | "memory"
+  | "reach"
+  | "notifications"
+  | "schedules"
+  | "export"
+  | "danger";
+
+const SECTIONS: Array<{ id: SectionId; label: string; icon: typeof User }> = [
+  { id: "identity", label: "Identity", icon: User },
+  { id: "engine", label: "Engine", icon: Cpu },
+  { id: "behaviour", label: "Behaviour", icon: SlidersHorizontal },
+  { id: "tools", label: "Tools", icon: Puzzle },
+  { id: "memory", label: "Memory", icon: BookOpen },
+  { id: "reach", label: "Voice and Telegram", icon: Mic },
+  { id: "notifications", label: "Notifications", icon: BellDot },
+  { id: "schedules", label: "Schedules", icon: CalendarClock },
+  { id: "export", label: "Signature and export", icon: Fingerprint },
+  { id: "danger", label: "Danger zone", icon: TriangleAlert },
+];
+
+const anchor = (id: SectionId) => `agent-settings-${id}`;
+
+// ---------------------------------------------------------------------------
+// The page's own pieces: a section, a group of rows inside it.
+
+function Section({
+  id,
+  title,
+  says,
   children,
 }: {
-  label: string;
+  id: SectionId;
+  title: string;
+  says?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <label className="block">
-      <div className="mb-1.5 text-[12.5px] font-medium text-muted-foreground">{label}</div>
-      {children}
-    </label>
+    <section id={anchor(id)} aria-labelledby={`${anchor(id)}-title`} className="scroll-mt-6 pt-12 first:pt-0">
+      <div className="mb-4 px-1">
+        <h2
+          id={`${anchor(id)}-title`}
+          tabIndex={-1}
+          className="text-[17px] font-semibold tracking-tight text-foreground outline-none"
+        >
+          {title}
+        </h2>
+        {says && <p className="mt-1 text-pretty text-[13px] leading-relaxed text-muted-foreground">{says}</p>}
+      </div>
+      {/* the cards borrowed from elsewhere each bring a top margin of
+          their own; the stack's gap is the only spacing here */}
+      <div className="flex flex-col gap-3 *:mt-0">{children}</div>
+    </section>
   );
 }
 
-/** Library skills this agent has attached. Toggling one changes what
- * reaches the model on the very next turn. */
-function AttachedSkills({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
-  const [library, setLibrary] = useState<Skill[] | null>(null);
-  const attached = bot.skillIds ?? [];
+/** Rows that belong together, read as one list. */
+function Group({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn("flex flex-col divide-y overflow-hidden rounded-2xl border bg-card", className)}>{children}</div>
+  );
+}
 
+/** A short aside under a row: what a setting does not cover. */
+function Note({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mt-2.5 rounded-xl bg-muted/60 px-3 py-2 text-pretty text-[12px] leading-relaxed text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function Saved({ shown }: { shown: boolean }) {
+  return (
+    <span
+      aria-live="polite"
+      className={cn(
+        "flex items-center gap-1 text-[11.5px] text-success transition-opacity duration-200",
+        shown ? "opacity-100" : "opacity-0",
+      )}
+    >
+      <Check size={12} /> Saved
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function AgentSettingsPage({ bot }: { bot: Bot }) {
+  const { state, dispatch } = useStore();
+  const reduced = useReducedMotion();
+  const scroller = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState<SectionId>("identity");
+  const suggestion = useEngineReport()?.suggestions.find((s) => s.botId === bot.id);
+  const patch = (p: Patch) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
+  const close = () => dispatch({ type: "toggleSettings", open: false });
+
+  // Escape goes back to the chat, unless something open on top takes it
+  useEscape(close);
+
+  // The group being read is the last one whose heading has passed a line
+  // a third of the way down; at the very bottom it is the last group,
+  // however short, or the danger zone could never be the one lit.
   useEffect(() => {
-    api("/api/skills")
-      .then((r) => setLibrary(r.skills ?? []))
-      .catch(() => setLibrary([]));
+    const root = scroller.current;
+    if (!root) return;
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      const top = root.getBoundingClientRect().top;
+      const line = top + root.clientHeight * 0.3;
+      let current: SectionId = SECTIONS[0].id;
+      for (const section of SECTIONS) {
+        const el = document.getElementById(anchor(section.id));
+        if (el && el.getBoundingClientRect().top <= line) current = section.id;
+      }
+      if (root.scrollTop > 0 && root.scrollTop + root.clientHeight >= root.scrollHeight - 2) {
+        current = SECTIONS[SECTIONS.length - 1].id;
+      }
+      setActive(current);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(read);
+    };
+    root.addEventListener("scroll", onScroll, { passive: true });
+    read();
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, []);
 
-  const toggle = (id: string) =>
-    dispatch({
-      type: "updateBot",
-      botId: bot.id,
-      patch: {
-        skillIds: attached.includes(id) ? attached.filter((s) => s !== id) : [...attached, id],
-      },
-    });
-
-  return (
-    <div className="rounded-2xl border bg-card p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Library size={14} className="text-muted-foreground" />
-          <span className="text-[13.5px] font-semibold text-foreground">From the library</span>
-          <span className="text-[12px] text-muted-foreground">{attached.length}</span>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => dispatch({ type: "openCustomize", tab: "skills" })}>
-          Manage
-        </Button>
-      </div>
-      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        Shared instruction sets this agent can carry.
-      </div>
-
-      <div className="mt-3 flex flex-col gap-1">
-        {library === null ? (
-          <div className="py-3 text-[12.5px] text-muted-foreground">Loading…</div>
-        ) : library.length === 0 ? (
-          <div className="py-3 text-[12.5px] text-muted-foreground">No skills installed yet.</div>
-        ) : (
-          library.map((skill) => {
-            const on = attached.includes(skill.id);
-            return (
-              <button
-                key={skill.id}
-                onClick={() => toggle(skill.id)}
-                className={cn(
-                  "flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors duration-150",
-                  on ? "bg-brand-soft" : "hover:bg-accent",
-                )}
-              >
-                <span
-                  className={cn(
-                    "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded",
-                    on ? "bg-brand-ink text-brand-foreground" : "border",
-                  )}
-                >
-                  {on && <Check size={11} strokeWidth={3} />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className={cn("text-[12.5px] font-medium", on ? "text-brand-ink" : "text-foreground")}>
-                    {skill.name}
-                  </span>
-                  {skill.description && (
-                    <span className="mt-px block truncate text-[11.5px] text-muted-foreground">
-                      {skill.description}
-                    </span>
-                  )}
-                </span>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Skills are instructions the agent carries into every turn, they go
- * into its system prompt, so editing one changes behavior. */
-function SkillsEditor({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
-  const [draft, setDraft] = useState("");
-  const skills = bot.skills ?? [];
-
-  const setSkills = (next: string[]) =>
-    dispatch({ type: "updateBot", botId: bot.id, patch: { skills: next } });
-
-  const add = () => {
-    const value = draft.trim();
-    if (!value) return;
-    setSkills([...skills, value]);
-    setDraft("");
+  /** To a group, and the keyboard with it: the heading takes focus, so
+   * Tab carries on from where the eye went. */
+  const jump = (id: SectionId) => {
+    const el = document.getElementById(anchor(id));
+    if (!el) return;
+    setActive(id);
+    el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    document.getElementById(`${anchor(id)}-title`)?.focus({ preventScroll: true });
   };
 
+  const instance = state.instances.find((i) => i.instanceId === bot.modelSelection?.instanceId);
+  const modelName =
+    instance?.models.options.find((o) => o.id === bot.modelSelection?.model)?.label ??
+    (bot.modelSelection?.model || instance?.models.default || "Engine default");
+  const mode = bot.approvals ?? "ask";
+  const seniority = bot.seniority ?? 1;
+  const skillCount = (bot.skills?.length ?? 0) + (bot.skillIds?.length ?? 0);
+
   return (
-    <div className="rounded-2xl border bg-card p-4">
-      <div className="flex items-center gap-2">
-        <Sparkles size={14} className="text-muted-foreground" />
-        <span className="text-[13.5px] font-semibold text-foreground">Skills</span>
-        <span className="text-[12px] text-muted-foreground">{skills.length}</span>
-      </div>
-      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        Instructions this agent carries into every conversation.
-      </div>
-
-      {skills.length > 0 && (
-        <div className="mt-3 flex flex-col gap-1">
-          {skills.map((skill, i) => (
-            <div
-              key={`${i}-${skill.slice(0, 12)}`}
-              className="group flex items-start gap-2 rounded-lg bg-muted/60 px-2.5 py-1.5"
-            >
-              <span className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-foreground">
-                {skill}
-              </span>
-              <button
-                onClick={() => setSkills(skills.filter((_, j) => j !== i))}
-                className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity duration-150 hover:text-destructive group-hover:opacity-100"
-                title="Remove skill"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ))}
+    <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background md:flex-row">
+      <nav
+        aria-label={`${bot.name}'s settings`}
+        className="flex shrink-0 flex-col border-b bg-sidebar/60 md:w-[248px] md:border-b-0 md:border-r"
+      >
+        {/* No back button of its own, as in Settings: the title bar's Back
+            and Esc go back to the chat, and so does the chat button by the
+            name. On a phone the pill sits in the corner, so the row leaves
+            it room. */}
+        <div className="titlebar-drag flex h-[52px] shrink-0 items-center gap-2.5 px-4 max-md:pl-[92px]">
+          <AgentAvatar bot={bot} size={22} />
+          <span className="min-w-0 truncate text-[14px] font-semibold text-foreground">{bot.name || "Unnamed"}</span>
+          <span className="shrink-0 text-[12.5px] text-muted-foreground">Settings</span>
         </div>
-      )}
+        <div className="flex gap-0.5 overflow-x-auto px-2 pb-2 [scrollbar-width:none] md:flex-1 md:flex-col md:overflow-y-auto md:pb-4 md:pt-1 [&::-webkit-scrollbar]:hidden">
+          {SECTIONS.map((section) => {
+            const Icon = section.icon;
+            const on = section.id === active;
+            return (
+              <button
+                key={section.id}
+                onClick={() => jump(section.id)}
+                aria-current={on ? "location" : undefined}
+                className={cn(
+                  "relative flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors duration-150",
+                  on ? "font-medium text-foreground" : "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
+                  section.id === "danger" && "md:mt-3",
+                )}
+              >
+                {/* the lit row slides to the group being read rather than
+                    blinking there, so the eye follows the scroll's pace */}
+                {on && (
+                  <motion.span
+                    layoutId="agent-settings-nav"
+                    transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                    className="absolute inset-0 z-0 rounded-lg bg-background shadow-[0_0_0_0.5px_var(--border)]"
+                  />
+                )}
+                {/* above the highlight wherever it is mid-slide, so a row
+                    it passes over never loses its words */}
+                <Icon
+                  size={16}
+                  className={cn(
+                    "relative z-[1]",
+                    section.id === "danger" ? "text-destructive" : on ? "text-foreground" : "text-muted-foreground",
+                  )}
+                />
+                <span className="relative z-[1]">{section.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
-      <div className="mt-2 flex gap-2">
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          placeholder="Add a skill: when to use it, and what to return"
-          className="h-8 text-[12.5px]"
-        />
-        <Button variant="secondary" size="icon-sm" onClick={add} disabled={!draft.trim()} title="Add">
-          <Plus size={14} />
-        </Button>
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[760px] px-5 pb-24 pt-8 md:px-10 md:pt-10">
+          <Hero
+            bot={bot}
+            patch={patch}
+            facts={[
+              { label: modelName, to: "engine" },
+              { label: APPROVAL_MODES.find((m) => m.id === mode)?.label ?? "Ask first", to: "behaviour" },
+              { label: seniority >= 4 ? "Lead" : seniority === 3 ? "Mid" : "Junior", to: "identity" },
+              ...(skillCount ? [{ label: plural(skillCount, "skill"), to: "tools" as const }] : []),
+            ]}
+            onJump={jump}
+            onChat={close}
+          />
+
+          <div className="mt-12">
+            <Section id="identity" title="Identity" says={`How ${bot.name || "this agent"} looks, what it is for, and where it stands in a room.`}>
+              <LookCard bot={bot} patch={patch} />
+              <Group>
+                <SettingRow
+                  label="Instructions"
+                  htmlFor="agent-instructions"
+                  description="What it is for and how it should behave. It reads this before every turn."
+                >
+                  <Textarea
+                    id="agent-instructions"
+                    className="mt-3 min-h-[132px] resize-y text-[13.5px] leading-relaxed"
+                    placeholder="What this agent is for, how it should behave"
+                    value={bot.description}
+                    onChange={(e) => patch({ description: e.target.value })}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Seniority"
+                  description="In a room the most senior agent speaks last, reviews the others' work and makes the final call. Give seniors your most capable model and juniors cheaper ones."
+                >
+                  <Segmented
+                    aria-label="Seniority"
+                    className="mt-3 max-w-[360px]"
+                    value={seniority >= 4 ? "5" : seniority === 3 ? "3" : "1"}
+                    onChange={(level) => patch({ seniority: Number(level) })}
+                    options={[
+                      { value: "1", label: "Junior" },
+                      { value: "3", label: "Mid" },
+                      { value: "5", label: "Lead" },
+                    ]}
+                  />
+                </SettingRow>
+              </Group>
+            </Section>
+
+            <Section id="engine" title="Engine" says="The model that does the thinking, how hard it thinks, and what answers when it cannot.">
+              <Group>
+                <SettingRow
+                  label="Model"
+                  description={`What ${bot.name || "it"} thinks with. Switching takes effect on the next turn.`}
+                  control={
+                    <div className="rounded-lg border bg-background">
+                      <ModelPicker bot={bot} />
+                    </div>
+                  }
+                />
+                <SettingRow label="Reasoning effort" description="How hard the engine thinks, where the engine has the dial.">
+                  <Segmented
+                    aria-label="Reasoning effort"
+                    className="mt-3 max-w-[420px]"
+                    value={bot.effort}
+                    onChange={(effort) => patch({ effort })}
+                    options={[
+                      { value: undefined, label: "Default" },
+                      { value: "low", label: "Low" },
+                      { value: "medium", label: "Medium" },
+                      { value: "high", label: "High" },
+                    ]}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Backup engine"
+                  description="Answers when the model above hits a usage or rate limit, runs out of credit or is down, or when a turn fails again after one more try. The conversation carries over, and it switches back once its own engine is usable again."
+                  control={
+                    <div className="rounded-lg border bg-background">
+                      <ModelPicker
+                        bot={bot}
+                        value={bot.backupSelection ?? null}
+                        onPick={(selection) => patch({ backupSelection: selection })}
+                        noneLabel="No backup"
+                        exclude={bot.modelSelection}
+                      />
+                    </div>
+                  }
+                >
+                  {/* every model on an engine is out when the engine is, so a
+                      backup on the same one cannot cover that, and the server
+                      will not try it (backupFor) */}
+                  {sameEngineBackup(bot.modelSelection, bot.backupSelection) && (
+                    <Note>
+                      This backup is on the same engine, so it answers when a turn fails, but not when the engine itself
+                      is out: over its usage limit, out of credit, or signed out. For that, pick another engine.
+                    </Note>
+                  )}
+                </SettingRow>
+                {instance?.driverKind === "claudeAgent" && (
+                  // Claude Code runs the hooks your plugins and settings install,
+                  // and a plugin's session-start text lands in the agent's own
+                  // context. Some agents are better off without any of it.
+                  <SettingRow
+                    label="Plugin hooks"
+                    description="Let Claude Code run your plugins' and settings' hooks in this agent's turns."
+                    control={
+                      <Switch
+                        checked={bot.engineHooks !== false}
+                        onCheckedChange={(on: boolean) => patch({ engineHooks: on })}
+                        aria-label="Plugin hooks"
+                      />
+                    }
+                  />
+                )}
+              </Group>
+              <CodexSpeedControl bot={bot} />
+              {suggestion && <EngineSuggestionCard s={suggestion} compact />}
+            </Section>
+
+            <Section id="behaviour" title="Behaviour and approvals" says="How much it does before asking you, where its work happens, and the shapes its answers can take.">
+              <ApprovalsCard bot={bot} />
+              <WorkingFolderCard bot={bot} />
+              <AnswersCard bot={bot} patch={patch} />
+            </Section>
+
+            <Section id="tools" title="Tools" says="What it can reach beyond the conversation: your apps, a browser, servers, skills and a computer.">
+              <Group>
+                <ConnectedAppsRow bot={bot} patch={patch} />
+                <BrowserRow bot={bot} patch={patch} />
+                <ComputerRow bot={bot} patch={patch} />
+              </Group>
+              <McpAttachCard bot={bot} />
+              <SkillsCard bot={bot} />
+            </Section>
+
+            <Section id="memory" title="Memory" says="What it keeps between conversations, in its own words. Yours to read and correct.">
+              <MemorySummary bot={bot} />
+              <Group>
+                <RecallRow bot={bot} patch={patch} />
+              </Group>
+            </Section>
+
+            <Section id="reach" title="Voice and Telegram" says={`Talk to ${bot.name || "it"} out loud, or message it from your phone as itself.`}>
+              <VoiceCard bot={bot} />
+              <TelegramSection key={bot.id} botId={bot.id} />
+            </Section>
+
+            <Section id="notifications" title="Notifications">
+              <Group>
+                <SettingRow
+                  label="Interrupt me when a reply lands"
+                  description={`A notification when ${bot.name || "this agent"} answers while you are elsewhere.`}
+                  control={
+                    <Switch
+                      checked={bot.notifications}
+                      onCheckedChange={(notifications) => patch({ notifications })}
+                      aria-label="Notifications"
+                    />
+                  }
+                >
+                  {/* The rule, stated. A person deciding whether to leave this
+                      on deserves to know what it does and does not cover,
+                      rather than discovering the shape of it over a week. */}
+                  <Note>
+                    Approvals always interrupt, even with this off: a waiting agent has stopped working. Agents talking
+                    to each other in a room stay quiet unless they name you. Nothing interrupts you about the
+                    conversation already on your screen.
+                  </Note>
+                </SettingRow>
+              </Group>
+            </Section>
+
+            <Section id="schedules" title="Schedules" says={`Recurring work ${bot.name || "it"} starts on its own, at a time you set.`}>
+              <RoutinesSection targetId={bot.id} targetKind="agent" targetName={bot.name} bare />
+            </Section>
+
+            <Section id="export" title="Signature and export" says="Proof of what it did, and the agent as a file you can carry to another machine.">
+              <Group>
+                <SignatureRow bot={bot} />
+                <ExportRow bot={bot} />
+              </Group>
+            </Section>
+
+            <Section id="danger" title="Danger zone">
+              <DangerZone bot={bot} />
+            </Section>
+          </div>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
 
-export function SettingsPanel({ bot }: { bot: Bot }) {
-  const { state, dispatch } = useStore();
-  const suggestion = useEngineReport()?.suggestions.find((s) => s.botId === bot.id);
-  const patch = (
-    p: Partial<
-      Pick<
-        Bot,
-        | "name"
-        | "title"
-        | "description"
-        | "notifications"
-        | "computer"
-        | "color"
-        | "shape"
-        | "seniority"
-        | "withoutComponents"
-        | "effort"
-        | "mascotExpression"
-        | "composio"
-        | "browser"
-        | "backupSelection"
-        | "engineHooks"
-        | "recallBeforeTurn"
+// ---------------------------------------------------------------------------
+// The top of the page: the face, the name and the line, edited in place.
+
+function Hero({
+  bot,
+  patch,
+  facts,
+  onJump,
+  onChat,
+}: {
+  bot: Bot;
+  patch: (p: Patch) => void;
+  facts: Array<{ label: string; to: SectionId }>;
+  onJump: (id: SectionId) => void;
+  onChat: () => void;
+}) {
+  const look = `${bot.color}-${shapeForBot(bot)}-${expressionForBot(bot)}-${bot.avatarAt ?? 0}`;
+  return (
+    <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
+      <button
+        onClick={() => onJump("identity")}
+        aria-label="Change the look"
+        title="Change the look"
+        className="group relative shrink-0 self-start rounded-[26px] outline-none transition-transform duration-150 ease-out active:scale-[0.97]"
       >
-    >,
-  ) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
+        {/* a new look lands with a small settle, not a cut */}
+        <motion.span
+          key={look}
+          initial={{ scale: 0.9, opacity: 0.5 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", duration: 0.4, bounce: 0.35 }}
+          className="block"
+        >
+          <AgentAvatar bot={bot} size={96} className="shadow-[0_6px_24px_-8px_var(--shadow-color)]" />
+        </motion.span>
+        <span className="absolute -bottom-1 -right-1 flex size-7 items-center justify-center rounded-full border bg-popover text-muted-foreground shadow-sm transition-[color,scale] duration-150 ease-out group-hover:scale-105 group-hover:text-foreground">
+          <Pencil size={13} />
+        </span>
+      </button>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            {/* The name and the line are the page's heading and its first
+                field at once: shown as a heading, a field the moment it is
+                touched, so renaming never means finding a form. */}
+            <input
+              value={bot.name}
+              onChange={(e) => patch({ name: e.target.value })}
+              placeholder="Name your agent"
+              aria-label="Name"
+              spellCheck={false}
+              className="-mx-2 block w-[calc(100%+1rem)] min-w-0 truncate rounded-lg bg-transparent px-2 py-0.5 text-[28px] font-semibold tracking-tight text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 hover:bg-accent/50 focus:bg-accent/60"
+            />
+            <input
+              value={bot.title}
+              onChange={(e) => patch({ title: e.target.value })}
+              placeholder="What this agent does, in a line"
+              aria-label="Title"
+              className="-mx-2 mt-0.5 block w-[calc(100%+1rem)] min-w-0 truncate rounded-lg bg-transparent px-2 py-1 text-[14.5px] text-muted-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 hover:bg-accent/50 focus:bg-accent/60 focus:text-foreground"
+            />
+          </div>
+          <Button variant="secondary" onClick={onChat} className="mt-1.5 shrink-0" title={`Back to the chat with ${bot.name}`}>
+            <MessageCircle size={15} />
+            <span className="max-sm:hidden">Open chat</span>
+          </Button>
+        </div>
+        {/* the few things worth knowing at a glance, each a way to the
+            group that changes it */}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {facts.map((fact) => (
+            <button
+              key={`${fact.to}-${fact.label}`}
+              onClick={() => onJump(fact.to)}
+              className="flex h-7 max-w-[220px] items-center rounded-full border bg-card px-3 text-[12px] text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.97]"
+            >
+              <span className="truncate">{fact.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+
+/** The face, one control panel at a time beside it. A photo replaces the
+ * pixel identity everywhere it is shown; the identity underneath survives,
+ * so removing the photo brings the same face back rather than a reroll. */
+function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
+  const [tab, setTab] = useState<"shape" | "color" | "face">("shape");
+  const activeExpression = expressionForBot(bot);
+  const activeShape = shapeForBot(bot);
+  const shuffle = () =>
+    patch({
+      color: BLOK_COLOR_NAMES[Math.floor(Math.random() * BLOK_COLOR_NAMES.length)],
+      shape: BLOK_SHAPES[Math.floor(Math.random() * BLOK_SHAPES.length)],
+    });
+
   /** Center-crop to a square, shrink to 512, and ship as JPEG. Done
    * here so the server never has to buffer somebody's 12MB original. */
   const uploadAvatar = (file: File) => {
@@ -236,17 +604,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
       canvas.width = canvas.height = 512;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      ctx.drawImage(
-        image,
-        (image.width - side) / 2,
-        (image.height - side) / 2,
-        side,
-        side,
-        0,
-        0,
-        512,
-        512,
-      );
+      ctx.drawImage(image, (image.width - side) / 2, (image.height - side) / 2, side, side, 0, 0, 512, 512);
       const data = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
       api(`/api/bots/${bot.id}/avatar`, {
         method: "PUT",
@@ -256,421 +614,158 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
     image.src = url;
   };
 
-  const activeExpression = expressionForBot(bot);
-  const activeShape = shapeForBot(bot);
-  const [lookTab, setLookTab] = useState<"shape" | "color" | "face">("shape");
-  const shuffleLook = () =>
-    patch({
-      color: BLOK_COLOR_NAMES[Math.floor(Math.random() * BLOK_COLOR_NAMES.length)],
-      shape: BLOK_SHAPES[Math.floor(Math.random() * BLOK_SHAPES.length)],
-    });
+  const tile =
+    "flex items-center justify-center rounded-xl outline-none transition-[background-color,scale] duration-150 ease-out hover:bg-accent active:scale-[0.94]";
 
   return (
-    <Dialog open onOpenChange={(open) => !open && dispatch({ type: "toggleSettings", open: false })}>
-      <DialogContent className="flex max-h-[85vh] w-full max-w-[560px] flex-col gap-0 overflow-hidden p-0">
-        <div className="flex h-[52px] shrink-0 items-center border-b px-5">
-          <DialogTitle className="text-[14.5px]">Agent settings</DialogTitle>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 pb-6">
-        {/* Identity: the live face beside one control panel at a time.
-            A photo replaces the pixel identity everywhere it is shown;
-            the identity underneath survives, so removing the photo
-            brings the same face back rather than a reroll. */}
-        <div className="mt-5 rounded-2xl border bg-card p-4">
-          {/* Side by side when there is room. On a phone the controls get
-              about 150px beside the face, which is not enough for four
-              tab labels or a row of six shapes, so the face goes above
-              them and they get the whole width. */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:gap-5">
-            <div className="flex shrink-0 flex-col items-center gap-2 pt-1 sm:w-[116px]">
-              <button
-                onClick={shuffleLook}
-                title="Shuffle the look"
-                className="rounded-full outline-none transition-transform duration-150 hover:scale-105 active:scale-95"
+    <div className="rounded-2xl border bg-card p-4 sm:p-5">
+      {/* Side by side when there is room. On a phone the controls would
+          get about 150px beside the face, which is not enough for a row of
+          shapes, so the face goes above them and they get the width. */}
+      <div className="flex flex-col gap-5 sm:flex-row sm:gap-6">
+        <div className="flex shrink-0 flex-col items-center gap-3 sm:w-[132px]">
+          <div className="flex size-[120px] items-center justify-center rounded-[28px] bg-muted/60">
+            <motion.span
+              key={`${bot.color}-${activeShape}-${activeExpression}-${bot.avatarAt ?? 0}`}
+              initial={{ scale: 0.86 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", duration: 0.38, bounce: 0.4 }}
+              className="block"
+            >
+              <AgentAvatar bot={bot} size={88} />
+            </motion.span>
+          </div>
+          <div className="flex flex-wrap justify-center gap-1">
+            <Button variant="ghost" size="sm" onClick={shuffle} title="A new color and shape, at random">
+              <RefreshCw size={13} />
+              Shuffle
+            </Button>
+            <label className="flex h-7 cursor-pointer items-center rounded-md px-2.5 text-[12.5px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground has-[:focus-visible]:bg-accent">
+              {bot.avatarAt ? "Change photo" : "Use a photo"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadAvatar(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {bot.avatarAt && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  api(`/api/bots/${bot.id}/avatar`, { method: "DELETE" }).catch(() => {});
+                }}
               >
-                <div key={`${bot.color}-${bot.shape}`} className="animate-pop">
-                  <AgentAvatar bot={bot} size={88} />
-                </div>
-              </button>
-              <div className="text-[11px] text-muted-foreground/70">click to shuffle</div>
-              <div className="flex flex-col items-center">
-                <label className="cursor-pointer rounded-lg px-2 py-0.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-                  {bot.avatarAt ? "Change photo" : "Use a photo"}
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) uploadAvatar(file);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                {bot.avatarAt && (
-                  <button
-                    className="rounded-lg px-2 py-0.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    onClick={() => {
-                      api(`/api/bots/${bot.id}/avatar`, { method: "DELETE" }).catch(() => {});
-                    }}
-                  >
-                    Remove photo
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="mb-3 flex items-center gap-1">
-                {(
-                  [
-                    ["shape", "Shape"],
-                    ["color", "Color"],
-                    ["face", "Face"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setLookTab(key)}
-                    className={cn(
-                      "rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
-                      lookTab === key
-                        ? "bg-accent text-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto text-muted-foreground"
-                  onClick={() => patch({ color: "green", shape: "star", mascotExpression: null })}
-                >
-                  Reset
-                </Button>
-              </div>
-
-              {lookTab === "shape" && (
-                <div className="grid grid-cols-6 gap-1">
-                  {BLOK_SHAPES.map((shape) => (
-                    <button
-                      key={shape}
-                      onClick={() => patch({ shape })}
-                      className={cn(
-                        "flex aspect-square items-center justify-center rounded-lg transition-colors duration-150 hover:bg-accent active:scale-95",
-                        activeShape === shape && "bg-accent ring-2 ring-ring",
-                      )}
-                      title={shape}
-                      aria-label={`Use ${shape} shape`}
-                    >
-                      <BlokAvatar color={bot.color} shape={shape} expression="deadpan" size={30} />
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {lookTab === "color" && (
-                <div className="grid grid-cols-5 gap-2 p-1">
-                  {BLOK_COLOR_NAMES.map((color) => (
-                    <button
-                      key={color}
-                      onClick={() => patch({ color })}
-                      className={cn(
-                        "size-9 justify-self-center rounded-full transition-transform duration-150 hover:scale-110 active:scale-95",
-                        bot.color === color && "ring-2 ring-ring ring-offset-2 ring-offset-card",
-                      )}
-                      style={{ backgroundColor: BLOK_COLORS[color] }}
-                      title={color}
-                      aria-label={`Use ${color} color`}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {lookTab === "face" && (
-                <div className="grid grid-cols-5 gap-1">
-                  {BLOK_EXPRESSIONS.map((expression) => (
-                    <button
-                      key={expression}
-                      onClick={() => patch({ mascotExpression: expression })}
-                      className={cn(
-                        "flex h-[48px] items-center justify-center rounded-lg transition-colors duration-150 hover:bg-accent active:scale-95",
-                        activeExpression === expression && "bg-accent ring-2 ring-ring",
-                      )}
-                      title={expression}
-                      aria-label={`Use ${expression} expression`}
-                    >
-                      <BlokAvatar
-                        color={bot.color}
-                        shape={activeShape}
-                        expression={expression}
-                        size={34}
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                Remove photo
+              </Button>
+            )}
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3.5">
-          <Field label="Name">
-            <Input value={bot.name} onChange={(e) => patch({ name: e.target.value })} />
-          </Field>
-          <Field label="Title">
-            <Input
-              placeholder="What this agent does, in a line"
-              value={bot.title}
-              onChange={(e) => patch({ title: e.target.value })}
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 flex items-center gap-2">
+            <Segmented
+              aria-label="What to change"
+              size="sm"
+              className="w-[240px] max-w-full"
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: "shape", label: "Shape" },
+                { value: "color", label: "Color" },
+                { value: "face", label: "Face" },
+              ]}
             />
-          </Field>
-          <Field label="Instructions">
-            <Textarea
-              className="min-h-[96px] resize-none"
-              placeholder="What this agent is for, how it should behave"
-              value={bot.description}
-              onChange={(e) => patch({ description: e.target.value })}
-            />
-          </Field>
-
-          <SkillsEditor bot={bot} />
-          <AttachedSkills bot={bot} />
-
-          <div className="rounded-2xl border bg-card p-4">
-            <div className="flex items-center gap-2">
-              <Crown size={14} className="text-muted-foreground" />
-              <span className="text-[13.5px] font-semibold text-foreground">Seniority</span>
-            </div>
-            <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-              In a room the most senior agent speaks last, reviews everyone else's work, and makes
-              the final call. Give seniors your most capable model and juniors cheaper ones.
-            </div>
-            <div className="mt-3 flex gap-1 rounded-xl bg-muted p-1">
-              {(
-                [
-                  [1, "Junior"],
-                  [3, "Mid"],
-                  [5, "Lead"],
-                ] as const
-              ).map(([level, label]) => {
-                const current = bot.seniority ?? 1;
-                const on = level === 5 ? current >= 4 : level === 3 ? current === 3 : current <= 2;
-                return (
-                  <button
-                    key={level}
-                    onClick={() => patch({ seniority: level })}
-                    className={cn(
-                      "flex-1 rounded-lg py-1 text-[12.5px] transition-colors duration-150",
-                      on
-                        ? "bg-background font-medium text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              title="Back to the green star"
+              onClick={() => patch({ color: "green", shape: "star", mascotExpression: null })}
+            >
+              <RotateCcw size={13} />
+              Reset
+            </Button>
           </div>
 
-          <CodexSpeedControl bot={bot} />
+          {bot.avatarAt && (
+            <p className="mb-3 text-pretty text-[12px] leading-relaxed text-muted-foreground">
+              The photo stands in for this face everywhere. Remove it and this face comes back.
+            </p>
+          )}
 
-          <div className="rounded-2xl border bg-card p-4">
-            <div className="text-[13.5px] font-semibold text-foreground">Reasoning effort</div>
-            <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-              How hard the engine thinks, where the engine has the dial
-            </div>
-            <div className="mt-3 flex gap-1 rounded-xl bg-muted p-1">
-              {(
-                [
-                  [undefined, "Default"],
-                  ["low", "Low"],
-                  ["medium", "Medium"],
-                  ["high", "High"],
-                ] as const
-              ).map(([level, label]) => (
+          {tab === "shape" && (
+            <div role="radiogroup" aria-label="Shape" className="flex flex-wrap gap-1.5">
+              {BLOK_SHAPES.map((shape) => (
                 <button
-                  key={label}
-                  onClick={() => patch({ effort: level })}
-                  className={cn(
-                    "flex-1 rounded-lg py-1 text-[12.5px] transition-colors duration-150",
-                    bot.effort === level
-                      ? "bg-background font-medium text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
+                  key={shape}
+                  role="radio"
+                  aria-checked={activeShape === shape}
+                  onClick={() => patch({ shape })}
+                  className={cn(tile, "size-[52px]", activeShape === shape && "bg-accent shadow-[inset_0_0_0_1.5px_var(--foreground)]")}
+                  title={shape}
+                  aria-label={`Use ${shape} shape`}
                 >
-                  {label}
+                  <BlokAvatar color={bot.color} shape={shape} expression="deadpan" size={34} />
                 </button>
               ))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-4 rounded-2xl border bg-card p-4">
-            <div>
-              <div className="text-[13.5px] font-semibold text-foreground">Model</div>
-              <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-                The provider this agent runs on
-              </div>
-            </div>
-            <ModelPicker bot={bot} />
-          </div>
-          {state.instances.find((i) => i.instanceId === bot.modelSelection?.instanceId)?.driverKind === "claudeAgent" && (
-            // Claude Code runs the hooks your plugins and settings install,
-            // and a plugin's session-start text lands in the agent's own
-            // context. Some agents are better off without any of it.
-            <div className="flex items-center justify-between gap-4 rounded-2xl border bg-card p-4">
-              <div>
-                <div className="text-[13.5px] font-semibold text-foreground">Plugin hooks</div>
-                <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-                  Let Claude Code run your plugins' and settings' hooks in this agent's turns
-                </div>
-              </div>
-              <Switch
-                checked={bot.engineHooks !== false}
-                onCheckedChange={(on: boolean) => patch({ engineHooks: on })}
-                aria-label="Plugin hooks"
-              />
             </div>
           )}
-          {suggestion && <EngineSuggestionCard s={suggestion} compact />}
 
-          <div className="flex items-center justify-between gap-4 rounded-2xl border bg-card p-4">
-            <div>
-              <div className="text-[13.5px] font-semibold text-foreground">Backup engine</div>
-              <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-                Answers when the model above hits a usage or rate limit, runs out of credit, or is down, or when
-                a turn fails again after one more try. The conversation carries over, and the agent switches
-                back to its own engine and session once that is usable again.
-              </div>
-              {/* every model on an engine is out when the engine is, so a
-                  backup on the same one cannot cover that, and the server
-                  will not try it (backupFor) */}
-              {sameEngineBackup(bot.modelSelection, bot.backupSelection) && (
-                <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground">
-                  This backup is on the same engine, so it answers when a turn fails, but not when the engine
-                  itself is out: over its usage limit, out of credit, or signed out. For that, pick another
-                  engine.
-                </div>
-              )}
-            </div>
-            <ModelPicker
-              bot={bot}
-              value={bot.backupSelection ?? null}
-              onPick={(selection) => patch({ backupSelection: selection })}
-              noneLabel="No backup"
-              exclude={bot.modelSelection}
-            />
-          </div>
-
-          <div className="rounded-2xl border bg-card p-4">
-            <div className="text-[13.5px] font-semibold text-foreground">Computer</div>
-            <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-              Where this agent's computer runs{bot.computer ? "" : " (currently: auto)"}
-            </div>
-            {/* Four homes for an agent's hands. A 2x2 grid, because four
-                options in one row is where segmented controls stop being
-                readable. */}
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[13px] text-foreground">Automatic</div>
-                <div className="text-[12px] text-muted-foreground">
-                  The cloud box when one exists, else this computer
-                </div>
-              </div>
-              <Switch
-                checked={!bot.computer}
-                onCheckedChange={(on) => patch({ computer: on ? null : "local" })}
-              />
-            </div>
-            {/* Auto's fallback should never be a surprise: with no box
-                configured it means "this Mac", and the person deciding
-                deserves to know that at the moment they decide it. */}
-            {!bot.computer && !state.config?.box?.configured && (
-              <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground">
-                No cloud box is set up, so Auto will use this computer.{" "}
+          {tab === "color" && (
+            <div role="radiogroup" aria-label="Color" className="flex flex-wrap gap-3 p-1">
+              {BLOK_COLOR_NAMES.map((color) => (
                 <button
-                  className="font-medium text-foreground underline-offset-2 hover:underline"
-                  onClick={() => dispatch({ type: "toggleComputer", open: true })}
-                >
-                  Set one up
-                </button>
-              </div>
-            )}
-            <div
-              className={cn(
-                "mt-3 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 transition-opacity duration-150",
-                !bot.computer && "pointer-events-none opacity-45",
-              )}
-            >
-                          {(
-                [
-                  ["cloud", "Cloud box"],
-                  ["sandbox", "Local VM"],
-                  ["local", "This computer"],
-                  ["off", "Off"],
-                ] as const
-              ).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  onClick={() => patch({ computer: mode })}
+                  key={color}
+                  role="radio"
+                  aria-checked={bot.color === color}
+                  onClick={() => patch({ color })}
                   className={cn(
-                    "rounded-lg py-1.5 text-[12.5px] transition-colors duration-150",
-                    bot.computer === mode
-                      ? "bg-background font-medium text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
+                    "size-10 justify-self-center rounded-full outline-none transition-[scale,box-shadow] duration-150 ease-out hover:scale-110 active:scale-95",
+                    bot.color === color && "shadow-[0_0_0_2px_var(--card),0_0_0_4px_var(--foreground)]",
                   )}
+                  style={{ backgroundColor: BLOK_COLORS[color] }}
+                  title={color}
+                  aria-label={`Use ${color} color`}
+                />
+              ))}
+            </div>
+          )}
+
+          {tab === "face" && (
+            <div role="radiogroup" aria-label="Face" className="flex flex-wrap gap-1.5">
+              {BLOK_EXPRESSIONS.map((expression) => (
+                <button
+                  key={expression}
+                  role="radio"
+                  aria-checked={activeExpression === expression}
+                  onClick={() => patch({ mascotExpression: expression })}
+                  className={cn(
+                    tile,
+                    "size-[52px]",
+                    activeExpression === expression && "bg-accent shadow-[inset_0_0_0_1.5px_var(--foreground)]",
+                  )}
+                  title={expression}
+                  aria-label={`Use ${expression} expression`}
                 >
-                  {label}
+                  <BlokAvatar color={bot.color} shape={activeShape} expression={expression} size={36} />
                 </button>
               ))}
             </div>
-          </div>
-
-          <VoiceCard bot={bot} />
-          <TelegramSection key={bot.id} botId={bot.id} />
-          <ApprovalsCard bot={bot} />
-          <WorkingFolderCard bot={bot} />
-          <ConnectedAppsCard bot={bot} patch={patch} />
-        <BrowserCard bot={bot} patch={patch} />
-          <McpAttachCard bot={bot} />
-          <MemoryCard bot={bot} />
-          <RecallCard bot={bot} patch={patch} />
-          <AnswersCard bot={bot} patch={patch} />
-          <IdentityCard bot={bot} />
-          <TakeItWithYouCard bot={bot} />
-
-          <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl border bg-card p-4">
-            <div>
-              <div className="text-[13.5px] font-semibold text-foreground">Notifications</div>
-              <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-                Let {bot.name} interrupt you when a reply lands
-              </div>
-            </div>
-            <Switch
-              checked={bot.notifications}
-              onCheckedChange={(notifications) => patch({ notifications })}
-            />
-          </div>
-          {/* The rule, stated. A person deciding whether to leave this on
-              deserves to know what it does and does not cover, rather
-              than discovering the shape of it over a week. */}
-          <div className="mt-2 rounded-xl bg-muted/50 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
-            Approvals always interrupt, even with this off: a waiting agent has
-            stopped working. Agents talking to each other in a room stay quiet
-            unless they name you. Nothing interrupts you about the conversation
-            already on your screen.
-          </div>
+          )}
         </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Behaviour
 
 /**
  * How much this agent may do without asking: the same four modes, worded
@@ -685,9 +780,9 @@ function ApprovalsCard({ bot }: { bot: Bot }) {
   /**
    * Widening the leash asks who is there; narrowing it never does.
    *
-   * Auto is the one setting on this screen that somebody else could
-   * change while a laptop sits unlocked, and it is the one whose effect
-   * is invisible afterwards. A Mac with no sensor is not blocked: this
+   * Auto is the one setting on this page that somebody else could change
+   * while a laptop sits unlocked, and it is the one whose effect is
+   * invisible afterwards. A Mac with no sensor is not blocked: this
    * proves who is present when it can, and stays out of the way when it
    * cannot.
    */
@@ -702,20 +797,18 @@ function ApprovalsCard({ bot }: { bot: Bot }) {
   };
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="flex items-center gap-1.5 text-[13.5px] font-semibold text-foreground">
-        Approvals
-        <InfoTip text={RULES_AND_MODES} />
-      </div>
-      <div className="mt-3">
-        <ApprovalsChooser value={mode} onChange={(next) => void choose(next)} compact />
-      </div>
-      {refused && (
-        <div className="mt-2 text-[11.5px] text-warning">
-          Not confirmed, so the mode is unchanged.
+    <Group>
+      <SettingRow
+        label="How much it asks"
+        info={RULES_AND_MODES}
+        description="From asking before every change to working without a word. Giving it more asks who is there first."
+      >
+        <div className="mt-3">
+          <ApprovalsChooser value={mode} onChange={(next) => void choose(next)} compact />
         </div>
-      )}
-    </div>
+        {refused && <div className="mt-2 text-[12px] text-warning">Not confirmed, so the mode is unchanged.</div>}
+      </SettingRow>
+    </Group>
   );
 }
 
@@ -738,119 +831,120 @@ function WorkingFolderCard({ bot }: { bot: Bot }) {
   };
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="flex items-center justify-between">
-        <div className="text-[13.5px] font-semibold text-foreground">Working folder</div>
-        {saved && (
-          <span className="flex items-center gap-1 text-[11.5px] text-success">
-            <Check size={12} /> Saved
-          </span>
-        )}
-      </div>
-      <div className="mt-0.5 flex items-center gap-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        Where new tasks run.
-        <InfoTip text="Point it at a project to work in that repo; leave it empty and the agent uses its own workspace. Running tasks keep the folder they started in." />
-      </div>
-      <div className="mt-3 flex gap-2">
-        <Input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && save(value.trim() || null)}
-          placeholder="~/Projects/my-app"
-          spellCheck={false}
-          className="h-8 font-mono text-[12px]"
-        />
-        <BrowseFolderButton
-          onPick={(path) => {
-            setValue(path);
-            save(path);
-          }}
-        />
-        <Button variant="secondary" size="sm" onClick={() => save(value.trim() || null)}>
-          Save
-        </Button>
-      </div>
-      {error && <div className="mt-1.5 text-[12px] text-destructive">{error}</div>}
-    </div>
+    <Group>
+      <SettingRow
+        label="Working folder"
+        htmlFor="agent-folder"
+        info="Point it at a project to work in that repo; leave it empty and the agent uses its own workspace. Running tasks keep the folder they started in."
+        description="Where new tasks run."
+        control={<Saved shown={saved} />}
+      >
+        <div className="mt-3 flex gap-2">
+          <Input
+            id="agent-folder"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && save(value.trim() || null)}
+            placeholder="Its own workspace"
+            spellCheck={false}
+            className="h-8 font-mono text-[12px]"
+          />
+          <BrowseFolderButton
+            onPick={(path) => {
+              setValue(path);
+              save(path);
+            }}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-8"
+            disabled={value.trim() === (bot.cwd ?? "")}
+            onClick={() => save(value.trim() || null)}
+          >
+            Save
+          </Button>
+        </div>
+        {error && <div className="mt-1.5 text-[12px] text-destructive">{error}</div>}
+      </SettingRow>
+    </Group>
   );
 }
+
+const COMPONENTS: Array<[string, string]> = [
+  ["chart", "Charts"],
+  ["table", "Tables"],
+  ["decision", "Decisions"],
+  ["steps", "Step lists"],
+  ["quote", "Quotes"],
+  ["refused", "Refusals"],
+];
+
+/**
+ * What this agent may answer with instead of prose.
+ *
+ * By exclusion, so switching one off for one agent leaves everybody else
+ * alone. All on by default: the point of the gallery is that an answer
+ * that is really a table arrives as a table, and making somebody opt into
+ * that one shape at a time would mean nobody ever sees it.
+ */
+function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
+  const without = bot.withoutComponents ?? [];
+  return (
+    <Group>
+      <SettingRow
+        label="Answers"
+        description={`${bot.name || "It"} can answer with these instead of describing them in prose. Switch one off and it writes that kind of answer out in words.`}
+      >
+        <div className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
+          {COMPONENTS.map(([kind, label]) => {
+            const on = !without.includes(kind);
+            return (
+              <label key={kind} className="flex items-center justify-between gap-3">
+                <span className="text-[13px] text-foreground">{label}</span>
+                <Switch
+                  checked={on}
+                  onCheckedChange={(next) =>
+                    patch({ withoutComponents: next ? without.filter((k) => k !== kind) : [...without, kind] })
+                  }
+                />
+              </label>
+            );
+          })}
+        </div>
+      </SettingRow>
+    </Group>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tools
 
 /** The per-agent connector grant. The Composio key is shared by the
  * whole workspace; whether THIS agent may use it is decided here. */
-function McpAttachCard({ bot }: { bot: Bot }) {
-  const { dispatch } = useStore();
-  const { servers } = useMcpServers();
-  if (!servers?.length) return null;
-  const attached = bot.mcpServers ?? [];
-
-  return (
-    <div className="rounded-2xl border bg-card p-4">
-      <div className="text-[13.5px] font-semibold text-foreground">MCP servers</div>
-      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        Which of your registered servers this agent may use.
-      </div>
-      <div className="mt-3 flex flex-col gap-2">
-        {servers.map((server: McpServerRow) => {
-          const on = attached.includes(server.id);
-          return (
-            <div key={server.id} className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-[13px] text-foreground">{server.name}</div>
-                <div className="truncate text-[11.5px] text-muted-foreground">
-                  {server.transport === "http" ? server.target : `runs ${server.target}`}
-                </div>
-              </div>
-              <Switch
-                checked={on}
-                onCheckedChange={(next) =>
-                  dispatch({
-                    type: "updateBot",
-                    botId: bot.id,
-                    patch: {
-                      mcpServers: next
-                        ? [...attached, server.id]
-                        : attached.filter((id) => id !== server.id),
-                    },
-                  })
-                }
-              />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ConnectedAppsCard({
-  bot,
-  patch,
-}: {
-  bot: Bot;
-  patch: (p: { composio: boolean }) => void;
-}) {
+function ConnectedAppsRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   const { state } = useStore();
   const configured = state.config?.composio?.configured ?? false;
   const allowed = bot.composio !== false;
-
   return (
-    <div className="mt-4 flex items-center justify-between rounded-2xl border bg-card p-4">
-      <div className="min-w-0 pr-3">
-        <div className="text-[13.5px] font-semibold text-foreground">Connected apps</div>
-        <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-          {configured
-            ? allowed
-              ? "This agent can use your connected apps (Slack, Gmail, and the rest)."
-              : "Blocked from your connected apps; it works with its own tools only."
-            : "No connector key yet. Add one in Settings, Apps and keys."}
-        </div>
-      </div>
-      <Switch
-        checked={allowed}
-        disabled={!configured && allowed === false}
-        onCheckedChange={(on) => patch({ composio: on })}
-      />
-    </div>
+    <SettingRow
+      label="Connected apps"
+      description={
+        configured
+          ? allowed
+            ? "It can use your connected apps: Slack, Gmail and the rest."
+            : "Blocked from your connected apps; it works with its own tools only."
+          : "No connector key yet. Add one in Settings, Apps and keys."
+      }
+      control={
+        <Switch
+          checked={allowed}
+          disabled={!configured && allowed === false}
+          onCheckedChange={(on) => patch({ composio: on })}
+          aria-label="Connected apps"
+        />
+      }
+    />
   );
 }
 
@@ -861,7 +955,7 @@ function ConnectedAppsCard({
  * agent that should compare prices does not also need the desktop, and
  * handing over the narrower tool is the whole point of having two.
  */
-function BrowserCard({ bot, patch }: { bot: Bot; patch: (p: { browser: boolean }) => void }) {
+function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   const on = bot.browser === true;
   const [sources, setSources] = useState<string[]>([]);
   const [sites, setSites] = useState("");
@@ -887,113 +981,424 @@ function BrowserCard({ bot, patch }: { bot: Bot; patch: (p: { browser: boolean }
       method: "POST",
       body: JSON.stringify({ browser, sites: wanted }),
     })
-      .then((r) =>
-        setResult(
-          r.imported
-            ? `Signed in for ${wanted.join(", ")}.`
-            : (r.note ?? "Nothing found for those sites."),
-        ),
-      )
+      .then((r) => setResult(r.imported ? `Signed in for ${wanted.join(", ")}.` : (r.note ?? "Nothing found for those sites.")))
       .catch((e) => setResult(e.message))
       .finally(() => setImporting(false));
   };
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="flex items-center justify-between">
-        <div className="min-w-0 pr-3">
-          <div className="text-[13.5px] font-semibold text-foreground">Its own browser</div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-            {on
-              ? "Opens pages, reads them and clicks, in a browser of its own. Signed in separately from yours."
-              : "Off. Turn this on for work on the web: comparing prices, filling a form, reading a page that needs a session."}
-          </div>
-        </div>
-        <Switch checked={on} onCheckedChange={(next) => patch({ browser: next })} />
-      </div>
-
+    <SettingRow
+      label="Its own browser"
+      description={
+        on
+          ? "Opens pages, reads them and clicks, in a browser of its own. Signed in separately from yours."
+          : "Off. Turn this on for work on the web: comparing prices, filling a form, reading a page that needs a session."
+      }
+      control={<Switch checked={on} onCheckedChange={(next) => patch({ browser: next })} aria-label="Its own browser" />}
+    >
       {/* Sign-ins are borrowed per site rather than wholesale: an agent
           that checks a delivery has no business holding the bank. */}
       {on && sources.length > 0 && (
-        <div className="mt-3 border-t pt-3">
+        <div className="mt-3 rounded-xl bg-muted/50 p-3">
           <div className="text-[12.5px] font-medium text-foreground">Borrow a sign-in</div>
-          <div className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
-            Name the sites this agent needs, and only those move across. Your browser asks your
-            keychain first.
+          <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+            Name the sites this agent needs, and only those move across. Your browser asks your keychain first.
           </div>
           <Input
             value={sites}
             onChange={(e) => setSites(e.target.value)}
             placeholder="amazon.com, ebay.com"
-            className="mt-2 h-8 text-[13px]"
+            aria-label="Sites to borrow a sign-in for"
+            className="mt-2 h-8 bg-background text-[13px]"
           />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {sources.map((browser) => (
               <Button
                 key={browser}
                 size="sm"
-                variant="secondary"
+                variant="outline"
+                className="bg-background"
                 disabled={importing || !sites.trim()}
                 onClick={() => borrow(browser)}
               >
                 {importing ? "Borrowing…" : `From ${browser}`}
               </Button>
             ))}
-            {result && <span className="text-[11.5px] text-muted-foreground">{result}</span>}
+            {result && <span className="text-[12px] text-muted-foreground">{result}</span>}
           </div>
         </div>
       )}
-    </div>
+    </SettingRow>
   );
 }
 
-const COMPONENTS: Array<[string, string]> = [
-  ["chart", "Charts"],
-  ["table", "Tables"],
-  ["decision", "Decisions"],
-  ["steps", "Step lists"],
-  ["quote", "Quotes"],
-  ["refused", "Refusals"],
-];
-
-/**
- * What this agent may answer with instead of prose.
- *
- * By exclusion, so switching one off for one agent leaves everybody else
- * alone. All on by default: the point of the gallery is that an answer
- * that is really a table arrives as a table, and making somebody opt into
- * that one shape at a time would mean nobody ever sees it.
- */
-function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: { withoutComponents: string[] }) => void }) {
-  const without = bot.withoutComponents ?? [];
+/** Four homes for an agent's hands. A 2x2 grid on a phone, because four
+ * options in one row is where segmented controls stop being readable. */
+function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
+  const { state, dispatch } = useStore();
+  const options = [
+    ["cloud", "Cloud box"],
+    ["sandbox", "Local VM"],
+    ["local", "This computer"],
+    ["off", "Off"],
+  ] as const;
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="text-[13.5px] font-semibold text-foreground">Answers</div>
-      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        {bot.name} can answer with these instead of describing them in prose. Switch one off and it
-        will write that kind of answer out in words instead.
-      </div>
-      <div className="mt-3 flex flex-col gap-2">
-        {COMPONENTS.map(([kind, label]) => {
-          const on = !without.includes(kind);
-          return (
-            <label key={kind} className="flex items-center justify-between gap-3">
-              <span className="text-[13px] text-foreground">{label}</span>
+    <SettingRow
+      label="Computer"
+      description={
+        bot.computer
+          ? "Where its computer runs: a desktop and a terminal it works in."
+          : "Automatic: the cloud box when one exists, else this computer."
+      }
+      control={
+        <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+          Automatic
+          <Switch
+            checked={!bot.computer}
+            onCheckedChange={(on) => patch({ computer: on ? null : "local" })}
+            aria-label="Choose the computer automatically"
+          />
+        </label>
+      }
+    >
+      {/* Auto's fallback should never be a surprise: with no box
+          configured it means "this Mac", and the person deciding deserves
+          to know that at the moment they decide it. */}
+      {!bot.computer && !state.config?.box?.configured && (
+        <Note>
+          No cloud box is set up, so Automatic uses this computer.{" "}
+          <button
+            className="font-medium text-foreground underline-offset-2 hover:underline"
+            onClick={() => dispatch({ type: "toggleComputer", open: true })}
+          >
+            Set one up
+          </button>
+        </Note>
+      )}
+      {bot.computer && (
+        <div role="radiogroup" aria-label="Computer" className="mt-3 grid grid-cols-2 gap-1 rounded-[10px] bg-muted p-0.5 sm:grid-cols-4">
+          {options.map(([mode, label]) => (
+            <button
+              key={mode}
+              role="radio"
+              aria-checked={bot.computer === mode}
+              onClick={() => patch({ computer: mode })}
+              className={cn(
+                "rounded-lg py-1.5 text-[12.5px] font-medium outline-none transition-colors duration-150",
+                bot.computer === mode
+                  ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06),0_0_0_0.5px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.08)]"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </SettingRow>
+  );
+}
+
+function McpAttachCard({ bot }: { bot: Bot }) {
+  const { dispatch } = useStore();
+  const { servers } = useMcpServers();
+  if (!servers?.length) return null;
+  const attached = bot.mcpServers ?? [];
+
+  return (
+    <Group>
+      <SettingRow label="MCP servers" description="Which of your registered servers this agent may use." />
+      {servers.map((server: McpServerRow) => {
+        const on = attached.includes(server.id);
+        return (
+          <SettingRow
+            key={server.id}
+            label={<span className="truncate font-normal">{server.name}</span>}
+            description={<span className="block truncate">{server.transport === "http" ? server.target : `runs ${server.target}`}</span>}
+            control={
               <Switch
                 checked={on}
+                aria-label={server.name}
                 onCheckedChange={(next) =>
-                  patch({
-                    withoutComponents: next ? without.filter((k) => k !== kind) : [...without, kind],
+                  dispatch({
+                    type: "updateBot",
+                    botId: bot.id,
+                    patch: {
+                      mcpServers: next ? [...attached, server.id] : attached.filter((id) => id !== server.id),
+                    },
                   })
                 }
               />
-            </label>
-          );
-        })}
+            }
+          />
+        );
+      })}
+    </Group>
+  );
+}
+
+/**
+ * Skills, both kinds, in one place: the library's shared instruction sets
+ * this agent carries, and the lines written for it alone. Either changes
+ * what reaches the model on the very next turn.
+ */
+function SkillsCard({ bot }: { bot: Bot }) {
+  const { dispatch } = useStore();
+  const [library, setLibrary] = useState<Skill[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const attached = bot.skillIds ?? [];
+  const written = bot.skills ?? [];
+
+  useEffect(() => {
+    api("/api/skills")
+      .then((r) => setLibrary(r.skills ?? []))
+      .catch(() => setLibrary([]));
+  }, []);
+
+  const toggle = (id: string) =>
+    dispatch({
+      type: "updateBot",
+      botId: bot.id,
+      patch: { skillIds: attached.includes(id) ? attached.filter((s) => s !== id) : [...attached, id] },
+    });
+  const setWritten = (next: string[]) => dispatch({ type: "updateBot", botId: bot.id, patch: { skills: next } });
+  const add = () => {
+    const value = draft.trim();
+    if (!value) return;
+    setWritten([...written, value]);
+    setDraft("");
+  };
+
+  return (
+    <Group>
+      <SettingRow
+        label={
+          <>
+            <Library size={15} className="text-muted-foreground" />
+            From the library
+            <span className="font-normal tabular-nums text-muted-foreground">{attached.length}</span>
+          </>
+        }
+        description="Shared instruction sets this agent carries."
+        control={
+          <Button variant="ghost" size="sm" onClick={() => dispatch({ type: "openCustomize", tab: "skills" })}>
+            Manage
+          </Button>
+        }
+      >
+        <div className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
+          {library === null ? (
+            <div className="py-2 text-[12.5px] text-muted-foreground">Loading…</div>
+          ) : library.length === 0 ? (
+            <div className="py-2 text-[12.5px] text-muted-foreground">No skills installed yet.</div>
+          ) : (
+            library.map((skill) => {
+              const on = attached.includes(skill.id);
+              return (
+                <button
+                  key={skill.id}
+                  role="checkbox"
+                  aria-checked={on}
+                  onClick={() => toggle(skill.id)}
+                  className={cn(
+                    "flex min-w-0 items-start gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors duration-150",
+                    on ? "bg-brand-soft" : "hover:bg-accent",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded transition-colors duration-150",
+                      on ? "bg-brand-ink text-brand-foreground" : "border",
+                    )}
+                  >
+                    {on && <Check size={11} strokeWidth={3} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={cn("block truncate text-[12.5px] font-medium", on ? "text-brand-ink" : "text-foreground")}>
+                      {skill.name}
+                    </span>
+                    {skill.description && (
+                      <span className="mt-px block truncate text-[11.5px] text-muted-foreground">{skill.description}</span>
+                    )}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </SettingRow>
+      <SettingRow
+        label={
+          <>
+            Written for {bot.name || "this agent"}
+            <span className="font-normal tabular-nums text-muted-foreground">{written.length}</span>
+          </>
+        }
+        description="Instructions it carries into every conversation, in a line each: when to use it, and what to return."
+      >
+        {written.length > 0 && (
+          <div className="mt-3 flex flex-col gap-1">
+            {written.map((skill, i) => (
+              <div key={`${i}-${skill.slice(0, 12)}`} className="group flex items-start gap-2 rounded-lg bg-muted/60 px-3 py-2">
+                <span className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-foreground">{skill}</span>
+                <button
+                  onClick={() => setWritten(written.filter((_, j) => j !== i))}
+                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity duration-150 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                  title="Remove skill"
+                  aria-label="Remove skill"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-2.5 flex gap-2">
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()}
+            placeholder="Add a skill: when to use it, and what to return"
+            aria-label="New skill"
+            className="h-8 text-[12.5px]"
+          />
+          <Button variant="secondary" size="icon" onClick={add} disabled={!draft.trim()} title="Add" aria-label="Add skill">
+            <Plus size={14} />
+          </Button>
+        </div>
+      </SettingRow>
+    </Group>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Memory
+
+/** The most MEMORY.md lines that reach the agent each turn (the server's
+ * MEMORY_MAX_LINES); past it, only the top is read. */
+const MEMORY_LINES = 200;
+
+/**
+ * What the agent remembers, as a glance: how full its notebook is, how
+ * many topic files sit beside it, and when it last changed. Reading and
+ * correcting it happens in Memory itself, which keeps every change and
+ * its undo; an editor here would be a second, weaker copy of that.
+ */
+function MemorySummary({ bot }: { bot: Bot }) {
+  const { dispatch } = useStore();
+  const [info, setInfo] = useState<{ lines: number; truncated: boolean; topics: number } | null>(null);
+  const [last, setLast] = useState<{ at: number; by: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      api(`/api/bots/${bot.id}/memory`)
+        .then((r) => {
+          if (!alive) return;
+          const text: string = r.text ?? "";
+          setInfo({
+            lines: text.trim() ? text.replace(/\n+$/, "").split("\n").length : 0,
+            truncated: Boolean(r.truncated),
+            topics: (r.topics ?? []).length,
+          });
+        })
+        .catch((e: Error) => alive && setError(e.message));
+      api(`/api/bots/${bot.id}/memory/journal`)
+        .then((r) => alive && setLast(r.entries?.[0] ? { at: r.entries[0].at, by: r.entries[0].by } : null))
+        .catch(() => {});
+    };
+    load();
+    // an agent writes its notes as it works; keep the glance current
+    const timer = setInterval(load, 20_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [bot.id]);
+
+  const share = info ? Math.min(1, info.lines / MEMORY_LINES) : 0;
+  const who = last?.by === "you" ? "you" : last?.by === "undo" ? "an undo" : bot.name || "the agent";
+
+  return (
+    <div className="rounded-2xl border bg-card p-4 sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[22px] font-semibold tabular-nums tracking-tight text-foreground">
+              {info ? info.lines : "…"}
+            </span>
+            <span className="text-[13px] text-muted-foreground">of {MEMORY_LINES} lines read each turn</span>
+          </div>
+          <div
+            role="meter"
+            aria-label="Memory used"
+            aria-valuemin={0}
+            aria-valuemax={MEMORY_LINES}
+            aria-valuenow={info?.lines ?? 0}
+            className="mt-2.5 h-1.5 w-full max-w-[360px] overflow-hidden rounded-full bg-muted"
+          >
+            <motion.div
+              className={cn("h-full rounded-full", info?.truncated ? "bg-warning" : "bg-brand")}
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.max(share * 100, info?.lines ? 2 : 0)}%` }}
+              transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+            />
+          </div>
+          <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
+            {info && <span>{info.topics ? plural(info.topics, "topic file") : "No topic files"}</span>}
+            <span>{last ? `Last changed ${stamp(last.at)} by ${who}` : info?.lines ? "No changes recorded yet" : "Nothing remembered yet"}</span>
+          </div>
+          {info?.truncated && (
+            <div className="mt-2 text-[12px] text-warning">
+              Over the budget: only the first {MEMORY_LINES} lines reach the agent each turn.
+            </div>
+          )}
+          {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
+        </div>
+        <Button
+          variant="outline"
+          className="shrink-0 self-start sm:self-center"
+          onClick={() => dispatch({ type: "openMemory", target: bot.id })}
+        >
+          <BookOpen size={14} />
+          Open memory
+        </Button>
       </div>
     </div>
   );
 }
+
+/**
+ * Whether this agent is reminded of its other conversations before your
+ * turn. On by default; the workspace switch in Settings, General, turns
+ * it off for every agent, and then this one says so instead of pretending.
+ */
+function RecallRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
+  const { state } = useStore();
+  const everywhere = state.config?.recall?.beforeTurn !== false;
+  return (
+    <SettingRow
+      label="Bring up other conversations"
+      description={
+        everywhere
+          ? `Before your turn, give ${bot.name || "it"} what it said elsewhere, or keeps in its topic notes, that matches your message. Only a close match, at most three short notes, shown under your message.`
+          : "Off for every agent in Settings, General."
+      }
+      control={
+        <Switch
+          checked={everywhere && bot.recallBeforeTurn !== false}
+          disabled={!everywhere}
+          onCheckedChange={(on: boolean) => patch({ recallBeforeTurn: on })}
+          aria-label="Bring up other conversations"
+        />
+      }
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Signature and export
 
 /**
  * Who this agent is, as something checkable.
@@ -1004,40 +1409,32 @@ function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: { withoutComponents:
  * record carries what it signed, and this is where a person can see the
  * public half of it.
  */
-function IdentityCard({ bot }: { bot: Bot }) {
+function SignatureRow({ bot }: { bot: Bot }) {
   const [full, setFull] = useState(false);
   const print = bot.fingerprint ?? "";
   if (!print) return null;
   // both ends, never just the front: a prefix is cheap to imitate
   const short = `${print.slice(0, 8)}…${print.slice(-4)}`;
-
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="flex items-center gap-2">
-        <Fingerprint size={14} className="text-muted-foreground" />
-        <span className="text-[13.5px] font-semibold text-foreground">Signature</span>
-      </div>
-      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        {bot.name} signs what it does in the record, so afterwards you can tell what it really did
-        from what something merely says it did. The private half of the key never leaves {thisComputer()}.
-      </div>
+    <SettingRow
+      label="Signature"
+      description={`${bot.name} signs what it does in the record, so afterwards you can tell what it really did from what something merely says it did. The private half of the key never leaves ${thisComputer()}.`}
+    >
       <button
         onClick={() => setFull((v) => !v)}
         title={full ? "Show it short" : "Show all of it"}
-        className="mt-2.5 w-full rounded-xl bg-muted/60 px-3 py-2 text-left font-mono text-[12px] leading-relaxed text-foreground transition-colors duration-150 hover:bg-muted"
+        className="mt-3 w-full rounded-xl bg-muted/60 px-3 py-2 text-left font-mono text-[12px] leading-relaxed text-foreground transition-colors duration-150 hover:bg-muted"
       >
         {full ? <span className="break-all">{print}</span> : short}
       </button>
-    </div>
+    </SettingRow>
   );
 }
 
-/** What the agent believes, in its own words: MEMORY.md, editable, plus
- * the topic files it keeps for the long tail. */
 /** An agent as a file. What leaves is the agent: who it is, the skills it
  * carries and what it has learned. Its conversations stay here, because
  * they belong to this workspace rather than to the agent. */
-function TakeItWithYouCard({ bot }: { bot: Bot }) {
+function ExportRow({ bot }: { bot: Bot }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1064,204 +1461,101 @@ function TakeItWithYouCard({ bot }: { bot: Bot }) {
   };
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-[13.5px] font-semibold text-foreground">Take {bot.name} with you</div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-            One file with everything that makes {bot.name} itself: the role, the
-            look, the skills and the memory. Drop it into Bloks on another
-            machine and the same agent is there.
-          </div>
-        </div>
+    <SettingRow
+      label={`Take ${bot.name || "it"} with you`}
+      description={`One file with everything that makes ${bot.name || "it"} itself: the role, the look, the skills and the memory. Drop it into Bloks on another machine and the same agent is there.`}
+      control={
         <Button variant="secondary" size="sm" disabled={busy} onClick={save}>
           <Download size={13} />
           {busy ? "Saving" : "Export"}
         </Button>
-      </div>
-      {error && (
-        <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
-          {error}
-        </div>
-      )}
-      <div className="mt-2 rounded-xl bg-muted/50 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
-        Conversations stay here. The file is the agent, not the history, and it
-        carries no keys: whoever opens it uses their own.
-      </div>
-    </div>
+      }
+    >
+      {error && <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">{error}</div>}
+      <Note>
+        Conversations stay here. The file is the agent, not the history, and it carries no keys: whoever opens it uses
+        their own.
+      </Note>
+    </SettingRow>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Danger zone
 
 /**
- * Whether this agent is reminded of its other conversations before your
- * turn. On by default; the workspace switch in Settings, General, turns
- * it off for every agent, and then this one says so instead of pretending.
+ * The two ways out, the gentle one first. Archiving is the everyday one
+ * and comes back from Archived agents in the sidebar; deleting is for
+ * good, and its confirm names what goes. The key is the part worth
+ * naming: every entry this agent signed verifies against that fingerprint
+ * and no other, so a new key is not the same agent, it is a different
+ * one wearing the name.
  */
-function RecallCard({ bot, patch }: { bot: Bot; patch: (p: { recallBeforeTurn: boolean }) => void }) {
-  const { state } = useStore();
-  const everywhere = state.config?.recall?.beforeTurn !== false;
-  return (
-    <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl border bg-card p-4">
-      <div>
-        <div className="text-[13.5px] font-semibold text-foreground">Bring up other conversations</div>
-        <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-          {everywhere
-            ? `Before your turn, give ${bot.name} what it said elsewhere, or keeps in its topic notes, that matches your message. Only a close match, at most three short notes, shown under your message.`
-            : "Off for every agent in Settings, General."}
-        </div>
-      </div>
-      <Switch
-        checked={everywhere && bot.recallBeforeTurn !== false}
-        disabled={!everywhere}
-        onCheckedChange={(on: boolean) => patch({ recallBeforeTurn: on })}
-        aria-label="Bring up other conversations"
-      />
-    </div>
-  );
-}
-
-function MemoryCard({ bot }: { bot: Bot }) {
+function DangerZone({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
-  const [dirty, setDirty] = useState(false);
-  const [truncated, setTruncated] = useState(false);
-  const [topics, setTopics] = useState<Array<{ name: string; bytes: number }>>([]);
-  const [viewing, setViewing] = useState<{ name: string; text: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [asking, setAsking] = useState<"archive" | "delete" | null>(null);
+  const name = bot.name || "this agent";
 
-  const load = () => {
-    api(`/api/bots/${bot.id}/memory`)
-      .then((r) => {
-        setText(r.text ?? "");
-        setTruncated(Boolean(r.truncated));
-        setTopics(r.topics ?? []);
-        setDirty(false);
-      })
-      .catch((e: Error) => setError(e.message));
+  const go = () => {
+    const forget = asking === "delete";
+    setAsking(null);
+    // leave the page first: the agent it shows is about to be gone
+    dispatch({ type: "toggleSettings", open: false });
+    dispatch({ type: "deleteBot", botId: bot.id, ...(forget ? { forget: true } : {}) });
   };
-
-  const save = () => {
-    setError(null);
-    api(`/api/bots/${bot.id}/memory`, { method: "PUT", body: JSON.stringify({ text }) })
-      .then((r) => {
-        setDirty(false);
-        setTruncated(Boolean(r.truncated));
-        setSaved(true);
-        setTimeout(() => setSaved(false), 1400);
-      })
-      .catch((e: Error) => setError(e.message));
-  };
-
-  const size = (bytes: number) =>
-    bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
-      <button
-        className="flex w-full items-center justify-between text-left"
-        onClick={() => {
-          const next = !open;
-          setOpen(next);
-          // re-read on every expand: the agent may have written notes
-          // mid-session, and stale memory in an editor is a lie
-          if (next) load();
-        }}
-      >
-        <div>
-          <div className="text-[13.5px] font-semibold text-foreground">Memory</div>
-          <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-            What this agent remembers between conversations. Yours to read and correct.{" "}
-            <span
-              role="link"
-              tabIndex={0}
-              className="text-foreground underline-offset-2 hover:underline"
-              onClick={(e) => {
-                e.stopPropagation();
-                dispatch({ type: "openLibrary", shelf: "memory", botId: bot.id });
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") dispatch({ type: "openLibrary", shelf: "memory", botId: bot.id });
-              }}
-            >
-              Every change, with undo
-            </span>
-          </div>
-        </div>
-        <span className="text-[12px] text-muted-foreground">{open ? "Hide" : "Show"}</span>
-      </button>
+    <>
+      <Group className="border-destructive/25">
+        <SettingRow
+          label={`Archive ${name}`}
+          description="Out of the list and stops working. Its conversations, rules, rooms and key are kept, and it comes back from Archived agents in the sidebar."
+          control={
+            <Button variant="outline" onClick={() => setAsking("archive")}>
+              <Archive size={14} />
+              Archive
+            </Button>
+          }
+        />
+        <SettingRow
+          label={`Delete ${name} for good`}
+          description="Its conversations go, and so does the key it signs with, which cannot be remade. This cannot be undone."
+          control={
+            <Button variant="destructive" onClick={() => setAsking("delete")}>
+              <Trash2 size={14} />
+              Delete
+            </Button>
+          }
+        />
+      </Group>
 
-      {open && (
-        <div className="mt-3">
-          {viewing ? (
-            <>
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[12px] text-muted-foreground">
-                  memory/{viewing.name}
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => setViewing(null)}>
-                  Back
-                </Button>
-              </div>
-              <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap rounded-xl bg-muted/60 p-3 font-mono text-[12px] leading-relaxed text-foreground">
-                {viewing.text}
-              </pre>
-            </>
-          ) : (
-            <>
-              <Textarea
-                value={text}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  setDirty(true);
-                }}
-                placeholder="Nothing remembered yet. The agent writes here as it learns; you can too."
-                className="min-h-[150px] font-mono text-[12px]"
-              />
-              {truncated && (
-                <div className="mt-1.5 text-[12px] text-warning">
-                  Over the load budget. Only the top of this file reaches the agent each turn.
-                </div>
-              )}
-              <div className="mt-2 flex items-center gap-2">
-                <Button size="sm" onClick={save} disabled={!dirty}>
-                  Save
-                </Button>
-                {saved && (
-                  <span className="flex items-center gap-1 text-[11.5px] text-success">
-                    <Check size={12} /> Saved
-                  </span>
-                )}
-              </div>
-              {topics.length > 0 && (
-                <div className="mt-3">
-                  <div className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                    Topic files
-                  </div>
-                  <div className="mt-1.5 flex flex-col gap-0.5">
-                    {topics.map((topic) => (
-                      <button
-                        key={topic.name}
-                        onClick={() =>
-                          api(`/api/bots/${bot.id}/memory/topics/${encodeURIComponent(topic.name)}`)
-                            .then((r) => setViewing({ name: topic.name, text: r.text }))
-                            .catch((e: Error) => setError(e.message))
-                        }
-                        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent"
-                      >
-                        <span className="font-mono text-[12px] text-foreground">{topic.name}</span>
-                        <span className="text-[11px] text-muted-foreground">{size(topic.bytes)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-          {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
-        </div>
-      )}
-    </div>
+      <Dialog open={asking !== null} onOpenChange={(open) => !open && setAsking(null)}>
+        <DialogContent showCloseButton={false} className="max-w-[420px]">
+          <div className="flex items-start gap-3.5">
+            <AgentAvatar bot={bot} size={40} />
+            <div className="min-w-0">
+              <DialogTitle>{asking === "delete" ? `Delete ${name} for good?` : `Archive ${name}?`}</DialogTitle>
+              <DialogDescription>
+                {asking === "delete"
+                  ? "Its conversations go, and so does the key it signs with, which cannot be remade. What it already signed in the record stays readable but can never be re-signed. This cannot be undone."
+                  : "It leaves the list and stops working. Everything it has is kept, and Archived agents in the sidebar brings it back."}
+              </DialogDescription>
+            </div>
+          </div>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="secondary" autoFocus onClick={() => setAsking(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant={asking === "delete" ? "destructive" : "default"}
+              className={asking === "delete" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined}
+              onClick={go}
+            >
+              {asking === "delete" ? "Delete for good" : "Archive"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

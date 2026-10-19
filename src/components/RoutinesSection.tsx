@@ -92,10 +92,14 @@ export function RoutinesSection({
   targetId,
   targetKind,
   targetName,
+  bare = false,
 }: {
   targetId: string;
   targetKind: "agent" | "room";
   targetName: string;
+  /** Inside a page section that already names it: no card and no
+   * heading of its own, only the routines and the way to add one. */
+  bare?: boolean;
 }) {
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [adding, setAdding] = useState(false);
@@ -120,14 +124,18 @@ export function RoutinesSection({
       .catch((e: Error) => setError(e.message));
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="flex items-center gap-2 text-[13.5px] font-semibold text-foreground">
-        <CalendarClock size={15} className="text-muted-foreground" />
-        Routines
-      </div>
-      <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-        Recurring tasks {targetName} runs on a schedule.
-      </div>
+    <div className={bare ? undefined : "mt-4 rounded-2xl border bg-card p-4"}>
+      {!bare && (
+        <>
+          <div className="flex items-center gap-2 text-[13.5px] font-semibold text-foreground">
+            <CalendarClock size={15} className="text-muted-foreground" />
+            Routines
+          </div>
+          <div className="mt-0.5 text-[12.5px] text-muted-foreground">
+            Recurring tasks {targetName} runs on a schedule.
+          </div>
+        </>
+      )}
 
       {error && (
         <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
@@ -135,9 +143,9 @@ export function RoutinesSection({
         </div>
       )}
 
-      <div className="mt-3 flex flex-col gap-2">
+      <div className={cn("flex flex-col gap-2", !bare && "mt-3")}>
         {(routines ?? []).map((routine) => (
-          <div key={routine.id} className="rounded-xl border bg-background p-2.5">
+          <div key={routine.id} className={cn("rounded-xl border p-2.5", bare ? "bg-card px-3.5 py-3" : "bg-background")}>
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
                 <div

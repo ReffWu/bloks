@@ -357,11 +357,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               // shown at once, and the list read again around it, never
               // emptied first: a read that failed left no rooms at all
               rawDispatch({ type: "blokPatched", blok });
-              return api("/api/bloks").then(({ bloks }) => {
-                rawDispatch({ type: "hydrateBloks", bloks });
-                rawDispatch({ type: "select", id: blok.id });
-                rawDispatch({ type: "toggleNewRoom", open: false });
-              });
+              // The settings chosen with it, each sent on its own: a folder
+              // the server refuses is said, and the room still opens
+              // without it rather than not at all.
+              const settings: Array<Promise<unknown>> = [];
+              const patch = (body: Record<string, unknown>) =>
+                settings.push(
+                  api(`/api/bloks/${blok.id}`, { method: "PATCH", body: JSON.stringify(body) }).catch(showError),
+                );
+              if (action.leadOnly) patch({ leadOnly: true });
+              if (action.cwd?.trim()) patch({ cwd: action.cwd.trim() });
+              return Promise.all(settings)
+                .then(() => api("/api/bloks"))
+                .then(({ bloks }) => {
+                  rawDispatch({ type: "hydrateBloks", bloks });
+                  rawDispatch({ type: "select", id: blok.id });
+                  rawDispatch({ type: "toggleNewRoom", open: false });
+                });
             })
             .catch(showError);
           break;

@@ -4,6 +4,7 @@
 // an agent or a room, and getting that wrong puts a reply in the wrong
 // conversation.
 import { settleUnanswered, withoutEdits } from "../src/state/reducer.ts";
+import { goTo, placeOf } from "../src/lib/navHistory.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -536,4 +537,44 @@ test("an older error's timer does not take a newer error off the screen", () => 
   // the same words twice are two errors, each with its own time
   const again = reducer(second, { type: "error", message: "Could not rename that room" });
   assert.notEqual(again.errorAt, second.errorAt);
+});
+
+// An agent's settings are a full page now, in the panel where its chat
+// was, so they follow the same rules as the other pages: one at a time,
+// and picking a conversation means looking at it.
+test("an agent's settings close every other full page, and picking a conversation closes them", () => {
+  let state = withState({ bots: [bot("a"), bot("b")], selectedId: "a", page: "overview", routinesOpen: true });
+  state = reducer(state, { type: "toggleSettings", open: true });
+  assert.equal(state.settingsOpen, true);
+  assert.equal(state.page, null);
+  assert.equal(state.routinesOpen, false);
+
+  state = reducer(state, { type: "select", id: "b" });
+  assert.equal(state.settingsOpen, false);
+  assert.equal(state.selectedId, "b");
+
+  state = reducer(state, { type: "toggleSettings", open: true });
+  state = reducer(state, { type: "toggleRoutines", open: true });
+  assert.equal(state.settingsOpen, false);
+});
+
+test("opening an agent's memory lands on Library's memory shelf, on that agent", () => {
+  const state = reducer(withState({ bots: [bot("a")], settingsOpen: true }), { type: "openMemory", target: "a" });
+  assert.equal(state.page, "library");
+  assert.equal(state.library, "memory");
+  assert.equal(state.memoryBotId, "a");
+  assert.equal(state.settingsOpen, false);
+});
+
+test("Back and Forward know an agent's settings as a place of their own", () => {
+  const open = withState({ bots: [bot("a")], selectedId: "a", settingsOpen: true });
+  assert.deepEqual(placeOf(open), { kind: "agent", id: "a" });
+  assert.deepEqual(placeOf({ ...open, settingsOpen: false }), { kind: "chat", id: "a", lane: undefined });
+
+  // going back to it selects the agent first, then opens the page, since
+  // selecting closes it
+  let state = withState({ bots: [bot("a"), bot("b")], selectedId: "b" });
+  for (const action of goTo({ kind: "agent", id: "a" })) state = reducer(state, action);
+  assert.equal(state.selectedId, "a");
+  assert.equal(state.settingsOpen, true);
 });

@@ -704,7 +704,9 @@ export type Action =
   | { type: "joinRequest"; roomId: string; pending?: number }
   | { type: "roomTyping"; roomId: string; name: string; at: number }
   | { type: "blokDeleted"; blokId: string }
-  | { type: "createRoom"; name: string; memberIds: string[] }
+  /** `leadOnly` and `cwd` are the room's own settings, chosen as it is
+   * made rather than found in its header afterwards. */
+  | { type: "createRoom"; name: string; memberIds: string[]; leadOnly?: boolean; cwd?: string }
   | { type: "deleteRoom"; blokId: string }
   | { type: "patchRoom"; blokId: string; patch: { archived?: boolean; name?: string; section?: string | null } }
   /** Where an agent or a room sits in the sidebar: its section, whether
@@ -782,6 +784,8 @@ export type Action =
   | { type: "openPage"; page: RailPage | null }
   | { type: "openCustomize"; tab: CustomizeTab }
   | { type: "openLibrary"; shelf: LibraryShelf; botId?: string | null }
+  /** An agent's memory, opened on that agent (null: the first). */
+  | { type: "openMemory"; target: string | null }
   | { type: "toggleComputer"; open?: boolean }
   /** `page` opens Settings on that page (see SETTINGS_PAGES). */
   | { type: "toggleAppSettings"; open?: boolean; page?: string }
@@ -986,8 +990,8 @@ export function reducer(state: AppState, action: Action): AppState {
     case "select":
       writeSelected(action.id);
       // choosing a conversation in the sidebar means looking at it, so a
-      // full page covering the chat steps aside
-      return updateBot({ ...state, selectedId: action.id, routinesOpen: false, appSettingsOpen: false, page: null }, action.id, (b) =>
+      // full page covering the chat steps aside, an agent's settings too
+      return updateBot({ ...state, selectedId: action.id, routinesOpen: false, appSettingsOpen: false, settingsOpen: false, page: null }, action.id, (b) =>
         action.lane && b.tasks
           ? (() => {
               const tasks = b.tasks.map((t) => (t.id === action.lane ? { ...t, unread: false } : t));
@@ -1033,6 +1037,7 @@ export function reducer(state: AppState, action: Action): AppState {
           routinesTab: open ? (action.tab ?? null) : null,
           appSettingsOpen: open ? false : state.appSettingsOpen,
           page: open ? null : state.page,
+          settingsOpen: open ? false : state.settingsOpen,
         };
       }
     case "toggleShortcuts":
@@ -1241,8 +1246,9 @@ export function reducer(state: AppState, action: Action): AppState {
         error: action.message,
         errorAt: action.message === null ? state.errorAt : state.errorAt + 1,
       };
-    // the right-hand slot holds one thing at a time, so opening any of
-    // these closes the rest
+    // An agent's settings are a full page, in the panel where its chat
+    // was, so opening them closes every other full page; the computer
+    // panel beside the chat goes with the chat
     case "toggleSettings": {
       const open = action.open ?? !state.settingsOpen;
       return {
@@ -1250,6 +1256,8 @@ export function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open,
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
+        routinesOpen: open ? false : state.routinesOpen,
+        page: open ? null : state.page,
       };
     }
     case "openPage":
@@ -1274,6 +1282,10 @@ export function reducer(state: AppState, action: Action): AppState {
         appSettingsOpen: false,
         settingsOpen: false,
       };
+    // Memory is a shelf of Library; this opens it on one agent, so what
+    // opens memory names the agent rather than the shelf it lives on
+    case "openMemory":
+      return reducer(state, { type: "openLibrary", shelf: "memory", botId: action.target });
     case "toggleComputer": {
       const open = action.open ?? !state.computerOpen;
       return {

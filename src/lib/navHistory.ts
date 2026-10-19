@@ -4,10 +4,11 @@
 // the full pages; moving between them is recorded as it happens, whoever
 // moved, so a link that opened Settings counts the same as a click.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Action, AppState, CustomizeTab, LibraryShelf } from "@/state/store";
+import type { Action, AppState, CustomizeTab, LibraryShelf } from "@/state/reducer";
 
 export type Place =
   | { kind: "chat"; id: string; lane?: string }
+  | { kind: "agent"; id: string }
   | { kind: "overview" }
   | { kind: "library"; shelf: LibraryShelf }
   | { kind: "customize"; tab: CustomizeTab }
@@ -26,6 +27,9 @@ export function placeOf(state: AppState): Place | null {
   if (state.page === "plugins") return { kind: "customize", tab: state.customize };
   if (!state.selectedId) return null;
   const bot = state.bots.find((b) => b.id === state.selectedId);
+  // an agent's settings are a page of their own, so Back from them is
+  // the chat they were opened over, not whatever came before that
+  if (state.settingsOpen && bot) return { kind: "agent", id: bot.id };
   return { kind: "chat", id: state.selectedId, lane: bot?.activeTaskId ?? undefined };
 }
 
@@ -38,6 +42,9 @@ export function goTo(place: Place): Action[] {
   switch (place.kind) {
     case "chat":
       return [{ type: "select", id: place.id, lane: place.lane }];
+    case "agent":
+      // selecting closes the settings page, so it is opened after
+      return [{ type: "select", id: place.id }, { type: "toggleSettings", open: true }];
     case "overview":
       return [{ type: "openPage", page: "overview" }];
     case "library":
@@ -83,9 +90,10 @@ export function useNavHistory(state: AppState, dispatch: React.Dispatch<Action>)
       while (next >= 0 && next < entries.current.length) {
         const place = entries.current[next];
         const gone =
-          place.kind === "chat" &&
-          !state.bots.some((b) => b.id === place.id && !b.hidden) &&
-          !state.bloks.some((r) => r.id === place.id);
+          (place.kind === "chat" &&
+            !state.bots.some((b) => b.id === place.id && !b.hidden) &&
+            !state.bloks.some((r) => r.id === place.id)) ||
+          (place.kind === "agent" && !state.bots.some((b) => b.id === place.id && !b.hidden));
         if (!gone) break;
         next += step;
       }

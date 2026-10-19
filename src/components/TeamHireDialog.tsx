@@ -29,9 +29,12 @@ type Seat = { kind: "new"; name: string } | { kind: "existing"; botId: string };
 export function TeamHireDialog({
   team,
   onClose,
+  onHired,
 }: {
   team: HireableTeam;
   onClose: () => void;
+  /** The room is made and open: whatever this was opened from can go. */
+  onHired?: () => void;
 }) {
   const { state, dispatch } = useStore();
   const agents = state.bots.filter((b) => !b.hidden);
@@ -88,6 +91,7 @@ export function TeamHireDialog({
           dispatch({ type: "hydrateBloks", bloks });
           dispatch({ type: "select", id: blok.id });
           onClose();
+          onHired?.();
         }),
       )
       .catch((e: Error) => {
