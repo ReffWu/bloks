@@ -18,6 +18,7 @@ import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { useLanesInSidebar } from "@/lib/conversationsView";
 import { findHits, stepHit } from "@/lib/find";
 import { isApproval } from "@/lib/cardAnswer";
+import { AnimatePresence, motion } from "motion/react";
 import { dayLine, timeSaidBelow } from "@/lib/when";
 import { TaskStrip } from "./TaskStrip";
 import { GoalDialog } from "./Goal";
@@ -42,6 +43,10 @@ import { type RedoPreview } from "@/lib/redo";
 
 import { Bubble, Notice, QuietCheckIns, Rewound, TakenBack } from "./chat/Bubble";
 import { LiveBrowser, ScreenFrame, StreamingBubble, WorkingClock, WorkingLine } from "./chat/Live";
+import { EmptyState } from "./chat/EmptyState";
+import { JumpToLatest } from "./chat/JumpToLatest";
+import { onAsk, peekAsk, takeAsk } from "@/lib/chatAsk";
+import { keysFor, platformOf } from "@/lib/shortcuts";
 
 /**
  * Which messages should animate in: ones that arrive while you're
@@ -89,6 +94,36 @@ function reactTo(threadId: string, messageId: string, emoji: string) {
     method: "POST",
     body: JSON.stringify({ emoji }),
   }).catch(() => {});
+}
+
+/** Something the agent said, as the way back counts new ones: not its
+ * tool calls, frames or quiet check-ins, which arrive by the dozen. */
+const isReply = (m: Message) =>
+  m.role === "bot" && !m.quiet && !m.deleted && m.kind !== "activity" && m.kind !== "screen" && m.kind !== "notice";
+
+/** Typed here and sent, rather than said for you by a routine, a goal,
+ * a watcher, another agent or someone on Telegram. */
+const sentByYou = (m: Message) => m.role === "user" && !m.via && !m.agent && !m.telegramPerson;
+
+const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+
+/** The brief wash behind a message the palette sent you to, a little
+ * wider than its row. Drawn first in the row, so a bubble, positioned
+ * itself, paints over it and keeps its own colours. */
+function LandMark({ on }: { on: boolean }) {
+  return (
+    <AnimatePresence>
+      {on && (
+        <motion.span
+          aria-hidden
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 0.15, ease: "easeOut" } }}
+          exit={{ opacity: 0, transition: { duration: 0.28, ease: "easeOut" } }}
+          className="pointer-events-none absolute -inset-x-2 -inset-y-1 rounded-xl bg-warning/12"
+        />
+      )}
+    </AnimatePresence>
+  );
 }
 
 export function ChatView({ bot }: { bot: Bot }) {
@@ -177,6 +212,14 @@ export function ChatView({ bot }: { bot: Bot }) {
   // A finished turn's work is one line above its result
   // (src/lib/turnFold.ts). These are the ones opened to read the work.
   const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set());
+  // ── landing on a message picked in the palette ──
+  // The palette opens the conversation (src/lib/chatAsk.ts); this brings
+  // the message itself into view and marks it for a moment, so the eye
+  // knows which line it was sent to. The landing stays once done, so the
+  // rows opened back to reach it stay open while the reader looks around.
+  const [landing, setLanding] = useState<{ id: string; nonce: number } | null>(null);
+  const [lit, setLit] = useState<string | null>(null);
+  const landed = useRef<number | null>(null);
   const threadKey = `${bot.id}:${bot.threadId}`;
   const lastThreadKey = useRef(threadKey);
   if (lastThreadKey.current !== threadKey) {
@@ -186,6 +229,9 @@ export function ChatView({ bot }: { bot: Bot }) {
     // rewind's words belong to theirs: neither goes with you to another.
     setReplyTo(null);
     setPrefill(null);
+    // a landing is on a message in the conversation it was asked for
+    setLanding(null);
+    setLit(null);
   }
   // ── find within this conversation ──
   // The palette answers "which thread was that in"; this answers "where
@@ -194,6 +240,20 @@ export function ChatView({ bot }: { bot: Bot }) {
   const [finding, setFinding] = useState(false);
   const [query, setQuery] = useState("");
   const [hitAt, setHitAt] = useState(0);
+  const findRef = useRef<HTMLInputElement>(null);
+  // Opening find again while it is open goes back to its field with the
+  // words selected, as a browser's does, rather than doing nothing.
+  const openFind = () => {
+    setFinding(true);
+    requestAnimationFrame(() => {
+      findRef.current?.focus();
+      findRef.current?.select();
+    });
+  };
+  const closeFind = () => {
+    setFinding(false);
+    setQuery("");
+  };
   const hits = useMemo(() => findHits(said, query), [said, query]);
   // The last turn folds once it has ended, and not before: this
   // conversation's turn, whatever the agent's other ones are doing.
@@ -224,7 +284,7 @@ export function ChatView({ bot }: { bot: Bot }) {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "f") {
         e.preventDefault();
-        setFinding(true);
+        openFind();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -233,17 +293,36 @@ export function ChatView({ bot }: { bot: Bot }) {
 
   const earlier = useHistoryPaging("bot", bot, said, scrollRef, pinned, !finding);
   const start = earlier.start;
+  const landAt = landing ? said.findIndex((m) => m.id === landing.id) : -1;
   // A hit above the rendered slice would be invisible and unscrollable,
-  // so finding one opens the window far enough back to show it.
-  const visibleStart = currentHit >= 0 && currentHit < start ? Math.max(0, currentHit - 4) : start;
+  // so finding one opens the window far enough back to show it. So does
+  // a landing.
+  const reach = [currentHit, landAt].filter((i) => i >= 0 && i < start);
+  const visibleStart = reach.length ? Math.max(0, Math.min(...reach) - 4) : start;
   const visibleRows = useMemo(() => rowsFrom(folded.rows, visibleStart), [folded, visibleStart]);
   // A hit in folded work would be just as invisible, so its fold opens,
   // and stays open as the reader steps on to the next.
   const hitFold = currentHit >= 0 ? foldHolding(folded.rows, currentHit) : null;
   const hitShown = !hitFold || openFolds.has(hitFold);
+  const landFold = landAt >= 0 ? foldHolding(folded.rows, landAt) : null;
+  const landShown = !landFold || openFolds.has(landFold);
 
   // follow the tail only while the reader is actually at the tail
-  useStickToBottom(scrollRef, pinned);
+  const { away, toLatest } = useStickToBottom(scrollRef, pinned);
+  // What stood at the end the last time the reader was following it.
+  // What the agent says after that, while they read further up, is what
+  // the way back counts as new.
+  const seenThrough = useRef<string | undefined>(undefined);
+  if (pinned.current) seenThrough.current = said[said.length - 1]?.id;
+  const seenAt = seenThrough.current ? said.findIndex((m) => m.id === seenThrough.current) : -1;
+  const freshBelow = !away || seenAt < 0 ? 0 : said.slice(seenAt + 1).filter(isReply).length;
+
+  // What you send is followed to the end, wherever you were reading: the
+  // reply you are now waiting for will arrive down there.
+  useEffect(() => {
+    const last = said[said.length - 1];
+    if (last && arrivals.has(last.id) && sentByYou(last) && !pinned.current) toLatest();
+  }, [arrivals]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (pinned.current) {
@@ -274,10 +353,12 @@ export function ChatView({ bot }: { bot: Bot }) {
     });
   };
   useEffect(() => {
-    if (!hitFold) return;
-    pinned.current = false;
-    setOpenFolds((open) => (open.has(hitFold) ? open : new Set(open).add(hitFold)));
-  }, [hitFold]);
+    for (const fold of [hitFold, landFold]) {
+      if (!fold) continue;
+      pinned.current = false;
+      setOpenFolds((open) => (open.has(fold) ? open : new Set(open).add(fold)));
+    }
+  }, [hitFold, landFold]);
 
   // Walk to a hit: render it, then bring it to the middle of the view.
   useEffect(() => {
@@ -286,6 +367,69 @@ export function ChatView({ bot }: { bot: Bot }) {
     const row = scrollRef.current?.querySelector(`[data-msg-index="${currentHit}"]`);
     row?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [currentHit, visibleStart, hitShown]);
+
+  // Land once, when the message is drawn: from far away at once, since a
+  // long glide through a conversation you just opened is only waiting,
+  // and close by with the same smooth step find takes.
+  useEffect(() => {
+    if (!landing || landAt < 0 || !landShown || landed.current === landing.nonce) return;
+    const el = scrollRef.current;
+    const row = el?.querySelector(`[data-msg-index="${landAt}"]`);
+    if (!el || !row) return;
+    landed.current = landing.nonce;
+    pinned.current = false;
+    const far = Math.abs(row.getBoundingClientRect().top - el.getBoundingClientRect().top) > el.clientHeight * 2;
+    row.scrollIntoView({ block: "center", behavior: far || reducedMotion() ? "auto" : "smooth" });
+    setLit(landing.id);
+  }, [landing, landAt, visibleStart, landShown]);
+  // the mark is a moment, not a state
+  useEffect(() => {
+    if (!lit) return;
+    const t = setTimeout(() => setLit(null), 1600);
+    return () => clearTimeout(t);
+  }, [lit, landing]);
+
+  // Asks from outside, the palette's above all (src/lib/chatAsk.ts):
+  // taken once they are for this agent, and a landing once its
+  // conversation is the open one and the message is in hand. One further
+  // back than what has arrived is paged in until it is.
+  const [askTick, setAskTick] = useState(0);
+  useEffect(() => onAsk(() => setAskTick((n) => n + 1)), []);
+  useEffect(() => {
+    const ask = peekAsk(bot.id);
+    if (!ask) return;
+    if (ask.kind === "find") {
+      takeAsk(ask);
+      openFind();
+    } else if (ask.kind === "terminal") {
+      takeAsk(ask);
+      setTerminalOpen(true);
+    } else if (ask.threadId === bot.threadId) {
+      if (said.some((m) => m.id === ask.messageId)) {
+        takeAsk(ask);
+        setLanding({ id: ask.messageId, nonce: Date.now() });
+      } else if (earlier.remaining > 0 && !earlier.loading) {
+        earlier.showEarlier();
+      }
+    }
+  }, [askTick, bot.id, bot.threadId, said, earlier.remaining, earlier.loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A starter from the empty page goes into the message box, never out:
+  // the words are there to read, change or finish, and the box has the
+  // keyboard with the caret at their end.
+  const mainRef = useRef<HTMLElement>(null);
+  const focusBox = () =>
+    requestAnimationFrame(() => {
+      // the composer's field is the one drawn over its skill marks
+      const box = mainRef.current?.querySelector<HTMLTextAreaElement>("[data-skill-layer] ~ textarea");
+      if (!box) return;
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    });
+  const startWith = (prompt: string) => {
+    setPrefill({ text: prompt, nonce: Date.now() });
+    focusBox();
+  };
 
   // the two-agent exchange opened from one of its rows, if any
   const [exchange, setExchange] = useState<{ peerId: string; messageId: string; text: string } | null>(null);
@@ -303,6 +447,17 @@ export function ChatView({ bot }: { bot: Bot }) {
   const first = said[0];
   // this conversation, not the agent: another one may be the one working
   const working = openLaneWorking(bot);
+  // Nothing said, nothing on its way, and nothing still loading: a new
+  // conversation, which shows who is here and a few ways to begin.
+  const empty =
+    said.length === 0 &&
+    waiting.length === 0 &&
+    !bot.olderMessages &&
+    !state.laneLoads[bot.id] &&
+    !streaming &&
+    !provisioning &&
+    !working &&
+    !liveBrowser;
 
   // One stretch of the conversation as its rows: what stays in the open,
   // or a fold's work once it is opened. A run (a rewind, quiet check-ins,
@@ -336,7 +491,8 @@ export function ChatView({ bot }: { bot: Bot }) {
       // whoever started the turn (older ones were marked dir "reply").
       if (m.takeBack || (m.agent && m.agent.dir !== "reply" && (m.kind === "text" || m.kind === "activity"))) {
         return (
-          <div key={m.id} data-msg-index={absolute} data-message-id={m.id}>
+          <div key={m.id} data-msg-index={absolute} data-message-id={m.id} className="relative">
+              <LandMark on={lit === m.id} />
             <AgentExchangeRow
               message={m}
               botId={bot.id}
@@ -351,7 +507,8 @@ export function ChatView({ bot }: { bot: Bot }) {
           // marked like any other row, so Find and the approvals bar can
           // reach a card by its message
           return (
-            <div key={m.id} data-msg-index={absolute} data-message-id={m.id}>
+            <div key={m.id} data-msg-index={absolute} data-message-id={m.id} className="relative">
+              <LandMark on={lit === m.id} />
               <OptionCard botId={bot.id} message={m} />
             </div>
           );
@@ -395,7 +552,8 @@ export function ChatView({ bot }: { bot: Bot }) {
           // Once its turn has folded, the line above it says who asked.
           const after = folded.named.has(m.id) ? undefined : (m.afterAgent ?? (m.agent?.dir === "reply" ? m.agent : undefined));
           return (
-            <div key={m.id} data-msg-index={absolute} data-message-id={m.id}>
+            <div key={m.id} data-msg-index={absolute} data-message-id={m.id} className="relative">
+              <LandMark on={lit === m.id} />
             {m.telegramPerson && <div className="mb-1 text-small text-muted-foreground">Message from {m.telegramPerson.name} (Telegram)</div>}
             {m.telegramSent && <div className="mb-1 text-small text-muted-foreground">To {m.telegramSent.name} (Telegram): {m.telegramSent.state === "sent" ? "sent" : m.telegramSent.state === "sending" ? "sending" : m.telegramSent.state === "failed" ? "failed" : "delivery uncertain"}</div>}
             {after && (
@@ -433,7 +591,7 @@ export function ChatView({ bot }: { bot: Bot }) {
     });
 
   return (
-    <main className="@container/chat relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <main ref={mainRef} className="@container/chat relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {/* Header. Who you are talking to sits in the middle once there is
           room for it to sit clear of the buttons; narrower, it moves to
           the left, where a name has the most room. */}
@@ -521,6 +679,7 @@ export function ChatView({ bot }: { bot: Bot }) {
         <div className="flex shrink-0 items-center gap-2 border-b bg-background/95 px-4 py-2 md:px-6">
           <Search size={14} className="shrink-0 text-muted-foreground" />
           <input
+            ref={findRef}
             autoFocus
             value={query}
             onChange={(e) => {
@@ -529,8 +688,10 @@ export function ChatView({ bot }: { bot: Bot }) {
             }}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
-                setFinding(false);
-                setQuery("");
+                // the keyboard goes back to the message box it came from
+                e.preventDefault();
+                closeFind();
+                focusBox();
                 return;
               }
               if (e.key === "Enter") {
@@ -538,10 +699,11 @@ export function ChatView({ bot }: { bot: Bot }) {
                 setHitAt((at) => stepHit(at, hits.length, e.shiftKey ? -1 : 1));
               }
             }}
-            placeholder={`Find in this conversation`}
+            placeholder="Find in this conversation"
+            aria-label="Find in this conversation"
             className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
           />
-          <span className="shrink-0 text-small tabular-nums text-muted-foreground">
+          <span aria-live="polite" className="shrink-0 text-small tabular-nums text-muted-foreground">
             {query.trim().length < 2
               ? ""
               : hits.length === 0
@@ -553,6 +715,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               onClick={() => setHitAt((at) => stepHit(at, hits.length, -1))}
               disabled={hits.length === 0}
               aria-label="Previous match"
+              title={`Previous match  ${keysFor("findStep", platformOf())[1]}`}
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
               <ChevronUp size={15} />
@@ -561,16 +724,15 @@ export function ChatView({ bot }: { bot: Bot }) {
               onClick={() => setHitAt((at) => stepHit(at, hits.length, 1))}
               disabled={hits.length === 0}
               aria-label="Next match"
+              title={`Next match  ${keysFor("findStep", platformOf())[0]}`}
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
               <ChevronDown size={15} />
             </button>
             <button
-              onClick={() => {
-                setFinding(false);
-                setQuery("");
-              }}
+              onClick={closeFind}
               aria-label="Close find"
+              title={`Close  ${keysFor("close", platformOf())[0]}`}
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <X size={15} />
@@ -578,13 +740,19 @@ export function ChatView({ bot }: { bot: Bot }) {
           </div>
         </div>
       )}
+      {/* The transcript, and the way back to its end floating over it. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={scrollRef}
         onScroll={earlier.onScroll}
-        className="flex-1 overflow-y-auto px-4 md:px-6 [overflow-anchor:none]"
+        className="min-h-0 flex-1 overflow-y-auto px-4 md:px-6 [overflow-anchor:none]"
       >
-        <div className="mx-auto flex max-w-[var(--transcript-width,760px)] flex-col gap-2.5 pb-4 pt-2">
-          {start > 0 || earlier.remaining > 0 ? (
+        {/* Full height only when empty, to centre the welcome: paging
+            measures this column to tell a short history from a full one. */}
+        <div className={cn("mx-auto flex max-w-[var(--transcript-width,760px)] flex-col gap-2.5 pb-4 pt-2", empty && "min-h-full")}>
+          {empty ? (
+            <EmptyState key={threadKey} bot={bot} onStart={startWith} />
+          ) : start > 0 || earlier.remaining > 0 ? (
             <button
               onClick={earlier.showEarlier}
               disabled={earlier.loading}
@@ -632,6 +800,8 @@ export function ChatView({ bot }: { bot: Bot }) {
             onStop={() => dispatch({ type: "interrupt", botId: bot.id })}
           />
         </div>
+      </div>
+      <JumpToLatest show={away && !empty} fresh={freshBelow} onJump={toLatest} />
       </div>
 
       {terminalOpen && (
