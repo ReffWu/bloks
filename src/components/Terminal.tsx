@@ -153,6 +153,13 @@ function TerminalView({
     // typed into it twice
     let told = info ? { cols: info.cols, rows: info.rows } : null;
     const platform = platformOf();
+    // One request at a time, in order. Two in flight can arrive the other
+    // way round, and keystrokes out of order are a different command.
+    let sending: Promise<unknown> = Promise.resolve();
+    const send = (body: { data?: string; cols?: number; rows?: number }) => {
+      if (!id) return;
+      sending = sending.then(() => terminalApi.input(botId, id, body).catch(() => {}));
+    };
 
     const xterm = new Xterm({
       allowTransparency: false,
@@ -224,7 +231,7 @@ function TerminalView({
       callbacks.current.onSized?.(size.cols, size.rows);
       if (!id || (told && told.cols === size.cols && told.rows === size.rows)) return;
       told = size;
-      void terminalApi.input(botId, id, size).catch(() => {});
+      send(size);
     };
     refit.current = tell;
 
@@ -234,8 +241,7 @@ function TerminalView({
       const data = pending;
       pending = "";
       flushing = null;
-      if (!data || !id) return;
-      void terminalApi.input(botId, id, { data }).catch(() => {});
+      if (data) send({ data });
     };
     xterm.onData((data) => {
       pending += data;
