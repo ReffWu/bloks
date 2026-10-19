@@ -1,11 +1,14 @@
 // Where you write to an agent.
 //
-// The frame (composer/Shell.tsx) is the tray, the box and its footer;
-// this fills it for one agent's conversation: the words and what rides
-// with them, the `/` list, dictation, rehearsing, what the agent runs on,
-// and Send, which is Stop while it works. Everything the conversation
-// has to say above the box goes through the one tray, most pressing
-// first, so a busy conversation never stacks strips up the window.
+// The frame (composer/Shell.tsx) is the tray, a skinny box and a quiet
+// row under it; this fills it for one agent's conversation. In the box:
+// + to add things, the words and what rides with them, the `/` list,
+// dictation, and Send, which is Stop while it works. Under it: how much
+// the agent asks, the model and its effort, the speed where the model has
+// one, and a ring for how full the conversation is and what it has used.
+// Everything the conversation has to say above the box goes through the
+// one tray, most pressing first, so a busy conversation never stacks
+// strips up the window.
 import { track } from "@/lib/analytics";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type SetStateAction } from "react";
 import { Mic } from "@/components/icons";
@@ -17,13 +20,16 @@ import { File as FileIcon } from "@/components/icons";
 import { Undo2 } from "@/components/icons";
 import { X } from "@/components/icons";
 import { FlaskConical } from "@/components/icons";
+import { ShieldAlert } from "@/components/icons";
 import { api, useStore, openLaneWorking, type Bot, type Message } from "@/state/store";
 import { type ReplyDraft } from "./MessageActions";
 import { ComposerRing } from "./ComposerRing";
 import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";
 import { AgentAvatar } from "./Avatar";
-import { ComposerShell, FooterButton, SendStop } from "./composer/Shell";
+import { BoxButton, ComposerShell, SendStop } from "./composer/Shell";
+import { ApprovalModeMenu } from "./composer/ApprovalMode";
+import { CodexSpeedMenu } from "./CodexSpeed";
 import { NoticeTray, RANK, TrayButton, type Notice } from "./composer/Tray";
 import { SlashMenu } from "./composer/SlashMenu";
 import { guestMailNotice, useApprovalsNotice, useEngineNotice, useOtherLanesNotice } from "./chat/Banners";
@@ -41,7 +47,7 @@ import {
 } from "@/lib/attachments";
 import { Button } from "@/components/ui/button";
 import { modKey } from "@/lib/thisComputer";
-import { composerCeiling, edgeMask } from "@/lib/composerSize";
+import { edgeMask } from "@/lib/composerSize";
 import { acceptDraft, boxFor, carryFocus, discardRecovery, isEmptyDraft, keepDraft, readDraft, readRecoveries, recoverDraft, restoreRecovery, showBox, takeFocus, type Draft } from "@/lib/drafts";
 import { grouped, insert as insertCommand, matches as matchCommands, segments, slashAt, withBloksCommands, type Command } from "@/lib/slashCommands";
 import { escapeTaken } from "@/lib/useEscape";
@@ -61,6 +67,26 @@ function shadeEdges(el: HTMLTextAreaElement) {
   }
 }
 
+/** How much of the window a long message may take before it scrolls. */
+const GROW_SHARE = 0.4;
+/** However tall the window, past this many lines a message scrolls. */
+const GROW_MAX_LINES = 16;
+/** And however short, it gets this many before it does. */
+const GROW_MIN_LINES = 3;
+
+/**
+ * The tallest the words get: about two fifths of the window, capped, and
+ * always a whole number of lines plus the padding. A flat pixel ceiling
+ * lands between lines, and then a scrolled composer always shows part of
+ * one sliced off against its border (#50).
+ */
+function growCeiling(lineHeight: number, padding: number): number {
+  const line = lineHeight > 0 ? lineHeight : 24;
+  const room = Math.floor((window.innerHeight * GROW_SHARE - padding) / line);
+  const lines = Math.max(GROW_MIN_LINES, Math.min(GROW_MAX_LINES, room));
+  return Math.ceil(lines * line + padding);
+}
+
 /**
  * Grows with its content up to a ceiling, then scrolls.
  *
@@ -69,19 +95,23 @@ function shadeEdges(el: HTMLTextAreaElement) {
  * line, so measuring that way left the composer standing at its ceiling
  * whenever there was nothing in it, which is every time you look at it.
  *
- * The ceiling is a whole number of lines, measured from the rendered line
- * height, not a round number of pixels. A flat 200px was eight and a half
- * lines, so a scrolled composer always showed half a line sliced off at
- * one edge (#50).
+ * The ceiling follows the window, so it is measured again when the
+ * window changes size, not only when the words do.
  */
 function useAutoSize(value: string) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [tall, setTall] = useState(() => window.innerHeight);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const onScroll = () => shadeEdges(el);
+    const onResize = () => setTall(window.innerHeight);
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    window.addEventListener("resize", onResize);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+    };
   }, []);
   useEffect(() => {
     const el = ref.current;
@@ -101,11 +131,7 @@ function useAutoSize(value: string) {
     }
     el.style.overflowY = "";
     const style = getComputedStyle(el);
-    const ceiling = composerCeiling(
-      parseFloat(style.lineHeight),
-      parseFloat(style.paddingTop),
-      parseFloat(style.paddingBottom),
-    );
+    const ceiling = growCeiling(parseFloat(style.lineHeight), parseFloat(style.paddingTop) + parseFloat(style.paddingBottom));
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, ceiling)}px`;
     // Typing at the end, the usual case: show the end, padding included.
@@ -113,7 +139,7 @@ function useAutoSize(value: string) {
     // view, which parks that line in the bottom fade.
     if (el.selectionEnd === value.length) el.scrollTop = el.scrollHeight;
     shadeEdges(el);
-  }, [value]);
+  }, [value, tall]);
   return ref;
 }
 
@@ -313,6 +339,8 @@ export function Composer({
   };
   /** Why something did not become a chip, said once, dismissible. */
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
+  /** A wider approval mode that Touch ID was not given for. */
+  const [modeRefused, setModeRefused] = useState(false);
   const pickerRef = useRef<HTMLInputElement>(null);
 
   // The `/` list (#51): this agent's skills, fetched when the agent or
@@ -626,6 +654,17 @@ export function Composer({
           onDismiss: () => setSpeechError(null),
         }
       : null,
+    modeRefused
+      ? {
+          id: "approvals-refused",
+          tone: "warn",
+          rank: RANK.feedback,
+          icon: <ShieldAlert size={14} />,
+          title: "Not confirmed.",
+          detail: `${bot.name} still asks as before.`,
+          onDismiss: () => setModeRefused(false),
+        }
+      : null,
     rehearseError
       ? {
           id: "rehearse",
@@ -701,7 +740,7 @@ export function Composer({
         <NoticeTray notices={notices} />
         <div
           className={cn(
-            "relative z-10 flex items-center gap-3 rounded-[22px] border px-3.5 py-3",
+            "relative z-10 flex items-center gap-3 rounded-2xl border px-3.5 py-3",
             notices.length > 0 && "-mt-3",
             className,
           )}
@@ -756,6 +795,12 @@ export function Composer({
       "border-warning/40 bg-background",
     );
   }
+
+  const stopRehearsing = () => {
+    setCompareWith([]);
+    setRehearse(false);
+    inputRef.current?.focus();
+  };
 
   const chips = (replyTo || attachments.length > 0 || rehearse) && (
     <>
@@ -833,7 +878,7 @@ export function Composer({
         )
       }
       chips={chips || undefined}
-      footerStart={
+      lead={
         <>
           <input
             ref={pickerRef}
@@ -845,39 +890,45 @@ export function Composer({
               e.target.value = "";
             }}
           />
-          <FooterButton title="Attach a file or image" onClick={() => pickerRef.current?.click()}>
+          <BoxButton title="Attach a file or image" onClick={() => pickerRef.current?.click()}>
             <Plus size={18} />
-          </FooterButton>
-          <ModelPicker bot={bot} variant="chip" className="min-w-0" />
-          <FooterButton
-            title={rehearse ? "Stop rehearsing" : "Rehearse on a copy"}
-            pressed={rehearse}
-            label="Rehearse"
-            onClick={() => {
-              if (rehearse) setCompareWith([]);
-              setRehearse((on) => !on);
-            }}
-          >
-            <FlaskConical size={15} />
-          </FooterButton>
+          </BoxButton>
         </>
       }
-      footerEnd={
+      trail={
         <>
-          <ComposerRing bot={bot} />
-          <FooterButton
+          {/* Rehearse sits with the other ways of sending, quiet until
+              it is on, and then plainly on: the next message becomes a
+              rehearsal, which is worth not forgetting. */}
+          <BoxButton
+            title={rehearse ? "Stop rehearsing" : "Rehearse"}
+            hint={rehearse ? "Rehearsing: the next message runs on a copy" : "Rehearse: try it on a copy first"}
+            pressed={rehearse}
+            onClick={() => (rehearse ? stopRehearsing() : setRehearse(true))}
+          >
+            <FlaskConical size={16} />
+          </BoxButton>
+          <BoxButton
             title={recording ? "Stop dictation (Esc)" : "Dictate"}
             onClick={() => void toggleMic()}
             className={cn(recording && "animate-pulse bg-destructive/15 text-destructive hover:bg-destructive/20 hover:text-destructive motion-reduce:animate-none")}
           >
             {recording ? <VoiceMeter level={level} /> : <Mic size={17} />}
-          </FooterButton>
+          </BoxButton>
           <SendStop
             mode={canSend ? "send" : working ? "stop" : "idle"}
             sendLabel={working ? `Send, ${modKey()}Enter stops ${bot.name} first` : "Send"}
             onSend={() => send()}
             onStop={() => dispatch({ type: "interrupt", botId: bot.id })}
           />
+        </>
+      }
+      belowStart={<ApprovalModeMenu bot={bot} onRefused={setModeRefused} />}
+      belowEnd={
+        <>
+          <ModelPicker bot={bot} variant="composer" />
+          <CodexSpeedMenu bot={bot} />
+          <ComposerRing bot={bot} />
         </>
       }
     >

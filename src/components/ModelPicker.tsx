@@ -1,26 +1,31 @@
 // Choosing what an agent thinks with.
 //
-// Engines on the left, that engine's models on the right. Selection is
-// always an exact instance id: two instances can share a driver, and
-// guessing from the driver would silently send a turn to the wrong one.
+// One list, read top to bottom: every engine as a heading with its models
+// under it, the one in use first and checked. Selection is always an
+// exact instance id: two instances can share a driver, and guessing from
+// the driver would silently send a turn to the wrong one.
 //
-// Engines that are not usable stay visible and disabled, carrying the
-// reason. Hiding them would leave someone wondering where their engine
-// went, when what they need to know is that it is installed but signed
-// out. The same goes for an engine with a newer release: a model that is
-// not in the list is usually a CLI that is out of date, so the list says
-// so, and the corner of it opens the engine settings.
+// Engines that are not usable stay in the list, dimmed, carrying the
+// reason and a way to set them up. Hiding them would leave someone
+// wondering where their engine went, when what they need to know is that
+// it is installed but signed out. The same goes for an engine with a
+// newer release: a model that is not in the list is usually a CLI that is
+// out of date, so the list says so under that engine's name.
 //
-// A long list (OpenRouter has hundreds) gets a search box, focused on
-// open, matching every word typed against the name or the id. Enter
-// takes the first match; Escape clears the search, then closes.
+// A long catalog (OpenRouter has hundreds) shows its first few and the
+// one in use, with the rest a press away, and a search box at the top
+// matches every word typed against the name or the id across every
+// engine. Enter takes the first match, the arrows walk the list, and
+// Escape clears the search, then closes.
 //
-// It lives in two places. The header has had it from the start; the
-// composer's footer has it as a chip, where the choice is made, since
-// what a message runs on is decided while writing it. The chip opens
-// upwards and carries the reasoning effort beside the model, because
-// the two are one decision about how hard this agent thinks.
-import { useEffect, useRef, useState } from "react";
+// It lives in two places. Settings has it as a field. Under the composer
+// it is the model's name in quiet text with the effort beside it, where
+// the choice is made, since what a message runs on is decided while
+// writing it; there it opens upwards and carries the effort as a small
+// choice at its foot, because the two are one decision about how hard
+// this agent thinks.
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Check } from "@/components/icons";
 import { ChevronDown } from "@/components/icons";
 import { Settings2 as SettingsIcon } from "@/components/icons";
@@ -31,25 +36,32 @@ import { EngineUpdateNote } from "./EngineSetup";
 import { cn } from "@/lib/cn";
 import { Segmented } from "@/components/ui/segmented";
 import { backupOptions, isOwnRun, offersBackup } from "@/lib/backupChoice";
+import { quietButton, useDismiss } from "./composer/Shell";
 
-/** Lists this long or shorter are read at a glance, not searched. */
+/** Catalogs this long or shorter are read at a glance, not searched. */
 const SEARCH_ABOVE = 8;
+/** How many of an engine's models show before "Show all". */
+const FOLDED = 6;
 
 function modelLabel(instance: InstanceInfo | undefined, model: string): string {
   return instance?.models.options.find((o) => o.id === model)?.label ?? model;
 }
 
-/** Engines you can use sort ahead of engines you cannot, ties keeping
- * the fleet's own order. The rail reads at a glance: what is installed
- * is what comes first. */
-const byUsable = (a: InstanceInfo, b: InstanceInfo) =>
-  Number(b.snapshot.state === "available") - Number(a.snapshot.state === "available");
+/** A model's name without its engine's in front: "Opus 5.5" rather than
+ * "Claude Opus 5.5". It already sits under the engine's heading in the
+ * list, and in the composer's row the shorter name is the one people say. */
+function shortName(instance: InstanceInfo | undefined, label: string): string {
+  if (!instance) return label;
+  const engine = instance.displayName.toLowerCase();
+  for (const sep of [" ", "/", ": "]) {
+    const prefix = `${engine}${sep}`;
+    if (label.toLowerCase().startsWith(prefix) && label.length > prefix.length) return label.slice(prefix.length);
+  }
+  return label;
+}
 
-/** A selection that names no option this instance serves means "whatever
- * the engine defaults to": Pi's catalog follows its own settings, and a
- * bot carried over from before a catalog changed is the general case.
- * The turn behaves that way already (no set_model, engine default), so
- * the picker shows and ticks exactly that. */
+const usable = (i: InstanceInfo) => i.snapshot.state === "available";
+
 /** The model a selection runs on. An empty one means the engine's
  * default; any other is exactly what is sent, listed or not, so it is
  * shown as itself rather than as the default it is not. */
@@ -66,6 +78,12 @@ const EFFORTS: Array<{ value: Bot["effort"]; label: string }> = [
 
 /** The characters a model id is made of; the server holds to the same. */
 const MODEL_ID = /^[\w.:@/[\]+-]+$/;
+
+/** One focusable row in the list, so the arrow keys can walk them all. */
+const OPTION = "[data-model-option]:not(:disabled)";
+
+const optionRow =
+  "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-body leading-snug outline-none transition-colors duration-150 focus-visible:bg-accent";
 
 export function ModelPicker({
   bot,
@@ -88,308 +106,392 @@ export function ModelPicker({
   /** The engine and model not to offer: what the backup stands in for.
    * Other models on that engine are still offered. */
   exclude?: ModelSelection;
-  /** "chip" is the composer's: smaller, opens upwards, and offers the
-   * agent's reasoning effort under the models. */
-  variant?: "header" | "chip";
+  /** "composer" is the row under the box: quiet text, opens upwards, and
+   * offers the agent's reasoning effort under the models. */
+  variant?: "header" | "composer";
 }) {
   const { state, dispatch } = useStore();
   const [open, setOpen] = useState(false);
-  const [railId, setRailId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [unfolded, setUnfolded] = useState<string[]>([]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  /** Where a field's list sits, measured from the field when it opens. */
+  const [place, setPlace] = useState<CSSProperties | null>(null);
+  // Closing from inside (Escape in the search) hands the keyboard back
+  // to the name it opened from, not to nowhere.
+  const close = () => {
+    if (rootRef.current?.contains(document.activeElement) || panelRef.current?.contains(document.activeElement)) {
+      triggerRef.current?.focus();
+    }
+    setOpen(false);
+  };
+  const rootRef = useDismiss(open, () => close(), panelRef);
 
   const custom = onPick !== undefined;
-  const chip = variant === "chip";
+  const composer = variant === "composer";
   // effort belongs to an agent, so only a picker for one offers it
-  const effort = chip && bot && !custom ? EFFORTS.find((e) => e.value === bot.effort) : undefined;
+  const effort = composer && bot && !custom ? EFFORTS.find((e) => e.value === bot.effort) : undefined;
   const selection: ModelSelection = (custom ? value : bot?.modelSelection) ?? { instanceId: "", model: "" };
   // an engine whose only model is the excluded one has nothing to offer
   const instances = exclude ? state.instances.filter((i) => offersBackup(i, exclude)) : state.instances;
   const active = instances.find((i) => i.instanceId === selection.instanceId);
-  const railInstance =
-    instances.find((i) => i.instanceId === (railId ?? selection.instanceId)) ??
-    [...instances].sort(byUsable)[0];
+  // the one in use first, then what can be used, then what cannot, ties
+  // keeping the fleet's own order
+  const ordered = [...instances].sort(
+    (a, b) =>
+      Number(b.instanceId === selection.instanceId) - Number(a.instanceId === selection.instanceId) ||
+      Number(usable(b)) - Number(usable(a)),
+  );
+  const searchable =
+    instances.reduce((n, i) => n + (usable(i) ? i.models.options.length : 0), 0) > SEARCH_ABOVE ||
+    instances.some((i) => usable(i) && i.models.acceptsAnyId);
 
+  // As a field (Settings) the list is drawn over the whole page, since the
+  // card the field sits in clips what hangs out of it. It opens below
+  // when there is room and above when there is not, and a scroll of the
+  // page, which would leave it floating off its field, closes it.
+  useLayoutEffect(() => {
+    if (!open || composer) return setPlace(null);
+    const at = triggerRef.current?.getBoundingClientRect();
+    if (!at) return;
+    const right = Math.max(12, window.innerWidth - at.right);
+    const below = window.innerHeight - at.bottom - 18;
+    const above = at.top - 18;
+    setPlace(
+      below >= Math.min(420, above)
+        ? { top: at.bottom + 6, right, maxHeight: Math.min(544, below) }
+        : { bottom: window.innerHeight - at.top + 6, right, maxHeight: Math.min(544, above) },
+    );
+    const onScroll = (e: Event) => {
+      if (!panelRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [open, composer]);
+
+  // Opening starts at the model in use, so a long list never hides it.
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    // the search box takes the first Escape to clear itself
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && setOpen(false);
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
+    const current = listRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    current?.scrollIntoView({ block: "nearest" });
   }, [open]);
 
-  // A long catalog (Pi with several providers, OpenRouter) scrolls inside
-  // the list; opening it or switching engines starts at the chosen model,
-  // or at the top when this engine holds none of them.
-  const railKey = railInstance?.instanceId;
-  useEffect(() => {
-    const list = listRef.current;
-    if (!open || !list) return;
-    const current = list.querySelector<HTMLElement>('[aria-current="true"]');
-    if (current) current.scrollIntoView({ block: "nearest" });
-    else list.scrollTop = 0;
-  }, [open, railKey]);
-
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const options = (railInstance ? backupOptions(railInstance, exclude) : []).filter((o) => {
-    const text = `${o.label} ${o.id}`.toLowerCase();
-    return words.every((w) => text.includes(w));
-  });
-  const searchable = (railInstance?.models.options.length ?? 0) > SEARCH_ABOVE || Boolean(railInstance?.models.acceptsAnyId);
-  // A saved model this list does not have (a newer one typed in, or one
-  // the engine stopped listing) still runs as itself; it is flagged, never
-  // swapped for the default behind the person's back.
-  const unlisted =
-    railInstance &&
-    selection.instanceId === railInstance.instanceId &&
-    selection.model &&
-    !railInstance.models.options.some((o) => o.id === selection.model) &&
-    words.every((w) => selection.model.toLowerCase().includes(w))
-      ? selection.model
-      : null;
-  // an engine that takes any id offers the one being typed
   const typed = query.trim();
-  const typedId =
-    railInstance?.models.acceptsAnyId &&
-    MODEL_ID.test(typed) &&
-    typed !== unlisted &&
-    !isOwnRun(railInstance, typed, exclude) &&
-    !railInstance.models.options.some((o) => o.id === typed)
-      ? typed
-      : null;
+  const groups = ordered.map((instance) => {
+    const matching = backupOptions(instance, exclude).filter((o) => {
+      const text = `${o.label} ${o.id} ${instance.displayName}`.toLowerCase();
+      return words.every((w) => text.includes(w));
+    });
+    const isActive = selection.instanceId === instance.instanceId;
+    const runs = effectiveModel(instance, selection.model);
+    // A saved model this list does not have (a newer one typed in, or one
+    // the engine stopped listing) still runs as itself; it is flagged,
+    // never swapped for the default behind the person's back.
+    const unlisted =
+      isActive &&
+      selection.model &&
+      !instance.models.options.some((o) => o.id === selection.model) &&
+      words.every((w) => selection.model.toLowerCase().includes(w))
+        ? selection.model
+        : null;
+    // an engine that takes any id offers the one being typed
+    const typedId =
+      usable(instance) &&
+      instance.models.acceptsAnyId &&
+      MODEL_ID.test(typed) &&
+      typed !== unlisted &&
+      !isOwnRun(instance, typed, exclude) &&
+      !instance.models.options.some((o) => o.id === typed)
+        ? typed
+        : null;
+    const folds = !words.length && !unfolded.includes(instance.instanceId) && matching.length > FOLDED + 1;
+    const shown = folds
+      ? matching.filter((o, i) => i < FOLDED || (isActive && o.id === runs))
+      : matching;
+    return { instance, matching, shown, unlisted, typedId, folds, isActive, runs };
+  });
+  // while searching, an engine with nothing that matches has nothing to say
+  const visible = words.length
+    ? groups.filter((g) => g.matching.length || g.unlisted || g.typedId)
+    : groups;
+  // Enter takes a model some engine lists before an id one would accept,
+  // or "gpt" typed with Claude in use would send Claude a GPT id
+  const first =
+    visible.find((g) => usable(g.instance) && g.matching.length) ?? visible.find((g) => usable(g.instance) && g.typedId);
 
   const pick = (instance: InstanceInfo, model: string) => {
     const next = { instanceId: instance.instanceId, model };
     if (custom) onPick(next);
     else if (bot) dispatch({ type: "setModel", botId: bot.id, selection: next });
-    setOpen(false);
+    close();
   };
 
+  const openSettings = () => {
+    setOpen(false);
+    dispatch({ type: "toggleAppSettings", open: true, page: "engines" });
+  };
+
+  /** Up and down walk the rows, from the search box too. */
+  const walk = (e: KeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>(OPTION) ?? [])];
+    if (!rows.length) return;
+    e.preventDefault();
+    const at = rows.indexOf(document.activeElement as HTMLElement);
+    const step = e.key === "ArrowDown" ? 1 : -1;
+    const next = at < 0 ? (step > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, at + step));
+    rows[next].focus();
+  };
+
+  const full = active || !custom ? modelLabel(active, effectiveModel(active, selection.model)) : (noneLabel ?? "None");
+  const name = composer ? shortName(active, full) : full;
+  const portalled = (panel: ReactNode) => (composer ? panel : createPortal(panel, document.body));
+  const described = active ? `${active.displayName}, ${full}` : full;
+
   return (
-    <div ref={rootRef} className={cn("relative", className)}>
+    // Under the composer the list hangs from the row, not from the name,
+    // so it lines up with the box's edge and covers Send cleanly.
+    <div ref={rootRef} className={cn("min-w-0", !composer && "relative", className)}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => {
-          setRailId(selection.instanceId);
           setQuery("");
+          setUnfolded([]);
           setOpen((o) => !o);
         }}
         aria-expanded={open}
-        className={cn(
-          "flex h-7 items-center gap-1.5 rounded-lg px-2 text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground active:scale-[0.98]",
-          chip ? "text-small" : "text-body",
-          chip && open && "bg-accent text-foreground",
-        )}
-        title={active ? `${active.displayName} · ${modelLabel(active, effectiveModel(active, selection.model))}` : selection.model}
-        aria-label={`Engine: ${active ? `${active.displayName} · ${modelLabel(active, effectiveModel(active, selection.model))}` : selection.model}`}
+        aria-haspopup="dialog"
+        title={described}
+        aria-label={`Model: ${described}${effort?.value ? `, ${effort.label} effort` : ""}`}
+        className={
+          composer
+            ? cn(quietButton, "max-w-full")
+            : "flex h-7 items-center gap-1.5 rounded-lg px-2 text-body text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground active:scale-[0.98]"
+        }
       >
-        {active && (
+        {!composer && active && (
           <span className="relative flex">
             <ProviderMark driverKind={active.driverKind} size={13} />
             {state.engineUpdates[active.driverKind] && (
-              <span
-                className="absolute -right-1 -top-1 size-1.5 rounded-full bg-brand ring-2 ring-background"
-                aria-label="update available"
-              />
+              <span className="absolute -right-1 -top-1 size-1.5 rounded-full bg-brand ring-2 ring-background" aria-label="update available" />
             )}
           </span>
         )}
-        {/* on a phone the agent's name, beside it, needs the room more:
-            the engine's mark says enough, and the menu says the rest */}
-        <span className={cn("hidden truncate sm:inline", chip ? "max-w-[180px]" : "max-w-[140px]")}>
-          {active || !custom ? modelLabel(active, effectiveModel(active, selection.model)) : (noneLabel ?? "None")}
-          {effort?.value && <span className="text-muted-foreground/80"> · {effort.label}</span>}
-        </span>
-        <ChevronDown size={13} className={cn("opacity-60 transition-transform duration-200 ease-out", chip && !open && "rotate-180")} />
+        <span className={cn("truncate", composer ? "max-w-[150px] sm:max-w-[220px]" : "max-w-[140px]")}>{name}</span>
+        {effort?.value && <span className="shrink-0 text-muted-foreground/70">{effort.label}</span>}
+        {!composer && <ChevronDown size={13} className="opacity-60" />}
       </button>
 
-      {open && (
+      {open && (composer || place) && portalled(
         <div
+          ref={panelRef}
           data-model-picker-content
+          role="dialog"
+          aria-label="Choose a model"
+          onKeyDown={walk}
+          style={place ?? undefined}
           // capped to the window, so a long list scrolls instead of running
-          // off the bottom where nothing can reach it
+          // off the edge where nothing can reach it
           className={cn(
-            "absolute z-30 flex w-[300px] max-w-[92vw] animate-pop-in flex-col overflow-hidden rounded-xl border bg-popover shadow-lg shadow-(color:--shadow-color)",
-            chip
-              ? "bottom-full left-0 mb-2 max-h-[min(30rem,calc(100dvh-10rem))] origin-bottom-left"
-              : "right-0 top-full mt-1.5 max-h-[min(34rem,calc(100dvh-4.5rem))] origin-top-right",
+            "z-50 flex w-[320px] max-w-[calc(100vw-24px)] animate-pop-in flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg shadow-(color:--shadow-color)",
+            composer
+              ? "absolute bottom-full right-0 mb-2 max-h-[min(32rem,calc(100dvh-9rem))] origin-bottom-right"
+              : cn("fixed", place?.top !== undefined ? "origin-top-right" : "origin-bottom-right"),
           )}
         >
-          <div className="flex min-h-0 flex-1">
-          {/* instance rail */}
-          <div className="flex shrink-0 flex-col gap-0.5 overflow-y-auto overscroll-contain border-r bg-muted/40 p-1.5">
-            {[...instances].sort(byUsable).map((instance) => {
-              const unavailable = instance.snapshot.state !== "available";
-              const onRail = instance.instanceId === railInstance?.instanceId;
-              return (
-                <button
-                  key={instance.instanceId}
-                  onClick={() => setRailId(instance.instanceId)}
-                  title={
-                    unavailable
-                      ? `${instance.displayName}: ${instance.snapshot.reason ?? "unavailable"}`
-                      : instance.displayName
-                  }
-                  className={cn(
-                    "flex size-8 items-center justify-center rounded-lg transition-colors duration-150",
-                    onRail ? "bg-accent" : "hover:bg-accent/60",
-                    unavailable && "opacity-40",
-                  )}
-                >
-                  <span className="relative flex">
-                    <ProviderMark driverKind={instance.driverKind} size={16} />
-                    {state.engineUpdates[instance.driverKind] && (
-                      <span className="absolute -right-1 -top-1 size-1.5 rounded-full bg-brand ring-2 ring-muted" />
-                    )}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* model list for the rail-selected instance */}
-          <div ref={listRef} className="min-w-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
-            {custom && active && (
+          <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1 pt-2.5">
+            <span className="text-small font-medium text-muted-foreground">Model</span>
+            {/* the way to everything this list cannot do: connect an
+                engine, sign in, update, add a key */}
+            {!custom && (
               <button
+                type="button"
+                onClick={openSettings}
+                className="-mr-1 flex h-6 items-center gap-1 rounded-md px-1.5 text-small text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground active:scale-95"
+              >
+                <SettingsIcon size={13} />
+                Engines
+              </button>
+            )}
+          </div>
+          {searchable && (
+            <div className="shrink-0 px-2 pb-1.5 pt-1">
+              <div className="flex items-center gap-1.5 rounded-lg bg-accent/70 px-2 py-[5px] transition-colors duration-150 focus-within:bg-accent">
+                <Search size={13} className="shrink-0 text-muted-foreground" />
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape" && query) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setQuery("");
+                    } else if (e.key === "Enter" && first) {
+                      e.preventDefault();
+                      const id = first.matching[0]?.id ?? first.typedId;
+                      if (id) pick(first.instance, id);
+                    }
+                  }}
+                  placeholder={instances.some((i) => i.models.acceptsAnyId) ? "Search, or type a model id" : "Search models"}
+                  aria-label="Search models"
+                  className="w-full bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+            </div>
+          )}
+
+          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 pb-1.5">
+            {custom && active && !words.length && (
+              <button
+                type="button"
+                data-model-option
                 onClick={() => {
                   onPick(null);
                   setOpen(false);
                 }}
-                className="mb-1 flex w-full items-center rounded-lg px-2 py-1.5 text-left text-body text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+                className={cn(optionRow, "mt-1 text-muted-foreground hover:bg-accent hover:text-foreground")}
               >
                 {noneLabel ?? "None"}
               </button>
             )}
-            {railInstance ? (
-              <>
-                <div className="px-2 pb-1 pt-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="truncate text-body font-semibold text-foreground">
-                      {railInstance.displayName}
+            {visible.length === 0 && (
+              <div className="px-2 py-3 text-body text-muted-foreground">
+                {instances.length ? "No models match." : "No engines found. Is Bloks running?"}
+              </div>
+            )}
+            {visible.map(({ instance, shown, matching, unlisted, typedId, folds, runs, isActive }) => {
+              const off = !usable(instance);
+              const update = Boolean(state.engineUpdates[instance.driverKind]);
+              const provider = state.providers.find((p) => p.kind === instance.driverKind);
+              return (
+                <div key={instance.instanceId} role="group" aria-label={instance.displayName} className="border-t border-border/70 pt-1 first:border-t-0 [&:not(:first-child)]:mt-1">
+                  <div className="flex items-center gap-2 px-2 pb-0.5 pt-1.5">
+                    <span className={cn("flex shrink-0", off && "opacity-50")}>
+                      <ProviderMark driverKind={instance.driverKind} size={14} />
+                    </span>
+                    <span className={cn("min-w-0 truncate text-small font-medium", off ? "text-muted-foreground" : "text-foreground")}>
+                      {instance.displayName}
                     </span>
                     {/* an agent on a chat-only engine cannot run commands
                         or touch files, and that is worth knowing here */}
-                    {state.providers.find((p) => p.kind === railInstance.driverKind)?.agentic && (
-                      <span className="shrink-0 rounded bg-muted px-1 py-px text-micro text-muted-foreground">
-                        tools
-                      </span>
+                    {provider && !provider.agentic && (
+                      <span className="shrink-0 text-caption text-muted-foreground">Chat only</span>
+                    )}
+                    {/* the whole update note is for the engine in use, where
+                        a missing model is being looked for; elsewhere a dot */}
+                    {update && !isActive && !off && (
+                      <span title="Update available" aria-label="Update available" className="size-1.5 shrink-0 rounded-full bg-brand" />
+                    )}
+                    {off && !custom && (
+                      <button
+                        type="button"
+                        onClick={openSettings}
+                        className="ml-auto shrink-0 rounded-md px-1.5 py-0.5 text-caption font-medium text-brand-ink transition-colors duration-150 hover:bg-brand-soft"
+                      >
+                        Set up
+                      </button>
                     )}
                   </div>
-                  <div className="truncate text-caption text-muted-foreground">
-                    {railInstance.snapshot.state === "available"
-                      ? (railInstance.snapshot.version ?? "ready")
-                      : (railInstance.snapshot.reason ?? "unavailable")}
-                  </div>
-                  <EngineUpdateNote kind={railInstance.driverKind} name={railInstance.displayName} className="mt-1.5" />
-                  {railInstance.models.note && (
-                    <div className="mt-1 text-pretty text-caption leading-snug text-muted-foreground">
-                      {railInstance.models.note}
+                  {off ? (
+                    <div className="px-2 pb-1.5 pl-[30px] text-caption leading-snug text-muted-foreground">
+                      {instance.snapshot.reason ?? "Not available"}
                     </div>
+                  ) : (
+                    <>
+                      {!words.length && ((update && isActive) || instance.models.note) && (
+                        <div className="px-2 pb-1 pl-[30px]">
+                          {isActive && <EngineUpdateNote kind={instance.driverKind} name={instance.displayName} />}
+                          {instance.models.note && (
+                            <div title={instance.models.note} className="line-clamp-2 text-pretty text-caption leading-snug text-muted-foreground">
+                              {instance.models.note}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {unlisted && (
+                        <div
+                          aria-current="true"
+                          title={`${unlisted}\nNot listed, but still in use`}
+                          className={cn(optionRow, "bg-accent text-foreground")}
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="line-clamp-2 [overflow-wrap:anywhere]">{unlisted}</span>
+                            <span className="shrink-0 text-caption text-warning">Not in list</span>
+                          </span>
+                          <Check size={14} className="shrink-0 text-brand-ink" />
+                        </div>
+                      )}
+                      {typedId && (
+                        <button
+                          type="button"
+                          data-model-option
+                          onClick={() => pick(instance, typedId)}
+                          className={cn(optionRow, "text-foreground hover:bg-accent")}
+                        >
+                          <span className="min-w-0 [overflow-wrap:anywhere]">
+                            Use <span className="font-mono text-small">{typedId}</span>
+                          </span>
+                        </button>
+                      )}
+                      {shown.map((option) => {
+                        const current = selection.instanceId === instance.instanceId && runs === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            data-model-option
+                            aria-current={current ? "true" : undefined}
+                            onClick={() => pick(instance, option.id)}
+                            title={option.label === option.id ? option.id : `${option.label}\n${option.id}`}
+                            className={cn(
+                              optionRow,
+                              "text-foreground hover:bg-accent",
+                              current && "bg-accent",
+                            )}
+                          >
+                            {/* long names (OpenRouter's run to fifty characters)
+                                get two lines before they are cut, and the
+                                tooltip has the rest */}
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span className={cn("line-clamp-2 [overflow-wrap:anywhere]", current && "font-medium")}>
+                                {shortName(instance, option.label)}
+                              </span>
+                              {option.id === instance.models.default && (
+                                <span className="shrink-0 text-caption text-muted-foreground">Default</span>
+                              )}
+                            </span>
+                            {current && <Check size={14} className="shrink-0 text-brand-ink" />}
+                          </button>
+                        );
+                      })}
+                      {folds && (
+                        <button
+                          type="button"
+                          data-model-option
+                          onClick={() => setUnfolded((u) => [...u, instance.instanceId])}
+                          className={cn(optionRow, "text-small text-muted-foreground hover:bg-accent hover:text-foreground")}
+                        >
+                          Show all {matching.length}
+                          <ChevronDown size={13} className="shrink-0" />
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
-                {searchable && (
-                  <div className="sticky -top-1.5 z-10 -mt-1.5 bg-popover pb-1 pt-1.5">
-                    <div className="flex items-center gap-1.5 rounded-lg bg-accent/70 px-2 py-[5px] transition-colors duration-150 focus-within:bg-accent">
-                      <Search size={13} className="shrink-0 text-muted-foreground" />
-                      <input
-                        autoFocus
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape" && query) {
-                            e.preventDefault();
-                            setQuery("");
-                          } else if (e.key === "Enter" && railInstance.snapshot.state === "available") {
-                            const first = options[0]?.id ?? typedId;
-                            if (first) pick(railInstance, first);
-                          }
-                        }}
-                        placeholder={railInstance.models.acceptsAnyId ? "Search, or type a model id" : "Search models"}
-                        aria-label="Search models"
-                        className="w-full bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
-                      />
-                    </div>
-                  </div>
-                )}
-                {unlisted && (
-                  <div
-                    aria-current="true"
-                    title={`${unlisted}\nNot listed, but still in use`}
-                    className="flex w-full items-center justify-between gap-2 rounded-lg bg-accent px-2 py-1.5 text-left text-body leading-snug text-foreground"
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="line-clamp-2 [overflow-wrap:anywhere]">{unlisted}</span>
-                      <span className="shrink-0 rounded bg-warning/15 px-1 py-px text-micro text-warning">not in list</span>
-                    </span>
-                    <Check size={14} className="shrink-0 text-brand-ink" />
-                  </div>
-                )}
-                {typedId && (
-                  <button
-                    disabled={railInstance.snapshot.state !== "available"}
-                    onClick={() => pick(railInstance, typedId)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-body leading-snug text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:text-muted-foreground/50"
-                  >
-                    <span className="min-w-0 [overflow-wrap:anywhere]">
-                      Use model id <span className="font-mono text-small">{typedId}</span>
-                    </span>
-                  </button>
-                )}
-                {options.length === 0 && !typedId && !unlisted && (
-                  <div className="px-2 py-3 text-body text-muted-foreground">No models match.</div>
-                )}
-                {options.map((option) => {
-                  const current =
-                    selection.instanceId === railInstance.instanceId &&
-                    effectiveModel(railInstance, selection.model) === option.id;
-                  const disabled = railInstance.snapshot.state !== "available";
-                  return (
-                    <button
-                      key={option.id}
-                      disabled={disabled}
-                      aria-current={current ? "true" : undefined}
-                      onClick={() => pick(railInstance, option.id)}
-                      title={option.label === option.id ? option.id : `${option.label}\n${option.id}`}
-                      className={cn(
-                        "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-body leading-snug transition-colors duration-150",
-                        disabled
-                          ? "cursor-not-allowed text-muted-foreground/50"
-                          : "text-foreground hover:bg-accent",
-                        current && "bg-accent",
-                      )}
-                    >
-                      {/* long names (OpenRouter's run to fifty characters) get two
-                          lines before they are cut, and the tooltip has the rest */}
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="line-clamp-2 [overflow-wrap:anywhere]">{option.label}</span>
-                        {option.id === railInstance.models.default && (
-                          <span className="shrink-0 rounded bg-muted px-1 py-px text-micro text-muted-foreground">
-                            default
-                          </span>
-                        )}
-                      </span>
-                      {current && <Check size={14} className="shrink-0 text-brand-ink" />}
-                    </button>
-                  );
-                })}
-              </>
-            ) : (
-              <div className="px-2 py-3 text-body text-muted-foreground">
-                No engines found. Is Bloks running?
-              </div>
-            )}
-          </div>
+              );
+            })}
           </div>
           {effort && bot && (
-            <div className="flex shrink-0 items-center gap-2.5 border-t px-2.5 py-2">
+            <div className="flex shrink-0 items-center gap-2.5 border-t px-3 py-2">
               <span className="text-small text-muted-foreground">Effort</span>
               <Segmented
                 size="sm"
@@ -397,29 +499,11 @@ export function ModelPicker({
                 className="flex-1"
                 value={bot.effort}
                 onChange={(next) => dispatch({ type: "updateBot", botId: bot.id, patch: { effort: next } })}
-                options={EFFORTS.map((e) => ({ value: e.value, label: e.value === "medium" ? "Med" : e.label, title: e.label }))}
+                options={EFFORTS.map((e) => ({ value: e.value, label: e.label }))}
               />
             </div>
           )}
-          {/* the way to everything this list cannot do: connect an engine,
-              sign in, update, add a key */}
-          {!custom && (
-            <div className="flex shrink-0 justify-end border-t px-1.5 py-1">
-              <button
-                onClick={() => {
-                  setOpen(false);
-                  dispatch({ type: "toggleAppSettings", open: true, page: "engines" });
-                }}
-                title="Engine settings"
-                aria-label="Engine settings"
-                className="flex items-center gap-1 rounded-md px-1.5 py-1 text-small text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
-              >
-                <SettingsIcon size={13} />
-                Engines
-              </button>
-            </div>
-          )}
-        </div>
+        </div>,
       )}
     </div>
   );
