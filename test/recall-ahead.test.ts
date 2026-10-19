@@ -67,6 +67,9 @@ test("the person's turn is told what was said elsewhere, in its words, once, and
   const ask = async (text: string) => {
     const from = engine.state.calls.length;
     await h.fetch(`/api/bots/${bot.id}/messages`, { method: "POST", body: JSON.stringify({ text, taskId: bot.threadId }) });
+    // the lane reads idle until the turn has started, so wait for its call
+    // first, or a slow start is counted as no turn at all
+    await waitFor(() => turnsSince(engine.state.calls, from).length > 0);
     assert.ok(await idle(h, bot));
     const turns = turnsSince(engine.state.calls, from);
     assert.equal(turns.length, 1, "one turn, one call");
