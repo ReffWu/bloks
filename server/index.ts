@@ -11233,8 +11233,11 @@ async function sendUserMessage(
       }
       // An engine with no way to take words mid-turn is stopped instead,
       // and these words start the next turn: what Command-Enter does. One
-      // that can, but did not just now, is ending its turn anyway.
-      if (decided && !laneInstance(bot, lane.id)?.adapter.steerTurn && mayStopForWords(bot, lane)) stopFor = decided.why;
+      // that can, but did not just now, is ending its turn anyway. Never
+      // while it waits on a card: stopping would throw away the very
+      // question these words may be answering.
+      const onCard = [...askThreadByRequest.values()].includes(lane.id);
+      if (decided && !onCard && !laneInstance(bot, lane.id)?.adapter.steerTurn && mayStopForWords(bot, lane)) stopFor = decided.why;
     }
     if (decided?.route === "stop" && mayStopForWords(bot, lane)) stopFor = decided.why;
     // Said under the words only when it is what was decided: they stop
