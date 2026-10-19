@@ -13,7 +13,7 @@ import { OptionCard } from "./OptionCard";
 import { MessageComponent } from "./Gallery";
 import { Composer } from "./Composer";
 import { TerminalPanel } from "./Terminal";
-import { lastEditable, quietRunAt, showTypingDots, splitWaiting } from "@/lib/transcript";
+import { lastEditable, quietRunAt, splitWaiting } from "@/lib/transcript";
 import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { useLanesInSidebar } from "@/lib/conversationsView";
 import { findHits, stepHit } from "@/lib/find";
@@ -41,11 +41,10 @@ import { useStickToBottom } from "@/lib/useStickToBottom";
 import { useHoldPlace } from "@/lib/useHoldPlace";
 import { foldHolding, foldTurns, lastFoldKey, rowsFrom, turnRunning } from "@/lib/turnFold";
 import { type RedoPreview } from "@/lib/redo";
-import { speedStatusLine } from "@/lib/codexSpeed";
 
 import { Bubble, Notice, QuietCheckIns, Rewound, TakenBack } from "./chat/Bubble";
 import { ApprovalsBar, EngineBanner, GuestMailLine, OtherLaneWaiting } from "./chat/Banners";
-import { LiveBrowser, ScreenFrame, StreamingBubble, TypingIndicator } from "./chat/Live";
+import { LiveBrowser, ScreenFrame, StreamingBubble, WorkingClock, WorkingLine } from "./chat/Live";
 
 /**
  * Which messages should animate in: ones that arrive while you're
@@ -202,7 +201,6 @@ export function ChatView({ bot }: { bot: Bot }) {
   // The last turn folds once it has ended, and not before: this
   // conversation's turn, whatever the agent's other ones are doing.
   const openLane = bot.tasks?.find((t) => t.id === (bot.activeTaskId ?? bot.threadId));
-  const speedLine = speedStatusLine(openLane?.codexDispatch);
   const running = turnRunning(
     openLane?.state,
     Boolean(bot.busy),
@@ -453,7 +451,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             <span className="truncate text-ui font-semibold text-foreground">{bot.name}</span>
             {(working || bot.title) && (
               <span className="hidden truncate text-small text-muted-foreground sm:block">
-                {working ? "working…" : bot.title}
+                {working ? <WorkingClock threadKey={threadKey} working={working} messages={said} /> : bot.title}
               </span>
             )}
           </span>
@@ -496,14 +494,6 @@ export function ChatView({ bot }: { bot: Bot }) {
       {/* A hairline under the header, faint and fading out at both ends,
           so the header and what follows read as one surface. */}
       <div aria-hidden className="h-px shrink-0 bg-linear-to-r from-transparent via-border to-transparent" />
-
-      {/* The running turn's Codex speed, only when it is worth saying:
-          Fast, or an agent's own choice. Gone when the turn ends. */}
-      {speedLine && (
-        <p data-codex-speed-status className="shrink-0 border-b px-3 py-1 text-caption text-muted-foreground md:px-4">
-          {speedLine}
-        </p>
-      )}
 
       {/* Messages. The strip repeats what the sidebar lists when it lists
           conversations, so it only shows when the sidebar does not, and
@@ -633,22 +623,17 @@ export function ChatView({ bot }: { bot: Bot }) {
                   </TurnFoldLine>,
                 ],
           )}
-          {provisioning && (
-            <div className="flex justify-start">
-              <div className="flex items-center gap-2 px-1.5 py-0.5 text-small text-muted-foreground">
-                <Loader2 size={12} className="animate-spin" />
-                Setting up this agent's computer…
-              </div>
-            </div>
-          )}
           {liveBrowser && <LiveBrowser botId={bot.id} frame={liveBrowser} />}
-          {streaming ? (
-            <StreamingBubble text={streaming} />
-          ) : (
-            showTypingDots(working, streaming, said[said.length - 1]) && (
-              <TypingIndicator />
-            )
-          )}
+          {streaming && <StreamingBubble text={streaming} />}
+          <WorkingLine
+            threadKey={threadKey}
+            working={working}
+            streaming={streaming}
+            messages={said}
+            provisioning={provisioning}
+            speed={openLane?.codexDispatch}
+            onStop={() => dispatch({ type: "interrupt", botId: bot.id })}
+          />
         </div>
       </div>
 

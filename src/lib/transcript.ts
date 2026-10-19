@@ -1,9 +1,10 @@
 // Small truths about the end and the beginning of a transcript.
 //
-// The tail: a turn settles across three separate frames (the reply, the
-// completion, the busy flip), and a typing indicator keyed on busy alone
-// pops back for a beat between them, bouncing the layout. The dots
-// should show only while something is genuinely still owed.
+// The tail: while an agent works, one line at the end says so, how long
+// it has been at it, and how to stop it. A turn settles across three
+// separate frames (the reply, the completion, the busy flip), and a line
+// keyed on busy alone pops back for a beat between them, bouncing the
+// layout, so a reply at the tail holds it off.
 //
 // The head: a long thread mounts hundreds of rows the reader has already
 // read. Rendering the last window and offering the rest behind a pill
@@ -15,17 +16,56 @@
 // And what is not worth a row each: a run of quiet check-ins is one line.
 import type { Message } from "@/state/reducer";
 
-/** Whether the typing dots are owed. Not busy or already streaming means
- * no; a settled bot reply at the tail means the wait is over even if the
- * busy flag has not caught up yet. */
-export function showTypingDots(
-  busy: boolean | undefined,
+/** How long a reply at the tail of a turn that is still working holds
+ * the working line off. Long enough to cover the frames a finished turn
+ * takes to settle; short enough that an agent which wrote a progress
+ * note and went on working is not left looking finished. */
+export const REPLY_HOLD_MS = 2000;
+
+/**
+ * Whether the working line is owed at the end of the transcript. It is
+ * the one thing there that says the agent is at work: a call still
+ * running at the tail does not hide it, because the call's own row only
+ * says which step (and once had a spinner of its own, which drew two
+ * indicators at once). Words streaming in keep it too, so it does not
+ * blink out and back between a sentence and the next call.
+ * `replyAgeMs` is how long the newest message has been on screen.
+ */
+export function workingLineOwed(
+  working: boolean | undefined,
   streaming: string | undefined,
   last: Message | undefined,
+  replyAgeMs: number,
 ): boolean {
-  if (!busy || streaming) return false;
-  if (!last) return true;
-  return !(last.role === "bot" && last.kind === "text");
+  if (!working) return false;
+  if (streaming || !last) return true;
+  if (last.role === "bot" && last.kind === "text" && !last.deleted) return replyAgeMs >= REPLY_HOLD_MS;
+  return true;
+}
+
+/**
+ * When the running turn began, as the transcript tells it: the newest
+ * message that started a turn (one said to the agent that did not go
+ * into a turn already running; see turnFold.ts). Null when there is
+ * none, and the caller falls back to when it first saw the work.
+ */
+export function turnStartedAt(messages: readonly Message[]): number | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "user" && m.kind === "text" && !m.midTurn && !m.queued && !m.unsent) return m.at ?? null;
+  }
+  return null;
+}
+
+/** "8s", "1m 05s", "1h 02m": a running clock, fixed width within each
+ * unit so it does not jitter as it counts. */
+export function clock(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (minutes < 60) return `${minutes}m ${pad(seconds % 60)}s`;
+  return `${Math.floor(minutes / 60)}h ${pad(minutes % 60)}m`;
 }
 
 /** The last window of a long transcript, plus how much stays folded. */
