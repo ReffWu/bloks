@@ -8,8 +8,8 @@
 // what gets imported.
 //
 // Used twice: as its own page in Settings, and as an optional step in the
-// first-run flow when something was found. The step is the same list in
-// a smaller box.
+// first-run flow when something was found. The step is the same list,
+// with the way on left to the flow.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Brain } from "@/components/icons";
 import { Check } from "@/components/icons";
@@ -308,9 +308,9 @@ function ItemRow({
 /**
  * The review list and the button that imports what is ticked.
  *
- * `compact` is the first-run version: the list scrolls inside a fixed
- * height, the sources are not explained at length, and the parent owns
- * the way out.
+ * `compact` is the first-run version: the sources are not explained at
+ * length, the page itself scrolls rather than a box inside it, and the
+ * parent owns the way out.
  */
 export function SetupReviewList({
   review,
@@ -383,7 +383,7 @@ export function SetupReviewList({
 
   return (
     <div className="flex min-h-0 flex-col">
-      <div className={cn("flex flex-col gap-5", compact && "-mr-1 max-h-[46vh] overflow-y-auto pr-1 sm:max-h-[360px]")}>
+      <div className="flex flex-col gap-5">
         {review.sources.map((source) => {
           const on = source.items.filter((i) => choices[i.key]?.on).length;
           return (
@@ -460,7 +460,7 @@ export function SetupReviewList({
             variant={compact ? "default" : "brand"}
             disabled={busy || picked.length === 0}
             onClick={() => void bring()}
-            className={cn(compact ? "w-full" : "self-start")}
+            className={cn(compact ? "w-full sm:w-auto sm:self-start" : "self-start")}
           >
             {busy ? (
               <>

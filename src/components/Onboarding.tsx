@@ -1,26 +1,41 @@
-// First-run setup. Two screens, both answering "will this actually work
-// on your machine", Bloks never asks who you are. Everything is
-// skippable: setup must never brick the app. It ends by handing off to
-// the agent picker, so the first thing you do is choose someone.
-import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle } from "@/components/icons";
+// First-run setup, as a whole screen told in short beats, in the same
+// language as making an agent: the stepper on top, the way on at the
+// foot, each beat turning like a page.
+//
+//   1. engines: will this actually work on your machine
+//   2. your agents: the work you do, and who that suggests
+//   3. approvals: how much they ask, shown rather than described
+//   then, only when there is something to say: your setup from other
+//   tools, and the Mac's own permissions
+//
+// It ends on the team just made, and lands in the app with the first of
+// them. Bloks never asks who you are. Everything is skippable: setup must
+// never brick the app.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowLeft } from "@/components/icons";
+import { ArrowRight } from "@/components/icons";
 import { Check } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
 import { Mic } from "@/components/icons";
 import { Monitor } from "@/components/icons";
+import { Plus } from "@/components/icons";
 import { RefreshCw } from "@/components/icons";
-import { BlockField, BloksLogo } from "./Brand";
-import { BlokAvatar } from "./Avatar";
-import { useStore } from "@/state/store";
+import { BlockField, BloksLogo, BloksMark } from "./Brand";
+import { AgentAvatar, BlokAvatar } from "./Avatar";
+import { ProviderMark } from "./ProviderIcons";
+import { api, useStore, type Bot } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { setSetupDone, track } from "@/lib/analytics";
 import { cn } from "@/lib/cn";
 import { recommendedFor, WORK_TYPES } from "@/lib/recommend";
-import { AGENT_TEMPLATES } from "@/lib/agentTemplates";
+import { AGENT_TEMPLATES, type AgentTemplate } from "@/lib/agentTemplates";
+import { shapeForBot, type BlokColor, type BlokShape } from "@/lib/mascot";
 import { ThisComputer, thisComputer } from "@/lib/thisComputer";
 import { ApprovalsChooser, confirmWidening, type ApprovalMode } from "./ApprovalsChooser";
 import { EngineSetupActions } from "./EngineSetup";
 import { SetupPrivacyLine, SetupReviewList, useSetupReview } from "./BringYourSetup";
+import { BeatHeading, BeatLabel, PreviewCard, Stepper, beat, settleEase } from "./Beats";
 
 type InstanceRow = {
   instanceId: string;
@@ -34,100 +49,79 @@ type InstanceRow = {
   };
 };
 
+type Readiness = "checking" | "ready" | "signed-out" | "missing";
+
+type StepId = "engines" | "agents" | "approvals" | "setup" | "permissions";
+
+/** The numbers these steps have always reported as, so a funnel read
+ * across this redesign still lines up. Work types and suggestions were
+ * two steps and are one now; they report as the first of them. */
+const STEP_NUMBER: Record<StepId, number> = { engines: 0, agents: 1, approvals: 2, permissions: 4, setup: 5 };
+
 const isElectron = navigator.userAgent.includes("Electron");
 
-/** One engine: ready, installed but signed out, or missing, each with
- * the button that gets it to ready. */
-function EngineRow({
-  kind,
-  name,
-  state,
-  title,
-  detail,
-  command,
-  onChanged,
-}: {
+// The engines worth naming on a first run, in the order somebody is most
+// likely to already have one. Data rather than markup so the list can
+// grow without the layout arguing about it.
+const ENGINES: Array<{
   kind: string;
   name: string;
-  state: "ready" | "signed-out" | "missing";
-  title: string;
-  detail: string;
   command?: string;
-  onChanged: () => void;
-}) {
-  const ok = state === "ready";
-  return (
-    <div className="rounded-xl border bg-card p-3.5">
-      <div className="flex items-start gap-3">
-        <span
-          className={cn(
-            "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full",
-            ok ? "bg-success/15 text-success" : "bg-warning/15 text-warning",
-          )}
-        >
-          {ok ? <Check size={13} /> : <AlertTriangle size={12} />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-ui font-medium text-foreground">{title}</div>
-          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">{detail}</div>
-          {!ok && (
-            <EngineSetupActions
-              kind={kind}
-              name={name}
-              installed={state === "signed-out"}
-              signedOut={state === "signed-out"}
-              fallback={command}
-              onChanged={onChanged}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+  /** Connected by pasting a key in Settings, not by installing a CLI. */
+  byKey?: boolean;
+  have: string;
+  want: string;
+}> = [
+  {
+    kind: "claudeAgent",
+    name: "Claude Code",
+    command: "curl -fsSL https://claude.ai/install.sh | bash",
+    have: "Installed and ready.",
+    want: "Not installed yet. Install it here.",
+  },
+  {
+    kind: "codex",
+    name: "Codex",
+    command: "npm i -g --prefix ~/.local @openai/codex",
+    have: "Installed. Agents can run on Codex too.",
+    want: "Optional. Another engine for your agents.",
+  },
+  {
+    kind: "pi",
+    name: "Pi",
+    command: "npm i -g --prefix ~/.local --ignore-scripts @earendil-works/pi-coding-agent pi-acp",
+    have: "Installed. Agents can run on Pi too.",
+    want: "Optional. Installs Pi and pi-acp.",
+  },
+  {
+    kind: "antigravity",
+    name: "Antigravity",
+    command: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+    have: "Installed. Signs in with your Google account.",
+    want: "Optional. Google's agent CLI, free with a Google account.",
+  },
+  {
+    kind: "grokCli",
+    name: "Grok CLI",
+    command: "curl -fsSL https://x.ai/cli/install.sh | bash",
+    have: "Installed. Uses your grok.com subscription.",
+    want: "Optional. Runs on an existing Grok subscription.",
+  },
+  {
+    kind: "kimi",
+    name: "Kimi",
+    byKey: true,
+    have: "Connected and ready.",
+    want: "Optional. Add a Kimi key in Settings.",
+  },
+];
 
-function PermissionRow({
-  icon,
-  title,
-  detail,
-  status,
-  onEnable,
-  onOpenSettings,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  detail: string;
-  status?: string;
-  onEnable: () => void;
-  onOpenSettings: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3.5">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 shrink-0 text-muted-foreground">{icon}</span>
-        <div>
-          <div className="text-ui font-medium text-foreground">{title}</div>
-          <div className="mt-0.5 text-body text-muted-foreground">{detail}</div>
-        </div>
-      </div>
-      {status === "granted" ? (
-        <Check size={16} className="shrink-0 text-success" />
-      ) : status === "denied" || status === "restricted" ? (
-        <Button variant="secondary" size="sm" onClick={onOpenSettings}>
-          Open Settings
-        </Button>
-      ) : (
-        <Button variant="secondary" size="sm" onClick={onEnable}>
-          Enable
-        </Button>
-      )}
-    </div>
-  );
-}
+/** Someone to stand in for "your agent" before there is one. */
+const STAND_IN: { name: string; color: BlokColor; shape: BlokShape } = { name: "Your agent", color: "blue", shape: "star" };
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
-  const { dispatch } = useStore();
-  const [step, setStep] = useState(0);
+  const { state, dispatch } = useStore();
+  const [stage, setStage] = useState<StepId | "team">("engines");
   const [instances, setInstances] = useState<InstanceRow[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [perms, setPerms] = useState<{ mic: string; screen: string } | null>(null);
@@ -142,20 +136,46 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [resetting, setResetting] = useState(false);
   /** What kind of work they said they do, and who that suggests. */
   const [work, setWork] = useState<string[]>([]);
-  const [hiring, setHiring] = useState<string | null>(null);
-  const [hired, setHired] = useState<string[]>([]);
+  const [hiring, setHiring] = useState<string[]>([]);
+  /** Who was added here, in the order they were, by template and by the
+   * agent the server made. */
+  const [hired, setHired] = useState<Array<{ template: string; bot: string }>>([]);
+  const [hireNote, setHireNote] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<ApprovalMode>("ask");
   const [approvalsNote, setApprovalsNote] = useState<string | null>(null);
   const [savingApprovals, setSavingApprovals] = useState(false);
   /** What the person's other agent tools already know. The step that
    * offers it is only shown when there is something new to offer. */
   const setup = useSetupReview();
-  const [broughtAgents, setBroughtAgents] = useState(0);
   const [brought, setBrought] = useState(false);
-  const offerSetup = (setup.review?.fresh ?? 0) > 0;
-  const afterSetup = () => (isElectron ? setStep(4) : finish());
+  // Once offered, the step stays: bringing things over empties what is
+  // fresh, and the step should not vanish from under the person using it.
+  const [offerSetup, setOfferSetup] = useState(false);
+  const fresh = setup.review?.fresh ?? 0;
+  useEffect(() => {
+    if (fresh > 0) setOfferSetup(true);
+  }, [fresh]);
 
-  /** Where every agent starts, the one already here included. */
+  const steps = useMemo(() => {
+    const list: Array<{ id: StepId; label: string }> = [
+      { id: "engines", label: "Engines" },
+      { id: "agents", label: "Your agents" },
+      { id: "approvals", label: "Approvals" },
+    ];
+    // Last of the agent steps, so the agents just added can be chosen as
+    // where an imported memory goes.
+    if (offerSetup) list.push({ id: "setup", label: "Your setup" });
+    // only the desktop app can ask the Mac for these
+    if (isElectron) list.push({ id: "permissions", label: "Permissions" });
+    return list;
+  }, [offerSetup]);
+  const at = stage === "team" ? steps.length : steps.findIndex((s) => s.id === stage);
+  const next = () => setStage(steps[at + 1]?.id ?? "team");
+  const back = () => {
+    if (at > 0 && stage !== "team") setStage(steps[at - 1].id);
+  };
+
+  /** Where every agent starts, the ones just added included. */
   const chooseApprovals = async () => {
     setApprovalsNote(null);
     if (!(await confirmWidening("ask", approvals, "your agents"))) {
@@ -171,7 +191,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     }).catch(() => {});
     setSavingApprovals(false);
     track("setup_approvals", { mode: approvals });
-    setStep(3);
+    next();
   };
 
   useEffect(() => {
@@ -253,30 +273,38 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       .finally(() => setChecking(false));
   }, []);
 
+  // a new beat starts at its top
+  const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    scroller.current?.scrollTo({ top: 0 });
     // Reaching the setup step would say another tool was found here, and
     // that screen promises nothing about the person's setup leaves.
-    if (step !== 5) track("setup_step", { step });
-    if (step === 0) {
+    if (stage !== "team" && stage !== "setup") track("setup_step", { step: STEP_NUMBER[stage] });
+    if (stage === "engines") {
       void checkEngines();
       // the user may install a CLI in another window and come back
       const timer = setInterval(checkEngines, 5000);
       return () => clearInterval(timer);
     }
-    if (step === 4 && isElectron) {
+    if (stage === "permissions" && isElectron) {
       const poll = () => window.bloks?.permStatus?.().then(setPerms).catch(() => {});
       poll();
       const timer = setInterval(poll, 2000);
       return () => clearInterval(timer);
     }
-  }, [step, checkEngines]);
+  }, [stage, checkEngines]);
 
-  /** Creates one recommended agent, with the role already written. */
-  const hire = (template: (typeof AGENT_TEMPLATES)[number]) => {
-    setHiring(template.id);
-    void fetch("/api/bots", {
+  /** Creates one recommended agent, with the role already written. Two
+   * pressed in quick succession can come back in either order; they are
+   * kept in the order they were pressed, which is the order they were
+   * wanted. */
+  const pressed = useRef<string[]>([]);
+  const hire = (template: AgentTemplate) => {
+    setHireNote(null);
+    pressed.current = [...pressed.current.filter((id) => id !== template.id), template.id];
+    setHiring((current) => [...current, template.id]);
+    void api("/api/bots", {
       method: "POST",
-      headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: template.name,
         title: template.title,
@@ -288,12 +316,28 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         setup: template.setup,
       }),
     })
-      .then(() => setHired((current) => [...current, template.id]))
-      .catch(() => {})
-      .finally(() => setHiring(null));
+      .then(({ bot }: { bot: Bot }) =>
+        setHired((current) =>
+          [...current, { template: template.id, bot: bot.id }].sort(
+            (a, b) => pressed.current.indexOf(a.template) - pressed.current.indexOf(b.template),
+          ),
+        ),
+      )
+      .catch(() => setHireNote(`Couldn't add ${template.name}. Try again.`))
+      .finally(() => setHiring((current) => current.filter((id) => id !== template.id)));
   };
 
-  const finish = () => {
+  /**
+   * Out of setup, by one of three doors: into the chat of someone just
+   * made, into the agent picker, or straight into the app.
+   *
+   * The picker is for somebody who made nobody here. Choosing a role is
+   * what teaches that agents have jobs, the one idea the rest of the
+   * product rests on, so the last beat offers it before anything else.
+   * Skipping goes straight in: Nova is seeded on the server and already
+   * waiting, and someone who said "not now" meant it.
+   */
+  const finish = (then: { select: string } | "picker" | "app") => {
     track("setup_completed", {
       engines_available: instances?.filter((i) => i.snapshot.state === "available").length ?? -1,
       mic: perms?.mic ?? "n/a",
@@ -301,410 +345,931 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     });
     setSetupDone();
     onDone();
-    // Hand off to the agent picker rather than dropping the user into a
-    // chat with a stranger. Choosing a role is what teaches that agents
-    // have jobs, and it is the one idea the rest of the product rests on.
-    // Skipping is fine: Nova is seeded on the server and already waiting.
-    // Somebody who took a recommendation, or brought an agent over from
-    // another tool, already has an agent with a job. Opening the picker on
-    // top of that would read as though the choice they just made had not
-    // counted.
-    if (hired.length === 0 && broughtAgents === 0) {
-      dispatch({ type: "toggleNewAgent", open: true, firstRun: true });
-    }
+    if (then === "picker") dispatch({ type: "toggleNewAgent", open: true, firstRun: true });
+    else if (typeof then === "object") dispatch({ type: "select", id: then.select });
   };
-
-  const byKind = (kind: string) => instances?.find((i) => i.driverKind === kind);
-
-  // The engines worth naming on a first run, in the order somebody is
-  // most likely to already have one. Data rather than markup so the list
-  // can grow without the layout arguing about it; the panel scrolls once
-  // it outgrows its height, which is the point of keeping them uniform.
-  const ENGINES: Array<{
-    kind: string;
-    name: string;
-    command?: string;
-    /** Connected by pasting a key in Settings, not by installing a CLI. */
-    byKey?: boolean;
-    have: string;
-    want: string;
-  }> = [
-    {
-      kind: "claudeAgent",
-      name: "Claude Code",
-      command: "curl -fsSL https://claude.ai/install.sh | bash",
-      have: "Installed and ready.",
-      want: "Not installed yet. Install it here.",
-    },
-    {
-      kind: "codex",
-      name: "Codex",
-      command: "npm i -g --prefix ~/.local @openai/codex",
-      have: "Installed. Agents can run on Codex too.",
-      want: "Optional. Another engine for your agents.",
-    },
-    {
-      kind: "pi",
-      name: "Pi",
-      command: "npm i -g --prefix ~/.local --ignore-scripts @earendil-works/pi-coding-agent pi-acp",
-      have: "Installed. Agents can run on Pi too.",
-      want: "Optional. Installs Pi and pi-acp.",
-    },
-    {
-      kind: "antigravity",
-      name: "Antigravity",
-      command: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
-      have: "Installed. Signs in with your Google account.",
-      want: "Optional. Google's agent CLI, free with a Google account.",
-    },
-    {
-      kind: "grokCli",
-      name: "Grok CLI",
-      command: "curl -fsSL https://x.ai/cli/install.sh | bash",
-      have: "Installed. Uses your grok.com subscription.",
-      want: "Optional. Runs on an existing Grok subscription.",
-    },
-    {
-      kind: "kimi",
-      name: "Kimi",
-      byKey: true,
-      have: "Connected and ready.",
-      want: "Optional. Add a Kimi key in Settings.",
-    },
-  ];
 
   // signed out is not ready: it installs green and then fails the first
   // message, which is the setup problem this screen exists to catch
+  const readiness = (kind: string): Readiness => {
+    if (!instances) return "checking";
+    const found = instances.find((i) => i.driverKind === kind);
+    if (found?.snapshot.state !== "available") return "missing";
+    return found.snapshot.authenticated === false ? "signed-out" : "ready";
+  };
+  // CLIs report themselves in their own words ("codex-cli 0.145.0",
+  // "Grok CLI grok 1.0.4"), so only the number is taken from what they say
+  const versionOf = (kind: string) => {
+    const said = instances?.find((i) => i.driverKind === kind && i.snapshot.state === "available")?.snapshot.version;
+    return said?.match(/\d+(?:\.\d+)+/)?.[0] ?? null;
+  };
   const ready =
     instances?.some((i) => i.snapshot.state === "available" && i.snapshot.authenticated !== false) ?? false;
+  const readyEngine = ENGINES.find((e) => readiness(e.kind) === "ready");
+
+  // The agents someone has, as the last beat shows them: the ones made
+  // here first, in the order they were, then anyone already waiting.
+  const team = useMemo(() => {
+    const shown = state.bots.filter((b) => !b.hidden && !b.archivedAt);
+    const order = new Map(hired.map((h, i) => [h.bot, i]));
+    return [...shown].sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
+  }, [state.bots, hired]);
+  // who the approvals sample is about: the first one added, else whoever
+  // is already here
+  const firstHired = AGENT_TEMPLATES.find((t) => t.id === hired[0]?.template);
+  const sampleAgent = firstHired ?? team[0] ?? STAND_IN;
+
+  // A first boot seeds one agent that says hello, so "is anything here"
+  // would greet every new install with "welcome back". What marks a real
+  // workspace is that somebody has spoken in it, or built more than the
+  // seed.
+  const returning = stage === "engines" && prior && (prior.mine > 0 || prior.agents > 1 || prior.rooms > 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background p-4">
+    <div
+      // Opaque from the first frame: the app is already drawn underneath,
+      // and a screen that fades in shows it through. Only the beat rises.
+      className="fixed inset-0 z-50 flex flex-col bg-background"
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || e.defaultPrevented) return;
+        e.preventDefault();
+        back();
+      }}
+    >
       <BlockField />
+
+      {/* Top bar. In the desktop shell this screen covers the whole
+          frameless window, so the leading control starts to the right of
+          the traffic lights and the row is marked no-drag, or its buttons
+          would sit in the window's drag strip and never take a click. */}
       <div
+        className={cn("relative z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-3", isElectron && "pl-24 pt-9")}
+        style={isElectron ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}
+      >
+        <div className="justify-self-start">
+          {at > 0 && stage !== "team" ? (
+            <Button variant="ghost" onClick={back} aria-label="Back" className="max-sm:px-2">
+              <ArrowLeft size={15} />
+              <span className="max-sm:hidden">Back</span>
+            </Button>
+          ) : returning ? null : (
+            <span className="flex h-8 items-center px-2">
+              <BloksMark size={22} />
+            </span>
+          )}
+        </div>
+        {returning ? (
+          <span />
+        ) : (
+          <Stepper
+            steps={steps}
+            step={stage === "team" ? steps[0].id : stage}
+            complete={stage === "team"}
+            // only back: going forward is always through the step's own
+            // Continue, which is where its choice is saved
+            isOpen={(i) => i < at}
+            onGo={setStage}
+            layoutId="onboarding-step"
+          />
+        )}
+        <div className="justify-self-end">
+          {stage !== "team" && !returning && (
+            <Button variant="ghost" onClick={() => finish("app")} className="max-sm:px-2">
+              <span className="max-sm:hidden">Skip for now</span>
+              <span className="sm:hidden">Skip</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div ref={scroller} className="relative min-h-0 flex-1 overflow-y-auto">
+        <AnimatePresence mode="wait">
+          {returning ? (
+            <motion.div key="returning" {...beat}>
+              <WelcomeBack
+                prior={prior}
+                resetting={resetting}
+                resetNote={resetNote}
+                onContinue={() => setPrior(null)}
+                onStartFresh={() => void startFresh()}
+              />
+            </motion.div>
+          ) : stage === "engines" ? (
+            <motion.div key="engines" {...beat}>
+              <EnginesBeat readiness={readiness} versionOf={versionOf} ready={ready} loaded={instances !== null} onChanged={() => void checkEngines()} />
+            </motion.div>
+          ) : stage === "agents" ? (
+            <motion.div key="agents" {...beat}>
+              <AgentsBeat work={work} setWork={setWork} hired={hired} hiring={hiring} onHire={hire} />
+            </motion.div>
+          ) : stage === "approvals" ? (
+            <motion.div key="approvals" {...beat}>
+              <ApprovalsBeat
+                value={approvals}
+                onChange={(mode) => {
+                  setApprovalsNote(null);
+                  setApprovals(mode);
+                }}
+                agent={sampleAgent}
+              />
+            </motion.div>
+          ) : stage === "setup" && setup.review ? (
+            <motion.div key="setup" {...beat}>
+              <Column>
+                <BeatHeading
+                  title="Bring your setup"
+                  says={`Found in ${setup.review.sources.map((s) => s.name).join(", ")}. Tick what to bring over, now or later in Settings.`}
+                />
+                <SetupPrivacyLine />
+                <div className="mt-6">
+                  <SetupReviewList
+                    review={setup.review}
+                    onReview={setup.set}
+                    compact
+                    onImported={({ brought: count }) => {
+                      if (count) setBrought(true);
+                    }}
+                  />
+                </div>
+              </Column>
+            </motion.div>
+          ) : stage === "permissions" ? (
+            <motion.div key="permissions" {...beat}>
+              <PermissionsBeat perms={perms} setPerms={setPerms} />
+            </motion.div>
+          ) : stage === "team" ? (
+            <motion.div key="team" {...beat}>
+              <TeamBeat team={team} hired={hired.map((h) => h.bot)} onFinish={finish} />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+
+      {/* The way on, always in the same place: what this beat comes to on
+          the left, the next step on the right. */}
+      {!returning && stage !== "team" && (
+        <div className="relative z-10 border-t bg-background/85 backdrop-blur-md">
+          <div className="mx-auto flex w-full max-w-[1080px] items-center gap-2 px-5 py-3 sm:px-8">
+            {stage === "engines" && (
+              <>
+                <span className="mr-auto flex min-w-0 items-center gap-2 text-body">
+                  <ReadyDot state={!instances ? "checking" : ready ? "ready" : "missing"} />
+                  <span className={cn("truncate", instances && !ready ? "text-warning" : "text-muted-foreground")}>
+                    {!instances
+                      ? "Looking for engines"
+                      : readyEngine
+                        ? `${readyEngine.name} is ready`
+                        : "No engine ready yet, agents can't reply"}
+                  </span>
+                </span>
+                <Button variant="ghost" size="lg" onClick={() => void checkEngines()} className="max-sm:px-3" aria-label="Check again">
+                  <RefreshCw size={14} className={cn(checking && "animate-spin")} />
+                  <span className="max-sm:hidden">Check again</span>
+                </Button>
+                <Button size="lg" onClick={next}>
+                  {ready || !instances ? "Continue" : "Continue anyway"}
+                  <ArrowRight size={15} />
+                </Button>
+              </>
+            )}
+            {stage === "agents" && (
+              <>
+                <span className={cn("mr-auto flex min-w-0 items-center gap-2.5 text-body", hireNote ? "text-destructive" : "text-muted-foreground")}>
+                  {hired.length > 0 && !hireNote && (
+                    <span className="flex shrink-0 items-center">
+                      {hired.map((h, i) => {
+                        const t = AGENT_TEMPLATES.find((x) => x.id === h.template);
+                        return t ? (
+                          <motion.span
+                            key={h.bot}
+                            initial={{ scale: 0.6, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ type: "spring", duration: 0.3, bounce: 0.35 }}
+                            className={cn("rounded-[8px] ring-2 ring-background", i > 0 && "-ml-1.5")}
+                          >
+                            <BlokAvatar color={t.color} shape={t.shape} expression="friendly" size={24} />
+                          </motion.span>
+                        ) : null;
+                      })}
+                    </span>
+                  )}
+                  <span className={cn("truncate", !hireNote && !hired.length && "max-sm:invisible")}>
+                    {hireNote ??
+                      (hired.length
+                        ? `${namesOf(hired.map((h) => AGENT_TEMPLATES.find((t) => t.id === h.template)?.name ?? "An agent"))} added`
+                        : "Add any that fit. You can make your own later.")}
+                  </span>
+                </span>
+                <Button size="lg" onClick={next} disabled={hiring.length > 0}>
+                  Continue
+                  <ArrowRight size={15} />
+                </Button>
+              </>
+            )}
+            {stage === "approvals" && (
+              <>
+                <span className={cn("mr-auto min-w-0 truncate text-body", approvalsNote ? "text-warning" : "text-muted-foreground max-sm:invisible")}>
+                  {approvalsNote ?? "You can change this any time in Settings."}
+                </span>
+                <Button size="lg" disabled={savingApprovals} onClick={() => void chooseApprovals()}>
+                  {savingApprovals && <Loader2 size={15} className="animate-spin" />}
+                  Continue
+                  <ArrowRight size={15} />
+                </Button>
+              </>
+            )}
+            {stage === "setup" && (
+              <>
+                <span className="mr-auto min-w-0 truncate text-body text-muted-foreground max-sm:invisible">
+                  Everything here is in Settings too.
+                </span>
+                {brought ? (
+                  <Button size="lg" onClick={next}>
+                    Continue
+                    <ArrowRight size={15} />
+                  </Button>
+                ) : (
+                  <Button variant="ghost" size="lg" onClick={next}>
+                    Skip this
+                  </Button>
+                )}
+              </>
+            )}
+            {stage === "permissions" && (
+              <>
+                <span className="mr-auto min-w-0 truncate text-body text-muted-foreground max-sm:invisible">
+                  All optional. Nothing is used until you need it.
+                </span>
+                <Button size="lg" onClick={next}>
+                  Continue
+                  <ArrowRight size={15} />
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/** "A", "A and B", "A, B and C". */
+function namesOf(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** A single column, for the beats that have nothing to show beside them. */
+function Column({ children }: { children: React.ReactNode }) {
+  return <div className="mx-auto w-full max-w-[720px] px-5 pb-12 pt-4 sm:px-8 lg:pt-10">{children}</div>;
+}
+
+/** The small light that says where an engine stands. It lands, rather
+ * than blinks, when the poll finds something has changed. */
+function ReadyDot({ state }: { state: Readiness }) {
+  return (
+    <span className="relative flex size-2 shrink-0">
+      <AnimatePresence initial={false} mode="popLayout">
+        <motion.span
+          key={state}
+          initial={{ scale: 0.4, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.4, opacity: 0 }}
+          transition={{ type: "spring", duration: 0.28, bounce: 0.4 }}
+          className={cn(
+            "absolute inset-0 rounded-full",
+            state === "ready" ? "bg-success" : state === "signed-out" ? "bg-warning" : state === "checking" ? "animate-pulse bg-muted-foreground/40" : "bg-muted-foreground/40",
+          )}
+        />
+      </AnimatePresence>
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Somebody who already has a workspace here: a previous install, or a copy
+// carried across from another Mac. Dropping them into it unannounced reads
+// as "the app came with a stranger's data", and wiping it unasked is
+// worse. So: say what is here, and let them choose.
+
+function WelcomeBack({
+  prior,
+  resetting,
+  resetNote,
+  onContinue,
+  onStartFresh,
+}: {
+  prior: { agents: number; rooms: number; messages: number };
+  resetting: boolean;
+  resetNote: string | null;
+  onContinue: () => void;
+  onStartFresh: () => void;
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-[460px] flex-col items-center px-5 pb-12 pt-[12vh] text-center">
+      <BloksLogo />
+      <h1 className="mt-8 text-balance text-display font-semibold text-foreground">Welcome back</h1>
+      <p className="mt-2 text-pretty text-ui text-muted-foreground">
+        {ThisComputer()} already has a Bloks workspace: {prior.agents} {prior.agents === 1 ? "agent" : "agents"}
+        {prior.rooms > 0 && `, ${prior.rooms} ${prior.rooms === 1 ? "room" : "rooms"}`} and {prior.messages.toLocaleString()}{" "}
+        {prior.messages === 1 ? "message" : "messages"}.
+      </p>
+      <div className="mt-8 flex w-full flex-col gap-2">
+        <Button size="lg" onClick={onContinue} disabled={resetting}>
+          Continue where I left off
+        </Button>
+        <Button size="lg" variant="secondary" onClick={onStartFresh} disabled={resetting}>
+          {resetting ? "Starting fresh…" : "Start fresh"}
+        </Button>
+      </div>
+      {resetNote ? (
+        <p className="mt-4 text-small leading-relaxed text-warning">{resetNote}</p>
+      ) : (
+        <p className="mt-4 text-small leading-relaxed text-muted-foreground">
+          Starting fresh moves the old workspace to a dated folder. Nothing is deleted, and keys and engines stay set up.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Beat one: engines. A live panel rather than a checklist: each engine
+// lights up as the poll finds it, so installing one in another window
+// and coming back shows it arriving.
+
+function EnginesBeat({
+  readiness,
+  versionOf,
+  ready,
+  loaded,
+  onChanged,
+}: {
+  readiness: (kind: string) => Readiness;
+  versionOf: (kind: string) => string | null;
+  ready: boolean;
+  loaded: boolean;
+  onChanged: () => void;
+}) {
+  // The large card is Claude Code, the engine Bloks is built around, as
+  // long as it is here at all: signed out is one button from ready. Only
+  // when it is missing and another engine is ready does that one take the
+  // card, since that is what agents will actually run on.
+  const preferred = ENGINES[0];
+  const lead =
+    readiness(preferred.kind) === "missing" ? (ENGINES.find((e) => readiness(e.kind) === "ready") ?? preferred) : preferred;
+  const more = ENGINES.filter((e) => e !== lead);
+  return (
+    <Column>
+      <BeatHeading
+        title="Let's check your engines"
+        says={`Agents run on the AI tools already on ${thisComputer()}. Everything stays local.`}
+      />
+      <EngineCard engine={lead} state={readiness(lead.kind)} version={versionOf(lead.kind)} onChanged={onChanged} large />
+
+      <section className="mt-10">
+        <BeatLabel aside={<span className="text-small text-muted-foreground">Optional</span>}>More engines</BeatLabel>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {more.map((engine, i) => (
+            <motion.div
+              key={engine.kind}
+              layout="position"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(i, 6) * 0.03, duration: 0.22, ease: settleEase }}
+            >
+              <EngineCard engine={engine} state={readiness(engine.kind)} version={versionOf(engine.kind)} onChanged={onChanged} />
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {loaded && !ready && (
+        // a CLI is the best engine, not the only one: without any of them
+        // there is still a way in
+        <p className="mt-6 text-pretty text-body leading-relaxed text-muted-foreground">
+          None of these? Continue and connect Gemini, Grok, Kimi, Llama or OpenRouter in Settings. They can chat but not
+          run commands.
+        </p>
+      )}
+    </Column>
+  );
+}
+
+/** One engine: where it stands, and the button that gets it to ready. */
+function EngineCard({
+  engine,
+  state,
+  version,
+  onChanged,
+  large = false,
+}: {
+  engine: (typeof ENGINES)[number];
+  state: Readiness;
+  version: string | null;
+  onChanged: () => void;
+  large?: boolean;
+}) {
+  const lit = state === "ready";
+  const detail =
+    state === "checking"
+      ? "Looking on this computer"
+      : state === "ready"
+        ? engine.have
+        : state === "signed-out"
+          ? "Installed. Sign in to finish."
+          : engine.want;
+  return (
+    <div
+      className={cn(
+        "h-full rounded-2xl border bg-card",
+        large ? "rounded-3xl p-5 shadow-[0_12px_40px_-16px_var(--shadow-color)] sm:p-6" : "p-3.5",
+      )}
+    >
+      <div className={cn("flex items-center", large ? "gap-4" : "gap-3")}>
+        <span className={cn("relative flex shrink-0 items-center justify-center bg-muted", large ? "size-12 rounded-2xl sm:size-14" : "size-9 rounded-xl")}>
+          {/* the mark comes up to full strength as the engine does */}
+          <span className={cn("transition-opacity duration-300", lit ? "opacity-100" : "opacity-45")}>
+            <EngineMark kind={engine.kind} size={large ? 28 : 18} />
+          </span>
+          <span
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-0 ring-2 ring-success/45 transition-opacity duration-300",
+              large ? "rounded-2xl" : "rounded-xl",
+              lit ? "opacity-100" : "opacity-0",
+            )}
+          />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className={cn("truncate font-semibold text-foreground", large ? "text-title tracking-tight" : "text-ui")}>{engine.name}</span>
+            {version && <span className={cn("shrink-0 font-mono text-caption text-muted-foreground", large && "max-sm:hidden")}>{version}</span>}
+          </div>
+          <div className={cn("text-pretty leading-relaxed text-muted-foreground", large ? "mt-0.5 text-body" : "text-small")}>{detail}</div>
+        </div>
+        <StatusPill state={state} large={large} />
+      </div>
+      {(state === "missing" || state === "signed-out") && (
+        <div className={cn(large && "sm:pl-[72px]")}>
+          <EngineSetupActions
+            kind={engine.kind}
+            name={engine.name}
+            installed={state === "signed-out"}
+            signedOut={state === "signed-out"}
+            fallback={engine.command}
+            onChanged={onChanged}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Antigravity has no mark of its own in the set, and two capitals read
+ * as a glitch, so it gets the one letter a tile like this would carry. */
+function EngineMark({ kind, size }: { kind: string; size: number }) {
+  if (kind === "antigravity") {
+    return (
+      <span className="flex items-center justify-center font-semibold text-foreground" style={{ width: size, height: size, fontSize: size * 0.62 }}>
+        A
+      </span>
+    );
+  }
+  return <ProviderMark driverKind={kind} size={size} />;
+}
+
+function StatusPill({ state, large }: { state: Readiness; large?: boolean }) {
+  const label = state === "ready" ? "Ready" : state === "signed-out" ? "Sign in" : state === "checking" ? "Checking" : "Not installed";
+  return (
+    <AnimatePresence initial={false} mode="popLayout">
+      <motion.span
+        key={state}
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.8, opacity: 0 }}
+        transition={{ type: "spring", duration: 0.3, bounce: 0.35 }}
         className={cn(
-          "relative flex w-full animate-pop-in flex-col rounded-2xl border bg-popover p-6 shadow-2xl shadow-(color:--shadow-color) sm:p-8",
-          // the review needs room for a preview and a destination on one line
-          step === 5 ? "max-h-full max-w-[560px] overflow-y-auto" : "max-w-[440px]",
+          "flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-medium",
+          large ? "text-small" : "text-caption",
+          state === "ready"
+            ? "bg-success/10 text-success"
+            : state === "signed-out"
+              ? "bg-warning/10 text-warning"
+              : "bg-muted text-muted-foreground",
+          // a quiet row says nothing at all while it is merely optional
+          !large && state === "missing" && "max-sm:hidden",
         )}
       >
-        {/* A first boot seeds one agent that says hello, so "is anything
-            here" would greet every new install with "welcome back". What
-            marks a real workspace is that somebody has spoken in it, or
-            built more than the seed. */}
-        {step === 0 && prior && (prior.mine > 0 || prior.agents > 1 || prior.rooms > 0) ? (
-          // Somebody already has a workspace here: a previous install, or
-          // a copy carried across from another Mac. Dropping them into it
-          // unannounced reads as "the app came with stranger's data", and
-          // wiping it unasked is worse. So: say what is here, and let them
-          // choose.
-          <div className="flex flex-col">
-            <div className="flex justify-center">
-              <BloksLogo />
-            </div>
-            <h1 className="mt-6 text-center text-title font-semibold tracking-tight text-foreground">
-              Welcome back
-            </h1>
-            <p className="mt-1 text-center text-body leading-relaxed text-muted-foreground">
-              {ThisComputer()} already has a Bloks workspace: {prior.agents}{" "}
-              {prior.agents === 1 ? "agent" : "agents"}
-              {prior.rooms > 0 && `, ${prior.rooms} ${prior.rooms === 1 ? "room" : "rooms"}`} and{" "}
-              {prior.messages.toLocaleString()}{" "}
-              {prior.messages === 1 ? "message" : "messages"}.
-            </p>
-            <div className="mt-5 flex flex-col gap-2">
-              <Button onClick={() => setPrior(null)} disabled={resetting}>
-                Continue where I left off
-              </Button>
-              <Button variant="secondary" onClick={() => void startFresh()} disabled={resetting}>
-                {resetting ? "Starting fresh…" : "Start fresh"}
-              </Button>
-            </div>
-            {resetNote ? (
-              <p className="mt-3 text-center text-small leading-relaxed text-warning">{resetNote}</p>
-            ) : (
-              <p className="mt-3 text-center text-small leading-relaxed text-muted-foreground">
-                Starting fresh moves the old workspace to a dated folder. Nothing is deleted, and
-                keys and engines stay set up.
-              </p>
-            )}
-          </div>
-        ) : step === 0 ? (
-          <div className="flex flex-col">
-            <div className="flex justify-center">
-              <BloksLogo />
-            </div>
-            <h1 className="mt-6 text-center text-title font-semibold tracking-tight text-foreground">
-              Let's check your engines
-            </h1>
-            <p className="mt-1 text-center text-body leading-relaxed text-muted-foreground">
-              Agents run on the AI tools already installed on {thisComputer()}. Everything stays local.
-            </p>
-            <div className="mt-5 flex flex-col gap-2">
-              {!instances ? (
-                <div className="flex items-center justify-center gap-2 py-8 text-body text-muted-foreground">
-                  <Loader2 size={15} className="animate-spin" /> Looking…
-                </div>
-              ) : (
-                <>
-                  <div className="-mr-1 flex max-h-[264px] flex-col gap-2 overflow-y-auto pr-1">
-                    {ENGINES.map((engine) => {
-                      const found = byKind(engine.kind);
-                      const installed = found?.snapshot.state === "available";
-                      const state = !installed ? "missing" : found?.snapshot.authenticated === false ? "signed-out" : "ready";
-                      return (
-                        <EngineRow
-                          key={engine.kind}
-                          kind={engine.kind}
-                          name={engine.name}
-                          state={state}
-                          title={
-                            engine.name +
-                            (installed && found?.snapshot.version
-                              ? ` · ${found.snapshot.version.split(" ")[0]}`
-                              : "")
-                          }
-                          detail={
-                            state === "ready"
-                              ? engine.have
-                              : state === "signed-out"
-                                ? "Installed. Sign in to finish."
-                                : engine.want
-                          }
-                          command={engine.command}
-                          onChanged={() => void checkEngines()}
-                        />
-                      );
-                    })}
-                  </div>
-                  {!ready && (
-                    // a CLI is the best engine, not the only one: without
-                    // either of them there is still a way in
-                    <p className="px-1 pt-1 text-body leading-relaxed text-muted-foreground">
-                      None installed? Continue and connect Gemini, Grok, Kimi, Llama or OpenRouter in
-                      Settings. They can chat but not run commands.
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
+        {state === "ready" && <Check size={11} strokeWidth={3} />}
+        {state === "checking" && <Loader2 size={11} className="animate-spin" />}
+        {label}
+      </motion.span>
+    </AnimatePresence>
+  );
+}
 
-            <div className="mt-3 flex items-center justify-between">
-              <button
-                onClick={() => void checkEngines()}
-                className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-small text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
-              >
-                <RefreshCw size={12} className={cn(checking && "animate-spin")} />
-                Check again
-              </button>
-              {instances && !ready && (
-                <span className="text-small text-warning">No engine ready yet, agents can't reply</span>
-              )}
-            </div>
+// ---------------------------------------------------------------------------
+// Beat two: your agents. Naming the work is a far easier question than
+// inventing an agent from nothing, and the answer is enough to propose
+// three that are obviously useful rather than merely available. So the
+// question and its answer sit on one page, and the answer changes as the
+// question does.
 
-            <Button
-              size="lg"
-              onClick={() => setStep(1)}
-              className="mt-4 w-full"
+function AgentsBeat({
+  work,
+  setWork,
+  hired,
+  hiring,
+  onHire,
+}: {
+  work: string[];
+  setWork: (update: (current: string[]) => string[]) => void;
+  hired: Array<{ template: string; bot: string }>;
+  hiring: string[];
+  onHire: (template: AgentTemplate) => void;
+}) {
+  const suggested = recommendedFor(work, 3)
+    .map((id) => AGENT_TEMPLATES.find((t) => t.id === id))
+    .filter((t): t is AgentTemplate => Boolean(t));
+  return (
+    <div className="mx-auto w-full max-w-[1080px] px-5 pb-12 pt-4 sm:px-8 lg:pt-10">
+      <div className="max-w-[720px]">
+        <BeatHeading title="What do you spend your time on?" says="Pick any that fit. Agents for that work appear below." />
+      </div>
+      <div role="group" aria-label="Kinds of work" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {WORK_TYPES.map((option) => {
+          const on = work.includes(option.id);
+          return (
+            <button
+              key={option.id}
+              aria-pressed={on}
+              onClick={() => setWork((current) => (on ? current.filter((id) => id !== option.id) : [...current, option.id]))}
+              className={cn(
+                "group relative flex min-w-0 flex-col rounded-xl border px-3 py-2.5 text-left outline-none transition-[border-color,background-color,scale] duration-150 ease-out active:scale-[0.985]",
+                on ? "border-brand bg-brand-soft" : "bg-card hover:border-foreground/20 hover:bg-accent/40",
+              )}
             >
-              {ready ? "Continue" : "Continue anyway"}
-            </Button>
-          </div>
-        ) : null}
+              <span className="pr-5 text-body font-medium text-foreground">{option.label}</span>
+              <span className="line-clamp-2 text-small text-muted-foreground">{option.hint}</span>
+              <span
+                className={cn(
+                  "absolute right-2.5 top-2.5 flex size-4 items-center justify-center rounded-full border transition-colors duration-150",
+                  on ? "border-brand-ink bg-brand-ink text-brand-foreground" : "border-foreground/20",
+                )}
+              >
+                {on && <Check size={10} strokeWidth={3} />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-        {step === 1 && (
-          // Naming the work is a far easier question than inventing an
-          // agent from nothing, and the answer is enough to propose
-          // three that are obviously useful rather than merely available.
-          <div className="flex flex-col">
-            <h1 className="text-title font-semibold tracking-tight text-foreground">
-              What do you spend your time on?
-            </h1>
-            <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              Pick any that fit. It only shapes what we suggest.
-            </p>
-            <div className="mt-4 grid grid-cols-2 gap-1.5">
-              {WORK_TYPES.map((option) => {
-                const on = work.includes(option.id);
-                return (
-                  <button
-                    key={option.id}
-                    onClick={() =>
-                      setWork((current) =>
-                        on ? current.filter((id) => id !== option.id) : [...current, option.id],
+      <section className="mt-10">
+        <BeatLabel aside={<span className="text-small text-muted-foreground max-sm:hidden">Each comes with its role written</span>}>
+          {work.length ? "Suggested for you" : "A good place to start"}
+        </BeatLabel>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {suggested.map((template) => {
+              const added = hired.some((h) => h.template === template.id);
+              const adding = hiring.includes(template.id);
+              return (
+                <motion.div
+                  key={template.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ duration: 0.22, ease: settleEase }}
+                >
+                  <PreviewCard
+                    compact
+                    identity={{ color: template.color, shape: template.shape }}
+                    name={template.name}
+                    title={template.title}
+                    greeting={template.greeting}
+                    skills={template.skills}
+                    creating={adding}
+                    footer={
+                      added ? (
+                        <div className="flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-soft text-ui font-medium text-brand-ink">
+                          <Check size={15} strokeWidth={2.5} />
+                          Added
+                        </div>
+                      ) : (
+                        <Button variant="secondary" size="lg" className="w-full" disabled={adding} onClick={() => onHire(template)}>
+                          {adding ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                          {adding ? "Adding" : `Add ${template.name}`}
+                        </Button>
                       )
                     }
-                    className={cn(
-                      "rounded-xl border px-2.5 py-2 text-left transition-colors duration-150",
-                      on
-                        ? "border-brand bg-brand-soft"
-                        : "border-border hover:border-foreground/25",
-                    )}
-                  >
-                    <div className="text-body font-medium text-foreground">{option.label}</div>
-                    <div className="text-caption text-muted-foreground">{option.hint}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <Button size="lg" className="mt-5 w-full" onClick={() => setStep(2)}>
-              {work.length ? "Continue" : "Skip this"}
-            </Button>
-          </div>
-        )}
+                  />
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      </section>
+    </div>
+  );
+}
 
-        {step === 2 && (
-          // Asked once, up front, because the default decides how the
-          // first hour feels: a card for everything, or agents that get on
-          // with it. Every agent made from here starts on the choice.
-          <div className="flex flex-col">
-            <h1 className="text-title font-semibold tracking-tight text-foreground">
-              How much should your agents ask?
-            </h1>
-            <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              You can change this any time in Settings.
-            </p>
-            <div className="mt-4">
-              <ApprovalsChooser value={approvals} onChange={setApprovals} compact />
-            </div>
-            {approvalsNote && <div className="mt-2 text-small text-warning">{approvalsNote}</div>}
-            <Button size="lg" className="mt-5 w-full" disabled={savingApprovals} onClick={() => void chooseApprovals()}>
-              Continue
-            </Button>
-          </div>
-        )}
+// ---------------------------------------------------------------------------
+// Beat three: approvals. Asked once, up front, because the default decides
+// how the first hour feels: a card for everything, or agents that get on
+// with it. Every agent starts on the choice, so it is shown landing on a
+// small task rather than described in the abstract.
 
-        {step === 3 && (
-          <div className="flex flex-col">
-            <h1 className="text-title font-semibold tracking-tight text-foreground">
-              Start with one of these
-            </h1>
-            <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              Each comes with its role written. Add one, or skip and make your own.
-            </p>
-            <div className="mt-4 flex flex-col gap-2">
-              {recommendedFor(work, 3).map((id) => {
-                const template = AGENT_TEMPLATES.find((t) => t.id === id);
-                if (!template) return null;
-                const already = hired.includes(id);
-                return (
-                  <div
-                    key={id}
-                    className="flex items-center gap-3 rounded-xl border bg-card p-3"
-                  >
-                    <BlokAvatar
-                      color={template.color}
-                      shape={template.shape}
-                      expression="friendly"
-                      size={34}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-body font-semibold text-foreground">
-                        {template.name}
-                      </div>
-                      <div className="truncate text-small text-muted-foreground">
-                        {template.title}
+type SampleStep = { id: string; asks: string; did: string; when: ApprovalMode[] };
+
+/** One small job, and which of its steps stop to ask in each mode. */
+const SAMPLE: SampleStep[] = [
+  { id: "read", asks: "Read 3 files", did: "Read 3 files", when: [] },
+  { id: "edit", asks: "Edit notes.md", did: "Edited notes.md", when: ["ask"] },
+  { id: "run", asks: "Run the tests", did: "Ran the tests", when: ["ask", "edits"] },
+];
+
+const SAMPLE_SAYS: Record<ApprovalMode, string> = {
+  ask: "You approve every change and every command.",
+  edits: "File changes go ahead. Commands wait for you.",
+  auto: "Nothing waits, but your rules can still stop it and the sandbox stays on.",
+  full: "Nothing waits and nothing is sandboxed. Your rules can't stop it.",
+};
+
+function ApprovalsBeat({
+  value,
+  onChange,
+  agent,
+}: {
+  value: ApprovalMode;
+  onChange: (mode: ApprovalMode) => void;
+  agent: { name: string; color: BlokColor; shape?: BlokShape };
+}) {
+  return (
+    <div className="mx-auto grid w-full max-w-[1080px] grid-cols-1 gap-8 px-5 pb-12 pt-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-14 lg:pt-10">
+      <div className="min-w-0">
+        <BeatHeading title="How much should your agents ask?" says="Where every agent starts. Change it for one agent, or for all, any time." />
+        <ApprovalsChooser value={value} onChange={onChange} />
+      </div>
+      <aside aria-label="What you would see">
+        <div className="lg:sticky lg:top-6">
+          <ApprovalSample mode={value} agent={agent} />
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/** The chosen mode, played out: the same small job, with the steps that
+ * would stop for you drawn as the card you would get in the chat. */
+function ApprovalSample({ mode, agent }: { mode: ApprovalMode; agent: { name: string; color: BlokColor; shape?: BlokShape } }) {
+  return (
+    <div className="overflow-hidden rounded-3xl border bg-card shadow-[0_12px_40px_-16px_var(--shadow-color)]">
+      <div className="px-5 pb-5 pt-5">
+        <div className="text-small font-medium text-muted-foreground">What you would see</div>
+        <div className="mt-3 flex items-end gap-2">
+          <BlokAvatar color={agent.color} shape={agent.shape ?? "star"} expression="friendly" size={22} />
+          <div className="min-w-0 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-body leading-relaxed text-foreground">
+            I'll tidy notes.md and check the tests still pass.
+          </div>
+        </div>
+        <div className="mt-1 pl-[30px] text-caption text-muted-foreground">{agent.name}</div>
+
+        <ol className="mt-4 flex flex-col gap-2">
+          <AnimatePresence initial={false} mode="popLayout">
+            {SAMPLE.map((step) => {
+              const asks = step.when.includes(mode);
+              return (
+                <motion.li
+                  key={`${step.id}-${asks ? "asks" : "did"}`}
+                  layout="position"
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.2, ease: settleEase }}
+                >
+                  {asks ? (
+                    // drawn like the approval card in the chat, without
+                    // the buttons doing anything: this is a picture of it
+                    <div className="rounded-2xl border bg-card p-3 shadow-[0_1px_3px_var(--shadow-color)]">
+                      <div className="text-caption font-semibold uppercase tracking-[0.1em] text-warning">Approval</div>
+                      <div className="mt-0.5 text-ui font-semibold text-foreground">{step.asks}</div>
+                      <div aria-hidden className="mt-2 flex gap-1.5">
+                        {["Allow", "Deny"].map((option, i) => (
+                          <span key={option} className="flex flex-1 items-center gap-2 rounded-lg bg-muted/70 px-2 py-1 text-small text-foreground">
+                            <span className="flex size-4 items-center justify-center rounded bg-background text-micro font-semibold text-muted-foreground">
+                              {i === 0 ? "A" : "B"}
+                            </span>
+                            {option}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                    <Button
-                      variant={already ? "ghost" : "secondary"}
-                      size="sm"
-                      disabled={already || hiring !== null}
-                      onClick={() => hire(template)}
-                    >
-                      {already ? "Added" : hiring === id ? "Adding…" : "Add"}
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-            <Button size="lg" className="mt-5 w-full" onClick={() => (offerSetup ? setStep(5) : afterSetup())}>
-              {hired.length ? "Continue" : "Skip for now"}
-            </Button>
-          </div>
+                  ) : (
+                    <div className="flex items-center gap-2.5 px-1 text-body text-muted-foreground">
+                      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+                        <Check size={10} strokeWidth={3} />
+                      </span>
+                      {step.did}
+                      {step.id === "run" && mode === "auto" && <span className="text-small text-muted-foreground/80">in the sandbox</span>}
+                    </div>
+                  )}
+                </motion.li>
+              );
+            })}
+          </AnimatePresence>
+        </ol>
+      </div>
+      <div
+        className={cn(
+          "border-t px-5 py-3 text-small leading-relaxed transition-colors duration-150",
+          mode === "full" ? "bg-warning/10 text-warning" : "text-muted-foreground",
         )}
+        aria-live="polite"
+      >
+        {SAMPLE_SAYS[mode]}
+      </div>
+    </div>
+  );
+}
 
-        {step === 5 && setup.review && (
-          // Optional, and only here when another agent tool left something
-          // worth bringing. Last of the agent steps so the agents just
-          // hired can be chosen as a destination.
-          <div className="flex min-h-0 flex-col">
-            <h1 className="text-title font-semibold tracking-tight text-foreground">Bring your setup</h1>
-            <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              Found in {setup.review.sources.map((s) => s.name).join(", ")}. Tick what to bring over, now or
-              later in Settings.
-            </p>
-            <SetupPrivacyLine className="mt-4" />
-            <div className="mt-4 min-h-0">
-              <SetupReviewList
-                review={setup.review}
-                onReview={setup.set}
-                compact
-                onImported={({ brought: count, created }) => {
-                  if (count) setBrought(true);
-                  setBroughtAgents((n) => n + created);
-                }}
-              />
-            </div>
-            {brought ? (
-              <Button size="lg" onClick={afterSetup} className="mt-3 w-full">
-                Continue
-              </Button>
-            ) : (
-              <button
-                onClick={afterSetup}
-                className="mt-3 text-small text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Skip for now
-              </button>
-            )}
-          </div>
-        )}
+// ---------------------------------------------------------------------------
+// The Mac's own permissions, in the desktop app only.
 
-        {step === 4 && (
-          <div className="flex flex-col">
-            <h1 className="text-title font-semibold tracking-tight text-foreground">Permissions</h1>
-            <p className="mt-1 text-body text-muted-foreground">
-              All optional. Nothing is used until you need it.
-            </p>
-            <div className="mt-4 flex flex-col gap-2">
-              <PermissionRow
-                icon={<Mic size={17} />}
-                title="Microphone & speech"
-                detail="Dictate messages, transcribed on-device."
-                status={perms?.mic}
-                onEnable={() =>
-                  window.bloks?.permRequestMic?.().then(() => window.bloks?.permStatus?.().then(setPerms))
-                }
-                onOpenSettings={() => window.bloks?.permOpenSettings?.("mic")}
-              />
-              <PermissionRow
-                icon={<Monitor size={17} />}
-                title="Screen preview"
-                detail={`Shows ${thisComputer()}'s screen in the Computer panel when an agent works locally.`}
-                status={perms?.screen}
-                onEnable={() =>
-                  navigator.mediaDevices
-                    .getDisplayMedia({ video: true })
-                    .then((stream) => stream.getTracks().forEach((t) => t.stop()))
-                    .catch(() => {})
-                    .then(() => window.bloks?.permStatus?.().then(setPerms))
-                }
-                onOpenSettings={() => window.bloks?.permOpenSettings?.("screen")}
-              />
-            </div>
-            <Button size="lg" onClick={finish} className="mt-5 w-full">
-              Start using Bloks
-            </Button>
-            <button
-              onClick={finish}
-              className="mt-3 text-small text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Skip for now
-            </button>
-          </div>
+function PermissionsBeat({
+  perms,
+  setPerms,
+}: {
+  perms: { mic: string; screen: string } | null;
+  setPerms: (perms: { mic: string; screen: string }) => void;
+}) {
+  return (
+    <Column>
+      <BeatHeading title="Two permissions" says="All optional. Nothing is used until you need it." />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <PermissionCard
+          icon={<Mic size={20} />}
+          title="Microphone and speech"
+          detail="Dictate messages, transcribed on device."
+          status={perms?.mic}
+          onEnable={() => window.bloks?.permRequestMic?.().then(() => window.bloks?.permStatus?.().then(setPerms))}
+          onOpenSettings={() => window.bloks?.permOpenSettings?.("mic")}
+        />
+        <PermissionCard
+          icon={<Monitor size={20} />}
+          title="Screen preview"
+          detail={`Shows ${thisComputer()}'s screen in the Computer panel when an agent works locally.`}
+          status={perms?.screen}
+          onEnable={() =>
+            navigator.mediaDevices
+              .getDisplayMedia({ video: true })
+              .then((stream) => stream.getTracks().forEach((t) => t.stop()))
+              .catch(() => {})
+              .then(() => window.bloks?.permStatus?.().then(setPerms))
+          }
+          onOpenSettings={() => window.bloks?.permOpenSettings?.("screen")}
+        />
+      </div>
+    </Column>
+  );
+}
+
+function PermissionCard({
+  icon,
+  title,
+  detail,
+  status,
+  onEnable,
+  onOpenSettings,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  detail: string;
+  status?: string;
+  onEnable: () => void;
+  onOpenSettings: () => void;
+}) {
+  const granted = status === "granted";
+  return (
+    <div className="flex flex-col rounded-2xl border bg-card p-4">
+      <span className={cn("flex size-10 items-center justify-center rounded-xl", granted ? "bg-success/10 text-success" : "bg-muted text-muted-foreground")}>
+        {icon}
+      </span>
+      <div className="mt-3 text-ui font-medium text-foreground">{title}</div>
+      <div className="mt-0.5 flex-1 text-pretty text-body leading-relaxed text-muted-foreground">{detail}</div>
+      <div className="mt-4">
+        {granted ? (
+          <span className="inline-flex h-7 items-center gap-1.5 text-body font-medium text-success">
+            <Check size={14} strokeWidth={2.5} />
+            Allowed
+          </span>
+        ) : status === "denied" || status === "restricted" ? (
+          <Button variant="secondary" size="sm" onClick={onOpenSettings}>
+            Open Settings
+          </Button>
+        ) : (
+          <Button variant="secondary" size="sm" onClick={onEnable}>
+            Enable
+          </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The end: the team, each face landing in turn, and the door into the app.
+
+function TeamBeat({
+  team,
+  hired,
+  onFinish,
+}: {
+  team: Bot[];
+  hired: string[];
+  onFinish: (then: { select: string } | "picker" | "app") => void;
+}) {
+  const shown = team.slice(0, 6);
+  const made = hired.map((id) => team.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b));
+  const first = made[0];
+  const nova = team[0];
+  const go = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => go.current?.focus(), 200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="mx-auto flex w-full max-w-[720px] flex-col items-center px-5 pb-12 pt-[14vh] text-center sm:px-8">
+      <div className="flex flex-wrap items-start justify-center gap-x-4 gap-y-5">
+        {shown.map((bot, i) => (
+          <motion.div
+            key={bot.id}
+            initial={{ opacity: 0, y: 14, scale: 0.7 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ type: "spring", duration: 0.5, bounce: 0.4, delay: 0.08 + i * 0.09 }}
+            className="flex w-[112px] flex-col items-center"
+          >
+            {/* glad to be here: a photo stays a photo, a face smiles. The
+                faces share a baseline, whatever their size. */}
+            <span className="flex h-[72px] items-end">
+              {bot.avatarAt ? (
+                <AgentAvatar bot={bot} size={i === 0 && first ? 72 : 60} />
+              ) : (
+                <BlokAvatar color={bot.color} shape={shapeForBot(bot)} expression="friendly" size={i === 0 && first ? 72 : 60} />
+              )}
+            </span>
+            <div className="mt-2 line-clamp-2 w-full text-balance text-body font-medium text-foreground">{bot.name}</div>
+            {bot.title && <div className="line-clamp-2 w-full text-small text-muted-foreground">{bot.title}</div>}
+          </motion.div>
+        ))}
+        {team.length > shown.length && (
+          <div className="flex h-[72px] items-end pb-5 text-body text-muted-foreground">+{team.length - shown.length}</div>
+        )}
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.26, ease: settleEase, delay: 0.12 + shown.length * 0.09 }}
+        className="flex w-full flex-col items-center"
+      >
+        <h1 className="mt-10 text-balance text-display font-semibold text-foreground">
+          {first ? "Meet your team" : nova ? `${nova.name} is ready` : "You're all set"}
+        </h1>
+        <p className="mt-2 max-w-[460px] text-pretty text-ui text-muted-foreground">
+          {first
+            ? made.length === 1
+              ? `${first.name} is ready, with a hello waiting for you.`
+              : `${namesOf(made.map((b) => b.name))} are ready. Each has a hello waiting for you.`
+            : nova
+              ? `Give an agent a job of its own. ${nova.name} can help in the meantime.`
+              : "Give an agent a job of its own."}
+        </p>
+        <div className="mt-8 flex w-full max-w-[320px] flex-col gap-2">
+          {first ? (
+            <Button ref={go} size="lg" variant="brand" onClick={() => onFinish({ select: first.id })}>
+              Say hi to {first.name}
+              <ArrowRight size={15} />
+            </Button>
+          ) : (
+            <>
+              <Button ref={go} size="lg" variant="brand" onClick={() => onFinish("picker")}>
+                Make your first agent
+                <ArrowRight size={15} />
+              </Button>
+              {nova && (
+                <Button size="lg" variant="ghost" onClick={() => onFinish({ select: nova.id })}>
+                  Start with {nova.name}
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </motion.div>
     </div>
   );
 }

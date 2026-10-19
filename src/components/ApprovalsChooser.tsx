@@ -72,7 +72,7 @@ export function ApprovalsChooser({
             className={cn(
               "flex items-start gap-3 rounded-xl border px-3 text-left transition-[border-color,background-color,scale] duration-150 ease-out active:scale-[0.99]",
               compact ? "py-2" : "py-2.5",
-              on ? "border-brand bg-brand-soft" : "border-border hover:border-foreground/25",
+              on ? "border-brand bg-brand-soft" : "border-border bg-card hover:border-foreground/25",
             )}
           >
             <span
