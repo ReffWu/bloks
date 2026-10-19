@@ -22,7 +22,6 @@ import { Loader2 } from "@/components/icons";
 import { Monitor } from "@/components/icons";
 import { Moon } from "@/components/icons";
 import { Power } from "@/components/icons";
-import { Settings2 as SettingsIcon } from "@/components/icons";
 import { X } from "@/components/icons";
 import { useStore, type Bot } from "@/state/store";
 import type { CuaPermissions } from "@/types/bridge";
@@ -390,15 +389,10 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   return (
     <aside className="fixed inset-0 z-50 flex w-full animate-panel-in flex-col bg-background md:static md:z-auto md:h-full md:w-[380px] md:max-w-[85vw] md:shrink-0 md:border-l">
       {/* Header */}
-      <div className="flex h-[52px] shrink-0 items-center justify-between border-b px-3">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => dispatch({ type: "toggleSettings", open: true })}
-          title="Agent settings"
-        >
-          <SettingsIcon size={16} />
-        </Button>
+      {/* The title and the way out, nothing else: the agent's settings
+          are one click away in the chat header already, and a second door
+          to them here only crowded the panel. */}
+      <div className="flex h-[52px] shrink-0 items-center justify-between border-b pl-4 pr-3">
         <span className="text-ui font-semibold text-foreground">Computer</span>
         <Button
           variant="ghost"
