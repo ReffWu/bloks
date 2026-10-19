@@ -86,7 +86,9 @@ process.on('message',(m:any)=>{
  source=source.replace(marker,marker+"\n    if (opts.admission && reportWait) await reportWait;\n    if (opts.admission && reportFault === 'before-persist') throw new Error('SYNTHETIC_SECRET_DO_NOT_PRINT');\n    if (opts.admission && reportFault === 'before-persist-status') throw Object.assign(new Error('SYNTHETIC_SECRET_DO_NOT_PRINT'), {status:409});");
  source=source.replace('  if (drain.on && !opts.carriedOn', "  if (opts.admission && reportFault === 'drain-transition') drain.start(30000);\n  if (drain.on && !opts.carriedOn");
  writeFileSync(host,source+'\n'+controls);
- const port=20000+Math.floor(Math.random()*20000),url='http://127.0.0.1:'+port;
+ // A random high port, taken again if another test's server already holds
+ // it (as startHarness does); the restart below keeps the one that worked.
+ let port=20000+Math.floor(Math.random()*20000),url='http://127.0.0.1:'+port;
  const spawnHost=()=>spawn(process.execPath,[host],{env:{HOME:home,USERPROFILE:home,PATH:'/nonexistent',BLOKS_PORT:String(port),BLOKS_TEST_PARENT_PID:String(process.pid),BLOKS_RETRY_WAIT_MS:'60000',BLOKS_STATIC_DIR:''},stdio:['ignore','pipe','pipe','ipc']});
  let child=spawnHost();let logs='';
  const watch=()=>{const launched=child;child.stdout?.on('data',x=>{if(child===launched)logs+=x});child.stderr?.on('data',x=>{if(child===launched)logs+=x});child.on('message',(x:any)=>{pending.get(x.id)?.(x);pending.delete(x.id)})};
@@ -113,7 +115,14 @@ process.on('message',(m:any)=>{
   rmSync(home,{recursive:true,force:true,maxRetries:10,retryDelay:100});
  });
  const ready=async()=>{if(child.exitCode!==null||child.signalCode!==null)throw new Error(logs.slice(-1200));if(!logs.includes('bloks server on '+url))return false;try{return (await fetch(url+'/api/health')).ok}catch{return false}};
- await until(ready,'isolated HTTP host did not start').catch(error=>{throw new Error(error.message+' '+logs.slice(-2500))});
+ for(let attempt=0;;attempt++){
+  const started=await until(async()=>{if(logs.includes('EADDRINUSE'))return 'taken';return (await ready())?'up':false},'isolated HTTP host did not start').catch(error=>{throw new Error(error.message+' '+logs.slice(-2500))});
+  if(started==='up')break;
+  if(attempt>=4)throw new Error('no free port for the isolated host '+logs.slice(-1200));
+  // the loser usually exits by itself; waiting on an exit already past would wait forever
+  if(child.exitCode===null&&child.signalCode===null){child.kill('SIGKILL');await new Promise(r=>child.once('exit',r))}
+  port=20000+Math.floor(Math.random()*20000);url='http://127.0.0.1:'+port;logs='';child=spawnHost();watch();
+ }
  const sender=(await request('POST','/api/bots',{name:'Synthetic sender'})).body.bot;
  const target=(await request('POST','/api/bots',{name:'Synthetic recipient'})).body.bot;
  await control('patch',{bot:target.id,patch:{hiredBy:sender.id}});
