@@ -55,7 +55,7 @@ export function TurnFoldLine({
     <div className={cn("flex flex-col items-start px-1.5", className)} data-turn-fold={fold.key}>
       <div
         className={cn(
-          "flex min-w-0 max-w-full items-center gap-1.5 text-[12px]",
+          "flex min-w-0 max-w-full items-center gap-1.5 text-small",
           // nothing was said to the person: quiet, like a quiet check-in
           fold.alone ? "text-muted-foreground/80" : "text-muted-foreground",
         )}

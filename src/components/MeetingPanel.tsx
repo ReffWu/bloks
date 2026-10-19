@@ -64,12 +64,12 @@ function Items({ meeting, onChanged }: { meeting: MeetingRow; onChanged: () => v
       {meeting.items.map((item, i) => {
         const agent = item.botId ? state.bots.find((b) => b.id === item.botId) : undefined;
         return (
-          <div key={i} className="flex items-start gap-2 rounded-lg border px-2.5 py-2 text-[12.5px]">
+          <div key={i} className="flex items-start gap-2 rounded-lg border px-2.5 py-2 text-body">
             <span className="shrink-0 font-medium text-foreground">{item.owner}</span>
             <span className="min-w-0 flex-1 text-muted-foreground">{item.text}</span>
             {agent &&
               (item.sentAt ? (
-                <span className="shrink-0 text-[11.5px] text-muted-foreground">Handed over</span>
+                <span className="shrink-0 text-small text-muted-foreground">Handed over</span>
               ) : (
                 <Button
                   size="sm"
@@ -86,7 +86,7 @@ function Items({ meeting, onChanged }: { meeting: MeetingRow; onChanged: () => v
           </div>
         );
       })}
-      {error && <div className="text-[12px] text-destructive">{error}</div>}
+      {error && <div className="text-small text-destructive">{error}</div>}
     </div>
   );
 }
@@ -197,10 +197,10 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
       >
         <div className="flex items-center justify-between border-b px-5 py-4">
           <div>
-            <div className="flex items-center gap-2 text-[16px] font-semibold text-foreground">
+            <div className="flex items-center gap-2 text-title font-semibold text-foreground">
               <AudioLines size={17} className="text-muted-foreground" /> Meeting notes
             </div>
-            <div className="mt-0.5 text-[13px] text-muted-foreground">
+            <div className="mt-0.5 text-body text-muted-foreground">
               {bot.name} listens on this Mac and writes it up when you stop. Nothing is recorded.
             </div>
           </div>
@@ -213,7 +213,7 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {!available ? (
-            <div className="rounded-xl border border-dashed px-4 py-8 text-center text-[13px] text-muted-foreground">
+            <div className="rounded-xl border border-dashed px-4 py-8 text-center text-body text-muted-foreground">
               Meeting notes need the Bloks app on a Mac, where the listening happens on the device.
             </div>
           ) : recording ? (
@@ -223,13 +223,13 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-destructive/60" />
                   <span className="relative inline-flex size-2.5 rounded-full bg-destructive" />
                 </span>
-                <span className="font-mono text-[13px] tabular-nums text-foreground">{clock(now - startedAt)}</span>
+                <span className="font-mono text-body tabular-nums text-foreground">{clock(now - startedAt)}</span>
                 <div className="h-1.5 w-28 overflow-hidden rounded-full bg-muted" aria-hidden>
                   <div className="h-full rounded-full bg-success transition-[width] duration-100" style={{ width: `${Math.round(level * 100)}%` }} />
                 </div>
               </div>
-              {notice && <div className="rounded-lg bg-warning/10 px-3 py-2 text-[12.5px] text-warning">{notice}</div>}
-              <div className="flex max-h-[320px] min-h-[120px] flex-col gap-1.5 overflow-y-auto rounded-xl border bg-muted/30 p-3 text-[13px] leading-relaxed">
+              {notice && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{notice}</div>}
+              <div className="flex max-h-[320px] min-h-[120px] flex-col gap-1.5 overflow-y-auto rounded-xl border bg-muted/30 p-3 text-body leading-relaxed">
                 {lines.length === 0 && !partial && <span className="text-muted-foreground">Listening. Start talking and the words appear here.</span>}
                 {lines.map((line, i) => (
                   <div key={i}>
@@ -249,11 +249,11 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What is the meeting? (optional)" className="text-[13px]" />
-              <label className="flex items-center justify-between gap-3 text-[13px] text-foreground">
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What is the meeting? (optional)" className="text-body" />
+              <label className="flex items-center justify-between gap-3 text-body text-foreground">
                 <span>
                   Also hear the other side of the call
-                  <span className="block text-[12px] text-muted-foreground">
+                  <span className="block text-small text-muted-foreground">
                     What your Mac plays, like Zoom or Meet. Needs Screen Recording permission.
                   </span>
                 </span>
@@ -261,18 +261,18 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
               </label>
               {past.length > 0 && (
                 <div className="mt-2">
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Earlier</div>
+                  <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">Earlier</div>
                   <div className="flex flex-col gap-3">
                     {past.slice(0, 5).map((m) => (
                       <div key={m.id} className="rounded-xl border p-3">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0 truncate text-[13px] font-medium text-foreground">{m.title || "A meeting"}</div>
-                          <div className="shrink-0 text-[11.5px] text-muted-foreground">
+                          <div className="min-w-0 truncate text-body font-medium text-foreground">{m.title || "A meeting"}</div>
+                          <div className="shrink-0 text-small text-muted-foreground">
                             {new Date(m.startedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                           </div>
                         </div>
                         {m.laneId && !m.items && (
-                          <div className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                          <div className="mt-1 flex items-center gap-1.5 text-small text-muted-foreground">
                             <Loader2 size={12} className="animate-spin" /> Writing the notes
                           </div>
                         )}
@@ -283,7 +283,7 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
                               dispatch({ type: "selectTask", botId: bot.id, taskId: m.laneId! });
                               close();
                             }}
-                            className="mt-2 text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                            className="mt-2 text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                           >
                             Read the notes
                           </button>
@@ -295,7 +295,7 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
               )}
             </div>
           )}
-          {error && <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">{error}</div>}
+          {error && <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>}
         </div>
 
         {available && (

@@ -102,8 +102,8 @@ function PlatformCard({
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <div className="flex items-center justify-between">
         <div className="min-w-0 pr-3">
-          <div className="text-[13.5px] font-semibold text-foreground">{name}</div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="text-ui font-semibold text-foreground">{name}</div>
+          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             Carry a shared room into a {name} channel. People there talk to the room's agents by naming
             them, and you let each person in. This computer connects out to {name}; nothing new listens on
             your network.
@@ -122,7 +122,7 @@ function PlatformCard({
         <div className="mt-3 space-y-2">
           {platform === "slack" ? (
             <>
-              <div className="text-[12px] leading-relaxed text-muted-foreground">
+              <div className="text-small leading-relaxed text-muted-foreground">
                 Create a Slack app with Socket Mode on, give its bot the scopes channels:history,
                 groups:history, channels:read, groups:read, chat:write and users:read, subscribe it to the
                 message.channels and message.groups events, and install it. Then paste the bot token and an
@@ -132,13 +132,13 @@ function PlatformCard({
                 value={botToken}
                 onChange={(e) => setBotToken(e.target.value)}
                 placeholder="Bot token, xoxb-..."
-                className="h-8 font-mono text-[12.5px]"
+                className="h-8 font-mono text-body"
               />
               <Input
                 value={appToken}
                 onChange={(e) => setAppToken(e.target.value)}
                 placeholder="App-level token, xapp-..."
-                className="h-8 font-mono text-[12.5px]"
+                className="h-8 font-mono text-body"
               />
               <Button size="sm" disabled={busy || !botToken.trim() || !appToken.trim()} onClick={() => post({ botToken, appToken })}>
                 {busy ? "Checking" : "Connect Slack"}
@@ -146,7 +146,7 @@ function PlatformCard({
             </>
           ) : (
             <>
-              <div className="text-[12px] leading-relaxed text-muted-foreground">
+              <div className="text-small leading-relaxed text-muted-foreground">
                 Create an application in the Discord developer portal, add a bot, switch on Message Content
                 Intent under Bot, invite it to your server with permission to read and send messages, and
                 paste its token.
@@ -156,7 +156,7 @@ function PlatformCard({
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                   placeholder="Bot token"
-                  className="h-8 font-mono text-[12.5px]"
+                  className="h-8 font-mono text-body"
                 />
                 <Button size="sm" disabled={busy || !token.trim()} onClick={() => post({ token })}>
                   {busy ? "Checking" : "Connect"}
@@ -167,20 +167,20 @@ function PlatformCard({
         </div>
       ) : (
         <div className="mt-3 flex items-center justify-between border-t pt-3">
-          <span className="text-[12px] text-muted-foreground">
+          <span className="text-small text-muted-foreground">
             {status.enabled ? STATE_LABEL[status.state] : "Switched off"}
             {status.enabled && status.state === "error" && status.detail ? `: ${status.detail}` : ""}
           </span>
           <button
             onClick={() => post({ forget: true })}
-            className="text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            className="text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
             Forget {name}
           </button>
         </div>
       )}
 
-      {error && <div className="mt-2 text-[11.5px] text-warning">{error}</div>}
+      {error && <div className="mt-2 text-small text-warning">{error}</div>}
     </div>
   );
 }
@@ -216,8 +216,8 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <div className="flex items-center justify-between">
         <div className="min-w-0 pr-3">
-          <div className="text-[13.5px] font-semibold text-foreground">WhatsApp</div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="text-ui font-semibold text-foreground">WhatsApp</div>
+          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             Carry a shared room into a WhatsApp group, through a WhatsApp Business number. People there talk to
             the room's agents by mentioning the number or naming an agent, and you let each person in.
           </div>
@@ -228,7 +228,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
       </div>
 
       {(status.configured || settingUp) && (
-      <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground">
+      <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-small leading-relaxed text-muted-foreground">
         Needs Bloks Cloud. Meta only delivers messages to a public address, so group messages reach this computer
         through Bloks Cloud, and unlike everything else it carries, they pass through readable: Meta sends them
         that way. Nothing is kept on the way.
@@ -241,7 +241,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
         </Button>
       ) : !status.configured ? (
         <div className="mt-3 space-y-2">
-          <div className="text-[12px] leading-relaxed text-muted-foreground">
+          <div className="text-small leading-relaxed text-muted-foreground">
             In Meta for Developers, add WhatsApp to a business app and a phone number. Paste that number's ID (not
             the number), a permanent access token from a system user, and the app secret from App settings, Basic.
           </div>
@@ -249,19 +249,19 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
             value={phoneNumberId}
             onChange={(e) => setPhoneNumberId(e.target.value)}
             placeholder="Phone number ID"
-            className="h-8 font-mono text-[12.5px]"
+            className="h-8 font-mono text-body"
           />
           <Input
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder="Access token"
-            className="h-8 font-mono text-[12.5px]"
+            className="h-8 font-mono text-body"
           />
           <Input
             value={appSecret}
             onChange={(e) => setAppSecret(e.target.value)}
             placeholder="App secret"
-            className="h-8 font-mono text-[12.5px]"
+            className="h-8 font-mono text-body"
           />
           <Button
             size="sm"
@@ -275,7 +275,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
         <>
           {status.webhookUrl && status.verifyToken && (
             <div className="mt-3 space-y-2">
-              <div className="text-[12px] leading-relaxed text-muted-foreground">
+              <div className="text-small leading-relaxed text-muted-foreground">
                 Last step, in your app's WhatsApp settings: under Webhooks, paste these two, then subscribe to{" "}
                 <span className="font-mono">messages</span>.
               </div>
@@ -284,13 +284,13 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
             </div>
           )}
           <div className="mt-3 flex items-center justify-between border-t pt-3">
-            <span className="text-[12px] text-muted-foreground">
+            <span className="text-small text-muted-foreground">
               {status.enabled ? STATE_LABEL[status.state] : "Switched off"}
               {status.number ? ` as ${status.number}` : ""}
             </span>
             <button
               onClick={() => post({ forget: true })}
-              className="text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              className="text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
               Forget WhatsApp
             </button>
@@ -298,7 +298,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
         </>
       )}
 
-      {error && <div className="mt-2 text-[11.5px] text-warning">{error}</div>}
+      {error && <div className="mt-2 text-small text-warning">{error}</div>}
     </div>
   );
 }
@@ -341,8 +341,8 @@ function EmailCard() {
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <div className="flex items-center justify-between">
         <div className="min-w-0 pr-3">
-          <div className="text-[13.5px] font-semibold text-foreground">Email</div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="text-ui font-semibold text-foreground">Email</div>
+          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             Give every agent an email address. Forward it an invoice, a newsletter or a thread and it gets to work; what
             it says back is emailed as the reply.
           </div>
@@ -355,7 +355,7 @@ function EmailCard() {
         />
       </div>
       {!status.cloud && !status.enabled && (
-        <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground">
+        <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-small leading-relaxed text-muted-foreground">
           Needs Bloks Cloud: mail reaches this computer through it. Turn it on under Bloks Cloud.
         </div>
       )}
@@ -367,7 +367,7 @@ function EmailCard() {
             )}
           </div>
           <div className="mt-3 border-t pt-3">
-            <div className="text-[12px] text-muted-foreground">
+            <div className="text-small text-muted-foreground">
               Who may write. Leave it empty and anyone with an address can; list addresses or @domains to allow only them.
               While it is empty, mail is answered in its own conversation and in words only: no tools, none of your apps,
               secrets, notes or past conversations, and only by agents on Claude Code or an API model.
@@ -377,7 +377,7 @@ function EmailCard() {
                 value={allow}
                 onChange={(e) => setAllow(e.target.value)}
                 placeholder="you@example.com, @yourcompany.com"
-                className="h-8 text-[12.5px]"
+                className="h-8 text-body"
               />
               <Button
                 size="sm"
@@ -389,13 +389,13 @@ function EmailCard() {
               </Button>
             </div>
           </div>
-          <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground">
+          <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-small leading-relaxed text-muted-foreground">
             Mail passes through Bloks Cloud readable, because email arrives that way; nothing is kept on the way. An agent
             can only reply to someone who wrote to it.
           </div>
         </>
       )}
-      {error && <div className="mt-2 text-[11.5px] text-warning">{error}</div>}
+      {error && <div className="mt-2 text-small text-warning">{error}</div>}
     </div>
   );
 }
@@ -404,8 +404,8 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex items-center gap-2">
-      <span className="w-[92px] shrink-0 text-[11.5px] text-muted-foreground">{label}</span>
-      <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1 font-mono text-[11.5px] text-foreground">
+      <span className="w-[92px] shrink-0 text-small text-muted-foreground">{label}</span>
+      <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1 font-mono text-small text-foreground">
         {value}
       </code>
       <Button

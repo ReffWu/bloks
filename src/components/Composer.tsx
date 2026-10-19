@@ -134,7 +134,7 @@ function VoiceMeter({ level }: { level: number }) {
 
 function AttachmentChip({ attachment: a, onRemove }: { attachment: Attachment; onRemove?: () => void }) {
   return (
-    <span className="flex max-w-[240px] items-center gap-1.5 rounded-xl border bg-muted/50 py-1 pl-1.5 pr-1 text-[12px] text-foreground">
+    <span className="flex max-w-[240px] items-center gap-1.5 rounded-xl border bg-muted/50 py-1 pl-1.5 pr-1 text-small text-foreground">
       {a.kind === "image" ? (
         <img src={`/api/attachments/${attachmentBasename(a.path)}`} alt={a.name} className="size-7 shrink-0 rounded-lg object-cover" />
       ) : (
@@ -540,7 +540,7 @@ export function Composer({
       <div className="px-4 pb-4 pt-1 md:px-6 md:pb-5">
         <div className="mx-auto flex max-w-[var(--transcript-width,760px)] items-center gap-3 rounded-2xl border bg-muted/40 px-3.5 py-3">
           <Archive size={15} className="shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 text-[13px] leading-relaxed text-muted-foreground">
+          <span className="min-w-0 flex-1 text-body leading-relaxed text-muted-foreground">
             {bot.archivedBy
               ? `${state.bots.find((b) => b.id === bot.archivedBy)?.name ?? "The agent that hired it"} archived ${bot.name}${bot.archiveNote ? `: "${bot.archiveNote}"` : ""}. `
               : `${bot.name} is archived. `}
@@ -564,7 +564,7 @@ export function Composer({
       <div className="px-4 pb-4 pt-1 md:px-6 md:pb-5">
         <div className="mx-auto flex max-w-[var(--transcript-width,760px)] items-center gap-3 rounded-2xl border border-warning/40 bg-warning/5 px-3.5 py-3">
           <Hand size={15} className="shrink-0 text-warning" />
-          <span className="min-w-0 flex-1 text-[13px] leading-relaxed text-foreground">
+          <span className="min-w-0 flex-1 text-body leading-relaxed text-foreground">
             You have {bot.name}&rsquo;s computer ({bot.held.why}). It will not start anything until you
             hand the wheel back.
           </span>
@@ -598,7 +598,7 @@ export function Composer({
       {dropping && (
         // the whole window is the target, so say so where the eye is
         <div className="pointer-events-none fixed inset-2 z-50 flex animate-pop-in items-center justify-center rounded-2xl border-2 border-dashed border-brand/50 bg-background/70">
-          <span className="rounded-xl bg-popover px-3.5 py-2 text-[13px] text-foreground shadow-lg shadow-(color:--shadow-color)">
+          <span className="rounded-xl bg-popover px-3.5 py-2 text-body text-foreground shadow-lg shadow-(color:--shadow-color)">
             Drop to attach to {bot.name}
           </span>
         </div>
@@ -611,7 +611,7 @@ export function Composer({
       {recoveries.length > 0 && (
         <section aria-label="Saved submissions" className="mx-auto mb-2 max-h-64 max-w-[var(--transcript-width,760px)] space-y-2 overflow-y-auto">
           {recoveries.map((item) => (
-            <div key={item.id} role="group" aria-label="Saved submission" className="rounded-xl border bg-card px-3 py-2 text-[12px]">
+            <div key={item.id} role="group" aria-label="Saved submission" className="rounded-xl border bg-card px-3 py-2 text-small">
               <p className="font-medium">Saved submission</p>
               <p className="text-muted-foreground">Check the conversation before sending again.</p>
               {item.draft.text && <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap break-words">{item.draft.text}</p>}
@@ -634,7 +634,7 @@ export function Composer({
         </section>
       )}
       {attachNotice && (
-        <div className="mx-auto mb-2 flex max-w-[var(--transcript-width,760px)] animate-rise-in items-center gap-2 rounded-xl bg-warning/10 px-3 py-2 text-[12px] text-warning">
+        <div className="mx-auto mb-2 flex max-w-[var(--transcript-width,760px)] animate-rise-in items-center gap-2 rounded-xl bg-warning/10 px-3 py-2 text-small text-warning">
           <span className="min-w-0 flex-1">{attachNotice}</span>
           <button
             onClick={() => setAttachNotice(null)}
@@ -654,7 +654,7 @@ export function Composer({
       )}
       {rehearse && (
         <div className="mx-auto mb-2 max-w-[var(--transcript-width,760px)] animate-rise-in rounded-xl border bg-card px-3 py-2">
-          <div className="flex items-center gap-2 text-[12.5px] text-foreground">
+          <div className="flex items-center gap-2 text-body text-foreground">
             <FlaskConical size={14} className="shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1">
               <span className="font-medium">Rehearse.</span>{" "}
@@ -675,7 +675,7 @@ export function Composer({
           </div>
           {others.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-[11.5px] text-muted-foreground">Compare with</span>
+              <span className="text-small text-muted-foreground">Compare with</span>
               {others.slice(0, 8).map((other) => {
                 const on = compareWith.includes(other.id);
                 return (
@@ -688,7 +688,7 @@ export function Composer({
                       )
                     }
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-[12px] transition-colors",
+                      "flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-small transition-colors",
                       on ? "border-foreground/40 bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -699,11 +699,11 @@ export function Composer({
               })}
             </div>
           )}
-          {rehearseError && <div className="mt-1.5 text-[12px] text-destructive">{rehearseError}</div>}
+          {rehearseError && <div className="mt-1.5 text-small text-destructive">{rehearseError}</div>}
         </div>
       )}
       {speechError && (
-        <div className="mx-auto mb-2 flex max-w-[var(--transcript-width,760px)] animate-rise-in items-center gap-2 rounded-xl bg-warning/10 px-3 py-2 text-[12px] text-warning">
+        <div className="mx-auto mb-2 flex max-w-[var(--transcript-width,760px)] animate-rise-in items-center gap-2 rounded-xl bg-warning/10 px-3 py-2 text-small text-warning">
           <span className="min-w-0 flex-1">{speechError}</span>
           {(micDenied || speechPane === "speech") && (
             <button
@@ -730,7 +730,7 @@ export function Composer({
             className="overflow-hidden rounded-xl border bg-popover p-1 shadow-lg shadow-(color:--shadow-color)"
           >
             {offered.length === 0 ? (
-              <div className="px-2 py-1.5 text-[12.5px] text-muted-foreground">
+              <div className="px-2 py-1.5 text-body text-muted-foreground">
                 {bot.name} has no skills yet. Attach some from Skills, or in {bot.name}&rsquo;s settings.
               </div>
             ) : (
@@ -750,11 +750,11 @@ export function Composer({
                     i === pick ? "bg-accent" : "hover:bg-accent/60",
                   )}
                 >
-                  <span className="shrink-0 font-mono text-[12.5px] font-medium text-brand-ink">{c.prefix ?? "/"}{c.id}</span>
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground">
+                  <span className="shrink-0 font-mono text-body font-medium text-brand-ink">{c.prefix ?? "/"}{c.id}</span>
+                  <span className="min-w-0 flex-1 truncate text-body text-muted-foreground">
                     {c.description || c.name}
                   </span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground/70">
+                  <span className="shrink-0 text-caption text-muted-foreground/70">
                     {c.source === "bloks" ? "Bloks" : c.source === "library" ? "Agent skill" : c.kind === "command" ? "Engine command" : "Engine skill"}
                   </span>
                 </button>
@@ -794,7 +794,7 @@ export function Composer({
         <div
           data-skill-layer="1"
           aria-hidden
-          className="pointer-events-none absolute inset-0 overflow-hidden px-1 py-1 text-[14.5px] leading-relaxed text-transparent [overflow-wrap:break-word] [white-space:pre-wrap]"
+          className="pointer-events-none absolute inset-0 overflow-hidden px-1 py-1 text-lead leading-relaxed text-transparent [overflow-wrap:break-word] [white-space:pre-wrap]"
         >
           <div>
             {segments(text, commandIds, dollarIds).map((run, i) =>
@@ -913,7 +913,7 @@ export function Composer({
                   ? `${bot.name} is waiting for your answer above.`
                   : `Message ${bot.name}`
           }
-          className="relative block w-full min-w-0 resize-none bg-transparent px-1 py-1 text-[14.5px] leading-relaxed text-foreground outline-none placeholder:truncate placeholder:text-muted-foreground placeholder-shown:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]"
+          className="relative block w-full min-w-0 resize-none bg-transparent px-1 py-1 text-lead leading-relaxed text-foreground outline-none placeholder:truncate placeholder:text-muted-foreground placeholder-shown:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]"
         />
         </div>
         <button

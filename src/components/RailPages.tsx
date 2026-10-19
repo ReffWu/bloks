@@ -36,9 +36,9 @@ function OverviewPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1200px] px-6 pb-16 pt-9 max-md:pt-16 lg:px-10">
           <header className="mb-8">
-            <p className="text-[13px] text-muted-foreground">{today}</p>
-            <h1 className="mt-1 text-balance text-[28px] font-semibold tracking-tight text-foreground">{greeting()}</h1>
-            <p className="mt-1.5 text-pretty text-[14px] text-muted-foreground">
+            <p className="text-body text-muted-foreground">{today}</p>
+            <h1 className="mt-1 text-balance text-display font-semibold text-foreground">{greeting()}</h1>
+            <p className="mt-1.5 text-pretty text-ui text-muted-foreground">
               {now.length ? `${now.join(", ")}.` : "Nothing is running and nothing is waiting on you."}
             </p>
           </header>

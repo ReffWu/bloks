@@ -90,7 +90,7 @@ export function Reactions({
             onClick={() => onToggle(emoji)}
             title={who.map(nameOf).join(", ")}
             className={cn(
-              "flex items-center gap-1 rounded-full border px-1.5 py-[1px] text-[12px] leading-5 transition-colors duration-150 active:scale-95",
+              "flex items-center gap-1 rounded-full border px-1.5 py-[1px] text-small leading-5 transition-colors duration-150 active:scale-95",
               mine
                 ? "border-brand/40 bg-brand-soft text-foreground"
                 : "border-border bg-muted/60 text-muted-foreground hover:border-foreground/25",
@@ -212,7 +212,7 @@ export function MessageActionBar({
                 onReact(emoji);
                 setPicking(false);
               }}
-              className="flex size-7 items-center justify-center rounded-full text-[15px] transition-transform duration-150 hover:scale-110 hover:bg-accent active:scale-95"
+              className="flex size-7 items-center justify-center rounded-full text-lead transition-transform duration-150 hover:scale-110 hover:bg-accent active:scale-95"
             >
               {emoji}
             </button>
@@ -254,7 +254,7 @@ export function ReplyContext({
           : "border-brand/50 bg-foreground/[0.05]",
       )}
     >
-      <span className="min-w-0 text-[11.5px] leading-snug">
+      <span className="min-w-0 text-small leading-snug">
         <span className={cn("font-medium", onDark ? "text-primary-foreground" : "text-brand-ink")}>
           {replyTo.author}
         </span>
@@ -276,7 +276,7 @@ export function ReplyChip({ draft, onClear }: { draft: ReplyDraft; onClear: () =
   return (
     <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft px-3 py-1.5">
       <CornerUpLeft size={13} className="shrink-0 text-brand-ink" />
-      <span className="min-w-0 flex-1 text-[12px] leading-snug">
+      <span className="min-w-0 flex-1 text-small leading-snug">
         <span className="font-medium text-brand-ink">Replying to {draft.author}</span>
         <span className="block truncate text-muted-foreground">{draft.excerpt}</span>
       </span>
@@ -324,10 +324,10 @@ export function ForwardDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[70vh] w-full max-w-[400px] flex-col gap-0 overflow-hidden p-0">
         <div className="flex h-[52px] shrink-0 items-center border-b px-5">
-          <DialogTitle className="text-[14.5px]">Forward to…</DialogTitle>
+          <DialogTitle className="text-lead">Forward to…</DialogTitle>
         </div>
         <div className="border-b bg-muted/40 px-5 py-2.5">
-          <div className="line-clamp-2 text-[12px] text-muted-foreground">
+          <div className="line-clamp-2 text-small text-muted-foreground">
             <span className="font-medium text-foreground">{author}:</span> {excerptOf(message)}
           </div>
         </div>
@@ -341,10 +341,10 @@ export function ForwardDialog({
               <span className="flex size-7 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 <Users size={14} />
               </span>
-              <span className="flex-1 truncate text-[13.5px] font-medium text-foreground">
+              <span className="flex-1 truncate text-ui font-medium text-foreground">
                 {room.name}
               </span>
-              {sent === room.id && <span className="text-[11.5px] text-success">Sent</span>}
+              {sent === room.id && <span className="text-small text-success">Sent</span>}
             </button>
           ))}
           {agents.map((bot) => (
@@ -355,16 +355,16 @@ export function ForwardDialog({
             >
               <AgentAvatar bot={bot} size={28} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13.5px] font-medium text-foreground">
+                <span className="block truncate text-ui font-medium text-foreground">
                   {bot.name}
                 </span>
                 {bot.title && (
-                  <span className="block truncate text-[11.5px] text-muted-foreground">
+                  <span className="block truncate text-small text-muted-foreground">
                     {bot.title}
                   </span>
                 )}
               </span>
-              {sent === bot.id && <span className="text-[11.5px] text-success">Sent</span>}
+              {sent === bot.id && <span className="text-small text-success">Sent</span>}
             </button>
           ))}
         </div>

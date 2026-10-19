@@ -170,8 +170,8 @@ const pill =
 function SectionTitle({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
   return (
     <div className="mb-4 mt-10 flex items-center justify-between gap-4 border-b pb-3">
-      <h2 className="text-[15px] font-semibold text-foreground">{children}</h2>
-      {aside && <div className="flex shrink-0 items-center gap-2 text-[12.5px] text-muted-foreground">{aside}</div>}
+      <h2 className="text-lead font-semibold text-foreground">{children}</h2>
+      {aside && <div className="flex shrink-0 items-center gap-2 text-body text-muted-foreground">{aside}</div>}
     </div>
   );
 }
@@ -193,8 +193,8 @@ function PageHead({
       <div className="flex min-w-0 max-w-[640px] items-start gap-4">
         <span className="mt-0.5 shrink-0">{mark}</span>
         <div className="min-w-0">
-          <h1 className="truncate text-balance text-[28px] font-semibold tracking-tight text-foreground">{title}</h1>
-          <p className="mt-1.5 text-pretty text-[14px] leading-relaxed text-muted-foreground">{says}</p>
+          <h1 className="truncate text-balance text-display font-semibold text-foreground">{title}</h1>
+          <p className="mt-1.5 text-pretty text-ui leading-relaxed text-muted-foreground">{says}</p>
         </div>
       </div>
       {children && <div className="flex items-center gap-1.5">{children}</div>}
@@ -243,7 +243,7 @@ function SearchField({
         onKeyDown={(e) => e.key === "Escape" && (onChange(""), e.currentTarget.blur())}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="min-w-0 flex-1 bg-transparent text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
+        className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
       />
       {value && (
         <button
@@ -294,14 +294,14 @@ function BudgetMeter({ stats, who }: { stats: Stats | null; who: string }) {
     <div className="rounded-2xl border bg-card p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-baseline gap-2">
-          <span className="text-[26px] font-semibold tabular-nums tracking-tight text-foreground">
+          <span className="text-display font-semibold tabular-nums text-foreground">
             {Math.min(100, Math.round(Math.max(lineShare, byteShare) * 100))}%
           </span>
-          <span className="text-[13px] text-muted-foreground">of what a turn loads</span>
+          <span className="text-body text-muted-foreground">of what a turn loads</span>
         </div>
         <span
           className={cn(
-            "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium",
+            "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-small font-medium",
             overall === "cut"
               ? "bg-destructive/10 text-destructive"
               : overall === "near"
@@ -315,7 +315,7 @@ function BudgetMeter({ stats, who }: { stats: Stats | null; who: string }) {
       </div>
       <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
         <div>
-          <div className="mb-1.5 flex items-baseline justify-between text-[12.5px]">
+          <div className="mb-1.5 flex items-baseline justify-between text-body">
             <span className="text-muted-foreground">Lines</span>
             <span className="tabular-nums text-foreground">
               {stats.lines} <span className="text-muted-foreground">of {stats.maxLines}</span>
@@ -324,7 +324,7 @@ function BudgetMeter({ stats, who }: { stats: Stats | null; who: string }) {
           <Bar share={lineShare} tone={tone(lineShare)} />
         </div>
         <div>
-          <div className="mb-1.5 flex items-baseline justify-between text-[12.5px]">
+          <div className="mb-1.5 flex items-baseline justify-between text-body">
             <span className="text-muted-foreground">Size</span>
             <span className="tabular-nums text-foreground">
               {size(stats.bytes)} <span className="text-muted-foreground">of {size(stats.maxBytes)}</span>
@@ -334,7 +334,7 @@ function BudgetMeter({ stats, who }: { stats: Stats | null; who: string }) {
         </div>
       </div>
       {overall !== "ok" && (
-        <p className="mt-4 text-pretty text-[12.5px] leading-relaxed text-muted-foreground">
+        <p className="mt-4 text-pretty text-body leading-relaxed text-muted-foreground">
           {overall === "cut"
             ? `Only the first part of MEMORY.md reaches ${who} each turn; the rest is cut. Trim it, or move detail into a topic file.`
             : `MEMORY.md is close to what a turn loads. Past the limit, the end of it stops reaching ${who}.`}
@@ -440,15 +440,15 @@ function CoreEditor({
     >
       <div className="flex min-h-12 flex-wrap items-center gap-2 border-b px-4 py-2">
         <FileText size={15} className="shrink-0 text-muted-foreground" />
-        <span className="font-mono text-[12.5px] text-foreground">{label}</span>
+        <span className="font-mono text-body text-foreground">{label}</span>
         {base === null ? (
           <Loader2 size={13} className="animate-spin text-muted-foreground" />
         ) : dirty ? (
-          <span className="flex items-center gap-1.5 text-[12px] text-warning">
+          <span className="flex items-center gap-1.5 text-small text-warning">
             <span className="size-1.5 rounded-full bg-warning" /> Unsaved changes
           </span>
         ) : savedAt ? (
-          <span className="flex items-center gap-1 text-[12px] text-success">
+          <span className="flex items-center gap-1 text-small text-success">
             <Check size={12} /> Saved
           </span>
         ) : null}
@@ -461,11 +461,11 @@ function CoreEditor({
         <Button size="sm" onClick={save} disabled={!dirty || saving}>
           {saving && <Loader2 size={12} className="animate-spin" />}
           Save
-          <span className="hidden text-[11px] opacity-60 sm:inline">⌘S</span>
+          <span className="hidden text-caption opacity-60 sm:inline">⌘S</span>
         </Button>
       </div>
       {newer !== null && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-brand-soft/40 px-4 py-2 text-[12.5px] text-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-brand-soft/40 px-4 py-2 text-body text-foreground">
           <span>This changed while you were editing.</span>
           <button onClick={discard} className="font-medium text-brand-ink underline-offset-2 hover:underline">
             Load the new version
@@ -489,9 +489,9 @@ function CoreEditor({
         disabled={base === null}
         placeholder={placeholder}
         aria-label={label}
-        className="block max-h-[68vh] min-h-[300px] w-full resize-none overflow-y-auto bg-transparent px-6 py-5 font-mono text-[13px] leading-[1.75] text-foreground outline-none [field-sizing:content] placeholder:font-sans placeholder:text-muted-foreground"
+        className="block max-h-[68vh] min-h-[300px] w-full resize-none overflow-y-auto bg-transparent px-6 py-5 font-mono text-body leading-[1.75] text-foreground outline-none [field-sizing:content] placeholder:font-sans placeholder:text-muted-foreground"
       />
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-4 py-2 text-[12px] text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-4 py-2 text-small text-muted-foreground">
         <span className="tabular-nums">
           {plural(lines, "line")} · {size(bytes)}
         </span>
@@ -570,8 +570,8 @@ function TopicDialog({ bot, name, onClose }: { bot: Bot; name: string | null; on
     <Dialog open={name !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[86vh] max-w-[760px] flex-col gap-0 p-0">
         <div className="border-b px-6 pb-4 pt-5 pr-12">
-          <DialogTitle className="text-[18px]">{name ? topicTitle(name) : ""}</DialogTitle>
-          <DialogDescription className="mt-1 font-mono text-[12px]">memory/{name}</DialogDescription>
+          <DialogTitle className="text-title">{name ? topicTitle(name) : ""}</DialogTitle>
+          <DialogDescription className="mt-1 font-mono text-small">memory/{name}</DialogDescription>
         </div>
         <textarea
           value={draft}
@@ -586,11 +586,11 @@ function TopicDialog({ bot, name, onClose }: { bot: Bot; name: string | null; on
           disabled={base === null}
           aria-label={name ?? "Topic"}
           placeholder="Empty topic."
-          className="block min-h-[320px] w-full flex-1 resize-none overflow-y-auto bg-transparent px-6 py-5 font-mono text-[13px] leading-[1.75] text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground"
+          className="block min-h-[320px] w-full flex-1 resize-none overflow-y-auto bg-transparent px-6 py-5 font-mono text-body leading-[1.75] text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground"
         />
         <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3">
           {forgetting ? (
-            <span className="flex items-center gap-2 text-[13px] text-foreground">
+            <span className="flex items-center gap-2 text-body text-foreground">
               Forget this topic?
               <Button size="sm" variant="destructive" onClick={forget} disabled={busy}>
                 Forget
@@ -604,7 +604,7 @@ function TopicDialog({ bot, name, onClose }: { bot: Bot; name: string | null; on
               <Trash2 size={13} /> Forget
             </Button>
           )}
-          <span className="min-w-0 flex-1 truncate text-[12px]">
+          <span className="min-w-0 flex-1 truncate text-small">
             {error ? (
               <span className="text-destructive">{error}</span>
             ) : saved && !dirty ? (
@@ -677,11 +677,11 @@ function NewTopicDialog({ bot, open, onClose, onMade }: { bot: Bot; open: boolea
             spellCheck={false}
             placeholder="What to remember about it (optional)"
             aria-label="What the topic says"
-            className="min-h-[140px] w-full resize-none rounded-lg border bg-transparent px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground focus:border-ring/60"
+            className="min-h-[140px] w-full resize-none rounded-lg border bg-transparent px-3 py-2.5 font-mono text-body leading-relaxed text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground focus:border-ring/60"
           />
-          {error && <p className="text-[12.5px] text-destructive">{error}</p>}
+          {error && <p className="text-body text-destructive">{error}</p>}
           <div className="flex items-center justify-between gap-3">
-            <span className="truncate font-mono text-[12px] text-muted-foreground">{file ? `memory/${file}` : ""}</span>
+            <span className="truncate font-mono text-small text-muted-foreground">{file ? `memory/${file}` : ""}</span>
             <Button onClick={make} disabled={!file || busy}>
               {busy && <Loader2 size={13} className="animate-spin" />}
               Create
@@ -721,11 +721,11 @@ function Topics({ bot, stats, focus }: { bot: Bot; stats: Stats | null; focus: F
                   <FileText size={16} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-[14px] font-medium text-foreground">{topicTitle(topic.name)}</span>
-                  <span className="block truncate font-mono text-[11.5px] text-muted-foreground">{topic.name}</span>
+                  <span className="block truncate text-ui font-medium text-foreground">{topicTitle(topic.name)}</span>
+                  <span className="block truncate font-mono text-small text-muted-foreground">{topic.name}</span>
                 </span>
               </span>
-              <span className="mt-4 flex items-center justify-between gap-2 text-[12px] text-muted-foreground">
+              <span className="mt-4 flex items-center justify-between gap-2 text-small text-muted-foreground">
                 <span className="tabular-nums">
                   {plural(topic.lines, "line")} · {size(topic.bytes)}
                 </span>
@@ -735,7 +735,7 @@ function Topics({ bot, stats, focus }: { bot: Bot; stats: Stats | null; focus: F
           ))}
           <button
             onClick={() => setCreating(true)}
-            className="flex min-h-[104px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed text-[13px] text-muted-foreground outline-none transition-[background-color,color,border-color] duration-150 hover:border-foreground/25 hover:bg-accent/30 hover:text-foreground"
+            className="flex min-h-[104px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed text-body text-muted-foreground outline-none transition-[background-color,color,border-color] duration-150 hover:border-foreground/25 hover:bg-accent/30 hover:text-foreground"
           >
             <Plus size={17} />
             New topic
@@ -743,7 +743,7 @@ function Topics({ bot, stats, focus }: { bot: Bot; stats: Stats | null; focus: F
         </div>
       )}
       {stats !== null && topics.length === 0 && (
-        <p className="mt-3 text-[12.5px] leading-relaxed text-muted-foreground">
+        <p className="mt-3 text-body leading-relaxed text-muted-foreground">
           No topics yet. {bot.name} makes them as it learns, for detail that does not need to load every turn.
         </p>
       )}
@@ -794,14 +794,14 @@ function Timeline({ owner }: { owner: Owner }) {
 
   if (entries === null) {
     return (
-      <div className="flex items-center gap-2 py-6 text-[13px] text-muted-foreground">
+      <div className="flex items-center gap-2 py-6 text-body text-muted-foreground">
         <Loader2 size={14} className="animate-spin" /> Reading the journal
       </div>
     );
   }
   if (entries.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed px-6 py-10 text-center text-[13px] leading-relaxed text-muted-foreground">
+      <div className="rounded-2xl border border-dashed px-6 py-10 text-center text-body leading-relaxed text-muted-foreground">
         {owner.kind === "agent"
           ? `Nothing yet. When ${owner.bot.name} writes to its memory, or you edit it, each change shows up here with a way back.`
           : "Nothing yet. Each change you make shows up here with a way back."}
@@ -814,7 +814,7 @@ function Timeline({ owner }: { owner: Owner }) {
   let lastDay = "";
   return (
     <div>
-      {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3.5 py-2 text-[12.5px] text-destructive">{error}</div>}
+      {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3.5 py-2 text-body text-destructive">{error}</div>}
       <ol className="relative">
         <span aria-hidden className="absolute bottom-3 left-[15px] top-3 w-px bg-border" />
         {shown.map((entry) => {
@@ -826,7 +826,7 @@ function Timeline({ owner }: { owner: Owner }) {
           return (
             <li key={entry.id} className="relative">
               {heading && (
-                <div className="relative mb-2 ml-11 pt-1 text-[12px] font-medium text-muted-foreground first:pt-0">{heading}</div>
+                <div className="relative mb-2 ml-11 pt-1 text-small font-medium text-muted-foreground first:pt-0">{heading}</div>
               )}
               <div className="flex gap-3 pb-3">
                 <span className="relative z-[1] flex size-8 shrink-0 items-center justify-center rounded-full bg-background">
@@ -847,11 +847,11 @@ function Timeline({ owner }: { owner: Owner }) {
                       className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-2.5 text-left outline-none"
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13.5px] text-foreground">
+                        <span className="block truncate text-ui text-foreground">
                           <span className="font-medium">{who}</span> {verb}{" "}
-                          <span className="font-mono text-[12.5px]">{entry.file}</span>
+                          <span className="font-mono text-body">{entry.file}</span>
                         </span>
-                        <span className="mt-0.5 flex items-center gap-2 text-[12px] text-muted-foreground">
+                        <span className="mt-0.5 flex items-center gap-2 text-small text-muted-foreground">
                           <span>{new Date(entry.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
                           {!entry.big && (entry.added > 0 || entry.removed > 0) && (
                             <span className="tabular-nums">
@@ -891,7 +891,7 @@ function Timeline({ owner }: { owner: Owner }) {
       {!all && entries.length > SHOWN && (
         <button
           onClick={() => setAll(true)}
-          className="ml-11 mt-1 text-[13px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          className="ml-11 mt-1 text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
         >
           Show {plural(entries.length - SHOWN, "earlier change")}
         </button>
@@ -922,13 +922,13 @@ function HitRow({ hit, owner, onOpen, showOwner }: { hit: Hit; owner?: Bot; onOp
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-2">
           {showOwner && (
-            <span className="truncate text-[13px] font-medium text-foreground">
+            <span className="truncate text-body font-medium text-foreground">
               {hit.botId === "shared" ? "Shared" : (owner?.name ?? "An agent")}
             </span>
           )}
-          <span className="truncate font-mono text-[11.5px] text-muted-foreground">{hit.file}</span>
+          <span className="truncate font-mono text-small text-muted-foreground">{hit.file}</span>
         </span>
-        <span className="mt-0.5 line-clamp-2 text-[12.5px] leading-relaxed text-muted-foreground">{hit.text}</span>
+        <span className="mt-0.5 line-clamp-2 text-body leading-relaxed text-muted-foreground">{hit.text}</span>
       </span>
     </button>
   );
@@ -999,10 +999,10 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
           <div className="mt-5 flex flex-col gap-4">
             <div className="flex items-start gap-3 rounded-xl border bg-card p-4">
               <Check size={16} className="mt-0.5 shrink-0 text-success" />
-              <div className="text-[13.5px] leading-relaxed text-foreground">
+              <div className="text-ui leading-relaxed text-foreground">
                 {done.copied ? `Copied ${plural(done.copied, "file")}. Each is in Recent changes, with Undo.` : "Nothing new to copy."}
                 {done.skipped.length > 0 && (
-                  <ul className="mt-1.5 text-[12.5px] text-muted-foreground">
+                  <ul className="mt-1.5 text-body text-muted-foreground">
                     {done.skipped.map((line) => (
                       <li key={line}>{line}</li>
                     ))}
@@ -1016,7 +1016,7 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
           </div>
         ) : !from ? (
           <div className="mt-4 flex min-h-0 flex-col gap-0.5 overflow-y-auto">
-            {others.length === 0 && <p className="py-6 text-[13px] text-muted-foreground">There is no other agent to copy from yet.</p>}
+            {others.length === 0 && <p className="py-6 text-body text-muted-foreground">There is no other agent to copy from yet.</p>}
             {others.map((other) => (
               <button
                 key={other.id}
@@ -1025,8 +1025,8 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
               >
                 <AgentAvatar bot={other} size={30} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-medium text-foreground">{other.name}</span>
-                  {other.title && <span className="block truncate text-[12.5px] text-muted-foreground">{other.title}</span>}
+                  <span className="block truncate text-ui font-medium text-foreground">{other.name}</span>
+                  {other.title && <span className="block truncate text-body text-muted-foreground">{other.title}</span>}
                 </span>
               </button>
             ))}
@@ -1035,22 +1035,22 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
           <div className="mt-4 flex min-h-0 flex-1 flex-col">
             <button
               onClick={() => setFrom(null)}
-              className="mb-3 flex items-center gap-2 self-start rounded-lg px-1.5 py-1 text-[13px] text-muted-foreground outline-none hover:text-foreground"
+              className="mb-3 flex items-center gap-2 self-start rounded-lg px-1.5 py-1 text-body text-muted-foreground outline-none hover:text-foreground"
             >
               <AgentAvatar bot={from} size={20} />
               {from.name}
-              <span className="text-[12px]">· change</span>
+              <span className="text-small">· change</span>
             </button>
             <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border">
               {source === null ? (
-                <div className="flex items-center gap-2 px-4 py-6 text-[13px] text-muted-foreground">
+                <div className="flex items-center gap-2 px-4 py-6 text-body text-muted-foreground">
                   <Loader2 size={14} className="animate-spin" /> Reading {from.name}'s memory
                 </div>
               ) : (
                 <>
-                  <div className="border-b bg-muted/30 px-4 py-2 text-[12px] font-medium text-muted-foreground">Topics</div>
+                  <div className="border-b bg-muted/30 px-4 py-2 text-small font-medium text-muted-foreground">Topics</div>
                   {source.topics.length === 0 ? (
-                    <p className="px-4 py-3 text-[13px] text-muted-foreground">No topics.</p>
+                    <p className="px-4 py-3 text-body text-muted-foreground">No topics.</p>
                   ) : (
                     source.topics.map((topic) => (
                       <label key={topic.name} className="flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-accent/40">
@@ -1060,12 +1060,12 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
                           onChange={() => setTopics((set) => flip(set, topic.name))}
                           className="size-4 shrink-0 accent-(--brand)"
                         />
-                        <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-foreground">{topic.name}</span>
-                        <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">{size(topic.bytes)}</span>
+                        <span className="min-w-0 flex-1 truncate font-mono text-body text-foreground">{topic.name}</span>
+                        <span className="shrink-0 text-small tabular-nums text-muted-foreground">{size(topic.bytes)}</span>
                       </label>
                     ))
                   )}
-                  <div className="flex items-center justify-between border-y bg-muted/30 px-4 py-2 text-[12px] font-medium text-muted-foreground">
+                  <div className="flex items-center justify-between border-y bg-muted/30 px-4 py-2 text-small font-medium text-muted-foreground">
                     <span>Lines of MEMORY.md</span>
                     {coreLines.length > 0 && (
                       <button
@@ -1077,7 +1077,7 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
                     )}
                   </div>
                   {coreLines.length === 0 ? (
-                    <p className="px-4 py-3 text-[13px] text-muted-foreground">MEMORY.md is empty.</p>
+                    <p className="px-4 py-3 text-body text-muted-foreground">MEMORY.md is empty.</p>
                   ) : (
                     coreLines.map((line) => (
                       <label key={line.at} className="flex cursor-pointer items-start gap-3 px-4 py-1.5 hover:bg-accent/40">
@@ -1087,7 +1087,7 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
                           onChange={() => setLines((set) => flip(set, line.at))}
                           className="mt-[3px] size-4 shrink-0 accent-(--brand)"
                         />
-                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-relaxed text-foreground">
+                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-body leading-relaxed text-foreground">
                           {line.text}
                         </span>
                       </label>
@@ -1096,9 +1096,9 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
                 </>
               )}
             </div>
-            {error && <p className="mt-2 text-[12.5px] text-destructive">{error}</p>}
+            {error && <p className="mt-2 text-body text-destructive">{error}</p>}
             <div className="mt-4 flex items-center justify-between gap-3">
-              <span className="text-[12.5px] text-muted-foreground">
+              <span className="text-body text-muted-foreground">
                 {picked ? `${plural(topics.size, "topic")}, ${plural(lines.size, "line")}` : "Pick what to bring over"}
               </span>
               <Button onClick={copy} disabled={!picked || busy}>
@@ -1132,7 +1132,7 @@ function AgentPage({ bot, focus, onFocus }: { bot: Bot; focus: Focus; onFocus: (
         <SearchField value={q} onChange={setQ} placeholder={`Search ${bot.name}'s memory`} className="w-[220px] lg:w-[260px]" />
         <button
           onClick={() => setCopying(true)}
-          className={cn(pill, "gap-1.5 bg-foreground px-4 text-[13px] font-medium text-background hover:opacity-90")}
+          className={cn(pill, "gap-1.5 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}
         >
           <Copy size={14} />
           Copy from
@@ -1143,7 +1143,7 @@ function AgentPage({ bot, focus, onFocus }: { bot: Bot; focus: Focus; onFocus: (
         <>
           <SectionTitle aside={loading ? <Loader2 size={13} className="animate-spin" /> : hits && `${mine.length} found`}>Results</SectionTitle>
           {hits && mine.length === 0 && !loading ? (
-            <p className="text-[13.5px] text-muted-foreground">Nothing in {bot.name}'s memory matches “{q.trim()}”.</p>
+            <p className="text-ui text-muted-foreground">Nothing in {bot.name}'s memory matches “{q.trim()}”.</p>
           ) : (
             <div className="flex flex-col">
               {mine.map((hit, i) => (
@@ -1284,8 +1284,8 @@ function PlaceRow({
     >
       <span className="flex size-8 shrink-0 items-center justify-center">{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14px] text-foreground">{label}</span>
-        {meta && <span className="block truncate text-[12px] text-muted-foreground">{meta}</span>}
+        <span className="block truncate text-ui text-foreground">{label}</span>
+        {meta && <span className="block truncate text-small text-muted-foreground">{meta}</span>}
       </span>
       {badge}
     </button>
@@ -1356,7 +1356,7 @@ function MemorySidebar({
   return (
     <aside aria-label="Memory" className="hidden h-full w-[280px] shrink-0 flex-col border-r bg-sidebar md:flex">
       <div className="titlebar-drag flex h-[52px] shrink-0 items-center justify-between pl-4 pr-2.5">
-        <span className="text-[15px] font-semibold text-foreground">Memory</span>
+        <span className="text-lead font-semibold text-foreground">Memory</span>
         <button
           onClick={() => (searching ? close() : setSearching(true))}
           aria-label={searching ? "Close the search" : "Search every memory"}
@@ -1381,7 +1381,7 @@ function MemorySidebar({
               onKeyDown={(e) => e.key === "Escape" && close()}
               placeholder="Search every memory"
               aria-label="Search every memory"
-              className="min-w-0 flex-1 bg-transparent text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
+              className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
             />
             {loading && <Loader2 size={13} className="shrink-0 animate-spin text-muted-foreground" />}
           </label>
@@ -1390,7 +1390,7 @@ function MemorySidebar({
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {searching && q.trim() ? (
           hits === null ? null : hits.length === 0 ? (
-            <p className="px-2.5 py-3 text-[12.5px] leading-relaxed text-muted-foreground">Nothing in memory matches “{q.trim()}”.</p>
+            <p className="px-2.5 py-3 text-body leading-relaxed text-muted-foreground">Nothing in memory matches “{q.trim()}”.</p>
           ) : (
             hits.map((hit, i) => (
               <HitRow
@@ -1417,16 +1417,16 @@ function MemorySidebar({
                 meta={waiting > 0 ? `${plural(waiting, "suggestion")} waiting` : "What every agent knows"}
                 badge={
                   waiting > 0 ? (
-                    <span className="rounded-full bg-warning/15 px-1.5 py-px text-[11px] font-semibold tabular-nums text-warning">{waiting}</span>
+                    <span className="rounded-full bg-warning/15 px-1.5 py-px text-caption font-semibold tabular-nums text-warning">{waiting}</span>
                   ) : undefined
                 }
                 onClick={() => onPick("you")}
               />
             </nav>
-            <div className="mt-5 px-2.5 pb-1.5 text-[12.5px] text-muted-foreground">Agents</div>
+            <div className="mt-5 px-2.5 pb-1.5 text-body text-muted-foreground">Agents</div>
             <div className="flex flex-col gap-0.5">
               {agents.length === 0 ? (
-                <p className="px-2.5 text-[12.5px] leading-relaxed text-muted-foreground/80">Agents you make show up here.</p>
+                <p className="px-2.5 text-body leading-relaxed text-muted-foreground/80">Agents you make show up here.</p>
               ) : (
                 agents.map((agent) => <AgentRow key={agent.id} bot={agent} active={target === agent.id} onClick={() => onPick(agent.id)} />)
               )}
@@ -1442,7 +1442,7 @@ function MemorySidebar({
 function PhonePicker({ target, agents, waiting, onPick }: { target: string; agents: Bot[]; waiting: number; onPick: (target: string) => void }) {
   const chip = (active: boolean) =>
     cn(
-      "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium outline-none transition-colors duration-150",
+      "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-body font-medium outline-none transition-colors duration-150",
       active ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
     );
   return (
@@ -1452,7 +1452,7 @@ function PhonePicker({ target, agents, waiting, onPick }: { target: string; agen
       </button>
       <button role="tab" aria-selected={target === "you"} onClick={() => onPick("you")} className={chip(target === "you")}>
         <UserRound size={14} /> About you
-        {waiting > 0 && <span className="rounded-full bg-warning/15 px-1.5 text-[11px] tabular-nums text-warning">{waiting}</span>}
+        {waiting > 0 && <span className="rounded-full bg-warning/15 px-1.5 text-caption tabular-nums text-warning">{waiting}</span>}
       </button>
       {agents.map((agent) => (
         <button key={agent.id} role="tab" aria-selected={target === agent.id} onClick={() => onPick(agent.id)} className={chip(target === agent.id)}>
@@ -1506,7 +1506,7 @@ export function MemoryPlace() {
             ) : (
               <div className="flex flex-col items-center gap-3 py-24 text-center">
                 <Brain size={28} className="text-muted-foreground" />
-                <p className="max-w-[320px] text-[13.5px] leading-relaxed text-muted-foreground">
+                <p className="max-w-[320px] text-ui leading-relaxed text-muted-foreground">
                   Memory is what your agents keep between conversations. Make an agent and it shows up here.
                 </p>
               </div>

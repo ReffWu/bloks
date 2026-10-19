@@ -144,6 +144,32 @@
 
   --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
     "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  /* The type scale: nine sizes, each with the leading it reads best at.
+     Small text gets room between lines so dense lists still breathe;
+     titles close up, since big type set loose looks like it is falling
+     apart. A `leading-*` beside one of these still wins. */
+  --text-micro: 10px;
+  --text-micro--line-height: 14px;
+  --text-caption: 11px;
+  --text-caption--line-height: 16px;
+  --text-small: 12px;
+  --text-small--line-height: 18px;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-ui: 14px;
+  --text-ui--line-height: 22px;
+  --text-lead: 15px;
+  --text-lead--line-height: 24px;
+  --text-title: 17px;
+  --text-title--line-height: 24px;
+  --text-heading: 22px;
+  --text-heading--line-height: 28px;
+  --text-heading--letter-spacing: -0.019em;
+  --text-display: 28px;
+  --text-display--line-height: 34px;
+  --text-display--letter-spacing: -0.022em;
 
   --radius-sm: 6px;
   --radius-md: 8px;

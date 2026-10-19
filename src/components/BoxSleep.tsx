@@ -21,7 +21,7 @@ export function BoxSleep() {
   }, []);
   if (minutes === null) return null;
   return (
-    <label className="flex items-center justify-between gap-3 text-[12.5px] text-muted-foreground">
+    <label className="flex items-center justify-between gap-3 text-body text-muted-foreground">
       <span>Put agents' cloud computers to sleep after they sit idle for</span>
       <select
         value={minutes}
@@ -30,7 +30,7 @@ export function BoxSleep() {
           setMinutes(next);
           void api("/api/box/settings", { method: "PATCH", body: JSON.stringify({ sleepAfter: next }) }).catch(() => {});
         }}
-        className="rounded-md border bg-background px-2 py-1 text-[12.5px] text-foreground"
+        className="rounded-md border bg-background px-2 py-1 text-body text-foreground"
       >
         {CHOICES.map(([value, label]) => (
           <option key={value} value={value}>

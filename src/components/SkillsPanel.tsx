@@ -24,7 +24,7 @@ function LengthCount({ length }: { length: number }) {
   return (
     <span
       className={cn(
-        "text-[11.5px] tabular-nums",
+        "text-small tabular-nums",
         length > MAX_SKILL_CHARS ? "text-destructive" : "text-muted-foreground",
       )}
     >
@@ -79,35 +79,35 @@ function ReviewImport({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-start gap-2.5 rounded-xl bg-warning/10 px-3 py-2.5">
         <ShieldAlert size={15} className="mt-0.5 shrink-0 text-warning" />
-        <div className="text-[12.5px] leading-relaxed text-warning">
+        <div className="text-body leading-relaxed text-warning">
           These instructions go into every turn of any agent you attach this to. Read them before
           installing, and only add skills from a source you trust.
         </div>
       </div>
 
       <label className="mt-3 block">
-        <div className="mb-1.5 text-[12.5px] font-medium text-muted-foreground">Name</div>
+        <div className="mb-1.5 text-body font-medium text-muted-foreground">Name</div>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-[14px] text-foreground outline-none focus-visible:border-ring/60"
+          className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-ui text-foreground outline-none focus-visible:border-ring/60"
         />
       </label>
 
-      <div className="mb-1.5 mt-3 text-[12.5px] font-medium text-muted-foreground">
+      <div className="mb-1.5 mt-3 text-body font-medium text-muted-foreground">
         Instructions to be installed
       </div>
-      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/50 p-3 font-mono text-[11.5px] leading-relaxed text-foreground">
+      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/50 p-3 font-mono text-small leading-relaxed text-foreground">
         {draft.markdown}
       </pre>
 
       {tooLong && (
-        <div className="mt-2 text-[12px] text-destructive">
+        <div className="mt-2 text-small text-destructive">
           Too long. This skill is {length.toLocaleString()} characters, and skills are capped at{" "}
           {MAX_SKILL_CHARS.toLocaleString()}.
         </div>
       )}
-      {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="mt-2 text-small text-destructive">{error}</div>}
 
       <div className="mt-3 flex gap-2">
         <Button variant="secondary" onClick={onBack} className="flex-1">
@@ -157,8 +157,8 @@ export function AddSkill({
         className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed py-6 transition-colors duration-150 hover:border-ring/50 hover:bg-accent/50"
       >
         <FileText size={18} className="text-muted-foreground" />
-        <span className="text-[13px] font-medium text-foreground">Drop a .md file, or click to pick</span>
-        <span className="text-[12px] text-muted-foreground">
+        <span className="text-body font-medium text-foreground">Drop a .md file, or click to pick</span>
+        <span className="text-small text-muted-foreground">
           Markdown, with optional name/description frontmatter
         </span>
       </button>
@@ -173,7 +173,7 @@ export function AddSkill({
         }}
       />
 
-      <div className="my-3 flex items-center gap-3 text-[11.5px] text-muted-foreground">
+      <div className="my-3 flex items-center gap-3 text-small text-muted-foreground">
         <span className="h-px flex-1 bg-border" />
         or write it
         <span className="h-px flex-1 bg-border" />
@@ -183,7 +183,7 @@ export function AddSkill({
         value={markdown}
         onChange={(e) => setMarkdown(e.target.value)}
         placeholder={`Use this when…\n\n1. First step\n2. Second step\n\nNot for: when to leave this alone.\nReturn: what to hand back.\nApproval: what needs a human first.`}
-        className="min-h-[180px] flex-1 resize-none font-mono text-[12px] leading-relaxed"
+        className="min-h-[180px] flex-1 resize-none font-mono text-small leading-relaxed"
       />
       <div className="mt-1.5 text-right">
         <LengthCount length={skillLength(markdown)} />
@@ -292,13 +292,13 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
   return (
     <div className="rounded-xl border border-brand/30 bg-brand-soft/30 p-3">
       <button onClick={() => setOpen((v) => !v)} className="w-full text-left">
-        <div className="text-[13px] font-medium text-foreground">
+        <div className="text-body font-medium text-foreground">
           {patch ? `A change to ${proposal.name}` : name}
         </div>
-        <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+        <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
           {proposal.because}
         </div>
-        <div className="mt-1 text-[11.5px] text-muted-foreground/80">
+        <div className="mt-1 text-small text-muted-foreground/80">
           From {proposal.botName}. {open ? "Hide it" : "Read it"}
         </div>
       </button>
@@ -306,13 +306,13 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
       {/* An edited skill is somebody's own work, and a suggestion that
           would land on top of it should say so before it is approved. */}
       {proposal.overwritesEdits && (
-        <div className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-[11.5px] leading-relaxed text-warning">
+        <div className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-small leading-relaxed text-warning">
           You have your own changes in that skill. Keeping this replaces them.
         </div>
       )}
 
       {open && patch && proposal.stale && (
-        <div className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-[11.5px] leading-relaxed text-warning">
+        <div className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-small leading-relaxed text-warning">
           The skill has changed since this was suggested, and the change no longer fits. Discard it.
         </div>
       )}
@@ -325,7 +325,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           {!proposal.stale && (
             <button
               onClick={() => setEditing(true)}
-              className="mt-1.5 text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              className="mt-1.5 text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
               Edit the result before keeping it
             </button>
@@ -335,22 +335,22 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
 
       {open && editing && (
         <div className="mt-2.5 flex flex-col gap-2">
-          <Input value={name} onChange={(e) => setName(e.target.value)} className="text-[13px]" />
+          <Input value={name} onChange={(e) => setName(e.target.value)} className="text-body" />
           <Input
             value={description}
             placeholder="When to use it"
             onChange={(e) => setDescription(e.target.value)}
-            className="text-[13px]"
+            className="text-body"
           />
           <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            className="min-h-[160px] font-mono text-[12px]"
+            className="min-h-[160px] font-mono text-small"
           />
         </div>
       )}
 
-      {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="mt-2 text-small text-destructive">{error}</div>}
 
       <div className="mt-2.5 flex items-center gap-2">
         <Button

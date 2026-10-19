@@ -58,8 +58,8 @@ export function mcpTarget(server: McpServerRow): string {
   return server.transport === "http" ? server.target : `Runs ${server.target}`;
 }
 
-const field = "h-10 rounded-xl text-[14px]";
-const label = "mb-1.5 block text-[13.5px] font-medium text-foreground";
+const field = "h-10 rounded-xl text-ui";
+const label = "mb-1.5 block text-ui font-medium text-foreground";
 
 /**
  * Adding a server, in a window over the page you are on. Its risk is said
@@ -128,7 +128,7 @@ export function AddMcpServerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[88vh] max-w-[560px] flex-col overflow-y-auto p-7">
-        <DialogTitle className="text-[22px] font-semibold tracking-tight">Add custom MCP server</DialogTitle>
+        <DialogTitle className="text-heading font-semibold">Add custom MCP server</DialogTitle>
 
         <div className="mt-6 flex flex-col gap-5">
           <label>
@@ -151,7 +151,7 @@ export function AddMcpServerDialog({
                   aria-selected={transport === value}
                   onClick={() => setTransport(value)}
                   className={cn(
-                    "h-8 rounded-full px-3.5 text-[13px] font-medium transition-colors duration-150",
+                    "h-8 rounded-full px-3.5 text-body font-medium transition-colors duration-150",
                     transport === value ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -164,7 +164,7 @@ export function AddMcpServerDialog({
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://example.com/mcp"
-                className={cn(field, "font-mono text-[13px]")}
+                className={cn(field, "font-mono text-body")}
               />
             ) : (
               <>
@@ -172,9 +172,9 @@ export function AddMcpServerDialog({
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
                   placeholder="npx -y @example/mcp-server --flag"
-                  className={cn(field, "font-mono text-[13px]")}
+                  className={cn(field, "font-mono text-body")}
                 />
-                <p className="mt-1.5 text-[12.5px] text-muted-foreground">Runs on this computer, the way you would run it in a terminal.</p>
+                <p className="mt-1.5 text-body text-muted-foreground">Runs on this computer, the way you would run it in a terminal.</p>
               </>
             )}
           </div>
@@ -195,7 +195,7 @@ export function AddMcpServerDialog({
                     aria-selected={auth === value}
                     onClick={() => setAuth(value)}
                     className={cn(
-                      "h-8 rounded-full px-3.5 text-[13px] font-medium transition-colors duration-150",
+                      "h-8 rounded-full px-3.5 text-body font-medium transition-colors duration-150",
                       auth === value ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -209,7 +209,7 @@ export function AddMcpServerDialog({
                     value={headerName}
                     onChange={(e) => setHeaderName(e.target.value)}
                     aria-label="Header name"
-                    className={cn(field, "w-[38%] font-mono text-[13px]")}
+                    className={cn(field, "w-[38%] font-mono text-body")}
                   />
                   <Input
                     value={headerValue}
@@ -218,14 +218,14 @@ export function AddMcpServerDialog({
                     autoComplete="off"
                     aria-label="Header value"
                     placeholder={headerName.trim().toLowerCase() === "authorization" ? "Bearer …" : "Value"}
-                    className={cn(field, "flex-1 font-mono text-[13px]")}
+                    className={cn(field, "flex-1 font-mono text-body")}
                   />
                 </div>
               )}
             </div>
           )}
 
-          <div className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-[13.5px] text-foreground">
+          <div className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-ui text-foreground">
             <AlertTriangle size={17} className="shrink-0 text-warning" />
             Custom MCP servers introduce risk.
           </div>
@@ -238,15 +238,15 @@ export function AddMcpServerDialog({
               className="mt-0.5 size-4 shrink-0 accent-foreground"
             />
             <span>
-              <span className="block text-[14px] font-medium text-foreground">I understand and want to continue</span>
-              <span className="mt-1 block text-pretty text-[13px] leading-relaxed text-muted-foreground">
+              <span className="block text-ui font-medium text-foreground">I understand and want to continue</span>
+              <span className="mt-1 block text-pretty text-body leading-relaxed text-muted-foreground">
                 Only connect servers you trust. An untrusted server can read what agents send it, or lead an agent into
                 using tools in ways you did not intend, including changing or deleting data.
               </span>
             </span>
           </label>
 
-          {error && <p className="text-[13px] text-destructive">{error}</p>}
+          {error && <p className="text-body text-destructive">{error}</p>}
         </div>
 
         <div className="mt-7 flex items-center justify-end gap-2">
@@ -267,8 +267,8 @@ export function AddMcpServerDialog({
 function Section({ title, says, children }: { title: string; says?: string; children: React.ReactNode }) {
   return (
     <section className="rounded-2xl border bg-card p-5">
-      <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
-      {says && <p className="mt-1 text-pretty text-[13px] text-muted-foreground">{says}</p>}
+      <h3 className="text-lead font-semibold text-foreground">{title}</h3>
+      {says && <p className="mt-1 text-pretty text-body text-muted-foreground">{says}</p>}
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -289,7 +289,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
 
   if (servers === null) {
     return (
-      <div className="flex items-center gap-2 py-10 text-[13px] text-muted-foreground">
+      <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
         <Loader2 size={14} className="animate-spin" /> Loading
       </div>
     );
@@ -298,7 +298,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
     return (
       <div>
         <BackLink onBack={onBack} />
-        <p className="mt-6 text-[14px] text-muted-foreground">This server is no longer installed.</p>
+        <p className="mt-6 text-ui text-muted-foreground">This server is no longer installed.</p>
       </div>
     );
   }
@@ -332,14 +332,14 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
       <BackLink onBack={onBack} />
       <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="truncate text-[26px] font-semibold tracking-tight text-foreground">{server.name}</h2>
-          <p className="mt-1.5 text-[14px] text-muted-foreground">
+          <h2 className="truncate text-display font-semibold text-foreground">{server.name}</h2>
+          <p className="mt-1.5 text-ui text-muted-foreground">
             To change how it connects, uninstall it and add it again.
           </p>
         </div>
         <button
           onClick={uninstall}
-          className="flex h-9 items-center gap-1.5 rounded-xl bg-destructive/10 px-3.5 text-[13.5px] font-medium text-destructive transition-colors duration-150 hover:bg-destructive/15"
+          className="flex h-9 items-center gap-1.5 rounded-xl bg-destructive/10 px-3.5 text-ui font-medium text-destructive transition-colors duration-150 hover:bg-destructive/15"
         >
           <Trash2 size={15} />
           Uninstall
@@ -348,11 +348,11 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
 
       <div className="mt-6 flex flex-col gap-4">
         <Section title="Connection">
-          <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-y-2.5 text-[13.5px]">
+          <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-y-2.5 text-ui">
             <span className="text-muted-foreground">Type</span>
             <span className="text-foreground">{server.transport === "http" ? "Server URL" : "Command on this computer"}</span>
             <span className="text-muted-foreground">{server.transport === "http" ? "Address" : "Runs"}</span>
-            <span className="truncate font-mono text-[13px] text-foreground">{server.target}</span>
+            <span className="truncate font-mono text-body text-foreground">{server.target}</span>
             {server.hasHeaders && (
               <>
                 <span className="text-muted-foreground">Authentication</span>
@@ -367,14 +367,14 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
             <div className="flex flex-col gap-3">
               {needs.map((name) => (
                 <label key={name} className="flex flex-col gap-1.5">
-                  <span className="font-mono text-[12.5px] text-muted-foreground">{name}</span>
+                  <span className="font-mono text-body text-muted-foreground">{name}</span>
                   <Input
                     type="password"
                     autoComplete="off"
                     value={values[name] ?? ""}
                     onChange={(e) => setValues((current) => ({ ...current, [name]: e.target.value }))}
                     placeholder={name === "Authorization" ? "Bearer …" : "Paste the value"}
-                    className={cn(field, "font-mono text-[13px]")}
+                    className={cn(field, "font-mono text-body")}
                   />
                 </label>
               ))}
@@ -389,7 +389,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
 
         <Section title="Agents that can use it" says="An agent uses a server only when it is switched on here, or in that agent's own settings.">
           {agents.length === 0 ? (
-            <p className="text-[13.5px] text-muted-foreground">No agents yet.</p>
+            <p className="text-ui text-muted-foreground">No agents yet.</p>
           ) : (
             <div className="flex flex-col divide-y">
               {agents.map((bot) => {
@@ -398,7 +398,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
                 return (
                   <div key={bot.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                     <AgentAvatar bot={bot} size={26} />
-                    <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{bot.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-ui text-foreground">{bot.name}</span>
                     <Switch
                       checked={on}
                       aria-label={`${bot.name} can use ${server.name}`}
@@ -416,7 +416,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
             </div>
           )}
         </Section>
-        {(note || error) && <p className={cn("text-[13px]", error ? "text-destructive" : "text-muted-foreground")}>{error ?? note}</p>}
+        {(note || error) && <p className={cn("text-body", error ? "text-destructive" : "text-muted-foreground")}>{error ?? note}</p>}
       </div>
     </div>
   );
@@ -426,7 +426,7 @@ export function BackLink({ onBack }: { onBack: () => void }) {
   return (
     <button
       onClick={onBack}
-      className="flex items-center gap-1.5 text-[14px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+      className="flex items-center gap-1.5 text-ui text-muted-foreground transition-colors duration-150 hover:text-foreground"
     >
       <ArrowLeft size={16} />
       Back

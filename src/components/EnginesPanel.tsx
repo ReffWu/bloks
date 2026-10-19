@@ -52,7 +52,7 @@ function KeyForm({ provider, onDone }: { provider: ProviderRow; onDone: () => vo
           }}
           placeholder={provider.keyPrefix ? `${provider.keyPrefix}…` : "Paste your key"}
           autoComplete="off"
-          className="h-8 text-[13px]"
+          className="h-8 text-body"
         />
         <Button variant="secondary" onClick={save} disabled={!key.trim()} className="w-[72px]">
           <Check size={13} />
@@ -60,14 +60,14 @@ function KeyForm({ provider, onDone }: { provider: ProviderRow; onDone: () => vo
         </Button>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2">
-        <span className={cn("text-[11.5px]", mismatched ? "text-warning" : "text-muted-foreground")}>
+        <span className={cn("text-small", mismatched ? "text-warning" : "text-muted-foreground")}>
           {mismatched ? `Keys here usually start with ${provider.keyPrefix}` : provider.keyHint}
         </span>
         <a
           href={provider.docsUrl}
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-[11.5px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          className="flex shrink-0 items-center gap-1 text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
         >
           Get one <ExternalLink size={10} />
         </a>
@@ -124,10 +124,10 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
           <ProviderMark driverKind={provider.kind} size={15} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13.5px] font-medium text-foreground">{provider.name}</div>
+          <div className="truncate text-ui font-medium text-foreground">{provider.name}</div>
           <div
             className={cn(
-              "truncate text-[12px]",
+              "truncate text-small",
               down || provider.needsSignIn
                 ? "text-warning"
                 : provider.connected
@@ -148,7 +148,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
         </div>
 
         {provider.auth === "cli" ? (
-          <span className="shrink-0 text-[11.5px] text-muted-foreground">
+          <span className="shrink-0 text-small text-muted-foreground">
             {provider.connected ? "" : "Not found"}
           </span>
         ) : provider.connected ? (
@@ -193,7 +193,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
         </div>
       )}
       {provider.auth === "cli" && (!provider.connected || provider.needsSignIn) && (
-        <div className="mt-1.5 pl-10 text-[11.5px] leading-relaxed text-muted-foreground">
+        <div className="mt-1.5 pl-10 text-small leading-relaxed text-muted-foreground">
           {/* Installed and installed-but-signed-out need different advice.
               Some CLIs sign in where we cannot see it, so the second is a
               hint rather than a verdict, and stays muted. */}
@@ -205,7 +205,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
       {provider.auth === "cli" && provider.connected && (
         <EngineUpdateNote kind={provider.kind} name={provider.name} className="ml-10 mt-2" />
       )}
-      {error && <div className="mt-1.5 pl-10 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="mt-1.5 pl-10 text-small text-destructive">{error}</div>}
     </div>
   );
 }
@@ -215,10 +215,10 @@ function Group({ title, note, rows }: { title: string; note: string; rows: Provi
   return (
     <>
       <div className="border-t bg-muted/30 px-4 py-2">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <div className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           {title}
         </div>
-        <div className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">{note}</div>
+        <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">{note}</div>
       </div>
       {rows.map((provider) => (
         <EngineRow key={provider.kind} provider={provider} />
@@ -244,10 +244,10 @@ export function EnginesPanel() {
       <div className="mt-4 overflow-hidden rounded-2xl border bg-card">
         <div className="px-4 pb-3 pt-4">
           <div className="flex items-baseline justify-between gap-2">
-            <div className="text-[13.5px] font-semibold text-foreground">Your engines</div>
-            <div className="text-[11.5px] text-muted-foreground">{connected} connected</div>
+            <div className="text-ui font-semibold text-foreground">Your engines</div>
+            <div className="text-small text-muted-foreground">{connected} connected</div>
           </div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             What your agents run on. Keys stay on this machine.
           </div>
         </div>

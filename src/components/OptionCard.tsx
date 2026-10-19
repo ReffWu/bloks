@@ -52,31 +52,31 @@ export function OptionCard({
         <div className="min-w-0 flex-1">
           <div
             className={cn(
-              "text-[11px] font-semibold uppercase tracking-[0.1em]",
+              "text-caption font-semibold uppercase tracking-[0.1em]",
               card.requestId || card.runId ? "text-warning" : "text-brand-ink",
             )}
           >
             {isApproval(card) ? "Approval" : card.runId ? "Workflow" : "Question"}
           </div>
-          <div className="mt-1 break-words text-[14.5px] font-semibold text-foreground [overflow-wrap:anywhere]">
+          <div className="mt-1 break-words text-lead font-semibold text-foreground [overflow-wrap:anywhere]">
             {card.title}
           </div>
           {card.subtitle && !(card.runId && card.answered) && (
-            <div className="mt-0.5 break-words text-[13px] leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+            <div className="mt-0.5 break-words text-body leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
               {card.subtitle}
             </div>
           )}
           {card.answeredBy && (
-            <div className="mt-1 text-[12px] text-muted-foreground">Answered by {card.answeredBy}</div>
+            <div className="mt-1 text-small text-muted-foreground">Answered by {card.answeredBy}</div>
           )}
           {card.cutOff && (
-            <div className="mt-1 text-[12px] text-muted-foreground">
+            <div className="mt-1 text-small text-muted-foreground">
               Cut off when Bloks stopped. Nothing waits on this any more, and an answer here would not be used.
             </div>
           )}
           {/* Closed with nobody having answered: the card stays and says
               what closed it, in the server's words. */}
-          {card.closed && <div className="mt-1 text-[12px] text-muted-foreground">{card.closed}</div>}
+          {card.closed && <div className="mt-1 text-small text-muted-foreground">{card.closed}</div>}
         </div>
         <button
           onClick={() => dispatch({ type: "dismissCard", botId, roomId, messageId: message.id })}
@@ -95,7 +95,7 @@ export function OptionCard({
             disabled={!!card.answered}
             onClick={() => answer(opt)}
             className={cn(
-              "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-[14px] transition-colors duration-150",
+              "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-ui transition-colors duration-150",
               card.answered === opt
                 ? "bg-brand-soft text-brand-ink"
                 : "text-foreground hover:bg-accent disabled:hover:bg-transparent",
@@ -104,7 +104,7 @@ export function OptionCard({
           >
             <span
               className={cn(
-                "flex size-6 shrink-0 items-center justify-center rounded-lg text-[11.5px] font-semibold",
+                "flex size-6 shrink-0 items-center justify-center rounded-lg text-small font-semibold",
                 card.answered === opt ? "bg-brand-ink text-brand-foreground" : "bg-muted text-muted-foreground",
               )}
             >
@@ -136,7 +136,7 @@ export function OptionCard({
             }).catch(() => {});
             answer("Allow");
           }}
-          className="mt-1 w-full rounded-xl px-2.5 py-1.5 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="mt-1 w-full rounded-xl px-2.5 py-1.5 text-left text-body text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           Always allow {card.tool} for this agent
         </button>
@@ -153,7 +153,7 @@ export function OptionCard({
           onChange={(e) => setCustom(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && answer(custom)}
           placeholder="Type your own answer…"
-          className="mt-2 w-full rounded-xl border border-input bg-transparent px-3 py-2 text-[13.5px] text-foreground outline-none transition-[border-color] duration-150 placeholder:text-muted-foreground focus:border-ring/60"
+          className="mt-2 w-full rounded-xl border border-input bg-transparent px-3 py-2 text-ui text-foreground outline-none transition-[border-color] duration-150 placeholder:text-muted-foreground focus:border-ring/60"
         />
       )}
     </div>
@@ -191,13 +191,13 @@ function TeamProposal({
   return (
     <div className="w-full max-w-[560px] animate-rise-in overflow-hidden rounded-2xl border bg-card shadow-[0_1px_3px_var(--shadow-color)]">
       <div className="px-4 pt-4">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-ink">
+        <div className="text-caption font-semibold uppercase tracking-[0.1em] text-brand-ink">
           {hired ? "Team hired" : "Proposed team"}
         </div>
-        <div className="mt-1 text-[14.5px] font-semibold text-foreground">
+        <div className="mt-1 text-lead font-semibold text-foreground">
           {leadName} wants {plural(plan.members.length, "person", "people")} for “{plan.room}”
         </div>
-        <div className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+        <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
           They run on the cheaper model and do the legwork. {leadName} reviews everything and reports
           back to you.
         </div>
@@ -214,9 +214,9 @@ function TeamProposal({
               className="mt-0.5 rounded-[9px]"
             />
             <div className="min-w-0">
-              <div className="text-[13.5px] font-semibold text-foreground">{member.name}</div>
+              <div className="text-ui font-semibold text-foreground">{member.name}</div>
               {member.title && (
-                <div className="text-[12.5px] leading-snug text-muted-foreground">{member.title}</div>
+                <div className="text-body leading-snug text-muted-foreground">{member.title}</div>
               )}
               {member.skills.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
@@ -224,7 +224,7 @@ function TeamProposal({
                     <span
                       key={skill}
                       title={skill}
-                      className="max-w-[220px] truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                      className="max-w-[220px] truncate rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground"
                     >
                       {skill.split(":")[0]}
                     </span>
@@ -240,12 +240,12 @@ function TeamProposal({
         <div className="border-t px-4 py-2.5">
           <button
             onClick={() => setOpen((v) => !v)}
-            className="text-[12px] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
+            className="text-small font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
             {open ? "Hide the brief" : "See the brief they get"}
           </button>
           {open && (
-            <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-2 whitespace-pre-wrap text-body leading-relaxed text-muted-foreground">
               {plan.brief}
             </p>
           )}
@@ -254,22 +254,22 @@ function TeamProposal({
 
       <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-3">
         {hired ? (
-          <span className="text-[13px] text-muted-foreground">
+          <span className="text-body text-muted-foreground">
             Hired. The room is open and {leadName} has briefed them.
           </span>
         ) : settled ? (
-          <span className="text-[13px] text-muted-foreground">Declined.</span>
+          <span className="text-body text-muted-foreground">Declined.</span>
         ) : (
           <>
             <button
               onClick={onHire}
-              className="rounded-xl bg-brand-ink px-3.5 py-2 text-[13.5px] font-medium text-brand-foreground transition-[transform,filter] duration-150 hover:brightness-95 active:scale-[0.98]"
+              className="rounded-xl bg-brand-ink px-3.5 py-2 text-ui font-medium text-brand-foreground transition-[transform,filter] duration-150 hover:brightness-95 active:scale-[0.98]"
             >
               Hire the team
             </button>
             <button
               onClick={onDecline}
-              className="rounded-xl px-3 py-2 text-[13.5px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+              className="rounded-xl px-3 py-2 text-ui text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
             >
               Not now
             </button>

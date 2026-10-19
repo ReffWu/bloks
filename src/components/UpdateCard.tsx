@@ -133,29 +133,29 @@ function UpdateCard() {
     return (
       <div className="shrink-0">
         <div className="relative px-3 py-2.5">
-          <div className="flex items-center gap-1.5 text-[12.5px] font-medium text-foreground">
+          <div className="flex items-center gap-1.5 text-body font-medium text-foreground">
             <RefreshCw size={12} className="animate-spin text-brand-ink motion-reduce:animate-none" />
             Restarting to update
           </div>
-          <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">{drainingLine(draining)}</p>
+          <p className="mt-0.5 text-small leading-snug text-muted-foreground">{drainingLine(draining)}</p>
           <div className="mt-1.5 flex items-center gap-3">
             <button
               onClick={() => {
                 setRestarting(true);
                 void window.bloks?.updateRestartNow?.();
               }}
-              className="rounded-md text-[12.5px] font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80"
+              className="rounded-md text-body font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80"
             >
               Restart now
             </button>
             <button
               onClick={() => void window.bloks?.updateLater?.()}
-              className="rounded-md text-[12.5px] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
+              className="rounded-md text-body font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
             >
               Cancel
             </button>
           </div>
-          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
+          <p className="mt-1 text-small leading-snug text-muted-foreground">
             Running turns pick up where they left off after the restart.
           </p>
         </div>
@@ -175,8 +175,8 @@ function UpdateCard() {
           >
             <X size={12} />
           </button>
-          <div className="pr-5 text-[12.5px] font-medium text-foreground">The update did not install</div>
-          <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
+          <div className="pr-5 text-body font-medium text-foreground">The update did not install</div>
+          <p className="mt-0.5 text-small leading-snug text-muted-foreground">
             Bloks is still on {missed.from}. {ready ? "Try again, or get" : "Get"} the installer from{" "}
             <a
               href="https://bloks.dev"
@@ -192,7 +192,7 @@ function UpdateCard() {
             <button
               onClick={relaunch}
               disabled={restarting}
-              className="mt-1.5 flex items-center gap-1.5 rounded-md text-[12.5px] font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80 disabled:opacity-60"
+              className="mt-1.5 flex items-center gap-1.5 rounded-md text-body font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80 disabled:opacity-60"
             >
               <RefreshCw size={12} className={cn(restarting && "animate-spin motion-reduce:animate-none")} />
               {restarting ? "Relaunching…" : "Try again"}
@@ -214,14 +214,14 @@ function UpdateCard() {
         >
           <X size={12} />
         </button>
-        <div className="pr-5 text-[12.5px] font-medium text-foreground">New version available</div>
-        <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
+        <div className="pr-5 text-body font-medium text-foreground">New version available</div>
+        <p className="mt-0.5 text-small leading-snug text-muted-foreground">
           {version ? `Bloks ${version} is` : "An update is"} downloaded. Relaunch to update.
         </p>
         <button
           onClick={relaunch}
           disabled={restarting}
-          className="mt-1.5 flex items-center gap-1.5 rounded-md text-[12.5px] font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80 disabled:opacity-60"
+          className="mt-1.5 flex items-center gap-1.5 rounded-md text-body font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80 disabled:opacity-60"
         >
           <RefreshCw size={12} className={cn(restarting && "animate-spin motion-reduce:animate-none")} />
           {restarting ? "Relaunching…" : "Relaunch"}

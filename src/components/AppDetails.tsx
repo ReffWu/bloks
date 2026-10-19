@@ -21,7 +21,7 @@ import { cn } from "@/lib/cn";
 import { useState } from "react";
 
 const pill =
-  "flex h-10 items-center gap-2 rounded-full px-4 text-[14px] font-medium outline-none transition-[background-color,opacity,scale] duration-150 ease-out active:scale-[0.97] disabled:opacity-40";
+  "flex h-10 items-center gap-2 rounded-full px-4 text-ui font-medium outline-none transition-[background-color,opacity,scale] duration-150 ease-out active:scale-[0.97] disabled:opacity-40";
 
 export function AppDetailsPage({ slug, connectors }: { slug: string; connectors: Connectors }) {
   const { state, dispatch } = useStore();
@@ -33,7 +33,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
     return (
       <div>
         <BackToPlugins onBack={back} />
-        <div className="mt-10 flex items-center gap-2 text-[14px] text-muted-foreground">
+        <div className="mt-10 flex items-center gap-2 text-ui text-muted-foreground">
           {connectors.cards === null ? (
             <>
               <Loader2 size={15} className="animate-spin" /> Loading
@@ -64,11 +64,11 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
         <div className="min-w-0">
           {/* the mark at the size the catalogue serves it, beside the
               name: scaled up, the small logos go soft */}
-          <h1 className="flex items-center gap-3 text-balance text-[30px] font-semibold tracking-tight text-foreground">
+          <h1 className="flex items-center gap-3 text-balance text-display font-semibold text-foreground">
             <ServiceIcon card={card} />
             {card.label}
           </h1>
-          <p className="mt-1 text-[14px] text-muted-foreground">Through Composio Connect</p>
+          <p className="mt-1 text-ui text-muted-foreground">Through Composio Connect</p>
         </div>
         <div className="flex items-center gap-2">
           {connected ? (
@@ -115,15 +115,15 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
       </header>
 
       <Hero card={card} accent={details.accent} prompts={details.prompts} connected={connected} onPick={send} />
-      {note && <p className="mt-3 text-[13px] text-destructive">{note}</p>}
+      {note && <p className="mt-3 text-body text-destructive">{note}</p>}
       {!connected && (
-        <p className="mt-3 text-[13px] text-muted-foreground">Connect {card.label} and any of these goes to an agent, ready to send.</p>
+        <p className="mt-3 text-body text-muted-foreground">Connect {card.label} and any of these goes to an agent, ready to send.</p>
       )}
 
-      <p className="mt-8 text-pretty text-[15px] leading-relaxed text-foreground">{details.about}</p>
+      <p className="mt-8 text-pretty text-lead leading-relaxed text-foreground">{details.about}</p>
 
-      <h2 className="mt-10 border-b pb-3 text-[17px] font-semibold text-foreground">Information</h2>
-      <dl className="mt-4 grid grid-cols-[160px_minmax(0,1fr)] gap-y-3.5 text-[14px]">
+      <h2 className="mt-10 border-b pb-3 text-title font-semibold text-foreground">Information</h2>
+      <dl className="mt-4 grid grid-cols-[160px_minmax(0,1fr)] gap-y-3.5 text-ui">
         <dt className="text-muted-foreground">Category</dt>
         <dd className="text-foreground">{details.category}</dd>
         <dt className="text-muted-foreground">Connects through</dt>
@@ -154,7 +154,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
 
 function BackToPlugins({ onBack }: { onBack: () => void }) {
   return (
-    <button onClick={onBack} className="flex items-center gap-1.5 text-[14px] text-muted-foreground transition-colors hover:text-foreground">
+    <button onClick={onBack} className="flex items-center gap-1.5 text-ui text-muted-foreground transition-colors hover:text-foreground">
       <ArrowLeft size={16} />
       Plugins
     </button>
@@ -200,7 +200,7 @@ function Hero({
             key={prompt}
             onClick={() => onPick(prompt)}
             title={connected ? (to ? `Write this to ${to.name}` : undefined) : `Connect ${card.label} first`}
-            className="group flex items-center gap-4 rounded-2xl bg-black/45 px-5 py-4 text-left text-[15px] leading-relaxed text-white/90 ring-1 ring-white/10 backdrop-blur-md transition-[background-color,scale] duration-150 ease-out hover:bg-black/55 active:scale-[0.99]"
+            className="group flex items-center gap-4 rounded-2xl bg-black/45 px-5 py-4 text-left text-lead leading-relaxed text-white/90 ring-1 ring-white/10 backdrop-blur-md transition-[background-color,scale] duration-150 ease-out hover:bg-black/55 active:scale-[0.99]"
           >
             <span className="min-w-0 flex-1">
               <span className="mr-1.5 inline-flex translate-y-[3px] items-center gap-1.5 font-medium" style={{ color: `color-mix(in srgb, ${accent} 40%, white)` }}>

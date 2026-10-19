@@ -67,7 +67,7 @@ export function AgentExchangeRow({
       <button
         onClick={() => onOpen(note.peerId, message.id, message.text ?? "")}
         title="Open the exchange"
-        className="group flex max-w-[82%] min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-left text-[12.5px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-[0.99] sm:max-w-[68%]"
+        className="group flex max-w-[82%] min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-left text-body text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-[0.99] sm:max-w-[68%]"
       >
         <Icon size={13} className={cn("shrink-0", failed ? "text-destructive" : "text-brand")} />
         {peer && <AgentAvatar bot={peer} size={16} className="shrink-0" />}
@@ -101,7 +101,7 @@ export function AfterAgentLink({ peerId, peerName, onOpen }: { peerId: string; p
       <button
         onClick={onOpen}
         title="Open the exchange"
-        className="flex items-center gap-1 rounded-md px-1 text-[11.5px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+        className="flex items-center gap-1 rounded-md px-1 text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         <CornerDownRight size={11} className="shrink-0" />
         After a message from {name}
@@ -158,14 +158,14 @@ export function AgentExchangeDialog({
         <div className="flex h-[52px] shrink-0 items-center gap-2.5 border-b px-5">
           {me && <AgentAvatar bot={me} size={20} />}
           {peer && <AgentAvatar bot={peer} size={20} className="-ml-2 ring-2 ring-background" />}
-          <DialogTitle className="min-w-0 flex-1 truncate text-[14px]">
+          <DialogTitle className="min-w-0 flex-1 truncate text-ui">
             {me?.name ?? "This agent"} and {peer?.name ?? "the other agent"}
           </DialogTitle>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {error && <p className="text-[13px] text-destructive">{error}</p>}
-          {!error && entries === null && <p className="text-[13px] text-muted-foreground">Loading…</p>}
-          {entries?.length === 0 && <p className="text-[13px] text-muted-foreground">Nothing between them yet.</p>}
+          {error && <p className="text-body text-destructive">{error}</p>}
+          {!error && entries === null && <p className="text-body text-muted-foreground">Loading…</p>}
+          {entries?.length === 0 && <p className="text-body text-muted-foreground">Nothing between them yet.</p>}
           <div className="flex flex-col gap-3">
             {entries?.map((entry, index) => {
               const who = avatarOf(entry.from);
@@ -179,7 +179,7 @@ export function AgentExchangeDialog({
                   ref={entry.id === target ? focused : undefined}
                   className={cn("rounded-xl px-3 py-2", entry.id === target ? "bg-accent" : "")}
                 >
-                  <div className="mb-1 flex items-center gap-2 text-[12px] text-muted-foreground">
+                  <div className="mb-1 flex items-center gap-2 text-small text-muted-foreground">
                     {who && <AgentAvatar bot={who} size={16} />}
                     <span className="font-medium text-foreground">{entry.fromName}</span>
                     {/* context, not a message: it stayed in the speaker's own chat */}
@@ -189,11 +189,11 @@ export function AgentExchangeDialog({
                     <span className="ml-auto shrink-0 tabular-nums">{stamp(entry.at)}</span>
                   </div>
                   {newLane && (
-                    <div className="mb-1 text-[11px] text-muted-foreground/80">
+                    <div className="mb-1 text-caption text-muted-foreground/80">
                       in {owner}'s {entry.laneTitle}
                     </div>
                   )}
-                  <div className="text-[13.5px] leading-relaxed text-foreground">
+                  <div className="text-ui leading-relaxed text-foreground">
                     <Markdownish text={entry.text} />
                   </div>
                 </div>

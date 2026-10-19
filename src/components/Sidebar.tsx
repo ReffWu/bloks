@@ -162,7 +162,7 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
       onKeyDown={(e) => e.key === "Escape" && onClose()}
     >
       <div className="w-[300px] animate-pop-in rounded-2xl border bg-popover p-4 shadow-lg">
-        <div className="text-[13.5px] font-semibold text-foreground">
+        <div className="text-ui font-semibold text-foreground">
           File {filing.name} under…
         </div>
         <div className="mt-3 flex flex-col gap-1">
@@ -171,7 +171,7 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
               key={name}
               onClick={() => fileTo(name)}
               className={cn(
-                "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-foreground hover:bg-accent",
+                "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-body text-foreground hover:bg-accent",
                 name === filing.current && "bg-accent/60 font-medium",
               )}
             >
@@ -180,7 +180,7 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
             </button>
           ))}
           {names.length === 0 && (
-            <div className="px-1 py-1 text-[12.5px] text-muted-foreground">
+            <div className="px-1 py-1 text-body text-muted-foreground">
               No sections yet. Name the first one below.
             </div>
           )}
@@ -198,7 +198,7 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
             onChange={(e) => setDraft(e.target.value)}
             placeholder="New section"
             maxLength={60}
-            className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
+            className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-body text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
           />
           <Button type="submit" size="sm" variant="secondary" disabled={!draft.trim()}>
             File
@@ -207,7 +207,7 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
         {filing.current && (
           <button
             onClick={() => fileTo(null)}
-            className="mt-2 w-full rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="mt-2 w-full rounded-lg px-2.5 py-1.5 text-left text-body text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             Remove from {filing.current}
           </button>
@@ -276,7 +276,7 @@ function RowMenu({
         onClose();
       }}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px]",
+        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-body",
         opts?.danger
           ? "text-destructive hover:bg-destructive/10"
           : "text-foreground hover:bg-accent",
@@ -411,13 +411,13 @@ function BotListItem({
           <AgentAvatar bot={bot} size={24} />
           {/* No pin on the row: the line under a list's last pin says what
               is held, and every name starts on the same edge. */}
-          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-foreground">{bot.name}</span>
+          <span className="min-w-0 flex-1 truncate text-ui font-semibold text-foreground">{bot.name}</span>
           {/* the trailing state steps aside for the + on hover, all of it,
               so the two never sit on top of each other */}
           <span className="flex shrink-0 items-center gap-1.5 transition-opacity duration-150 group-hover/agent:opacity-0">
             {general && <LaneRing lane={general} />}
             {general?.state === "needs-you" ? (
-              <span className="text-[11px] text-warning">waiting</span>
+              <span className="text-caption text-warning">waiting</span>
             ) : general?.state === "working" ? (
               <Loader2
                 size={12}
@@ -426,7 +426,7 @@ function BotListItem({
               />
             ) : (
               timestamp > 0 && (
-                <span className="text-[11px] tabular-nums text-muted-foreground/80">{formatWhen(timestamp)}</span>
+                <span className="text-caption tabular-nums text-muted-foreground/80">{formatWhen(timestamp)}</span>
               )
             )}
             {general?.unread && <span className="size-1.5 rounded-full bg-brand" />}
@@ -465,9 +465,9 @@ function BotListItem({
       <AgentAvatar bot={bot} size={42} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="min-w-0 truncate text-[14px] font-semibold text-foreground">{bot.name}</span>
+          <span className="min-w-0 truncate text-ui font-semibold text-foreground">{bot.name}</span>
           {heardAt !== undefined && (
-            <span className="shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
+            <span className="shrink-0 text-small tabular-nums text-muted-foreground">
               {formatWhen(heardAt)}
             </span>
           )}
@@ -475,7 +475,7 @@ function BotListItem({
         <div className="mt-px flex items-center justify-between gap-2">
           <span
             className={cn(
-              "truncate text-[13px]",
+              "truncate text-body",
               bot.unread ? "font-medium text-foreground" : "text-muted-foreground",
             )}
           >
@@ -540,17 +540,17 @@ function RoomListItem({
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-1.5 truncate text-[14px] font-semibold text-foreground">
+          <span className="flex min-w-0 items-center gap-1.5 truncate text-ui font-semibold text-foreground">
             <Users size={11} className="shrink-0 text-muted-foreground" />
             <span className="truncate">{blok.name}</span>
           </span>
           {last && (
-            <span className="shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
+            <span className="shrink-0 text-small tabular-nums text-muted-foreground">
               {formatWhen(last.at)}
             </span>
           )}
         </div>
-        <div className="mt-px truncate text-[13px] text-muted-foreground">
+        <div className="mt-px truncate text-body text-muted-foreground">
           {working.length
             ? `${working.map((m) => m.name).join(", ")} working…`
             : last
@@ -887,7 +887,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
         <DropdownMenuItem onClick={() => setShowArchived(true)}>
           <Archive size={15} />
           Archived agents
-          <span className="ml-auto pl-3 text-[11px] text-muted-foreground">
+          <span className="ml-auto pl-3 text-caption text-muted-foreground">
             {state.bots.filter((b) => b.hidden).length}
           </span>
         </DropdownMenuItem>
@@ -1045,11 +1045,11 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
         <button
           onClick={() => dispatch({ type: "openProject", id: null })}
           title={`Looking through ${projectName}. Click to show the whole workspace again`}
-          className="mx-2 mb-1 flex items-center gap-2 rounded-lg bg-accent/70 px-2.5 py-1.5 text-left text-[12px] text-foreground transition-colors duration-150 hover:bg-accent"
+          className="mx-2 mb-1 flex items-center gap-2 rounded-lg bg-accent/70 px-2.5 py-1.5 text-left text-small text-foreground transition-colors duration-150 hover:bg-accent"
         >
           <FolderKanban size={13} className="shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate">{projectName}</span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">leave</span>
+          <span className="shrink-0 text-caption text-muted-foreground">leave</span>
         </button>
       )}
 
@@ -1076,7 +1076,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
             >
               {unfiledRooms.length > 0 && (
                 <>
-                  <div className="flex items-center justify-between px-2.5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  <div className="flex items-center justify-between px-2.5 pb-1 pt-1 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
                     Rooms
                     <button
                       onClick={() => dispatch({ type: "toggleNewRoom", open: true })}
@@ -1087,7 +1087,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                     </button>
                   </div>
                   {drawList(unfiledRooms)}
-                  <div className="flex items-center justify-between px-2.5 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  <div className="flex items-center justify-between px-2.5 pb-1 pt-3 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
                     Agents
                     <button
                       onClick={() => setConversations(!conversations)}
@@ -1107,7 +1107,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
               {unfiling && (
                 <div
                   className={cn(
-                    "rounded-xl border border-dashed px-2.5 py-2 text-center text-[12px] text-muted-foreground transition-colors duration-150",
+                    "rounded-xl border border-dashed px-2.5 py-2 text-center text-small text-muted-foreground transition-colors duration-150",
                     rowDrop?.section === null && "border-brand/40 text-foreground",
                   )}
                 >
@@ -1175,7 +1175,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                     const neighbour = shownSections[index + (e.key === "ArrowUp" ? -1 : 1)];
                     if (neighbour) saveSectionOrder(moveSection(shownSections, name, neighbour, e.key === "ArrowUp" ? "before" : "after"));
                   }}
-                  className="flex cursor-grab items-center gap-1.5 rounded px-2.5 pb-1 pt-3 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing"
+                  className="flex cursor-grab items-center gap-1.5 rounded px-2.5 pb-1 pt-3 text-left text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing"
                 >
                   <Folder size={11} className="shrink-0" />
                   <span className="truncate">{name}</span>
@@ -1193,7 +1193,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
             );
           })}
           {visibleBots.length === 0 && state.hydrated && (
-            <div className="px-3 py-8 text-center text-[13px] text-muted-foreground">No agents yet. Create one with +</div>
+            <div className="px-3 py-8 text-center text-body text-muted-foreground">No agents yet. Create one with +</div>
           )}
         </div>
       </div>
@@ -1225,8 +1225,8 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
         className="w-[420px] max-w-[92vw] animate-pop-in rounded-2xl border bg-popover p-4 shadow-2xl sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-[16px] font-semibold text-foreground">Archived agents</div>
-        <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+        <div className="text-title font-semibold text-foreground">Archived agents</div>
+        <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
           Their conversations, rules and rooms are kept, and so is the key they sign with. Restoring
           puts one back in the sidebar and back to work.
         </div>
@@ -1235,14 +1235,14 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
             <div key={bot.id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-accent/60">
               <AgentAvatar bot={bot} size={30} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13.5px] font-medium text-foreground">{bot.name}</span>
+                <span className="block truncate text-ui font-medium text-foreground">{bot.name}</span>
                 {bot.archivedBy ? (
-                  <span className="block truncate text-[11.5px] text-muted-foreground" title={bot.archiveNote}>
+                  <span className="block truncate text-small text-muted-foreground" title={bot.archiveNote}>
                     Archived by {state.bots.find((b) => b.id === bot.archivedBy)?.name ?? "the agent that hired it"}
                     {bot.archiveNote ? `: ${bot.archiveNote}` : ""}
                   </span>
                 ) : (
-                  bot.title && <span className="block truncate text-[11.5px] text-muted-foreground">{bot.title}</span>
+                  bot.title && <span className="block truncate text-small text-muted-foreground">{bot.title}</span>
                 )}
               </span>
               <Button

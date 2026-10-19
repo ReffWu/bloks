@@ -89,7 +89,7 @@ function SideChat({ bot }: { bot: Bot }) {
             <div
               key={m.id}
               className={cn(
-                "max-w-[85%] rounded-2xl px-3 py-1.5 text-[13px] leading-relaxed",
+                "max-w-[85%] rounded-2xl px-3 py-1.5 text-body leading-relaxed",
                 m.role === "user"
                   ? "self-end bg-primary text-primary-foreground"
                   : "self-start bg-muted text-foreground",
@@ -99,7 +99,7 @@ function SideChat({ bot }: { bot: Bot }) {
             </div>
           ))}
           {live.busy && (
-            <div className="self-start px-1 text-[12px] text-muted-foreground">Working…</div>
+            <div className="self-start px-1 text-small text-muted-foreground">Working…</div>
           )}
           <div ref={endRef} />
         </div>
@@ -110,7 +110,7 @@ function SideChat({ bot }: { bot: Bot }) {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder={`Message ${bot.name}`}
-          className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-[13px] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring/60"
+          className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-body text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring/60"
         />
       </div>
     </div>
@@ -282,7 +282,7 @@ export function DesktopOverlay({
       >
         <div className="flex items-center gap-1.5 pl-1">
           <GripHorizontal size={13} className="text-muted-foreground/50" />
-          <span className="text-[11.5px] font-medium text-muted-foreground">Chat</span>
+          <span className="text-small font-medium text-muted-foreground">Chat</span>
         </div>
         <div onPointerDown={(e) => e.stopPropagation()}>{dockButtons}</div>
       </div>
@@ -323,7 +323,7 @@ export function DesktopOverlay({
       <div className="flex h-[48px] shrink-0 items-center justify-between border-b px-3">
         <div className="flex items-center gap-2">
           <AgentAvatar bot={bot} size={26} />
-          <span className="text-[13.5px] font-semibold text-foreground">
+          <span className="text-ui font-semibold text-foreground">
             {bot.name}'s desktop
           </span>
         </div>

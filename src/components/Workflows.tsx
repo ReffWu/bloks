@@ -176,7 +176,7 @@ export function Workflows() {
   return (
     <div className="mx-auto flex max-w-[860px] flex-col gap-3 px-1 py-4">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
-        <p className="max-w-[560px] text-[12.5px] leading-relaxed text-muted-foreground">
+        <p className="max-w-[560px] text-body leading-relaxed text-muted-foreground">
           Work with more than one step in it. Something sets it off, each step passes what it found
           to the next, and a step can stop and wait for you before the rest happens.
         </p>
@@ -186,13 +186,13 @@ export function Workflows() {
       </div>
 
       {error && (
-        <div className="rounded-xl bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">{error}</div>
+        <div className="rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>
       )}
 
       {workflows?.length === 0 && (
         <div className="rounded-2xl border border-dashed px-4 py-10 text-center">
-          <div className="text-[13.5px] text-foreground">Nothing runs itself yet.</div>
-          <div className="mx-auto mt-1 max-w-[420px] text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="text-ui text-foreground">Nothing runs itself yet.</div>
+          <div className="mx-auto mt-1 max-w-[420px] text-body leading-relaxed text-muted-foreground">
             A workflow is worth having when the answer to something changes what happens next: have
             an agent look, and if it turns out to matter, ask you before anything is done about it.
           </div>
@@ -267,24 +267,24 @@ function WorkflowCard({
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[13.5px] font-semibold text-foreground">{workflow.name}</span>
+            <span className="truncate text-ui font-semibold text-foreground">{workflow.name}</span>
             {!workflow.enabled && (
-              <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">off</span>
+              <span className="rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">off</span>
             )}
           </div>
-          <div className="mt-0.5 text-[12.5px] text-muted-foreground">{workflow.summary}</div>
+          <div className="mt-0.5 text-body text-muted-foreground">{workflow.summary}</div>
           {/* The state worth putting on the outside of the card: a run
               that is sitting still because it is waiting for you looks
               exactly like a run that is stuck, unless it says so. */}
           {waiting?.waiting && (
-            <div className="mt-2 flex items-center gap-1.5 text-[12.5px] text-warning">
+            <div className="mt-2 flex items-center gap-1.5 text-body text-warning">
               <Hourglass size={13} />
               Waiting for you. It {waiting.waiting.onTimeout === "continue" ? "carries on" : "stops"}{" "}
               {until(waiting.waiting.until)}.
             </div>
           )}
           {!waiting && latest && (
-            <div className="mt-1 text-[11.5px] text-muted-foreground">
+            <div className="mt-1 text-small text-muted-foreground">
               Last run {when(latest.startedAt)} · {stateWord(latest)}
             </div>
           )}
@@ -309,21 +309,21 @@ function WorkflowCard({
         <div className="border-t px-4 py-3">
           <div className="flex flex-col gap-1.5">
             {workflow.steps.map((step, i) => (
-              <div key={step.id} className="flex items-start gap-2.5 text-[12.5px]">
-                <span className="mt-[3px] flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[10.5px] text-muted-foreground">
+              <div key={step.id} className="flex items-start gap-2.5 text-body">
+                <span className="mt-[3px] flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-caption text-muted-foreground">
                   {i + 1}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="text-foreground">{verb(step, bots)}</span>
                   <span className="ml-1.5 text-muted-foreground">{step.text}</span>
                   {step.when && (
-                    <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
+                    <span className="mt-0.5 block text-small text-muted-foreground">
                       only if {step.when.left} {OPS.find(([op]) => op === step.when!.op)?.[1]}{" "}
                       {step.when.right ? `“${step.when.right}”` : ""}
                     </span>
                   )}
                 </span>
-                <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">{step.id}</span>
+                <span className="shrink-0 font-mono text-caption text-muted-foreground/70">{step.id}</span>
               </div>
             ))}
           </div>
@@ -348,7 +348,7 @@ function WorkflowCard({
 
           {runs.length > 0 && (
             <div className="mt-3 border-t pt-3">
-              <div className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="text-small font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 Runs
               </div>
               <div className="mt-1.5 flex flex-col gap-2">
@@ -390,7 +390,7 @@ function RunRow({ run, steps }: { run: Run; steps: Step[] }) {
   const nameOf = (stepId: string) => steps.find((s) => s.id === stepId)?.text ?? stepId;
   return (
     <div className="rounded-xl bg-muted/40 px-2.5 py-2">
-      <div className="flex items-center justify-between text-[11.5px]">
+      <div className="flex items-center justify-between text-small">
         <span className="text-muted-foreground">{when(run.startedAt)}</span>
         <span
           className={cn(
@@ -405,7 +405,7 @@ function RunRow({ run, steps }: { run: Run; steps: Step[] }) {
       </div>
       <div className="mt-1 flex flex-col gap-0.5">
         {run.steps.map((entry, i) => (
-          <div key={`${entry.stepId}-${i}`} className="flex items-start gap-1.5 text-[11.5px]">
+          <div key={`${entry.stepId}-${i}`} className="flex items-start gap-1.5 text-small">
             <span className="mt-[2px] shrink-0">
               {entry.state === "ok" ? (
                 <Check size={11} className="text-success" />
@@ -501,7 +501,7 @@ function Editor({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm">
       <div className="my-6 w-full max-w-[620px] rounded-2xl border bg-background shadow-lg">
         <div className="flex items-center justify-between border-b px-5 py-3.5">
-          <div className="text-[15px] font-semibold text-foreground">
+          <div className="text-lead font-semibold text-foreground">
             {draft.id ? "Edit workflow" : "New workflow"}
           </div>
           <Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}>
@@ -511,7 +511,7 @@ function Editor({
 
         <div className="flex flex-col gap-4 px-5 py-4">
           <label className="flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-muted-foreground">Name</span>
+            <span className="text-small font-medium text-muted-foreground">Name</span>
             <Input
               value={draft.name}
               placeholder="What this is for"
@@ -520,7 +520,7 @@ function Editor({
           </label>
 
           <div className="rounded-2xl border bg-card p-3.5">
-            <div className="text-[13px] font-semibold text-foreground">What sets it off</div>
+            <div className="text-body font-semibold text-foreground">What sets it off</div>
             <div className="mt-2 flex flex-wrap gap-1 rounded-xl bg-muted p-1">
               {(
                 [
@@ -534,7 +534,7 @@ function Editor({
                   key={kind}
                   onClick={() => setDraft({ ...draft, trigger: { ...draft.trigger, kind } })}
                   className={cn(
-                    "flex-1 rounded-lg px-2 py-1.5 text-[12.5px] transition-colors duration-150",
+                    "flex-1 rounded-lg px-2 py-1.5 text-body transition-colors duration-150",
                     draft.trigger.kind === kind
                       ? "bg-background font-medium text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground",
@@ -548,7 +548,7 @@ function Editor({
             {(draft.trigger.kind === "message" || draft.trigger.kind === "reaction") && (
               <div className="mt-3 flex flex-col gap-2.5">
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[12px] text-muted-foreground">Where to watch</span>
+                  <span className="text-small text-muted-foreground">Where to watch</span>
                   <select
                     value={draft.trigger.targetId ?? ""}
                     onChange={(e) => {
@@ -559,7 +559,7 @@ function Editor({
                         trigger: { ...draft.trigger, targetId: id, targetKind: isRoom ? "room" : "agent" },
                       });
                     }}
-                    className="rounded-xl border border-input bg-transparent px-3 py-2 text-[13.5px] text-foreground outline-none"
+                    className="rounded-xl border border-input bg-transparent px-3 py-2 text-ui text-foreground outline-none"
                   >
                     <option value="">Pick somewhere</option>
                     {bots.map((bot) => (
@@ -576,7 +576,7 @@ function Editor({
                 </label>
                 {draft.trigger.kind === "message" ? (
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-[12px] text-muted-foreground">
+                    <span className="text-small text-muted-foreground">
                       Only when it mentions (leave empty for any message)
                     </span>
                     <Input
@@ -587,7 +587,7 @@ function Editor({
                   </label>
                 ) : (
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-[12px] text-muted-foreground">Which emoji</span>
+                    <span className="text-small text-muted-foreground">Which emoji</span>
                     <Input
                       value={draft.trigger.emoji ?? ""}
                       placeholder="🚀"
@@ -599,7 +599,7 @@ function Editor({
                     saying: a workflow that posts where it watches would
                     otherwise set itself off, forever. */}
                 <label className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2">
-                  <span className="text-[12.5px] leading-relaxed text-muted-foreground">
+                  <span className="text-body leading-relaxed text-muted-foreground">
                     Agents can set this off too. Off by default: a workflow that posts where it
                     watches would keep triggering itself.
                   </span>
@@ -614,7 +614,7 @@ function Editor({
               </div>
             )}
             {draft.trigger.kind === "webhook" && (
-              <p className="mt-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
+              <p className="mt-2.5 text-body leading-relaxed text-muted-foreground">
                 Save this, then add a webhook pointing at it under Automations, Webhooks. What gets
                 posted arrives as <code className="rounded bg-muted px-1">{"{{trigger.text}}"}</code>.
               </p>
@@ -623,7 +623,7 @@ function Editor({
 
           <div className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-[13px] font-semibold text-foreground">Steps</span>
+              <span className="text-body font-semibold text-foreground">Steps</span>
               <Button
                 variant="secondary"
                 size="sm"
@@ -650,7 +650,7 @@ function Editor({
           </div>
 
           {problems.length > 0 && (
-            <div className="rounded-xl bg-destructive/10 px-3 py-2 text-[12.5px] leading-relaxed text-destructive">
+            <div className="rounded-xl bg-destructive/10 px-3 py-2 text-body leading-relaxed text-destructive">
               {problems.map((problem) => (
                 <div key={problem}>{problem}</div>
               ))}
@@ -693,7 +693,7 @@ function StepEditor({
   return (
     <div className="rounded-2xl border bg-card p-3.5">
       <div className="flex items-center gap-2">
-        <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[10.5px] text-muted-foreground">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-caption text-muted-foreground">
           {index + 1}
         </span>
         <div className="flex flex-1 gap-1 rounded-xl bg-muted p-1">
@@ -708,7 +708,7 @@ function StepEditor({
               key={action}
               onClick={() => onChange({ action, targetId: "" })}
               className={cn(
-                "flex-1 rounded-lg px-2 py-1 text-[12px] transition-colors duration-150",
+                "flex-1 rounded-lg px-2 py-1 text-small transition-colors duration-150",
                 step.action === action
                   ? "bg-background font-medium text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -727,7 +727,7 @@ function StepEditor({
         <select
           value={step.targetId ?? ""}
           onChange={(e) => onChange({ targetId: e.target.value })}
-          className="mt-2.5 w-full rounded-xl border border-input bg-transparent px-3 py-2 text-[13.5px] text-foreground outline-none"
+          className="mt-2.5 w-full rounded-xl border border-input bg-transparent px-3 py-2 text-ui text-foreground outline-none"
         >
           <option value="">{step.action === "ask" ? "Which agent" : "Which room"}</option>
           {(step.action === "ask" ? bots : rooms).map((target) => (
@@ -748,24 +748,24 @@ function StepEditor({
               : "What to ask them to do"
         }
         onChange={(e) => onChange({ text: e.target.value })}
-        className="mt-2 min-h-[62px] resize-none text-[13px]"
+        className="mt-2 min-h-[62px] resize-none text-body"
       />
 
       {earlier.length > 0 && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
-          <span className="text-[11.5px] text-muted-foreground">Use an earlier answer:</span>
+          <span className="text-small text-muted-foreground">Use an earlier answer:</span>
           {earlier.map((id) => (
             <button
               key={id}
               onClick={() => onChange({ text: `${step.text}{{steps.${id}.text}}` })}
-              className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+              className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-caption text-muted-foreground transition-colors duration-150 hover:text-foreground"
             >
               {id}
             </button>
           ))}
           <button
             onClick={() => onChange({ text: `${step.text}{{trigger.text}}` })}
-            className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+            className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-caption text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
             trigger
           </button>
@@ -774,18 +774,18 @@ function StepEditor({
 
       {step.action === "approve" && (
         <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
-          <label className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <label className="flex items-center gap-1.5 text-body text-muted-foreground">
             Waits
             <Input
               type="number"
               min={1}
               value={String(Math.round((step.timeoutMin ?? 1440) / 60))}
               onChange={(e) => onChange({ timeoutMin: Math.max(1, Number(e.target.value) || 1) * 60 })}
-              className="h-8 w-[68px] text-[13px]"
+              className="h-8 w-[68px] text-body"
             />
             hours
           </label>
-          <label className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <label className="flex items-center gap-1.5 text-body text-muted-foreground">
             <Switch
               aria-label="Carry on if nobody answers"
               checked={step.onTimeout === "continue"}
@@ -799,21 +799,21 @@ function StepEditor({
       <div className="mt-2.5">
         {conditional || step.when ? (
           <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-muted/50 px-2.5 py-2">
-            <span className="text-[12px] text-muted-foreground">Only if</span>
+            <span className="text-small text-muted-foreground">Only if</span>
             <Input
               value={step.when?.left ?? ""}
               placeholder="{{steps.triage.text}}"
               onChange={(e) =>
                 onChange({ when: { op: "contains", ...step.when, left: e.target.value } })
               }
-              className="h-8 min-w-[150px] flex-1 font-mono text-[12px]"
+              className="h-8 min-w-[150px] flex-1 font-mono text-small"
             />
             <select
               value={step.when?.op ?? "contains"}
               onChange={(e) =>
                 onChange({ when: { left: "", ...step.when, op: e.target.value as ConditionOp } })
               }
-              className="h-8 rounded-lg border border-input bg-transparent px-2 text-[12.5px] text-foreground outline-none"
+              className="h-8 rounded-lg border border-input bg-transparent px-2 text-body text-foreground outline-none"
             >
               {OPS.map(([op, label]) => (
                 <option key={op} value={op}>
@@ -828,7 +828,7 @@ function StepEditor({
                 onChange={(e) =>
                   onChange({ when: { left: "", op: "contains", ...step.when, right: e.target.value } })
                 }
-                className="h-8 min-w-[110px] flex-1 text-[12.5px]"
+                className="h-8 min-w-[110px] flex-1 text-body"
               />
             )}
             <Button
@@ -846,7 +846,7 @@ function StepEditor({
         ) : (
           <button
             onClick={() => setConditional(true)}
-            className="text-[12px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+            className="text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
             Only run this sometimes
           </button>

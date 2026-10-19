@@ -10,10 +10,10 @@ export interface DiffLine {
 
 export function DiffLines({ lines, className }: { lines: DiffLine[]; className?: string }) {
   return (
-    <div className={cn("font-mono text-[12px] leading-[1.55]", className)}>
+    <div className={cn("font-mono text-small leading-[1.55]", className)}>
       {lines.map((line, at) =>
         line.kind === "gap" ? (
-          <div key={at} className="my-1 px-4 font-sans text-[11px] text-muted-foreground">
+          <div key={at} className="my-1 px-4 font-sans text-caption text-muted-foreground">
             {line.text}
           </div>
         ) : (

@@ -78,7 +78,7 @@ function RewindableFrame({ src, alt }: { src: string; alt: string }) {
         className="h-full w-full object-contain"
       />
       {!live && (
-        <span className="absolute left-2 top-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-white">
+        <span className="absolute left-2 top-2 rounded-md bg-black/70 px-1.5 py-0.5 text-caption font-semibold tabular-nums text-white">
           {new Date(showing!.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}
         </span>
       )}
@@ -104,7 +104,7 @@ function RewindableFrame({ src, alt }: { src: string; alt: string }) {
           <button
             onClick={() => setCursor(null)}
             className={cn(
-              "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide",
+              "shrink-0 rounded px-1.5 py-0.5 text-micro font-bold tracking-wide",
               live ? "text-white/60" : "bg-destructive text-white",
             )}
           >
@@ -181,9 +181,9 @@ function LocalVmCard({ bot }: { bot: Bot }) {
 
   return (
     <div className="mt-3">
-      <div className="mb-1.5 flex items-center justify-between text-[12.5px] font-medium text-muted-foreground">
+      <div className="mb-1.5 flex items-center justify-between text-body font-medium text-muted-foreground">
         <span>{bot.name}'s Local VM</span>
-        {status?.inUseBy && <span className="text-[11px] font-normal">{status.inUseBy} is using it</span>}
+        {status?.inUseBy && <span className="text-caption font-normal">{status.inUseBy} is using it</span>}
       </div>
       <div className="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/50">
         {frame && status?.ready ? (
@@ -195,7 +195,7 @@ function LocalVmCard({ bot }: { bot: Bot }) {
             ) : (
               <Monitor size={22} />
             )}
-            <span className="text-[12px]">
+            <span className="text-small">
               {status === null
                 ? "Checking…"
                 : status.ready
@@ -216,7 +216,7 @@ function LocalVmCard({ bot }: { bot: Bot }) {
         </Button>
       ) : status !== null && !status.ready ? (
         <div className="mt-3 rounded-2xl border bg-card p-4">
-          <div className="text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="text-body leading-relaxed text-muted-foreground">
             The Local VM is a Cua Linux desktop in a container on {thisComputer()}. Free, and separate
             from your own desktop.
           </div>
@@ -400,7 +400,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         >
           <SettingsIcon size={16} />
         </Button>
-        <span className="text-[13.5px] font-semibold text-foreground">Computer</span>
+        <span className="text-ui font-semibold text-foreground">Computer</span>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -421,9 +421,9 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         <TakeTheWheel bot={bot} />
 
         {/* Screen preview */}
-        <div className="mb-1.5 mt-3 flex items-center justify-between text-[12.5px] font-medium text-muted-foreground">
+        <div className="mb-1.5 mt-3 flex items-center justify-between text-body font-medium text-muted-foreground">
           <span>{bot.name}'s screen</span>
-          {phase === "local" && <span className="text-[11px] font-normal">this computer</span>}
+          {phase === "local" && <span className="text-caption font-normal">this computer</span>}
         </div>
         <div className="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/50">
           {frameSrc ? (
@@ -437,7 +437,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               ) : (
                 <Monitor size={22} />
               )}
-              <span className="text-[12px]">
+              <span className="text-small">
                 {phase === "ready"
                   ? "Waiting for the first frame…"
                   : phase === "local"
@@ -449,13 +449,13 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         </div>
 
         {error && (
-          <div className="mt-2 rounded-xl bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+          <div className="mt-2 rounded-xl bg-destructive/10 px-3 py-2 text-small text-destructive">
             {error}
           </div>
         )}
         {phase === "unconfigured" && (
           <div className="mt-3 rounded-2xl border bg-card p-4">
-            <div className="mb-3 text-[12.5px] leading-relaxed text-muted-foreground">
+            <div className="mb-3 text-body leading-relaxed text-muted-foreground">
               Paste a Boat API key to give this agent a cloud computer. It spins up right here.
             </div>
             <ApiKeyRow
@@ -508,8 +508,8 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
 
         {/* Computer source */}
         <div className="mt-4 rounded-2xl border bg-card p-4">
-          <div className="text-[13.5px] font-semibold text-foreground">Runs on</div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="text-ui font-semibold text-foreground">Runs on</div>
+          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             {bot.computer ? "" : "Auto: the cloud box when one exists, else this computer. "}Pick where
             this agent's computer lives.
           </div>
@@ -518,8 +518,8 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               about what the options are. */}
           <div className="mt-3 flex items-center justify-between gap-3">
             <div>
-              <div className="text-[13px] text-foreground">Automatic</div>
-              <div className="text-[12px] text-muted-foreground">
+              <div className="text-body text-foreground">Automatic</div>
+              <div className="text-small text-muted-foreground">
                 The cloud box when one exists, else this computer
               </div>
             </div>
@@ -531,7 +531,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             />
           </div>
           {!bot.computer && !state.config?.box?.configured && (
-            <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground">
+            <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2 text-small text-muted-foreground">
               No cloud computer is set up, so Auto will use this computer. Add a Boat
               API key below to give this agent a computer of its own.
             </div>
@@ -554,7 +554,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
                 key={mode}
                 onClick={() => dispatch({ type: "updateBot", botId: bot.id, patch: { computer: mode } })}
                 className={cn(
-                  "rounded-lg py-1.5 text-[12.5px] transition-colors duration-150",
+                  "rounded-lg py-1.5 text-body transition-colors duration-150",
                   bot.computer === mode
                     ? "bg-background font-medium text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
@@ -628,8 +628,8 @@ function ComputerPermissions({ visible }: { visible: boolean }) {
 
   return (
     <div className="mt-3 rounded-2xl border bg-card p-4">
-      <div className="text-[13px] font-medium text-foreground">Computer use needs permission</div>
-      <div className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
+      <div className="text-body font-medium text-foreground">Computer use needs permission</div>
+      <div className="mt-1 text-body leading-relaxed text-muted-foreground">
         To see and use {thisComputer()}, Bloks needs {missing.map((m) => m.label).join(" and ")}.
         {asked && " If no prompt appeared, macOS has already asked once. Turn Bloks on in System Settings."}
       </div>
@@ -680,10 +680,10 @@ function TakeTheWheel({ bot }: { bot: Bot }) {
       )}
     >
       <div className="min-w-0">
-        <div className="text-[13px] text-foreground">
+        <div className="text-body text-foreground">
           {hold ? "You have the wheel" : "Take the wheel"}
         </div>
-        <div className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
+        <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
           {hold
             ? `${bot.name} is waiting. It will not start anything until you hand it back` +
               (hold.turnedAway ? `, and ${hold.turnedAway} ${hold.turnedAway === 1 ? "thing has" : "things have"} been turned away since.` : ".")

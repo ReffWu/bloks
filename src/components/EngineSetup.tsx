@@ -45,7 +45,7 @@ export function CopyCommand({ command, className }: { command: string; className
       )}
       title="Copy to clipboard"
     >
-      <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground">{command}</code>
+      <code className="min-w-0 flex-1 truncate font-mono text-small text-foreground">{command}</code>
       {copied ? <Check size={13} className="shrink-0 text-success" /> : <Copy size={13} className="shrink-0 text-muted-foreground" />}
     </button>
   );
@@ -142,25 +142,25 @@ export function EngineSetupActions({
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
               {busy ? "Installing…" : `Install ${name}`}
             </Button>
-            {busy && <span className="text-[11.5px] text-muted-foreground">Can take a minute. No password needed.</span>}
+            {busy && <span className="text-small text-muted-foreground">Can take a minute. No password needed.</span>}
           </div>
         ) : (
           command && <CopyCommand command={command} />
         )}
         {problem && (
-          <div className="rounded-lg bg-warning/10 px-2.5 py-2 text-[12px] leading-relaxed text-warning">
+          <div className="rounded-lg bg-warning/10 px-2.5 py-2 text-small leading-relaxed text-warning">
             {problem}
             {log && (
               <button
                 onClick={() => setShowLog((v) => !v)}
-                className="mt-1 flex items-center gap-1 text-[11.5px] text-muted-foreground hover:text-foreground"
+                className="mt-1 flex items-center gap-1 text-small text-muted-foreground hover:text-foreground"
               >
                 <ChevronRight size={11} className={cn("transition-transform duration-150", showLog && "rotate-90")} />
                 {showLog ? "Hide" : "Show"} what the installer said
               </button>
             )}
             {showLog && (
-              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 font-mono text-[10.5px] text-muted-foreground">
+              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 font-mono text-caption text-muted-foreground">
                 {log}
               </pre>
             )}
@@ -186,13 +186,13 @@ export function EngineSetupActions({
           </Button>
         </div>
         {signingIn === "opened" && (
-          <div className="text-[12px] leading-relaxed text-muted-foreground">
+          <div className="text-small leading-relaxed text-muted-foreground">
             Finish in the Terminal window that just opened. This turns green by itself once you are
             signed in.
           </div>
         )}
         {signingIn === "manual" && (
-          <div className="text-[12px] leading-relaxed text-muted-foreground">
+          <div className="text-small leading-relaxed text-muted-foreground">
             Run this in a terminal and follow its steps:
             <CopyCommand command={entry.signIn} className="mt-1" />
           </div>
@@ -248,7 +248,7 @@ export function EngineUpdateNote({ kind, name, className }: { kind: string; name
   };
 
   return (
-    <div className={cn("rounded-lg bg-brand-soft px-2.5 py-2 text-[11.5px] leading-relaxed text-foreground", className)}>
+    <div className={cn("rounded-lg bg-brand-soft px-2.5 py-2 text-small leading-relaxed text-foreground", className)}>
       <div>
         <span className="font-medium">
           {name} {update.latest} is out.
@@ -258,7 +258,7 @@ export function EngineUpdateNote({ kind, name, className }: { kind: string; name
         </span>
       </div>
       {local ? (
-        <Button size="sm" variant="secondary" className="mt-1.5 h-6 px-2 text-[11.5px]" disabled={busy} onClick={() => void run()}>
+        <Button size="sm" variant="secondary" className="mt-1.5 h-6 px-2 text-small" disabled={busy} onClick={() => void run()}>
           {busy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
           {busy ? "Updating…" : `Update ${name}`}
         </Button>

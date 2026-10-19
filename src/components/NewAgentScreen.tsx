@@ -395,7 +395,7 @@ export function NewAgentScreen() {
       {dragging && (
         <div className="pointer-events-none absolute inset-3 z-40 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-primary/50 bg-background/80 backdrop-blur-sm">
           <Upload size={22} className="text-muted-foreground" />
-          <div className="text-[14px] font-medium text-foreground">Drop the agent here</div>
+          <div className="text-ui font-medium text-foreground">Drop the agent here</div>
         </div>
       )}
 
@@ -458,8 +458,8 @@ export function NewAgentScreen() {
               <div className="mb-6 flex items-center gap-3 lg:hidden">
                 <AvatarLanding color={identity.color} shape={identity.shape} size={44} excited={creating} />
                 <div className="min-w-0">
-                  <div className="truncate text-[15px] font-semibold text-foreground">{shownName || "Your agent"}</div>
-                  <div className="truncate text-[12.5px] text-muted-foreground">{persona.title || "Ready when you are"}</div>
+                  <div className="truncate text-lead font-semibold text-foreground">{shownName || "Your agent"}</div>
+                  <div className="truncate text-body text-muted-foreground">{persona.title || "Ready when you are"}</div>
                 </div>
               </div>
             )}
@@ -551,7 +551,7 @@ export function NewAgentScreen() {
       {step !== "job" && (
         <div className="relative z-10 border-t bg-background/85 backdrop-blur-md">
           <div className="mx-auto flex w-full max-w-[1080px] items-center gap-2 px-5 py-3 sm:px-8">
-            <span className={cn("mr-auto min-w-0 truncate text-[12.5px]", createError ? "text-destructive" : "text-muted-foreground max-sm:hidden")}>
+            <span className={cn("mr-auto min-w-0 truncate text-body", createError ? "text-destructive" : "text-muted-foreground max-sm:hidden")}>
               {createError ??
                 (step === "identity"
                   ? "Everything here can change later, in their settings."
@@ -595,7 +595,7 @@ function Stepper({ step, ready, onGo }: { step: Step; ready: boolean; onGo: (ste
             disabled={!open}
             aria-current={on ? "step" : undefined}
             className={cn(
-              "relative flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium outline-none transition-colors duration-150 disabled:opacity-45",
+              "relative flex h-7 items-center gap-1.5 rounded-full px-2.5 text-body font-medium outline-none transition-colors duration-150 disabled:opacity-45",
               on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -608,7 +608,7 @@ function Stepper({ step, ready, onGo }: { step: Step; ready: boolean; onGo: (ste
             )}
             <span
               className={cn(
-                "relative z-[1] flex size-4 items-center justify-center rounded-full text-[10px] tabular-nums transition-colors duration-150",
+                "relative z-[1] flex size-4 items-center justify-center rounded-full text-micro tabular-nums transition-colors duration-150",
                 i < at ? "bg-brand-ink text-brand-foreground" : on ? "bg-foreground text-background" : "border border-current",
               )}
             >
@@ -650,8 +650,8 @@ function AvatarLanding({
 function BeatHeading({ title, says }: { title: string; says: string }) {
   return (
     <header className="mb-7">
-      <h1 className="text-balance text-[28px] font-semibold tracking-tight text-foreground">{title}</h1>
-      <p className="mt-1.5 text-pretty text-[14px] text-muted-foreground">{says}</p>
+      <h1 className="text-balance text-display font-semibold text-foreground">{title}</h1>
+      <p className="mt-1.5 text-pretty text-ui text-muted-foreground">{says}</p>
     </header>
   );
 }
@@ -659,7 +659,7 @@ function BeatHeading({ title, says }: { title: string; says: string }) {
 function Label({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
   return (
     <div className="mb-3 flex items-baseline justify-between gap-3">
-      <h2 className="text-[13px] font-semibold text-foreground">{children}</h2>
+      <h2 className="text-body font-semibold text-foreground">{children}</h2>
       {aside}
     </div>
   );
@@ -727,12 +727,12 @@ function JobBeat({
           rows={3}
           aria-label="What should it do?"
           placeholder="e.g. Keep my inbox at zero and draft replies for me to approve"
-          className="block w-full resize-none bg-transparent px-3 pb-1 pt-2.5 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
+          className="block w-full resize-none bg-transparent px-3 pb-1 pt-2.5 text-lead leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-between gap-2 pl-3">
           {/* what the words were heard as, said back while typing, so the
               role it lands on is never a surprise on the next beat */}
-          <span className="flex min-w-0 items-center gap-1.5 truncate text-[12px] text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-1.5 truncate text-small text-muted-foreground">
             {template ? (
               <>
                 As {asRole(template)}
@@ -760,7 +760,7 @@ function JobBeat({
       </div>
 
       <section className="mt-10">
-        <Label aside={<span className="text-[12px] text-muted-foreground">{AGENT_TEMPLATES.length} roles</span>}>
+        <Label aside={<span className="text-small text-muted-foreground">{AGENT_TEMPLATES.length} roles</span>}>
           Or start from a role
         </Label>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -783,12 +783,12 @@ function JobBeat({
                 <BlokAvatar color={t.color} shape={t.shape} expression="friendly" size={34} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
-                    <span className="truncate text-[13.5px] font-medium text-foreground">{t.name}</span>
+                    <span className="truncate text-ui font-medium text-foreground">{t.name}</span>
                     {have && (
-                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground">You have one</span>
+                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-caption text-muted-foreground">You have one</span>
                     )}
                   </span>
-                  <span className="block truncate text-[12.5px] text-muted-foreground">{t.title}</span>
+                  <span className="block truncate text-body text-muted-foreground">{t.title}</span>
                 </span>
                 <ArrowRight
                   size={14}
@@ -805,7 +805,7 @@ function JobBeat({
           aside={
             <button
               onClick={() => setTeamsOpen((v) => !v)}
-              className="text-[12.5px] text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
+              className="text-body text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
             >
               {teamsOpen ? "Hide teams" : "Show teams"}
             </button>
@@ -828,7 +828,7 @@ function JobBeat({
                 </span>
               ))}
             </span>
-            <span className="min-w-0 text-[13px] text-muted-foreground">
+            <span className="min-w-0 text-body text-muted-foreground">
               A job that needs several people: a lead and the agents under them, in a room of their own.
             </span>
           </button>
@@ -839,7 +839,7 @@ function JobBeat({
 
       {/* Someone who already has an agent should not have to build it
           again. Quiet, because most people arrive without one. */}
-      <div className="mt-8 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+      <div className="mt-8 flex items-center gap-1.5 text-body text-muted-foreground">
         Already have one?
         <button
           onClick={onImport}
@@ -849,7 +849,7 @@ function JobBeat({
         </button>
         or drop it anywhere here.
       </div>
-      {fileError && <div className="mt-2 text-[12px] text-destructive">{fileError}</div>}
+      {fileError && <div className="mt-2 text-small text-destructive">{fileError}</div>}
     </>
   );
 }
@@ -892,7 +892,7 @@ function TeamShelf({ onTeam }: { onTeam: (team: HireableTeam) => void }) {
           />
         ))}
       </div>
-      <div className="mt-3 text-[12.5px] text-muted-foreground">
+      <div className="mt-3 text-body text-muted-foreground">
         {!asked ? (
           <button
             onClick={() => setAsked(true)}
@@ -945,10 +945,10 @@ function TeamTile({
             )}
           </span>
         ))}
-        <span className="ml-auto text-[11.5px] text-muted-foreground">{plural(members.length, "agent")}</span>
+        <span className="ml-auto text-small text-muted-foreground">{plural(members.length, "agent")}</span>
       </span>
-      <span className="mt-2.5 text-[13.5px] font-medium text-foreground">{name}</span>
-      <span className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
+      <span className="mt-2.5 text-ui font-medium text-foreground">{name}</span>
+      <span className="mt-0.5 line-clamp-2 text-small leading-relaxed text-muted-foreground">
         {blurb}
         {byline ? ` ${byline}.` : ""}
       </span>
@@ -1020,10 +1020,10 @@ function IdentityBeat({
             placeholder="Name your agent"
             aria-label="Name"
             spellCheck={false}
-            className="h-12 w-full rounded-xl border bg-card px-4 text-[18px] font-semibold tracking-tight text-foreground outline-none transition-[border-color] duration-150 placeholder:font-normal placeholder:text-muted-foreground focus:border-ring/60"
+            className="h-12 w-full rounded-xl border bg-card px-4 text-title font-semibold tracking-tight text-foreground outline-none transition-[border-color] duration-150 placeholder:font-normal placeholder:text-muted-foreground focus:border-ring/60"
           />
           {naming && (
-            <span className="absolute right-3.5 top-1/2 flex -translate-y-1/2 items-center gap-1.5 text-[11.5px] text-muted-foreground">
+            <span className="absolute right-3.5 top-1/2 flex -translate-y-1/2 items-center gap-1.5 text-small text-muted-foreground">
               <Loader2 size={12} className="animate-spin" />
               Thinking of a name
             </span>
@@ -1034,7 +1034,7 @@ function IdentityBeat({
           onChange={(e) => editPersona({ title: e.target.value })}
           placeholder="What they do, in a line"
           aria-label="Title"
-          className="h-10 rounded-xl bg-card px-4 text-[14px]"
+          className="h-10 rounded-xl bg-card px-4 text-ui"
         />
       </div>
 
@@ -1043,7 +1043,7 @@ function IdentityBeat({
           aside={
             <button
               onClick={() => setIdentity(randomIdentity())}
-              className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12.5px] text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
+              className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-body text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
             >
               <RefreshCw size={12} />
               Surprise me
@@ -1092,7 +1092,7 @@ function IdentityBeat({
       </section>
 
       <section className="mt-9">
-        <Label aside={<span className="text-[12px] text-muted-foreground">{plural(persona.skills.length, "skill")}</span>}>
+        <Label aside={<span className="text-small text-muted-foreground">{plural(persona.skills.length, "skill")}</span>}>
           What {shownName || "they"} know{shownName ? "s" : ""}
         </Label>
         <div className="rounded-2xl border bg-card p-4">
@@ -1100,10 +1100,10 @@ function IdentityBeat({
               of the agent's instructions, with the craft below them. */}
           {described && (
             <div className="mb-3 flex items-start gap-3 rounded-xl bg-muted/60 px-3 py-2.5">
-              <span className="min-w-0 flex-1 text-pretty text-[13px] leading-relaxed text-foreground">“{described}”</span>
+              <span className="min-w-0 flex-1 text-pretty text-body leading-relaxed text-foreground">“{described}”</span>
               <button
                 onClick={onEditJob}
-                className="shrink-0 text-[12px] text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
+                className="shrink-0 text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
               >
                 Edit
               </button>
@@ -1115,7 +1115,7 @@ function IdentityBeat({
             placeholder={described ? "How they work, beyond your words above (optional)" : "How they work: what they care about and how they go about it"}
             aria-label="How they work"
             rows={4}
-            className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-[13px] leading-relaxed text-foreground outline-none transition-[border-color] duration-150 placeholder:text-muted-foreground focus:border-ring/60"
+            className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-body leading-relaxed text-foreground outline-none transition-[border-color] duration-150 placeholder:text-muted-foreground focus:border-ring/60"
           />
           <div className="mt-3 flex flex-col gap-1">
             <AnimatePresence initial={false}>
@@ -1138,7 +1138,7 @@ function IdentityBeat({
                       editPersona({ skills });
                     }}
                     aria-label={`Skill ${i + 1}`}
-                    className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-[12.5px] leading-relaxed text-muted-foreground outline-none transition-colors duration-150 hover:bg-accent/50 focus:bg-accent/60 focus:text-foreground"
+                    className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-body leading-relaxed text-muted-foreground outline-none transition-colors duration-150 hover:bg-accent/50 focus:bg-accent/60 focus:text-foreground"
                   />
                   <button
                     onClick={() => editPersona({ skills: persona.skills.filter((_, j) => j !== i) })}
@@ -1159,7 +1159,7 @@ function IdentityBeat({
                 onKeyDown={(e) => e.key === "Enter" && addSkill()}
                 placeholder="Add a skill: when to use it, and what to return"
                 aria-label="New skill"
-                className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground/70 hover:bg-accent/50 focus:bg-accent/60"
+                className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-body text-foreground outline-none placeholder:text-muted-foreground/70 hover:bg-accent/50 focus:bg-accent/60"
               />
               <button
                 onClick={addSkill}
@@ -1222,7 +1222,7 @@ function SetupBeat({
 
       <section>
         <Label>The engine</Label>
-        <p className="-mt-1.5 mb-3 text-pretty text-[13px] leading-relaxed text-muted-foreground">
+        <p className="-mt-1.5 mb-3 text-pretty text-body leading-relaxed text-muted-foreground">
           The model that does the thinking for {who === "they" ? "them" : who}. Larger models reason better and cost more;
           smaller ones are quicker. Switching later takes one click.
         </p>
@@ -1253,7 +1253,7 @@ function SetupBeat({
             />
           ))}
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-muted-foreground" data-keep-escape>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-body text-muted-foreground" data-keep-escape>
           A particular model:
           <div className="rounded-lg border bg-card">
             <ModelPicker value={engine} onPick={setEngine} noneLabel="Workspace default" />
@@ -1265,14 +1265,14 @@ function SetupBeat({
         <Label
           aside={
             approvalsNote(mode, workspaceMode) && (
-              <span className="text-[12px] text-muted-foreground">{approvalsNote(mode, workspaceMode)}</span>
+              <span className="text-small text-muted-foreground">{approvalsNote(mode, workspaceMode)}</span>
             )
           }
         >
           How much they ask
         </Label>
         <ApprovalsChooser value={mode} onChange={onApprovals} compact />
-        {refused && <div className="mt-2 text-[12px] text-warning">Not confirmed, so the mode is unchanged.</div>}
+        {refused && <div className="mt-2 text-small text-warning">Not confirmed, so the mode is unchanged.</div>}
       </section>
 
       <section className="mt-9">
@@ -1282,7 +1282,7 @@ function SetupBeat({
             Where they work
           </span>
         </Label>
-        <p className="-mt-1.5 mb-3 text-pretty text-[13px] leading-relaxed text-muted-foreground">
+        <p className="-mt-1.5 mb-3 text-pretty text-body leading-relaxed text-muted-foreground">
           Point them at a project to work in that folder. Left empty, they get a workspace of their own.
         </p>
         <div className="flex gap-2">
@@ -1292,7 +1292,7 @@ function SetupBeat({
             placeholder={defaultFolder || "Their own workspace"}
             spellCheck={false}
             aria-label="Working folder"
-            className="h-9 rounded-xl bg-card font-mono text-[12.5px]"
+            className="h-9 rounded-xl bg-card font-mono text-body"
           />
           <BrowseFolderButton onPick={setFolder} className="h-9 rounded-xl" />
         </div>
@@ -1331,8 +1331,8 @@ function EngineOption({
     >
       {mark}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-foreground">{title}</span>
-        <span className="block truncate text-[12px] text-muted-foreground">{line}</span>
+        <span className="block truncate text-body font-medium text-foreground">{title}</span>
+        <span className="block truncate text-small text-muted-foreground">{line}</span>
       </span>
       <span
         className={cn(
@@ -1391,10 +1391,10 @@ function PreviewCard({
           <AvatarLanding color={identity.color} shape={identity.shape} size={88} excited={creating} />
         </motion.div>
         <div className="mt-4 w-full text-center">
-          <div className={cn("truncate text-[18px] font-semibold tracking-tight", name ? "text-foreground" : "text-muted-foreground")}>
+          <div className={cn("truncate text-title font-semibold tracking-tight", name ? "text-foreground" : "text-muted-foreground")}>
             {name || "Your agent"}
           </div>
-          <div className="mt-0.5 line-clamp-2 min-h-[20px] text-[13px] text-muted-foreground">
+          <div className="mt-0.5 line-clamp-2 min-h-[20px] text-body text-muted-foreground">
             {empty ? "Describe a job and they take shape here." : title || " "}
           </div>
         </div>
@@ -1402,10 +1402,10 @@ function PreviewCard({
 
       <div className="px-5 pb-5 pt-4">
         {/* the first thing they will say, as it will look in the chat */}
-        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">First words</div>
+        <div className="text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">First words</div>
         <div className="mt-2 flex items-end gap-2">
           <BlokAvatar color={identity.color} shape={identity.shape} expression="friendly" size={22} />
-          <div className="min-w-0 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-[12.5px] leading-relaxed text-foreground">
+          <div className="min-w-0 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-body leading-relaxed text-foreground">
             <span className={cn(empty && "text-muted-foreground")}>{greeting}</span>
           </div>
         </div>
@@ -1413,17 +1413,17 @@ function PreviewCard({
         {shownSkills.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-1.5">
             {shownSkills.slice(0, 3).map((skill, i) => (
-              <span key={i} className="max-w-full truncate rounded-full border px-2.5 py-0.5 text-[11.5px] text-muted-foreground">
+              <span key={i} className="max-w-full truncate rounded-full border px-2.5 py-0.5 text-small text-muted-foreground">
                 {skill.split(":")[0].slice(0, 32)}
               </span>
             ))}
             {shownSkills.length > 3 && (
-              <span className="rounded-full border px-2.5 py-0.5 text-[11.5px] text-muted-foreground">+{shownSkills.length - 3}</span>
+              <span className="rounded-full border px-2.5 py-0.5 text-small text-muted-foreground">+{shownSkills.length - 3}</span>
             )}
           </div>
         )}
 
-        <dl className="mt-4 flex flex-col divide-y rounded-xl border text-[12px]">
+        <dl className="mt-4 flex flex-col divide-y rounded-xl border text-small">
           {[
             ["Engine", engine],
             ["Asks", approvals],

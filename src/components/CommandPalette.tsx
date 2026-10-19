@@ -211,14 +211,14 @@ export function CommandPalette() {
       )}
     >
       <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">{icon}</span>
-      <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{label}</span>
-      {meta && <span className="max-w-[40%] shrink-0 truncate text-[12.5px] text-muted-foreground">{meta}</span>}
+      <span className="min-w-0 flex-1 truncate text-ui text-foreground">{label}</span>
+      {meta && <span className="max-w-[40%] shrink-0 truncate text-body text-muted-foreground">{meta}</span>}
       {keys && keys.length > 0 && (
         <span className="flex shrink-0 items-center gap-1">
           {keys.map((k) => (
             <kbd
               key={k}
-              className="min-w-[26px] rounded-md bg-muted px-1.5 py-0.5 text-center font-sans text-[11px] tabular-nums text-muted-foreground"
+              className="min-w-[26px] rounded-md bg-muted px-1.5 py-0.5 text-center font-sans text-caption tabular-nums text-muted-foreground"
             >
               {k}
             </kbd>
@@ -259,7 +259,7 @@ export function CommandPalette() {
             }
           }}
           placeholder="Search chats"
-          className="h-14 w-full shrink-0 bg-transparent px-5 text-[15px] text-foreground outline-none placeholder:text-muted-foreground"
+          className="h-14 w-full shrink-0 bg-transparent px-5 text-lead text-foreground outline-none placeholder:text-muted-foreground"
         />
 
         <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -315,7 +315,7 @@ export function CommandPalette() {
           {total === 0 && (
             <div className="flex flex-col items-center gap-1 px-3 py-10 text-center">
               <BotIcon size={18} className="text-muted-foreground" />
-              <div className="text-[13.5px] text-muted-foreground">Nothing matches “{q}”</div>
+              <div className="text-ui text-muted-foreground">Nothing matches “{q}”</div>
             </div>
           )}
         </div>
@@ -327,7 +327,7 @@ export function CommandPalette() {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="pb-1">
-      <div className="px-3 pb-1.5 pt-2.5 text-[12.5px] font-medium text-muted-foreground">{label}</div>
+      <div className="px-3 pb-1.5 pt-2.5 text-body font-medium text-muted-foreground">{label}</div>
       {children}
     </div>
   );

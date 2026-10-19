@@ -167,7 +167,7 @@ function Backups() {
   if (refused) return <Elsewhere />;
   if (!status) {
     return (
-      <div className="flex items-center gap-2 px-1 py-6 text-[13px] text-muted-foreground">
+      <div className="flex items-center gap-2 px-1 py-6 text-body text-muted-foreground">
         {error ? <span className="text-destructive">{error}</span> : <Loader2 size={14} className="animate-spin" />}
       </div>
     );
@@ -242,8 +242,8 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-pretty text-[13px] font-medium text-foreground">{note ?? restoreLine(restore)}</div>
-          <div className="mt-0.5 break-all text-[12px] text-muted-foreground">{restore.from}</div>
+          <div className="text-pretty text-body font-medium text-foreground">{note ?? restoreLine(restore)}</div>
+          <div className="mt-0.5 break-all text-small text-muted-foreground">{restore.from}</div>
         </div>
         {restore.phase === "draining" && (
           <Button size="sm" variant="secondary" onClick={onCancel}>
@@ -255,7 +255,7 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
   }
   if (status.pending) {
     return (
-      <div role="status" className="mb-6 rounded-2xl border bg-card p-4 text-[13px] text-foreground">
+      <div role="status" className="mb-6 rounded-2xl border bg-card p-4 text-body text-foreground">
         A restore of <span className="break-all font-medium">{status.pending.from}</span> is checked and ready. It is put in
         place when Bloks next starts.
       </div>
@@ -267,13 +267,13 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
     return (
       <div role="status" className="mb-6 flex items-start gap-3 rounded-2xl border bg-card p-4">
         <ShieldCheck size={15} className="mt-0.5 shrink-0 text-success" />
-        <div className="min-w-0 text-pretty text-[12.5px] leading-relaxed text-muted-foreground">
+        <div className="min-w-0 text-pretty text-body leading-relaxed text-muted-foreground">
           <span className="font-medium text-foreground">Restored {whenSaid(last.at)}</span> from{" "}
           <span className="break-all">{last.from}</span>.
           {last.aside && (
             <>
               {" "}
-              The workspace it replaced is in <span className="break-all font-mono text-[11.5px]">{last.aside}</span>.
+              The workspace it replaced is in <span className="break-all font-mono text-small">{last.aside}</span>.
             </>
           )}
           {last.keys === "kept" ? " The keys on this computer were kept." : " Its saved keys came back with it."}
@@ -362,11 +362,11 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
                 onChange={(e) => setAgain(e.target.value)}
               />
             </div>
-            {passphrase && problem && <div className="text-[12px] text-muted-foreground">{problem}</div>}
+            {passphrase && problem && <div className="text-small text-muted-foreground">{problem}</div>}
             <div className="flex items-center gap-3 pt-1">
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium text-foreground">Include saved keys</div>
-                <div className="mt-0.5 text-pretty text-[12px] leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium text-foreground">Include saved keys</div>
+                <div className="mt-0.5 text-pretty text-small leading-relaxed text-muted-foreground">
                   Engine keys, tokens and paired devices, so a restore on another computer is ready to go. Only ever in a
                   sealed backup.
                 </div>
@@ -454,15 +454,15 @@ function BackupRow({
   return (
     <div className="px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-[13.5px] font-medium text-foreground">{when(backup.created)}</span>
-        {label && <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{label}</span>}
+        <span className="text-ui font-medium text-foreground">{when(backup.created)}</span>
+        {label && <span className="rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">{label}</span>}
         {backup.encrypted && <Lock size={12} aria-label="Sealed with a passphrase" className="text-muted-foreground" />}
       </div>
-      <div className={cn("mt-0.5 text-pretty text-[12.5px] leading-relaxed", backup.damaged ? "text-destructive" : "text-muted-foreground")}>
+      <div className={cn("mt-0.5 text-pretty text-body leading-relaxed", backup.damaged ? "text-destructive" : "text-muted-foreground")}>
         {backupDetails(backup)}
       </div>
       {line && (
-        <div className={cn("mt-1.5 break-words text-[12px]", line.ok ? "text-success" : "text-destructive")} aria-live="polite">
+        <div className={cn("mt-1.5 break-words text-small", line.ok ? "text-success" : "text-destructive")} aria-live="polite">
           {line.text}
         </div>
       )}
@@ -557,14 +557,14 @@ function RestoreDialog({
           Everything in Bloks goes back to how it was {whenSaid(backup.created)}: agents, rooms, conversations, skills
           and settings.
         </DialogDescription>
-        <ol className="mt-4 flex list-decimal flex-col gap-1.5 pl-5 text-[12.5px] leading-relaxed text-foreground marker:text-muted-foreground">
+        <ol className="mt-4 flex list-decimal flex-col gap-1.5 pl-5 text-body leading-relaxed text-foreground marker:text-muted-foreground">
           {steps.map((step) => (
             <li key={step} className="text-pretty break-words">
               {step}
             </li>
           ))}
         </ol>
-        <div className="mt-3 flex flex-col gap-1 text-pretty text-[12.5px] leading-relaxed text-muted-foreground">
+        <div className="mt-3 flex flex-col gap-1 text-pretty text-body leading-relaxed text-muted-foreground">
           {notes.map((note) => (
             <p key={note}>{note}</p>
           ))}
@@ -584,7 +584,7 @@ function RestoreDialog({
             }}
           />
         )}
-        {problem && <div className="mt-3 text-[12.5px] text-destructive">{problem}</div>}
+        {problem && <div className="mt-3 text-body text-destructive">{problem}</div>}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button variant="secondary" disabled={starting} onClick={onClose}>
             Cancel

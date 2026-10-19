@@ -145,7 +145,7 @@ function RoomMessage({
   if (message.deleted) {
     return (
       <div className={cn("flex", message.role === "user" ? "justify-end" : "justify-start pl-11")}>
-        <div className="rounded-2xl border border-dashed px-3 py-1.5 text-[13px] italic text-muted-foreground">
+        <div className="rounded-2xl border border-dashed px-3 py-1.5 text-body italic text-muted-foreground">
           Message taken back
         </div>
       </div>
@@ -161,14 +161,14 @@ function RoomMessage({
         <div className="min-w-0 flex-1">
           {showSpeaker && (
             <div className="mb-0.5 flex items-baseline gap-1.5">
-              <span className="text-[13px] font-semibold text-foreground">{who}</span>
-              <span className="text-[11px] tabular-nums text-muted-foreground">{stamp(message.at)}</span>
+              <span className="text-body font-semibold text-foreground">{who}</span>
+              <span className="text-caption tabular-nums text-muted-foreground">{stamp(message.at)}</span>
             </div>
           )}
           <div ref={tap.row} className="group relative flex items-center gap-1.5">
             <div
               onPointerUp={tap.onPointerUp}
-              className="min-w-0 rounded-2xl rounded-tl-md bg-muted px-3.5 py-2 text-[14.5px] leading-relaxed text-foreground"
+              className="min-w-0 rounded-2xl rounded-tl-md bg-muted px-3.5 py-2 text-lead leading-relaxed text-foreground"
             >
               {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
               <Markdownish text={message.text ?? ""} mentions={names} />
@@ -187,7 +187,7 @@ function RoomMessage({
         <div className="flex max-w-[76%] flex-col items-end">
           <div
             onPointerUp={tap.onPointerUp}
-            className="whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-[14.5px] leading-relaxed text-primary-foreground"
+            className="whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-lead leading-relaxed text-primary-foreground"
           >
             {message.replyTo && <ReplyContext replyTo={message.replyTo} onDark />}
             {message.text}
@@ -198,7 +198,7 @@ function RoomMessage({
             nameOf={nameOfReactor}
           />
           {message.deliveredAt && (
-            <div className="mt-0.5 px-1 text-[11px] leading-4 tabular-nums text-muted-foreground">
+            <div className="mt-0.5 px-1 text-caption leading-4 tabular-nums text-muted-foreground">
               {queuedLine(message.queuedAt ?? message.at, message.deliveredAt)}
             </div>
           )}
@@ -208,7 +208,7 @@ function RoomMessage({
   }
 
   if (message.kind === "notice" && (message.event || message.compaction)) {
-    return <div className="py-1 text-center text-[12px] text-muted-foreground">{message.text}</div>;
+    return <div className="py-1 text-center text-small text-muted-foreground">{message.text}</div>;
   }
 
   if (message.kind === "notice") {
@@ -216,7 +216,7 @@ function RoomMessage({
       <div className="flex gap-2.5 pl-11">
         <div className="flex max-w-[560px] gap-2 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2">
           <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
-          <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
+          <div className="whitespace-pre-wrap text-body leading-relaxed text-foreground">
             {message.text}
             <CarryOn message={message} />
           </div>
@@ -237,7 +237,7 @@ function RoomMessage({
   // the room's own opening line has no speaker
   if (!speaker) {
     return (
-      <div className="py-1 text-center text-[12px] text-muted-foreground">{message.text}</div>
+      <div className="py-1 text-center text-small text-muted-foreground">{message.text}</div>
     );
   }
 
@@ -251,8 +251,8 @@ function RoomMessage({
       <div className="min-w-0 flex-1">
         {showSpeaker && (
           <div className="mb-0.5 flex items-baseline gap-1.5">
-            <span className="text-[13px] font-semibold text-foreground">{speaker.name}</span>
-            <span className="text-[11px] tabular-nums text-muted-foreground">{stamp(message.at)}</span>
+            <span className="text-body font-semibold text-foreground">{speaker.name}</span>
+            <span className="text-caption tabular-nums text-muted-foreground">{stamp(message.at)}</span>
           </div>
         )}
         {message.kind === "component" && message.component ? (
@@ -264,7 +264,7 @@ function RoomMessage({
           <OptionCard botId={speaker.id} roomId={roomId} message={message} />
         ) : (
           <div ref={tap.row} className="group relative flex items-center gap-1.5">
-            <div onPointerUp={tap.onPointerUp} className="min-w-0 flex-1 text-[14.5px] leading-relaxed text-foreground">
+            <div onPointerUp={tap.onPointerUp} className="min-w-0 flex-1 text-lead leading-relaxed text-foreground">
               {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
               <Markdownish text={message.text ?? ""} mentions={names} />
               <Reactions
@@ -590,7 +590,7 @@ export function RoomView({ blok }: { blok: Blok }) {
           {answers && (
             <button
               onClick={() => setLensAnd("forum")}
-              className="ml-11 mt-0.5 rounded-md px-1.5 py-0.5 text-[11.5px] text-brand-ink transition-colors duration-150 hover:bg-accent"
+              className="ml-11 mt-0.5 rounded-md px-1.5 py-0.5 text-small text-brand-ink transition-colors duration-150 hover:bg-accent"
             >
               {answers}
             </button>
@@ -607,8 +607,8 @@ export function RoomView({ blok }: { blok: Blok }) {
             <Users size={15} />
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-[14px] font-semibold text-foreground">{blok.name}</span>
-            <span className="block truncate text-[11.5px] text-muted-foreground">
+            <span className="block truncate text-ui font-semibold text-foreground">{blok.name}</span>
+            <span className="block truncate text-small text-muted-foreground">
               {answering.map((m) => m.name).join(", ")}
               {answering.length < members.length &&
                 ` · ${members.length - answering.length} archived`}
@@ -632,7 +632,7 @@ export function RoomView({ blok }: { blok: Blok }) {
           >
             <UserPlus size={16} />
             {knocking > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-brand-ink px-1 text-[10px] font-semibold leading-4 text-brand-foreground">
+              <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-brand-ink px-1 text-micro font-semibold leading-4 text-brand-foreground">
                 {knocking}
               </span>
             )}
@@ -680,10 +680,10 @@ export function RoomView({ blok }: { blok: Blok }) {
             className="w-[400px] max-w-[92vw] animate-pop-in rounded-2xl border bg-popover p-4 shadow-2xl sm:p-5"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-[15px] font-semibold text-foreground">
+            <div className="text-lead font-semibold text-foreground">
               Close {blok.name}?
             </div>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-body leading-relaxed text-muted-foreground">
               Archiving takes the room off your list and keeps everything: the transcript, the
               members, the work. You can bring it back later. Deleting cannot be undone.
             </p>
@@ -721,7 +721,7 @@ export function RoomView({ blok }: { blok: Blok }) {
       )}
 
       {lead && members.length > 1 && (
-        <div className="flex items-center justify-center gap-1.5 border-b bg-muted/30 py-1.5 text-[11.5px] text-muted-foreground">
+        <div className="flex items-center justify-center gap-1.5 border-b bg-muted/30 py-1.5 text-small text-muted-foreground">
           <Crown size={11} />
           {lead.name} is most senior here and has the final call
         </div>
@@ -764,7 +764,7 @@ export function RoomView({ blok }: { blok: Blok }) {
             <button
               onClick={earlier.showEarlier}
               disabled={earlier.loading}
-              className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] text-muted-foreground transition-colors duration-150 hover:border-foreground/25 hover:text-foreground disabled:opacity-60"
+              className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-small text-muted-foreground transition-colors duration-150 hover:border-foreground/25 hover:text-foreground disabled:opacity-60"
             >
               {earlier.loading && <Loader2 size={12} className="animate-spin" />}
               Show earlier messages ({start + earlier.remaining} more)
@@ -786,13 +786,13 @@ export function RoomView({ blok }: { blok: Blok }) {
                 ],
           )}
           {working.map((m) => (
-            <div key={m.id} className="flex animate-rise-in items-center gap-2.5 pl-11 text-[12px] text-muted-foreground">
+            <div key={m.id} className="flex animate-rise-in items-center gap-2.5 pl-11 text-small text-muted-foreground">
               <Loader2 size={11} className="animate-spin" />
               {m.name} is thinking
             </div>
           ))}
           {typingNow && (
-            <div className="flex items-center gap-2.5 pl-11 text-[12px] text-muted-foreground">
+            <div className="flex items-center gap-2.5 pl-11 text-small text-muted-foreground">
               <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground" />
               {typingNow} is typing
             </div>
@@ -835,9 +835,9 @@ export function RoomView({ blok }: { blok: Blok }) {
                   )}
                 >
                   {m.bot ? <AgentAvatar bot={m.bot} size={22} /> : <PersonDot name={m.name} size={22} />}
-                  <span className="text-[13px] font-medium text-foreground">{m.name}</span>
+                  <span className="text-body font-medium text-foreground">{m.name}</span>
                   {m.title && (
-                    <span className="truncate text-[12px] text-muted-foreground">{m.title}</span>
+                    <span className="truncate text-small text-muted-foreground">{m.title}</span>
                   )}
                 </button>
               ))}
@@ -888,7 +888,7 @@ export function RoomView({ blok }: { blok: Blok }) {
             placeholder={
               replyTo ? `Reply to ${replyTo.author}…` : `Message ${blok.name}, or @name someone`
             }
-            className="w-full min-w-0 resize-none self-center bg-transparent py-1 text-[14.5px] leading-relaxed text-foreground outline-none placeholder:truncate placeholder:text-muted-foreground placeholder-shown:overflow-hidden placeholder-shown:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]"
+            className="w-full min-w-0 resize-none self-center bg-transparent py-1 text-lead leading-relaxed text-foreground outline-none placeholder:truncate placeholder:text-muted-foreground placeholder-shown:overflow-hidden placeholder-shown:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]"
           />
           <button
             onClick={send}
@@ -955,19 +955,19 @@ function RoomFolderButton({ blok }: { blok: Blok }) {
       </Button>
       {open && (
         <div className="absolute right-0 top-11 z-30 w-[320px] max-w-[92vw] animate-pop-in rounded-2xl border bg-popover p-3.5 shadow-xl shadow-(color:--shadow-color)">
-          <div className="text-[13px] font-semibold text-foreground">Shared working folder</div>
+          <div className="text-body font-semibold text-foreground">Shared working folder</div>
           {pinned ? (
             <>
-              <div className="mt-1 break-all text-[12.5px] text-muted-foreground">
+              <div className="mt-1 break-all text-body text-muted-foreground">
                 {blok.pinnedCwd ?? "Each member uses its own folder."}
               </div>
-              <div className="mt-1.5 text-[11.5px] text-muted-foreground/70">
+              <div className="mt-1.5 text-small text-muted-foreground/70">
                 Fixed since this room first worked. Make a new room to work elsewhere.
               </div>
             </>
           ) : (
             <>
-              <div className="mt-1 text-[12px] text-muted-foreground">
+              <div className="mt-1 text-small text-muted-foreground">
                 Every member's room turns run here. Set it before the room's first task.
               </div>
               <div className="mt-2 flex gap-1.5">
@@ -976,11 +976,11 @@ function RoomFolderButton({ blok }: { blok: Blok }) {
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && save()}
                   placeholder="/Users/you/Projects/launch  (empty = own folders)"
-                  className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
+                  className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-body text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
                 />
                 <BrowseFolderButton onPick={setDraft} />
               </div>
-              {error && <div className="mt-1.5 text-[12px] text-destructive">{error}</div>}
+              {error && <div className="mt-1.5 text-small text-destructive">{error}</div>}
               <div className="mt-2 flex justify-end gap-1.5">
                 <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
                   Cancel

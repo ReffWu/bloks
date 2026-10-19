@@ -55,7 +55,7 @@ export function McpAppsCard() {
 
   if (!servers) {
     return (
-      <div className="mt-4 flex items-center gap-2 rounded-2xl border bg-card p-4 text-[12.5px] text-muted-foreground">
+      <div className="mt-4 flex items-center gap-2 rounded-2xl border bg-card p-4 text-body text-muted-foreground">
         <Loader2 size={14} className="animate-spin" />
         Looking for apps
       </div>
@@ -68,13 +68,13 @@ export function McpAppsCard() {
 
   return (
     <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="text-[13.5px] font-semibold text-foreground">Apps</div>
-      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+      <div className="text-ui font-semibold text-foreground">Apps</div>
+      <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
         Some MCP servers ship an interface as well as tools. Those show up here,
         framed with no network of their own and no way to read anything in Bloks.
       </div>
       {servers.length === 0 ? (
-        <div className="mt-3 rounded-xl border border-dashed px-3 py-4 text-center text-[12px] text-muted-foreground">
+        <div className="mt-3 rounded-xl border border-dashed px-3 py-4 text-center text-small text-muted-foreground">
           No MCP servers yet. Add one from Add, or in Settings, Plugins.
         </div>
       ) : (
@@ -116,8 +116,8 @@ function ServerApps({
     <div className="rounded-xl border bg-background p-2.5">
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium text-foreground">{server.name}</span>
-          <span className="block truncate text-[11.5px] text-muted-foreground">
+          <span className="block truncate text-body font-medium text-foreground">{server.name}</span>
+          <span className="block truncate text-small text-muted-foreground">
             {apps === null
               ? server.target
               : apps.length === 0
@@ -132,7 +132,7 @@ function ServerApps({
       </div>
 
       {error && (
-        <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+        <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">
           {error}
         </div>
       )}
@@ -145,9 +145,9 @@ function ServerApps({
         >
           <AppWindow size={15} className="shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-medium text-foreground">{app.name}</span>
+            <span className="block truncate text-body font-medium text-foreground">{app.name}</span>
             {app.description && (
-              <span className="block truncate text-[11.5px] text-muted-foreground">{app.description}</span>
+              <span className="block truncate text-small text-muted-foreground">{app.description}</span>
             )}
           </span>
         </button>
@@ -229,8 +229,8 @@ function AppFrame({
         <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to the list">
           <ArrowLeft size={15} />
         </Button>
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{app.name}</span>
-        <span className="shrink-0 truncate text-[11.5px] text-muted-foreground">{server.name}</span>
+        <span className="min-w-0 flex-1 truncate text-body font-medium text-foreground">{app.name}</span>
+        <span className="shrink-0 truncate text-small text-muted-foreground">{server.name}</span>
         {busy && <Loader2 size={13} className="shrink-0 animate-spin text-muted-foreground" />}
         <Button variant="ghost" size="icon-sm" onClick={load} aria-label="Reload the app">
           <RotateCw size={13} />
@@ -238,15 +238,15 @@ function AppFrame({
       </div>
 
       {error && (
-        <div className="border-b bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>
+        <div className="border-b bg-destructive/10 px-3 py-2 text-small text-destructive">{error}</div>
       )}
       {note && (
-        <div className="border-b bg-muted/60 px-3 py-2 text-[12px] text-foreground">{note}</div>
+        <div className="border-b bg-muted/60 px-3 py-2 text-small text-foreground">{note}</div>
       )}
 
       <div className={cn("min-h-[280px] bg-card", !html && "flex items-center justify-center")}>
         {html === null && !error ? (
-          <div className="flex items-center gap-2 py-10 text-[12.5px] text-muted-foreground">
+          <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
             Asking {server.name} for it
           </div>
@@ -263,7 +263,7 @@ function AppFrame({
         )}
       </div>
 
-      <div className="flex items-start gap-2 border-t px-3 py-2 text-[11.5px] leading-relaxed text-muted-foreground">
+      <div className="flex items-start gap-2 border-t px-3 py-2 text-small leading-relaxed text-muted-foreground">
         <ShieldCheck size={13} className="mt-[2px] shrink-0" />
         <span>
           Written by {server.name}, not by Bloks. It runs with no origin of its

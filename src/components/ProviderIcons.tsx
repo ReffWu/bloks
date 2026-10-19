@@ -211,7 +211,7 @@ export function ProviderMark({ driverKind, size, className }: IconProps & { driv
   const lettered = LETTERED[driverKind];
   if (lettered) return <LetterMark {...lettered} size={size} className={className} />;
   return (
-    <span className="text-[11px] font-semibold text-muted-foreground">
+    <span className="text-caption font-semibold text-muted-foreground">
       {driverKind.slice(0, 2).toUpperCase()}
     </span>
   );

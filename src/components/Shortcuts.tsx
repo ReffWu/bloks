@@ -23,7 +23,7 @@ export function Keys({ keys, className }: { keys: string[]; className?: string }
   return (
     <span className={cn("flex shrink-0 items-center gap-1", className)}>
       {keys.map((label) => (
-        <kbd key={label} className="rounded-md border px-1.5 py-0.5 text-[10.5px] text-muted-foreground">
+        <kbd key={label} className="rounded-md border px-1.5 py-0.5 text-caption text-muted-foreground">
           {label}
         </kbd>
       ))}
@@ -136,21 +136,21 @@ function ShortcutsSheet() {
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
-          <div className="text-[15px] font-semibold text-foreground">Keyboard shortcuts</div>
+          <div className="text-lead font-semibold text-foreground">Keyboard shortcuts</div>
           <Keys keys={[chordLabel(["Esc"], platform)]} />
         </div>
         <div className="min-h-0 gap-x-8 overflow-y-auto px-5 pb-1 pt-4 sm:columns-2">
           {groups.map((group) => (
             <section key={group.id} className="mb-5 break-inside-avoid">
-              <h3 className="pb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <h3 className="pb-1 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 {group.label}
               </h3>
               {group.shortcuts.map((shortcut) => (
                 <div key={shortcut.id} className="flex items-start justify-between gap-3 py-[5px]">
                   <div className="min-w-0">
-                    <div className="text-[13px] leading-snug text-foreground">{shortcut.does}</div>
+                    <div className="text-body leading-snug text-foreground">{shortcut.does}</div>
                     {shortcut.when && (
-                      <div className="text-[11.5px] leading-snug text-muted-foreground">{shortcut.when}</div>
+                      <div className="text-small leading-snug text-muted-foreground">{shortcut.when}</div>
                     )}
                   </div>
                   <Keys keys={shortcut.keys.map((chord) => chordLabel(chord, platform))} className="pt-px" />

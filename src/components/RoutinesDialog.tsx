@@ -117,7 +117,7 @@ export function RoutinesDialog({
       <DialogContent className="flex max-h-[85vh] w-full max-w-[520px] flex-col gap-0 overflow-hidden p-0">
         <div className="flex h-[52px] shrink-0 items-center gap-2 border-b px-5">
           <CalendarClock size={16} className="text-muted-foreground" />
-          <DialogTitle className="text-[14.5px]">
+          <DialogTitle className="text-lead">
             {creating ? "New routine" : "Routines"}
           </DialogTitle>
         </div>
@@ -125,7 +125,7 @@ export function RoutinesDialog({
         {creating ? (
           <>
             {error && (
-              <div className="mx-5 mt-3 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+              <div className="mx-5 mt-3 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">
                 {error}
               </div>
             )}
@@ -144,17 +144,17 @@ export function RoutinesDialog({
         ) : (
           <div className="flex-1 overflow-y-auto px-5 pb-5">
             {error && (
-              <div className="mt-3 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+              <div className="mt-3 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">
                 {error}
               </div>
             )}
 
             {routines === null ? (
-              <div className="py-10 text-center text-[13px] text-muted-foreground">Loading…</div>
+              <div className="py-10 text-center text-body text-muted-foreground">Loading…</div>
             ) : routines.length === 0 ? (
               <div className="py-10 text-center">
-                <div className="text-[13.5px] font-medium text-foreground">Nothing scheduled yet</div>
-                <div className="mx-auto mt-1 max-w-[300px] text-[12.5px] text-muted-foreground">
+                <div className="text-ui font-medium text-foreground">Nothing scheduled yet</div>
+                <div className="mx-auto mt-1 max-w-[300px] text-body text-muted-foreground">
                   A routine is a task an agent runs on a schedule: a morning digest, a weekly
                   report, an inbox sweep.
                 </div>
@@ -177,25 +177,25 @@ export function RoutinesDialog({
                           <div className="flex items-baseline gap-2">
                             <span
                               className={cn(
-                                "truncate text-[13px] font-medium",
+                                "truncate text-body font-medium",
                                 routine.enabled ? "text-foreground" : "text-muted-foreground",
                               )}
                             >
                               {target?.name ?? "Unknown target"}
                             </span>
-                            <span className={cn("text-[11.5px] text-muted-foreground", routine.every ? "min-w-0 truncate" : "shrink-0")}>
+                            <span className={cn("text-small text-muted-foreground", routine.every ? "min-w-0 truncate" : "shrink-0")}>
                               {routine.every
                                 ? (routine.summary ?? `Every ${routine.every} min`)
                                 : `${describeDays(routine.days)} at ${routine.time}`}
                             </span>
                           </div>
-                          <div className="mt-0.5 line-clamp-2 text-[12.5px] text-muted-foreground">
+                          <div className="mt-0.5 line-clamp-2 text-body text-muted-foreground">
                             {routine.name && (
                               <span className="font-medium text-foreground">{routine.name} · </span>
                             )}
                             {routine.prompt}
                           </div>
-                          <div className="mt-0.5 text-[11px] text-muted-foreground/70">
+                          <div className="mt-0.5 text-caption text-muted-foreground/70">
                             {routineStatus(routine, whenNext)}
                           </div>
                         </div>
@@ -241,7 +241,7 @@ export function RoutinesDialog({
               <Plus size={13} />
               New routine
             </Button>
-            <div className="mt-2 text-[11px] leading-relaxed text-muted-foreground/70">
+            <div className="mt-2 text-caption leading-relaxed text-muted-foreground/70">
               Routines run while Bloks is open. If {thisComputer()} is asleep at the scheduled time the
               run is skipped rather than piling up.
             </div>
@@ -283,7 +283,7 @@ function Segmented<K extends string>({
           onClick={() => onChange(key)}
           aria-pressed={value === key}
           className={cn(
-            "rounded-md px-2.5 py-1 text-[12px] transition-colors duration-150",
+            "rounded-md px-2.5 py-1 text-small transition-colors duration-150",
             value === key ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -306,7 +306,7 @@ function DayPicker({ days, onToggle, className }: { days: number[]; onToggle: (d
           aria-label={DAY_NAMES[day]}
           aria-pressed={days.includes(day)}
           className={cn(
-            "size-7 rounded-md text-[11.5px] font-semibold transition-colors duration-150",
+            "size-7 rounded-md text-small font-semibold transition-colors duration-150",
             days.includes(day) ? "bg-brand-ink text-brand-foreground" : "bg-muted text-muted-foreground hover:bg-accent",
           )}
         >
@@ -320,7 +320,7 @@ function DayPicker({ days, onToggle, className }: { days: number[]; onToggle: (d
 /** The usual sets of days in one press, and the schedule read back. */
 function DayShortcuts({ onPick, children }: { onPick: (days: number[]) => void; children: React.ReactNode }) {
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]">
+    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-small">
       <button className="text-brand-ink hover:underline" onClick={() => onPick([])}>
         Every day
       </button>
@@ -404,7 +404,7 @@ function CreateForm({
     <div className="flex-1 overflow-y-auto px-5 pb-5">
       {!pinnedTargetId && (
         <>
-          <div className="mb-1.5 mt-4 text-[12.5px] font-medium text-muted-foreground">Who runs it</div>
+          <div className="mb-1.5 mt-4 text-body font-medium text-muted-foreground">Who runs it</div>
           <div className="grid max-h-[168px] grid-cols-2 gap-1.5 overflow-y-auto pr-0.5">
             {targets.map((t) => (
               <button
@@ -427,13 +427,13 @@ function CreateForm({
                 <span className="min-w-0">
                   <span
                     className={cn(
-                      "block truncate text-[12.5px] font-medium",
+                      "block truncate text-body font-medium",
                       t.id === targetId ? "text-foreground" : "text-foreground/90",
                     )}
                   >
                     {t.name}
                   </span>
-                  <span className="block truncate text-[11px] text-muted-foreground">
+                  <span className="block truncate text-caption text-muted-foreground">
                     {t.kind === "room" ? "Team" : (t.bot?.title || "Agent")}
                   </span>
                 </span>
@@ -443,15 +443,15 @@ function CreateForm({
         </>
       )}
 
-      <div className="mb-1.5 mt-4 text-[12.5px] font-medium text-muted-foreground">Name</div>
+      <div className="mb-1.5 mt-4 text-body font-medium text-muted-foreground">Name</div>
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="e.g. Morning brief (optional)"
-        className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
+        className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-body text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
       />
 
-      <div className="mb-1.5 mt-4 text-[12.5px] font-medium text-muted-foreground">What it does</div>
+      <div className="mb-1.5 mt-4 text-body font-medium text-muted-foreground">What it does</div>
       <textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
@@ -462,10 +462,10 @@ function CreateForm({
             ? `e.g. Summarise yesterday's inbox and flag anything ${target.name} should escalate`
             : "What should it do?"
         }
-        className="w-full resize-none rounded-xl border border-input bg-transparent px-3 py-2.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
+        className="w-full resize-none rounded-xl border border-input bg-transparent px-3 py-2.5 text-body text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
       />
 
-      <div className="mb-1.5 mt-4 text-[12.5px] font-medium text-muted-foreground">When</div>
+      <div className="mb-1.5 mt-4 text-body font-medium text-muted-foreground">When</div>
       {forAgent && (
         <Segmented
           value={schedule}
@@ -480,7 +480,7 @@ function CreateForm({
       {checkIn ? (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] text-foreground">Every</span>
+            <span className="text-body text-foreground">Every</span>
             <input
               type="number"
               inputMode="numeric"
@@ -489,13 +489,13 @@ function CreateForm({
               value={everyCount}
               onChange={(e) => setEveryCount(e.target.value)}
               aria-label="How often"
-              className="w-[72px] rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-[13px] tabular-nums text-foreground outline-none focus:border-ring/60"
+              className="w-[72px] rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-body tabular-nums text-foreground outline-none focus:border-ring/60"
             />
             <select
               value={everyUnit}
               onChange={(e) => setEveryUnit(e.target.value as "min" | "hour")}
               aria-label="Minutes or hours"
-              className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none focus:border-ring/60"
+              className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-body text-foreground outline-none focus:border-ring/60"
             >
               <option value="min">minutes</option>
               <option value="hour">hours</option>
@@ -503,23 +503,23 @@ function CreateForm({
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
             <Switch aria-label="Only between two times" checked={keepsHours} onCheckedChange={setKeepsHours} />
-            <span className="text-[12.5px] text-foreground">Only between</span>
+            <span className="text-body text-foreground">Only between</span>
             <input
               type="time"
               value={from}
               disabled={!keepsHours}
               onChange={(e) => setFrom(e.target.value)}
               aria-label="From"
-              className="rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-[13px] text-foreground outline-none focus:border-ring/60 disabled:opacity-50"
+              className="rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-body text-foreground outline-none focus:border-ring/60 disabled:opacity-50"
             />
-            <span className="text-[12.5px] text-muted-foreground">and</span>
+            <span className="text-body text-muted-foreground">and</span>
             <input
               type="time"
               value={to}
               disabled={!keepsHours}
               onChange={(e) => setTo(e.target.value)}
               aria-label="To"
-              className="rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-[13px] text-foreground outline-none focus:border-ring/60 disabled:opacity-50"
+              className="rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-body text-foreground outline-none focus:border-ring/60 disabled:opacity-50"
             />
           </div>
           <DayPicker days={days} onToggle={toggle} className="mt-2.5" />
@@ -528,9 +528,9 @@ function CreateForm({
             {keepsHours ? `, ${from} to ${to}` : ", all day"}
           </DayShortcuts>
           {checkInWrong ? (
-            <div className="mt-2 text-[11.5px] text-destructive">{checkInWrong}</div>
+            <div className="mt-2 text-small text-destructive">{checkInWrong}</div>
           ) : (
-            <div className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
+            <div className="mt-2 text-small leading-relaxed text-muted-foreground">
               Check-ins are quiet: when nothing needs you, {target?.name ?? "the agent"} answers QUIET and
               you are not told. The chat folds them into one line.
             </div>
@@ -551,7 +551,7 @@ function CreateForm({
               type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              className="rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-[13px] text-foreground outline-none focus:border-ring/60"
+              className="rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-body text-foreground outline-none focus:border-ring/60"
             />
             {repeat === "once" ? (
               <input
@@ -559,7 +559,7 @@ function CreateForm({
                 value={date}
                 min={localDateValue(new Date())}
                 onChange={(e) => setDate(e.target.value)}
-                className="rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-[13px] text-foreground outline-none focus:border-ring/60"
+                className="rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-body text-foreground outline-none focus:border-ring/60"
               />
             ) : (
               <DayPicker days={days} onToggle={toggle} />
@@ -574,8 +574,8 @@ function CreateForm({
             <label className="mt-3 flex items-start gap-2.5">
               <Switch aria-label="Only speak up when something needs you" checked={quiet} onCheckedChange={setQuiet} className="mt-0.5" />
               <span className="min-w-0">
-                <span className="block text-[12.5px] text-foreground">Only speak up when something needs me</span>
-                <span className="block text-[11.5px] leading-relaxed text-muted-foreground">
+                <span className="block text-body text-foreground">Only speak up when something needs me</span>
+                <span className="block text-small leading-relaxed text-muted-foreground">
                   {target?.name ?? "The agent"} may answer QUIET, and a quiet run is not announced.
                 </span>
               </span>
@@ -587,11 +587,11 @@ function CreateForm({
       <div className="mt-4 flex flex-wrap gap-5">
         {!checkIn && (
           <label className="block">
-            <div className="mb-1.5 text-[12.5px] font-medium text-muted-foreground">Duration</div>
+            <div className="mb-1.5 text-body font-medium text-muted-foreground">Duration</div>
             <select
               value={durationMin}
               onChange={(e) => setDurationMin(Number(e.target.value))}
-              className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none focus:border-ring/60"
+              className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-body text-foreground outline-none focus:border-ring/60"
             >
               {DURATIONS.map(([min, label]) => (
                 <option key={min} value={min}>{label}</option>
@@ -601,11 +601,11 @@ function CreateForm({
         )}
         {target?.kind === "agent" && (
           <label className="block">
-            <div className="mb-1.5 text-[12.5px] font-medium text-muted-foreground">Runs on</div>
+            <div className="mb-1.5 text-body font-medium text-muted-foreground">Runs on</div>
             <select
               value={runsOn}
               onChange={(e) => setRunsOn(e.target.value as typeof runsOn)}
-              className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none focus:border-ring/60"
+              className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-body text-foreground outline-none focus:border-ring/60"
             >
               <option value="">Wherever {target.name} runs</option>
               <option value="cloud">Cloud computer</option>
@@ -617,7 +617,7 @@ function CreateForm({
         {target?.kind === "agent" && (
           <label className="block">
             <div
-              className="mb-1.5 text-[12.5px] font-medium text-muted-foreground"
+              className="mb-1.5 text-body font-medium text-muted-foreground"
               title="A routine runs in the agent's first conversation, where you talk to it, unless you name another. Two routines in different conversations run side by side, each with its own context."
             >
               Conversation
@@ -627,7 +627,7 @@ function CreateForm({
               maxLength={40}
               onChange={(e) => setThread(e.target.value)}
               placeholder="General"
-              className="w-[180px] rounded-lg border border-input bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
+              className="w-[180px] rounded-lg border border-input bg-background px-2.5 py-1.5 text-body text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
             />
           </label>
         )}

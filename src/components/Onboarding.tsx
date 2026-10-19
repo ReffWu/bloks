@@ -68,8 +68,8 @@ function EngineRow({
           {ok ? <Check size={13} /> : <AlertTriangle size={12} />}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-medium text-foreground">{title}</div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">{detail}</div>
+          <div className="text-ui font-medium text-foreground">{title}</div>
+          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">{detail}</div>
           {!ok && (
             <EngineSetupActions
               kind={kind}
@@ -106,8 +106,8 @@ function PermissionRow({
       <div className="flex items-start gap-3">
         <span className="mt-0.5 shrink-0 text-muted-foreground">{icon}</span>
         <div>
-          <div className="text-[13.5px] font-medium text-foreground">{title}</div>
-          <div className="mt-0.5 text-[12.5px] text-muted-foreground">{detail}</div>
+          <div className="text-ui font-medium text-foreground">{title}</div>
+          <div className="mt-0.5 text-body text-muted-foreground">{detail}</div>
         </div>
       </div>
       {status === "granted" ? (
@@ -402,10 +402,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <div className="flex justify-center">
               <BloksLogo />
             </div>
-            <h1 className="mt-6 text-center text-[18px] font-semibold tracking-tight text-foreground">
+            <h1 className="mt-6 text-center text-title font-semibold tracking-tight text-foreground">
               Welcome back
             </h1>
-            <p className="mt-1 text-center text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-center text-body leading-relaxed text-muted-foreground">
               {ThisComputer()} already has a Bloks workspace: {prior.agents}{" "}
               {prior.agents === 1 ? "agent" : "agents"}
               {prior.rooms > 0 && `, ${prior.rooms} ${prior.rooms === 1 ? "room" : "rooms"}`} and{" "}
@@ -421,9 +421,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               </Button>
             </div>
             {resetNote ? (
-              <p className="mt-3 text-center text-[12px] leading-relaxed text-warning">{resetNote}</p>
+              <p className="mt-3 text-center text-small leading-relaxed text-warning">{resetNote}</p>
             ) : (
-              <p className="mt-3 text-center text-[12px] leading-relaxed text-muted-foreground">
+              <p className="mt-3 text-center text-small leading-relaxed text-muted-foreground">
                 Starting fresh keeps the old workspace in a timestamped folder beside this one.
                 Nothing is deleted, and your keys and engines stay set up.
               </p>
@@ -434,15 +434,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <div className="flex justify-center">
               <BloksLogo />
             </div>
-            <h1 className="mt-6 text-center text-[18px] font-semibold tracking-tight text-foreground">
+            <h1 className="mt-6 text-center text-title font-semibold tracking-tight text-foreground">
               Let's check your engines
             </h1>
-            <p className="mt-1 text-center text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-center text-body leading-relaxed text-muted-foreground">
               Agents run on the AI tools already installed on {thisComputer()}. Everything stays local.
             </p>
             <div className="mt-5 flex flex-col gap-2">
               {!instances ? (
-                <div className="flex items-center justify-center gap-2 py-8 text-[13px] text-muted-foreground">
+                <div className="flex items-center justify-center gap-2 py-8 text-body text-muted-foreground">
                   <Loader2 size={15} className="animate-spin" /> Looking…
                 </div>
               ) : (
@@ -480,7 +480,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   {!ready && (
                     // a CLI is the best engine, not the only one: without
                     // either of them there is still a way in
-                    <p className="px-1 pt-1 text-[12.5px] leading-relaxed text-muted-foreground">
+                    <p className="px-1 pt-1 text-body leading-relaxed text-muted-foreground">
                       Neither one installed? Continue anyway and connect Gemini, Grok, Kimi, Llama or
                       OpenRouter from Settings. Those chat but cannot run commands.
                     </p>
@@ -492,13 +492,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <div className="mt-3 flex items-center justify-between">
               <button
                 onClick={() => void checkEngines()}
-                className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
+                className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-small text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
               >
                 <RefreshCw size={12} className={cn(checking && "animate-spin")} />
                 Check again
               </button>
               {instances && !ready && (
-                <span className="text-[12px] text-warning">No engine ready yet, agents can't reply</span>
+                <span className="text-small text-warning">No engine ready yet, agents can't reply</span>
               )}
             </div>
 
@@ -517,10 +517,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           // agent from nothing, and the answer is enough to propose
           // three that are obviously useful rather than merely available.
           <div className="flex flex-col">
-            <h1 className="text-[17px] font-semibold tracking-tight text-foreground">
+            <h1 className="text-title font-semibold tracking-tight text-foreground">
               What do you spend your time on?
             </h1>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-body leading-relaxed text-muted-foreground">
               Pick any that fit. This only decides who we suggest first; you can make
               any agent you like afterwards.
             </p>
@@ -542,8 +542,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                         : "border-border hover:border-foreground/25",
                     )}
                   >
-                    <div className="text-[12.5px] font-medium text-foreground">{option.label}</div>
-                    <div className="text-[11px] text-muted-foreground">{option.hint}</div>
+                    <div className="text-body font-medium text-foreground">{option.label}</div>
+                    <div className="text-caption text-muted-foreground">{option.hint}</div>
                   </button>
                 );
               })}
@@ -559,17 +559,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           // first hour feels: a card for everything, or agents that get on
           // with it. Every agent made from here starts on the choice.
           <div className="flex flex-col">
-            <h1 className="text-[17px] font-semibold tracking-tight text-foreground">
+            <h1 className="text-title font-semibold tracking-tight text-foreground">
               How much should your agents ask?
             </h1>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-body leading-relaxed text-muted-foreground">
               You can change this any time in Settings, and for any one agent in its own
               settings.
             </p>
             <div className="mt-4">
               <ApprovalsChooser value={approvals} onChange={setApprovals} compact />
             </div>
-            {approvalsNote && <div className="mt-2 text-[12px] text-warning">{approvalsNote}</div>}
+            {approvalsNote && <div className="mt-2 text-small text-warning">{approvalsNote}</div>}
             <Button size="lg" className="mt-5 w-full" disabled={savingApprovals} onClick={() => void chooseApprovals()}>
               Continue
             </Button>
@@ -578,10 +578,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
         {step === 3 && (
           <div className="flex flex-col">
-            <h1 className="text-[17px] font-semibold tracking-tight text-foreground">
+            <h1 className="text-title font-semibold tracking-tight text-foreground">
               Start with one of these
             </h1>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-body leading-relaxed text-muted-foreground">
               Each comes with a role already written. Hire one now, or skip and build
               your own from scratch.
             </p>
@@ -602,10 +602,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                       size={34}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-semibold text-foreground">
+                      <div className="text-body font-semibold text-foreground">
                         {template.name}
                       </div>
-                      <div className="truncate text-[12px] text-muted-foreground">
+                      <div className="truncate text-small text-muted-foreground">
                         {template.title}
                       </div>
                     </div>
@@ -632,8 +632,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           // worth bringing. Last of the agent steps so the agents just
           // hired can be chosen as a destination.
           <div className="flex min-h-0 flex-col">
-            <h1 className="text-[17px] font-semibold tracking-tight text-foreground">Bring your setup</h1>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            <h1 className="text-title font-semibold tracking-tight text-foreground">Bring your setup</h1>
+            <p className="mt-1 text-body leading-relaxed text-muted-foreground">
               Found in {setup.review.sources.map((s) => s.name).join(", ")}. Tick what to bring over. You can
               do this later from Settings too.
             </p>
@@ -656,7 +656,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             ) : (
               <button
                 onClick={afterSetup}
-                className="mt-3 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+                className="mt-3 text-small text-muted-foreground transition-colors hover:text-foreground"
               >
                 Skip for now
               </button>
@@ -666,8 +666,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
         {step === 4 && (
           <div className="flex flex-col">
-            <h1 className="text-[17px] font-semibold tracking-tight text-foreground">Permissions</h1>
-            <p className="mt-1 text-[13px] text-muted-foreground">
+            <h1 className="text-title font-semibold tracking-tight text-foreground">Permissions</h1>
+            <p className="mt-1 text-body text-muted-foreground">
               Nothing here is required, and nothing is used until you ask for the feature that needs it.
             </p>
             <div className="mt-4 flex flex-col gap-2">
@@ -701,7 +701,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             </Button>
             <button
               onClick={finish}
-              className="mt-3 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+              className="mt-3 text-small text-muted-foreground transition-colors hover:text-foreground"
             >
               Skip for now
             </button>

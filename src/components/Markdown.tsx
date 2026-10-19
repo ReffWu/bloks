@@ -72,14 +72,14 @@ function inlineMd(text: string, keyBase: string, highlight: string, mentions?: R
           if (looksShared(token.text)) {
             return [
               <SharedFileLink key={k} href={token.text.trim()} className="no-underline">
-                <code className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-[12.5px] underline decoration-dotted underline-offset-2">
+                <code className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-body underline decoration-dotted underline-offset-2">
                   {token.text}
                 </code>
               </SharedFileLink>,
             ];
           }
           return [
-            <code key={k} className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-[12.5px]">
+            <code key={k} className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-body">
               {token.text}
             </code>,
           ];
@@ -132,7 +132,7 @@ function MarkdownTable({ block, highlight }: { block: TableBlock; highlight: str
   };
   return (
     <TableScroll className="my-1.5 rounded-xl border">
-      <table className="w-full border-collapse text-[12.5px]">
+      <table className="w-full border-collapse text-body">
         <thead>
           <tr className="border-b bg-foreground/[0.04]">
             {block.columns.map((column, i) => (
@@ -170,7 +170,7 @@ function MarkdownCode({ block, highlight }: { block: CodeBlock; highlight: strin
   const [copied, setCopied] = useState(false);
   return (
     <div className="group/code relative my-1.5 max-w-full overflow-hidden rounded-xl border bg-foreground/[0.04]">
-      <div className="flex items-center justify-between border-b px-2.5 py-1 text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between border-b px-2.5 py-1 text-caption text-muted-foreground">
         <span className="font-mono">{block.lang || "code"}</span>
         <button
           onClick={() => {
@@ -183,7 +183,7 @@ function MarkdownCode({ block, highlight }: { block: CodeBlock; highlight: strin
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre className="overflow-x-auto px-3 py-2 font-mono text-[12.5px] leading-relaxed">
+      <pre className="overflow-x-auto px-3 py-2 font-mono text-body leading-relaxed">
         <code>{withHighlight([block.code], highlight)}</code>
       </pre>
     </div>

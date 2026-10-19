@@ -99,7 +99,7 @@ function LaneMenu({
         onClose();
       }}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px]",
+        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-body",
         danger ? "text-destructive hover:bg-destructive/10" : "text-foreground hover:bg-accent",
       )}
     >
@@ -130,7 +130,7 @@ function LaneMenu({
         })}
       <div className="mx-2 my-1 h-px bg-border" />
       {busy ? (
-        <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">Stop it before closing</div>
+        <div className="px-2.5 py-1.5 text-small text-muted-foreground">Stop it before closing</div>
       ) : (
         item(
           <X size={15} />,
@@ -175,7 +175,7 @@ function LaneRename({ title, onDone }: { title: string; onDone: (next: string | 
         if (e.key === "Enter") e.currentTarget.blur();
         if (e.key === "Escape") end(null);
       }}
-      className="min-w-0 flex-1 rounded-md border border-foreground/30 bg-background px-1.5 py-0.5 text-[12.5px] text-foreground outline-none"
+      className="min-w-0 flex-1 rounded-md border border-foreground/30 bg-background px-1.5 py-0.5 text-body text-foreground outline-none"
     />
   );
 }
@@ -209,7 +209,7 @@ export function ConversationRows({ bot, open }: { bot: Bot; open: boolean }) {
                 const active = lane.id === activeId;
                 const waiting = lane.state === "needs-you";
                 const rowClass = cn(
-                  "flex h-[30px] w-full items-center gap-[7px] rounded-lg pl-[26px] pr-2.5 text-left text-[12.5px] transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.98]",
+                  "flex h-[30px] w-full items-center gap-[7px] rounded-lg pl-[26px] pr-2.5 text-left text-body transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.98]",
                   active ? "bg-accent text-foreground" : "hover:bg-accent/60",
                 );
                 if (renaming === lane.id) {
@@ -250,7 +250,7 @@ export function ConversationRows({ bot, open }: { bot: Bot; open: boolean }) {
                     <LaneRing lane={lane} />
                     <span
                       className={cn(
-                        "shrink-0 text-[11px] tabular-nums",
+                        "shrink-0 text-caption tabular-nums",
                         waiting ? "text-warning" : "text-muted-foreground/80",
                       )}
                     >
@@ -304,7 +304,7 @@ export function WaitingRow() {
             <button
               onClick={go}
               aria-label={label}
-              className="flex w-full items-center gap-2 rounded-xl bg-warning/12 px-3 py-[7px] text-left text-[13px] font-medium text-warning transition-[background-color,scale] duration-150 ease-out hover:bg-warning/18 active:scale-[0.97]"
+              className="flex w-full items-center gap-2 rounded-xl bg-warning/12 px-3 py-[7px] text-left text-body font-medium text-warning transition-[background-color,scale] duration-150 ease-out hover:bg-warning/18 active:scale-[0.97]"
             >
               <Hand size={15} className="shrink-0" />
               <span className="min-w-0 flex-1 truncate tabular-nums">{label}</span>

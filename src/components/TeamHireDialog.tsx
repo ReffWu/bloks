@@ -104,11 +104,11 @@ export function TeamHireDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-[500px] flex-col gap-0 overflow-hidden p-0">
         <div className="flex h-[52px] shrink-0 items-center border-b px-5">
-          <DialogTitle className="text-[14.5px]">Hire {team.name}</DialogTitle>
+          <DialogTitle className="text-lead">Hire {team.name}</DialogTitle>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 pb-2 pt-3">
-          <p className="mb-3 text-[12.5px] leading-relaxed text-muted-foreground">
+          <p className="mb-3 text-body leading-relaxed text-muted-foreground">
             Every seat starts as a new agent. If someone here already does one of these jobs,
             give them the seat instead.
           </p>
@@ -124,11 +124,11 @@ export function TeamHireDialog({
                     <BlokAvatar color={member.color} shape={member.shape} size={30} />
                   )}
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5 text-[13px] font-medium text-foreground">
+                    <span className="flex items-center gap-1.5 text-body font-medium text-foreground">
                       {member.title}
                       {member.seniority === 5 && <Crown size={11} className="shrink-0 text-brand-ink" />}
                     </span>
-                    <span className="block truncate text-[11.5px] text-muted-foreground">
+                    <span className="block truncate text-small text-muted-foreground">
                       {seat.kind === "new" ? `New agent, named ${seat.name}` : chosen?.name}
                     </span>
                   </span>
@@ -145,7 +145,7 @@ export function TeamHireDialog({
                         ),
                       )
                     }
-                    className="max-w-[150px] shrink-0 rounded-lg border border-input bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-ring/60"
+                    className="max-w-[150px] shrink-0 rounded-lg border border-input bg-background px-2 py-1.5 text-small text-foreground outline-none focus:border-ring/60"
                   >
                     <option value="">New: {drawnNames[i]}</option>
                     {agents.map((agent) => (
@@ -168,7 +168,7 @@ export function TeamHireDialog({
               own description; the folder becomes the room's shared desk. */}
           <div className="mt-4 border-t pt-3.5">
             <label className="block">
-              <span className="text-[12.5px] font-medium text-muted-foreground">
+              <span className="text-body font-medium text-muted-foreground">
                 What are they working on?
               </span>
               <textarea
@@ -176,11 +176,11 @@ export function TeamHireDialog({
                 onChange={(e) => setBrief(e.target.value)}
                 rows={2}
                 placeholder="e.g. Launching the new pricing page in March. Audience is developers."
-                className="mt-1.5 w-full resize-none rounded-xl border border-input bg-transparent px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
+                className="mt-1.5 w-full resize-none rounded-xl border border-input bg-transparent px-3 py-2 text-body text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
               />
             </label>
             <label className="mt-3 block">
-              <span className="text-[12.5px] font-medium text-muted-foreground">
+              <span className="text-body font-medium text-muted-foreground">
                 A folder to work in
               </span>
               <div className="mt-1.5 flex gap-1.5">
@@ -188,21 +188,21 @@ export function TeamHireDialog({
                   value={desk}
                   onChange={(e) => setDesk(e.target.value)}
                   placeholder="Optional. e.g. ~/Projects/pricing"
-                  className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
+                  className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-body text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
                 />
                 <BrowseFolderButton onPick={setDesk} className="h-auto rounded-xl" />
               </div>
             </label>
-            <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
+            <p className="mt-2 text-small leading-relaxed text-muted-foreground">
               Both are optional and can change later. Answering now means the room starts with
               context instead of asking for it.
             </p>
           </div>
-          {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
+          {error && <div className="mt-2 text-small text-destructive">{error}</div>}
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t px-5 py-3.5">
-          <span className="text-[12px] text-muted-foreground">
+          <span className="text-small text-muted-foreground">
             {newCount} new
             {seats.length - newCount > 0 && ` · ${seats.length - newCount} existing`}
           </span>

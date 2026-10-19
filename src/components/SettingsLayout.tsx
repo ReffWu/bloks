@@ -10,8 +10,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 export function SettingsPageHeader({ title, description }: { title: string; description?: React.ReactNode }) {
   return (
     <div className="mb-6">
-      <h1 className="text-balance text-[22px] font-semibold tracking-[-0.01em] text-foreground">{title}</h1>
-      {description && <p className="mt-1 text-pretty text-[13px] text-muted-foreground">{description}</p>}
+      <h1 className="text-balance text-heading font-semibold tracking-[-0.01em] text-foreground">{title}</h1>
+      {description && <p className="mt-1 text-pretty text-body text-muted-foreground">{description}</p>}
     </div>
   );
 }
@@ -28,7 +28,7 @@ export function SettingsGroup({
   return (
     <section className={cn("mb-6", className)}>
       {title && (
-        <h2 className="mb-2 px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{title}</h2>
+        <h2 className="mb-2 px-1 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">{title}</h2>
       )}
       <div className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">{children}</div>
     </section>
@@ -56,12 +56,12 @@ export function SettingRow({
     <div className="px-4 py-3.5">
       <div className="flex items-center gap-4">
         <div className="min-w-0 flex-1">
-          <label htmlFor={htmlFor} className="flex items-center gap-1.5 text-[13.5px] font-medium text-foreground">
+          <label htmlFor={htmlFor} className="flex items-center gap-1.5 text-ui font-medium text-foreground">
             {label}
             {info && <InfoTip text={info} />}
           </label>
           {description && (
-            <div className="mt-0.5 text-pretty text-[12.5px] leading-relaxed text-muted-foreground">{description}</div>
+            <div className="mt-0.5 text-pretty text-body leading-relaxed text-muted-foreground">{description}</div>
           )}
         </div>
         {control && <div className="shrink-0">{control}</div>}

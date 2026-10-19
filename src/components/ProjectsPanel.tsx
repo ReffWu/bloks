@@ -81,8 +81,8 @@ export function ProjectsPanel() {
     >
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-[16px] font-semibold text-foreground">Projects</div>
-          <div className="mt-0.5 text-[13px] text-muted-foreground">
+          <div className="text-title font-semibold text-foreground">Projects</div>
+          <div className="mt-0.5 text-body text-muted-foreground">
             {editing
               ? "Where the work happens, who is on it, and what they should know."
               : "Switch into one and the app shows its people and its folders."}
@@ -99,7 +99,7 @@ export function ProjectsPanel() {
       </div>
 
       {error && (
-        <div className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">
+        <div className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">
           {error}
         </div>
       )}
@@ -115,12 +115,12 @@ export function ProjectsPanel() {
             onCancel={() => setEditing(null)}
           />
         ) : projects === null ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted-foreground">
+          <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
             Reading projects
           </div>
         ) : projects.length === 0 ? (
-          <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-[13px] text-muted-foreground">
+          <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-body text-muted-foreground">
             No projects yet. One is a name, some folders, and the people on it.
           </div>
         ) : (
@@ -141,14 +141,14 @@ export function ProjectsPanel() {
                     <BlokAvatar color={project.color} shape={project.shape} expression="focused" size={30} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-[13.5px] font-medium text-foreground">
+                        <span className="truncate text-ui font-medium text-foreground">
                           {project.name}
                         </span>
                         {state.projectId === project.id && (
-                          <span className="shrink-0 text-[11px] text-brand-ink">open</span>
+                          <span className="shrink-0 text-caption text-brand-ink">open</span>
                         )}
                       </div>
-                      <div className="mt-0.5 text-[12px] text-muted-foreground">
+                      <div className="mt-0.5 text-small text-muted-foreground">
                         {members.length
                           ? members.map((b) => b!.name).join(", ")
                           : "nobody on it yet"}
@@ -173,7 +173,7 @@ export function ProjectsPanel() {
                   </div>
 
                   {project.brief && (
-                    <p className="mt-2 line-clamp-2 text-[12.5px] leading-relaxed text-muted-foreground">
+                    <p className="mt-2 line-clamp-2 text-body leading-relaxed text-muted-foreground">
                       {project.brief}
                     </p>
                   )}
@@ -184,7 +184,7 @@ export function ProjectsPanel() {
                         <div
                           key={folder.path}
                           className={cn(
-                            "flex items-center gap-1.5 text-[11.5px]",
+                            "flex items-center gap-1.5 text-small",
                             folder.state === "ok" ? "text-muted-foreground" : "text-warning",
                           )}
                         >
@@ -201,7 +201,7 @@ export function ProjectsPanel() {
                   )}
 
                   {project.broken && (
-                    <div className="mt-2 rounded-xl bg-warning/10 px-3 py-2 text-[12px] leading-relaxed text-warning">
+                    <div className="mt-2 rounded-xl bg-warning/10 px-3 py-2 text-small leading-relaxed text-warning">
                       Nothing will run in this project until those folders are back, or it points
                       somewhere else. An agent writing into the wrong directory is worse than one
                       that will not start.
@@ -295,7 +295,7 @@ function ProjectForm({
         ))}
       </div>
 
-      <label className="text-[12.5px] text-muted-foreground">
+      <label className="text-body text-muted-foreground">
         The standing brief. Everyone working on this gets it.
         <Textarea
           value={brief}
@@ -306,7 +306,7 @@ function ProjectForm({
         />
       </label>
 
-      <label className="text-[12.5px] text-muted-foreground">
+      <label className="text-body text-muted-foreground">
         Folders, one per line. The first one that exists is where turns run.
         <div className="mt-1 flex items-start gap-1.5">
           <Textarea
@@ -314,7 +314,7 @@ function ProjectForm({
             onChange={(e) => setFolders(e.target.value)}
             rows={2}
             placeholder="/Users/you/src/api"
-            className="resize-none font-mono text-[12px]"
+            className="resize-none font-mono text-small"
           />
           <BrowseFolderButton
             onPick={(path) =>
@@ -324,18 +324,18 @@ function ProjectForm({
         </div>
       </label>
 
-      <label className="text-[12.5px] text-muted-foreground">
+      <label className="text-body text-muted-foreground">
         What matters inside them, comma separated. Advisory, not a filter.
         <Input
           value={include}
           onChange={(e) => setInclude(e.target.value)}
           placeholder="src/**, docs/*.md"
-          className="mt-1 font-mono text-[12px]"
+          className="mt-1 font-mono text-small"
         />
       </label>
 
       <div>
-        <div className="text-[12.5px] text-muted-foreground">Who is on it</div>
+        <div className="text-body text-muted-foreground">Who is on it</div>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {state.bots
             .filter((b) => !b.hidden)
@@ -346,7 +346,7 @@ function ProjectForm({
                   key={bot.id}
                   onClick={() => setMembers(on ? members.filter((id) => id !== bot.id) : [...members, bot.id])}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-[12px] transition-colors duration-150",
+                    "flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-small transition-colors duration-150",
                     on ? "border-foreground/25 bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -358,7 +358,7 @@ function ProjectForm({
         </div>
       </div>
 
-      {error && <div className="rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">{error}</div>}
 
       <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>

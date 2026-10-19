@@ -160,7 +160,7 @@ export function ModelPicker({
           setQuery("");
           setOpen((o) => !o);
         }}
-        className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-[0.98]"
+        className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-body text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-[0.98]"
         title={active ? `${active.displayName} · ${modelLabel(active, effectiveModel(active, selection.model))}` : selection.model}
         aria-label={`Engine: ${active ? `${active.displayName} · ${modelLabel(active, effectiveModel(active, selection.model))}` : selection.model}`}
       >
@@ -230,7 +230,7 @@ export function ModelPicker({
                   onPick(null);
                   setOpen(false);
                 }}
-                className="mb-1 flex w-full items-center rounded-lg px-2 py-1.5 text-left text-[13px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+                className="mb-1 flex w-full items-center rounded-lg px-2 py-1.5 text-left text-body text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
               >
                 {noneLabel ?? "None"}
               </button>
@@ -239,25 +239,25 @@ export function ModelPicker({
               <>
                 <div className="px-2 pb-1 pt-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate text-[12.5px] font-semibold text-foreground">
+                    <span className="truncate text-body font-semibold text-foreground">
                       {railInstance.displayName}
                     </span>
                     {/* an agent on a chat-only engine cannot run commands
                         or touch files, and that is worth knowing here */}
                     {state.providers.find((p) => p.kind === railInstance.driverKind)?.agentic && (
-                      <span className="shrink-0 rounded bg-muted px-1 py-px text-[10px] text-muted-foreground">
+                      <span className="shrink-0 rounded bg-muted px-1 py-px text-micro text-muted-foreground">
                         tools
                       </span>
                     )}
                   </div>
-                  <div className="truncate text-[11px] text-muted-foreground">
+                  <div className="truncate text-caption text-muted-foreground">
                     {railInstance.snapshot.state === "available"
                       ? (railInstance.snapshot.version ?? "ready")
                       : (railInstance.snapshot.reason ?? "unavailable")}
                   </div>
                   <EngineUpdateNote kind={railInstance.driverKind} name={railInstance.displayName} className="mt-1.5" />
                   {railInstance.models.note && (
-                    <div className="mt-1 text-pretty text-[11px] leading-snug text-muted-foreground">
+                    <div className="mt-1 text-pretty text-caption leading-snug text-muted-foreground">
                       {railInstance.models.note}
                     </div>
                   )}
@@ -281,7 +281,7 @@ export function ModelPicker({
                         }}
                         placeholder={railInstance.models.acceptsAnyId ? "Search, or type a model id" : "Search models"}
                         aria-label="Search models"
-                        className="w-full bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
+                        className="w-full bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
                       />
                     </div>
                   </div>
@@ -290,11 +290,11 @@ export function ModelPicker({
                   <div
                     aria-current="true"
                     title={`${unlisted}\nNot in this list, and still what this agent runs on`}
-                    className="flex w-full items-center justify-between gap-2 rounded-lg bg-accent px-2 py-1.5 text-left text-[13px] leading-snug text-foreground"
+                    className="flex w-full items-center justify-between gap-2 rounded-lg bg-accent px-2 py-1.5 text-left text-body leading-snug text-foreground"
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="line-clamp-2 [overflow-wrap:anywhere]">{unlisted}</span>
-                      <span className="shrink-0 rounded bg-warning/15 px-1 py-px text-[10px] text-warning">not in list</span>
+                      <span className="shrink-0 rounded bg-warning/15 px-1 py-px text-micro text-warning">not in list</span>
                     </span>
                     <Check size={14} className="shrink-0 text-brand-ink" />
                   </div>
@@ -303,15 +303,15 @@ export function ModelPicker({
                   <button
                     disabled={railInstance.snapshot.state !== "available"}
                     onClick={() => pick(railInstance, typedId)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] leading-snug text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:text-muted-foreground/50"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-body leading-snug text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:text-muted-foreground/50"
                   >
                     <span className="min-w-0 [overflow-wrap:anywhere]">
-                      Use model id <span className="font-mono text-[12px]">{typedId}</span>
+                      Use model id <span className="font-mono text-small">{typedId}</span>
                     </span>
                   </button>
                 )}
                 {options.length === 0 && !typedId && !unlisted && (
-                  <div className="px-2 py-3 text-[13px] text-muted-foreground">No models match.</div>
+                  <div className="px-2 py-3 text-body text-muted-foreground">No models match.</div>
                 )}
                 {options.map((option) => {
                   const current =
@@ -326,7 +326,7 @@ export function ModelPicker({
                       onClick={() => pick(railInstance, option.id)}
                       title={option.label === option.id ? option.id : `${option.label}\n${option.id}`}
                       className={cn(
-                        "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] leading-snug transition-colors duration-150",
+                        "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-body leading-snug transition-colors duration-150",
                         disabled
                           ? "cursor-not-allowed text-muted-foreground/50"
                           : "text-foreground hover:bg-accent",
@@ -338,7 +338,7 @@ export function ModelPicker({
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="line-clamp-2 [overflow-wrap:anywhere]">{option.label}</span>
                         {option.id === railInstance.models.default && (
-                          <span className="shrink-0 rounded bg-muted px-1 py-px text-[10px] text-muted-foreground">
+                          <span className="shrink-0 rounded bg-muted px-1 py-px text-micro text-muted-foreground">
                             default
                           </span>
                         )}
@@ -349,7 +349,7 @@ export function ModelPicker({
                 })}
               </>
             ) : (
-              <div className="px-2 py-3 text-[13px] text-muted-foreground">
+              <div className="px-2 py-3 text-body text-muted-foreground">
                 No providers. Is the server running?
               </div>
             )}
@@ -366,7 +366,7 @@ export function ModelPicker({
                 }}
                 title="Engine settings"
                 aria-label="Engine settings"
-                className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11.5px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
+                className="flex items-center gap-1 rounded-md px-1.5 py-1 text-small text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
               >
                 <SettingsIcon size={13} />
                 Engines

@@ -81,7 +81,7 @@ export function AgentDefaults() {
           control={
             <span
               className={cn(
-                "flex items-center gap-1 text-[11.5px] text-success transition-opacity duration-200",
+                "flex items-center gap-1 text-small text-success transition-opacity duration-200",
                 justSaved ? "opacity-100" : "opacity-0",
               )}
               aria-live="polite"
@@ -98,7 +98,7 @@ export function AgentDefaults() {
               placeholder="Their own workspace"
               spellCheck={false}
               aria-label="Working folder for new agents"
-              className="h-8 font-mono text-[12px]"
+              className="h-8 font-mono text-small"
             />
             <BrowseFolderButton
               onPick={(path) => {
@@ -158,7 +158,7 @@ export function AgentDefaults() {
       {anySet && (
         <button
           onClick={() => save({ cwd: undefined, modelSelection: undefined, effort: undefined })}
-          className="px-1 text-[12.5px] text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+          className="px-1 text-body text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
         >
           Reset to the built-in start
         </button>

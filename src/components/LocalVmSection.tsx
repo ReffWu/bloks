@@ -48,13 +48,13 @@ function CommandReveal({ label, command }: { label: string; command: string }) {
     <div className="mt-1.5">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
+        className="flex items-center gap-1 text-small text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronRight size={11} className={cn("transition-transform", open && "rotate-90")} />
         {label}
       </button>
       {open && (
-        <code className="mt-1.5 block overflow-x-auto whitespace-nowrap rounded-lg bg-foreground/[0.05] px-3 py-2 font-mono text-[11px] text-foreground">
+        <code className="mt-1.5 block overflow-x-auto whitespace-nowrap rounded-lg bg-foreground/[0.05] px-3 py-2 font-mono text-caption text-foreground">
           {command}
         </code>
       )}
@@ -77,7 +77,7 @@ function Step({
     <div className="flex gap-3">
       <span
         className={cn(
-          "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+          "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-caption font-semibold",
           done ? "bg-success text-white" : "bg-muted text-muted-foreground",
         )}
       >
@@ -86,7 +86,7 @@ function Step({
       <div className="min-w-0 flex-1 pb-3.5">
         <div
           className={cn(
-            "text-[13px]",
+            "text-body",
             done ? "text-muted-foreground line-through decoration-muted-foreground/50" : "font-medium text-foreground",
           )}
         >
@@ -142,19 +142,19 @@ export function LocalVmSection() {
   return (
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <div className="flex items-center justify-between">
-        <div className="text-[13.5px] font-semibold text-foreground">Local VM</div>
+        <div className="text-ui font-semibold text-foreground">Local VM</div>
         <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={load}>
           <RefreshCw size={12} />
           Re-check
         </Button>
       </div>
-      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+      <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
         A Cua Linux desktop in a container on {thisComputer()}. Free, isolated from your own desktop, and
         recycled after 8 quiet hours; files in its workspace survive.
       </div>
 
       {error && (
-        <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+        <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">
           {error}
         </div>
       )}
@@ -163,7 +163,7 @@ export function LocalVmSection() {
         <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" />
       ) : s.ready ? (
         <div className="mt-3">
-          <div className="flex items-center gap-2 text-[13px] text-foreground">
+          <div className="flex items-center gap-2 text-body text-foreground">
             <span className="size-2 rounded-full bg-success" />
             Ready
             {s.inUseBy && <span className="text-muted-foreground">· {s.inUseBy} is using it</span>}
@@ -191,13 +191,13 @@ export function LocalVmSection() {
       ) : (
         <div className="mt-3.5">
           <Step index={1} done={s.runtime !== null} title="Install a container runtime">
-            <div className="mt-0.5 text-[12px] text-muted-foreground">
+            <div className="mt-0.5 text-small text-muted-foreground">
               Apple's container CLI or Docker Desktop, either works.
             </div>
           </Step>
           <Step index={2} done={s.daemonUp} title="Start the container runtime">
             {s.runtime && (
-              <div className="mt-0.5 text-[12px] text-muted-foreground">
+              <div className="mt-0.5 text-small text-muted-foreground">
                 Open {s.runtime === "container" ? "it with: container system start" : "Docker and wait for it to settle"}.
               </div>
             )}
@@ -244,7 +244,7 @@ export function LocalVmSection() {
                   Create Local VM
                 </Button>
               ) : (
-                <div className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                <div className="mt-1 flex items-center gap-1.5 text-small text-muted-foreground">
                   <Loader2 size={11} className="animate-spin" />
                   {s.problem ?? "Waiting for the desktop…"}
                 </div>
@@ -252,7 +252,7 @@ export function LocalVmSection() {
             <CommandReveal label="Show command" command={s.commands.run} />
           </Step>
 
-          <div className="mt-1 rounded-xl bg-muted/50 px-3 py-2.5 text-[11.5px] leading-relaxed text-muted-foreground">
+          <div className="mt-1 rounded-xl bg-muted/50 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
             The VM gets 4GB, 2 CPUs, and a viewer only {thisComputer()} can open. One host folder is
             mounted as its workspace; browser sign-ins and files there survive recreation.
             <div className="mt-1 text-muted-foreground/70">

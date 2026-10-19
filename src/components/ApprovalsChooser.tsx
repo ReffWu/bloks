@@ -84,8 +84,8 @@ export function ApprovalsChooser({
               {on && <Check size={11} strokeWidth={3} />}
             </span>
             <span className="min-w-0">
-              <span className="block text-[13px] font-medium text-foreground">{mode.label}</span>
-              <span className="block text-pretty text-[12px] leading-relaxed text-muted-foreground">{mode.hint}</span>
+              <span className="block text-body font-medium text-foreground">{mode.label}</span>
+              <span className="block text-pretty text-small leading-relaxed text-muted-foreground">{mode.hint}</span>
             </span>
           </button>
         );

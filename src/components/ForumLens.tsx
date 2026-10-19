@@ -45,7 +45,7 @@ export function ForumLens({
 
   if (!threads.length) {
     return (
-      <div className="mx-auto max-w-[var(--transcript-width,760px)] px-4 py-16 text-center text-[13px] text-muted-foreground md:px-6">
+      <div className="mx-auto max-w-[var(--transcript-width,760px)] px-4 py-16 text-center text-body text-muted-foreground md:px-6">
         Nothing said yet. Topics appear here as the room fills up.
       </div>
     );
@@ -100,13 +100,13 @@ function ThreadRow({
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span className="text-[12.5px] font-medium text-foreground">{nameOf(thread.root)}</span>
-            <span className="text-[11.5px] text-muted-foreground">{when(thread.root.at)}</span>
+            <span className="text-body font-medium text-foreground">{nameOf(thread.root)}</span>
+            <span className="text-small text-muted-foreground">{when(thread.root.at)}</span>
           </span>
-          <span className={cn("mt-0.5 block text-[13px] leading-relaxed text-foreground", !open && "line-clamp-2")}>
+          <span className={cn("mt-0.5 block text-body leading-relaxed text-foreground", !open && "line-clamp-2")}>
             {open ? (thread.root.text ?? preview(thread.root)) : preview(thread.root)}
           </span>
-          <span className="mt-1 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground">
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 text-small text-muted-foreground">
             {replies ? <span className="text-brand-ink">{replies}</span> : <span>no replies yet</span>}
             {thread.participants.length > 1 && <span>· {thread.participants.join(", ")}</span>}
             {thread.replies.length > 0 && <span>· last {when(thread.lastAt)}</span>}
@@ -120,7 +120,7 @@ function ThreadRow({
       {open && (
         <div className="border-t px-3 pb-3 pt-2">
           {thread.replies.length === 0 ? (
-            <p className="py-2 text-[12.5px] text-muted-foreground">
+            <p className="py-2 text-body text-muted-foreground">
               Nobody has answered this yet.
             </p>
           ) : (
@@ -133,17 +133,17 @@ function ThreadRow({
                       {from ? (
                         <AgentAvatar bot={from} size={20} />
                       ) : (
-                        <span className="flex size-5 items-center justify-center rounded-md bg-muted text-[10px] text-muted-foreground">
+                        <span className="flex size-5 items-center justify-center rounded-md bg-muted text-micro text-muted-foreground">
                           You
                         </span>
                       )}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className="text-[12px] font-medium text-foreground">{nameOf(reply)}</span>
-                        <span className="text-[11px] text-muted-foreground">{when(reply.at)}</span>
+                        <span className="text-small font-medium text-foreground">{nameOf(reply)}</span>
+                        <span className="text-caption text-muted-foreground">{when(reply.at)}</span>
                       </div>
-                      <div className="mt-0.5 whitespace-pre-wrap text-[12.5px] leading-relaxed text-foreground">
+                      <div className="mt-0.5 whitespace-pre-wrap text-body leading-relaxed text-foreground">
                         {reply.text ?? preview(reply)}
                       </div>
                     </div>
@@ -154,7 +154,7 @@ function ThreadRow({
           )}
           <button
             onClick={() => onOpenInStream(thread.root.id)}
-            className="mt-3 rounded-lg px-2 py-1 text-[12px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+            className="mt-3 rounded-lg px-2 py-1 text-small text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
           >
             Find it in the stream
           </button>

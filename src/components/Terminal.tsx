@@ -318,17 +318,17 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
             alive ? "bg-success" : "bg-muted-foreground/40",
           )}
         />
-        <span className="shrink-0 text-[12px] font-medium text-foreground">Terminal</span>
+        <span className="shrink-0 text-small font-medium text-foreground">Terminal</span>
         <span
           title={info?.cwd}
-          className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground"
+          className="min-w-0 flex-1 truncate font-mono text-caption text-muted-foreground"
         >
           {info ? shorten(info.cwd) : ""}
         </span>
         {info?.exitedAt ? (
           <button
             onClick={restart}
-            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10.5px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-caption text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
           >
             {info.exitCode ? `exited ${info.exitCode}` : "exited"} · start a new one
           </button>
@@ -337,7 +337,7 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
           !info.pty && (
             <span
               title="Nothing on this system can open a pseudo-terminal, so full screen programs will not work here."
-              className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+              className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-micro text-muted-foreground"
             >
               limited
             </span>
@@ -361,7 +361,7 @@ export function TerminalPanel({ bot, onClose }: { bot: Bot; onClose: () => void 
       </div>
 
       {error && (
-        <div className="flex items-center justify-between gap-3 border-t bg-destructive/10 px-3 py-1.5 text-[11.5px] text-destructive">
+        <div className="flex items-center justify-between gap-3 border-t bg-destructive/10 px-3 py-1.5 text-small text-destructive">
           <span className="min-w-0 truncate">{error}</span>
           <button onClick={restart} className="shrink-0 font-medium underline underline-offset-2">
             Start a new one

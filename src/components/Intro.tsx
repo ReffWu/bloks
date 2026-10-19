@@ -154,10 +154,10 @@ export function Intro({ onDone }: { onDone: () => void }) {
             aria-hidden
             className="intro-rise mx-auto hidden h-12 dark:block"
           />
-          <h1 className="intro-rise mt-6 text-[28px] font-semibold text-foreground [animation-delay:120ms]">
+          <h1 className="intro-rise mt-6 text-display font-semibold text-foreground [animation-delay:120ms]">
             Welcome to Bloks
           </h1>
-          <p className="intro-rise mt-2 text-[14.5px] text-muted-foreground [animation-delay:240ms]">
+          <p className="intro-rise mt-2 text-lead text-muted-foreground [animation-delay:240ms]">
             Personal AI agents that live on your machine, not in someone
             else's cloud.
           </p>
@@ -173,7 +173,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
       {skippable && stage !== "plugins" && (
         <button
           onClick={() => finish()}
-          className="absolute bottom-5 right-6 rounded-lg px-2 py-1 text-[12px] text-muted-foreground/70 transition-colors hover:text-foreground"
+          className="absolute bottom-5 right-6 rounded-lg px-2 py-1 text-small text-muted-foreground/70 transition-colors hover:text-foreground"
         >
           Skip intro
         </button>
@@ -267,10 +267,10 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
   if (step === "key") {
     return (
       <Panel key="plugins-key">
-        <h2 className="intro-rise text-[22px] font-semibold text-foreground">
+        <h2 className="intro-rise text-heading font-semibold text-foreground">
           Connect your everyday tools
         </h2>
-        <p className="intro-rise mt-2 text-[13.5px] text-muted-foreground [animation-delay:100ms]">
+        <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:100ms]">
           Agents reach Slack, Gmail, Notion and the rest through Composio.
           Paste a Composio Connect key (it starts with ck_) and you can
           link your tools right here; a free key takes a minute at
@@ -284,9 +284,9 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
             placeholder="ck_…"
             spellCheck={false}
             autoComplete="off"
-            className="w-full rounded-lg border bg-background px-3 py-2.5 text-[13.5px] text-foreground outline-none transition-colors focus:border-brand"
+            className="w-full rounded-lg border bg-background px-3 py-2.5 text-ui text-foreground outline-none transition-colors focus:border-brand"
           />
-          {error && <div className="mt-2 text-[12.5px] text-destructive">{error}</div>}
+          {error && <div className="mt-2 text-body text-destructive">{error}</div>}
         </div>
         <div className="intro-rise mt-6 flex items-center justify-center gap-4 [animation-delay:300ms]">
           <Button onClick={saveKey} disabled={saving || !key.trim()}>
@@ -294,12 +294,12 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
           </Button>
           <button
             onClick={() => onDone([])}
-            className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+            className="text-body text-muted-foreground transition-colors hover:text-foreground"
           >
             Skip for now
           </button>
         </div>
-        <p className="intro-rise mt-4 text-[11.5px] text-muted-foreground/70 [animation-delay:380ms]">
+        <p className="intro-rise mt-4 text-small text-muted-foreground/70 [animation-delay:380ms]">
           No key yet?{" "}
           <a href="https://composio.dev" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
             Get a free one at composio.dev
@@ -312,10 +312,10 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
 
   return (
     <Panel key="plugins-grid" wide>
-      <h2 className="intro-rise text-[22px] font-semibold text-foreground">
+      <h2 className="intro-rise text-heading font-semibold text-foreground">
         What do you use every day?
       </h2>
-      <p className="intro-rise mt-2 text-[13.5px] text-muted-foreground [animation-delay:100ms]">
+      <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:100ms]">
         Click a tool to connect it now; each one opens its own sign-in.
       </p>
       <div className="intro-rise mt-6 grid grid-cols-4 gap-2 sm:grid-cols-5 [animation-delay:200ms]">
@@ -328,7 +328,7 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
               onClick={() => connect(slug)}
               disabled={isBusy}
               className={cn(
-                "relative flex flex-col items-center gap-1.5 rounded-xl border px-2 py-2.5 text-[11.5px] transition-all duration-150",
+                "relative flex flex-col items-center gap-1.5 rounded-xl border px-2 py-2.5 text-small transition-all duration-150",
                 isConnected
                   ? "border-success/60 bg-success/10 font-medium text-foreground"
                   : "text-muted-foreground hover:border-foreground/25 hover:text-foreground",
@@ -336,7 +336,7 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
               )}
             >
               {isConnected && (
-                <span className="absolute right-1.5 top-1.5 text-[11px] text-success">✓</span>
+                <span className="absolute right-1.5 top-1.5 text-caption text-success">✓</span>
               )}
               <ToolIcon label={label} domain={domain} icon={icon} />
               {isBusy ? "Opening…" : label}
@@ -344,8 +344,8 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
           );
         })}
       </div>
-      {error && <div className="mt-3 text-[12.5px] text-destructive">{error}</div>}
-      <p className="mt-4 text-[11.5px] text-muted-foreground/70">
+      {error && <div className="mt-3 text-body text-destructive">{error}</div>}
+      <p className="mt-4 text-small text-muted-foreground/70">
         Finished signing in? The card turns green by itself. Everything
         else lives in Plugins later.
       </p>
@@ -382,7 +382,7 @@ function ToolIcon({ label, domain, icon }: { label: string; domain: string; icon
     );
   }
   return (
-    <div className="flex size-7 items-center justify-center rounded-lg bg-muted text-[12px] font-semibold text-muted-foreground">
+    <div className="flex size-7 items-center justify-center rounded-lg bg-muted text-small font-semibold text-muted-foreground">
       {label.slice(0, 1).toUpperCase()}
     </div>
   );
@@ -497,7 +497,7 @@ function WorkspaceStage() {
           size={104}
         />
       </div>
-      <div className="mt-6 text-[15px] font-medium text-foreground">
+      <div className="mt-6 text-lead font-medium text-foreground">
         Setting up your Bloks workspace
         <span className="intro-ellipsis" />
       </div>
@@ -560,7 +560,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
           <span className="size-3 rounded-full bg-[#ff5f57]" />
           <span className="size-3 rounded-full bg-[#febc2e]" />
           <span className="size-3 rounded-full bg-[#28c840]" />
-          <span className="ml-2 text-[12px] text-muted-foreground">
+          <span className="ml-2 text-small text-muted-foreground">
             Research Analyst's computer
           </span>
         </div>
@@ -576,11 +576,11 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
             <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-2">
               <span className="size-2 rounded-full bg-foreground/15" />
               <span className="size-2 rounded-full bg-foreground/15" />
-              <div className="ml-1 flex-1 rounded-md bg-background px-2.5 py-1 text-[10.5px] text-muted-foreground">
+              <div className="ml-1 flex-1 rounded-md bg-background px-2.5 py-1 text-caption text-muted-foreground">
                 dashboard.bloks.dev
               </div>
             </div>
-            <div className="px-4 pb-1 pt-3 text-[11.5px] font-semibold text-foreground">
+            <div className="px-4 pb-1 pt-3 text-small font-semibold text-foreground">
               Revenue dashboard
             </div>
             {/* stat tiles land one by one before the chart rises */}
@@ -595,9 +595,9 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
                     transitionDelay: `${150 + i * 130}ms`,
                   }}
                 >
-                  <div className="text-[8.5px] text-muted-foreground">{label}</div>
-                  <div className="text-[12px] font-semibold tabular-nums text-foreground">
-                    {value} <span className="text-[8.5px] font-medium text-success">{delta}</span>
+                  <div className="text-micro text-muted-foreground">{label}</div>
+                  <div className="text-small font-semibold tabular-nums text-foreground">
+                    {value} <span className="text-micro font-medium text-success">{delta}</span>
                   </div>
                 </div>
               ))}
@@ -624,7 +624,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
               step >= 4 ? "scale-100 opacity-100" : "scale-90 opacity-0",
             )}
           >
-            <div className="border-b bg-muted/50 px-3 py-1.5 text-[10.5px] font-medium text-muted-foreground">
+            <div className="border-b bg-muted/50 px-3 py-1.5 text-caption font-medium text-muted-foreground">
               Weekly numbers · Q3
             </div>
             <table className="w-full border-collapse">
@@ -637,7 +637,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
                         <td
                           key={c}
                           className={cn(
-                            "border-r px-2.5 py-[5px] text-[10.5px] tabular-nums last:border-0",
+                            "border-r px-2.5 py-[5px] text-caption tabular-nums last:border-0",
                             r === 0
                               ? "font-medium text-muted-foreground"
                               : c === 0
@@ -660,7 +660,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
           {/* toast */}
           <div
             className={cn(
-              "absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-lg border bg-card px-3 py-2 text-[11px] font-medium text-success shadow-md transition-all duration-300",
+              "absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-lg border bg-card px-3 py-2 text-caption font-medium text-success shadow-md transition-all duration-300",
               step >= 5 ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0",
             )}
           >
@@ -695,7 +695,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
             <svg width="17" height="17" viewBox="0 0 24 24" className="drop-shadow">
               <path d="M4 2 L20 12 L12.5 13.5 L9 21 Z" fill="var(--brand-ink)" stroke="var(--background)" strokeWidth="1.5" />
             </svg>
-            <span className="ml-2.5 whitespace-nowrap rounded-full bg-brand-ink px-2 py-0.5 text-[10px] font-medium text-brand-foreground shadow">
+            <span className="ml-2.5 whitespace-nowrap rounded-full bg-brand-ink px-2 py-0.5 text-micro font-medium text-brand-foreground shadow">
               Research Analyst
             </span>
             {/* click ripple on each landing */}
@@ -706,10 +706,10 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
         </div>
       </div>
 
-      <h2 className="intro-rise mt-7 text-[22px] font-semibold text-foreground [animation-delay:150ms]">
+      <h2 className="intro-rise mt-7 text-heading font-semibold text-foreground [animation-delay:150ms]">
         Every agent gets its own computer
       </h2>
-      <p className="intro-rise mt-2 text-[13.5px] text-muted-foreground [animation-delay:250ms]">
+      <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:250ms]">
         A real machine to browse, run tools and finish work on, while you
         do something better with your afternoon.
       </p>
@@ -785,7 +785,7 @@ function JobsStage({ onNext }: { onNext: () => void }) {
                 />
                 <span
                   className={cn(
-                    "whitespace-nowrap text-[11px] font-medium text-muted-foreground transition-opacity duration-500",
+                    "whitespace-nowrap text-caption font-medium text-muted-foreground transition-opacity duration-500",
                     spread ? "opacity-100" : "opacity-0",
                   )}
                   style={{ transitionDelay: `${350 + i * 70}ms` }}
@@ -797,10 +797,10 @@ function JobsStage({ onNext }: { onNext: () => void }) {
           );
         })}
       </div>
-      <h2 className="intro-rise mt-2 text-[22px] font-semibold text-foreground">
+      <h2 className="intro-rise mt-2 text-heading font-semibold text-foreground">
         Give every agent a job
       </h2>
-      <p className="intro-rise mt-2 text-[13.5px] text-muted-foreground [animation-delay:120ms]">
+      <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:120ms]">
         Each one carries its own role, skills and memory. Put them in a
         room together and the most senior one runs the meeting.
       </p>

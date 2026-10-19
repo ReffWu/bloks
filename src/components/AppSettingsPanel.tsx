@@ -310,11 +310,11 @@ function AgentTurnLimit() {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <input aria-label="Maximum consecutive agent turns" type="number" min={MIN_TURN_LIMIT} max={MAX_TURN_LIMIT} step="1" value={number} disabled={saving}
           onChange={(event) => { setNumber(event.target.value); setError(""); }}
-          className="h-8 w-24 rounded-lg border bg-background px-2 text-[13px] outline-none focus:border-primary" />
-        <span className="text-[12px] text-muted-foreground">turns</span>
+          className="h-8 w-24 rounded-lg border bg-background px-2 text-body outline-none focus:border-primary" />
+        <span className="text-small text-muted-foreground">turns</span>
         <Button size="sm" variant="secondary" disabled={saving || number === String(stored)} onClick={saveNumber} aria-label="Save turn limit">Save</Button>
       </div>
-      {error && <p role="alert" className="mt-2 text-[12px] text-destructive">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-small text-destructive">{error}</p>}
     </SettingRow>
   );
 }
@@ -526,7 +526,7 @@ function AboutYou() {
         control={
           <span
             className={cn(
-              "flex items-center gap-1 text-[11.5px] text-success transition-opacity duration-200",
+              "flex items-center gap-1 text-small text-success transition-opacity duration-200",
               justSaved ? "opacity-100" : "opacity-0",
             )}
             aria-live="polite"
@@ -540,13 +540,13 @@ function AboutYou() {
           value={value}
           onChange={(e) => save(e.target.value)}
           placeholder="I'm a founder building a local-first agent app. Keep replies short and skip the preamble."
-          className="mt-3 min-h-[120px] resize-y text-[13px]"
+          className="mt-3 min-h-[120px] resize-y text-body"
         />
         {/* the same field Memory's About you edits, beside the notes your
             agents suggested; one value, either place */}
         <button
           onClick={() => dispatch({ type: "openMemory", target: "you" })}
-          className="mt-2.5 text-[12.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          className="mt-2.5 text-body text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
           See what your agents have learned about you in Memory
         </button>
@@ -575,10 +575,10 @@ function OpenAIKeyHint() {
   if (speech?.openaiAvailable) {
     return (
       <div className="-mt-1 rounded-xl border border-warning/40 bg-warning/10 p-3">
-        <div className="text-[12.5px] font-medium text-foreground">
+        <div className="text-body font-medium text-foreground">
           Found an OpenAI API key from {sourceName(speech.openaiAvailable)}
         </div>
-        <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+        <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
           Bloks can use it for voices, which would bill that key's account per character
           spoken. Nothing is used until you say so.
         </div>
@@ -590,7 +590,7 @@ function OpenAIKeyHint() {
   }
   if (speech?.openaiSource) {
     return (
-      <div className="-mt-2 flex items-center gap-2 text-[11.5px] text-success">
+      <div className="-mt-2 flex items-center gap-2 text-small text-success">
         Using the API key from {sourceName(speech.openaiSource)} for voices.
         <button className="text-muted-foreground underline hover:text-foreground" onClick={() => setConsent(false)}>
           Stop using it
@@ -677,7 +677,7 @@ function QuickAskShortcut() {
           {accelerator && !capturing && (
             <button
               onClick={() => void save(null)}
-              className="rounded-lg px-2 py-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground"
+              className="rounded-lg px-2 py-1 text-body text-muted-foreground transition-colors hover:text-foreground"
             >
               Clear
             </button>
@@ -690,7 +690,7 @@ function QuickAskShortcut() {
             onKeyDown={capturing ? capture : undefined}
             onBlur={() => setCapturing(false)}
             className={cn(
-              "min-w-[132px] rounded-lg border px-3 py-1.5 text-[12.5px] font-medium tabular-nums transition-[border-color,background-color,scale] duration-150 ease-out active:scale-[0.96]",
+              "min-w-[132px] rounded-lg border px-3 py-1.5 text-body font-medium tabular-nums transition-[border-color,background-color,scale] duration-150 ease-out active:scale-[0.96]",
               capturing
                 ? "border-brand bg-brand-soft text-foreground"
                 : "border-input text-foreground hover:border-foreground/25",
@@ -963,7 +963,7 @@ function WorkspaceApprovals() {
     <SettingsGroup title="How much agents ask">
       <div className="p-4">
         <ApprovalsChooser value={mode} onChange={(next) => void choose(next)} />
-        <div className="mt-3 flex items-center gap-3 text-[12.5px] text-muted-foreground">
+        <div className="mt-3 flex items-center gap-3 text-body text-muted-foreground">
           <span className="min-w-0 flex-1 text-pretty">
             {note ??
               (elsewhere > 0
@@ -976,7 +976,7 @@ function WorkspaceApprovals() {
             </Button>
           )}
         </div>
-        <div className="mt-2 text-[12px] text-muted-foreground">
+        <div className="mt-2 text-small text-muted-foreground">
           Each agent can still be set differently in its own settings. Shared rooms always ask, whatever is set here.
         </div>
       </div>
@@ -1012,7 +1012,7 @@ function PageBody({ id }: { id: string }) {
             <ApiKeyRow section="elevenlabs" label="ElevenLabs API key" placeholder="sk_…" />
             <ApiKeyRow section="openaiSpeech" label="OpenAI API key (speech)" placeholder="sk-…" />
             <OpenAIKeyHint />
-            <div className="text-[12px] text-muted-foreground">Either key works. The Mac's own voices need none.</div>
+            <div className="text-small text-muted-foreground">Either key works. The Mac's own voices need none.</div>
           </div>
         </SettingsGroup>
       );
@@ -1121,7 +1121,7 @@ export function AppSettingsPanel() {
             and on a phone the pill's drawer does; the room on the left
             there is the pill's. */}
         <div className="flex h-[52px] items-center px-4 max-md:pl-[92px]">
-          <span className="text-[15px] font-semibold text-foreground">Settings</span>
+          <span className="text-lead font-semibold text-foreground">Settings</span>
         </div>
         <div className="px-3 pb-2">
           <div className="flex items-center gap-2 rounded-xl bg-accent/70 px-3 py-[7px] transition-colors duration-150 focus-within:bg-accent">
@@ -1140,14 +1140,14 @@ export function AppSettingsPanel() {
               }}
               placeholder="Search settings"
               aria-label="Search settings"
-              className="w-full bg-transparent text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
+              className="w-full bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
         </div>
         <div className="flex gap-0.5 overflow-x-auto px-2 pb-2 [scrollbar-width:none] md:flex-1 md:flex-col md:overflow-y-auto md:pb-4 [&::-webkit-scrollbar]:hidden">
           {groups.map((g) => (
             <div key={g.group} className="flex shrink-0 gap-0.5 md:flex-col">
-              <div className="hidden px-2.5 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:block">
+              <div className="hidden px-2.5 pb-1 pt-3 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground md:block">
                 {g.group}
               </div>
               {g.pages.map((p) => {
@@ -1159,7 +1159,7 @@ export function AppSettingsPanel() {
                     onClick={() => go(p.id)}
                     aria-current={on ? "page" : undefined}
                     className={cn(
-                      "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-[background-color,color] duration-150",
+                      "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-body transition-[background-color,color] duration-150",
                       on
                         ? "bg-background font-medium text-foreground shadow-[0_0_0_0.5px_var(--border)]"
                         : "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
@@ -1170,7 +1170,7 @@ export function AppSettingsPanel() {
                     {p.id === "security" && risky > 0 && (
                       <span
                         aria-label={`${risky} risky`}
-                        className="ml-auto rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10.5px] font-medium tabular-nums text-destructive"
+                        className="ml-auto rounded-md bg-destructive/10 px-1.5 py-0.5 text-caption font-medium tabular-nums text-destructive"
                       >
                         {risky}
                       </span>
@@ -1181,7 +1181,7 @@ export function AppSettingsPanel() {
             </div>
           ))}
           {groups.length === 0 && (
-            <div className="px-3 py-6 text-[12.5px] text-muted-foreground">Nothing matches “{query.trim()}”.</div>
+            <div className="px-3 py-6 text-body text-muted-foreground">Nothing matches “{query.trim()}”.</div>
           )}
         </div>
       </nav>

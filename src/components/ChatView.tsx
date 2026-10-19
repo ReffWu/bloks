@@ -79,7 +79,7 @@ function UserText({ text, highlight }: { text: string; highlight?: string }) {
           recording stays playable, because a transcript can be wrong */}
       {voice.map((path, i) => (
         <div key={i} className="mb-1 flex flex-col gap-1">
-          <span className="flex items-center gap-1 text-[11.5px] opacity-80">
+          <span className="flex items-center gap-1 text-small opacity-80">
             <Mic size={12} />
             Voice message, transcribed
           </span>
@@ -104,7 +104,7 @@ function UserText({ text, highlight }: { text: string; highlight?: string }) {
             <span
               key={i}
               title={path}
-              className="rounded-lg bg-black/15 px-1.5 py-0.5 text-[12px]"
+              className="rounded-lg bg-black/15 px-1.5 py-0.5 text-small"
             >
               {attachmentBasename(path)}
             </span>
@@ -135,7 +135,7 @@ function Rewound({ messages }: { messages: Message[] }) {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex items-center gap-1.5 rounded-full border border-dashed px-3 py-1 text-[12px] text-muted-foreground transition-colors duration-150 hover:border-foreground/25 hover:text-foreground"
+        className="flex items-center gap-1.5 rounded-full border border-dashed px-3 py-1 text-small text-muted-foreground transition-colors duration-150 hover:border-foreground/25 hover:text-foreground"
       >
         <History size={12} />
         {/* what was said, not the cards and notes around it */}
@@ -149,7 +149,7 @@ function Rewound({ messages }: { messages: Message[] }) {
         <div className="flex w-full animate-fade-in flex-col gap-1.5">
           {words.map((m) => (
             <div key={m.id} className={cn("flex w-full", m.role === "user" ? "justify-end" : "justify-start")}>
-              <div className={cn("min-w-0 whitespace-pre-wrap rounded-2xl border border-dashed px-3 py-1.5 text-[13px] text-muted-foreground line-through decoration-muted-foreground/50 [overflow-wrap:anywhere]", m.role === "user" ? "max-w-[82%] sm:max-w-[68%]" : "max-w-full")}>
+              <div className={cn("min-w-0 whitespace-pre-wrap rounded-2xl border border-dashed px-3 py-1.5 text-body text-muted-foreground line-through decoration-muted-foreground/50 [overflow-wrap:anywhere]", m.role === "user" ? "max-w-[82%] sm:max-w-[68%]" : "max-w-full")}>
                 {m.text}
               </div>
             </div>
@@ -171,7 +171,7 @@ function QuietCheckIns({ messages }: { messages: Message[] }) {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 text-[12px] text-muted-foreground/80 transition-colors duration-150 hover:bg-accent/60 hover:text-foreground"
+        className="flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 text-small text-muted-foreground/80 transition-colors duration-150 hover:bg-accent/60 hover:text-foreground"
       >
         <BellOff size={12} className="shrink-0" />
         <span className="truncate">{quietLine(messages, (at) => stamp(at))}</span>
@@ -181,9 +181,9 @@ function QuietCheckIns({ messages }: { messages: Message[] }) {
         <div className="flex w-full animate-fade-in flex-col gap-1">
           {words.map((m) => (
             <div key={m.id} className={cn("flex w-full", m.role === "user" ? "justify-end" : "justify-start")}>
-              <div className={cn("min-w-0 whitespace-pre-wrap rounded-2xl border border-dashed px-3 py-1.5 text-[12.5px] text-muted-foreground [overflow-wrap:anywhere]", m.role === "user" ? "max-w-[82%] sm:max-w-[68%]" : "max-w-full")}>
+              <div className={cn("min-w-0 whitespace-pre-wrap rounded-2xl border border-dashed px-3 py-1.5 text-body text-muted-foreground [overflow-wrap:anywhere]", m.role === "user" ? "max-w-[82%] sm:max-w-[68%]" : "max-w-full")}>
                 {m.text}
-                <span className="ml-2 text-[10.5px] text-muted-foreground/70">{stamp(m.at)}</span>
+                <span className="ml-2 text-caption text-muted-foreground/70">{stamp(m.at)}</span>
               </div>
             </div>
           ))}
@@ -196,7 +196,7 @@ function QuietCheckIns({ messages }: { messages: Message[] }) {
 function TakenBack({ user }: { user: boolean }) {
   return (
     <div className={cn("flex w-full", user ? "justify-end" : "justify-start")}>
-      <div className="rounded-2xl border border-dashed px-3 py-1.5 text-[13px] italic text-muted-foreground">
+      <div className="rounded-2xl border border-dashed px-3 py-1.5 text-body italic text-muted-foreground">
         Message taken back
       </div>
     </div>
@@ -330,7 +330,7 @@ function Bubble({
   const saidAt = message.at && !hideTime ? (
     <time
       dateTime={new Date(message.at).toISOString()}
-      className="mt-0.5 px-1 text-[11px] leading-4 tabular-nums text-muted-foreground"
+      className="mt-0.5 px-1 text-caption leading-4 tabular-nums text-muted-foreground"
     >
       {/* a goal's note goes through the queue only to wait its turn;
           nobody queued it, so it says when it went, once */}
@@ -371,14 +371,14 @@ function Bubble({
             rather than beside it where they would push the text around. */}
         <div className={cn("flex flex-col", user ? "max-w-[82%] items-end sm:max-w-[68%]" : "min-w-0")}>
           {user && (message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal") && (
-            <div className="mb-0.5 px-1 text-[11px] text-muted-foreground">
+            <div className="mb-0.5 px-1 text-caption text-muted-foreground">
               {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? "From your watcher" : message.via === "webhook" ? "From a webhook" : message.via === "goal" ? goalLabel(message.text ?? "") : "By email"}
             </div>
           )}
           <div
             onPointerUp={tap.onPointerUp}
             className={cn(
-              "px-3.5 py-2 text-[14.5px] leading-relaxed",
+              "px-3.5 py-2 text-lead leading-relaxed",
               user
                 ? message.via === "goal"
                   ? // Bloks keeping a goal going, not the person: a quieter
@@ -405,11 +405,11 @@ function Bubble({
                     }
                   }}
                   rows={Math.min(8, editing.split("\n").length + 1)}
-                  className="w-full resize-none rounded-lg bg-black/15 px-2 py-1 text-[14.5px] leading-relaxed outline-none"
+                  className="w-full resize-none rounded-lg bg-black/15 px-2 py-1 text-lead leading-relaxed outline-none"
                 />
                 {offer ? (
                   <>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] opacity-80">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-small opacity-80">
                       <button
                         onClick={() => editing.trim() && redoNow(editing.trim())}
                         disabled={redoing}
@@ -419,20 +419,20 @@ function Bubble({
                       </button>
                       {/* the smaller way out: the words change, and the
                           agent goes on with the ones it read */}
-                      <button onClick={() => stopEditing(editing.trim() || undefined)} disabled={redoing} className="text-[11px]">
+                      <button onClick={() => stopEditing(editing.trim() || undefined)} disabled={redoing} className="text-caption">
                         Save words only
                       </button>
-                      <button onClick={() => stopEditing()} className="text-[11px]">
+                      <button onClick={() => stopEditing()} className="text-caption">
                         Cancel
                       </button>
                       <span className="opacity-70">{redoing ? "Redoing…" : "Enter redoes, Escape cancels"}</span>
                     </div>
-                    <div className="text-[11.5px] leading-snug opacity-80" role="status">
+                    <div className="text-small leading-snug opacity-80" role="status">
                       {redoError ?? redoLine(offer, agentName ?? "the agent")}
                     </div>
                   </>
                 ) : (
-                  <div className="flex items-center gap-2 text-[11.5px] opacity-80">
+                  <div className="flex items-center gap-2 text-small opacity-80">
                     <button
                       onClick={() => stopEditing(editing.trim() || undefined)}
                       className="font-medium underline underline-offset-2"
@@ -450,7 +450,7 @@ function Bubble({
               <Markdownish text={message.text ?? ""} highlight={highlight} />
             )}
             {message.editedAt && editing === null && (
-              <span className="ml-1.5 align-baseline text-[10.5px] opacity-60">edited</span>
+              <span className="ml-1.5 align-baseline text-caption opacity-60">edited</span>
             )}
           </div>
           <Reactions
@@ -502,7 +502,7 @@ function GuestMailLine({ bot }: { bot: Bot }) {
   if (!bot.tasks?.some((t) => t.id === open && t.guestMail)) return null;
   const first = bot.tasks.find((t) => !t.guestMail);
   return (
-    <p className="mx-auto w-full max-w-[var(--transcript-width,760px)] px-4 pb-1 text-center text-[12px] leading-snug text-muted-foreground md:px-6">
+    <p className="mx-auto w-full max-w-[var(--transcript-width,760px)] px-4 pb-1 text-center text-small leading-snug text-muted-foreground md:px-6">
       Mail from senders you have not listed is answered here, in conversation only. What you write goes to{" "}
       {first ? `"${first.title}"` : "the first conversation"}.
     </p>
@@ -524,7 +524,7 @@ function OtherLaneWaiting({ bot }: { bot: Bot }) {
     <div className="mx-auto w-full max-w-[var(--transcript-width,760px)] px-4 md:px-6">
       <button
         onClick={() => dispatch({ type: "selectTask", botId: bot.id, taskId: first.id })}
-        className="mb-2 flex w-full items-center gap-2 rounded-xl bg-warning/10 px-3.5 py-2 text-left text-[13px] text-warning transition-colors duration-150 hover:bg-warning/15"
+        className="mb-2 flex w-full items-center gap-2 rounded-xl bg-warning/10 px-3.5 py-2 text-left text-body text-warning transition-colors duration-150 hover:bg-warning/15"
       >
         <span className="size-1.5 shrink-0 rounded-full bg-warning" />
         <span className="min-w-0 flex-1 truncate">
@@ -602,7 +602,7 @@ function EngineBanner({ bot }: { bot: Bot }) {
   const alternative = ready.find((i) => agentic.has(i.driverKind)) ?? ready[0];
   return (
     <div className="mx-auto w-full max-w-[var(--transcript-width,760px)] px-4 md:px-6">
-      <div className="mb-2 rounded-xl border border-warning/30 bg-warning/5 px-3.5 py-2.5 text-[13px] leading-relaxed">
+      <div className="mb-2 rounded-xl border border-warning/30 bg-warning/5 px-3.5 py-2.5 text-body leading-relaxed">
         <div className="flex items-start gap-2">
           <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
           <div className="min-w-0 flex-1">
@@ -637,7 +637,7 @@ function EngineBanner({ bot }: { bot: Bot }) {
             />
             <button
               onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "engines" })}
-              className="mt-1.5 text-[12px] text-muted-foreground underline hover:text-foreground"
+              className="mt-1.5 text-small text-muted-foreground underline hover:text-foreground"
             >
               Open engine settings
             </button>
@@ -665,7 +665,7 @@ function EngineBanner({ bot }: { bot: Bot }) {
 function Notice({ message, fresh }: { message: Message; fresh?: boolean }) {
   // a compaction is a fact about the conversation, marked like a date line
   if (message.compaction) {
-    return <div className="py-1 text-center text-[12px] text-muted-foreground">{message.text}</div>;
+    return <div className="py-1 text-center text-small text-muted-foreground">{message.text}</div>;
   }
   // The goal's own news. Set and done are not warnings, so they do not
   // wear one; where it stopped short (blocked, out, paused) still does.
@@ -684,7 +684,7 @@ function Notice({ message, fresh }: { message: Message; fresh?: boolean }) {
             className={cn("mt-0.5 shrink-0", short ? "text-warning" : message.goal === "done" ? "text-success" : "text-brand")}
             aria-hidden
           />
-          <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-foreground">{message.text}</div>
+          <div className="whitespace-pre-wrap text-ui leading-relaxed text-foreground">{message.text}</div>
         </div>
       </div>
     );
@@ -693,7 +693,7 @@ function Notice({ message, fresh }: { message: Message; fresh?: boolean }) {
     <div className={cn("flex justify-start", fresh && "animate-receive-in")}>
       <div className="flex max-w-[560px] gap-2.5 rounded-2xl border border-warning/30 bg-warning/5 px-3.5 py-2.5">
         <AlertTriangle size={15} className="mt-0.5 shrink-0 text-warning" />
-        <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-foreground">
+        <div className="whitespace-pre-wrap text-ui leading-relaxed text-foreground">
           {message.text}
           <CarryOn message={message} />
         </div>
@@ -735,7 +735,7 @@ function LiveBrowser({ botId, frame }: { botId: string; frame: { png: string; mi
   return (
     <div className="flex animate-rise-in justify-start">
       <div className="max-w-[82%] overflow-hidden rounded-xl border sm:max-w-[68%]">
-        <div className="flex items-center gap-1.5 border-b px-2.5 py-1.5 text-[11.5px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 border-b px-2.5 py-1.5 text-small text-muted-foreground">
           <span className="size-1.5 animate-pulse rounded-full bg-success" />
           Live browser. Click or type to help it along.
         </div>
@@ -761,10 +761,10 @@ function LiveBrowser({ botId, frame }: { botId: string; frame: { png: string; mi
             onChange={(e) => setText(e.target.value)}
             placeholder="Type into the page, Enter to send"
             aria-label="Type into the agent's browser"
-            className="w-full bg-transparent px-2.5 py-1.5 text-[12.5px] outline-none placeholder:text-muted-foreground"
+            className="w-full bg-transparent px-2.5 py-1.5 text-body outline-none placeholder:text-muted-foreground"
           />
         </form>
-        {error && <div className="border-t px-2.5 py-1 text-[11.5px] text-destructive">{error}</div>}
+        {error && <div className="border-t px-2.5 py-1 text-small text-destructive">{error}</div>}
       </div>
     </div>
   );
@@ -773,7 +773,7 @@ function LiveBrowser({ botId, frame }: { botId: string; frame: { png: string; mi
 function StreamingBubble({ text }: { text: string }) {
   return (
     <div className="flex w-full justify-start">
-      <div className="streaming-text min-w-0 max-w-full rounded-2xl rounded-bl-md bg-muted px-3.5 py-2 text-[14.5px] leading-relaxed text-foreground">
+      <div className="streaming-text min-w-0 max-w-full rounded-2xl rounded-bl-md bg-muted px-3.5 py-2 text-lead leading-relaxed text-foreground">
         <Markdownish text={text} />
       </div>
     </div>
@@ -1140,8 +1140,8 @@ export function ChatView({ bot }: { bot: Bot }) {
           const after = folded.named.has(m.id) ? undefined : (m.afterAgent ?? (m.agent?.dir === "reply" ? m.agent : undefined));
           return (
             <div key={m.id} data-msg-index={absolute} data-message-id={m.id}>
-            {m.telegramPerson && <div className="mb-1 text-[12px] text-muted-foreground">Message from {m.telegramPerson.name} (Telegram)</div>}
-            {m.telegramSent && <div className="mb-1 text-[12px] text-muted-foreground">To {m.telegramSent.name} (Telegram): {m.telegramSent.state === "sent" ? "sent" : m.telegramSent.state === "sending" ? "sending" : m.telegramSent.state === "failed" ? "failed" : "delivery uncertain"}</div>}
+            {m.telegramPerson && <div className="mb-1 text-small text-muted-foreground">Message from {m.telegramPerson.name} (Telegram)</div>}
+            {m.telegramSent && <div className="mb-1 text-small text-muted-foreground">To {m.telegramSent.name} (Telegram): {m.telegramSent.state === "sent" ? "sent" : m.telegramSent.state === "sending" ? "sending" : m.telegramSent.state === "failed" ? "failed" : "delivery uncertain"}</div>}
             {after && (
               <AfterAgentLink
                 peerId={after.peerId}
@@ -1189,9 +1189,9 @@ export function ChatView({ bot }: { bot: Bot }) {
         >
           <AgentAvatar bot={bot} size={28} />
           <span className="flex min-w-0 items-baseline gap-2 text-left">
-            <span className="truncate text-[14px] font-semibold text-foreground">{bot.name}</span>
+            <span className="truncate text-ui font-semibold text-foreground">{bot.name}</span>
             {(working || bot.title) && (
-              <span className="hidden truncate text-[12px] text-muted-foreground sm:block">
+              <span className="hidden truncate text-small text-muted-foreground sm:block">
                 {working ? "working…" : bot.title}
               </span>
             )}
@@ -1239,7 +1239,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       {/* The running turn's Codex speed, only when it is worth saying:
           Fast, or an agent's own choice. Gone when the turn ends. */}
       {speedLine && (
-        <p data-codex-speed-status className="shrink-0 border-b px-3 py-1 text-[11px] text-muted-foreground md:px-4">
+        <p data-codex-speed-status className="shrink-0 border-b px-3 py-1 text-caption text-muted-foreground md:px-4">
           {speedLine}
         </p>
       )}
@@ -1291,9 +1291,9 @@ export function ChatView({ bot }: { bot: Bot }) {
               }
             }}
             placeholder={`Find in this conversation`}
-            className="min-w-0 flex-1 bg-transparent text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
           />
-          <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">
+          <span className="shrink-0 text-small tabular-nums text-muted-foreground">
             {query.trim().length < 2
               ? ""
               : hits.length === 0
@@ -1340,14 +1340,14 @@ export function ChatView({ bot }: { bot: Bot }) {
             <button
               onClick={earlier.showEarlier}
               disabled={earlier.loading}
-              className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] text-muted-foreground transition-colors duration-150 hover:border-foreground/25 hover:text-foreground disabled:opacity-60"
+              className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-small text-muted-foreground transition-colors duration-150 hover:border-foreground/25 hover:text-foreground disabled:opacity-60"
             >
               {earlier.loading && <Loader2 size={12} className="animate-spin" />}
               Show earlier messages ({start + earlier.remaining} more)
             </button>
           ) : (
             first && (
-              <div className="py-3 text-center text-[12px] text-muted-foreground">
+              <div className="py-3 text-center text-small text-muted-foreground">
                 {dayLine(first.at)}
               </div>
             )
@@ -1374,7 +1374,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           )}
           {provisioning && (
             <div className="flex justify-start">
-              <div className="flex items-center gap-2 px-1.5 py-0.5 text-[12px] text-muted-foreground">
+              <div className="flex items-center gap-2 px-1.5 py-0.5 text-small text-muted-foreground">
                 <Loader2 size={12} className="animate-spin" />
                 Setting up this agent's computer…
               </div>
@@ -1427,7 +1427,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       )}
       {pendingApprovals.length > 1 && (
         <div className="flex items-center justify-center gap-2 px-4 pb-1">
-          <span className="text-[12px] text-muted-foreground">
+          <span className="text-small text-muted-foreground">
             {pendingApprovals.length} approvals waiting
           </span>
           <button
@@ -1436,7 +1436,7 @@ export function ChatView({ bot }: { bot: Bot }) {
                 dispatch({ type: "answerCard", botId: bot.id, messageId: m.id, answer: "Allow" });
               }
             }}
-            className="rounded-lg bg-brand-soft px-2.5 py-1 text-[12px] font-medium text-brand-ink transition-colors hover:opacity-90"
+            className="rounded-lg bg-brand-soft px-2.5 py-1 text-small font-medium text-brand-ink transition-colors hover:opacity-90"
           >
             Allow all
           </button>
@@ -1446,7 +1446,7 @@ export function ChatView({ bot }: { bot: Bot }) {
                 dispatch({ type: "answerCard", botId: bot.id, messageId: m.id, answer: "Deny" });
               }
             }}
-            className="rounded-lg px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="rounded-lg px-2.5 py-1 text-small text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             Deny all
           </button>

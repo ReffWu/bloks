@@ -70,7 +70,7 @@ export function TeamMapView({ onNavigate }: { onNavigate: (id: string) => void }
                   <text
                     x={c.x + 24}
                     y={c.y + 30}
-                    className="fill-(--color-muted-foreground) text-[11px] font-medium uppercase tracking-[0.08em]"
+                    className="fill-(--color-muted-foreground) text-caption font-medium uppercase tracking-[0.08em]"
                   >
                     {c.name}
                   </text>
@@ -105,7 +105,7 @@ export function TeamMapView({ onNavigate }: { onNavigate: (id: string) => void }
                     onClick={() => open(node.id)}
                     title={room?.name}
                     style={{ left: node.x, top: node.y }}
-                    className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-xl border bg-card px-2.5 py-1.5 text-[12px] font-medium text-foreground shadow-sm transition-transform hover:scale-105"
+                    className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-xl border bg-card px-2.5 py-1.5 text-small font-medium text-foreground shadow-sm transition-transform hover:scale-105"
                   >
                     <Users size={12} className="text-muted-foreground" />
                     <span className="max-w-[110px] truncate">{room?.name}</span>
@@ -131,7 +131,7 @@ export function TeamMapView({ onNavigate }: { onNavigate: (id: string) => void }
                   >
                     <AgentAvatar bot={bot} size={44} />
                   </span>
-                  <span className="max-w-[86px] truncate text-[11px] text-foreground">
+                  <span className="max-w-[86px] truncate text-caption text-foreground">
                     {bot.name}
                   </span>
                 </button>
@@ -139,7 +139,7 @@ export function TeamMapView({ onNavigate }: { onNavigate: (id: string) => void }
             })}
           </div>
           {bots.length === 0 && (
-            <div className="py-16 text-center text-[13px] text-muted-foreground">
+            <div className="py-16 text-center text-body text-muted-foreground">
               No agents yet. The map fills in as you hire.
             </div>
           )}

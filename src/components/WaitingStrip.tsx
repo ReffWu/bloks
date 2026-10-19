@@ -131,7 +131,7 @@ function WaitingRow({
       data-waiting={message.id}
     >
       <div className="min-w-0 flex-1 py-0.5">
-        {sender && <div className="text-[11.5px] font-medium text-muted-foreground">From {sender}</div>}
+        {sender && <div className="text-small font-medium text-muted-foreground">From {sender}</div>}
         {editing !== null ? (
           <div className="flex flex-col gap-1.5">
             <textarea
@@ -147,9 +147,9 @@ function WaitingRow({
               }}
               rows={Math.min(6, editing.split("\n").length + 1)}
               aria-label="Edit the waiting message"
-              className="max-h-[calc(6lh+10px)] w-full resize-none rounded-lg border bg-background px-2 py-1 text-[14px] leading-relaxed text-foreground outline-none [field-sizing:content] focus:border-ring/50"
+              className="max-h-[calc(6lh+10px)] w-full resize-none rounded-lg border bg-background px-2 py-1 text-ui leading-relaxed text-foreground outline-none [field-sizing:content] focus:border-ring/50"
             />
-            <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
+            <div className="flex items-center gap-2 text-small text-muted-foreground">
               <button
                 onClick={() => stopEditing(editing.trim() || undefined)}
                 className="font-medium text-foreground underline underline-offset-2"
@@ -165,7 +165,7 @@ function WaitingRow({
         ) : (
           <div
             className={cn(
-              "line-clamp-3 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground",
+              "line-clamp-3 whitespace-pre-wrap break-words text-ui leading-relaxed text-foreground",
               editable && "cursor-text",
             )}
             // the second press of a double-click would select a word
@@ -185,7 +185,7 @@ function WaitingRow({
         )}
         <div
           className={cn(
-            "mt-0.5 flex items-start gap-1 text-[10.5px] font-medium",
+            "mt-0.5 flex items-start gap-1 text-caption font-medium",
             message.unsent ? "text-warning" : "text-muted-foreground",
           )}
           role="status"
@@ -199,7 +199,7 @@ function WaitingRow({
           {message.unsent && yours && onSendAgain && message.text ? (
             <button
               onClick={() => onSendAgain(message)}
-              className="mr-0.5 h-7 rounded-full px-2.5 text-[12px] font-medium text-foreground transition-colors duration-150 hover:bg-accent"
+              className="mr-0.5 h-7 rounded-full px-2.5 text-small font-medium text-foreground transition-colors duration-150 hover:bg-accent"
             >
               Send again
             </button>

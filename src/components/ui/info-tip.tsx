@@ -30,7 +30,7 @@ export function InfoTip({ text, className }: { text: string; className?: string 
             <HelpCircle size={14} />
           </button>
         </TooltipTrigger>
-        <TooltipContent className="max-w-[300px] bg-popover px-3 py-2 text-[12px] font-normal leading-relaxed text-popover-foreground shadow-lg [&_svg]:hidden">
+        <TooltipContent className="max-w-[300px] bg-popover px-3 py-2 text-small font-normal leading-relaxed text-popover-foreground shadow-lg [&_svg]:hidden">
           {text}
         </TooltipContent>
       </Tooltip>

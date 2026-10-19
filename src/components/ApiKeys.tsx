@@ -88,12 +88,12 @@ export function ApiKeyRow({
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center gap-2 text-[12.5px] font-medium text-muted-foreground">
+      <div className="mb-1.5 flex items-center gap-2 text-body font-medium text-muted-foreground">
         <span
           className={cn("size-1.5 rounded-full", configured ? "bg-success" : "bg-muted-foreground/30")}
         />
         {label}
-        {configured && <span className="text-[11px] font-normal text-success">Connected</span>}
+        {configured && <span className="text-caption font-normal text-success">Connected</span>}
         {info && (
           <button
             onClick={() => setInfoOpen(!infoOpen)}
@@ -108,7 +108,7 @@ export function ApiKeyRow({
         )}
       </div>
       {info && infoOpen && (
-        <div className="mb-2 rounded-xl bg-muted/60 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
+        <div className="mb-2 rounded-xl bg-muted/60 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
           {info.text}
           {info.linkHref && (
             <a
@@ -131,7 +131,7 @@ export function ApiKeyRow({
           onKeyDown={(e) => e.key === "Enter" && save()}
           placeholder={configured ? "••••••••  (paste to replace)" : placeholder}
           autoComplete="off"
-          className="h-8 text-[13px]"
+          className="h-8 text-body"
         />
         <Button
           variant={clearing ? "destructive" : "secondary"}
@@ -152,7 +152,7 @@ export function ApiKeyRow({
           )}
         </Button>
       </div>
-      {error && <div className="mt-1 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="mt-1 text-small text-destructive">{error}</div>}
     </div>
   );
 }

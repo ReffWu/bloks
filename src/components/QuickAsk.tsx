@@ -129,10 +129,10 @@ export function QuickAsk() {
         {sent ? (
           <div className="flex items-center gap-3 px-4 py-5">
             {bot && <AgentAvatar bot={bot as never} size={30} />}
-            <div className="flex-1 text-[14px] text-foreground">Sent to {sent}</div>
+            <div className="flex-1 text-ui text-foreground">Sent to {sent}</div>
             <button
               onClick={() => window.bloks?.quickOpenMain()}
-              className="rounded-lg px-2 py-1 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="rounded-lg px-2 py-1 text-body text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               Open Bloks
             </button>
@@ -160,7 +160,7 @@ export function QuickAsk() {
                   }
                 }}
                 placeholder={bot ? `Ask ${bot.name}…` : "No agents yet"}
-                className="min-h-[46px] w-full resize-none bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
+                className="min-h-[46px] w-full resize-none bg-transparent text-lead leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
               />
             </div>
             <div className="flex items-center gap-1.5 border-t px-3 py-1.5">
@@ -171,7 +171,7 @@ export function QuickAsk() {
                     onClick={() => setChosen(b.id)}
                     title={b.title || b.name}
                     className={cn(
-                      "flex shrink-0 items-center gap-1.5 rounded-full px-1.5 py-1 text-[12px] transition-colors",
+                      "flex shrink-0 items-center gap-1.5 rounded-full px-1.5 py-1 text-small transition-colors",
                       b.id === chosen
                         ? "bg-accent font-medium text-foreground"
                         : "text-muted-foreground hover:text-foreground",
@@ -182,13 +182,13 @@ export function QuickAsk() {
                   </button>
                 ))}
               </div>
-              <span className="flex shrink-0 items-center gap-1 pl-1 text-[11px] text-muted-foreground">
+              <span className="flex shrink-0 items-center gap-1 pl-1 text-caption text-muted-foreground">
                 <CornerDownLeft size={11} /> send
               </span>
             </div>
           </>
         )}
-        {error && <div className="px-4 pb-2 text-[12px] text-destructive">{error}</div>}
+        {error && <div className="px-4 pb-2 text-small text-destructive">{error}</div>}
       </div>
     </div>
   );

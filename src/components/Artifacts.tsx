@@ -95,10 +95,10 @@ export function ArtifactCard({ botId, artifact }: { botId: string; artifact: Art
           {kind.icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13.5px] font-medium text-foreground" title={artifact.name}>
+          <span className="block truncate text-ui font-medium text-foreground" title={artifact.name}>
             {fileBase(artifact.name)}
           </span>
-          <span className="block text-[11.5px] text-muted-foreground">
+          <span className="block text-small text-muted-foreground">
             {kind.label} · {humanSize(artifact.size)}
           </span>
         </span>
@@ -200,7 +200,7 @@ function GridTable({
   const shown = rows.slice(0, MAX_ROWS);
   return (
     <div className="overflow-auto">
-      <table className="w-full border-collapse text-[12.5px]">
+      <table className="w-full border-collapse text-body">
         <tbody>
           {shown.map((row, r) => (
             <tr key={r} className={cn("border-b", r === 0 && "bg-muted/50")}>
@@ -240,7 +240,7 @@ function GridTable({
         </tbody>
       </table>
       {rows.length > MAX_ROWS && (
-        <div className="px-3 py-2 text-[12px] text-muted-foreground">
+        <div className="px-3 py-2 text-small text-muted-foreground">
           Showing the first {MAX_ROWS} of {rows.length} rows; download for the rest.
         </div>
       )}
@@ -328,13 +328,13 @@ export function ArtifactViewer({
       <DialogContent className="flex h-[85vh] w-full max-w-[900px] flex-col gap-0 overflow-hidden p-0">
         <div className="flex h-[52px] shrink-0 items-center gap-3 border-b px-5">
           <span className="text-brand-ink">{kind.icon}</span>
-          <DialogTitle className="min-w-0 flex-1 truncate text-[14px]" title={artifact.name}>
+          <DialogTitle className="min-w-0 flex-1 truncate text-ui" title={artifact.name}>
             {fileBase(artifact.name)}
           </DialogTitle>
           {kind.viewer === "markdown" && (
             <button
               onClick={() => setSource((s) => !s)}
-              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-body text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               {source ? "Show rendered" : "Show source"}
             </button>
@@ -342,7 +342,7 @@ export function ArtifactViewer({
           <a
             href={`${href}?download`}
             download={fileBase(artifact.name)}
-            className="mr-6 flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="mr-6 flex items-center gap-1.5 rounded-lg px-2 py-1 text-body text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <Download size={14} />
             Download
@@ -352,7 +352,7 @@ export function ArtifactViewer({
         <div className="min-h-0 flex-1 bg-muted/30">
           {error && (
             <div className="flex flex-col items-start gap-3 p-6">
-              <div className="text-[13px] text-destructive">{error}</div>
+              <div className="text-body text-destructive">{error}</div>
               <Button size="sm" variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
                 Try again
               </Button>
@@ -367,7 +367,7 @@ export function ArtifactViewer({
                 className="size-full border-0 bg-white"
               />
             ) : (
-              !error && <div className="p-6 text-[13px] text-muted-foreground">Loading…</div>
+              !error && <div className="p-6 text-body text-muted-foreground">Loading…</div>
             ))}
           {kind.viewer === "pdf" && (
             <iframe src={href} title={artifact.name} className="size-full border-0" />
@@ -387,7 +387,7 @@ export function ArtifactViewer({
             (unplayable ? (
               <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
                 <span className="text-muted-foreground">{kind.icon}</span>
-                <div className="max-w-[420px] text-[13.5px] text-muted-foreground">
+                <div className="max-w-[420px] text-ui text-muted-foreground">
                   This video could not play here. Its format may not be one this app can play, or the file may be
                   missing. Download it to watch it in another player.
                 </div>
@@ -444,7 +444,7 @@ export function ArtifactViewer({
                     a table nor a comment thread. */}
                 <div className="flex max-h-[45%] w-full shrink-0 flex-col border-t bg-card sm:max-h-none sm:w-[260px] sm:border-l sm:border-t-0">
                   <div className="flex items-center justify-between border-b px-3 py-2">
-                    <span className="text-[12px] font-semibold text-foreground">Notes</span>
+                    <span className="text-small font-semibold text-foreground">Notes</span>
                     {notes.some((n) => !n.resolved) && (
                       <button
                         disabled={sending}
@@ -455,7 +455,7 @@ export function ArtifactViewer({
                             .catch(() => {})
                             .finally(() => setSending(false));
                         }}
-                        className="rounded-lg bg-primary px-2 py-1 text-[11.5px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                        className="rounded-lg bg-primary px-2 py-1 text-small font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
                       >
                         {sending ? "Sending…" : "Send to agent"}
                       </button>
@@ -464,7 +464,7 @@ export function ArtifactViewer({
                   <div className="min-h-0 flex-1 overflow-y-auto p-2">
                     {pinning && (
                       <div className="mb-2 rounded-xl border border-brand/40 bg-brand-soft p-2">
-                        <div className="mb-1 text-[11px] font-semibold text-foreground">
+                        <div className="mb-1 text-caption font-semibold text-foreground">
                           {anchorLabel({ kind: "cell", row: pinning.row, column: pinning.column })}
                         </div>
                         <textarea
@@ -492,15 +492,15 @@ export function ArtifactViewer({
                             }
                           }}
                           placeholder="What is wrong here?"
-                          className="w-full resize-none rounded-lg border border-input bg-background px-2 py-1.5 text-[12px] outline-none"
+                          className="w-full resize-none rounded-lg border border-input bg-background px-2 py-1.5 text-small outline-none"
                         />
-                        <div className="mt-1 text-[10.5px] text-muted-foreground">
+                        <div className="mt-1 text-caption text-muted-foreground">
                           {modKey()}Enter saves, Escape cancels
                         </div>
                       </div>
                     )}
                     {notes.length === 0 && !pinning && (
-                      <div className="px-1 py-3 text-[11.5px] leading-relaxed text-muted-foreground">
+                      <div className="px-1 py-3 text-small leading-relaxed text-muted-foreground">
                         Click any cell to pin a note to it. The agent gets the address, not a
                         description of where you meant.
                       </div>
@@ -514,7 +514,7 @@ export function ArtifactViewer({
                         )}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="rounded bg-muted px-1 text-[10.5px] font-semibold tabular-nums text-muted-foreground">
+                          <span className="rounded bg-muted px-1 text-caption font-semibold tabular-nums text-muted-foreground">
                             {anchorLabel(note.anchor)}
                           </span>
                           <div className="flex gap-0.5">
@@ -546,7 +546,7 @@ export function ArtifactViewer({
                             </button>
                           </div>
                         </div>
-                        <div className="mt-1 text-[12px] leading-relaxed text-foreground">
+                        <div className="mt-1 text-small leading-relaxed text-foreground">
                           {note.text}
                         </div>
                       </div>
@@ -555,37 +555,37 @@ export function ArtifactViewer({
                 </div>
               </div>
             ) : (
-              !error && <div className="p-6 text-[13px] text-muted-foreground">Loading…</div>
+              !error && <div className="p-6 text-body text-muted-foreground">Loading…</div>
             ))}
           {kind.viewer === "markdown" &&
             (text !== null ? (
               source ? (
-                <pre className="size-full overflow-auto whitespace-pre-wrap bg-background p-5 font-mono text-[12.5px] leading-relaxed text-foreground">
+                <pre className="size-full overflow-auto whitespace-pre-wrap bg-background p-5 font-mono text-body leading-relaxed text-foreground">
                   {text}
                 </pre>
               ) : (
                 <div className="size-full overflow-auto bg-background">
-                  <div className="mx-auto max-w-[720px] px-6 py-6 text-[14px] leading-relaxed text-foreground">
+                  <div className="mx-auto max-w-[720px] px-6 py-6 text-ui leading-relaxed text-foreground">
                     <Markdownish text={text} />
                   </div>
                 </div>
               )
             ) : (
-              !error && <div className="p-6 text-[13px] text-muted-foreground">Loading…</div>
+              !error && <div className="p-6 text-body text-muted-foreground">Loading…</div>
             ))}
           {kind.viewer === "text" &&
             (text !== null ? (
-              <pre className="size-full overflow-auto whitespace-pre-wrap bg-background p-5 font-mono text-[12.5px] leading-relaxed text-foreground">
+              <pre className="size-full overflow-auto whitespace-pre-wrap bg-background p-5 font-mono text-body leading-relaxed text-foreground">
                 {text}
               </pre>
             ) : (
-              !error && <div className="p-6 text-[13px] text-muted-foreground">Loading…</div>
+              !error && <div className="p-6 text-body text-muted-foreground">Loading…</div>
             ))}
           {/* the notes rail */}
           {kind.viewer === "none" && (
             <div className="flex size-full flex-col items-center justify-center gap-3 text-center">
               <span className="text-muted-foreground">{kind.icon}</span>
-              <div className="text-[13.5px] text-muted-foreground">
+              <div className="text-ui text-muted-foreground">
                 No in-app preview for this format yet.
               </div>
               <Button asChild size="sm" variant="secondary">
@@ -664,9 +664,9 @@ export function SharedFileLink({
       {opening.phase === "failed" && (
         <Dialog open onOpenChange={(isOpen) => !isOpen && setOpening({ phase: "idle" })}>
           <DialogContent className="max-w-[420px] gap-3 p-5">
-            <DialogTitle className="text-[14px]">Could not open this file</DialogTitle>
-            <div className="text-[13px] leading-relaxed text-muted-foreground">{opening.message}</div>
-            <div className="break-all font-mono text-[11.5px] text-muted-foreground/80">{href}</div>
+            <DialogTitle className="text-ui">Could not open this file</DialogTitle>
+            <div className="text-body leading-relaxed text-muted-foreground">{opening.message}</div>
+            <div className="break-all font-mono text-small text-muted-foreground/80">{href}</div>
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="secondary" onClick={() => void open()}>
                 Try again

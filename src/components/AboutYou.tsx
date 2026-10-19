@@ -60,14 +60,14 @@ export function Suggestion({ note, onDone }: { note: ProfileNote; onDone: () => 
             if (e.key === "Enter" && !e.shiftKey) (e.preventDefault(), keep());
             if (e.key === "Escape") (e.preventDefault(), setEditing(false), setText(note.text));
           }}
-          className="min-h-[64px] resize-none bg-card text-[14px] leading-relaxed"
+          className="min-h-[64px] resize-none bg-card text-ui leading-relaxed"
           aria-label="The note, in your words"
           autoFocus
         />
       ) : (
-        <p className="text-pretty text-[14.5px] leading-relaxed text-foreground">{note.text}</p>
+        <p className="text-pretty text-lead leading-relaxed text-foreground">{note.text}</p>
       )}
-      <p className="mt-1.5 text-[12.5px] text-muted-foreground">Suggested by {note.by.name}</p>
+      <p className="mt-1.5 text-body text-muted-foreground">Suggested by {note.by.name}</p>
       <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
         <Button size="sm" disabled={busy || text.trim().length < 3} onClick={keep}>
           <Check size={13} /> {editing ? "Keep this" : "Keep"}
@@ -110,7 +110,7 @@ export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; relo
   return (
     <div className="overflow-hidden rounded-2xl border bg-card">
       {notes !== null && kept.length === 0 ? (
-        <p className="px-5 py-6 text-[13.5px] text-muted-foreground">
+        <p className="px-5 py-6 text-ui text-muted-foreground">
           Nothing yet. Add a note below, or keep one your agents suggest.
         </p>
       ) : (
@@ -119,8 +119,8 @@ export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; relo
             <li key={note.id} className="group flex items-start gap-3 px-5 py-3.5">
               <span className="mt-[9px] size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
               <div className="min-w-0 flex-1">
-                <div className="text-pretty text-[14px] leading-relaxed text-foreground">{note.text}</div>
-                <div className="mt-0.5 text-[12px] text-muted-foreground">
+                <div className="text-pretty text-ui leading-relaxed text-foreground">{note.text}</div>
+                <div className="mt-0.5 text-small text-muted-foreground">
                   {note.by.id === "you" ? "You wrote this" : `From ${note.by.name}`}
                 </div>
               </div>
@@ -146,13 +146,13 @@ export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; relo
           aria-label="Add a note about you"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && add()}
-          className="min-w-0 flex-1 bg-transparent py-1 text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
+          className="min-w-0 flex-1 bg-transparent py-1 text-ui text-foreground outline-none placeholder:text-muted-foreground"
         />
         <Button size="sm" variant="secondary" disabled={draft.trim().length < 3} onClick={add}>
           Add
         </Button>
       </div>
-      {error && <div className="border-t px-5 py-2 text-[12.5px] text-destructive">{error}</div>}
+      {error && <div className="border-t px-5 py-2 text-body text-destructive">{error}</div>}
     </div>
   );
 }
@@ -199,9 +199,9 @@ export function AboutText() {
         onChange={(e) => save(e.target.value)}
         aria-label="About you, in your own words"
         placeholder="I'm a founder building a local-first agent app. Keep replies short and skip the preamble."
-        className="block [field-sizing:content] min-h-[132px] w-full resize-none bg-transparent px-5 py-4 text-[14px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
+        className="block [field-sizing:content] min-h-[132px] w-full resize-none bg-transparent px-5 py-4 text-ui leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
       />
-      <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-5 py-2.5 text-[12.5px] text-muted-foreground">
+      <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-5 py-2.5 text-body text-muted-foreground">
         <span>Every agent is told this. Never shared with people you invite into a room.</span>
         <span
           className={cn("flex shrink-0 items-center gap-1 text-success transition-opacity duration-200", justSaved ? "opacity-100" : "opacity-0")}

@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 
 const buttonVariants = cva(
   // Press feedback on every button, the UI should feel like it's listening.
-  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg text-[13px] font-medium outline-none transition-[background-color,color,transform,opacity] duration-150 ease-out select-none active:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg text-body font-medium outline-none transition-[background-color,color,transform,opacity] duration-150 ease-out select-none active:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -18,8 +18,8 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-8 px-3",
-        sm: "h-7 rounded-md px-2.5 text-[12.5px]",
-        lg: "h-10 rounded-xl px-4 text-[14px]",
+        sm: "h-7 rounded-md px-2.5 text-body",
+        lg: "h-10 rounded-xl px-4 text-ui",
         icon: "size-8 rounded-lg",
         "icon-sm": "size-7 rounded-md",
       },

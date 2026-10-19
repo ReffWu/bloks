@@ -108,11 +108,11 @@ export function JobBoard() {
   return (
     <>
       <div className="mt-4 rounded-2xl border bg-card p-4">
-        <div className="flex items-center gap-2 text-[13.5px] font-semibold text-foreground">
+        <div className="flex items-center gap-2 text-ui font-semibold text-foreground">
           <Briefcase size={15} className="text-muted-foreground" />
           Post a job
         </div>
-        <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+        <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
           Say what needs doing, not who should do it. Whoever looks most suited
           is asked first, and can hand it back.
         </div>
@@ -131,7 +131,7 @@ export function JobBoard() {
           className="mt-2 resize-none"
         />
         <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="text-[11.5px] text-muted-foreground">
+          <span className="text-small text-muted-foreground">
             {plural(state.bots.filter((b) => !b.hidden).length, "agent")} can see the board
           </span>
           <Button size="sm" disabled={posting || (!title.trim() && !brief.trim())} onClick={post}>
@@ -140,7 +140,7 @@ export function JobBoard() {
           </Button>
         </div>
         {error && (
-          <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+          <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">
             {error}
           </div>
         )}
@@ -148,13 +148,13 @@ export function JobBoard() {
 
       <div className="mt-4 flex flex-col gap-2">
         {jobs === null && (
-          <div className="flex items-center gap-2 rounded-2xl border bg-card px-4 py-6 text-[12.5px] text-muted-foreground">
+          <div className="flex items-center gap-2 rounded-2xl border bg-card px-4 py-6 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
             Reading the board
           </div>
         )}
         {jobs?.length === 0 && (
-          <div className="rounded-2xl border border-dashed px-4 py-8 text-center text-[12.5px] text-muted-foreground">
+          <div className="rounded-2xl border border-dashed px-4 py-8 text-center text-body text-muted-foreground">
             Nothing on the board. Post something and see who takes it.
           </div>
         )}
@@ -172,8 +172,8 @@ export function JobBoard() {
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-medium text-foreground">{job.title}</div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground">
+                  <div className="text-ui font-medium text-foreground">{job.title}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-small text-muted-foreground">
                     <span
                       className={cn(
                         job.state === "done" && "text-success",
@@ -225,7 +225,7 @@ export function JobBoard() {
               </div>
 
               {job.brief && job.brief !== job.title && (
-                <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed text-muted-foreground">
+                <p className="mt-2 line-clamp-3 text-body leading-relaxed text-muted-foreground">
                   {job.brief}
                 </p>
               )}
@@ -234,7 +234,7 @@ export function JobBoard() {
               {refusals.length > 0 && (
                 <div className="mt-2 flex flex-col gap-1">
                   {refusals.map((offer) => (
-                    <div key={`${offer.botId}-${offer.at}`} className="text-[11.5px] text-muted-foreground">
+                    <div key={`${offer.botId}-${offer.at}`} className="text-small text-muted-foreground">
                       <span className="text-foreground/70">{offer.name}</span> passed: {offer.passed}
                     </div>
                   ))}
@@ -242,13 +242,13 @@ export function JobBoard() {
               )}
 
               {job.state === "open" && job.offers.length > 0 && (
-                <div className="mt-2 rounded-lg bg-muted/50 px-2.5 py-1.5 text-[12px] text-muted-foreground">
+                <div className="mt-2 rounded-lg bg-muted/50 px-2.5 py-1.5 text-small text-muted-foreground">
                   Everyone has been asked. Ask around again to start another round.
                 </div>
               )}
 
               {job.result && (
-                <div className="mt-2 whitespace-pre-wrap rounded-xl bg-muted/50 px-3 py-2 text-[12.5px] leading-relaxed text-foreground">
+                <div className="mt-2 whitespace-pre-wrap rounded-xl bg-muted/50 px-3 py-2 text-body leading-relaxed text-foreground">
                   {job.result}
                 </div>
               )}

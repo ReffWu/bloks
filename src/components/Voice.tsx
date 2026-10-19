@@ -141,8 +141,8 @@ export function VoiceCard({ bot }: { bot: Bot }) {
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <button className="flex w-full items-center justify-between text-left" onClick={() => setOpen(!open)}>
         <div>
-          <div className="text-[13.5px] font-semibold text-foreground">Voice</div>
-          <div className="mt-0.5 text-[12.5px] text-muted-foreground">
+          <div className="text-ui font-semibold text-foreground">Voice</div>
+          <div className="mt-0.5 text-body text-muted-foreground">
             {!configured
               ? "Add an ElevenLabs or OpenAI key in Settings, Voices first."
               : bot.voice
@@ -150,7 +150,7 @@ export function VoiceCard({ bot }: { bot: Bot }) {
                 : "Pick a voice to enable calls with this agent."}
           </div>
         </div>
-        <span className="text-[12px] text-muted-foreground">{open ? "Hide" : "Choose"}</span>
+        <span className="text-small text-muted-foreground">{open ? "Hide" : "Choose"}</span>
       </button>
 
       {open && (
@@ -164,7 +164,7 @@ export function VoiceCard({ bot }: { bot: Bot }) {
               <Button size="sm" variant="ghost" onClick={() => choose(null)}>
                 Remove voice
               </Button>
-              <label className="ml-auto flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <label className="ml-auto flex items-center gap-1.5 text-small text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={bot.speakReplies ?? false}
@@ -182,10 +182,10 @@ export function VoiceCard({ bot }: { bot: Bot }) {
           )}
           <div className="flex max-h-[240px] flex-col gap-0.5 overflow-y-auto">
             {voices === null && !error && (
-              <div className="py-3 text-[12.5px] text-muted-foreground">Loading voices…</div>
+              <div className="py-3 text-body text-muted-foreground">Loading voices…</div>
             )}
             {voices?.length === 0 && (
-              <div className="py-3 text-[12.5px] text-muted-foreground">
+              <div className="py-3 text-body text-muted-foreground">
                 No voices available. Check your keys in Settings, Voices.
               </div>
             )}
@@ -208,17 +208,17 @@ export function VoiceCard({ bot }: { bot: Bot }) {
                   >
                     {active && <Check size={10} strokeWidth={3} />}
                   </span>
-                  <span className="flex-1 truncate text-[13px] font-medium text-foreground">
+                  <span className="flex-1 truncate text-body font-medium text-foreground">
                     {voice.name}
                   </span>
-                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-micro uppercase tracking-wide text-muted-foreground">
                     {voice.provider === "elevenlabs" ? "11L" : voice.provider === "openai" ? "OpenAI" : "Mac"}
                   </span>
                 </button>
               );
             })}
           </div>
-          {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
+          {error && <div className="mt-2 text-small text-destructive">{error}</div>}
         </div>
       )}
     </div>
@@ -398,7 +398,7 @@ export function CallOverlay({ bot, onClose }: { bot: Bot; onClose: () => void })
 
   return (
     <div className="fixed inset-0 z-50 flex animate-fade-in flex-col items-center justify-center bg-background/95 backdrop-blur-sm">
-      <span className="absolute right-5 top-5 rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-warning">
+      <span className="absolute right-5 top-5 rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-caption font-semibold uppercase tracking-wider text-warning">
         Beta
       </span>
       <div className="flex flex-col items-center gap-5">
@@ -413,8 +413,8 @@ export function CallOverlay({ bot, onClose }: { bot: Bot; onClose: () => void })
           <AgentAvatar bot={bot} size={132} />
         </div>
         <div className="text-center">
-          <div className="text-[19px] font-semibold text-foreground">{bot.name}</div>
-          <div className="mt-1 min-h-[20px] max-w-[340px] px-4 text-[13.5px] text-muted-foreground">
+          <div className="text-heading font-semibold text-foreground">{bot.name}</div>
+          <div className="mt-1 min-h-[20px] max-w-[340px] px-4 text-ui text-muted-foreground">
             {error ?? stateLabel}
           </div>
         </div>
@@ -662,7 +662,7 @@ export function GroupCallOverlay({
 
   return (
     <div className="fixed inset-0 z-50 flex animate-fade-in flex-col items-center justify-center bg-background/95 backdrop-blur-sm">
-      <span className="absolute right-5 top-5 rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-warning">
+      <span className="absolute right-5 top-5 rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-caption font-semibold uppercase tracking-wider text-warning">
         Beta
       </span>
       <div className="flex flex-col items-center gap-6">
@@ -683,14 +683,14 @@ export function GroupCallOverlay({
                 >
                   <AgentAvatar bot={member} size={focused ? 76 : 60} />
                 </div>
-                <span className="text-[11.5px] font-medium text-muted-foreground">{member.name}</span>
+                <span className="text-small font-medium text-muted-foreground">{member.name}</span>
               </div>
             );
           })}
         </div>
         <div className="text-center">
-          <div className="text-[18px] font-semibold text-foreground">{blok.name}</div>
-          <div className="mt-1 min-h-[20px] max-w-[420px] px-4 text-[13.5px] text-muted-foreground">
+          <div className="text-title font-semibold text-foreground">{blok.name}</div>
+          <div className="mt-1 min-h-[20px] max-w-[420px] px-4 text-ui text-muted-foreground">
             {error ?? stateLabel}
           </div>
         </div>

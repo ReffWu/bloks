@@ -127,18 +127,18 @@ export function RoutinesSection({
     <div className={bare ? undefined : "mt-4 rounded-2xl border bg-card p-4"}>
       {!bare && (
         <>
-          <div className="flex items-center gap-2 text-[13.5px] font-semibold text-foreground">
+          <div className="flex items-center gap-2 text-ui font-semibold text-foreground">
             <CalendarClock size={15} className="text-muted-foreground" />
             Routines
           </div>
-          <div className="mt-0.5 text-[12.5px] text-muted-foreground">
+          <div className="mt-0.5 text-body text-muted-foreground">
             Recurring tasks {targetName} runs on a schedule.
           </div>
         </>
       )}
 
       {error && (
-        <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+        <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">
           {error}
         </div>
       )}
@@ -150,16 +150,16 @@ export function RoutinesSection({
               <div className="min-w-0 flex-1">
                 <div
                   className={cn(
-                    "text-[13px] font-medium",
+                    "text-body font-medium",
                     routine.enabled ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
                   {routine.summary ?? routine.time}
                 </div>
-                <div className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
+                <div className="mt-0.5 line-clamp-2 text-small text-muted-foreground">
                   {routine.prompt}
                 </div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground/70">
+                <div className="mt-0.5 text-caption text-muted-foreground/70">
                   {routineStatus(routine, whenNext)}
                 </div>
               </div>
@@ -199,7 +199,7 @@ export function RoutinesSection({
         ))}
 
         {routines?.length === 0 && !adding && (
-          <div className="rounded-xl border border-dashed px-3 py-4 text-center text-[12px] text-muted-foreground">
+          <div className="rounded-xl border border-dashed px-3 py-4 text-center text-small text-muted-foreground">
             Nothing scheduled yet.
           </div>
         )}
@@ -220,7 +220,7 @@ export function RoutinesSection({
         />
       )}
 
-      <div className="mt-2 text-[11px] leading-relaxed text-muted-foreground/70">
+      <div className="mt-2 text-caption leading-relaxed text-muted-foreground/70">
         Routines run while Bloks is open. If {thisComputer()} is asleep at the scheduled time the run is
         skipped rather than piling up.
       </div>

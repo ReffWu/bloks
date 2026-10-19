@@ -85,7 +85,7 @@ export function ComposerRing({ bot }: { bot: Bot }) {
           side="top"
           align="end"
           sideOffset={8}
-          className="w-[264px] max-w-[calc(100vw-24px)] rounded-xl border bg-popover p-3 text-[12px] font-normal text-popover-foreground shadow-lg shadow-(color:--shadow-color)"
+          className="w-[264px] max-w-[calc(100vw-24px)] rounded-xl border bg-popover p-3 text-small font-normal text-popover-foreground shadow-lg shadow-(color:--shadow-color)"
         >
           <div className="flex items-baseline justify-between gap-3">
             <span className="font-medium">Context</span>
@@ -111,7 +111,7 @@ export function ComposerRing({ bot }: { bot: Bot }) {
                   </div>
                   <Bar fill={row.fill} near={row.near} />
                   {(row.note || row.reset) && (
-                    <div className="mt-1 text-[11.5px] text-muted-foreground">
+                    <div className="mt-1 text-small text-muted-foreground">
                       {[row.note, row.reset].filter(Boolean).join(". ")}
                     </div>
                   )}

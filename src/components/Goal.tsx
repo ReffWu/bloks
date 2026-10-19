@@ -56,7 +56,7 @@ export function GoalChip({ bot }: { bot: Bot }) {
       <div className="mx-auto mb-1 max-w-[var(--transcript-width,760px)] animate-rise-in">
         <div
           className={cn(
-            "flex items-center gap-2 rounded-xl border bg-card py-1 pl-3 pr-1 text-[12.5px]",
+            "flex items-center gap-2 rounded-xl border bg-card py-1 pl-3 pr-1 text-body",
             goal.status === "blocked" && "border-warning/40 bg-warning/5",
           )}
           title={[goal.text, goal.check && `Done when \`${goal.check}\` passes`, goal.lastReason].filter(Boolean).join("\n")}
@@ -94,7 +94,7 @@ export function GoalChip({ bot }: { bot: Bot }) {
             <X size={13} />
           </button>
         </div>
-        {error && <div className="mt-1 px-1 text-[12px] text-destructive">{error}</div>}
+        {error && <div className="mt-1 px-1 text-small text-destructive">{error}</div>}
       </div>
     </div>
   );
@@ -159,7 +159,7 @@ export function GoalDialog() {
           }}
         >
           <label className="flex flex-col gap-1.5">
-            <span className="text-[12.5px] font-medium text-foreground">What does done look like?</span>
+            <span className="text-body font-medium text-foreground">What does done look like?</span>
             <Textarea
               autoFocus
               value={text}
@@ -176,7 +176,7 @@ export function GoalDialog() {
             />
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className="text-[12.5px] font-medium text-foreground">
+            <span className="text-body font-medium text-foreground">
               Check <span className="font-normal text-muted-foreground">(optional)</span>
             </span>
             <Input
@@ -187,15 +187,15 @@ export function GoalDialog() {
               autoCapitalize="off"
               autoCorrect="off"
               placeholder="pnpm test"
-              className="font-mono text-[13px]"
+              className="font-mono text-body"
             />
-            <span className="text-[11.5px] leading-relaxed text-muted-foreground">
+            <span className="text-small leading-relaxed text-muted-foreground">
               Runs in this conversation&rsquo;s folder after each turn, for up to five minutes. The goal only counts as
               done when it exits 0.
             </span>
           </label>
           <label className="flex items-center justify-between gap-3">
-            <span className="text-[12.5px] font-medium text-foreground">Most turns it may take</span>
+            <span className="text-body font-medium text-foreground">Most turns it may take</span>
             <Input
               value={turns}
               onChange={(e) => setTurns(e.target.value.replace(/\D/g, "").slice(0, 3))}
@@ -204,7 +204,7 @@ export function GoalDialog() {
               className="w-20 text-right tabular-nums"
             />
           </label>
-          {error && <div className="text-[12.5px] text-destructive">{error}</div>}
+          {error && <div className="text-body text-destructive">{error}</div>}
           <div className="mt-1 flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={close}>
               Cancel

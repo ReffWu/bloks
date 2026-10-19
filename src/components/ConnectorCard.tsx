@@ -68,12 +68,12 @@ export function ConnectorCard({ botId, message }: { botId: string; message: Mess
         )}
       >
         {/* the app's monogram; a logo can come later, a letter never lies */}
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-[15px] font-bold text-muted-foreground">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-lead font-bold text-muted-foreground">
           {label.slice(0, 1).toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13.5px] font-semibold text-foreground">{label}</div>
-          <div className="truncate text-[11.5px] text-muted-foreground">
+          <div className="truncate text-ui font-semibold text-foreground">{label}</div>
+          <div className="truncate text-small text-muted-foreground">
             {status === "connected"
               ? connector.resumed
                 ? "Connected. Task resumed."
@@ -88,7 +88,7 @@ export function ConnectorCard({ botId, message }: { botId: string; message: Mess
           </div>
         </div>
         {status === "connected" ? (
-          <span className="flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-[12px] font-semibold text-success">
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-small font-semibold text-success">
             <Check size={13} strokeWidth={3} />
             Added
           </span>
@@ -97,7 +97,7 @@ export function ConnectorCard({ botId, message }: { botId: string; message: Mess
             <button
               onClick={connect}
               disabled={busy}
-              className="rounded-full bg-primary px-3 py-1.5 text-[12.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="rounded-full bg-primary px-3 py-1.5 text-body font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {busy ? (
                 <Loader2 size={13} className="animate-spin" />
@@ -119,7 +119,7 @@ export function ConnectorCard({ botId, message }: { botId: string; message: Mess
           </div>
         )}
       </div>
-      {error && <div className="mt-1 text-[11.5px] text-destructive">{error}</div>}
+      {error && <div className="mt-1 text-small text-destructive">{error}</div>}
     </div>
   );
 }

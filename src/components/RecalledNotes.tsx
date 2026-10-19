@@ -39,7 +39,7 @@ export function RecalledNotes({ notes }: { notes: RecalledNote[] }) {
       <button
         onClick={() => setOpen((was) => !was)}
         aria-expanded={open}
-        className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+        className="flex items-center gap-1 rounded-full px-2 py-0.5 text-small text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
       >
         <BookOpen size={12} />
         Recalled {notes.length === 1 ? "1 note" : `${notes.length} notes`}
@@ -47,7 +47,7 @@ export function RecalledNotes({ notes }: { notes: RecalledNote[] }) {
       </button>
       {open && (
         <div className="mt-1 w-[420px] max-w-full animate-fade-in rounded-2xl border bg-card p-2 text-left shadow-sm">
-          <p className="px-1.5 pb-1.5 pt-0.5 text-[11.5px] leading-snug text-muted-foreground">
+          <p className="px-1.5 pb-1.5 pt-0.5 text-small leading-snug text-muted-foreground">
             Found by matching your words and added ahead of them for this turn only. The agent was told it could ignore them.
           </p>
           <ul className="flex flex-col gap-1">
@@ -56,7 +56,7 @@ export function RecalledNotes({ notes }: { notes: RecalledNote[] }) {
               const go = destination(note);
               return (
                 <li key={`${note.threadId ?? note.memory}-${note.messageId ?? i}`} className="rounded-xl bg-muted/60 px-2.5 py-2">
-                  <div className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-muted-foreground">
+                  <div className="flex min-w-0 items-center gap-1.5 text-small text-muted-foreground">
                     <Icon size={12} className="shrink-0" />
                     {go ? (
                       <button
@@ -73,7 +73,7 @@ export function RecalledNotes({ notes }: { notes: RecalledNote[] }) {
                       {stamp(note.at)}
                     </time>
                   </div>
-                  <p className="mt-1 whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-foreground">
+                  <p className="mt-1 whitespace-pre-wrap break-words text-body leading-relaxed text-foreground">
                     {note.who && <span className="font-medium">{note.who}: </span>}
                     {note.text}
                   </p>

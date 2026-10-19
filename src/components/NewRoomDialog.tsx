@@ -205,7 +205,7 @@ export function NewRoomDialog() {
       <DialogContent className="flex max-h-[min(860px,92vh)] w-[calc(100vw-24px)] max-w-[960px] flex-col gap-0 overflow-hidden p-0">
         <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b px-6 pb-4 pt-5 pr-14">
           <div className="min-w-0">
-            <DialogTitle className="text-[20px] tracking-tight">New room</DialogTitle>
+            <DialogTitle className="text-heading">New room</DialogTitle>
             <DialogDescription className="mt-0.5">
               Agents talk to each other here. The most senior one reviews the rest and makes the call.
             </DialogDescription>
@@ -229,7 +229,7 @@ export function NewRoomDialog() {
                 phone, the whole sheet scrolls and the buttons stay put. */}
             <div className="flex flex-col md:min-h-0 md:overflow-y-auto">
               <div className="px-6 pt-5">
-                <label className="mb-1.5 block text-[12.5px] font-medium text-muted-foreground" htmlFor="room-name">
+                <label className="mb-1.5 block text-body font-medium text-muted-foreground" htmlFor="room-name">
                   Name
                 </label>
                 <Input
@@ -239,10 +239,10 @@ export function NewRoomDialog() {
                   onKeyDown={(e) => e.key === "Enter" && create()}
                   placeholder={defaultName || "e.g. Launch week"}
                   autoFocus
-                  className="h-10 rounded-xl text-[14.5px]"
+                  className="h-10 rounded-xl text-lead"
                 />
                 <div className="mb-2.5 mt-6 flex items-center justify-between gap-3">
-                  <span className="text-[12.5px] font-medium text-muted-foreground">
+                  <span className="text-body font-medium text-muted-foreground">
                     Members
                     <span className="ml-1.5 tabular-nums text-muted-foreground/80">
                       {picked.length ? `${picked.length} of ${MAX_MEMBERS}` : `up to ${MAX_MEMBERS}`}
@@ -256,7 +256,7 @@ export function NewRoomDialog() {
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Find an agent"
                         aria-label="Find an agent"
-                        className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
+                        className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
                       />
                     </label>
                   )}
@@ -292,19 +292,19 @@ export function NewRoomDialog() {
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
-                          <span className="truncate text-[13.5px] font-medium text-foreground">{agent.name}</span>
+                          <span className="truncate text-ui font-medium text-foreground">{agent.name}</span>
                           {isLead && <Crown size={12} className="shrink-0 text-brand-ink" aria-label="Leads" />}
                         </span>
-                        <span className="block truncate text-[12px] text-muted-foreground">{agent.title || "No stated role"}</span>
+                        <span className="block truncate text-small text-muted-foreground">{agent.title || "No stated role"}</span>
                       </span>
-                      <span className="max-w-[96px] shrink-0 truncate rounded-md bg-muted px-1.5 py-0.5 text-[10.5px] text-muted-foreground">
+                      <span className="max-w-[96px] shrink-0 truncate rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">
                         {modelLabel(agent)}
                       </span>
                     </button>
                   );
                 })}
                 {shown.length === 0 && (
-                  <p className="col-span-full py-6 text-center text-[13px] text-muted-foreground">
+                  <p className="col-span-full py-6 text-center text-body text-muted-foreground">
                     {agents.length ? `No agent matches “${query.trim()}”.` : "No agents yet. Hire a team from the library instead."}
                   </p>
                 )}
@@ -320,7 +320,7 @@ export function NewRoomDialog() {
                 <RoomPreview name={name.trim() || defaultName} chosen={chosen} lead={lead} modelLabel={modelLabel} />
 
                 <div className="mt-5">
-                  <div className="mb-1.5 text-[12.5px] font-medium text-muted-foreground">Who answers</div>
+                  <div className="mb-1.5 text-body font-medium text-muted-foreground">Who answers</div>
                   <Segmented
                     aria-label="Who answers"
                     size="sm"
@@ -331,7 +331,7 @@ export function NewRoomDialog() {
                       { value: "lead", label: "Only the lead" },
                     ]}
                   />
-                  <p className="mt-1.5 text-pretty text-[11.5px] leading-relaxed text-muted-foreground">
+                  <p className="mt-1.5 text-pretty text-small leading-relaxed text-muted-foreground">
                     {leadOnly
                       ? "Talk to the room and only the lead answers. Name someone with @ to ask them."
                       : "Talk to the room and everyone answers. Name someone with @ to ask just them."}
@@ -339,7 +339,7 @@ export function NewRoomDialog() {
                 </div>
 
                 <div className="mt-4">
-                  <div className="mb-1.5 flex items-center gap-1.5 text-[12.5px] font-medium text-muted-foreground">
+                  <div className="mb-1.5 flex items-center gap-1.5 text-body font-medium text-muted-foreground">
                     <FolderOpen size={13} />
                     Shared folder
                   </div>
@@ -350,11 +350,11 @@ export function NewRoomDialog() {
                       placeholder="Optional. Each uses its own"
                       spellCheck={false}
                       aria-label="Shared folder"
-                      className="h-8 rounded-lg bg-background font-mono text-[12px]"
+                      className="h-8 rounded-lg bg-background font-mono text-small"
                     />
                     <BrowseFolderButton onPick={setFolder} />
                   </div>
-                  <p className="mt-1.5 text-pretty text-[11.5px] leading-relaxed text-muted-foreground">
+                  <p className="mt-1.5 text-pretty text-small leading-relaxed text-muted-foreground">
                     Every member's room turns run here. It is fixed by the room's first task. You can invite people
                     from the room once it is open.
                   </p>
@@ -370,11 +370,11 @@ export function NewRoomDialog() {
                   <FolderOpen size={18} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[14px] font-medium text-foreground">Scout a project folder</div>
-                  <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+                  <div className="text-ui font-medium text-foreground">Scout a project folder</div>
+                  <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
                     Point at a repo and get a team shaped to what is in it, desk included.
                   </div>
-                  {scoutError && <div className="mt-1 text-[12px] text-destructive">{scoutError}</div>}
+                  {scoutError && <div className="mt-1 text-small text-destructive">{scoutError}</div>}
                 </div>
                 <BrowseFolderButton onPick={scoutFolder} className="h-9 px-3" />
               </div>
@@ -416,16 +416,16 @@ export function NewRoomDialog() {
                   href="https://bloks.dev/teams/"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  className="text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 >
                   bloks.dev/teams
                 </a>
               }
             >
               {galleryTeams === null ? (
-                <div className="col-span-full rounded-xl border border-dashed p-4 text-[12.5px] text-muted-foreground">Loading the gallery</div>
+                <div className="col-span-full rounded-xl border border-dashed p-4 text-body text-muted-foreground">Loading the gallery</div>
               ) : galleryTeams.length === 0 ? (
-                <div className="col-span-full rounded-xl border border-dashed p-4 text-[12.5px] text-muted-foreground">
+                <div className="col-span-full rounded-xl border border-dashed p-4 text-body text-muted-foreground">
                   {galleryError ? "The gallery could not be reached right now." : "Nothing in the gallery yet."}
                 </div>
               ) : (
@@ -441,7 +441,7 @@ export function NewRoomDialog() {
                 ))
               )}
             </Shelf>
-            <p className="mt-5 text-[12px] leading-relaxed text-muted-foreground">
+            <p className="mt-5 text-small leading-relaxed text-muted-foreground">
               One step creates the agents and the room. Everything is editable afterwards.
             </p>
           </div>
@@ -449,7 +449,7 @@ export function NewRoomDialog() {
 
         {/* outside the scroll, so Create is in reach however long the
             list, on a phone as much as anywhere */}
-        <footer className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-6 py-3 text-[12px] text-muted-foreground">
+        <footer className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-6 py-3 text-small text-muted-foreground">
           <div className="mr-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <label className="flex cursor-pointer items-center gap-1.5 rounded-md py-1 transition-colors duration-150 hover:text-foreground has-[:focus-visible]:text-foreground">
               <Upload size={12} />
@@ -511,7 +511,7 @@ function RoomPreview({
         <span className="flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
           <Users size={14} />
         </span>
-        <span className={cn("min-w-0 truncate text-[15px] font-semibold tracking-tight", name ? "text-foreground" : "text-muted-foreground")}>
+        <span className={cn("min-w-0 truncate text-lead font-semibold tracking-tight", name ? "text-foreground" : "text-muted-foreground")}>
           {name || "Your room"}
         </span>
       </div>
@@ -525,7 +525,7 @@ function RoomPreview({
                   <span key={i} className="size-9 rounded-[10px] border-2 border-dashed border-border" />
                 ))}
               </div>
-              <p className="max-w-[220px] text-pretty text-[12.5px] leading-relaxed text-muted-foreground">
+              <p className="max-w-[220px] text-pretty text-body leading-relaxed text-muted-foreground">
                 Pick two or more agents. The most senior leads.
               </p>
             </div>
@@ -558,12 +558,12 @@ function RoomPreview({
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-medium text-foreground">{lead.name}</span>
-                    <span className="block truncate text-[11.5px] text-muted-foreground">
+                    <span className="block truncate text-ui font-medium text-foreground">{lead.name}</span>
+                    <span className="block truncate text-small text-muted-foreground">
                       {ready ? "Leads: reviews the rest, decides" : "Pick one more"}
                     </span>
                   </span>
-                  <span className="max-w-[90px] shrink-0 truncate text-[10.5px] text-muted-foreground">{modelLabel(lead)}</span>
+                  <span className="max-w-[90px] shrink-0 truncate text-caption text-muted-foreground">{modelLabel(lead)}</span>
                 </motion.div>
               )}
               </AnimatePresence>
@@ -585,8 +585,8 @@ function RoomPreview({
                           className="flex items-center gap-3 px-3 py-1.5"
                         >
                           <AgentAvatar bot={agent} size={28} />
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{agent.name}</span>
-                          <span className="max-w-[90px] shrink-0 truncate text-[10.5px] text-muted-foreground">{modelLabel(agent)}</span>
+                          <span className="min-w-0 flex-1 truncate text-body text-foreground">{agent.name}</span>
+                          <span className="max-w-[90px] shrink-0 truncate text-caption text-muted-foreground">{modelLabel(agent)}</span>
                         </motion.div>
                       ))}
                     </AnimatePresence>
@@ -599,7 +599,7 @@ function RoomPreview({
       </LayoutGroup>
 
       {ready && (
-        <p className="mt-3 border-t pt-3 text-pretty text-[11.5px] leading-relaxed text-muted-foreground">
+        <p className="mt-3 border-t pt-3 text-pretty text-small leading-relaxed text-muted-foreground">
           Seniority is set in each agent's settings. Give the lead your most capable model and the rest cheaper ones,
           so the expensive thinking is spent on checking the work.
         </p>
@@ -612,7 +612,7 @@ function Shelf({ title, aside, children }: { title: string; aside?: React.ReactN
   return (
     <section className="mb-7">
       <div className="mb-2.5 flex items-baseline justify-between gap-3">
-        <h3 className="text-[13px] font-semibold text-foreground">{title}</h3>
+        <h3 className="text-body font-semibold text-foreground">{title}</h3>
         {aside}
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
@@ -651,9 +651,9 @@ function TeamCard({
           </span>
         ))}
       </span>
-      <span className="mt-3 text-[14px] font-medium text-foreground">{name}</span>
-      <span className="mt-0.5 line-clamp-2 flex-1 text-[12px] leading-relaxed text-muted-foreground">{blurb}</span>
-      <span className="mt-2.5 truncate text-[11px] text-muted-foreground">
+      <span className="mt-3 text-ui font-medium text-foreground">{name}</span>
+      <span className="mt-0.5 line-clamp-2 flex-1 text-small leading-relaxed text-muted-foreground">{blurb}</span>
+      <span className="mt-2.5 truncate text-caption text-muted-foreground">
         {plural(members.length, "agent")}
         {lead ? `, led by the ${lead.title}` : ""}
         {byline ? `, ${byline}` : ""}

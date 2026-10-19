@@ -37,12 +37,12 @@ export function UseFromOtherApps() {
 
   return (
     <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="text-[13.5px] font-semibold text-foreground">Use Bloks from other AI apps</div>
-      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+      <div className="text-ui font-semibold text-foreground">Use Bloks from other AI apps</div>
+      <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
         Let Claude, Cursor or another MCP app hand your agents work, read their conversations, and see what is waiting on
         you. It cannot answer approvals, delete anything or change settings; those stay here. Bloks has to be running.
       </div>
-      <div className="mt-3 flex gap-1 rounded-lg bg-muted p-0.5 text-[12.5px]">
+      <div className="mt-3 flex gap-1 rounded-lg bg-muted p-0.5 text-body">
         {(
           [
             ["desktop", "Claude Desktop"],
@@ -62,9 +62,9 @@ export function UseFromOtherApps() {
           </button>
         ))}
       </div>
-      <div className="mt-2 text-[12px] text-muted-foreground">{where}</div>
+      <div className="mt-2 text-small text-muted-foreground">{where}</div>
       <div className="relative mt-1.5">
-        <pre className="max-h-[200px] overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-muted/40 p-3 pr-10 font-mono text-[11.5px] text-foreground">
+        <pre className="max-h-[200px] overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-muted/40 p-3 pr-10 font-mono text-small text-foreground">
           {text}
         </pre>
         <button

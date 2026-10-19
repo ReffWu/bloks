@@ -165,11 +165,11 @@ export function BriefPanel() {
     >
       <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[16px] font-semibold text-foreground">
+          <div className="flex items-center gap-2 text-title font-semibold text-foreground">
             <Sunrise size={17} className="text-muted-foreground" />
             Morning brief
           </div>
-          <div className="mt-0.5 truncate text-[13px] text-muted-foreground">
+          <div className="mt-0.5 truncate text-body text-muted-foreground">
             {brief ? day(brief.at) : "What your agents did while you were away"}
           </div>
         </div>
@@ -188,18 +188,18 @@ export function BriefPanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-        {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">{error}</div>}
+        {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>}
         {!data ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted-foreground">
+          <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" /> Reading
           </div>
         ) : !brief ? (
-          <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-[13px] leading-relaxed text-muted-foreground">
+          <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-body leading-relaxed text-muted-foreground">
             Your first brief arrives at {data.settings.time}. Press <strong>Now</strong> to make one of the last day.
           </div>
         ) : (
           <div className="flex flex-col gap-6">
-            <p className="text-balance text-[20px] font-semibold leading-snug tracking-tight text-foreground">{brief.headline}</p>
+            <p className="text-balance text-heading font-semibold leading-snug text-foreground">{brief.headline}</p>
 
             {brief.parts
               .map((part, index) => ({ part, index }))
@@ -213,15 +213,15 @@ export function BriefPanel() {
                   >
                     <div className="mb-2 flex items-center gap-2.5">
                       {agent && <AgentAvatar bot={agent} size={26} />}
-                      <span className="text-[14px] font-semibold text-foreground">{part.name}</span>
-                      {agent?.title && <span className="truncate text-[12px] text-muted-foreground">{agent.title}</span>}
+                      <span className="text-ui font-semibold text-foreground">{part.name}</span>
+                      {agent?.title && <span className="truncate text-small text-muted-foreground">{agent.title}</span>}
                     </div>
                     <ul className="flex flex-col gap-1.5">
                       {part.items.map((item, i) => (
                         <li key={i}>
                           <button
                             onClick={() => part.botId && open(part.botId, item.threadId)}
-                            className="group flex w-full items-start gap-2 rounded-lg px-1.5 py-1 text-left text-[13.5px] leading-relaxed text-foreground transition-colors hover:bg-accent"
+                            className="group flex w-full items-start gap-2 rounded-lg px-1.5 py-1 text-left text-ui leading-relaxed text-foreground transition-colors hover:bg-accent"
                           >
                             <span className="min-w-0 flex-1">{item.text}</span>
                             <ArrowUpRight size={13} className="mt-1 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
@@ -235,7 +235,7 @@ export function BriefPanel() {
 
             {brief.waiting.length > 0 && (
               <section>
-                <h3 className="mb-2 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">Waiting on you</h3>
+                <h3 className="mb-2 text-small font-medium uppercase tracking-wide text-muted-foreground">Waiting on you</h3>
                 <ul className="flex flex-col gap-2">
                   {brief.waiting.map((w) => {
                     const agent = state.bots.find((b) => b.id === w.botId);
@@ -244,13 +244,13 @@ export function BriefPanel() {
                       <li key={w.messageId} className="flex items-center gap-3 rounded-xl border px-3 py-2.5">
                         {agent && <AgentAvatar bot={agent} size={22} />}
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] text-foreground">{w.title}</div>
-                          <div className="text-[11.5px] text-muted-foreground">
+                          <div className="truncate text-body text-foreground">{w.title}</div>
+                          <div className="text-small text-muted-foreground">
                             {w.name} {w.kind === "approval" ? "wants your OK" : "has a question"}
                           </div>
                         </div>
                         {done ? (
-                          <span className="text-[12px] text-muted-foreground">{done}</span>
+                          <span className="text-small text-muted-foreground">{done}</span>
                         ) : w.kind === "approval" && w.requestId ? (
                           <div className="flex shrink-0 gap-1.5">
                             <Button size="sm" variant="secondary" onClick={() => answer(w, "deny")}>
@@ -273,7 +273,7 @@ export function BriefPanel() {
             )}
 
             {(brief.ready.length > 0 || brief.spend.turns > 0) && (
-              <div className="flex flex-wrap gap-2 text-[12px] text-muted-foreground">
+              <div className="flex flex-wrap gap-2 text-small text-muted-foreground">
                 {brief.ready.map((r) => (
                   <span key={r.label} className="rounded-full bg-muted px-2.5 py-1">
                     {r.count} {r.count === 1 ? r.label : (r.many ?? `${r.label}s`)} ready
@@ -291,7 +291,7 @@ export function BriefPanel() {
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 text-[12.5px] text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 text-body text-muted-foreground">
         <label className="flex items-center gap-2">
           <Switch checked={data?.settings.enabled ?? true} onCheckedChange={(on) => settings({ enabled: on })} aria-label="Brief every day" />
           Every day at
@@ -299,7 +299,7 @@ export function BriefPanel() {
             type="time"
             value={data?.settings.time ?? "08:00"}
             onChange={(e) => e.target.value && settings({ time: e.target.value })}
-            className="rounded-md border bg-background px-1.5 py-0.5 text-[12.5px] text-foreground"
+            className="rounded-md border bg-background px-1.5 py-0.5 text-body text-foreground"
             aria-label="Brief time"
           />
         </label>
@@ -307,7 +307,7 @@ export function BriefPanel() {
           <select
             value={brief?.id ?? ""}
             onChange={(e) => setPick(e.target.value)}
-            className="rounded-md border bg-background px-2 py-1 text-[12.5px] text-foreground"
+            className="rounded-md border bg-background px-2 py-1 text-body text-foreground"
             aria-label="Earlier briefs"
           >
             {data.briefs.map((b) => (

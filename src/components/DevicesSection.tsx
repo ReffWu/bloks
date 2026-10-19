@@ -64,8 +64,8 @@ function ThisBrowser() {
   const [leaving, setLeaving] = useState(false);
   return (
     <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="text-[13.5px] font-semibold text-foreground">This browser</div>
-      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+      <div className="text-ui font-semibold text-foreground">This browser</div>
+      <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
         Connected to {window.bloksWeb?.host || "your computer"} through Bloks Cloud, sealed end to end. Disconnecting
         forgets its keys here; remove it on your computer too to be sure it cannot come back.
       </div>
@@ -99,9 +99,9 @@ function PairLinkRow({
 }) {
   return (
     <div className="mt-2.5">
-      <div className="text-[12px] text-foreground">{label}</div>
+      <div className="text-small text-foreground">{label}</div>
       <div className="mt-1 flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate rounded-md bg-background px-2 py-1.5 font-mono text-[11.5px] text-muted-foreground">
+        <code className="min-w-0 flex-1 truncate rounded-md bg-background px-2 py-1.5 font-mono text-small text-muted-foreground">
           {link}
         </code>
         <Button size="sm" variant="secondary" onClick={onCopy}>
@@ -219,8 +219,8 @@ function PairingControls() {
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[13.5px] font-semibold text-foreground">Phones and devices</div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="text-ui font-semibold text-foreground">Phones and devices</div>
+          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             Lets the Bloks app on your phone reach {thisComputer()} over your network.
           </div>
         </div>
@@ -228,7 +228,7 @@ function PairingControls() {
       </div>
 
       {error && (
-        <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+        <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">
           {error}
         </div>
       )}
@@ -238,7 +238,7 @@ function PairingControls() {
           this on, starts a code, and watches their phone fail to connect
           for no reason they can see. So the code waits for the restart. */}
       {status?.restartRequired && (
-        <div className="mt-3 flex flex-wrap items-center gap-2.5 rounded-lg bg-warning/10 px-3 py-2 text-[12.5px] text-foreground">
+        <div className="mt-3 flex flex-wrap items-center gap-2.5 rounded-lg bg-warning/10 px-3 py-2 text-body text-foreground">
           <span className="min-w-0 flex-1">
             {status.enabled
               ? `Restart Bloks to finish turning this on. Until then your phone cannot reach ${thisComputer()}.`
@@ -263,31 +263,31 @@ function PairingControls() {
                 {window_.qr ? (
                   <img src={window_.qr} alt="Scan with the Bloks app" className="size-[152px]" />
                 ) : (
-                  <div className="flex size-[152px] items-center justify-center text-[11px] text-neutral-500">
+                  <div className="flex size-[152px] items-center justify-center text-caption text-neutral-500">
                     QR unavailable
                   </div>
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium text-foreground">
+                <div className="text-body font-medium text-foreground">
                   Scan with the Bloks app
                 </div>
-                <div className="mt-0.5 text-[12px] text-muted-foreground">
+                <div className="mt-0.5 text-small text-muted-foreground">
                   Or enter this code by hand:
                 </div>
-                <div className="mt-1.5 font-mono text-[22px] font-semibold tracking-[0.2em] text-foreground">
+                <div className="mt-1.5 font-mono text-heading font-semibold tracking-[0.2em] text-foreground">
                   {window_.code}
                 </div>
                 {/* The QR carries the address; a code typed by hand does
                     not, and the phone asks for it. Without this line the
                     by-hand route had no way to find where to dial. */}
                 {window_.address && (
-                  <div className="mt-1.5 text-[12px] text-muted-foreground">
+                  <div className="mt-1.5 text-small text-muted-foreground">
                     Address on the phone:{" "}
                     <span className="font-mono text-foreground">{window_.address}</span>
                   </div>
                 )}
-                <div className="mt-1 text-[11.5px] tabular-nums text-muted-foreground">
+                <div className="mt-1 text-small tabular-nums text-muted-foreground">
                   Expires in {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
                   , works once.
                 </div>
@@ -297,7 +297,7 @@ function PairingControls() {
                 {/* a camera that will not focus, or a phone on another
                     network, is a dead end without a way round the QR */}
                 {!browserLink && (
-                  <div className="mt-1 text-[11.5px] text-muted-foreground">
+                  <div className="mt-1 text-small text-muted-foreground">
                     QR will not scan?{" "}
                     <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={makeBrowserLink}>
                       Use a link instead
@@ -321,8 +321,8 @@ function PairingControls() {
 
           {browserLink && browserSecondsLeft > 0 && (
             <div className="mt-3 rounded-xl border bg-muted/40 p-3" data-browser-link>
-              <div className="text-[13px] font-medium text-foreground">Pair with a link</div>
-              <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+              <div className="text-body font-medium text-foreground">Pair with a link</div>
+              <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
                 Both links are the same pairing and work once, for {Math.ceil(browserSecondsLeft / 60)} more
                 minute{browserSecondsLeft > 60 ? "s" : ""}, through Bloks Cloud. Whoever opens one becomes one of
                 your devices, so keep them to yourself.
@@ -349,7 +349,7 @@ function PairingControls() {
 
           {status.devices.length > 0 && (
             <div className="mt-4 flex flex-col gap-1">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 Paired
               </div>
               {status.devices.map((device) => (
@@ -359,15 +359,15 @@ function PairingControls() {
                   ) : (
                     <Smartphone size={14} className="shrink-0 text-muted-foreground" />
                   )}
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
+                  <span className="min-w-0 flex-1 truncate text-body text-foreground">
                     {device.name}
                   </span>
                   {device.client && (
-                    <span className="shrink-0 text-[11.5px] text-muted-foreground tabular-nums" title="The Bloks version on this device">
+                    <span className="shrink-0 text-small text-muted-foreground tabular-nums" title="The Bloks version on this device">
                       {device.client}
                     </span>
                   )}
-                  <span className="shrink-0 text-[11.5px] text-muted-foreground">
+                  <span className="shrink-0 text-small text-muted-foreground">
                     {new Date(device.pairedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
                   </span>
                   <button

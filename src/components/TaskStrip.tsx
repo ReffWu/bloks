@@ -88,7 +88,7 @@ function RenameChip({ title, onDone }: { title: string; onDone: (next: string | 
         if (e.key === "Escape") end(null);
       }}
       size={Math.max(8, Math.min(MAX_TITLE, value.length + 1))}
-      className="w-full min-w-0 rounded-md bg-accent px-2 py-1 text-[12.5px] font-medium text-foreground outline-none"
+      className="w-full min-w-0 rounded-md bg-accent px-2 py-1 text-body font-medium text-foreground outline-none"
     />
   );
 }
@@ -224,7 +224,7 @@ export function TaskStrip({
             onDoubleClick={onRename ? () => setRenaming(task.id) : undefined}
             title={`${task.title}${onRename ? ". Double-click to rename" : ""}${usage}`}
             className={cn(
-              "group/tab relative flex h-full min-w-[96px] max-w-[220px] flex-1 basis-[200px] cursor-default items-center gap-2 rounded-t-[10px] pl-3 pr-1.5 text-[12.5px] outline-none transition-colors duration-150",
+              "group/tab relative flex h-full min-w-[96px] max-w-[220px] flex-1 basis-[200px] cursor-default items-center gap-2 rounded-t-[10px] pl-3 pr-1.5 text-body outline-none transition-colors duration-150",
               active
                 ? "tab-joined z-[1] bg-background text-foreground"
                 : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
@@ -282,7 +282,7 @@ export function TaskStrip({
         </button>
       )}
 
-      <span className="mb-2 ml-auto shrink-0 self-center pl-3 text-[11px] text-muted-foreground/80">
+      <span className="mb-2 ml-auto shrink-0 self-center pl-3 text-caption text-muted-foreground/80">
         {needsYou > 0
           ? `${needsYou} waiting on you`
           : running > 0

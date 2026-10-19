@@ -107,9 +107,9 @@ export function CloudSection() {
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <Cloud size={13.5} className="shrink-0 text-brand-ink" />
-            <span className="text-[13.5px] font-semibold text-foreground">Your plan</span>
+            <span className="text-ui font-semibold text-foreground">Your plan</span>
           </div>
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             Reaches {thisComputer()} from your phone anywhere, not just on this network, and pushes
             you the moment an agent needs an answer. Your agents keep running here, and the
             keys never leave this machine.
@@ -118,7 +118,7 @@ export function CloudSection() {
         {on && (
           <span
             className={
-              "shrink-0 rounded-full px-2 py-0.5 text-[11.5px] font-medium " +
+              "shrink-0 rounded-full px-2 py-0.5 text-small font-medium " +
               (working
                 ? "bg-success/10 text-success"
                 : "bg-warning/10 text-warning")
@@ -130,7 +130,7 @@ export function CloudSection() {
       </div>
 
       {error && (
-        <div className="mt-2.5 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] leading-relaxed text-destructive">
+        <div className="mt-2.5 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small leading-relaxed text-destructive">
           {error}
         </div>
       )}
@@ -138,7 +138,7 @@ export function CloudSection() {
       {status === null ? (
         <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" />
       ) : on ? (
-        <div className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
+        <div className="mt-3 text-small leading-relaxed text-muted-foreground">
           {phonesOff ? (
             <>
               Activated, but phone access is off on {thisComputer()}, and Cloud only runs while it
@@ -159,14 +159,14 @@ export function CloudSection() {
           ) : status.spaceId ? (
             <>
               Active. Pair a phone above and it will reach {thisComputer()} from anywhere.
-              <span className="ml-1 font-mono text-[11.5px] text-muted-foreground/70">
+              <span className="ml-1 font-mono text-small text-muted-foreground/70">
                 {status.spaceId}
               </span>
             </>
           ) : status.problem ? (
             <>
               Activated, but {thisComputer()} cannot reach Bloks Cloud yet. Bloks keeps trying.
-              <span className="mt-1 block text-[11.5px] text-muted-foreground/80">{status.problem}</span>
+              <span className="mt-1 block text-small text-muted-foreground/80">{status.problem}</span>
             </>
           ) : (
             "Activated. Waiting for the relay to answer."
@@ -184,7 +184,7 @@ export function CloudSection() {
               aria-label="Bloks Cloud key"
               spellCheck={false}
               autoComplete="off"
-              className="h-8 font-mono text-[12px]"
+              className="h-8 font-mono text-small"
             />
             <Button size="sm" variant="outline" disabled={busy || !key.trim()} onClick={activate}>
               {busy ? <Loader2 size={13} className="animate-spin" /> : "Replace"}
@@ -202,13 +202,13 @@ export function CloudSection() {
               aria-label="Bloks Cloud key"
               spellCheck={false}
               autoComplete="off"
-              className="h-8 font-mono text-[12px]"
+              className="h-8 font-mono text-small"
             />
             <Button size="sm" variant="brand" disabled={busy || !key.trim()} onClick={activate}>
               {busy ? <Loader2 size={13} className="animate-spin" /> : "Activate"}
             </Button>
           </div>
-          <div className="mt-2.5 text-[12px] leading-relaxed text-muted-foreground">
+          <div className="mt-2.5 text-small leading-relaxed text-muted-foreground">
             {phones > 0 ? (
               <>
                 {phones === 1 ? "Your phone is paired and works" : `Your ${phones} phones are paired and work`}{" "}
@@ -227,13 +227,13 @@ export function CloudSection() {
               href="https://bloks.dev/cloud"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex h-8 items-center rounded-md bg-brand-ink px-3 text-[12.5px] font-medium text-brand-foreground transition hover:brightness-95"
+              className="inline-flex h-8 items-center rounded-md bg-brand-ink px-3 text-body font-medium text-brand-foreground transition hover:brightness-95"
             >
               Get Bloks Cloud
             </a>
-            <span className="text-[12px] text-muted-foreground">$5 a month or $45 a year</span>
+            <span className="text-small text-muted-foreground">$5 a month or $45 a year</span>
           </div>
-          <div className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground/80">
+          <div className="mt-2 text-small leading-relaxed text-muted-foreground/80">
             Already bought it? Your key was on the page shown right after paying, and in the
             email that came with it. Paste it above.
           </div>

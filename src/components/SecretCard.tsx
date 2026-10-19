@@ -52,13 +52,13 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="truncate text-[13.5px] font-semibold text-foreground">{label}</div>
+            <div className="truncate text-ui font-semibold text-foreground">{label}</div>
             {secret.hint && (
-              <div className="mt-0.5 text-[11.5px] text-muted-foreground">{secret.hint}</div>
+              <div className="mt-0.5 text-small text-muted-foreground">{secret.hint}</div>
             )}
           </div>
           {status === "saved" ? (
-            <span className="flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-[12px] font-semibold text-success">
+            <span className="flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-small font-semibold text-success">
               <Check size={13} strokeWidth={3} />
               Saved
             </span>
@@ -89,25 +89,25 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
                 onKeyDown={(e) => e.key === "Enter" && save()}
                 placeholder={`Paste your ${label}`}
                 autoComplete="off"
-                className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2.5 text-[13px] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring/60"
+                className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2.5 text-body text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring/60"
               />
               <button
                 onClick={save}
                 disabled={busy || !value.trim()}
-                className="shrink-0 rounded-lg bg-primary px-3 text-[12.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                className="shrink-0 rounded-lg bg-primary px-3 text-body font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {busy ? <Loader2 size={13} className="animate-spin" /> : "Save securely"}
               </button>
             </div>
-            <div className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground/80">
+            <div className="mt-1.5 flex items-center gap-1 text-caption text-muted-foreground/80">
               <ShieldCheck size={11} />
               Stored on {thisComputer()}, handed to your agent's tools, never shown in chat.
             </div>
-            {error && <div className="mt-1 text-[11.5px] text-destructive">{error}</div>}
+            {error && <div className="mt-1 text-small text-destructive">{error}</div>}
           </>
         )}
         {status === "dismissed" && (
-          <div className="mt-1 text-[11.5px] text-muted-foreground">Dismissed</div>
+          <div className="mt-1 text-small text-muted-foreground">Dismissed</div>
         )}
       </div>
     </div>

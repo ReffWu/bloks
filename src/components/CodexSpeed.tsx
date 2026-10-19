@@ -64,8 +64,8 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
       className={cn("rounded-2xl border bg-card p-4", className)}
       aria-label={bot ? "Agent Codex speed" : "Workspace Codex speed"}
     >
-      <div className="text-[13.5px] font-semibold text-foreground">Codex speed</div>
-      <div className="mt-0.5 text-[12.5px] text-muted-foreground">
+      <div className="text-ui font-semibold text-foreground">Codex speed</div>
+      <div className="mt-0.5 text-body text-muted-foreground">
         {bot ? "For this agent's Codex turns, primary and backup. " : "For every agent's Codex turns, unless it has its own. "}
         Fast answers sooner and uses more:{" "}
         <a
@@ -89,7 +89,7 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
               disabled={saving || unavailable}
               onClick={() => void save(value)}
               className={cn(
-                "flex-1 rounded-lg py-1 text-[12.5px] transition-colors duration-150 disabled:opacity-50",
+                "flex-1 rounded-lg py-1 text-body transition-colors duration-150 disabled:opacity-50",
                 selected === value
                   ? "bg-background font-medium text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -101,15 +101,15 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
         })}
       </div>
       {noFastModel && (
-        <p className="mt-2 text-[12px] text-muted-foreground">Codex does not offer Fast for this agent's model.</p>
+        <p className="mt-2 text-small text-muted-foreground">Codex does not offer Fast for this agent's model.</p>
       )}
       {remote && (
-        <p className="mt-2 text-[12px] text-muted-foreground">
+        <p className="mt-2 text-small text-muted-foreground">
           Codex on a Box or Boat runs at Standard. Fast is not available there yet, and a Fast turn there is not sent.
         </p>
       )}
       {error && (
-        <p role="alert" className="mt-2 text-[12px] text-destructive">
+        <p role="alert" className="mt-2 text-small text-destructive">
           {error}
         </p>
       )}

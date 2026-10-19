@@ -45,7 +45,7 @@ function ErrorNotice() {
     <div className="pointer-events-none fixed inset-x-0 top-[60px] z-[70] flex justify-center px-4">
       <div
         role="alert"
-        className="pointer-events-auto max-w-[560px] animate-rise-in rounded-xl border border-destructive/30 bg-popover px-3.5 py-2 text-[13px] text-destructive shadow-lg shadow-(color:--shadow-color)"
+        className="pointer-events-auto max-w-[560px] animate-rise-in rounded-xl border border-destructive/30 bg-popover px-3.5 py-2 text-body text-destructive shadow-lg shadow-(color:--shadow-color)"
       >
         {error}
       </div>
@@ -106,8 +106,8 @@ function Shell() {
             // loaded, and truly empty: the next step, not a spinner that
             // never stops
             <>
-              <div className="text-[15px] font-medium text-foreground">No agents yet</div>
-              <div className="max-w-[300px] text-center text-[13px] leading-relaxed">
+              <div className="text-lead font-medium text-foreground">No agents yet</div>
+              <div className="max-w-[300px] text-center text-body leading-relaxed">
                 An agent is someone with a job: a researcher, a writer, a chief of staff. Make your first one.
               </div>
               <Button onClick={() => dispatch({ type: "toggleNewAgent", open: true })}>New agent</Button>
@@ -115,11 +115,11 @@ function Shell() {
           ) : (
             <>
               <Loader2 size={20} className="animate-spin" />
-              <div className="text-[14px]">{state.connected ? "Loading your agents…" : "Connecting to Bloks…"}</div>
+              <div className="text-ui">{state.connected ? "Loading your agents…" : "Connecting to Bloks…"}</div>
               {/* a developer hint; someone who installed the app has no
                   command to run and should not be told one */}
               {!state.connected && import.meta.env.DEV && (
-                <div className="text-[12px]">
+                <div className="text-small">
                   Start it with <code className="rounded bg-muted px-1.5 py-0.5">pnpm dev:server</code>
                 </div>
               )}

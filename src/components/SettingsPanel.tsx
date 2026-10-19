@@ -133,11 +133,11 @@ function Section({
         <h2
           id={`${anchor(id)}-title`}
           tabIndex={-1}
-          className="text-[17px] font-semibold tracking-tight text-foreground outline-none"
+          className="text-title font-semibold tracking-tight text-foreground outline-none"
         >
           {title}
         </h2>
-        {says && <p className="mt-1 text-pretty text-[13px] leading-relaxed text-muted-foreground">{says}</p>}
+        {says && <p className="mt-1 text-pretty text-body leading-relaxed text-muted-foreground">{says}</p>}
       </div>
       {/* the cards borrowed from elsewhere each bring a top margin of
           their own; the stack's gap is the only spacing here */}
@@ -156,7 +156,7 @@ function Group({ children, className }: { children: React.ReactNode; className?:
 /** A short aside under a row: what a setting does not cover. */
 function Note({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-2.5 rounded-xl bg-muted/60 px-3 py-2 text-pretty text-[12px] leading-relaxed text-muted-foreground">
+    <div className="mt-2.5 rounded-xl bg-muted/60 px-3 py-2 text-pretty text-small leading-relaxed text-muted-foreground">
       {children}
     </div>
   );
@@ -167,7 +167,7 @@ function Saved({ shown }: { shown: boolean }) {
     <span
       aria-live="polite"
       className={cn(
-        "flex items-center gap-1 text-[11.5px] text-success transition-opacity duration-200",
+        "flex items-center gap-1 text-small text-success transition-opacity duration-200",
         shown ? "opacity-100" : "opacity-0",
       )}
     >
@@ -252,8 +252,8 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
             it room. */}
         <div className="titlebar-drag flex h-[52px] shrink-0 items-center gap-2.5 px-4 max-md:pl-[92px]">
           <AgentAvatar bot={bot} size={22} />
-          <span className="min-w-0 truncate text-[14px] font-semibold text-foreground">{bot.name || "Unnamed"}</span>
-          <span className="shrink-0 text-[12.5px] text-muted-foreground">Settings</span>
+          <span className="min-w-0 truncate text-ui font-semibold text-foreground">{bot.name || "Unnamed"}</span>
+          <span className="shrink-0 text-body text-muted-foreground">Settings</span>
         </div>
         <div className="flex gap-0.5 overflow-x-auto px-2 pb-2 [scrollbar-width:none] md:flex-1 md:flex-col md:overflow-y-auto md:pb-4 md:pt-1 [&::-webkit-scrollbar]:hidden">
           {SECTIONS.map((section) => {
@@ -265,7 +265,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 onClick={() => jump(section.id)}
                 aria-current={on ? "location" : undefined}
                 className={cn(
-                  "relative flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors duration-150",
+                  "relative flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-body outline-none transition-colors duration-150",
                   on ? "font-medium text-foreground" : "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
                   section.id === "danger" && "md:mt-3",
                 )}
@@ -321,7 +321,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 >
                   <Textarea
                     id="agent-instructions"
-                    className="mt-3 min-h-[132px] resize-y text-[13.5px] leading-relaxed"
+                    className="mt-3 min-h-[132px] resize-y text-ui leading-relaxed"
                     placeholder="What this agent is for, how it should behave"
                     value={bot.description}
                     onChange={(e) => patch({ description: e.target.value })}
@@ -543,14 +543,14 @@ function Hero({
               placeholder="Name your agent"
               aria-label="Name"
               spellCheck={false}
-              className="-mx-2 block w-[calc(100%+1rem)] min-w-0 truncate rounded-lg bg-transparent px-2 py-0.5 text-[28px] font-semibold tracking-tight text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 hover:bg-accent/50 focus:bg-accent/60"
+              className="-mx-2 block w-[calc(100%+1rem)] min-w-0 truncate rounded-lg bg-transparent px-2 py-0.5 text-display font-semibold text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 hover:bg-accent/50 focus:bg-accent/60"
             />
             <input
               value={bot.title}
               onChange={(e) => patch({ title: e.target.value })}
               placeholder="What this agent does, in a line"
               aria-label="Title"
-              className="-mx-2 mt-0.5 block w-[calc(100%+1rem)] min-w-0 truncate rounded-lg bg-transparent px-2 py-1 text-[14.5px] text-muted-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 hover:bg-accent/50 focus:bg-accent/60 focus:text-foreground"
+              className="-mx-2 mt-0.5 block w-[calc(100%+1rem)] min-w-0 truncate rounded-lg bg-transparent px-2 py-1 text-lead text-muted-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 hover:bg-accent/50 focus:bg-accent/60 focus:text-foreground"
             />
           </div>
           <Button variant="secondary" onClick={onChat} className="mt-1.5 shrink-0" title={`Back to the chat with ${bot.name}`}>
@@ -565,7 +565,7 @@ function Hero({
             <button
               key={`${fact.to}-${fact.label}`}
               onClick={() => onJump(fact.to)}
-              className="flex h-7 max-w-[220px] items-center rounded-full border bg-card px-3 text-[12px] text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.97]"
+              className="flex h-7 max-w-[220px] items-center rounded-full border bg-card px-3 text-small text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.97]"
             >
               <span className="truncate">{fact.label}</span>
             </button>
@@ -640,7 +640,7 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
               <RefreshCw size={13} />
               Shuffle
             </Button>
-            <label className="flex h-7 cursor-pointer items-center rounded-md px-2.5 text-[12.5px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground has-[:focus-visible]:bg-accent">
+            <label className="flex h-7 cursor-pointer items-center rounded-md px-2.5 text-body font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground has-[:focus-visible]:bg-accent">
               {bot.avatarAt ? "Change photo" : "Use a photo"}
               <input
                 type="file"
@@ -694,7 +694,7 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
           </div>
 
           {bot.avatarAt && (
-            <p className="mb-3 text-pretty text-[12px] leading-relaxed text-muted-foreground">
+            <p className="mb-3 text-pretty text-small leading-relaxed text-muted-foreground">
               The photo stands in for this face everywhere. Remove it and this face comes back.
             </p>
           )}
@@ -806,7 +806,7 @@ function ApprovalsCard({ bot }: { bot: Bot }) {
         <div className="mt-3">
           <ApprovalsChooser value={mode} onChange={(next) => void choose(next)} compact />
         </div>
-        {refused && <div className="mt-2 text-[12px] text-warning">Not confirmed, so the mode is unchanged.</div>}
+        {refused && <div className="mt-2 text-small text-warning">Not confirmed, so the mode is unchanged.</div>}
       </SettingRow>
     </Group>
   );
@@ -847,7 +847,7 @@ function WorkingFolderCard({ bot }: { bot: Bot }) {
             onKeyDown={(e) => e.key === "Enter" && save(value.trim() || null)}
             placeholder="Its own workspace"
             spellCheck={false}
-            className="h-8 font-mono text-[12px]"
+            className="h-8 font-mono text-small"
           />
           <BrowseFolderButton
             onPick={(path) => {
@@ -865,7 +865,7 @@ function WorkingFolderCard({ bot }: { bot: Bot }) {
             Save
           </Button>
         </div>
-        {error && <div className="mt-1.5 text-[12px] text-destructive">{error}</div>}
+        {error && <div className="mt-1.5 text-small text-destructive">{error}</div>}
       </SettingRow>
     </Group>
   );
@@ -901,7 +901,7 @@ function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
             const on = !without.includes(kind);
             return (
               <label key={kind} className="flex items-center justify-between gap-3">
-                <span className="text-[13px] text-foreground">{label}</span>
+                <span className="text-body text-foreground">{label}</span>
                 <Switch
                   checked={on}
                   onCheckedChange={(next) =>
@@ -1000,8 +1000,8 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
           that checks a delivery has no business holding the bank. */}
       {on && sources.length > 0 && (
         <div className="mt-3 rounded-xl bg-muted/50 p-3">
-          <div className="text-[12.5px] font-medium text-foreground">Borrow a sign-in</div>
-          <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+          <div className="text-body font-medium text-foreground">Borrow a sign-in</div>
+          <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
             Name the sites this agent needs, and only those move across. Your browser asks your keychain first.
           </div>
           <Input
@@ -1009,7 +1009,7 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
             onChange={(e) => setSites(e.target.value)}
             placeholder="amazon.com, ebay.com"
             aria-label="Sites to borrow a sign-in for"
-            className="mt-2 h-8 bg-background text-[13px]"
+            className="mt-2 h-8 bg-background text-body"
           />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {sources.map((browser) => (
@@ -1024,7 +1024,7 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
                 {importing ? "Borrowing…" : `From ${browser}`}
               </Button>
             ))}
-            {result && <span className="text-[12px] text-muted-foreground">{result}</span>}
+            {result && <span className="text-small text-muted-foreground">{result}</span>}
           </div>
         </div>
       )}
@@ -1051,7 +1051,7 @@ function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
           : "Automatic: the cloud box when one exists, else this computer."
       }
       control={
-        <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+        <label className="flex items-center gap-2 text-body text-muted-foreground">
           Automatic
           <Switch
             checked={!bot.computer}
@@ -1084,7 +1084,7 @@ function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
               aria-checked={bot.computer === mode}
               onClick={() => patch({ computer: mode })}
               className={cn(
-                "rounded-lg py-1.5 text-[12.5px] font-medium outline-none transition-colors duration-150",
+                "rounded-lg py-1.5 text-body font-medium outline-none transition-colors duration-150",
                 bot.computer === mode
                   ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06),0_0_0_0.5px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.08)]"
                   : "text-muted-foreground hover:text-foreground",
@@ -1188,9 +1188,9 @@ function SkillsCard({ bot }: { bot: Bot }) {
       >
         <div className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
           {library === null ? (
-            <div className="py-2 text-[12.5px] text-muted-foreground">Loading…</div>
+            <div className="py-2 text-body text-muted-foreground">Loading…</div>
           ) : library.length === 0 ? (
-            <div className="py-2 text-[12.5px] text-muted-foreground">No skills installed yet.</div>
+            <div className="py-2 text-body text-muted-foreground">No skills installed yet.</div>
           ) : (
             library.map((skill) => {
               const on = attached.includes(skill.id);
@@ -1214,11 +1214,11 @@ function SkillsCard({ bot }: { bot: Bot }) {
                     {on && <Check size={11} strokeWidth={3} />}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={cn("block truncate text-[12.5px] font-medium", on ? "text-brand-ink" : "text-foreground")}>
+                    <span className={cn("block truncate text-body font-medium", on ? "text-brand-ink" : "text-foreground")}>
                       {skill.name}
                     </span>
                     {skill.description && (
-                      <span className="mt-px block truncate text-[11.5px] text-muted-foreground">{skill.description}</span>
+                      <span className="mt-px block truncate text-small text-muted-foreground">{skill.description}</span>
                     )}
                   </span>
                 </button>
@@ -1240,7 +1240,7 @@ function SkillsCard({ bot }: { bot: Bot }) {
           <div className="mt-3 flex flex-col gap-1">
             {written.map((skill, i) => (
               <div key={`${i}-${skill.slice(0, 12)}`} className="group flex items-start gap-2 rounded-lg bg-muted/60 px-3 py-2">
-                <span className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-foreground">{skill}</span>
+                <span className="min-w-0 flex-1 text-body leading-relaxed text-foreground">{skill}</span>
                 <button
                   onClick={() => setWritten(written.filter((_, j) => j !== i))}
                   className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity duration-150 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
@@ -1260,7 +1260,7 @@ function SkillsCard({ bot }: { bot: Bot }) {
             onKeyDown={(e) => e.key === "Enter" && add()}
             placeholder="Add a skill: when to use it, and what to return"
             aria-label="New skill"
-            className="h-8 text-[12.5px]"
+            className="h-8 text-body"
           />
           <Button variant="secondary" size="icon" onClick={add} disabled={!draft.trim()} title="Add" aria-label="Add skill">
             <Plus size={14} />
@@ -1325,10 +1325,10 @@ function MemorySummary({ bot }: { bot: Bot }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[22px] font-semibold tabular-nums tracking-tight text-foreground">
+            <span className="text-heading font-semibold tabular-nums text-foreground">
               {info ? info.lines : "…"}
             </span>
-            <span className="text-[13px] text-muted-foreground">of {MEMORY_LINES} lines read each turn</span>
+            <span className="text-body text-muted-foreground">of {MEMORY_LINES} lines read each turn</span>
           </div>
           <div
             role="meter"
@@ -1345,16 +1345,16 @@ function MemorySummary({ bot }: { bot: Bot }) {
               transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
             />
           </div>
-          <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
+          <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-body text-muted-foreground">
             {info && <span>{info.topics ? plural(info.topics, "topic file") : "No topic files"}</span>}
             <span>{last ? `Last changed ${stamp(last.at)} by ${who}` : info?.lines ? "No changes recorded yet" : "Nothing remembered yet"}</span>
           </div>
           {info?.truncated && (
-            <div className="mt-2 text-[12px] text-warning">
+            <div className="mt-2 text-small text-warning">
               Over the budget: only the first {MEMORY_LINES} lines reach the agent each turn.
             </div>
           )}
-          {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
+          {error && <div className="mt-2 text-small text-destructive">{error}</div>}
         </div>
         <Button
           variant="outline"
@@ -1423,7 +1423,7 @@ function SignatureRow({ bot }: { bot: Bot }) {
       <button
         onClick={() => setFull((v) => !v)}
         title={full ? "Show it short" : "Show all of it"}
-        className="mt-3 w-full rounded-xl bg-muted/60 px-3 py-2 text-left font-mono text-[12px] leading-relaxed text-foreground transition-colors duration-150 hover:bg-muted"
+        className="mt-3 w-full rounded-xl bg-muted/60 px-3 py-2 text-left font-mono text-small leading-relaxed text-foreground transition-colors duration-150 hover:bg-muted"
       >
         {full ? <span className="break-all">{print}</span> : short}
       </button>
@@ -1471,7 +1471,7 @@ function ExportRow({ bot }: { bot: Bot }) {
         </Button>
       }
     >
-      {error && <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">{error}</div>}
       <Note>
         Conversations stay here. The file is the agent, not the history, and it carries no keys: whoever opens it uses
         their own.

@@ -47,7 +47,7 @@ function BarButton({
       </TooltipTrigger>
       <TooltipContent side="bottom" className="flex items-center gap-2">
         {label}
-        <kbd className="rounded bg-primary-foreground/15 px-1.5 py-px font-sans text-[11px]">{keys}</kbd>
+        <kbd className="rounded bg-primary-foreground/15 px-1.5 py-px font-sans text-caption">{keys}</kbd>
       </TooltipContent>
     </Tooltip>
   );

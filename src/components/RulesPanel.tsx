@@ -97,8 +97,8 @@ export function RulesPanel() {
       <div className="mt-4 rounded-2xl border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-[13.5px] font-semibold text-foreground">Your rules</div>
-            <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+            <div className="text-ui font-semibold text-foreground">Your rules</div>
+            <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
               When an agent stops to ask permission, these answer first. Only what they do not cover
               reaches you.
             </div>
@@ -109,7 +109,7 @@ export function RulesPanel() {
             </Button>
           )}
         </div>
-        <div className="mt-2.5 rounded-xl bg-muted/50 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground">
+        <div className="mt-2.5 rounded-xl bg-muted/50 px-3 py-2 text-small leading-relaxed text-muted-foreground">
           With no rules nothing changes: every question still reaches you. A deny always wins over an
           allow, whichever was written first, so what is refused stays refused.
         </div>
@@ -127,13 +127,13 @@ export function RulesPanel() {
       )}
 
       {error && (
-        <div className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">{error}</div>
+        <div className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>
       )}
 
       {rules?.length === 0 && !adding && (
         <div className="mt-3 rounded-2xl border border-dashed px-4 py-8 text-center">
-          <div className="text-[13px] text-foreground">No rules yet.</div>
-          <div className="mx-auto mt-1 max-w-[380px] text-[12.5px] leading-relaxed text-muted-foreground">
+          <div className="text-body text-foreground">No rules yet.</div>
+          <div className="mx-auto mt-1 max-w-[380px] text-body leading-relaxed text-muted-foreground">
             A rule is worth writing when you have answered the same question twice. Every agent
             still asks you about everything else.
           </div>
@@ -159,13 +159,13 @@ export function RulesPanel() {
                 {rule.effect === "deny" ? <Ban size={13} /> : <Check size={13} />}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] text-foreground">
+                <div className="text-body text-foreground">
                   {rule.effect === "deny" ? "Refuse" : "Allow"} when{" "}
                   {FIELD_WORDS.find(([f]) => f === rule.field)?.[1] ?? rule.field}{" "}
                   {OP_WORDS.find(([o]) => o === rule.op)?.[1] ?? rule.op}{" "}
-                  <span className="font-mono text-[12px]">{rule.value}</span>
+                  <span className="font-mono text-small">{rule.value}</span>
                 </div>
-                <div className="mt-0.5 text-[11.5px] text-muted-foreground">
+                <div className="mt-0.5 text-small text-muted-foreground">
                   {rule.botId ? `Only ${nameOf(rule.botId)}` : "Every agent"}
                   {rule.enabled ? "" : " · switched off"}
                 </div>
@@ -230,7 +230,7 @@ function RuleForm({
       .finally(() => setBusy(false));
   };
 
-  const select = "rounded-lg border border-input bg-transparent px-2 py-1.5 text-[12.5px] text-foreground outline-none";
+  const select = "rounded-lg border border-input bg-transparent px-2 py-1.5 text-body text-foreground outline-none";
 
   return (
     <div className="mt-3 rounded-2xl border bg-card p-3.5">
@@ -241,7 +241,7 @@ function RuleForm({
               key={choice}
               onClick={() => setEffect(choice)}
               className={cn(
-                "rounded-lg px-2.5 py-1 text-[12.5px] transition-colors duration-150",
+                "rounded-lg px-2.5 py-1 text-body transition-colors duration-150",
                 effect === choice
                   ? "bg-background font-medium text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -251,7 +251,7 @@ function RuleForm({
             </button>
           ))}
         </div>
-        <span className="text-[12.5px] text-muted-foreground">when</span>
+        <span className="text-body text-muted-foreground">when</span>
         <select value={field} onChange={(e) => setField(e.target.value as Field)} className={select}>
           {FIELD_WORDS.map(([f, words]) => (
             <option key={f} value={f}>
@@ -270,12 +270,12 @@ function RuleForm({
           value={value}
           placeholder={PLACEHOLDER[field]}
           onChange={(e) => setValue(e.target.value)}
-          className="h-8 min-w-[140px] flex-1 font-mono text-[12.5px]"
+          className="h-8 min-w-[140px] flex-1 font-mono text-body"
         />
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        <span className="text-[12.5px] text-muted-foreground">for</span>
+        <span className="text-body text-muted-foreground">for</span>
         <select value={botId} onChange={(e) => setBotId(e.target.value)} className={select}>
           <option value="">every agent</option>
           {bots.map((bot) => (
@@ -286,7 +286,7 @@ function RuleForm({
         </select>
       </div>
 
-      {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="mt-2 text-small text-destructive">{error}</div>}
 
       <div className="mt-3 flex items-center gap-2">
         <Button size="sm" disabled={busy || !value.trim()} onClick={save}>

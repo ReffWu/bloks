@@ -115,7 +115,7 @@ export function SetupPrivacyLine({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-start gap-2.5 rounded-xl bg-success/10 px-3 py-2.5", className)}>
       <ShieldCheck size={16} className="mt-px shrink-0 text-success" />
-      <div className="min-w-0 text-[12.5px] leading-relaxed">
+      <div className="min-w-0 text-body leading-relaxed">
         <div className="font-medium text-foreground">
           Nothing leaves {thisComputer()} and no keys or passwords are copied.
         </div>
@@ -130,7 +130,7 @@ export function SetupPrivacyLine({ className }: { className?: string }) {
 function StatusChip({ status }: { status: SetupItem["status"] }) {
   if (status === "imported") {
     return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-caption text-muted-foreground">
         <Check size={11} /> Brought over
       </span>
     );
@@ -138,7 +138,7 @@ function StatusChip({ status }: { status: SetupItem["status"] }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+        "shrink-0 rounded-full px-2 py-0.5 text-caption font-medium",
         status === "new" ? "bg-brand-soft text-brand-ink" : "bg-warning/10 text-warning",
       )}
     >
@@ -166,7 +166,7 @@ function AgentPicker({
       aria-label={label}
       value={value ?? "new"}
       onChange={(e) => onChange(e.target.value)}
-      className="h-7 min-w-0 max-w-full rounded-md border bg-background px-2 text-[12.5px] text-foreground"
+      className="h-7 min-w-0 max-w-full rounded-md border bg-background px-2 text-body text-foreground"
     >
       <option value="new">New agent: {agentName}</option>
       {agents.map((agent) => (
@@ -195,9 +195,9 @@ function WhereItGoes({ item, source, choice, onChange }: { item: SetupItem; sour
             className="w-auto"
           />
         ) : (
-          <span className="text-[12px] text-muted-foreground">Memory of</span>
+          <span className="text-small text-muted-foreground">Memory of</span>
         )}
-        {item.destinations.length > 1 && <span className="text-[12px] text-muted-foreground">for</span>}
+        {item.destinations.length > 1 && <span className="text-small text-muted-foreground">for</span>}
         <AgentPicker
           value={choice.botId}
           agentName={source.agentName}
@@ -215,7 +215,7 @@ function WhereItGoes({ item, source, choice, onChange }: { item: SetupItem; sour
         : item.kind === "rule"
           ? `Becomes a rule: ${item.rule?.summary ?? item.preview}.`
           : "Suggested in About you, for you to keep or not.";
-  return <div className="text-[12px] leading-relaxed text-muted-foreground">{line}</div>;
+  return <div className="text-small leading-relaxed text-muted-foreground">{line}</div>;
 }
 
 function ItemRow({
@@ -250,15 +250,15 @@ function ItemRow({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <label htmlFor={id} className="flex min-w-0 cursor-pointer items-center gap-1.5">
             <Icon size={14} className="shrink-0 text-muted-foreground" />
-            <span className="min-w-0 truncate text-[13.5px] font-medium text-foreground">{item.title}</span>
+            <span className="min-w-0 truncate text-ui font-medium text-foreground">{item.title}</span>
           </label>
-          <span className="text-[11.5px] text-muted-foreground">{meta.label}</span>
+          <span className="text-small text-muted-foreground">{meta.label}</span>
           <StatusChip status={item.status} />
         </div>
         {item.kind === "skill" && item.skill?.description && (
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">{item.skill.description}</div>
+          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">{item.skill.description}</div>
         )}
-        <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground/80">{item.from}</div>
+        <div className="mt-0.5 truncate font-mono text-caption text-muted-foreground/80">{item.from}</div>
         <div className="mt-2">
           <WhereItGoes item={item} source={source} choice={choice} onChange={onChange} />
         </div>
@@ -267,7 +267,7 @@ function ItemRow({
             {item.notes.map((note) => (
               // A rule's note says how it differs from the original, which
               // is worth reading before ticking it; the rest are just facts.
-              <li key={note} className={cn("text-[12px] leading-relaxed", item.kind === "rule" ? "text-warning" : "text-muted-foreground")}>
+              <li key={note} className={cn("text-small leading-relaxed", item.kind === "rule" ? "text-warning" : "text-muted-foreground")}>
                 {note}
               </li>
             ))}
@@ -278,7 +278,7 @@ function ItemRow({
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="mt-1.5 flex items-center gap-1 rounded-md text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+            className="mt-1.5 flex items-center gap-1 rounded-md text-small text-muted-foreground transition-colors hover:text-foreground"
           >
             <ChevronRight size={12} className={cn("transition-transform duration-150", open && "rotate-90")} />
             {open ? "Hide preview" : "Preview"}
@@ -288,12 +288,12 @@ function ItemRow({
           </button>
         )}
         {open && (
-          <pre className="mt-1.5 max-h-[240px] overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/60 p-2.5 font-mono text-[11.5px] leading-relaxed text-foreground">
+          <pre className="mt-1.5 max-h-[240px] overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/60 p-2.5 font-mono text-small leading-relaxed text-foreground">
             {item.preview}
           </pre>
         )}
         {result && (
-          <div className={cn("mt-1.5 text-[12px]", result.ok ? "text-success" : "text-destructive")} aria-live="polite">
+          <div className={cn("mt-1.5 text-small", result.ok ? "text-success" : "text-destructive")} aria-live="polite">
             {result.ok
               ? result.did === "unchanged"
                 ? "Already here, nothing to change."
@@ -393,14 +393,14 @@ export function SetupReviewList({
             <section key={source.id} aria-label={source.name}>
               <div className="mb-2 flex items-end justify-between gap-3 px-1">
                 <div className="min-w-0">
-                  <h2 className="text-[13.5px] font-semibold text-foreground">{source.name}</h2>
-                  <div className="truncate font-mono text-[11px] text-muted-foreground">{source.folder}</div>
+                  <h2 className="text-ui font-semibold text-foreground">{source.name}</h2>
+                  <div className="truncate font-mono text-caption text-muted-foreground">{source.folder}</div>
                 </div>
                 {source.items.length > 1 && (
                   <button
                     type="button"
                     onClick={() => setAll(source, on < source.items.length)}
-                    className="shrink-0 rounded-md px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className="shrink-0 rounded-md px-1.5 py-0.5 text-small text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
                     {on < source.items.length ? "Select all" : "Select none"}
                   </button>
@@ -422,14 +422,14 @@ export function SetupReviewList({
               )}
               {source.skipped.length > 0 && (
                 <details className="group mt-2 px-1">
-                  <summary className="flex cursor-pointer list-none items-center gap-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                  <summary className="flex cursor-pointer list-none items-center gap-1 text-small text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
                     <ChevronRight size={12} className="transition-transform duration-150 group-open:rotate-90" />
                     Left out ({source.skipped.length})
                   </summary>
                   <ul className="mt-1.5 flex flex-col gap-1 pl-4">
                     {source.skipped.map((skip) => (
-                      <li key={`${skip.from}:${skip.why}`} className="text-[12px] leading-relaxed text-muted-foreground">
-                        <span className="break-all font-mono text-[11px] text-foreground/80">{skip.from}</span>: {skip.why}
+                      <li key={`${skip.from}:${skip.why}`} className="text-small leading-relaxed text-muted-foreground">
+                        <span className="break-all font-mono text-caption text-foreground/80">{skip.from}</span>: {skip.why}
                       </li>
                     ))}
                   </ul>
@@ -441,14 +441,14 @@ export function SetupReviewList({
       </div>
 
       <div className={cn("flex flex-col gap-2", compact ? "mt-4" : "sticky bottom-0 -mx-1 mt-5 bg-background/90 px-1 pb-1 pt-3 backdrop-blur")}>
-        {problem && <div className="text-[12px] text-destructive">{problem}</div>}
+        {problem && <div className="text-small text-destructive">{problem}</div>}
         {summary && (
-          <div className="text-[12.5px] text-foreground" aria-live="polite">
+          <div className="text-body text-foreground" aria-live="polite">
             {summary}
           </div>
         )}
         {needsKeys && !compact && (
-          <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground">
             Some servers are waiting for a key.
             <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })}>
               Fill them in
@@ -488,19 +488,19 @@ export function BringYourSetupPage() {
     <div className="flex flex-col gap-5">
       <SetupPrivacyLine />
       {review === null ? (
-        <div className="flex items-center gap-2 py-6 text-[13px] text-muted-foreground">
+        <div className="flex items-center gap-2 py-6 text-body text-muted-foreground">
           <Loader2 size={15} className="animate-spin" /> Looking…
         </div>
       ) : error ? (
-        <div className="rounded-2xl border bg-card p-4 text-[13px] text-destructive">Couldn't look: {error}</div>
+        <div className="rounded-2xl border bg-card p-4 text-body text-destructive">Couldn't look: {error}</div>
       ) : review.sources.length === 0 ? (
         <div className="rounded-2xl border bg-card p-4">
-          <div className="text-[13.5px] font-medium text-foreground">Nothing found to bring over</div>
-          <div className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
-            Bloks looks for Claude Code in <code className="font-mono text-[11.5px]">~/.claude</code>, Codex in{" "}
-            <code className="font-mono text-[11.5px]">~/.codex</code>, OpenClaw in{" "}
-            <code className="font-mono text-[11.5px]">~/.openclaw/workspace</code> and Hermes in{" "}
-            <code className="font-mono text-[11.5px]">~/.hermes</code>.
+          <div className="text-ui font-medium text-foreground">Nothing found to bring over</div>
+          <div className="mt-1 text-body leading-relaxed text-muted-foreground">
+            Bloks looks for Claude Code in <code className="font-mono text-small">~/.claude</code>, Codex in{" "}
+            <code className="font-mono text-small">~/.codex</code>, OpenClaw in{" "}
+            <code className="font-mono text-small">~/.openclaw/workspace</code> and Hermes in{" "}
+            <code className="font-mono text-small">~/.hermes</code>.
           </div>
           <Button size="sm" variant="secondary" className="mt-3" onClick={reload}>
             Look again

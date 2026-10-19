@@ -44,7 +44,7 @@ const MAX_ITEMS = 8;
 function LevelPill({ level }: { level: CheckupLevel }) {
   const { label, className } = LEVEL[level];
   return (
-    <span className={cn("inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium", className)}>
+    <span className={cn("inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-caption font-medium", className)}>
       {label}
     </span>
   );
@@ -73,8 +73,8 @@ function Summary({ report, loading }: { report: CheckupReport; loading: boolean 
         <ShieldCheck size={20} className={cn("shrink-0", look ? "text-warning" : "text-success")} aria-hidden />
       )}
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] font-medium text-foreground">{line}</div>
-        <div className="text-[12px] text-muted-foreground">Checked {when(report.checkedAt)}. Nothing changes unless you press a button.</div>
+        <div className="text-ui font-medium text-foreground">{line}</div>
+        <div className="text-small text-muted-foreground">Checked {when(report.checkedAt)}. Nothing changes unless you press a button.</div>
       </div>
       <Button size="sm" variant="secondary" disabled={loading} onClick={() => void refreshCheckup()}>
         {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
@@ -216,11 +216,11 @@ function Row({ finding }: { finding: CheckupFinding }) {
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1 basis-[260px]">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13.5px] font-medium text-foreground">{finding.title}</span>
+            <span className="text-ui font-medium text-foreground">{finding.title}</span>
             <LevelPill level={finding.level} />
           </div>
-          <div className="mt-1 text-pretty text-[13px] leading-relaxed text-foreground">{finding.summary}</div>
-          <div className="mt-0.5 text-pretty text-[12.5px] leading-relaxed text-muted-foreground">{finding.why}</div>
+          <div className="mt-1 text-pretty text-body leading-relaxed text-foreground">{finding.summary}</div>
+          <div className="mt-0.5 text-pretty text-body leading-relaxed text-muted-foreground">{finding.why}</div>
         </div>
         {findingAction && <div className="shrink-0">{findingAction}</div>}
       </div>
@@ -229,20 +229,20 @@ function Row({ finding }: { finding: CheckupFinding }) {
           {items.slice(0, MAX_ITEMS).map((item) => (
             <li key={item.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
               <div className="min-w-0 flex-1 basis-[160px]">
-                <div className={cn("truncate text-[12.5px] text-foreground", fix?.kind === "secrets" || fix?.kind === "permissions" ? "font-mono" : "font-medium")}>
+                <div className={cn("truncate text-body text-foreground", fix?.kind === "secrets" || fix?.kind === "permissions" ? "font-mono" : "font-medium")}>
                   {item.name}
                 </div>
-                {item.detail && <div className="truncate text-[12px] text-muted-foreground">{item.detail}</div>}
+                {item.detail && <div className="truncate text-small text-muted-foreground">{item.detail}</div>}
               </div>
               {perItem && <div className="flex shrink-0 items-center gap-1">{itemActions(item)}</div>}
             </li>
           ))}
           {items.length > MAX_ITEMS && (
-            <li className="px-3 py-2 text-[12px] text-muted-foreground">and {items.length - MAX_ITEMS} more</li>
+            <li className="px-3 py-2 text-small text-muted-foreground">and {items.length - MAX_ITEMS} more</li>
           )}
         </ul>
       )}
-      {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="mt-2 text-small text-destructive">{error}</div>}
     </div>
   );
 }
@@ -252,7 +252,7 @@ export function SecurityCheckup() {
   if (!report) {
     return (
       <SettingsGroup>
-        <div className="flex items-center gap-2 px-4 py-6 text-[13px] text-muted-foreground">
+        <div className="flex items-center gap-2 px-4 py-6 text-body text-muted-foreground">
           {error ? (
             error === "not from here" ? (
               "The checkup looks at files and settings on the computer Bloks runs on, so it only opens there."

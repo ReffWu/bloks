@@ -70,8 +70,8 @@ function Row({
       <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3.5 text-left outline-none">
         {tile}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] font-medium text-foreground">{name}</span>
-          {line && <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">{line}</span>}
+          <span className="block truncate text-ui font-medium text-foreground">{name}</span>
+          {line && <span className="mt-0.5 block truncate text-body text-muted-foreground">{line}</span>}
         </span>
       </button>
       {aside}
@@ -84,7 +84,7 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-[13.5px] text-muted-foreground">{children}</div>;
+  return <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-ui text-muted-foreground">{children}</div>;
 }
 
 const usedBy = (n: number) => (n === 0 ? "No agents" : n === 1 ? "1 agent" : `${n} agents`);
@@ -142,7 +142,7 @@ export function PluginSettings() {
     ) : (
       <div>
         <BackLink onBack={() => setFocus(null)} />
-        <div className="mt-6 flex items-center gap-2 text-[13.5px] text-muted-foreground">
+        <div className="mt-6 flex items-center gap-2 text-ui text-muted-foreground">
           {connectors.cards === null ? (
             <>
               <Loader2 size={14} className="animate-spin" /> Loading
@@ -168,7 +168,7 @@ export function PluginSettings() {
     ) : (
       <div>
         <BackLink onBack={() => setFocus(null)} />
-        <p className="mt-6 text-[13.5px] text-muted-foreground">{skills === null ? "Loading" : "That skill is no longer installed."}</p>
+        <p className="mt-6 text-ui text-muted-foreground">{skills === null ? "Loading" : "That skill is no longer installed."}</p>
       </div>
     );
   }
@@ -183,18 +183,18 @@ export function PluginSettings() {
     <div>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-[26px] font-semibold tracking-tight text-foreground">Plugins</h2>
-          <p className="mt-1.5 text-[14px] text-muted-foreground">Manage apps, MCP servers and skills.</p>
+          <h2 className="text-display font-semibold text-foreground">Plugins</h2>
+          <p className="mt-1.5 text-ui text-muted-foreground">Manage apps, MCP servers and skills.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => dispatch({ type: "openCustomize", tab: list === "skills" ? "skills" : "plugins" })}
-            className={cn(pill, "border bg-card px-4 text-[13px] font-medium text-foreground hover:bg-accent")}
+            className={cn(pill, "border bg-card px-4 text-body font-medium text-foreground hover:bg-accent")}
           >
             Browse directory
           </button>
           <DropdownMenu>
-            <DropdownMenuTrigger className={cn(pill, "gap-1 bg-foreground px-4 text-[13px] font-medium text-background hover:opacity-90")}>
+            <DropdownMenuTrigger className={cn(pill, "gap-1 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}>
               Add
               <ChevronDown size={14} />
             </DropdownMenuTrigger>
@@ -227,7 +227,7 @@ export function PluginSettings() {
               aria-selected={list === value}
               onClick={() => setList(value)}
               className={cn(
-                "flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13.5px] font-medium transition-colors duration-150",
+                "flex h-8 items-center gap-1.5 rounded-lg px-3 text-ui font-medium transition-colors duration-150",
                 list === value ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -244,7 +244,7 @@ export function PluginSettings() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={list === "apps" ? "Search apps" : list === "mcps" ? "Search MCP servers" : "Search skills"}
             aria-label="Search"
-            className="min-w-0 flex-1 bg-transparent text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>
       </div>
@@ -287,7 +287,7 @@ export function PluginSettings() {
                     <button
                       onClick={() => setFocus({ kind: "app", id: card.slug })}
                       aria-label={`${card.label} settings`}
-                      className="flex items-center gap-2 text-[12.5px] text-muted-foreground"
+                      className="flex items-center gap-2 text-body text-muted-foreground"
                     >
                       Connected
                       <ChevronRight size={16} />
@@ -312,7 +312,7 @@ export function PluginSettings() {
             </Empty>
           ) : (
             <>
-              <h3 className="mb-2.5 text-[14px] font-semibold text-foreground">Servers</h3>
+              <h3 className="mb-2.5 text-ui font-semibold text-foreground">Servers</h3>
               <Card>
                 {shownServers.map((server) => {
                   const n = agents.filter((b) => b.mcpServers?.includes(server.id)).length;
@@ -332,12 +332,12 @@ export function PluginSettings() {
                           {(server.needs ?? []).length > 0 && (
                             <button
                               onClick={() => setFocus({ kind: "mcp", id: server.id })}
-                              className="rounded-lg border px-2.5 py-1 text-[12.5px] font-medium text-foreground transition-colors hover:bg-accent"
+                              className="rounded-lg border px-2.5 py-1 text-body font-medium text-foreground transition-colors hover:bg-accent"
                             >
                               Finish setup
                             </button>
                           )}
-                          <span className="text-[12.5px] tabular-nums text-muted-foreground">{usedBy(n)}</span>
+                          <span className="text-body tabular-nums text-muted-foreground">{usedBy(n)}</span>
                           <button
                             onClick={() => setFocus({ kind: "mcp", id: server.id })}
                             aria-label={`${server.name} settings`}
@@ -372,7 +372,7 @@ export function PluginSettings() {
                     name={skill.name}
                     line={skill.description}
                     aside={
-                      <span className="flex shrink-0 items-center gap-3 text-[12.5px] text-muted-foreground">
+                      <span className="flex shrink-0 items-center gap-3 text-body text-muted-foreground">
                         <span>{skill.source === "builtin" ? "Built in" : "Yours"}</span>
                         <span className="tabular-nums">{usedBy(n)}</span>
                         <ChevronRight size={16} />
@@ -400,7 +400,7 @@ export function PluginSettings() {
 
 function Loading() {
   return (
-    <div className="flex items-center gap-2 py-10 text-[13px] text-muted-foreground">
+    <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
       <Loader2 size={14} className="animate-spin" /> Loading
     </div>
   );
@@ -409,8 +409,8 @@ function Loading() {
 function Section({ title, says, children }: { title: string; says?: string; children: React.ReactNode }) {
   return (
     <section className="rounded-2xl border bg-card p-5">
-      <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
-      {says && <p className="mt-1 text-pretty text-[13px] text-muted-foreground">{says}</p>}
+      <h3 className="text-lead font-semibold text-foreground">{title}</h3>
+      {says && <p className="mt-1 text-pretty text-body text-muted-foreground">{says}</p>}
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -439,23 +439,23 @@ function AppSettings({
       <BackLink onBack={onBack} />
       <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="flex min-w-0 items-center gap-3 text-[26px] font-semibold tracking-tight text-foreground">
+          <h2 className="flex min-w-0 items-center gap-3 text-display font-semibold text-foreground">
             <ServiceIcon card={card} />
             <span className="truncate">{card.label}</span>
           </h2>
-          <p className="mt-0.5 text-[14px] text-muted-foreground">{details.category}, through Composio Connect</p>
+          <p className="mt-0.5 text-ui text-muted-foreground">{details.category}, through Composio Connect</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => dispatch({ type: "openCustomize", tab: "plugins", app: card.slug })}
-            className={cn(pill, "border bg-card px-4 text-[13px] font-medium text-foreground hover:bg-accent")}
+            className={cn(pill, "border bg-card px-4 text-body font-medium text-foreground hover:bg-accent")}
           >
             View details
           </button>
           {connected && (
             <button
               onClick={() => tryPrompt(state, dispatch, `Using ${card.label}: ${details.prompts[0]}`)}
-              className={cn(pill, "gap-1.5 bg-foreground px-4 text-[13px] font-medium text-background hover:opacity-90")}
+              className={cn(pill, "gap-1.5 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}
             >
               <MessageSquare size={15} />
               Try now
@@ -467,7 +467,7 @@ function AppSettings({
       <div className="mt-7 flex flex-col gap-4">
         <Section title="Connection">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="flex items-center gap-2 text-[14px] text-foreground">
+            <span className="flex items-center gap-2 text-ui text-foreground">
               <span className={cn("size-2 rounded-full", connected ? "bg-success" : "bg-muted-foreground/50")} />
               {connected ? "Connected" : "Not connected"}
             </span>
@@ -476,7 +476,7 @@ function AppSettings({
               <button
                 onClick={() => connectors.connect(card.slug)}
                 disabled={!connectors.configured || busy}
-                className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-40"
+                className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-body font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-40"
               >
                 {connected ? <RefreshCw size={14} /> : <Plus size={14} />}
                 {connected ? "Sign in again" : "Connect"}
@@ -485,7 +485,7 @@ function AppSettings({
                 <button
                   onClick={() => connectors.disconnect(card.slug)}
                   disabled={busy}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-destructive transition-colors hover:bg-destructive/10"
+                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-body font-medium text-destructive transition-colors hover:bg-destructive/10"
                 >
                   <Trash2 size={14} />
                   Disconnect
@@ -503,7 +503,7 @@ function AppSettings({
             {agents.map((bot) => (
               <div key={bot.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                 <AgentAvatar bot={bot} size={26} />
-                <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{bot.name}</span>
+                <span className="min-w-0 flex-1 truncate text-ui text-foreground">{bot.name}</span>
                 <Switch
                   checked={bot.composio !== false}
                   aria-label={`${bot.name} can use connected apps`}
@@ -533,21 +533,21 @@ function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () 
         <div className="flex min-w-0 items-center gap-4">
           <Tile size={14}>{skill.source === "builtin" ? <Lock size={20} /> : <Sparkles size={22} />}</Tile>
           <div className="min-w-0">
-            <h2 className="truncate text-[26px] font-semibold tracking-tight text-foreground">{skill.name}</h2>
-            <p className="mt-0.5 text-[14px] text-muted-foreground">{skill.source === "builtin" ? "Built in, part of Bloks" : "Yours, on this computer"}</p>
+            <h2 className="truncate text-display font-semibold text-foreground">{skill.name}</h2>
+            <p className="mt-0.5 text-ui text-muted-foreground">{skill.source === "builtin" ? "Built in, part of Bloks" : "Yours, on this computer"}</p>
           </div>
         </div>
         {skill.source === "user" && (
           <button
             onClick={remove}
-            className="flex h-9 items-center gap-1.5 rounded-xl bg-destructive/10 px-3.5 text-[13.5px] font-medium text-destructive transition-colors hover:bg-destructive/15"
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-destructive/10 px-3.5 text-ui font-medium text-destructive transition-colors hover:bg-destructive/15"
           >
             <Trash2 size={15} />
             Remove
           </button>
         )}
       </div>
-      {skill.description && <p className="mt-4 text-pretty text-[14px] text-foreground">{skill.description}</p>}
+      {skill.description && <p className="mt-4 text-pretty text-ui text-foreground">{skill.description}</p>}
 
       <div className="mt-6 flex flex-col gap-4">
         <Section title="Agents that use it" says="A skill goes into every turn of the agents it is switched on for.">
@@ -558,7 +558,7 @@ function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () 
               return (
                 <div key={bot.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                   <AgentAvatar bot={bot} size={26} />
-                  <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{bot.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-ui text-foreground">{bot.name}</span>
                   <Switch
                     checked={on}
                     aria-label={`${bot.name} uses ${skill.name}`}
@@ -576,7 +576,7 @@ function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () 
           </div>
         </Section>
         <Section title="Instructions">
-          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-xl bg-muted/40 p-4 font-mono text-[12.5px] leading-relaxed text-foreground">
+          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-xl bg-muted/40 p-4 font-mono text-body leading-relaxed text-foreground">
             {skill.body}
           </pre>
         </Section>

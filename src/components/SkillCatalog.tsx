@@ -98,8 +98,8 @@ export function SkillCatalog({ onInstalled }: { onInstalled: () => void }) {
             <ArrowLeft size={15} />
           </Button>
           <div className="min-w-0 flex-1">
-            <div className="text-[14.5px] font-semibold text-foreground">{showing.name}</div>
-            <div className="mt-0.5 text-[12.5px] text-muted-foreground">
+            <div className="text-lead font-semibold text-foreground">{showing.name}</div>
+            <div className="mt-0.5 text-body text-muted-foreground">
               Version {showing.version}
               {showing.author ? ` · by ${showing.author}` : ""}
               {showing.tags.length ? ` · ${showing.tags.join(", ")}` : ""}
@@ -111,8 +111,8 @@ export function SkillCatalog({ onInstalled }: { onInstalled: () => void }) {
         <Says standing={showing.standing} />
 
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card p-3.5">
-          <p className="text-[13px] leading-relaxed text-muted-foreground">{showing.description}</p>
-          <pre className="mt-3 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-foreground">
+          <p className="text-body leading-relaxed text-muted-foreground">{showing.description}</p>
+          <pre className="mt-3 whitespace-pre-wrap font-sans text-body leading-relaxed text-foreground">
             {showing.body}
           </pre>
         </div>
@@ -123,7 +123,7 @@ export function SkillCatalog({ onInstalled }: { onInstalled: () => void }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center justify-between pb-2">
-        <span className="text-[12.5px] text-muted-foreground">
+        <span className="text-body text-muted-foreground">
           Skills anyone can install. They live on your machine once they are here.
         </span>
         <Button variant="ghost" size="sm" disabled={refreshing} onClick={() => load(true)}>
@@ -133,20 +133,20 @@ export function SkillCatalog({ onInstalled }: { onInstalled: () => void }) {
       </div>
 
       {error && (
-        <div className="mb-2 rounded-xl bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">
+        <div className="mb-2 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">
           {error}
         </div>
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border">
         {skills === null && !error && (
-          <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted-foreground">
+          <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
             Reading the catalog
           </div>
         )}
         {skills?.length === 0 && (
-          <div className="py-10 text-center text-[13px] text-muted-foreground">
+          <div className="py-10 text-center text-body text-muted-foreground">
             The catalog is empty.
           </div>
         )}
@@ -162,10 +162,10 @@ export function SkillCatalog({ onInstalled }: { onInstalled: () => void }) {
             >
               <button onClick={() => setOpen(skill.id)} className="min-w-0 flex-1 text-left">
                 <span className="flex items-center gap-2">
-                  <span className="truncate text-[13.5px] font-medium text-foreground">{skill.name}</span>
-                  {chip && <span className={cn("shrink-0 text-[11px]", chip.tone)}>{chip.label}</span>}
+                  <span className="truncate text-ui font-medium text-foreground">{skill.name}</span>
+                  {chip && <span className={cn("shrink-0 text-caption", chip.tone)}>{chip.label}</span>}
                 </span>
-                <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground">
+                <span className="mt-0.5 block truncate text-body text-muted-foreground">
                   {skill.standing.state === "available" ? skill.description : skill.standing.says}
                 </span>
               </button>
@@ -191,7 +191,7 @@ function ActionButton({
 }) {
   if (!skill.standing.action) {
     return (
-      <span className="flex shrink-0 items-center gap-1 px-2 text-[12px] text-muted-foreground">
+      <span className="flex shrink-0 items-center gap-1 px-2 text-small text-muted-foreground">
         <Check size={13} />
         Installed
       </span>
@@ -224,7 +224,7 @@ function Says({ standing }: { standing: Standing }) {
   return (
     <div
       className={cn(
-        "flex shrink-0 gap-2 rounded-xl px-3 py-2 text-[12.5px] leading-relaxed",
+        "flex shrink-0 gap-2 rounded-xl px-3 py-2 text-body leading-relaxed",
         standing.destructive ? "bg-warning/10 text-warning" : "bg-muted/60 text-foreground",
       )}
     >

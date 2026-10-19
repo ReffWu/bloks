@@ -93,7 +93,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
   };
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-[15px] font-semibold text-foreground">A new watcher</div>
+      <div className="text-lead font-semibold text-foreground">A new watcher</div>
       <div className="flex gap-1 rounded-xl bg-muted p-1">
         {(Object.keys(KIND) as Kind[]).map((k) => {
           const Icon = KIND[k].icon;
@@ -102,7 +102,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
               key={k}
               onClick={() => setKind(k)}
               className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] transition-colors",
+                "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-body transition-colors",
                 kind === k ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -112,7 +112,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
         })}
       </div>
       <div className="flex gap-2">
-        <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder={KIND[kind].placeholder} className="text-[13px]" />
+        <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder={KIND[kind].placeholder} className="text-body" />
         {kind === "folder" && window.bloks?.pickFolder && (
           <Button variant="secondary" onClick={pick}>
             Choose
@@ -131,14 +131,14 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
                 ? "A supplier replied: read it and decide the next step."
                 : "Summarise each new post in two lines and tell me if it mentions us."
         }
-        className="min-h-[90px] text-[13px]"
+        className="min-h-[90px] text-body"
       />
-      <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
+      <label className="flex items-center gap-2 text-body text-muted-foreground">
         Who acts on it
         <select
           value={botId}
           onChange={(e) => setBotId(e.target.value)}
-          className="rounded-lg border bg-background px-2 py-1 text-[13px] text-foreground"
+          className="rounded-lg border bg-background px-2 py-1 text-body text-foreground"
         >
           {bots.map((b) => (
             <option key={b.id} value={b.id}>
@@ -147,13 +147,13 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
           ))}
         </select>
       </label>
-      {error && <div className="text-[12.5px] text-destructive">{error}</div>}
+      {error && <div className="text-body text-destructive">{error}</div>}
       <div>
         <Button disabled={busy || !botId || !target.trim() || !instruction.trim()} onClick={make}>
           {busy && <Loader2 size={14} className="animate-spin" />} Start watching
         </Button>
       </div>
-      <p className="text-[12px] leading-relaxed text-muted-foreground">
+      <p className="text-small leading-relaxed text-muted-foreground">
         The first look only notes how things are. From then on, a change gives the agent a turn in a lane of its own. Pages,
         feeds and checks are looked at every 30 minutes; folders within seconds. A check is a command run in the agent's
         folder without waking it: exit 0 means act on what it printed, exit 1 means nothing to do. You can also tell an
@@ -190,11 +190,11 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
   return (
     <div className="flex flex-col gap-4">
       {w.kind === "check" && waiting && (
-        <div className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3.5 py-3 text-[12.5px] text-foreground">
+        <div className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3.5 py-3 text-body text-foreground">
           <div className="flex items-center gap-2 font-medium">
             <ShieldCheck size={14} className="text-warning" /> {bot?.name ?? "An agent"} wants to run this command on its own
           </div>
-          <code className="block break-all rounded-lg bg-background px-2.5 py-1.5 font-mono text-[12px]">{w.target}</code>
+          <code className="block break-all rounded-lg bg-background px-2.5 py-1.5 font-mono text-small">{w.target}</code>
           <div className="text-muted-foreground">
             Every {w.every < 60 ? `${w.every} minutes` : `${Math.round(w.every / 60)} hours`}, in its working folder, without asking each time.
             It does not run until you approve it.
@@ -208,12 +208,12 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
       )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+          <div className="flex items-center gap-2 text-lead font-semibold text-foreground">
             <Icon size={15} className="text-muted-foreground" /> {w.name}
           </div>
-          <div className="mt-0.5 break-all font-mono text-[12px] text-muted-foreground">{w.target}</div>
+          <div className="mt-0.5 break-all font-mono text-small text-muted-foreground">{w.target}</div>
           {w.kind === "check" && !waiting && (
-            <div className="mt-1 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+            <div className="mt-1 flex items-center gap-1.5 text-small text-muted-foreground">
               <ShieldCheck size={12} />
               {w.approvedBy === "person" ? "You approved this command." : `Runs because ${bot?.name ?? "its agent"} may run commands without asking.`}
               {w.approvedBy === "person" && (
@@ -226,29 +226,29 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
         </div>
         <Switch checked={w.enabled} onCheckedChange={(on) => patch({ enabled: on })} aria-label="Watching" />
       </div>
-      <label className="flex flex-col gap-1.5 text-[12.5px] text-muted-foreground">
+      <label className="flex flex-col gap-1.5 text-body text-muted-foreground">
         What {bot?.name ?? "the agent"} does when it changes
         <Textarea
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
           onBlur={() => instruction.trim() && instruction !== w.instruction && patch({ instruction })}
-          className="min-h-[80px] text-[13px] text-foreground"
+          className="min-h-[80px] text-body text-foreground"
         />
       </label>
-      <label className="flex flex-col gap-1.5 text-[12.5px] text-muted-foreground">
+      <label className="flex flex-col gap-1.5 text-body text-muted-foreground">
         Which conversation it speaks in
         <Input
           value={thread}
           onChange={(e) => setThread(e.target.value)}
           onBlur={() => thread.trim() !== (w.thread ?? "") && patch({ thread: thread.trim() })}
           placeholder="General"
-          className="text-[13px] text-foreground"
+          className="text-body text-foreground"
         />
-        <span className="text-[11.5px]">
+        <span className="text-small">
           Its first conversation, where you talk to it, unless you name another; one that does not exist is made, and a busy one queues the turn.
         </span>
       </label>
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-body text-muted-foreground">
         {w.kind !== "folder" && (
           <label className="flex items-center gap-1.5">
             Every
@@ -272,21 +272,21 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
         <span>Last look {ago(w.lastCheck)}</span>
       </div>
       {w.enabled && w.suspended === "archived" && (
-        <div className="rounded-lg bg-muted px-3 py-2 text-[12.5px] text-muted-foreground">
+        <div className="rounded-lg bg-muted px-3 py-2 text-body text-muted-foreground">
           Paused while {bot?.name ?? "its agent"} is archived. It looks again once {bot?.name ?? "the agent"} is restored.
         </div>
       )}
-      {w.lastError && <div className="rounded-lg bg-warning/10 px-3 py-2 text-[12.5px] text-warning">{w.lastError}</div>}
+      {w.lastError && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{w.lastError}</div>}
       <div>
-        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Fired</div>
+        <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">Fired</div>
         {w.fires.length === 0 ? (
-          <div className="text-[12.5px] text-muted-foreground">
+          <div className="text-body text-muted-foreground">
             {w.kind === "check" ? "Not yet. It fires when the check finds something new." : "Not yet. It fires the first time something changes."}
           </div>
         ) : (
           <ul className="flex flex-col gap-1">
             {w.fires.map((f) => (
-              <li key={f.at} className="flex gap-3 text-[12.5px]">
+              <li key={f.at} className="flex gap-3 text-body">
                 <span className="w-[86px] shrink-0 text-muted-foreground">{ago(f.at)}</span>
                 <span className="min-w-0 truncate text-foreground">{f.summary}</span>
               </li>
@@ -318,7 +318,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           <Trash2 size={13} /> Stop watching
         </Button>
       </div>
-      {note && <div className="text-[12.5px] text-muted-foreground">{note}</div>}
+      {note && <div className="text-body text-muted-foreground">{note}</div>}
     </div>
   );
 }
@@ -340,8 +340,8 @@ export function WatchersTab() {
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <div className="flex max-h-[200px] w-full shrink-0 flex-col border-b md:max-h-none md:w-[260px] md:border-b-0 md:border-r">
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Watching</span>
-          <button onClick={() => setSelected("new")} className="rounded-lg px-1.5 py-1 text-[11.5px] text-muted-foreground hover:bg-accent hover:text-foreground">
+          <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">Watching</span>
+          <button onClick={() => setSelected("new")} className="rounded-lg px-1.5 py-1 text-small text-muted-foreground hover:bg-accent hover:text-foreground">
             + New
           </button>
         </div>
@@ -359,11 +359,11 @@ export function WatchersTab() {
               >
                 {bot ? <AgentAvatar bot={bot} size={26} /> : <Icon size={16} />}
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 truncate text-[13px] font-medium text-foreground">
+                  <span className="flex items-center gap-1.5 truncate text-body font-medium text-foreground">
                     <Icon size={12} className="shrink-0 text-muted-foreground" />
                     <span className="truncate">{w.name}</span>
                   </span>
-                  <span className={cn("block truncate text-[11px]", waiting || w.lastError ? "text-warning" : w.enabled ? "text-muted-foreground" : "text-muted-foreground/70")}>
+                  <span className={cn("block truncate text-caption", waiting || w.lastError ? "text-warning" : w.enabled ? "text-muted-foreground" : "text-muted-foreground/70")}>
                     {!w.enabled ? "Paused" : w.suspended === "archived" ? "Paused while archived" : waiting ? "Needs your approval" : w.lastError ? "Needs a look" : w.fires[0] ? `Fired ${ago(w.fires[0].at)}` : `Looked ${ago(w.lastCheck)}`}
                   </span>
                 </span>

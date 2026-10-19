@@ -68,7 +68,7 @@ export function ServiceIcon({ card, size = 24 }: { card: ToolkitCard; size?: num
   return (
     <span
       style={box}
-      className="flex items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground"
+      className="flex items-center justify-center rounded-md bg-muted text-caption font-semibold text-muted-foreground"
     >
       {card.label.slice(0, 1).toUpperCase()}
     </span>
@@ -114,8 +114,8 @@ function PageHeader({
   return (
     <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
       <div className="min-w-0">
-        <h1 className="text-balance text-[28px] font-semibold tracking-tight text-foreground">{title}</h1>
-        <p className="mt-1.5 text-pretty text-[14px] text-muted-foreground">{says}</p>
+        <h1 className="text-balance text-display font-semibold text-foreground">{title}</h1>
+        <p className="mt-1.5 text-pretty text-ui text-muted-foreground">{says}</p>
       </div>
       <div className="flex items-center gap-1.5">
         <label className="flex h-9 w-[240px] items-center gap-2 rounded-full border bg-card px-3.5 transition-colors duration-150 focus-within:border-ring/50 lg:w-[280px]">
@@ -127,7 +127,7 @@ function PageHeader({
             onKeyDown={(e) => e.key === "Escape" && (onSearch(""), e.currentTarget.blur())}
             placeholder={placeholder}
             aria-label={placeholder}
-            className="min-w-0 flex-1 bg-transparent text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>
         <button
@@ -171,7 +171,7 @@ function Pills<T extends string>({
           aria-selected={option.value === value}
           onClick={() => onChange(option.value)}
           className={cn(
-            "flex h-8 items-center gap-1.5 rounded-full px-4 text-[13px] font-medium outline-none transition-colors duration-150",
+            "flex h-8 items-center gap-1.5 rounded-full px-4 text-body font-medium outline-none transition-colors duration-150",
             option.value === value ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -185,7 +185,7 @@ function Pills<T extends string>({
 function SectionTitle({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
   return (
     <div className="mb-1 mt-9 flex items-center justify-between border-b pb-3">
-      <h2 className="text-[15px] font-semibold text-foreground">{children}</h2>
+      <h2 className="text-lead font-semibold text-foreground">{children}</h2>
       {aside}
     </div>
   );
@@ -199,7 +199,7 @@ function MoreLine({ hidden, onClick }: { hidden: string[]; onClick: () => void }
   return (
     <button
       onClick={onClick}
-      className="mt-3 px-1 text-left text-[13px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+      className="mt-3 px-1 text-left text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
     >
       See {named.join(", ")}
       {rest > 0 ? `, and ${rest} more` : ""}
@@ -225,8 +225,8 @@ function GridItem({
     <>
       {tile}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14px] font-medium text-foreground">{name}</span>
-        {line && <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">{line}</span>}
+        <span className="block truncate text-ui font-medium text-foreground">{name}</span>
+        {line && <span className="mt-0.5 block truncate text-body text-muted-foreground">{line}</span>}
       </span>
     </>
   );
@@ -353,7 +353,7 @@ function PluginsPage({
         add={
           <DropdownMenu>
             <DropdownMenuTrigger
-              className={cn(pill, "gap-1 bg-foreground px-4 text-[13px] font-medium text-background hover:opacity-90")}
+              className={cn(pill, "gap-1 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}
             >
               Add
               <ChevronDown size={14} />
@@ -389,20 +389,20 @@ function PluginsPage({
         <>
           {!configured && (
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
-              <span className="text-[13.5px] text-foreground">
+              <span className="text-ui text-foreground">
                 Connect apps by adding a Composio Connect key.
                 <span className="text-muted-foreground"> Your agents sign in through it, once for all of them.</span>
               </span>
               <button
                 onClick={toKeys}
-                className={cn(pill, "h-8 bg-foreground px-3.5 text-[12.5px] font-medium text-background hover:opacity-90")}
+                className={cn(pill, "h-8 bg-foreground px-3.5 text-body font-medium text-background hover:opacity-90")}
               >
                 Add a key
               </button>
             </div>
           )}
           {configured && source === "curated" && (
-            <p className="mt-5 text-[12.5px] text-muted-foreground">
+            <p className="mt-5 text-body text-muted-foreground">
               Showing a curated set.{" "}
               <button onClick={toKeys} className="underline underline-offset-2 hover:text-foreground">
                 Add a Composio API key
@@ -410,7 +410,7 @@ function PluginsPage({
               to browse the full catalogue.
             </p>
           )}
-          {(error || tried) && <p className="mt-4 text-[12.5px] text-destructive">{error ?? tried}</p>}
+          {(error || tried) && <p className="mt-4 text-body text-destructive">{error ?? tried}</p>}
 
           {unfinished.length > 0 && !q && (
             <>
@@ -429,7 +429,7 @@ function PluginsPage({
                     action={
                       <button
                         onClick={() => dispatch({ type: "openPluginSettings", focus: { kind: "mcp", id: server.id } })}
-                        className="h-8 rounded-lg border px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-accent"
+                        className="h-8 rounded-lg border px-3 text-body font-medium text-foreground transition-colors hover:bg-accent"
                       >
                         Finish setup
                       </button>
@@ -464,7 +464,7 @@ function PluginsPage({
           <SectionTitle
             aside={
               cards && (
-                <span className="text-[12.5px] tabular-nums text-muted-foreground">
+                <span className="text-body tabular-nums text-muted-foreground">
                   {q ? `${matching.length} found` : `${notConnected.length} apps`}
                 </span>
               )
@@ -473,11 +473,11 @@ function PluginsPage({
             {q ? "Results" : installed.length ? "More apps" : "Popular"}
           </SectionTitle>
           {cards === null ? (
-            <div className="flex items-center gap-2 py-10 text-[13px] text-muted-foreground">
+            <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
               <Loader2 size={14} className="animate-spin" /> Loading the catalogue
             </div>
           ) : matching.length === 0 ? (
-            <p className="py-10 text-[13.5px] text-muted-foreground">No apps match “{search.trim()}”.</p>
+            <p className="py-10 text-ui text-muted-foreground">No apps match “{search.trim()}”.</p>
           ) : (
             <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
               {(q ? matching : shown).map((card) => (
@@ -587,7 +587,7 @@ function SkillsPage({
         add={
           <DropdownMenu>
             <DropdownMenuTrigger
-              className={cn(pill, "gap-1 bg-foreground px-4 text-[13px] font-medium text-background hover:opacity-90")}
+              className={cn(pill, "gap-1 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}
             >
               Add
               <ChevronDown size={14} />
@@ -617,7 +617,7 @@ function SkillsPage({
               <>
                 Catalogue
                 {updates > 0 && (
-                  <span className="rounded-full bg-brand/15 px-1.5 text-[10.5px] font-semibold tabular-nums text-brand-ink">{updates}</span>
+                  <span className="rounded-full bg-brand/15 px-1.5 text-caption font-semibold tabular-nums text-brand-ink">{updates}</span>
                 )}
               </>
             ),
@@ -643,11 +643,11 @@ function SkillsPage({
           )}
 
           {skills === null ? (
-            <div className="mt-10 flex items-center gap-2 text-[13px] text-muted-foreground">
+            <div className="mt-10 flex items-center gap-2 text-body text-muted-foreground">
               <Loader2 size={14} className="animate-spin" /> Loading skills
             </div>
           ) : groups.length === 0 ? (
-            <p className="mt-10 text-[13.5px] text-muted-foreground">
+            <p className="mt-10 text-ui text-muted-foreground">
               {q ? `No skills match “${search.trim()}”.` : "No skills yet. Add one, or browse the catalogue."}
             </p>
           ) : (
@@ -657,7 +657,7 @@ function SkillsPage({
               return (
                 <section key={group.key}>
                   <SectionTitle
-                    aside={<span className="text-[12.5px] tabular-nums text-muted-foreground">{group.rows.length}</span>}
+                    aside={<span className="text-body tabular-nums text-muted-foreground">{group.rows.length}</span>}
                   >
                     {group.title}
                   </SectionTitle>
@@ -683,9 +683,9 @@ function SkillsPage({
               );
             })
           )}
-          <p className="mt-10 text-[12.5px] text-muted-foreground">
+          <p className="mt-10 text-body text-muted-foreground">
             Attach a skill to an agent from that agent's settings. Skills live in{" "}
-            <code className="rounded bg-muted px-1 py-px font-mono text-[11.5px]">~/.bloks/skills</code>.
+            <code className="rounded bg-muted px-1 py-px font-mono text-small">~/.bloks/skills</code>.
           </p>
         </>
       )}
@@ -698,17 +698,17 @@ function SkillsPage({
             <>
               <DialogTitle className="pr-8">{open.name}</DialogTitle>
               {open.description && <DialogDescription>{open.description}</DialogDescription>}
-              <pre className="mt-4 min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/40 p-3.5 font-mono text-[12px] leading-relaxed text-foreground">
+              <pre className="mt-4 min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/40 p-3.5 font-mono text-small leading-relaxed text-foreground">
                 {open.body}
               </pre>
               <div className="mt-4 flex items-center justify-between gap-3">
-                <span className="text-[12.5px] text-muted-foreground">
+                <span className="text-body text-muted-foreground">
                   {open.source === "builtin" ? "Built in, part of Bloks." : "Yours, on this machine."}
                 </span>
                 {open.source === "user" && (
                   <button
                     onClick={() => remove(open)}
-                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-destructive transition-colors duration-150 hover:bg-destructive/10"
+                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body text-destructive transition-colors duration-150 hover:bg-destructive/10"
                   >
                     <Trash2 size={14} />
                     Remove
@@ -741,7 +741,7 @@ function NavRow({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-[14px] outline-none transition-colors duration-150",
+        "flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-ui outline-none transition-colors duration-150",
         active ? "bg-accent text-foreground" : "text-foreground/85 hover:bg-accent/60 hover:text-foreground",
       )}
     >
@@ -768,7 +768,7 @@ function CustomizeSidebar({
   return (
     <aside aria-label="Customize" className="hidden h-full w-[264px] shrink-0 flex-col border-r bg-sidebar md:flex">
       <div className="titlebar-drag flex h-[52px] shrink-0 items-center justify-between pl-4 pr-2.5">
-        <span className="text-[15px] font-semibold text-foreground">Customize</span>
+        <span className="text-lead font-semibold text-foreground">Customize</span>
         <button
           onClick={onSearch}
           aria-label={tab === "plugins" ? "Search plugins" : "Search skills"}
@@ -782,10 +782,10 @@ function CustomizeSidebar({
         <NavRow active={tab === "plugins"} icon={<Puzzle size={17} />} label="Plugins" onClick={() => setTab("plugins")} />
         <NavRow active={tab === "skills"} icon={<Sparkles size={17} />} label="Skills" onClick={() => setTab("skills")} />
       </nav>
-      <div className="mt-6 px-4 pb-1.5 text-[12.5px] text-muted-foreground">Installed</div>
+      <div className="mt-6 px-4 pb-1.5 text-body text-muted-foreground">Installed</div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {installed.length === 0 ? (
-          <p className="px-2.5 text-[12.5px] leading-relaxed text-muted-foreground/80">Apps you connect show up here.</p>
+          <p className="px-2.5 text-body leading-relaxed text-muted-foreground/80">Apps you connect show up here.</p>
         ) : (
           installed.map((card) => (
             <NavRow key={card.slug} active={false} icon={<ServiceIcon card={card} size={16} />} label={card.label} onClick={() => onPickApp(card)} />

@@ -33,7 +33,7 @@ function Line({ message }: { message: Message }) {
   return (
     <div
       className={cn(
-        "min-w-0 max-w-full py-0.5 text-[12px]",
+        "min-w-0 max-w-full py-0.5 text-small",
         tool.ok === false && !tool.stopped ? "text-destructive" : "text-muted-foreground",
       )}
       title={tool.stopped ? "Stopped before it reported back" : undefined}
@@ -54,7 +54,7 @@ function Line({ message }: { message: Message }) {
         )}
       </div>
       {command && open && (
-        <pre className="mt-1 max-w-full select-text whitespace-pre-wrap break-all rounded-md bg-muted/50 p-2 font-mono text-[12px] text-foreground">{command}</pre>
+        <pre className="mt-1 max-w-full select-text whitespace-pre-wrap break-all rounded-md bg-muted/50 p-2 font-mono text-small text-foreground">{command}</pre>
       )}
     </div>
   );
@@ -65,7 +65,7 @@ function Line({ message }: { message: Message }) {
 function Repeated({ count }: { count: number }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning"
+      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-caption font-medium text-warning"
       title="The agent made this call with the same arguments this many times in this turn. It may be stuck; nothing has been stopped."
     >
       <Repeat size={11} aria-hidden />
@@ -95,7 +95,7 @@ export function ToolRun({ messages, fresh, className }: { messages: Message[]; f
         <button
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="flex min-w-0 max-w-full items-center gap-2 rounded-md py-0.5 text-[12px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          className="flex min-w-0 max-w-full items-center gap-2 rounded-md py-0.5 text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
         >
           {busy ? (
             <Loader2 size={12} className="shrink-0 animate-spin" />

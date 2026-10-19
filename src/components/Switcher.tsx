@@ -175,10 +175,10 @@ export function Switcher({ shown }: { shown: Viewed | null }) {
                 </span>
               )}
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13.5px] font-medium text-foreground">
+                <span className="block truncate text-ui font-medium text-foreground">
                   {room?.name ?? bot?.name ?? ""}
                 </span>
-                {lane && <span className="block truncate text-[11.5px] text-muted-foreground">{lane}</span>}
+                {lane && <span className="block truncate text-small text-muted-foreground">{lane}</span>}
               </span>
             </div>
           );

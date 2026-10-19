@@ -279,10 +279,10 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
         <div className="flex min-w-0 items-center gap-2.5">
           <CalendarClock size={18} className="shrink-0 text-brand-ink" />
           <div className="min-w-0">
-            <div className="truncate text-[15px] font-semibold leading-tight text-foreground">
+            <div className="truncate text-lead font-semibold leading-tight text-foreground">
               Automations
             </div>
-            <div className="hidden truncate text-[11.5px] leading-tight text-muted-foreground sm:block">
+            <div className="hidden truncate text-small leading-tight text-muted-foreground sm:block">
               What your agents do without being asked
             </div>
           </div>
@@ -302,7 +302,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                 key={key}
                 onClick={() => setTab(key)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] transition-colors duration-150",
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-body transition-colors duration-150",
                   tab === key
                     ? "bg-background font-medium text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
@@ -343,12 +343,12 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                 <ChevronRight size={15} />
               </Button>
             </div>
-            <span className="text-[14px] font-semibold text-foreground">{monthLabel}</span>
+            <span className="text-ui font-semibold text-foreground">{monthLabel}</span>
 
             <select
               value={filterId}
               onChange={(e) => setFilterId(e.target.value)}
-              className="rounded-lg border border-input bg-background px-2 py-1.5 text-[12.5px] text-foreground outline-none focus:border-ring/60"
+              className="rounded-lg border border-input bg-background px-2 py-1.5 text-body text-foreground outline-none focus:border-ring/60"
             >
               <option value="">Everyone</option>
               {bots.map((b) => (
@@ -366,7 +366,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                     key={m}
                     onClick={() => setMode(m)}
                     className={cn(
-                      "rounded-lg px-2.5 py-1 text-[12px] capitalize transition-colors duration-150",
+                      "rounded-lg px-2.5 py-1 text-small capitalize transition-colors duration-150",
                       mode === m
                         ? "bg-background font-medium text-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground",
@@ -384,7 +384,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
           </div>
 
           {writeError && (
-            <div className="mx-5 mt-2 shrink-0 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+            <div className="mx-5 mt-2 shrink-0 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">
               {writeError}
             </div>
           )}
@@ -410,7 +410,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                 <div className="sticky left-0 z-10 w-14 shrink-0 border-r bg-background pt-[34px]">
                   {Array.from({ length: hours.end - hours.start }, (_, i) => (
                     <div key={i} className="relative" style={{ height: HOUR_PX }}>
-                      <span className="absolute -top-2 right-2 text-[10.5px] tabular-nums text-muted-foreground/70">
+                      <span className="absolute -top-2 right-2 text-caption tabular-nums text-muted-foreground/70">
                         {(hours.start + i) % 12 || 12} {hours.start + i < 12 ? "AM" : "PM"}
                       </span>
                     </div>
@@ -427,14 +427,14 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                     <div key={day.toISOString()} className="min-w-0 flex-1 border-r last:border-r-0">
                       <div
                         className={cn(
-                          "sticky top-0 z-10 flex h-[34px] items-center justify-center gap-1.5 border-b bg-background text-[11.5px] font-medium uppercase tracking-[0.06em]",
+                          "sticky top-0 z-10 flex h-[34px] items-center justify-center gap-1.5 border-b bg-background text-small font-medium uppercase tracking-[0.06em]",
                           isToday ? "text-brand-ink" : "text-muted-foreground",
                         )}
                       >
                         {day.toLocaleDateString([], { weekday: "short" })}
                         <span
                           className={cn(
-                            "flex size-[22px] items-center justify-center rounded-full text-[12px] tabular-nums",
+                            "flex size-[22px] items-center justify-center rounded-full text-small tabular-nums",
                             isToday && "bg-brand-ink font-semibold text-brand-foreground",
                           )}
                         >
@@ -547,10 +547,10 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                                 </span>
                               )}
                               <span className="min-w-0">
-                                <span className="block truncate text-[11px] font-medium leading-tight text-foreground">
+                                <span className="block truncate text-caption font-medium leading-tight text-foreground">
                                   {routine.name || routine.prompt}
                                 </span>
-                                <span className="block text-[9.5px] leading-tight text-muted-foreground">
+                                <span className="block text-micro leading-tight text-muted-foreground">
                                   {routine.time}
                                   {routine.repeat === "once" && " · once"}
                                   {" · "}
@@ -571,7 +571,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
           {/* ── check-ins, in words ── */}
           {checkIns.length > 0 && (
             <div className="shrink-0 border-t px-5 py-2.5">
-              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 Check-ins
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -581,7 +581,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                     <button
                       key={routine.id}
                       onClick={() => setSelected(routine)}
-                      className="flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-brand/25 bg-brand-soft px-2.5 py-1 text-[12px] transition-colors hover:border-brand/50"
+                      className="flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-brand/25 bg-brand-soft px-2.5 py-1 text-small transition-colors hover:border-brand/50"
                     >
                       {target?.bot ? <AgentAvatar bot={target.bot} size={16} /> : <Repeat size={12} className="shrink-0 text-brand-ink" />}
                       <span className="max-w-[160px] shrink-0 truncate font-medium text-foreground">{routine.name || routine.prompt}</span>
@@ -596,7 +596,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
           {/* ── paused strip ── */}
           {paused.length > 0 && (
             <div className="shrink-0 border-t px-5 py-2.5">
-              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 Paused
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -606,12 +606,12 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                     <button
                       key={routine.id}
                       onClick={() => setSelected(routine)}
-                      className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground"
+                      className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-small text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground"
                     >
                       {target?.bot && <AgentAvatar bot={target.bot} size={16} />}
                       <span className="max-w-[200px] truncate">{routine.name || routine.prompt}</span>
                       {routine.repeat === "once" && routine.lastRunAt && (
-                        <span className="text-[10.5px] text-success">ran</span>
+                        <span className="text-caption text-success">ran</span>
                       )}
                     </button>
                   );
@@ -627,7 +627,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
           className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full rounded-lg border border-brand/40 bg-brand-soft px-2 py-1 shadow-lg"
           style={{ left: drag.x, top: drag.y - 8 }}
         >
-          <span className="text-[11px] font-medium text-foreground">
+          <span className="text-caption font-medium text-foreground">
             {`${String(Math.floor(drag.minutes / 60)).padStart(2, "0")}:${String(drag.minutes % 60).padStart(2, "0")}`}
             {" · "}
             {columnRects.current.get(drag.dayIndex)?.day.toLocaleDateString([], { weekday: "short" })}
@@ -683,10 +683,10 @@ function EmptyRhythm({ onCreate }: { onCreate: () => void }) {
         <BlokAvatar color="green" shape="cloud" expression="excited" size={52} />
       </div>
       <div>
-        <div className="text-[16px] font-semibold text-foreground">
+        <div className="text-title font-semibold text-foreground">
           Put your agents on a rhythm
         </div>
-        <div className="mx-auto mt-1 max-w-[380px] text-[13px] leading-relaxed text-muted-foreground">
+        <div className="mx-auto mt-1 max-w-[380px] text-body leading-relaxed text-muted-foreground">
           Morning digests, weekly reports, recurring reviews. Every run lands
           in its own task lane with its own result.
         </div>
@@ -726,7 +726,7 @@ function MonthGrid({
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
           <div
             key={label}
-            className="bg-background px-2 py-1.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+            className="bg-background px-2 py-1.5 text-center text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground"
           >
             {label}
           </div>
@@ -750,7 +750,7 @@ function MonthGrid({
             >
               <span
                 className={cn(
-                  "self-start rounded-full px-1.5 text-[11px] tabular-nums leading-[18px]",
+                  "self-start rounded-full px-1.5 text-caption tabular-nums leading-[18px]",
                   isToday ? "bg-brand-ink font-semibold text-brand-foreground" : "text-muted-foreground",
                 )}
               >
@@ -771,14 +771,14 @@ function MonthGrid({
                     ) : (
                       target?.bot && <AgentAvatar bot={target.bot} size={12} />
                     )}
-                    <span className="truncate text-[9.5px] font-medium text-foreground">
+                    <span className="truncate text-micro font-medium text-foreground">
                       {when} {routine.name || routine.prompt}
                     </span>
                   </span>
                 );
               })}
               {slots.length > 3 && (
-                <span className="px-1 text-[9.5px] text-muted-foreground">
+                <span className="px-1 text-micro text-muted-foreground">
                   +{slots.length - 3} more
                 </span>
               )}
@@ -801,14 +801,14 @@ function RunHistory({ runs }: { runs?: RoutineRun[] }) {
   const [open, setOpen] = useState<string | null>(null);
   if (!runs?.length) {
     return (
-      <div className="mt-4 border-t pt-3 text-[12px] text-muted-foreground">
+      <div className="mt-4 border-t pt-3 text-small text-muted-foreground">
         No runs yet. When this fires, what it did shows up here.
       </div>
     );
   }
   return (
     <div className="mt-4 border-t pt-3">
-      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         Recent runs
       </div>
       <div className="max-h-[190px] overflow-y-auto">
@@ -824,12 +824,12 @@ function RunHistory({ runs }: { runs?: RoutineRun[] }) {
                 <span className="mt-[5px] size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
-                    <span className="text-[12px] tabular-nums text-muted-foreground">
+                    <span className="text-small tabular-nums text-muted-foreground">
                       {row.quiet.length === 1 ? at(newest) : `${at(oldest)} to ${at(newest)}`}
                     </span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">quiet</span>
+                    <span className="shrink-0 text-caption text-muted-foreground">quiet</span>
                   </span>
-                  <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
+                  <span className="mt-0.5 block text-small text-muted-foreground">
                     {row.quiet.length === 1 ? "Nothing needed you." : `${row.quiet.length} check-ins, nothing needed you.`}
                   </span>
                 </span>
@@ -857,7 +857,7 @@ function RunHistory({ runs }: { runs?: RoutineRun[] }) {
               />
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
-                  <span className="text-[12px] tabular-nums text-foreground">
+                  <span className="text-small tabular-nums text-foreground">
                     {new Date(run.startedAt).toLocaleString([], {
                       month: "short",
                       day: "numeric",
@@ -865,7 +865,7 @@ function RunHistory({ runs }: { runs?: RoutineRun[] }) {
                       minute: "2-digit",
                     })}
                   </span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                  <span className="shrink-0 text-caption text-muted-foreground">
                     {run.state === "running"
                       ? "running"
                       : run.endedAt
@@ -876,7 +876,7 @@ function RunHistory({ runs }: { runs?: RoutineRun[] }) {
                 {detail && (
                   <span
                     className={cn(
-                      "mt-0.5 block text-[11.5px] leading-relaxed",
+                      "mt-0.5 block text-small leading-relaxed",
                       showing ? "" : "truncate",
                       run.error ? "text-destructive" : "text-muted-foreground",
                     )}
@@ -936,15 +936,15 @@ function RoutineDetails({
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-semibold leading-snug text-foreground">
+            <div className="text-ui font-semibold leading-snug text-foreground">
               {routine.name || routine.prompt}
             </div>
             {routine.name && (
-              <div className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
+              <div className="mt-0.5 line-clamp-2 text-small text-muted-foreground">
                 {routine.prompt}
               </div>
             )}
-            <div className="mt-0.5 text-[12px] text-muted-foreground">
+            <div className="mt-0.5 text-small text-muted-foreground">
               {target?.name} ·{" "}
               {routine.every
                 ? routine.summary
@@ -952,18 +952,18 @@ function RoutineDetails({
               {runsOnLabel ? ` · ${runsOnLabel}` : ""}
             </div>
             {routine.quiet && (
-              <div className="mt-0.5 text-[11.5px] text-muted-foreground/80">
+              <div className="mt-0.5 text-small text-muted-foreground/80">
                 Answers QUIET when nothing needs you, and a quiet run is not announced.
               </div>
             )}
             {routine.lastReport && (
-              <div className="mt-1.5 line-clamp-3 text-[12px] leading-relaxed text-foreground/80" title={routine.lastReport.summary}>
+              <div className="mt-1.5 line-clamp-3 text-small leading-relaxed text-foreground/80" title={routine.lastReport.summary}>
                 <span className="text-muted-foreground">Last reported: </span>
                 {routine.lastReport.summary}
               </div>
             )}
             {routine.enabled && routine.suspended === "archived" && (
-              <div className="mt-0.5 text-[12px] text-warning">
+              <div className="mt-0.5 text-small text-warning">
                 Paused while {target?.name ?? "its agent"} is archived. It runs again once restored.
               </div>
             )}
@@ -1061,7 +1061,7 @@ function WebhooksTab({
       {/* list */}
       <div className="flex max-h-[180px] w-full shrink-0 flex-col border-b md:max-h-none md:w-[260px] md:border-b-0 md:border-r">
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Your webhooks
           </span>
           <select
@@ -1070,7 +1070,7 @@ function WebhooksTab({
               if (e.target.value) create(e.target.value);
               setMakingFor("");
             }}
-            className="rounded-lg border border-input bg-background px-1.5 py-1 text-[11.5px] text-muted-foreground outline-none"
+            className="rounded-lg border border-input bg-background px-1.5 py-1 text-small text-muted-foreground outline-none"
           >
             <option value="">+ New</option>
             {bots.map((b) => (
@@ -1101,12 +1101,12 @@ function WebhooksTab({
                   </span>
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium text-foreground">
+                  <span className="block truncate text-body font-medium text-foreground">
                     {hook.name}
                   </span>
                   <span
                     className={cn(
-                      "flex items-center gap-1 text-[11px]",
+                      "flex items-center gap-1 text-caption",
                       hook.enabled ? "text-success" : "text-muted-foreground",
                     )}
                   >
@@ -1123,7 +1123,7 @@ function WebhooksTab({
             );
           })}
           {hooks !== null && hooks.length === 0 && (
-            <div className="px-3 py-8 text-center text-[12.5px] leading-relaxed text-muted-foreground">
+            <div className="px-3 py-8 text-center text-body leading-relaxed text-muted-foreground">
               A webhook turns an outside event into a task for an agent.
             </div>
           )}
@@ -1132,7 +1132,7 @@ function WebhooksTab({
 
       {/* detail */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {error && <div className="px-6 pt-4 text-[12.5px] text-destructive">{error}</div>}
+        {error && <div className="px-6 pt-4 text-body text-destructive">{error}</div>}
         {selected ? (
           <div className="mx-auto max-w-[620px] px-6 py-5">
             <div className="flex items-center gap-3">
@@ -1159,10 +1159,10 @@ function WebhooksTab({
                     }
                   }}
                   onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                  className="-mx-1 w-full rounded-md px-1 text-[15px] font-semibold text-foreground outline-none transition-colors hover:bg-accent/60 focus:bg-accent/60"
+                  className="-mx-1 w-full rounded-md px-1 text-lead font-semibold text-foreground outline-none transition-colors hover:bg-accent/60 focus:bg-accent/60"
                   title="Rename"
                 />
-                <div className="text-[12px] text-muted-foreground">
+                <div className="text-small text-muted-foreground">
                   Tasks go to {target?.name ?? "?"}
                   {" · "}
                   {selected.firedCount
@@ -1186,7 +1186,7 @@ function WebhooksTab({
 
             <div className="mt-5 rounded-2xl border bg-card p-4">
               <div className="flex items-center justify-between">
-                <div className="text-[13px] font-semibold text-foreground">The URL</div>
+                <div className="text-body font-semibold text-foreground">The URL</div>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1202,7 +1202,7 @@ function WebhooksTab({
                 </Button>
               </div>
               <div className="relative mt-2 rounded-xl bg-foreground/[0.04] p-3 pr-11">
-                <code className="block break-all font-mono text-[11.5px] leading-relaxed text-foreground">
+                <code className="block break-all font-mono text-small leading-relaxed text-foreground">
                   {hookUrl}
                 </code>
                 <button
@@ -1217,11 +1217,11 @@ function WebhooksTab({
                   {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                 </button>
               </div>
-              <p className="mt-2 text-[12px] text-muted-foreground">
+              <p className="mt-2 text-small text-muted-foreground">
                 POST anything to it, or try it from Terminal:
               </p>
               <div className="relative mt-1.5 rounded-xl bg-foreground/[0.04] p-3">
-                <code className="block whitespace-pre-wrap break-all font-mono text-[11.5px] leading-relaxed text-foreground">
+                <code className="block whitespace-pre-wrap break-all font-mono text-small leading-relaxed text-foreground">
                   {curl}
                 </code>
               </div>
@@ -1229,7 +1229,7 @@ function WebhooksTab({
 
             {selected.botId && (
               <label className="mt-4 block rounded-2xl border bg-card p-4">
-                <div className="text-[13px] font-semibold text-foreground">Conversation</div>
+                <div className="text-body font-semibold text-foreground">Conversation</div>
                 <input
                   key={`${selected.id}:${selected.thread ?? ""}`}
                   defaultValue={selected.thread ?? ""}
@@ -1246,9 +1246,9 @@ function WebhooksTab({
                       .catch((err) => setError(err.message));
                   }}
                   onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                  className="mt-2 w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
+                  className="mt-2 w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-body text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
                 />
-                <p className="mt-1.5 text-[12px] text-muted-foreground">
+                <p className="mt-1.5 text-small text-muted-foreground">
                   Events go to {target?.name ?? "the agent"}'s first conversation, where you talk to it, unless you name
                   another; one that does not exist is made.
                 </p>
@@ -1256,22 +1256,22 @@ function WebhooksTab({
             )}
 
             <div className="mt-4 rounded-2xl border bg-card p-4">
-              <div className="text-[13px] font-semibold text-foreground">Recent deliveries</div>
+              <div className="text-body font-semibold text-foreground">Recent deliveries</div>
               {selected.deliveries?.length ? (
                 <div className="mt-2 flex flex-col gap-1.5">
                   {selected.deliveries.map((d, i) => (
-                    <div key={i} className="flex items-baseline gap-2.5 text-[12px]">
+                    <div key={i} className="flex items-baseline gap-2.5 text-small">
                       <span className="shrink-0 tabular-nums text-muted-foreground">
                         {new Date(d.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                       </span>
-                      <span className="min-w-0 truncate font-mono text-[11.5px] text-foreground">
+                      <span className="min-w-0 truncate font-mono text-small text-foreground">
                         {d.excerpt || "(empty payload)"}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="mt-1 text-[12.5px] text-muted-foreground">
+                <div className="mt-1 text-body text-muted-foreground">
                   Nothing yet. Each delivery shows up here with what it sent.
                 </div>
               )}
@@ -1279,8 +1279,8 @@ function WebhooksTab({
 
             <div className="mt-4 flex items-center justify-between rounded-2xl border bg-card p-4">
               <div>
-                <div className="text-[13px] font-semibold text-foreground">Remove this webhook</div>
-                <div className="text-[12px] text-muted-foreground">The URL stops answering.</div>
+                <div className="text-body font-semibold text-foreground">Remove this webhook</div>
+                <div className="text-small text-muted-foreground">The URL stops answering.</div>
               </div>
               <Button
                 variant="secondary"
@@ -1301,7 +1301,7 @@ function WebhooksTab({
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
+          <div className="flex h-full items-center justify-center text-body text-muted-foreground">
             {hooks === null ? "Loading…" : "Pick a webhook, or create one for an agent."}
           </div>
         )}

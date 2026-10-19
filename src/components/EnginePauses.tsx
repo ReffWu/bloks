@@ -129,8 +129,8 @@ export function EnginePauses() {
       <div className="px-4 pb-3 pt-4">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <div className="text-[13.5px] font-semibold text-foreground">Pauses</div>
-            <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+            <div className="text-ui font-semibold text-foreground">Pauses</div>
+            <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
               Hold an engine or a model for a while. An agent on it uses its backup if it has one that may go;
               otherwise its work waits and goes on its own when the pause ends.
             </div>
@@ -145,19 +145,19 @@ export function EnginePauses() {
       </div>
 
       {data.fault && (
-        <div className="border-t bg-warning/5 px-4 py-2.5 text-[12px] leading-relaxed text-warning">{data.fault}</div>
+        <div className="border-t bg-warning/5 px-4 py-2.5 text-small leading-relaxed text-warning">{data.fault}</div>
       )}
 
       {data.pauses.map((p) => (
         <div key={p.id} className="flex items-start gap-3 border-t px-4 py-3">
           <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-medium text-foreground">{p.label}</div>
-            <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+            <div className="text-ui font-medium text-foreground">{p.label}</div>
+            <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
               {p.agents === "all" ? "Every agent" : (p.agentNames ?? p.agents).join(", ")}, until {stamp(p.until)}
               {p.byName ? ` · ${p.byName} paused itself` : ""}
               {p.running ? ` · ${p.running} running ${p.running === 1 ? "turn finishes" : "turns finish"} first` : ""}
             </div>
-            {p.note && <div className="mt-0.5 text-[12px] text-muted-foreground">{p.note}</div>}
+            {p.note && <div className="mt-0.5 text-small text-muted-foreground">{p.note}</div>}
           </div>
           <Button variant="ghost" size="sm" onClick={() => end(p.id)} className="shrink-0 text-muted-foreground hover:text-foreground">
             End now
@@ -166,18 +166,18 @@ export function EnginePauses() {
       ))}
 
       {data.pauses.length === 0 && !adding && (
-        <div className="border-t px-4 py-3 text-[12.5px] text-muted-foreground">Nothing is paused.</div>
+        <div className="border-t px-4 py-3 text-body text-muted-foreground">Nothing is paused.</div>
       )}
 
       {adding && (
-        <div className="flex flex-col gap-2.5 border-t px-4 py-3 text-[12.5px]">
+        <div className="flex flex-col gap-2.5 border-t px-4 py-3 text-body">
           <label className="flex items-center justify-between gap-3 text-muted-foreground">
             <span>What</span>
             <select
               autoFocus
               value={choice}
               onChange={(e) => setChoice(e.target.value)}
-              className="min-w-0 max-w-[70%] rounded-md border bg-background px-2 py-1 text-[12.5px] text-foreground"
+              className="min-w-0 max-w-[70%] rounded-md border bg-background px-2 py-1 text-body text-foreground"
             >
               <option value="">Choose an engine or a model</option>
               {groups.map(([group, rows]) => (
@@ -196,7 +196,7 @@ export function EnginePauses() {
             <select
               value={everyone ? "all" : "some"}
               onChange={(e) => setEveryone(e.target.value === "all")}
-              className="rounded-md border bg-background px-2 py-1 text-[12.5px] text-foreground"
+              className="rounded-md border bg-background px-2 py-1 text-body text-foreground"
             >
               <option value="all">Every agent</option>
               <option value="some">Agents I choose</option>
@@ -214,8 +214,8 @@ export function EnginePauses() {
                     onClick={() => setChosen(on ? chosen.filter((id) => id !== b.id) : [...chosen, b.id])}
                     className={
                       on
-                        ? "rounded-full border border-brand/50 bg-brand/10 px-2.5 py-0.5 text-[12px] text-foreground"
-                        : "rounded-full border px-2.5 py-0.5 text-[12px] text-muted-foreground hover:text-foreground"
+                        ? "rounded-full border border-brand/50 bg-brand/10 px-2.5 py-0.5 text-small text-foreground"
+                        : "rounded-full border px-2.5 py-0.5 text-small text-muted-foreground hover:text-foreground"
                     }
                   >
                     {b.name}
@@ -229,7 +229,7 @@ export function EnginePauses() {
             <select
               value={minutes}
               onChange={(e) => setMinutes(Number(e.target.value))}
-              className="rounded-md border bg-background px-2 py-1 text-[12.5px] text-foreground"
+              className="rounded-md border bg-background px-2 py-1 text-body text-foreground"
             >
               {LENGTHS.map(([value, label]) => (
                 <option key={value} value={value}>
@@ -243,7 +243,7 @@ export function EnginePauses() {
             onChange={(e) => setNote(e.target.value)}
             maxLength={200}
             placeholder="Why (optional), e.g. saving the plan for Friday"
-            className="h-8 text-[13px]"
+            className="h-8 text-body"
           />
           <label className="flex items-center justify-between gap-3 text-muted-foreground">
             <span>Also stop what is running on it now</span>
@@ -261,7 +261,7 @@ export function EnginePauses() {
       )}
 
       {(error || said) && (
-        <div className={error ? "border-t px-4 py-2.5 text-[12px] text-destructive" : "border-t px-4 py-2.5 text-[12px] text-muted-foreground"}>
+        <div className={error ? "border-t px-4 py-2.5 text-small text-destructive" : "border-t px-4 py-2.5 text-small text-muted-foreground"}>
           {error ?? said}
         </div>
       )}
