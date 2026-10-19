@@ -104,13 +104,6 @@ function lookStops(every: number): SliderStop<number>[] {
   return values.map((m) => ({ value: m, label: intervalLabel(m) }));
 }
 
-/** Room for a Slider in a scrolling pane: its thumb rides a rail that is
- * moved rather than resized, and a moved box still widens the scroller.
- * Clipped sideways only, so the focus ring still shows. */
-function SliderRoom({ children }: { children: React.ReactNode }) {
-  return <div className="-mx-1.5 overflow-x-clip px-1.5">{children}</div>;
-}
-
 /** What is being watched, in as few words as a sentence can carry: a
  * folder's last name, a page without its scheme. */
 function shortTarget(kind: Kind, target: string): string {
@@ -302,9 +295,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
       {kind === "folder" ? (
         <div className="text-body text-muted-foreground">As it changes. Folders are watched within seconds.</div>
       ) : (
-        <SliderRoom>
-          <Slider aria-label="How often it looks" stops={lookStops(every)} value={every} onChange={setEvery} onCommit={setEvery} />
-        </SliderRoom>
+        <Slider aria-label="How often it looks" stops={lookStops(every)} value={every} onChange={setEvery} onCommit={setEvery} />
       )}
 
       <div className="mt-6 flex items-start gap-3 rounded-xl bg-muted/60 px-3.5 py-3">
@@ -435,9 +426,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
         <div className="max-w-[460px]">
           <div className="mb-1.5 text-body text-muted-foreground">How often it looks</div>
           {/* saved where the finger lets go, not at every stop on the way */}
-          <SliderRoom>
-            <Slider aria-label="How often it looks" stops={lookStops(w.every)} value={w.every} onCommit={(every) => patch({ every })} />
-          </SliderRoom>
+          <Slider aria-label="How often it looks" stops={lookStops(w.every)} value={w.every} onCommit={(every) => patch({ every })} />
         </div>
       )}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-body text-muted-foreground">

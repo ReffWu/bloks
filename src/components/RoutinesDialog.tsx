@@ -830,9 +830,7 @@ function CreateForm({
                       )}
                       {shownMode === "every" && (
                         <>
-                          <SliderRoom>
-                            <Slider aria-label="How often" stops={EVERY_STOPS} value={every} onChange={setEvery} onCommit={setEvery} />
-                          </SliderRoom>
+                          <Slider aria-label="How often" stops={EVERY_STOPS} value={every} onChange={setEvery} onCommit={setEvery} />
                           <div className="mt-1 text-small text-muted-foreground">
                             Check-ins stay silent unless something needs you.
                           </div>
@@ -965,9 +963,7 @@ function CreateForm({
                       <div>
                         <div className="mb-1 text-body font-medium text-foreground">How long it takes</div>
                         <div className="mb-2 text-small text-muted-foreground">The time it holds on the calendar.</div>
-                        <SliderRoom>
-                          <Slider aria-label="How long it takes" stops={DURATION_STOPS} value={durationMin} onChange={setDurationMin} onCommit={setDurationMin} />
-                        </SliderRoom>
+                        <Slider aria-label="How long it takes" stops={DURATION_STOPS} value={durationMin} onChange={setDurationMin} onCommit={setDurationMin} />
                       </div>
                     )}
                     {forAgent && target && (
@@ -1120,15 +1116,6 @@ function Token({
       </motion.span>
     </button>
   );
-}
-
-/** Room for a Slider inside a scrolling column. Its thumb rides a rail
- * that is moved rather than resized, and a moved box still widens the
- * scroller it sits in, so the column grew a sideways scrollbar. Clipped
- * sideways only, with a little air, so the focus ring and the pressed
- * thumb still show in full. */
-function SliderRoom({ children }: { children: React.ReactNode }) {
-  return <div className="-mx-1.5 overflow-x-clip px-1.5">{children}</div>;
 }
 
 /** A small round choice in a row of them: a time, a day. */

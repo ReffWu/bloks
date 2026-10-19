@@ -37,6 +37,10 @@ const NAMED = 7;
 /** The thumb's diameter, which the invisible input's thumb has to match
  * so the finger and the dot never drift apart (styles.css, .slider-input). */
 const THUMB = 20;
+/** Where the track starts and ends: half a thumb in, and two pixels of
+ * slack so a thumb grown under the finger never pokes past the edge and
+ * gives a scrolling panel a sideways scrollbar. */
+const EDGE = THUMB / 2 + 2;
 
 export function Slider<T>({
   stops,
@@ -129,7 +133,7 @@ export function Slider<T>({
           {/* the track, and the fill sliding out of it */}
           <div
             className="absolute top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-muted"
-            style={{ left: THUMB / 2, right: THUMB / 2 }}
+            style={{ left: EDGE, right: EDGE }}
           >
             <div
               className="absolute inset-0 rounded-full bg-brand"
@@ -140,9 +144,10 @@ export function Slider<T>({
             />
           </div>
 
-          {/* the rail: the track's width, so a percentage of it is a
-              position on the track */}
-          <div className="pointer-events-none absolute inset-y-0" style={{ left: THUMB / 2, right: THUMB / 2 }}>
+          {/* the rail: the track's width, and a size container, so the
+              thumb can travel a share of it (cqw) while being no wider
+              than a point itself */}
+          <div className="pointer-events-none absolute inset-y-0 [container-type:inline-size]" style={{ left: EDGE, right: EDGE }}>
             {named &&
               stops.map((_, i) => (
                 <span
@@ -155,9 +160,9 @@ export function Slider<T>({
                 />
               ))}
             <div
-              className="absolute inset-0"
+              className="absolute inset-y-0 left-0 w-0"
               style={{
-                transform: `translateX(${at * 100}%)`,
+                transform: `translateX(${at * 100}cqw)`,
                 transition: glide ? ease : "none",
               }}
             >
@@ -175,11 +180,14 @@ export function Slider<T>({
                 <span
                   aria-hidden
                   className={cn(
-                    "absolute bottom-full left-0 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-0.5 text-small font-medium tabular-nums text-background shadow-sm transition-[opacity,scale] duration-150 ease-out",
+                    "absolute bottom-full left-0 mb-1.5 whitespace-nowrap rounded-md bg-foreground px-2 py-0.5 text-small font-medium tabular-nums text-background shadow-sm transition-[opacity,scale] duration-150 ease-out",
+                    // it leans away from the end it is near, so at either
+                    // end it stays over the track instead of hanging off
                     held !== null
                       ? "scale-100 opacity-100"
                       : "scale-95 opacity-0 group-has-[input:focus-visible]:scale-100 group-has-[input:focus-visible]:opacity-100",
                   )}
+                  style={{ translate: `${-at * 100}% 0` }}
                 >
                   {stops[index].label}
                 </span>
@@ -189,7 +197,8 @@ export function Slider<T>({
 
           <input
             type="range"
-            className="slider-input absolute inset-0 m-0 h-full w-full cursor-pointer opacity-0"
+            className="slider-input absolute inset-y-0 m-0 h-full cursor-pointer opacity-0"
+            style={{ left: EDGE - THUMB / 2, right: EDGE - THUMB / 2 }}
             min={0}
             max={last}
             step={1}
@@ -204,7 +213,7 @@ export function Slider<T>({
         </div>
 
         {named && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5" style={{ marginLeft: THUMB / 2, marginRight: THUMB / 2 }}>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5" style={{ marginLeft: EDGE, marginRight: EDGE }}>
             {stops.map((stop, i) => (
               <button
                 key={i}
@@ -214,7 +223,7 @@ export function Slider<T>({
                 className={cn(
                   "pointer-events-auto absolute top-0 whitespace-nowrap text-small transition-colors duration-150",
                   // the ends hug their edge so they never spill past it
-                  i === 0 ? "-translate-x-[10px]" : i === last ? "-translate-x-[calc(100%-10px)]" : "-translate-x-1/2",
+                  i === 0 ? "-translate-x-[12px]" : i === last ? "-translate-x-[calc(100%-12px)]" : "-translate-x-1/2",
                   i === index ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
                 style={{ left: `${last ? (i / last) * 100 : 0}%` }}
