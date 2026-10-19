@@ -73,7 +73,7 @@ export function McpAppsCard() {
         Apps from your MCP servers. They run sealed off from the internet and from Bloks.
       </div>
       {servers.length === 0 ? (
-        <div className="mt-3 rounded-xl border border-dashed px-3 py-4 text-center text-small text-muted-foreground">
+        <div className="mt-3 px-3 py-6 text-center text-small text-muted-foreground">
           No MCP servers yet. Use Add to connect one.
         </div>
       ) : (

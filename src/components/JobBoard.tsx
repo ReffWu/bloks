@@ -153,7 +153,7 @@ export function JobBoard() {
           </div>
         )}
         {jobs?.length === 0 && (
-          <div className="rounded-2xl border border-dashed px-4 py-8 text-center text-body text-muted-foreground">
+          <div className="px-4 py-10 text-center text-body text-muted-foreground">
             No jobs yet.
           </div>
         )}

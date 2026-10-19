@@ -601,7 +601,7 @@ export function RoomView({ blok }: { blok: Blok }) {
 
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <div className="titlebar-drag flex h-[52px] shrink-0 items-center justify-between gap-2 border-b px-3 md:px-4">
+      <div className="titlebar-drag flex h-[52px] shrink-0 items-center justify-between gap-2 border-b px-3 max-md:pl-16 md:px-4">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
             <Users size={15} />

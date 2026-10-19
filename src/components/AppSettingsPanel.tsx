@@ -1120,7 +1120,7 @@ export function AppSettingsPanel() {
         {/* No back button of its own: the title bar's Back (or Esc) leaves,
             and on a phone the pill's drawer does; the room on the left
             there is the pill's. */}
-        <div className="flex h-[52px] items-center px-4 max-md:pl-[92px]">
+        <div className="flex h-[52px] items-center px-4 max-md:pl-16">
           <span className="text-lead font-semibold text-foreground">Settings</span>
         </div>
         <div className="px-3 pb-2">
@@ -1147,7 +1147,7 @@ export function AppSettingsPanel() {
         <div className="flex gap-0.5 overflow-x-auto px-2 pb-2 [scrollbar-width:none] md:flex-1 md:flex-col md:overflow-y-auto md:pb-4 [&::-webkit-scrollbar]:hidden">
           {groups.map((g) => (
             <div key={g.group} className="flex shrink-0 gap-0.5 md:flex-col">
-              <div className="hidden px-2.5 pb-1 pt-3 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground md:block">
+              <div className="hidden px-2.5 pb-1 pt-3 text-small font-medium text-muted-foreground md:block">
                 {g.group}
               </div>
               {g.pages.map((p) => {

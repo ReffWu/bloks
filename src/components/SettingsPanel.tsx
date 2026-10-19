@@ -250,7 +250,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
             and Esc go back to the chat, and so does the chat button by the
             name. On a phone the pill sits in the corner, so the row leaves
             it room. */}
-        <div className="titlebar-drag flex h-[52px] shrink-0 items-center gap-2.5 px-4 max-md:pl-[92px]">
+        <div className="titlebar-drag flex h-[52px] shrink-0 items-center gap-2.5 px-4 max-md:pl-16">
           <AgentAvatar bot={bot} size={22} />
           <span className="min-w-0 truncate text-ui font-semibold text-foreground">{bot.name || "Unnamed"}</span>
           <span className="shrink-0 text-body text-muted-foreground">Settings</span>

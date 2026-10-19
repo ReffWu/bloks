@@ -422,9 +422,9 @@ export function NewRoomDialog() {
               }
             >
               {galleryTeams === null ? (
-                <div className="col-span-full rounded-xl border border-dashed p-4 text-body text-muted-foreground">Loading the gallery</div>
+                <div className="col-span-full p-4 text-body text-muted-foreground">Loading the gallery</div>
               ) : galleryTeams.length === 0 ? (
-                <div className="col-span-full rounded-xl border border-dashed p-4 text-body text-muted-foreground">
+                <div className="col-span-full p-4 text-body text-muted-foreground">
                   {galleryError ? "Couldn't reach the gallery." : "Nothing in the gallery yet."}
                 </div>
               ) : (

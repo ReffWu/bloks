@@ -1400,7 +1400,7 @@ function PreviewCard({
 
       <div className="px-5 pb-5 pt-4">
         {/* the first thing they will say, as it will look in the chat */}
-        <div className="text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">First words</div>
+        <div className="text-small font-medium text-muted-foreground">First words</div>
         <div className="mt-2 flex items-end gap-2">
           <BlokAvatar color={identity.color} shape={identity.shape} expression="friendly" size={22} />
           <div className="min-w-0 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-body leading-relaxed text-foreground">

@@ -194,11 +194,11 @@ export function ActivityPanel() {
 
   return (
     <div
-      className="flex min-w-0 flex-col rounded-2xl border bg-card p-4 sm:p-5"
+      className="flex min-w-0 flex-col rounded-2xl border bg-card p-5 sm:p-6"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-lead font-semibold text-foreground">Activity</div>
+          <div className="text-title font-semibold text-foreground">Activity</div>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             {view === "map"
               ? "Your whole team. Click anyone to open them."
@@ -234,7 +234,7 @@ export function ActivityPanel() {
       )}
 
       {view === "list" && activity && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-muted/50 px-3 py-2 text-body text-muted-foreground">
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1 text-body text-muted-foreground">
           <span>
             <span className="text-foreground">{activity.today.turns}</span> replies today
           </span>
@@ -264,11 +264,9 @@ export function ActivityPanel() {
         </div>
       )}
 
-      <div className={cn("mt-3 min-h-0 flex-1 overflow-y-auto", view === "map" && "hidden")}>
+      <div className={cn("mt-4 min-h-0 flex-1 overflow-y-auto", view === "map" && "hidden")}>
         {quiet && (
-          <div className="rounded-2xl border border-dashed px-4 py-10 text-center">
-            <div className="text-ui text-foreground">Nothing running right now.</div>
-          </div>
+          <div className="px-4 py-10 text-center text-body text-muted-foreground">Nothing running right now.</div>
         )}
 
         {activity?.waiting.length ? (
@@ -437,7 +435,7 @@ export function ActivityPanel() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-4 last:mb-0">
-      <div className="mb-1.5 text-small font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="mb-1.5 text-small font-medium text-muted-foreground">
         {title}
       </div>
       <div className="flex flex-col gap-1">{children}</div>

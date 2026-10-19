@@ -702,7 +702,7 @@ function OwnerToolsSection({
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="mb-2 text-small font-semibold uppercase tracking-wide text-muted-foreground">{children}</div>;
+  return <div className="mb-2 text-small font-medium text-muted-foreground">{children}</div>;
 }
 
 function Toggle({

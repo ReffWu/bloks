@@ -35,21 +35,21 @@ function OverviewPage() {
     <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1200px] px-6 pb-16 pt-9 max-md:pt-16 lg:px-10">
-          <header className="mb-8">
+          <header className="mb-10">
             <p className="text-body text-muted-foreground">{today}</p>
             <h1 className="mt-1 text-balance text-display font-semibold text-foreground">{greeting()}</h1>
-            <p className="mt-1.5 text-pretty text-ui text-muted-foreground">
+            <p className="mt-2 text-pretty text-ui text-muted-foreground">
               {now.length ? `${now.join(", ")}.` : "Nothing running or waiting."}
             </p>
           </header>
-          <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
             <BriefPanel />
-            <div className="flex min-w-0 flex-col gap-5">
+            <div className="flex min-w-0 flex-col gap-8">
               <ActivityPanel />
               <ProjectsPanel />
             </div>
           </div>
-          <div className="mt-5">
+          <div className="mt-8">
             <RehearsalsPanel />
           </div>
         </div>

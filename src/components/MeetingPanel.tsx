@@ -213,7 +213,7 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {!available ? (
-            <div className="rounded-xl border border-dashed px-4 py-8 text-center text-body text-muted-foreground">
+            <div className="px-4 py-10 text-center text-body text-muted-foreground">
               Meeting notes need the Bloks app on a Mac.
             </div>
           ) : recording ? (
@@ -261,7 +261,7 @@ export function MeetingPanel({ bot }: { bot: Bot }) {
               </label>
               {past.length > 0 && (
                 <div className="mt-2">
-                  <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">Earlier</div>
+                  <div className="mb-1.5 text-small font-medium text-muted-foreground">Earlier</div>
                   <div className="flex flex-col gap-3">
                     {past.slice(0, 5).map((m) => (
                       <div key={m.id} className="rounded-xl border p-3">

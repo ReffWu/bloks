@@ -189,7 +189,7 @@ export function Workflows() {
       )}
 
       {workflows?.length === 0 && (
-        <div className="rounded-2xl border border-dashed px-4 py-10 text-center">
+        <div className="px-4 py-10 text-center">
           <div className="text-ui text-foreground">No workflows yet.</div>
         </div>
       )}
@@ -343,7 +343,7 @@ function WorkflowCard({
 
           {runs.length > 0 && (
             <div className="mt-3 border-t pt-3">
-              <div className="text-small font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="text-small font-medium text-muted-foreground">
                 Runs
               </div>
               <div className="mt-1.5 flex flex-col gap-2">

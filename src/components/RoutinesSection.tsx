@@ -199,7 +199,7 @@ export function RoutinesSection({
         ))}
 
         {routines?.length === 0 && !adding && (
-          <div className="rounded-xl border border-dashed px-3 py-4 text-center text-small text-muted-foreground">
+          <div className="px-3 py-6 text-center text-small text-muted-foreground">
             Nothing scheduled yet.
           </div>
         )}

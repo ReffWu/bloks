@@ -348,7 +348,7 @@ function PairingControls() {
 
           {status.devices.length > 0 && (
             <div className="mt-4 flex flex-col gap-1">
-              <div className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="text-small font-medium text-muted-foreground">
                 Paired
               </div>
               {status.devices.map((device) => (

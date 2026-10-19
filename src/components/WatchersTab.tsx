@@ -275,7 +275,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
       )}
       {w.lastError && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{w.lastError}</div>}
       <div>
-        <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">Triggered</div>
+        <div className="mb-1.5 text-small font-medium text-muted-foreground">Triggered</div>
         {w.fires.length === 0 ? (
           <div className="text-body text-muted-foreground">
             Not yet.
@@ -337,7 +337,7 @@ export function WatchersTab() {
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <div className="flex max-h-[200px] w-full shrink-0 flex-col border-b md:max-h-none md:w-[260px] md:border-b-0 md:border-r">
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
-          <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">Watching</span>
+          <span className="text-small font-medium text-muted-foreground">Watching</span>
           <button onClick={() => setSelected("new")} className="rounded-lg px-1.5 py-1 text-small text-muted-foreground hover:bg-accent hover:text-foreground">
             + New
           </button>

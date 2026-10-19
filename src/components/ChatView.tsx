@@ -1181,7 +1181,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       {/* Header. Who you are talking to sits in the middle once there is
           room for it to sit clear of the buttons; narrower, it moves to
           the left, where a name has the most room. */}
-      <div className="titlebar-drag relative flex h-[52px] shrink-0 items-center justify-between gap-2 px-3 max-md:pl-[92px] md:px-4">
+      <div className="titlebar-drag relative flex h-[52px] shrink-0 items-center justify-between gap-2 px-3 max-md:pl-16 md:px-4">
         <button
           onClick={() => dispatch({ type: "toggleSettings" })}
           className="flex min-w-0 items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors duration-150 hover:bg-accent @[760px]/chat:absolute @[760px]/chat:left-1/2 @[760px]/chat:max-w-[40%] @[760px]/chat:-translate-x-1/2"

@@ -77,7 +77,7 @@ export function ProjectsPanel() {
 
   return (
     <div
-      className="flex min-w-0 flex-col rounded-2xl border bg-card p-5"
+      className="flex min-w-0 flex-col rounded-2xl border bg-card p-6"
     >
       <div className="flex items-center justify-between">
         <div>
@@ -120,7 +120,7 @@ export function ProjectsPanel() {
             Reading projects
           </div>
         ) : projects.length === 0 ? (
-          <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-body text-muted-foreground">
+          <div className="px-4 py-10 text-center text-body text-muted-foreground">
             No projects yet.
           </div>
         ) : (
@@ -133,8 +133,8 @@ export function ProjectsPanel() {
                 <div
                   key={project.id}
                   className={cn(
-                    "rounded-2xl border bg-card p-3.5",
-                    state.projectId === project.id && "border-foreground/25",
+                    "rounded-xl bg-muted/50 p-4",
+                    state.projectId === project.id && "ring-1 ring-foreground/20",
                   )}
                 >
                   <div className="flex items-start gap-3">

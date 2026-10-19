@@ -215,7 +215,7 @@ function Group({ title, note, rows }: { title: string; note: string; rows: Provi
   return (
     <>
       <div className="border-t bg-muted/30 px-4 py-2">
-        <div className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <div className="text-small font-medium text-muted-foreground">
           {title}
         </div>
         <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">{note}</div>

@@ -84,7 +84,7 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-ui text-muted-foreground">{children}</div>;
+  return <div className="px-6 py-12 text-center text-ui text-muted-foreground">{children}</div>;
 }
 
 const usedBy = (n: number) => (n === 0 ? "No agents" : n === 1 ? "1 agent" : `${n} agents`);

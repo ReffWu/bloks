@@ -801,7 +801,7 @@ function Timeline({ owner }: { owner: Owner }) {
   }
   if (entries.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed px-6 py-10 text-center text-body leading-relaxed text-muted-foreground">
+      <div className="px-6 py-10 text-center text-body leading-relaxed text-muted-foreground">
         No changes yet.
       </div>
     );

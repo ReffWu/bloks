@@ -9,9 +9,9 @@ import { InfoTip } from "@/components/ui/info-tip";
 
 export function SettingsPageHeader({ title, description }: { title: string; description?: React.ReactNode }) {
   return (
-    <div className="mb-6">
-      <h1 className="text-balance text-heading font-semibold tracking-[-0.01em] text-foreground">{title}</h1>
-      {description && <p className="mt-1 text-pretty text-body text-muted-foreground">{description}</p>}
+    <div className="mb-8">
+      <h1 className="text-balance text-heading font-semibold text-foreground">{title}</h1>
+      {description && <p className="mt-1.5 text-pretty text-body text-muted-foreground">{description}</p>}
     </div>
   );
 }
@@ -26,9 +26,9 @@ export function SettingsGroup({
   className?: string;
 }) {
   return (
-    <section className={cn("mb-6", className)}>
+    <section className={cn("mb-9", className)}>
       {title && (
-        <h2 className="mb-2 px-1 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">{title}</h2>
+        <h2 className="mb-2.5 px-1 text-body font-medium text-muted-foreground">{title}</h2>
       )}
       <div className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">{children}</div>
     </section>
@@ -53,8 +53,8 @@ export function SettingRow({
   htmlFor?: string;
 }) {
   return (
-    <div className="px-4 py-3.5">
-      <div className="flex items-center gap-4">
+    <div className="px-5 py-4">
+      <div className="flex items-center gap-6">
         <div className="min-w-0 flex-1">
           <label htmlFor={htmlFor} className="flex items-center gap-1.5 text-ui font-medium text-foreground">
             {label}

@@ -67,7 +67,7 @@ export function RehearsalsPanel() {
       role="region"
       aria-label="Rehearsals"
     >
-      <div className="flex items-center justify-between border-b px-5 py-4">
+      <div className="flex items-center justify-between border-b px-6 py-5">
         <div>
           <div className="flex items-center gap-2 text-title font-semibold text-foreground">
             <FlaskConical size={17} className="text-muted-foreground" />
@@ -79,14 +79,14 @@ export function RehearsalsPanel() {
         </div>
       </div>
 
-      <div className="p-5">
+      <div className="p-6">
         {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>}
         {attempts === null ? (
           <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" /> Loading
           </div>
         ) : groups.length === 0 ? (
-          <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-body leading-relaxed text-muted-foreground">
+          <div className="px-6 py-12 text-center text-body leading-relaxed text-muted-foreground">
             Nothing rehearsed yet. Press the flask in any chat to try a task on a copy first.
           </div>
         ) : (

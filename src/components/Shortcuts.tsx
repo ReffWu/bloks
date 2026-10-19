@@ -142,7 +142,7 @@ function ShortcutsSheet() {
         <div className="min-h-0 gap-x-8 overflow-y-auto px-5 pb-1 pt-4 sm:columns-2">
           {groups.map((group) => (
             <section key={group.id} className="mb-5 break-inside-avoid">
-              <h3 className="pb-1 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <h3 className="pb-1 text-small font-medium text-muted-foreground">
                 {group.label}
               </h3>
               {group.shortcuts.map((shortcut) => (

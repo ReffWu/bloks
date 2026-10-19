@@ -270,7 +270,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
   return (
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 animate-fade-in flex-col bg-background">
       {/* ── header ── */}
-      <div className="flex h-[58px] shrink-0 items-center justify-between border-b px-5 max-md:pl-[92px]">
+      <div className="flex h-[58px] shrink-0 items-center justify-between border-b px-5 max-md:pl-16">
         {/* The panel sits beside the sidebar, so it is narrower than the
             window and a viewport breakpoint cannot see that. The title
             gives up its width instead: the tabs are the controls, and a
@@ -571,7 +571,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
           {/* ── check-ins, in words ── */}
           {checkIns.length > 0 && (
             <div className="shrink-0 border-t px-5 py-2.5">
-              <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="mb-1.5 text-small font-medium text-muted-foreground">
                 Check-ins
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -596,7 +596,7 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
           {/* ── paused strip ── */}
           {paused.length > 0 && (
             <div className="shrink-0 border-t px-5 py-2.5">
-              <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="mb-1.5 text-small font-medium text-muted-foreground">
                 Paused
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -807,7 +807,7 @@ function RunHistory({ runs }: { runs?: RoutineRun[] }) {
   }
   return (
     <div className="mt-4 border-t pt-3">
-      <div className="mb-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="mb-1.5 text-small font-medium text-muted-foreground">
         Recent runs
       </div>
       <div className="max-h-[190px] overflow-y-auto">
@@ -1060,7 +1060,7 @@ function WebhooksTab({
       {/* list */}
       <div className="flex max-h-[180px] w-full shrink-0 flex-col border-b md:max-h-none md:w-[260px] md:border-b-0 md:border-r">
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
-          <span className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          <span className="text-small font-medium text-muted-foreground">
             Your webhooks
           </span>
           <select

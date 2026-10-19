@@ -163,7 +163,7 @@ export function BriefPanel() {
       role="dialog"
       aria-label="Morning brief"
     >
-      <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+      <div className="flex items-center justify-between gap-3 border-b px-6 py-5">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-title font-semibold text-foreground">
             <Sunrise size={17} className="text-muted-foreground" />
@@ -187,14 +187,14 @@ export function BriefPanel() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>}
         {!data ? (
           <div className="flex items-center justify-center gap-2 py-10 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" /> Loading
           </div>
         ) : !brief ? (
-          <div className="rounded-2xl border border-dashed px-6 py-12 text-center text-body leading-relaxed text-muted-foreground">
+          <div className="px-6 py-12 text-center text-body leading-relaxed text-muted-foreground">
             First brief at {data.settings.time}. Press <strong>Now</strong> for one today.
           </div>
         ) : (
@@ -235,7 +235,7 @@ export function BriefPanel() {
 
             {brief.waiting.length > 0 && (
               <section>
-                <h3 className="mb-2 text-small font-medium uppercase tracking-wide text-muted-foreground">Waiting on you</h3>
+                <h3 className="mb-2 text-small font-medium text-muted-foreground">Waiting on you</h3>
                 <ul className="flex flex-col gap-2">
                   {brief.waiting.map((w) => {
                     const agent = state.bots.find((b) => b.id === w.botId);
@@ -291,7 +291,7 @@ export function BriefPanel() {
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 text-body text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-4 text-body text-muted-foreground">
         <label className="flex items-center gap-2">
           <Switch checked={data?.settings.enabled ?? true} onCheckedChange={(on) => settings({ enabled: on })} aria-label="Brief every day" />
           Every day at

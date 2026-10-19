@@ -411,7 +411,7 @@ function BotListItem({
           <AgentAvatar bot={bot} size={24} />
           {/* No pin on the row: the line under a list's last pin says what
               is held, and every name starts on the same edge. */}
-          <span className="min-w-0 flex-1 truncate text-ui font-semibold text-foreground">{bot.name}</span>
+          <span className="min-w-0 flex-1 truncate text-ui font-medium text-foreground">{bot.name}</span>
           {/* the trailing state steps aside for the + on hover, all of it,
               so the two never sit on top of each other */}
           <span className="flex shrink-0 items-center gap-1.5 transition-opacity duration-150 group-hover/agent:opacity-0">
@@ -465,7 +465,7 @@ function BotListItem({
       <AgentAvatar bot={bot} size={42} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="min-w-0 truncate text-ui font-semibold text-foreground">{bot.name}</span>
+          <span className="min-w-0 truncate text-ui font-medium text-foreground">{bot.name}</span>
           {heardAt !== undefined && (
             <span className="shrink-0 text-small tabular-nums text-muted-foreground">
               {formatWhen(heardAt)}
@@ -540,7 +540,7 @@ function RoomListItem({
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-1.5 truncate text-ui font-semibold text-foreground">
+          <span className="flex min-w-0 items-center gap-1.5 truncate text-ui font-medium text-foreground">
             <Users size={11} className="shrink-0 text-muted-foreground" />
             <span className="truncate">{blok.name}</span>
           </span>
@@ -1076,7 +1076,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
             >
               {unfiledRooms.length > 0 && (
                 <>
-                  <div className="flex items-center justify-between px-2.5 pb-1 pt-1 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  <div className="flex items-center justify-between px-2.5 pb-1 pt-1 text-small font-medium text-muted-foreground">
                     Rooms
                     <button
                       onClick={() => dispatch({ type: "toggleNewRoom", open: true })}
@@ -1087,7 +1087,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                     </button>
                   </div>
                   {drawList(unfiledRooms)}
-                  <div className="flex items-center justify-between px-2.5 pb-1 pt-3 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  <div className="flex items-center justify-between px-2.5 pb-1 pt-3 text-small font-medium text-muted-foreground">
                     Agents
                     <button
                       onClick={() => setConversations(!conversations)}
@@ -1175,7 +1175,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                     const neighbour = shownSections[index + (e.key === "ArrowUp" ? -1 : 1)];
                     if (neighbour) saveSectionOrder(moveSection(shownSections, name, neighbour, e.key === "ArrowUp" ? "before" : "after"));
                   }}
-                  className="flex cursor-grab items-center gap-1.5 rounded px-2.5 pb-1 pt-3 text-left text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing"
+                  className="flex cursor-grab items-center gap-1.5 rounded px-2.5 pb-1 pt-3 text-left text-small font-medium text-muted-foreground transition-colors hover:text-foreground active:cursor-grabbing"
                 >
                   <Folder size={11} className="shrink-0" />
                   <span className="truncate">{name}</span>

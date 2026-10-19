@@ -130,7 +130,7 @@ export function RulesPanel() {
       )}
 
       {rules?.length === 0 && !adding && (
-        <div className="mt-3 rounded-2xl border border-dashed px-4 py-8 text-center">
+        <div className="mt-3 px-4 py-10 text-center">
           <div className="text-body text-foreground">No rules yet.</div>
           <div className="mx-auto mt-1 max-w-[380px] text-body leading-relaxed text-muted-foreground">
             Add one when you keep answering the same question.
