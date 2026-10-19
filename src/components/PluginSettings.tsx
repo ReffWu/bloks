@@ -28,6 +28,7 @@ import { tryPrompt } from "@/lib/tryPrompt";
 import { AddMcpServerDialog, BackLink, McpServerSettings, mcpTarget, useMcpServers } from "./McpServers";
 import { AddSkillDialog } from "./SkillsPanel";
 import { ServiceIcon } from "./Customize";
+import { ComposioKeyDialog } from "./ComposioKeyDialog";
 import { AgentAvatar } from "./Avatar";
 import { Switch } from "@/components/ui/switch";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -140,7 +141,10 @@ export function PluginSettings() {
   if (focus?.kind === "app") {
     const card = connectors.cards?.find((c) => c.slug === focus.id);
     return card ? (
-      <AppSettings card={card} connected={Boolean(connectors.status[card.slug]?.connected)} connectors={connectors} onBack={() => setFocus(null)} />
+      <>
+        <AppSettings card={card} connected={Boolean(connectors.status[card.slug]?.connected)} connectors={connectors} onBack={() => setFocus(null)} />
+        <ComposioKeyDialog connectors={connectors} />
+      </>
     ) : (
       <div>
         <BackLink onBack={() => setFocus(null)} />
@@ -258,10 +262,9 @@ export function PluginSettings() {
           ) : !connectors.configured ? (
             <Empty>
               Connecting apps needs a Composio key.{" "}
-              <button onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })} className="text-foreground underline underline-offset-2">
-                Add one in Apps and keys
+              <button onClick={() => connectors.askForKey()} className="text-foreground underline underline-offset-2">
+                Add a key
               </button>
-              .
             </Empty>
           ) : apps.length === 0 ? (
             <Empty>
@@ -396,6 +399,7 @@ export function PluginSettings() {
         }}
       />
       <AddSkillDialog open={addingSkill} onOpenChange={setAddingSkill} onInstalled={() => void loadSkills()} />
+      <ComposioKeyDialog connectors={connectors} />
     </div>
   );
 }
@@ -477,7 +481,7 @@ function AppSettings({
               {busy && <Loader2 size={15} className="animate-spin text-muted-foreground" />}
               <button
                 onClick={() => connectors.connect(card.slug)}
-                disabled={!connectors.configured || busy}
+                disabled={busy}
                 className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-body font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-40"
               >
                 {connected ? <RefreshCw size={14} /> : <Plus size={14} />}

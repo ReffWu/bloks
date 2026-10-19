@@ -296,7 +296,10 @@ export interface ConnectorCard {
 /** What the plugin grid shows when the REST catalog is unavailable, which
  * is the common case since most people paste a consumer key. Ordered by
  * how likely someone is to want it, not alphabetically. Google's products
- * carry their own artwork, since every one of their favicons is the same G. */
+ * carry their own artwork, since every one of their favicons is the same G.
+ * Each slug is Composio's own toolkit name, exactly as its toolkit pages
+ * spell it (googleslides has no underscore, google_analytics does): a
+ * guessed one renders fine and then fails at Connect. */
 const SHIPPED: ConnectorCard[] = [
   { slug: "slack", label: "Slack", blurb: "Read channels, post updates", domain: "slack.com", logo: null },
   { slug: "github", label: "GitHub", blurb: "Issues, pull requests, code", domain: "github.com", logo: null },
@@ -305,6 +308,8 @@ const SHIPPED: ConnectorCard[] = [
   { slug: "googlesheets", label: "Google Sheets", blurb: "Read and update sheets", domain: "sheets.google.com", logo: "https://ssl.gstatic.com/images/branding/product/1x/sheets_2020q4_32dp.png" },
   { slug: "googledocs", label: "Google Docs", blurb: "Draft and revise documents", domain: "docs.google.com", logo: "https://ssl.gstatic.com/images/branding/product/1x/docs_2020q4_32dp.png" },
   { slug: "googledrive", label: "Google Drive", blurb: "Find and organise files", domain: "drive.google.com", logo: "https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png" },
+  { slug: "googleslides", label: "Google Slides", blurb: "Build and edit decks", domain: "slides.google.com", logo: "https://ssl.gstatic.com/images/branding/product/1x/slides_2020q4_32dp.png" },
+  { slug: "googlemeet", label: "Google Meet", blurb: "Set up meetings", domain: "meet.google.com", logo: "https://ssl.gstatic.com/images/branding/product/1x/meet_2020q4_32dp.png" },
   { slug: "outlook", label: "Outlook", blurb: "Mail and calendar, Microsoft side", domain: "outlook.com", logo: null },
   { slug: "microsoft_teams", label: "Microsoft Teams", blurb: "Chats, channels, meetings", domain: "teams.microsoft.com", logo: null },
   { slug: "excel", label: "Excel", blurb: "Read and update workbooks", domain: "microsoft.com", logo: null },
@@ -329,6 +334,31 @@ const SHIPPED: ConnectorCard[] = [
   { slug: "airtable", label: "Airtable", blurb: "Bases and records", domain: "airtable.com", logo: null },
   { slug: "figma", label: "Figma", blurb: "Designs and comments", domain: "figma.com", logo: null },
   { slug: "stripe", label: "Stripe", blurb: "Customers and payments", domain: "stripe.com", logo: null },
+  { slug: "zoom", label: "Zoom", blurb: "Meetings and recordings", domain: "zoom.us", logo: null },
+  { slug: "linkedin", label: "LinkedIn", blurb: "Share posts to your profile", domain: "linkedin.com", logo: null },
+  { slug: "youtube", label: "YouTube", blurb: "Videos and playlists", domain: "youtube.com", logo: null },
+  { slug: "clickup", label: "ClickUp", blurb: "Tasks, lists and docs", domain: "clickup.com", logo: null },
+  { slug: "monday", label: "monday.com", blurb: "Boards and items", domain: "monday.com", logo: null },
+  { slug: "todoist", label: "Todoist", blurb: "Tasks and projects", domain: "todoist.com", logo: null },
+  { slug: "confluence", label: "Confluence", blurb: "Spaces and pages", domain: "atlassian.com", logo: null },
+  { slug: "gitlab", label: "GitLab", blurb: "Issues, merge requests, pipelines", domain: "gitlab.com", logo: null },
+  { slug: "supabase", label: "Supabase", blurb: "Projects and databases", domain: "supabase.com", logo: null },
+  { slug: "vercel", label: "Vercel", blurb: "Deployments and projects", domain: "vercel.com", logo: null },
+  { slug: "calendly", label: "Calendly", blurb: "Bookings and event types", domain: "calendly.com", logo: null },
+  { slug: "miro", label: "Miro", blurb: "Boards and sticky notes", domain: "miro.com", logo: null },
+  { slug: "canva", label: "Canva", blurb: "Designs and brand templates", domain: "canva.com", logo: null },
+  { slug: "webflow", label: "Webflow", blurb: "Sites and CMS items", domain: "webflow.com", logo: null },
+  { slug: "zendesk", label: "Zendesk", blurb: "Support tickets", domain: "zendesk.com", logo: null },
+  { slug: "intercom", label: "Intercom", blurb: "Conversations and contacts", domain: "intercom.com", logo: null },
+  { slug: "freshdesk", label: "Freshdesk", blurb: "Tickets and replies", domain: "freshdesk.com", logo: null },
+  { slug: "pipedrive", label: "Pipedrive", blurb: "Deals and activities", domain: "pipedrive.com", logo: null },
+  { slug: "mailchimp", label: "Mailchimp", blurb: "Audiences and campaigns", domain: "mailchimp.com", logo: null },
+  { slug: "typeform", label: "Typeform", blurb: "Forms and responses", domain: "typeform.com", logo: null },
+  { slug: "shopify", label: "Shopify", blurb: "Orders, products, customers", domain: "shopify.com", logo: null },
+  { slug: "quickbooks", label: "QuickBooks", blurb: "Invoices and accounts", domain: "quickbooks.intuit.com", logo: null },
+  { slug: "xero", label: "Xero", blurb: "Invoices and bank lines", domain: "xero.com", logo: null },
+  { slug: "docusign", label: "DocuSign", blurb: "Envelopes and signatures", domain: "docusign.com", logo: null },
+  { slug: "box", label: "Box", blurb: "Files and folders", domain: "box.com", logo: null },
 ];
 
 export const SHIPPED_CONNECTOR_SLUGS = SHIPPED.map((card) => card.slug);

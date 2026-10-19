@@ -323,6 +323,276 @@ const D: Record<string, AppDetails> = {
       "Find customers whose subscription renews this month",
     ],
   },
+  googleslides: {
+    category: "Productivity",
+    accent: "#e8a10b",
+    about: "Agents build decks from your notes and tidy the ones you have.",
+    prompts: [
+      "Turn this week's project update into a five slide deck",
+      "Summarise the latest version of the board deck, one line per slide",
+      "Find slides in my last deck with more than six bullets and shorten them",
+    ],
+  },
+  googlemeet: {
+    category: "Communication",
+    accent: "#00897b",
+    about: "Agents set up meetings and send the link where it needs to go.",
+    prompts: [
+      "Set up a Meet for tomorrow at 10 and give me the link",
+      "Create a meeting link for the design review and add it to the invite",
+      "What Meet calls do I have this week, and with whom?",
+    ],
+  },
+  zoom: {
+    category: "Communication",
+    accent: "#0b5cff",
+    about: "Agents schedule meetings and work through what was said.",
+    prompts: [
+      "Schedule a 30 minute Zoom with the team on Thursday afternoon",
+      "List my Zoom meetings this week with their links",
+      "Summarise the recording of yesterday's call into decisions and next steps",
+    ],
+  },
+  linkedin: {
+    category: "Social",
+    accent: "#0a66c2",
+    about: "Agents draft and share posts to your profile.",
+    prompts: [
+      "Draft a post about our launch in my own voice, under 150 words",
+      "Turn this blog post into a short LinkedIn update",
+      "Share my latest article with a one line intro",
+    ],
+  },
+  youtube: {
+    category: "Social",
+    accent: "#e00000",
+    about: "Agents look after your videos, playlists and channel.",
+    prompts: [
+      "How did my last five videos do compared to the five before?",
+      "Find videos about our product from the past month",
+      "Add this week's uploads to the tutorials playlist",
+    ],
+  },
+  clickup: {
+    category: "Productivity",
+    accent: "#7b68ee",
+    about: "Agents create tasks, update lists and keep work moving.",
+    prompts: [
+      "What is due this week across my spaces?",
+      "Turn these meeting notes into tasks with owners and due dates",
+      "List tasks with no assignee in the current sprint",
+    ],
+  },
+  monday: {
+    category: "Productivity",
+    accent: "#6161ff",
+    about: "Agents update boards and items, and report on where work stands.",
+    prompts: [
+      "Summarise my main board: what moved this week and what is stuck",
+      "Add an item for each of these requests to the intake board",
+      "Which items are past their date and who owns them?",
+    ],
+  },
+  todoist: {
+    category: "Productivity",
+    accent: "#e44332",
+    about: "Agents add tasks and help you plan the day.",
+    prompts: [
+      "What is on my list for today, in the order I should do it?",
+      "Add tasks for each follow up from this email thread",
+      "Move everything overdue to tomorrow and tell me what moved",
+    ],
+  },
+  confluence: {
+    category: "Productivity",
+    accent: "#1868db",
+    about: "Agents find, summarise and write pages across your spaces.",
+    prompts: [
+      "Summarise the latest page in the engineering space",
+      "Find every page that mentions the launch date and check they agree",
+      "Write up today's decisions as a new page under Meeting notes",
+    ],
+  },
+  gitlab: {
+    category: "Developer tools",
+    accent: "#e24329",
+    about: "Agents review merge requests, triage issues and watch pipelines.",
+    prompts: [
+      "List merge requests waiting on my review, oldest first",
+      "Why did the last pipeline on main fail?",
+      "Triage this week's new issues and label them",
+    ],
+  },
+  supabase: {
+    category: "Developer tools",
+    accent: "#249361",
+    about: "Agents look at your projects, tables and settings.",
+    prompts: [
+      "List my Supabase projects and what each one is for",
+      "Describe the tables in my main project and how they relate",
+      "Which of my projects are paused or close to their limits?",
+    ],
+  },
+  vercel: {
+    category: "Developer tools",
+    accent: "#2a2a2a",
+    about: "Agents follow deployments and tell you what failed and why.",
+    prompts: [
+      "Did today's deployments succeed? Show me any that failed",
+      "Why did the last preview deployment fail to build?",
+      "List my projects and the domain each one serves",
+    ],
+  },
+  calendly: {
+    category: "Productivity",
+    accent: "#006bff",
+    about: "Agents check bookings and share the right link.",
+    prompts: [
+      "Who booked time with me this week?",
+      "Give me my 30 minute booking link",
+      "List cancelled bookings from the last month",
+    ],
+  },
+  miro: {
+    category: "Design",
+    accent: "#e6b800",
+    about: "Agents read boards and turn sticky notes into plans.",
+    prompts: [
+      "Summarise the stickies on my retro board by theme",
+      "Add these ideas to the brainstorm board as sticky notes",
+      "Turn the latest workshop board into an action list",
+    ],
+  },
+  canva: {
+    category: "Design",
+    accent: "#00a3c4",
+    about: "Agents find your designs and start new ones from your templates.",
+    prompts: [
+      "Find my most recent social post designs",
+      "Start a new presentation from our brand template",
+      "List designs I edited this week",
+    ],
+  },
+  webflow: {
+    category: "Design",
+    accent: "#146ef5",
+    about: "Agents update CMS items and keep your site current.",
+    prompts: [
+      "List my Webflow sites and when each was last published",
+      "Add these three posts to the blog collection as drafts",
+      "Find CMS items with an empty summary field",
+    ],
+  },
+  zendesk: {
+    category: "Support",
+    accent: "#03363d",
+    about: "Agents triage tickets and draft replies.",
+    prompts: [
+      "Summarise today's open tickets by topic",
+      "Draft replies to the oldest tickets waiting on us",
+      "Which tickets have had no update in three days?",
+    ],
+  },
+  intercom: {
+    category: "Support",
+    accent: "#1f8ded",
+    about: "Agents follow conversations and help you answer them.",
+    prompts: [
+      "Summarise open conversations and what each customer needs",
+      "Draft a reply to the longest waiting conversation",
+      "What did customers ask about most this week?",
+    ],
+  },
+  freshdesk: {
+    category: "Support",
+    accent: "#25c16f",
+    about: "Agents sort tickets and draft replies.",
+    prompts: [
+      "Summarise open tickets by priority",
+      "Draft a reply to the newest urgent ticket",
+      "List tickets that breached their response time this week",
+    ],
+  },
+  pipedrive: {
+    category: "Sales",
+    accent: "#017737",
+    about: "Agents keep deals and activities current.",
+    prompts: [
+      "Which deals have had no activity in two weeks?",
+      "Summarise my pipeline by stage",
+      "Add follow up activities for every deal I moved today",
+    ],
+  },
+  mailchimp: {
+    category: "Marketing",
+    accent: "#241c15",
+    about: "Agents report on campaigns and look after your audience.",
+    prompts: [
+      "How did my last campaign do compared to the one before?",
+      "Draft the next newsletter from this week's updates",
+      "How many subscribers joined this month, and from where?",
+    ],
+  },
+  typeform: {
+    category: "Productivity",
+    accent: "#262627",
+    about: "Agents read responses and find the patterns in them.",
+    prompts: [
+      "Summarise this week's responses to my feedback form",
+      "Find responses that mention a bug and list them",
+      "How many people finished the signup survey this month?",
+    ],
+  },
+  shopify: {
+    category: "Commerce",
+    accent: "#5e8e3e",
+    about: "Agents look up orders, products and customers.",
+    prompts: [
+      "How did sales this week compare to last week?",
+      "List orders that have not shipped after three days",
+      "Which products are running low on stock?",
+    ],
+  },
+  quickbooks: {
+    category: "Finance",
+    accent: "#2ca01c",
+    about: "Agents look up invoices, customers and accounts.",
+    prompts: [
+      "Which invoices are overdue, and by how much?",
+      "Summarise this month's expenses by category",
+      "Draft an invoice for this week's work for my latest customer",
+    ],
+  },
+  xero: {
+    category: "Finance",
+    accent: "#1ab4d7",
+    about: "Agents look up invoices, contacts and bank lines.",
+    prompts: [
+      "List unpaid invoices older than 30 days",
+      "Summarise this month's spending by account",
+      "Which bank lines are still waiting to be reconciled?",
+    ],
+  },
+  docusign: {
+    category: "Productivity",
+    accent: "#4c00ff",
+    about: "Agents track envelopes and chase signatures.",
+    prompts: [
+      "Which envelopes are still waiting for a signature?",
+      "List agreements completed this month",
+      "Who has not signed the latest contract yet?",
+    ],
+  },
+  box: {
+    category: "Files",
+    accent: "#0061d5",
+    about: "Agents find and organise files and folders in Box.",
+    prompts: [
+      "Find the latest version of the signed agreement",
+      "What did my team add to the shared folder this week?",
+      "List large files I have not opened in a year",
+    ],
+  },
 };
 
 /** The details for an app, written or built from its own name and line. */

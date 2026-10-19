@@ -40,6 +40,29 @@ const SECTIONS: Record<
   box: { body: (v) => ({ box: { token: v } }), flag: (c) => c.box.configured },
 };
 
+/**
+ * Saves one key the way every row does: caught at the paste when it is
+ * the wrong kind of Composio key, otherwise sent to the server, which
+ * checks a Composio key before keeping it. Throws with the reason when it
+ * is refused, so whoever asked can say why. The store hears the new
+ * status either way it lands, so every screen stops saying it is missing.
+ */
+export async function saveApiKey(
+  section: ConfigSection,
+  value: string,
+  dispatch: ReturnType<typeof useStore>["dispatch"],
+): Promise<boolean> {
+  const mistake =
+    section === "composio" || section === "composioApi" ? composioKeyMistake(section, value) : null;
+  if (mistake) throw new Error(mistake);
+  const status: ConfigStatus = await api("/api/config", {
+    method: "PUT",
+    body: JSON.stringify(SECTIONS[section].body(value.trim())),
+  });
+  dispatch({ type: "configStatus", config: status });
+  return SECTIONS[section].flag(status);
+}
+
 export function ApiKeyRow({
   section,
   label,
@@ -73,14 +96,10 @@ export function ApiKeyRow({
     if (mistake) return setError(mistake);
     setSaving(true);
     setError(null);
-    api("/api/config", {
-      method: "PUT",
-      body: JSON.stringify(SECTIONS[section].body(value.trim())),
-    })
-      .then((status: ConfigStatus) => {
-        dispatch({ type: "configStatus", config: status });
+    saveApiKey(section, value, dispatch)
+      .then((nowConfigured) => {
         setValue("");
-        onSaved?.(SECTIONS[section].flag(status));
+        onSaved?.(nowConfigured);
       })
       .catch((e) => setError(e.message))
       .finally(() => setSaving(false));
