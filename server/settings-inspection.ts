@@ -86,6 +86,7 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   add("compaction", "beforeTurnAt", "config.json > compaction.beforeTurnAt", input.resolved.beforeTurnAt);
   add("turns", "stallMinutes", general, input.resolved.stallMinutes);
   add("recall", "beforeTurn", general, value("recall", "beforeTurn") !== false);
+  add("memory", "tidy", general, value("memory", "tidy") !== false);
   add("agents", "turnLimit", general, agentTurnLimit(value("agents", "turnLimit")));
   add("skills", "propose", general, Boolean(value("skills", "propose")));
   add("changes", "showShared", general, value("changes", "showShared") !== false);

@@ -31,7 +31,9 @@ const MAX_ENTRIES = 300;
 const MAX_TEXT_BYTES = 256 * 1024;
 const TOPIC = /^[\w][\w .-]{0,120}\.md$/;
 
-export type MemoryAuthor = "agent" | "you" | "undo";
+/** "tidy" is the nightly tidy (server/memory-tidy.ts), whose entries also
+ * carry the id of the night that wrote them. */
+export type MemoryAuthor = "agent" | "you" | "undo" | "tidy";
 
 export interface MemoryEntry {
   id: string;
@@ -48,6 +50,9 @@ export interface MemoryEntry {
   undoneBy?: string;
   /** Too large to keep; shown, never undoable. */
   big?: boolean;
+  /** Written by the nightly tidy: the id of that night's run, so one
+   * night's changes read and undo together. */
+  tidy?: string;
 }
 
 /** The journal's view of an entry: counts and a diff, not whole texts. */
@@ -136,7 +141,7 @@ export class MemoryJournal {
   }
 
   /** A change made through Bloks itself (the editor, or an undo). */
-  record(botId: string, file: string, by: MemoryAuthor, before: string | null, after: string | null, undoes?: string, write?: () => void): MemoryEntry | null {
+  record(botId: string, file: string, by: MemoryAuthor, before: string | null, after: string | null, undoes?: string, write?: () => void, tidy?: string): MemoryEntry | null {
     // The editor's write happens only after its existing history can be
     // read. Do not read again after the write and turn it into a refusal.
     const entries = this.load(botId);
@@ -150,7 +155,7 @@ export class MemoryJournal {
       if (pending.botId === botId && !pending.snapshot.unreadable.has(file)) pending.snapshot.files.set(file, after);
     }
     if (before === after) return null;
-    const entry = { ...this.entry(file, by, before, after), ...(undoes ? { undoes } : {}) };
+    const entry = { ...this.entry(file, by, before, after), ...(undoes ? { undoes } : {}), ...(tidy ? { tidy } : {}) };
     this.save(botId, [...entries, entry]);
     return entry;
   }
@@ -211,6 +216,25 @@ export class MemoryJournal {
     const next = [...entries, entry];
     this.save(botId, next);
     return { ok: true, entry };
+  }
+
+  /**
+   * Undoes what one night's tidy changed, newest first so a file it wrote
+   * twice goes back in order, each by the rule above. What cannot go
+   * back (a file changed since) says why, and the rest still does: a
+   * night is several files, and one the person has edited since should
+   * not hold the others hostage.
+   */
+  undoTidy(botId: string, runId: string): { undone: MemoryEntry[]; failed: Array<{ file: string; error: string }> } {
+    const undone: MemoryEntry[] = [];
+    const failed: Array<{ file: string; error: string }> = [];
+    const mine = this.load(botId).filter((e) => e.tidy === runId && !e.undoneBy).reverse();
+    for (const entry of mine) {
+      const done = this.undo(botId, entry.id);
+      if (done.ok) undone.push(done.entry);
+      else failed.push({ file: entry.file, error: done.error });
+    }
+    return { undone, failed };
   }
 
   /** The path of a journal file name, only ever inside the workspace. */

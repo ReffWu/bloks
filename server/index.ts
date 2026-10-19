@@ -359,6 +359,39 @@ import {
   type Watcher,
 } from "./watchers.ts";
 import { MemoryJournal, readMemoryText } from "./memory-journal.ts";
+import {
+  applyPlan,
+  ARCHIVE_TOPIC,
+  archiveWith,
+  dayOf,
+  diaryOf,
+  expireLines,
+  parsePlan,
+  TIDY_MODEL_MS,
+  tidyHours,
+  tidyNight,
+  TidyLog,
+  tidyPrompt,
+  topicWith,
+  type Applied,
+  type TidyRun,
+} from "./memory-tidy.ts";
+import {
+  agentTurnText,
+  cleanIntent,
+  coversWhere,
+  excerptAround,
+  INTENT_LIFETIME_MS,
+  intentView,
+  matchPhrases,
+  mayFire as intentMayFire,
+  MAX_INTENTS,
+  MAX_PROPOSED_PER_AGENT,
+  recordFire,
+  type Intent,
+  type IntentFire,
+  type Where,
+} from "./intents.ts";
 import { applyImport, detectSetup, ImportRecord, reviewOf, type ImportDeps, type McpEntry } from "./setup-import.ts";
 import { Rehearsals, type Rehearsal } from "./rehearsals.ts";
 import { RoomTagQueues } from "./room-tags.ts";
@@ -1264,6 +1297,21 @@ async function readinessOf(bot: BotRecord): Promise<{ readiness: Readiness; engi
 const memoryJournal = new MemoryJournal(join(DATA_DIR, "memory-journal"), (id) =>
   id === workspace.SHARED_MEMORY_ID ? workspace.sharedMemoryDir() : workspace.workspaceDir(id),
 );
+// Each agent's nights of memory tidying, with their diaries
+// (server/memory-tidy.ts); the changes themselves are in the journal.
+const tidyLog = new TidyLog(join(DATA_DIR, "memory-tidy.json"));
+
+// Standing intents (server/intents.ts). Up here rather than with their
+// routes because every message appended from here on is checked against
+// them (store.onAppend), some of those during startup.
+const INTENTS_FILE = join(DATA_DIR, "intents.json");
+let intents: Intent[] = readSaved<Intent[]>(INTENTS_FILE, [], Array.isArray).filter(
+  (i) => i && typeof i.id === "string" && Array.isArray(i.phrases) && Array.isArray(i.fires),
+);
+/** An agent an intent woke in a room, until when: what it says there in
+ * that turn is the intent's doing, not something for an intent to hear. */
+const intentWoken = new Map<string, number>();
+
 // What was brought over from other agent tools, and where it went, so a
 // second import updates the first (server/setup-import.ts).
 const setupRecord = new ImportRecord(join(DATA_DIR, "setup-import.json"));
@@ -2252,7 +2300,13 @@ function makeBrief(now = Date.now()): Brief {
         { label: "rehearsal", count: rehearsals.all().filter((r) => r.state === "ready").length },
         { label: "note about you", many: "notes about you", count: profileNotes.suggested().length },
         { label: "suggested skill", count: proposals.list().length },
+        { label: "proposed intent", count: intents.filter((intent) => intent.status === "proposed").length },
       ],
+      // what the night's tidy did to each agent's memory, with the way back
+      memory: tidyLog.since(since).flatMap((run) => {
+        const bot = store.bot(run.botId);
+        return bot && !bot.hidden && !bot.archivedAt ? [{ botId: bot.id, name: bot.name, text: run.diary, runId: run.id }] : [];
+      }),
     },
     newId(),
   );
@@ -2273,6 +2327,336 @@ setInterval(() => {
   const last = briefs[briefs.length - 1];
   if (briefDue(time, last ? localDate(new Date(last.at)) : null, new Date())) makeBrief();
 }, 60_000).unref?.();
+
+// ── the nightly memory tidy (server/memory-tidy.ts) ────────────────────
+// Once a night per agent with memory, in the small hours, while it is
+// not working and the Mac is awake: notes past their date go, then a
+// cheap model merges and tightens what is left and archives what a later
+// note contradicts. Every file it writes is one journal entry marked with
+// the night, so the Memory place shows each change and undoes the night
+// whole. Tidy now runs the same thing on the person's say.
+
+/** Agents whose memory is being tidied right now. */
+const tidying = new Set<string>();
+
+/** The engine a tidy asks: the agent's own while it has a one-shot call
+ * and is not paused for it, else whichever the workspace drafts with. */
+async function tidyEngine(bot: BotRecord) {
+  const own = registry.get(bot.modelSelection.instanceId);
+  if (own?.generateText && !pausedOn(bot, bot.modelSelection)) return own;
+  const other = await draftWriter();
+  return other?.generateText ? other : null;
+}
+
+/** Whether anyone but a tidy has changed this agent's memory since its
+ * last tidy. Unchanged memory was already tidied; asking again would pay
+ * for the same answer. */
+function memoryMovedSinceTidy(botId: string): boolean {
+  const last = tidyLog.for(botId).find((run) => run.state !== "skipped");
+  if (!last) return true;
+  return memoryJournal.list(botId).some((entry) => entry.at > last.at && entry.by !== "tidy");
+}
+
+/** One agent's tidy, now. Never throws: a night that could not go ahead
+ * is recorded as skipped, with why. */
+async function tidyMemory(botId: string, manual: boolean): Promise<TidyRun> {
+  const now = new Date();
+  const today = dayOf(now);
+  const run: TidyRun = { id: newId(), botId, at: now.getTime(), night: tidyNight(now), ...(manual ? { manual: true } : {}), state: "nothing", diary: "", entries: [] };
+  tidying.add(botId);
+  try {
+    const bot = store.bot(botId);
+    if (!bot) throw new Error("its agent is gone");
+    const read = (file: string) => readMemoryText(memoryJournal.pathOf(botId, file)!, file);
+    // the seed is instructions, not memory, and is never tidied
+    const memoryWas = workspace.readMemoryFile(botId).text ? read("MEMORY.md") : null;
+    const topicWas = new Map<string, string | null>();
+    for (const topic of workspace.listMemoryTopics(botId)) {
+      if (topic.name !== ARCHIVE_TOPIC) topicWas.set(topic.name, read(`memory/${topic.name}`));
+    }
+
+    // notes past their date, which needs no model
+    const expiredHere: string[] = [];
+    let memoryNext = memoryWas;
+    if (memoryWas !== null) {
+      const cut = expireLines(memoryWas, today);
+      memoryNext = cut.text;
+      expiredHere.push(...cut.expired);
+    }
+    const topicNext = new Map<string, { text: string; expired: string[] }>();
+    for (const [name, text] of topicWas) {
+      if (text === null) continue;
+      const cut = expireLines(text, today);
+      if (cut.expired.length) topicNext.set(name, cut);
+    }
+
+    // the model's pass over MEMORY.md, when there is enough of it to
+    // tidy and it has moved since the last time
+    let applied: Applied | null = null;
+    const notes = memoryNext?.split("\n").filter((line) => line.trim() && !/^\s{0,3}#/.test(line)).length ?? 0;
+    if (memoryNext !== null && notes >= 3 && (manual || memoryMovedSinceTidy(botId))) {
+      const engine = await tidyEngine(bot);
+      if (!engine?.generateText) {
+        run.note = "No engine could read it, so only notes past their date were looked at.";
+      } else {
+        try {
+          const prompt = tidyPrompt({ agent: bot.name, text: memoryNext, today, notes: profileNotes.kept().map((note) => note.text) });
+          const plan = parsePlan(await withDeadline(engine.generateText(prompt, { quick: true }), TIDY_MODEL_MS), memoryNext);
+          if (plan) applied = applyPlan(memoryNext, plan);
+          else run.note = "The model's answer was not a list of edits, so only notes past their date were looked at.";
+        } catch {
+          run.note = "The model did not answer in time, so only notes past their date were looked at.";
+        }
+      }
+    }
+
+    // Nothing is written over a change made while the model thought: the
+    // agent's own turn, or the person in the editor. Tomorrow tries again.
+    if (store.bot(botId)?.tasks.some((task) => task.busy)) throw new Error(`${bot.name} started working, so it waits for another night`);
+    if (memoryWas !== null && read("MEMORY.md") !== memoryWas) throw new Error("its memory changed while it was being tidied, so it waits for another night");
+    for (const [name, text] of topicWas) {
+      if (read(`memory/${name}`) !== text) throw new Error("its memory changed while it was being tidied, so it waits for another night");
+    }
+
+    // Struck and moved lines land in their topics before they leave
+    // MEMORY.md, so a write that fails partway leaves a line in two
+    // places rather than in none.
+    const writes: Array<{ file: string; before: string | null; after: string }> = [];
+    if (applied?.archived.length) {
+      const before = read(`memory/${ARCHIVE_TOPIC}`);
+      writes.push({ file: `memory/${ARCHIVE_TOPIC}`, before, after: archiveWith(before, applied.archived, today) });
+    }
+    for (const move of applied?.moved ?? []) {
+      const before = topicWas.has(move.topic) ? topicWas.get(move.topic)! : read(`memory/${move.topic}`);
+      const base = topicNext.get(move.topic)?.text ?? before;
+      writes.push({ file: `memory/${move.topic}`, before, after: topicWith(base, move.topic, move.lines) });
+    }
+    for (const [name, cut] of topicNext) {
+      if (!applied?.moved.some((move) => move.topic === name)) writes.push({ file: `memory/${name}`, before: topicWas.get(name) ?? null, after: cut.text });
+    }
+    const memoryAfter = applied ? applied.memory : memoryNext;
+    if (memoryWas !== null && memoryAfter !== null && memoryAfter !== memoryWas) writes.push({ file: "MEMORY.md", before: memoryWas, after: memoryAfter });
+
+    const written = new Set<string>();
+    for (const write of writes) {
+      try {
+        const entry = memoryJournal.record(botId, write.file, "tidy", write.before, write.after, undefined, () => {
+          const ok = write.file === "MEMORY.md" ? workspace.writeMemoryFile(botId, write.after) : workspace.writeMemoryTopic(botId, write.file.slice(7), write.after);
+          if (!ok) throw new Error(`${write.file} is a link to somewhere else now, so it was left alone`);
+        }, run.id);
+        if (entry) run.entries.push(entry.id);
+        written.add(write.file);
+      } catch (error) {
+        run.note = (error as Error).message;
+      }
+    }
+
+    // the diary says what was done, so only what was written
+    const memoryDone = written.has("MEMORY.md");
+    run.diary = diaryOf({
+      expired: [...(memoryDone ? expiredHere : []), ...[...topicNext].flatMap(([name, cut]) => (written.has(`memory/${name}`) ? cut.expired : []))],
+      merged: memoryDone ? (applied?.merged ?? []) : [],
+      archived: memoryDone ? (applied?.archived ?? []) : [],
+      reworded: memoryDone ? (applied?.reworded ?? 0) : 0,
+      moved: memoryDone ? (applied?.moved ?? []) : [],
+    });
+    run.state = run.entries.length ? "done" : "nothing";
+  } catch (error) {
+    run.state = "skipped";
+    run.note = (error as Error).message;
+  } finally {
+    tidying.delete(botId);
+  }
+  tidyLog.add(run);
+  // the Memory place re-reads its meter, its journal and its diary
+  broadcast({ kind: "memory.changed", botId, changes: run.entries.length });
+  return run;
+}
+
+/** One agent a tick, in the tidy's hours, so a workspace of many spreads
+ * its calls across the night rather than making them all at once. An
+ * agent that is working is passed over and looked at again next tick. */
+let tidyTicking = false;
+async function nightlyTidy() {
+  if (tidyTicking || cfg.memory?.tidy === false || macAsleep || drain.on) return;
+  const night = tidyNight(new Date());
+  if (!night) return;
+  tidyTicking = true;
+  try {
+    for (const bot of store.bots) {
+      if (bot.hidden || bot.archivedAt || tidying.has(bot.id) || tidyLog.hadNight(bot.id, night)) continue;
+      if (!workspace.hasMemory(bot.id) || bot.tasks.some((task) => task.busy)) continue;
+      await tidyMemory(bot.id, false);
+      return;
+    }
+  } finally {
+    tidyTicking = false;
+  }
+}
+setInterval(() => void nightlyTidy(), 60_000).unref?.();
+
+// ── standing intents (server/intents.ts) ───────────────────────────────
+// Checked on every message as it is appended. Words, not a model, so the
+// check is a few patterns per intent; what an intent does happens after
+// the message that set it off has gone out, never inside its append.
+
+function saveIntents() {
+  try {
+    mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+    writeFileAtomic(INTENTS_FILE, JSON.stringify(intents), 0o600);
+  } catch {
+    /* kept in memory; written next time */
+  }
+}
+
+/** Where a conversation is, as an intent's covers read it, or null for
+ * one no intent listens in: a stranger's mail, a rehearsal's copy, a
+ * shared room's own lane (the room itself is heard instead). */
+function intentWhere(threadId: string): Where | null {
+  const room = bloks.get(threadId);
+  if (room) return { roomId: room.id, shared: Boolean(room.sharing) };
+  const bot = store.botByThread(threadId);
+  const lane = bot?.tasks.find((task) => task.id === threadId);
+  if (!bot || !lane || lane.guestMail || rehearsals.forTask(lane.id) || isSharedLane(lane.id)) return null;
+  return { botId: bot.id };
+}
+
+/** Whether a lane's turn that said this was started by an intent's
+ * message: the nearest earlier message that started a turn is one. */
+function startedByIntent(laneId: string, messageId: string): boolean {
+  const list = store.messagesFor(laneId);
+  const at = list.findIndex((m) => m.id === messageId);
+  for (let i = (at < 0 ? list.length : at) - 1; i >= 0; i--) {
+    const m = list[i];
+    if (m.role !== "user" || m.kind !== "text" || m.midTurn || m.queued || m.deleted) continue;
+    return m.via === "intent";
+  }
+  return false;
+}
+
+/** Whether a message is something said in a conversation, which an intent
+ * may hear. Not an intent's own note or message, nor what an agent says
+ * in a turn one started; not a routine's, a watcher's, a webhook's or a
+ * goal's words, nor mail; not a Telegram stranger; not quiet. */
+function intentHears(threadId: string, message: Message): boolean {
+  if (message.kind !== "text" || !message.text?.trim() || message.deleted || message.quiet || message.intent) return false;
+  if (message.via && message.via !== "slack" && message.via !== "discord" && message.via !== "whatsapp") return false;
+  if (message.telegramPerson || message.agent?.dir === "out" || message.takeBack) return false;
+  if (message.role !== "bot") return true;
+  if (bloks.get(threadId)) {
+    const until = message.from ? intentWoken.get(`${threadId}:${message.from}`) : undefined;
+    return !until || until <= Date.now();
+  }
+  return !startedByIntent(threadId, message.id);
+}
+
+/** Who said a message, by name. */
+function speakerOf(threadId: string, message: Message): string {
+  if (message.role === "bot") return store.bot(message.from ?? "")?.name ?? store.botByThread(threadId)?.name ?? "an agent";
+  if (message.agent?.dir === "in") return message.agent.peerName;
+  if (message.author) return people.person(message.author)?.name ?? "someone";
+  return hostName();
+}
+
+/** A conversation as an agent elsewhere is told where something came up. */
+function whereWords(threadId: string): string {
+  const room = bloks.get(threadId);
+  if (room) return `the room ${room.name}`;
+  const bot = store.botByThread(threadId);
+  const lane = bot?.tasks.find((task) => task.id === threadId);
+  return `${bot?.name ?? "an agent"}'s conversation${lane?.title && lane.title !== "General" ? ` "${lane.title}"` : ""} with ${hostName()}`;
+}
+
+function checkIntents(threadId: string, message: Message) {
+  if (!intents.length || !intentHears(threadId, message)) return;
+  const where = intentWhere(threadId);
+  if (!where) return;
+  const now = Date.now();
+  // the agent that said it, or whose conversation this is: an intent that
+  // would bring it in is bringing it to its own words
+  const speaker = message.role === "bot" ? (message.from ?? store.botByThread(threadId)?.id) : undefined;
+  let fired = false;
+  for (const intent of intents) {
+    if (!coversWhere(intent, where) || !intentMayFire(intent, threadId, now).ok) continue;
+    const target = intent.action.kind === "note" ? undefined : intent.action.botId;
+    if (target && (target === speaker || ("botId" in where && where.botId === target))) continue;
+    const found = matchPhrases(message.text!, intent.phrases);
+    if (!found) continue;
+    const fire: IntentFire = { at: now, threadId, messageId: message.id, phrase: found.phrase, excerpt: excerptAround(message.text!, found) };
+    // recorded before acting, so a second message in the same moment
+    // meets the cooldown rather than firing it twice
+    recordFire(intent, fire);
+    fired = true;
+    setImmediate(() => {
+      actOnIntent(intent, fire, where, message).catch((error) => {
+        fire.error = redactSecrets(String((error as Error)?.message ?? error)).slice(0, 200);
+        saveIntents();
+        broadcast({ kind: "intents" });
+      });
+    });
+  }
+  if (fired) {
+    saveIntents();
+    broadcast({ kind: "intents" });
+  }
+}
+
+/** A line in a conversation from an intent: its note, or what it did. */
+function intentNote(threadId: string, intent: Intent, text: string, event = false) {
+  const note = store.appendMessage(threadId, {
+    role: "bot",
+    kind: "notice",
+    text,
+    intent: { id: intent.id, name: intent.name },
+    ...(event ? { event: true } : {}),
+  });
+  broadcast({ kind: "message", threadId, message: note });
+}
+
+/** One agent woken in a room, behind whatever the room is already doing,
+ * the way a post's round waits for the last one (enqueueRoomPost). */
+function wakeInRoom(roomId: string, botId: string, text: string) {
+  const previous = roomPosting.get(roomId);
+  const run = (previous ?? Promise.resolve())
+    .catch(() => {})
+    .then(() => dispatchRound(roomId, [[botId, text]], 0, "owner", false));
+  roomPosting.set(roomId, run);
+  void run.finally(() => {
+    if (roomPosting.get(roomId) === run) roomPosting.delete(roomId);
+  });
+}
+
+async function actOnIntent(intent: Intent, fire: IntentFire, where: Where, message: Message) {
+  const action = intent.action;
+  if (action.kind === "note") return intentNote(fire.threadId, intent, action.text);
+  const bot = store.bot(action.botId);
+  if (!bot || bot.archivedAt) throw new Error(bot ? `${bot.name} is archived, so nobody was brought in` : "the agent it brings in is gone");
+  const said = { intent, phrase: fire.phrase, where: whereWords(fire.threadId), who: speakerOf(fire.threadId, message), excerpt: fire.excerpt };
+  if (action.kind === "mention" && "roomId" in where && bloks.get(where.roomId)?.memberIds.includes(bot.id)) {
+    intentNote(fire.threadId, intent, `Looping in ${bot.name}, since "${fire.phrase}" came up.`, true);
+    // what it says in the turn this starts is the intent's doing; the
+    // longest a room waits for one turn bounds how long that holds
+    intentWoken.set(`${where.roomId}:${bot.id}`, Date.now() + ROOM_TURN_WAIT_MS);
+    for (const [key, until] of intentWoken) if (until <= Date.now()) intentWoken.delete(key);
+    wakeInRoom(where.roomId, bot.id, agentTurnText(said));
+    return;
+  }
+  // A message, or a mention where the agent cannot join: a conversation
+  // with one agent has room for no other, and bringing it into a room
+  // would change who is in the room. It is told in its own first
+  // conversation instead, and the conversation says so.
+  const outside = action.kind === "mention";
+  if (outside) intentNote(fire.threadId, intent, `${bot.name} can't join this conversation, so it was sent what was said.`, true);
+  const text = agentTurnText({ ...said, outside });
+  const lane = mainLaneOf(bot);
+  if (laneWaits(lane)) {
+    queueOnLane(bot.id, lane.id, text, { via: "intent" });
+    return;
+  }
+  const sent = store.appendMessage(lane.id, { role: "user", kind: "text", text, via: "intent", intent: { id: intent.id, name: intent.name } });
+  broadcast({ kind: "message", threadId: lane.id, message: sent });
+  await startTurn(bot.id, text, { taskId: lane.id, presetMessage: true });
+}
 
 /** Who reads each part aloud: an agent's own voice when it has one, and
  * otherwise one of the Mac's voices, a different one per agent so the
@@ -3577,6 +3961,8 @@ store.onAppend = (threadId, message) => {
   const index = recallIndexes.peek(threadId);
   const words = index ? searchableText(message) : null;
   if (index && words) index.add(message.id, message.at, words);
+  // a standing intent listening here hears it (server/intents.ts)
+  checkIntents(threadId, message);
   const room = bloks.get(threadId);
   if (room) {
     // in a room the speaker's turn runs in one of its own lanes, the one
@@ -3607,8 +3993,13 @@ store.onRewrite = (threadId, changed) => {
 
 /** Lanes that were mid-turn when the Mac went to sleep. */
 const sleptLanes = new Map<string, { botId: string; roomId?: string; requester?: string; at: number; woke?: number }>();
+/** Between the shell saying the Mac sleeps and saying it woke. A timer
+ * can still fire in a dark wake, and a nightly tidy started then would
+ * be a model call cut off halfway; it waits for a real wake instead. */
+let macAsleep = false;
 
 function noteSleep() {
+  macAsleep = true;
   for (const bot of store.bots) {
     for (const task of bot.tasks) {
       if (!task.busy) continue;
@@ -3624,6 +4015,7 @@ function noteSleep() {
 }
 
 function noteWake() {
+  macAsleep = false;
   const now = Date.now();
   for (const slept of sleptLanes.values()) slept.woke ??= now;
   // a lane whose turn finished while nobody was watching has nothing to
@@ -10674,8 +11066,9 @@ function queueOnLane(
     replyTo?: ReplyRef;
     from?: { botId: string; name: string };
     admission?: DirectAdmission;
-    /** Not the person: a webhook, a watcher, or Bloks keeping a goal going. */
-    via?: "webhook" | "watcher" | "goal";
+    /** Not the person: a webhook, a watcher, a standing intent, or Bloks
+     * keeping a goal going. */
+    via?: "webhook" | "watcher" | "goal" | "intent";
     routine?: Message["routine"];
     telegramReply?: TelegramReply;
     /** The person said it from Telegram (Message.fromTelegram). */
@@ -11768,6 +12161,8 @@ function configStatus() {
     // on unless turned off: notes from an agent's other conversations
     // ahead of the person's turn (recallAhead)
     recall: { beforeTurn: cfg.recall?.beforeTurn !== false },
+    // on unless turned off: each agent's memory tidied once a night
+    memory: { tidy: cfg.memory?.tidy !== false },
     agents: { turnLimit: agentLimit() },
     changes: { showShared: cfg.changes?.showShared !== false },
     // how long a silent tool call may hold a turn, in minutes; 0 is never
@@ -14887,6 +15282,42 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // ── memory: what the agent believes, readable and editable ──
     // How full it is against what a turn loads, for the Memory page's
     // meter, and each topic with its size and when it last changed.
+    // The nightly tidy (server/memory-tidy.ts): its diary, Tidy now, and
+    // a night undone whole. The person's, here or on the phone; an agent
+    // keeps its own memory and has no say in how it is tidied.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/tidy$/);
+    if (m && (method === "GET" || method === "POST")) {
+      if (asAgent) return json(res, 403, { error: "tidying memory is the person's to run" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      if (method === "POST") {
+        if (tidying.has(bot.id)) return json(res, 409, { error: "already tidying" });
+        if (bot.tasks.some((t) => t.busy)) return json(res, 409, { error: `wait for ${bot.name} to finish, then tidy` });
+        return json(res, 200, { run: await tidyMemory(bot.id, true) });
+      }
+      return json(res, 200, {
+        enabled: cfg.memory?.tidy !== false,
+        hours: tidyHours(),
+        tidying: tidying.has(bot.id),
+        runs: tidyLog.for(bot.id),
+      });
+    }
+    m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/tidy\/([\w-]+)\/undo$/);
+    if (m && method === "POST") {
+      if (asAgent) return json(res, 403, { error: "tidying memory is the person's to run" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      const run = tidyLog.get(m[2]);
+      if (!run || run.botId !== bot.id) return json(res, 404, { error: "no such tidy" });
+      if (bot.tasks.some((t) => t.busy)) return json(res, 409, { error: "wait for the agent to finish, then undo" });
+      const done = memoryJournal.undoTidy(bot.id, run.id);
+      if (!done.failed.length) tidyLog.update(run.id, { undoneAt: Date.now() });
+      if (done.undone.length) broadcast({ kind: "memory.changed", botId: bot.id, changes: done.undone.length });
+      if (done.failed.length && !done.undone.length) {
+        return json(res, 409, { error: done.failed[0].error, failed: done.failed, run: tidyLog.get(run.id) });
+      }
+      return json(res, 200, { run: tidyLog.get(run.id), undone: done.undone.length, failed: done.failed });
+    }
     m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/stats$/);
     if (m && method === "GET") {
       if (!store.bot(m[1])) return json(res, 404, { error: "no such agent" });
@@ -16644,6 +17075,96 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           .filter((b) => !b.hidden && !b.archivedAt)
           .map((b) => ({ botId: b.id, name: b.name, address: mailAddressOf(b) })),
       });
+    }
+
+    // ── standing intents (server/intents.ts) ──
+    // The person makes, changes, pauses, renews and removes them, here or
+    // on the phone. An agent's POST is always a proposal that does nothing
+    // until the person approves it, and it sees and withdraws only its own.
+    if (path === "/api/intents" && method === "GET") {
+      const mine = asAgent ? intents.filter((i) => i.by.kind === "agent" && i.by.botId === asAgent.botId) : intents;
+      return json(res, 200, { intents: mine.map((i) => intentView(i, Date.now())) });
+    }
+    if (path === "/api/intents" && method === "POST") {
+      const body = await readBody(req);
+      if (!isRecord(body)) return json(res, 400, { error: "expected a JSON object" });
+      const agent = asAgent ? store.bot(asAgent.botId) : null;
+      // an agent's proposal listens in its own conversations and the rooms
+      // it is in, unless it names fewer
+      if (agent && body.covers === undefined) {
+        body.covers = { agents: [agent.id], rooms: bloks.roomsFor(agent.id).filter((r) => !r.sharing).map((r) => r.id) };
+      }
+      const checked = cleanIntent(body, {
+        agent: (id) => Boolean(store.bot(id) && !store.bot(id)!.archivedAt),
+        room: (id) => Boolean(bloks.get(id)),
+      });
+      if (!checked.ok) return json(res, 400, { error: checked.error });
+      if (agent) {
+        const covers = checked.value.covers;
+        const own = "agents" in covers && covers.agents.every((id) => id === agent.id) && covers.rooms.every((id) => bloks.get(id)?.memberIds.includes(agent.id));
+        if (!own) return json(res, 403, { error: "an agent's intent listens only in its own conversations and the rooms it is in" });
+        if (intents.filter((i) => i.status === "proposed" && i.by.kind === "agent" && i.by.botId === agent.id).length >= MAX_PROPOSED_PER_AGENT) {
+          return json(res, 409, { error: `you have ${MAX_PROPOSED_PER_AGENT} intents waiting for approval already; wait for an answer first` });
+        }
+      }
+      if (intents.length >= MAX_INTENTS) return json(res, 409, { error: `${MAX_INTENTS} intents is the limit` });
+      const now = Date.now();
+      const intent: Intent = {
+        id: newId(),
+        ...checked.value,
+        enabled: true,
+        status: agent ? "proposed" : "active",
+        createdAt: now,
+        expiresAt: now + INTENT_LIFETIME_MS,
+        by: agent ? { kind: "agent", botId: agent.id, name: agent.name } : { kind: "person" },
+        fires: [],
+      };
+      intents.push(intent);
+      saveIntents();
+      broadcast({ kind: "intents" });
+      return json(res, 201, {
+        intent: intentView(intent, now),
+        ...(agent
+          ? { note: `Proposed. It does nothing until ${hostName()} approves it in Automations, under Intents. Tell them what it listens for and what it does.` }
+          : {}),
+      });
+    }
+    m = path.match(/^\/api\/intents\/([\w-]+)$/);
+    if (m && (method === "PATCH" || method === "DELETE")) {
+      const intent = intents.find((i) => i.id === m![1]);
+      const proposer = intent?.by.kind === "agent" ? intent.by.botId : null;
+      if (!intent || (asAgent && proposer !== asAgent.botId)) return json(res, 404, { error: "no such intent" });
+      if (asAgent && (method === "PATCH" || intent.status !== "proposed")) {
+        return json(res, 403, { error: "once approved, an intent is the person's to change or remove" });
+      }
+      if (method === "DELETE") {
+        intents = intents.filter((i) => i.id !== intent.id);
+        saveIntents();
+        broadcast({ kind: "intents" });
+        return json(res, 200, { ok: true });
+      }
+      const body = await readBody(req);
+      if (!isRecord(body)) return json(res, 400, { error: "expected a JSON object" });
+      const fields = ["name", "phrases", "when", "covers", "action", "cooldownHours"];
+      if (fields.some((key) => body[key] !== undefined)) {
+        const checked = cleanIntent(body, {
+          agent: (id) => Boolean(store.bot(id) && !store.bot(id)!.archivedAt),
+          room: (id) => Boolean(bloks.get(id)),
+        }, intent);
+        if (!checked.ok) return json(res, 400, { error: checked.error });
+        Object.assign(intent, checked.value);
+      }
+      const now = Date.now();
+      if (typeof body.enabled === "boolean") intent.enabled = body.enabled;
+      // approving starts its ninety days, as renewing does
+      if (body.approve === true && intent.status === "proposed") {
+        intent.status = "active";
+        intent.expiresAt = now + INTENT_LIFETIME_MS;
+      }
+      if (body.renew === true) intent.expiresAt = now + INTENT_LIFETIME_MS;
+      saveIntents();
+      broadcast({ kind: "intents" });
+      return json(res, 200, { intent: intentView(intent, now) });
     }
 
     // ── watchers ──
@@ -18761,6 +19282,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           Object.assign(cfg, saveConfig({ recall: { beforeTurn } }));
           wroteSomething = true;
         }
+      }
+      if (isRecord(body.memory) && typeof body.memory.tidy === "boolean") {
+        Object.assign(cfg, saveConfig({ memory: { tidy: body.memory.tidy } }));
+        wroteSomething = true;
       }
       if (body.skills && typeof body.skills === "object" && !Array.isArray(body.skills)) {
         const propose = (body.skills as Record<string, unknown>).propose;

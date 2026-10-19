@@ -135,7 +135,11 @@ export interface Message {
   afterAgent?: { peerId: string; peerName: string };
   /** Set on a room message that was said in the room's linked chat
    * channel, so the bridge does not say it there a second time. */
-  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal";
+  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal" | "intent";
+  /** Posted by a standing intent (server/intents.ts): a note in its own
+   * words, or the line saying it brought an agent in. Never matched by
+   * an intent, its own or another's. */
+  intent?: { id: string; name: string };
   /** The routine's name and start mode when this message was written,
    * and `quiet` when its agent was told it may answer QUIET. */
   routine?: { name?: string; manual: boolean; quiet?: boolean };

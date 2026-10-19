@@ -36,6 +36,16 @@ export interface BriefWaiting {
   kind: "approval" | "question";
 }
 
+/** What the nightly tidy did to one agent's memory (server/memory-tidy.ts):
+ * its diary in a line, and the run, so the line can lead to its review
+ * and its undo. */
+export interface BriefMemory {
+  botId: string;
+  name: string;
+  text: string;
+  runId: string;
+}
+
 export interface BriefInput {
   since: number;
   now: number;
@@ -46,6 +56,8 @@ export interface BriefInput {
   /** Other things ready for a look: rehearsals, suggested notes, skills.
    * `many` is the plural when adding an s would be wrong. */
   ready?: Array<{ label: string; many?: string; count: number }>;
+  /** The night's memory tidies, one per agent. */
+  memory?: BriefMemory[];
 }
 
 export interface BriefItem {
@@ -71,6 +83,10 @@ export interface Brief {
   waiting: BriefWaiting[];
   spend: BriefInput["spend"];
   ready: Array<{ label: string; many?: string; count: number }>;
+  /** One line per agent whose memory was tidied overnight. Housekeeping,
+   * not news: it is on the page and never in the headline or the spoken
+   * round, and a night of nothing else is still a quiet one. */
+  memory: BriefMemory[];
   /** Nothing happened and nothing is waiting. */
   quiet: boolean;
 }
@@ -198,8 +214,16 @@ export function composeBrief(input: BriefInput, id: string): Brief {
     waiting,
     spend: input.spend,
     ready,
+    memory: memoryLines(input.memory ?? []),
     quiet,
   };
+}
+
+/** The latest tidy per agent, its diary kept to a line. */
+function memoryLines(tidies: BriefMemory[]): BriefMemory[] {
+  const latest = new Map<string, BriefMemory>();
+  for (const tidy of tidies) if (tidy.text.trim()) latest.set(tidy.botId, tidy);
+  return [...latest.values()].map((tidy) => ({ ...tidy, text: tidy.text.length > 280 ? `${tidy.text.slice(0, 279).replace(/\s+\S*$/, "")}…` : tidy.text }));
 }
 
 /** "08:00" style times; anything else is refused. */
