@@ -8,13 +8,24 @@
 // Three facts, kept apart on purpose. A key that was accepted is not a
 // line that is up, and a line that is up is not a space the relay has
 // acknowledged. Collapsing them into one green light is how somebody sits
-// looking at "connected" while their phone gets nothing.
+// looking at "connected" while their phone gets nothing. The pill in the
+// corner is the same one every connection card wears, and only goes green
+// on the last of the three.
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence } from "motion/react";
 import { Cloud } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { thisComputer } from "@/lib/thisComputer";
+import {
+  ConnectionError,
+  ConnectionHeader,
+  ConnectionNote,
+  HealthLine,
+  PairedMoment,
+  SecretField,
+  type Health,
+} from "./ConnectionKit";
 
 const CLOUD_KEY = /^blok_live_[0-9a-f]{32}$/;
 
@@ -49,6 +60,10 @@ export function CloudSection() {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set by an activation on this screen and spent by the first green after
+  // it: the moment belongs to the purchase, not to every reconnect.
+  const [armed, setArmed] = useState(false);
+  const [celebrating, setCelebrating] = useState(false);
 
   const load = useCallback(() => {
     api("/api/relay/status")
@@ -67,8 +82,10 @@ export function CloudSection() {
     return () => clearInterval(timer);
   }, [load]);
 
+  const keyLooksRight = CLOUD_KEY.test(key.trim());
   const activate = () => {
     const trimmed = key.trim();
+    if (busy || !trimmed) return;
     if (!CLOUD_KEY.test(trimmed)) {
       setError("That's not a Bloks Cloud key. They start with blok_live_.");
       return;
@@ -78,6 +95,7 @@ export function CloudSection() {
     api("/api/relay/activate", { method: "POST", body: JSON.stringify({ key: trimmed }) })
       .then(() => {
         setKey("");
+        setArmed(true);
         load();
       })
       .catch((e: Error) => setError(e.message))
@@ -101,125 +119,128 @@ export function CloudSection() {
   // green only when the answers land too, not just when the line is open
   const working = Boolean(status?.connected) && status?.delivering !== false;
 
+  useEffect(() => {
+    if (!armed || !on || !working) return;
+    setArmed(false);
+    setCelebrating(true);
+  }, [armed, on, working]);
+  useEffect(() => {
+    if (!celebrating) return;
+    const timer = setTimeout(() => setCelebrating(false), 2800);
+    return () => clearTimeout(timer);
+  }, [celebrating]);
+
+  const health: { tone: Health; label: string } | null = !status
+    ? null
+    : !on
+      ? { tone: "off", label: "Not active" }
+      : working
+        ? { tone: "on", label: "Connected" }
+        : phonesOff
+          ? { tone: "issue", label: "Paused" }
+          : status.connected
+            ? { tone: "issue", label: "Replies failing" }
+            : { tone: "wait", label: "Reconnecting" };
+
+  const keyField = (action: string, variant: "brand" | "outline") => (
+    <div className="flex items-start gap-2">
+      <SecretField
+        id="cloud-key"
+        label="Bloks Cloud key"
+        value={key}
+        onChange={(value) => {
+          setKey(value);
+          setError(null);
+        }}
+        shape={CLOUD_KEY}
+        hint="Starts with blok_live_. It's in your confirmation email."
+        placeholder="blok_live_..."
+        onEnter={activate}
+        className="min-w-0 flex-1"
+      />
+      <Button size="sm" variant={variant} className="mt-[22px] h-8" disabled={busy || !keyLooksRight} onClick={activate}>
+        {busy ? <Loader2 size={13} className="animate-spin" /> : action}
+      </Button>
+    </div>
+  );
+
   return (
     <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <Cloud size={13.5} className="shrink-0 text-brand-ink" />
-            <span className="text-ui font-semibold text-foreground">Your plan</span>
-          </div>
-          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            Reach {thisComputer()} from your phone anywhere, and get notified when an agent needs
-            you. Your agents and keys stay here.
-          </div>
-        </div>
-        {on && (
-          <span
-            className={
-              "shrink-0 rounded-full px-2 py-0.5 text-small font-medium " +
-              (working
-                ? "bg-success/10 text-success"
-                : "bg-warning/10 text-warning")
-            }
-          >
-            {working ? "Connected" : phonesOff ? "Paused" : status?.connected ? "Replies failing" : "Reconnecting"}
-          </span>
-        )}
-      </div>
+      <ConnectionHeader
+        icon={<Cloud size={14} className="shrink-0 text-brand-ink" />}
+        title="Your plan"
+        says={`Reach ${thisComputer()} from your phone anywhere, and get notified when an agent needs you. Your agents and keys stay here.`}
+        health={health && <HealthLine tone={health.tone} label={health.label} />}
+      />
 
-      {error && (
-        <div className="mt-2.5 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small leading-relaxed text-destructive">
-          {error}
-        </div>
-      )}
+      <ConnectionError>{error}</ConnectionError>
+
+      <AnimatePresence initial={false}>
+        {celebrating && (
+          <PairedMoment
+            key="cloud"
+            icon={<Cloud size={18} />}
+            title="Bloks Cloud is on"
+            detail={`Paired phones reach ${thisComputer()} from anywhere now.`}
+          />
+        )}
+      </AnimatePresence>
 
       {status === null ? (
         <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" />
       ) : on ? (
-        <div className="mt-3 text-small leading-relaxed text-muted-foreground">
-          {phonesOff ? (
-            <>
-              Activated, but phone access is off on {thisComputer()}. Cloud only works while it is
-              on.
-              <div className="mt-2">
-                <Button size="sm" variant="brand" disabled={busy} onClick={turnOnPhones}>
-                  {busy ? <Loader2 size={13} className="animate-spin" /> : "Turn on phone access"}
-                </Button>
-              </div>
-            </>
-          ) : status.connected && status.delivering === false ? (
-            <>
-              Replies from {thisComputer()} aren't getting through, usually because of the network
-              here. Bloks keeps retrying.
-            </>
-          ) : status.spaceId ? (
-            <>
-              Active. Paired phones reach {thisComputer()} from anywhere.
-              <span className="ml-1 font-mono text-small text-muted-foreground/70">
-                {status.spaceId}
-              </span>
-            </>
-          ) : status.problem ? (
-            <>
-              Activated, but {thisComputer()} can't reach Bloks Cloud yet. Bloks keeps trying.
-              <span className="mt-1 block text-small text-muted-foreground/80">{status.problem}</span>
-            </>
-          ) : (
-            "Activated. Connecting to Bloks Cloud…"
-          )}
-          <div className="mt-2">
-            Paste a different key to move Cloud. The computer it was on stops reaching your
-            phone.
-          </div>
-          <div className="mt-2 flex gap-2">
-            <Input
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !busy && activate()}
-              placeholder="blok_live_..."
-              aria-label="Bloks Cloud key"
-              spellCheck={false}
-              autoComplete="off"
-              className="h-8 font-mono text-small"
-            />
-            <Button size="sm" variant="outline" disabled={busy || !key.trim()} onClick={activate}>
-              {busy ? <Loader2 size={13} className="animate-spin" /> : "Replace"}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-3">
-          <div className="flex gap-2">
-            <Input
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !busy && activate()}
-              placeholder="blok_live_..."
-              aria-label="Bloks Cloud key"
-              spellCheck={false}
-              autoComplete="off"
-              className="h-8 font-mono text-small"
-            />
-            <Button size="sm" variant="brand" disabled={busy || !key.trim()} onClick={activate}>
-              {busy ? <Loader2 size={13} className="animate-spin" /> : "Activate"}
-            </Button>
-          </div>
-          <div className="mt-2.5 text-small leading-relaxed text-muted-foreground">
-            {phones > 0 ? (
+        <>
+          <div className="mt-3 text-small leading-relaxed text-muted-foreground">
+            {phonesOff ? (
               <>
-                {phones === 1 ? "Your phone works" : `Your ${phones} phones work`} on this network. Cloud
-                lets {phones === 1 ? "it" : "them"} reach {thisComputer()} from anywhere, with a
-                notification when an agent needs you.
+                Activated, but phone access is off on {thisComputer()}. Cloud only works while it is on.
+                <div className="mt-2">
+                  <Button size="sm" variant="brand" disabled={busy} onClick={turnOnPhones}>
+                    {busy ? <Loader2 size={13} className="animate-spin" /> : "Turn on phone access"}
+                  </Button>
+                </div>
+              </>
+            ) : status.connected && status.delivering === false ? (
+              <>
+                Replies from {thisComputer()} aren't getting through, usually because of the network here. Bloks
+                keeps retrying.
+              </>
+            ) : status.spaceId ? (
+              <>
+                Active. Paired phones reach {thisComputer()} from anywhere.
+                <span className="ml-1 font-mono text-small text-muted-foreground/70">{status.spaceId}</span>
+              </>
+            ) : status.problem ? (
+              <>
+                Activated, but {thisComputer()} can't reach Bloks Cloud yet. Bloks keeps trying.
+                <span className="mt-1 block text-small text-muted-foreground/80">{status.problem}</span>
               </>
             ) : (
-              <>
-                A paired phone reaches {thisComputer()} on this network. Cloud makes it work
-                anywhere.
-              </>
+              "Activated. Connecting to Bloks Cloud."
             )}
           </div>
-          <div className="mt-2.5 flex items-center gap-2.5">
+          <div className="mt-4 border-t pt-3">
+            <div className="mb-2 text-small leading-relaxed text-muted-foreground">
+              Paste a different key to move Cloud. The computer it was on stops reaching your phone.
+            </div>
+            {keyField("Replace", "outline")}
+          </div>
+        </>
+      ) : (
+        <div className="mt-3">
+          {keyField("Activate", "brand")}
+          <ConnectionNote>
+            {phones > 0 ? (
+              <>
+                {phones === 1 ? "Your phone works" : `Your ${phones} phones work`} on this network. Cloud lets{" "}
+                {phones === 1 ? "it" : "them"} reach {thisComputer()} from anywhere, with a notification when an agent
+                needs you.
+              </>
+            ) : (
+              <>A paired phone reaches {thisComputer()} on this network. Cloud makes it work anywhere.</>
+            )}
+          </ConnectionNote>
+          <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <a
               href="https://bloks.dev/cloud"
               target="_blank"
@@ -229,9 +250,6 @@ export function CloudSection() {
               Get Bloks Cloud
             </a>
             <span className="text-small text-muted-foreground">$5 a month or $45 a year</span>
-          </div>
-          <div className="mt-2 text-small leading-relaxed text-muted-foreground/80">
-            Already bought it? Paste the key from your confirmation email above.
           </div>
         </div>
       )}
