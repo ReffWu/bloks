@@ -63,8 +63,8 @@ export function RehearsalsPanel() {
 
   return (
     <div
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card"
-      role="dialog"
+      className="flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-card"
+      role="region"
       aria-label="Rehearsals"
     >
       <div className="flex items-center justify-between border-b px-5 py-4">
@@ -79,7 +79,7 @@ export function RehearsalsPanel() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+      <div className="p-5">
         {error && <div className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">{error}</div>}
         {attempts === null ? (
           <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted-foreground">

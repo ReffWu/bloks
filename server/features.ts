@@ -73,4 +73,15 @@ export const FEATURES: readonly string[] = [
   // Codex speed: codex.speed on GET and PATCH /api/config, an agent's
   // codexSpeed on PATCH /api/bots/:id, and a running lane's codexDispatch
   "codex-speed",
+  // GET and PUT /api/memory/shared, its journal and undo: one MEMORY.md the
+  // person keeps for every agent, with memory.changed for botId "_shared"
+  "shared-memory",
+  // GET /api/memory/search?q=: every agent's memory and the shared memory
+  "memory-search",
+  // GET /api/bots/:id/memory/stats (lines and bytes against what a turn
+  // loads, topics with sizes and times), and changedAt on each topic
+  "memory-stats",
+  // POST /api/bots/:id/memory/copy: topics and picked MEMORY.md lines from
+  // another agent, journaled so the copy can be undone
+  "memory-copy",
 ];

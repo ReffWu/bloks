@@ -1179,10 +1179,10 @@ function MemoryCard({ bot }: { bot: Bot }) {
               className="text-foreground underline-offset-2 hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
-                dispatch({ type: "openLibrary", shelf: "memory", botId: bot.id });
+                dispatch({ type: "openMemory", target: bot.id });
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") dispatch({ type: "openLibrary", shelf: "memory", botId: bot.id });
+                if (e.key === "Enter") dispatch({ type: "openMemory", target: bot.id });
               }}
             >
               Every change, with undo

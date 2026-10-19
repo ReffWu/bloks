@@ -805,6 +805,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "rehearsals":
           rawDispatch({ type: "rehearsalsChanged" });
           break;
+        // an agent's memory, or the shared memory ("_shared"), changed:
+        // whatever shows that one re-reads, and the Memory place's list
+        // of every agent re-reads its meta lines
+        case "memory.changed":
+          if (typeof frame.botId === "string") rawDispatch({ type: "tick", key: `memory:${frame.botId}` });
+          rawDispatch({ type: "tick", key: "memory" });
+          break;
         case "profile":
         case "brief":
         case "watchers":

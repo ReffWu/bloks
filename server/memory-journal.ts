@@ -141,6 +141,14 @@ export class MemoryJournal {
     // read. Do not read again after the write and turn it into a refusal.
     const entries = this.load(botId);
     write?.();
+    // A turn of this agent's that is running now photographed memory
+    // before this write. Recorded here, the change is not the turn's to
+    // find again at its end, or one edit would be two entries: an
+    // agent's own write through Bloks, or the person's in the editor
+    // while the agent works, would also read as the agent's.
+    for (const pending of this.pending.values()) {
+      if (pending.botId === botId && !pending.snapshot.unreadable.has(file)) pending.snapshot.files.set(file, after);
+    }
     if (before === after) return null;
     const entry = { ...this.entry(file, by, before, after), ...(undoes ? { undoes } : {}) };
     this.save(botId, [...entries, entry]);

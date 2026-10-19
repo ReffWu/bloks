@@ -8,6 +8,27 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { configFromFrame, initialState, laneHasMessages, openLaneWorking, reducer, typedLane, type AppState, type Bot, type Message } from "../src/state/reducer.ts";
+import { goTo, placeOf } from "../src/lib/navHistory.ts";
+
+test("Memory opens on what a link asks for, keeps it otherwise, and Back returns to it", () => {
+  const settings = withState({ appSettingsOpen: true });
+  const opened = reducer(settings, { type: "openMemory", target: "bot-1" });
+  assert.equal(opened.page, "memory");
+  assert.equal(opened.memoryTarget, "bot-1");
+  assert.equal(opened.appSettingsOpen, false, "one full page at a time");
+  // the rail's own door keeps whatever was open there
+  assert.equal(reducer(opened, { type: "openPage", page: "memory" }).memoryTarget, "bot-1");
+  assert.equal(reducer(opened, { type: "openMemory" }).memoryTarget, "bot-1");
+
+  const place = placeOf(opened);
+  assert.deepEqual(place, { kind: "memory", target: "bot-1" });
+  const elsewhere = reducer(opened, { type: "openMemory", target: "shared" });
+  const back = goTo(place!).reduce(reducer, elsewhere);
+  assert.equal(back.memoryTarget, "bot-1");
+  // a place the page chose for itself goes back to being chosen
+  const chosen = goTo({ kind: "memory", target: null }).reduce(reducer, elsewhere);
+  assert.equal(chosen.memoryTarget, null);
+});
 
 const bot = (id: string, over: Partial<Bot> = {}): Bot => ({
   id,

@@ -177,6 +177,12 @@ export const RULES: Rule[] = [
   // types the value, and the agent never sees it in the chat.
   { method: "POST", path: "/api/bots/:me/secrets", why: "ask the person for an API key or other secret, through a secure field in the chat" },
   { method: "PUT", path: "/api/bots/:me/memory", why: "write its own memory" },
+  { method: "GET", path: "/api/bots/:me/memory/topics/:id", why: "read one of its own memory topic files" },
+  { method: "PUT", path: "/api/bots/:me/memory/topics/:id", why: "write one of its own memory topic files" },
+  { method: "DELETE", path: "/api/bots/:me/memory/topics/:id", why: "forget one of its own memory topic files" },
+  // What the person keeps for every agent, read only: the write is theirs
+  // alone, and is not on this list.
+  { method: "GET", path: "/api/memory/shared", why: "read the shared memory the person keeps for every agent" },
   { method: "GET", path: "/api/bots/:me/artifacts", why: "list what it has produced" },
   // One file into the conversation, as a card the person opens in the
   // app on any device. The command reads the file, as the agent, and
@@ -315,7 +321,7 @@ export function allows(botId: string, method: string, path: string, inRoom: InRo
     return { ok: false, reason: `${clean} allows ${verbs.join(", ")} for an agent, not ${verb}` };
   }
   // its own things, being asked for on somebody else's behalf
-  if (/^\/api\/bots\/[\w-]+\/(memory|artifacts)$/.test(clean)) {
+  if (/^\/api\/bots\/[\w-]+\/(memory(\/topics\/[^/]+)?|artifacts)$/.test(clean)) {
     return { ok: false, reason: "an agent can only read and write its own memory and files" };
   }
   return { ok: false, reason: `${verb} ${clean} is not on the list of things an agent can do` };

@@ -354,10 +354,13 @@ test("a person's session hears only their own exchange, and none of the owner's 
   const memory = join(f.root, ".bloks/workspaces", f.bot.id, "MEMORY.md");
   mkdirSync(join(f.root, ".bloks/workspaces", f.bot.id), { recursive: true });
   writeFileSync(memory, "AGENT_MEMORY_FACT\n");
+  mkdirSync(join(f.root, ".bloks/shared"), { recursive: true });
+  writeFileSync(join(f.root, ".bloks/shared/MEMORY.md"), "SHARED_MEMORY_FACT\n");
   await f.post(`/api/bots/${f.bot.id}/messages`, { text: "OWNER_SECRET_WORDS FAKE_TEXT" }); await f.idle();
   const owner = f.records().find((r) => !r.person);
   assert.match(owner.system, /OWNER_PROFILE_FACT/, "the fixture did not reach the owner's prompt");
   assert.match(owner.system, /AGENT_MEMORY_FACT/, "the fixture did not reach the owner's prompt");
+  assert.match(owner.system, /SHARED_MEMORY_FACT/, "the fixture did not reach the owner's prompt");
   await f.admit("FIRST_PERSON_WORDS FAKE_REPLY");
   await until(() => f.sent(LEE).some((m) => m.body.text === "Hello Lee"), "the person was not answered"); await f.idle();
   f.say("SECOND_PERSON_WORDS FAKE_TEXT", LEE); await f.flushed();
@@ -367,6 +370,7 @@ test("a person's session hears only their own exchange, and none of the owner's 
     assert.doesNotMatch(turn.text, /OWNER_SECRET_WORDS|Owner answer/, "the person's session was told the owner's conversation");
     assert.doesNotMatch(turn.system, /OWNER_PROFILE_FACT|About the person you work for/, "the person's session was told about the owner");
     assert.doesNotMatch(turn.system, /AGENT_MEMORY_FACT|persistent memory/, "the person's session was given the agent's memory");
+    assert.doesNotMatch(`${turn.system}\n${turn.text}`, /SHARED_MEMORY_FACT|Shared memory/, "the person's session was given the shared memory");
     assert.doesNotMatch(turn.system, /Deliverables:/, "the person's session was sent to save files in Bloks' own folder");
   }
   // their own exchange, both sides of it, is theirs to be reminded of
