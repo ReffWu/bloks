@@ -7,7 +7,8 @@ import { test } from "node:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudePlanUsage, codexPlanUsage } from "../server/plan-usage.ts";
+import { claudePlanUsage, codexPlanUsage, planNotices } from "../server/plan-usage.ts";
+import type { PlanWindow } from "../server/contracts.ts";
 import { startHarness, type Harness } from "./helpers/server.ts";
 import { waitFor } from "./helpers/turns.ts";
 
@@ -102,6 +103,90 @@ test("Codex's primary and secondary windows are percents, read as shares", () =>
   for (const nonsense of [null, {}, { primary: { usedPercent: "37" } }, { primary: null, secondary: { usedPercent: -3 } }]) {
     assert.equal(codexPlanUsage(nonsense, NOW), null, JSON.stringify(nonsense));
   }
+});
+
+// ── the notice above the composer ──────────────────────────────────────
+
+const HOUR = 60 * 60_000;
+const DAY = 24 * HOUR;
+const planOf = (...windows: PlanWindow[]) => ({ windows, plan: null, at: NOW });
+/** A window of this many minutes with `elapsed` of it gone by now. */
+const windowAt = (id: string, minutes: number, used: number, elapsed: number, extra: Partial<PlanWindow> = {}): PlanWindow => ({
+  id,
+  minutes,
+  used,
+  resetsAt: NOW + Math.round((1 - elapsed) * minutes * 60_000),
+  ...extra,
+});
+
+test("a window at its limit stops and near it warns, in the few words Bloks AI uses", () => {
+  const out = windowAt("five_hour", 300, 1, 0.5);
+  assert.deepEqual(planNotices("claude", planOf(out), NOW), [
+    { id: `claude:five_hour:stop:${out.resetsAt}`, source: "claude", level: "stop", title: "Limit reached", usedPercent: 100, resetsAt: out.resetsAt },
+  ]);
+  // the engine's own word counts as much as the share, either way
+  const rejected = planNotices("claude", planOf(windowAt("seven_day", 10_080, 0.6, 0.9, { status: "rejected" })), NOW);
+  assert.deepEqual([rejected[0].level, rejected[0].title, rejected[0].usedPercent], ["stop", "Limit reached", 60]);
+  const warned = planNotices("claude", planOf(windowAt("seven_day", 10_080, 0.7, 0.9, { status: "warning" })), NOW);
+  assert.deepEqual([warned[0].level, warned[0].title], ["warn", "Approaching limit"]);
+  const near = planNotices("codex", planOf(windowAt("primary", 300, 0.8, 0.95)), NOW);
+  assert.deepEqual([near[0].source, near[0].level, near[0].title, near[0].usedPercent], ["codex", "warn", "Approaching limit", 80]);
+  // over the cap is said as all of it
+  assert.equal(planNotices("claude", planOf(windowAt("five_hour", 300, 1.04, 0.5)), NOW)[0].usedPercent, 100);
+  // a window of no known length or reset still says it is used up
+  assert.deepEqual(planNotices("codex", planOf({ id: "primary", minutes: null, used: 1, resetsAt: null }), NOW).map((n) => [n.title, n.resetsAt]), [["Limit reached", null]]);
+});
+
+test("pace is a share used ahead of the share of the window gone by", () => {
+  // 60% of the week used with half of it gone: on pace to run out early
+  const week = windowAt("seven_day", 10_080, 0.6, 0.5);
+  assert.deepEqual(planNotices("claude", planOf(week), NOW), [
+    { id: `claude:seven_day:info:${week.resetsAt}`, source: "claude", level: "info", title: "Approaching limit", usedPercent: 60, resetsAt: week.resetsAt },
+  ]);
+  assert.equal(planNotices("codex", planOf(windowAt("primary", 300, 0.3, 0.2)), NOW)[0]?.level, "info");
+  // and these are not
+  const quiet: Array<[string, PlanWindow]> = [
+    ["used in step with the time gone", windowAt("seven_day", 10_080, 0.5, 0.5)],
+    ["behind the time gone", windowAt("seven_day", 10_080, 0.3, 0.6)],
+    ["too little used to matter, however fast", windowAt("seven_day", 10_080, 0.2, 0.1)],
+    ["too early in the window to say", windowAt("five_hour", 300, 0.3, 0.05)],
+    ["no length to measure against", { id: "primary", minutes: null, used: 0.7, resetsAt: NOW + HOUR }],
+    ["no reset to measure from", { id: "primary", minutes: 300, used: 0.7, resetsAt: null }],
+    ["a reset further off than the window is long", { id: "primary", minutes: 300, used: 0.7, resetsAt: NOW + DAY }],
+    ["nothing used", windowAt("seven_day", 10_080, 0, 0.9)],
+  ];
+  for (const [why, window] of quiet) assert.deepEqual(planNotices("claude", planOf(window), NOW), [], why);
+});
+
+test("one line per window, the worst first, and nothing from a window already reset", () => {
+  const notices = planNotices(
+    "claude",
+    planOf(
+      windowAt("five_hour", 300, 0.45, 0.3),
+      windowAt("seven_day", 10_080, 0.82, 0.6),
+      windowAt("seven_day_opus", 10_080, 1, 0.7),
+      { id: "seven_day_sonnet", minutes: 10_080, used: 1, resetsAt: NOW - 1, status: "rejected" },
+    ),
+    NOW,
+  );
+  assert.deepEqual(
+    notices.map((n) => [n.id.split(":")[1], n.level]),
+    [
+      ["seven_day_opus", "stop"],
+      ["seven_day", "warn"],
+      ["five_hour", "info"],
+    ],
+  );
+  // the id moves with the level and the window, so a dismissal holds only as long as the news does
+  const warn = planNotices("claude", planOf(windowAt("seven_day", 10_080, 0.82, 0.6)), NOW)[0].id;
+  const worse = planNotices("claude", planOf(windowAt("seven_day", 10_080, 1, 0.6)), NOW)[0].id;
+  const next = planNotices("claude", planOf(windowAt("seven_day", 10_080, 0.82, 0.0001)), NOW)[0]?.id;
+  assert.notEqual(warn, worse);
+  assert.notEqual(warn, next);
+  for (const nothing of [null, undefined, { windows: "x" }, planOf()]) {
+    assert.deepEqual(planNotices("claude", nothing as any, NOW), []);
+  }
+  assert.deepEqual(planNotices("claude", planOf({ id: "five_hour", minutes: 300, used: Number.NaN, resetsAt: null }), NOW), []);
 });
 
 // ── through the server, with engines that are fixtures ─────────────────

@@ -108,7 +108,8 @@ export function CreditsSection() {
   const rows = status.team !== false ? memberRows(status.members) : [];
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
+    // the id is where a usage notice's "View usage" lands
+    <div id="bloks-ai" className="mt-4 scroll-mt-4 rounded-2xl border bg-card p-4">
       <ConnectionHeader
         icon={<Wallet size={14} className="shrink-0 text-brand-ink" />}
         title="Bloks AI"

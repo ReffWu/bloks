@@ -77,12 +77,20 @@ interface Today {
   failed?: boolean;
 }
 
-export function ComposerRing({ bot }: { bot: Bot }) {
+/** `open` and `onOpenChange` hand the card to the composer, which opens
+ * it from a usage notice's "View usage" as well as from the ring. */
+export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const { state } = useStore();
   const lane = bot.tasks?.find((t) => t.id === (bot.activeTaskId ?? bot.threadId));
   const context = composerContext(lane?.context);
   const instanceId = bot.modelSelection.instanceId;
-  const [open, setOpen] = useState(false);
+  const [own, setOwn] = useState(false);
+  const open = held ?? own;
+  const setOpen = (next: boolean | ((was: boolean) => boolean)) => {
+    const value = typeof next === "function" ? next(open) : next;
+    if (held === undefined) setOwn(value);
+    onOpenChange?.(value);
+  };
   const ref = useDismiss(open, () => setOpen(false));
   // kept with the engine it is about, so a switch never shows the last
   // engine's plan while the new one is asked for

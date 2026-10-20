@@ -190,6 +190,10 @@ test("a balance answer is read field by field, and one without a share left is r
       low: false,
       members: null,
       team: null,
+      usedTodayPercent: null,
+      dailyLimitPercent: null,
+      dailyResetsAt: null,
+      notice: null,
       at: 7,
     },
   );

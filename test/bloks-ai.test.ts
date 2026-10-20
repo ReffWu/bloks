@@ -1,8 +1,9 @@
 // The rules of Bloks AI, held one at a time (server/bloks-ai.ts): which
 // work tag a turn carries, what a member tag is made of and never made
 // of, the headers in both the shapes the engines take them, Claude Code's
-// environment on Bloks AI, and the scrubs that keep what ran underneath
-// and what it cost with the service.
+// environment on Bloks AI, the scrubs that keep what ran underneath
+// and what it cost with the service, and the usage notice the balance
+// carries, read as warily as the rest of it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -16,6 +17,8 @@ import {
   memberTag,
   onPersonalSignIn,
   originOf,
+  readAiBalance,
+  readAiNotice,
   readTeam,
   scrubEvent,
   scrubFrame,
@@ -152,4 +155,96 @@ test("the warning: a hosted team with an agent on a personal sign-in, and nothin
   assert.equal(teamSignInWarning({ hosted: true, team: false, personalAgents: 3 }), null);
   assert.equal(teamSignInWarning({ hosted: true, team: null, personalAgents: 3 }), null);
   assert.equal(teamSignInWarning({ hosted: true, team: true, personalAgents: 0 }), null);
+});
+
+// ── the usage notice ───────────────────────────────────────────────────
+
+const NOTICE = {
+  id: "month-2026-10:warn",
+  level: "warn",
+  title: "Almost out of Bloks AI for this month",
+  usedPercent: 91.6,
+  resetsAt: "2026-11-01T00:00:00Z",
+};
+
+test("the balance's usage notice is read whole, with the next daily reset beside it", () => {
+  const balance = readAiBalance(JSON.stringify({ leftPercent: 8.4, dailyResetsAt: 1_792_800_000, notice: NOTICE }), 7);
+  assert.deepEqual(balance.notice, {
+    id: "month-2026-10:warn",
+    level: "warn",
+    title: "Almost out of Bloks AI for this month",
+    usedPercent: 92,
+    resetsAt: Date.parse("2026-11-01T00:00:00Z"),
+  });
+  assert.equal(balance.dailyResetsAt, 1_792_800_000_000);
+  // no reset is a notice still; nothing at all is none
+  assert.equal(readAiNotice({ ...NOTICE, resetsAt: null })?.resetsAt, null);
+  assert.equal(readAiNotice({ ...NOTICE, resetsAt: undefined })?.resetsAt, null);
+  assert.equal(readAiBalance('{"leftPercent":50}').notice, null);
+  assert.equal(readAiBalance('{"leftPercent":50,"notice":null}').notice, null);
+  // a share past the ends is a share
+  assert.equal(readAiNotice({ ...NOTICE, usedPercent: 140 })?.usedPercent, 100);
+  assert.equal(readAiNotice({ ...NOTICE, usedPercent: -3 })?.usedPercent, 0);
+  for (const level of ["info", "warn", "stop"]) assert.equal(readAiNotice({ ...NOTICE, level })?.level, level);
+});
+
+test("a usage notice short of a whole one is no notice, and the balance is still read", () => {
+  const broken: unknown[] = [
+    "Almost out",
+    ["a"],
+    42,
+    { ...NOTICE, id: undefined },
+    { ...NOTICE, id: "" },
+    { ...NOTICE, id: "has spaces" },
+    { ...NOTICE, id: "<script>" },
+    { ...NOTICE, id: "x".repeat(121) },
+    { ...NOTICE, level: "danger" },
+    { ...NOTICE, level: "WARN" },
+    { ...NOTICE, title: 7 },
+    { ...NOTICE, title: "   " },
+    { ...NOTICE, title: "\u0000\u202e\u200b" },
+    { ...NOTICE, usedPercent: "91" },
+    { ...NOTICE, usedPercent: Number.NaN },
+    { ...NOTICE, usedPercent: undefined },
+    { ...NOTICE, resetsAt: "soon" },
+    { ...NOTICE, resetsAt: -5 },
+    { ...NOTICE, resetsAt: {} },
+  ];
+  for (const notice of broken) {
+    assert.equal(readAiNotice(notice), null, JSON.stringify(notice));
+    const balance = readAiBalance(JSON.stringify({ leftPercent: 50, notice }));
+    assert.equal(balance.notice, null);
+    assert.equal(balance.leftPercent, 50, "a bad notice does not cost the balance");
+  }
+  assert.equal(readAiBalance('{"leftPercent":50,"dailyResetsAt":"tomorrow"}').dailyResetsAt, null);
+});
+
+test("today's share is a share, and a day's limit is any positive share within reason", () => {
+  const read = (fields: Record<string, unknown>) => readAiBalance(JSON.stringify({ leftPercent: 50, ...fields }));
+  assert.equal(read({ usedTodayPercent: 12.5 }).usedTodayPercent, 12.5);
+  assert.equal(read({ usedTodayPercent: 140 }).usedTodayPercent, 100);
+  assert.equal(read({ usedTodayPercent: -1 }).usedTodayPercent, 0);
+  assert.equal(read({ usedTodayPercent: "12" }).usedTodayPercent, null);
+  assert.equal(read({}).usedTodayPercent, null);
+  // a day's limit may be set above the whole month
+  assert.equal(read({ dailyLimitPercent: 150 }).dailyLimitPercent, 150);
+  assert.equal(read({ dailyLimitPercent: 1e12 }).dailyLimitPercent, 100_000);
+  for (const bad of [0, -5, "20", null, Number.NaN, {}]) assert.equal(read({ dailyLimitPercent: bad }).dailyLimitPercent, null, String(bad));
+});
+
+test("a notice's title is plain text, cut to a line, and never about money", () => {
+  // control and direction characters go, so nothing reorders or hides part of the line
+  assert.equal(
+    readAiNotice({ ...NOTICE, title: "Close to\ntoday's \u202eBloks AI\u202c limit\u0007" })?.title,
+    "Close to today's Bloks AI limit",
+  );
+  assert.equal(readAiNotice({ ...NOTICE, title: "  On pace\u200b to use\t\tthis month early  " })?.title, "On pace to use this month early");
+  const long = readAiNotice({ ...NOTICE, title: "a".repeat(119) + "\u{1F600}" + "b".repeat(50) })!.title;
+  assert.equal(Array.from(long).length, 120, "cut at 120 characters");
+  assert.ok(long.endsWith("\u{1F600}"), "and never through the middle of one");
+  // markup is words to React; it is kept as written and shown as text
+  assert.equal(readAiNotice({ ...NOTICE, title: "<b>Almost</b> out" })?.title, "<b>Almost</b> out");
+  for (const title of ["You have $4.20 left", "Under 3 \u20ac left this month", "\u00a312 of Bloks AI used"]) {
+    assert.equal(readAiNotice({ ...NOTICE, title }), null, title);
+  }
 });

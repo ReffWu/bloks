@@ -34,6 +34,7 @@ import { SlashMenu } from "./composer/SlashMenu";
 import { guestMailNotice, useApprovalsNotice, useCreditsNotice, useEngineNotice, useOtherLanesNotice, useSuggestionNotice } from "./chat/Banners";
 import { useGoalNotice } from "./Goal";
 import { useQueuedNotice } from "./WaitingStrip";
+import { UsageNotice } from "./composer/UsageNotice";
 import { useDeliveryPreview, type DeliveryPreview } from "@/lib/delivery";
 import {
   attachmentBasename,
@@ -372,6 +373,8 @@ export function Composer({
   };
   /** Why something did not become a chip, said once, dismissible. */
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
+  // the ring's card, which a usage notice's "View usage" opens too
+  const [ringOpen, setRingOpen] = useState(false);
   /** A wider approval mode that Touch ID was not given for. */
   const [modeRefused, setModeRefused] = useState(false);
   const pickerRef = useRef<HTMLInputElement>(null);
@@ -874,6 +877,7 @@ export function Composer({
   return (
     <ComposerShell
       notices={notices}
+      top={<UsageNotice bot={bot} onViewPlan={() => setRingOpen(true)} />}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("Files")) e.preventDefault();
       }}
@@ -956,7 +960,7 @@ export function Composer({
         <>
           <ModelPicker bot={bot} variant="composer" />
           <CodexSpeedMenu bot={bot} />
-          <ComposerRing bot={bot} />
+          <ComposerRing bot={bot} open={ringOpen} onOpenChange={setRingOpen} />
         </>
       }
     >

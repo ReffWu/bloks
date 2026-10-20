@@ -22,7 +22,7 @@
 // reading a spawn or a request.
 import { createHash } from "node:crypto";
 
-import type { RuntimeEvent } from "./contracts.ts";
+import type { RuntimeEvent, UsageLevel } from "./contracts.ts";
 
 /** The one model the Bloks engine lists, and the name it goes by. */
 export const BLOKS_AI_MODEL = "bloks-ai";
@@ -214,8 +214,28 @@ export interface AiBalance {
   members: MemberUsage[] | null;
   /** Said by the balance itself, when it says. */
   team: boolean | null;
+  /** Of the monthly allowance, the share used today. */
+  usedTodayPercent: number | null;
+  /** A day's limit, as a share of the monthly allowance. It can be set
+   * above the whole month, so it is not held to 100. */
+  dailyLimitPercent: number | null;
+  /** When today's limit starts again (the next midnight in UTC), in ms. */
+  dailyResetsAt: number | null;
+  /** The one thing the service wants said about usage right now, if any. */
+  notice: AiNotice | null;
   /** When it was read. */
   at: number;
+}
+
+/** A usage notice as the service words it, for the composer of a
+ * conversation on Bloks AI. A share and a time, never an amount. */
+export interface AiNotice {
+  /** Carries the day or the month, so putting one away lasts that long. */
+  id: string;
+  level: UsageLevel;
+  title: string;
+  usedPercent: number;
+  resetsAt: number | null;
 }
 
 const percent = (value: unknown): number | null =>
@@ -229,6 +249,42 @@ export function readTime(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+/** Far past any limit anybody sets, and short of a number that breaks a layout. */
+const DAILY_LIMIT_MAX = 100_000;
+
+const NOTICE_LEVELS: ReadonlySet<string> = new Set<UsageLevel>(["info", "warn", "stop"]);
+/** Plain enough to be a key in a phone's settings and a line in a log. */
+const NOTICE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
+const NOTICE_TITLE_MAX = 120;
+
+/**
+ * The service's usage notice, or null for anything short of a whole one.
+ * Its title is shown as it is, so it is held to plain text: control and
+ * format characters (which can reorder a line or hide part of it) are
+ * taken out, and a title that names money is not shown at all, since a
+ * notice is a share and a time and nothing else.
+ */
+export function readAiNotice(value: unknown): AiNotice | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const said = value as Record<string, unknown>;
+  if (typeof said.id !== "string" || !NOTICE_ID.test(said.id)) return null;
+  if (typeof said.level !== "string" || !NOTICE_LEVELS.has(said.level)) return null;
+  if (typeof said.title !== "string") return null;
+  const words = said.title
+    .replace(/\p{Cf}/gu, "")
+    .replace(/[\p{Cc}\p{Zl}\p{Zp}\s]+/gu, " ")
+    .trim();
+  // cut by characters, not code units, so a cut never splits one in two
+  const title = Array.from(words).slice(0, NOTICE_TITLE_MAX).join("").trim();
+  if (!title || /\p{Sc}/u.test(title)) return null;
+  const used = percent(said.usedPercent);
+  if (used === null) return null;
+  // no reset is fine; one that is not a time is a notice gone wrong
+  const resetsAt = said.resetsAt === undefined || said.resetsAt === null ? null : readTime(said.resetsAt);
+  if (resetsAt === null && said.resetsAt !== undefined && said.resetsAt !== null) return null;
+  return { id: said.id, level: said.level as UsageLevel, title, usedPercent: Math.round(used), resetsAt };
 }
 
 /** A balance answer, checked one field at a time: another service's JSON,
@@ -263,6 +319,13 @@ export function readAiBalance(text: string, now = Date.now()): AiBalance {
     low: parsed.low === true,
     members,
     team: typeof parsed.team === "boolean" ? parsed.team : null,
+    usedTodayPercent: percent(parsed.usedTodayPercent),
+    dailyLimitPercent:
+      typeof parsed.dailyLimitPercent === "number" && Number.isFinite(parsed.dailyLimitPercent) && parsed.dailyLimitPercent > 0
+        ? Math.min(DAILY_LIMIT_MAX, parsed.dailyLimitPercent)
+        : null,
+    dailyResetsAt: readTime(parsed.dailyResetsAt),
+    notice: readAiNotice(parsed.notice),
     at: now,
   };
 }

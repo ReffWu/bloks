@@ -418,6 +418,27 @@ export interface PlanUsage {
   at: number;
 }
 
+/** How much a usage notice asks for: worth knowing, near a limit, at one. */
+export type UsageLevel = "info" | "warn" | "stop";
+
+/**
+ * A notice in the composer about a limit, as GET /api/usage-notices
+ * sends it to this app and to a paired phone. From Bloks AI's own word
+ * (source "bloks-ai") or from an engine's plan windows (source is the
+ * engine instance). A share and a time, never an amount.
+ */
+export interface UsageNotice {
+  /** Stable while it says the same thing, so putting it away holds. */
+  id: string;
+  source: string;
+  level: UsageLevel;
+  title: string;
+  /** A whole percent, 0 to 100. */
+  usedPercent: number;
+  /** Epoch milliseconds, when known. */
+  resetsAt: number | null;
+}
+
 // ── defining a driver ──────────────────────────────────────────────────
 
 export interface ModelCatalog {

@@ -36,6 +36,11 @@ export const FEATURES: readonly string[] = [
   "notes",
   // GET /api/plan-usage for a paired device, not only this machine
   "plan-usage",
+  // GET /api/usage-notices?thread=: the notices in the composer about a
+  // limit, from Bloks AI's own word or an engine's plan windows, worst
+  // first, each { id, source, level, title, usedPercent, resetsAt }; and
+  // usedTodayPercent, dailyLimitPercent and dailyResetsAt on GET /api/credits
+  "usage-notices",
   // GET and POST /api/threads/:t/messages/:id/redo: what redoing a
   // message the agent already read would take back, and doing it
   "redo",

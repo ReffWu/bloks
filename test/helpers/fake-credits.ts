@@ -43,6 +43,8 @@ export interface FakeCredits {
   refill(leftPercent: number): void;
   /** A token it no longer accepts. */
   revoke(token: string): void;
+  /** What the balance says above the composer from now on, or nothing. */
+  notice(notice: Record<string, unknown> | null): void;
   close(): Promise<void>;
 }
 
@@ -61,6 +63,7 @@ export async function startFakeCredits(
 ): Promise<FakeCredits> {
   let left = opts.leftPercent ?? 62;
   let emptyWords = "Bloks AI is used up for this month. Top up to keep going.";
+  let notice: Record<string, unknown> | null = null;
   const revoked = new Set<string>();
   const live = new Set<string>();
   const issued: string[] = [];
@@ -117,6 +120,10 @@ export async function startFakeCredits(
         renewsAt: "2026-11-19T00:00:00Z",
         low: left <= 10,
         ...(opts.team ? { members } : {}),
+        usedTodayPercent: 4,
+        dailyLimitPercent: 150,
+        dailyResetsAt: Date.UTC(2026, 10, 19),
+        notice,
         // what a careless service might add, never to be shown
         balanceUsd: 41.17,
         model: UPSTREAM_MODEL,
@@ -181,6 +188,9 @@ export async function startFakeCredits(
     },
     revoke(token) {
       revoked.add(token);
+    },
+    notice(next) {
+      notice = next;
     },
     close: () =>
       new Promise<void>((resolve) => {

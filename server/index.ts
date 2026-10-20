@@ -97,7 +97,8 @@ import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView } from "./member-access.ts";
 import { CLI_PROVIDERS, CUSTOM_SPEC, PROVIDER_SPECS, normalizeCompatUrl, specFor } from "./providers.ts";
 import { callbackPage, finishOAuth, startOAuth, supportsOAuth } from "./oauth.ts";
-import type { ModelSelection, PlanUsage, ProviderInstance, ProviderSnapshot, RuntimeEvent, SendTurnInput } from "./contracts.ts";
+import type { ModelSelection, PlanUsage, ProviderInstance, ProviderSnapshot, RuntimeEvent, SendTurnInput, UsageNotice } from "./contracts.ts";
+import { planNotices, sortNotices } from "./plan-usage.ts";
 import { newId } from "./contracts.ts";
 
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
@@ -8815,6 +8816,9 @@ async function creditsStatus(fresh = false) {
     monthlyLeftPercent: value?.monthlyLeftPercent ?? null,
     topUps: value?.topUps ?? null,
     renewsAt: value?.renewsAt ?? null,
+    usedTodayPercent: value?.usedTodayPercent ?? null,
+    dailyLimitPercent: value?.dailyLimitPercent ?? null,
+    dailyResetsAt: value?.dailyResetsAt ?? null,
     low: value?.low ?? false,
     members: value?.members
       ? value.members.map((m) => ({ ...m, name: names!.get(m.member) ?? null }))
@@ -8823,6 +8827,38 @@ async function creditsStatus(fresh = false) {
     readAt: value?.at ?? null,
     problem: offered ? (read?.problem ?? (connectable ? null : credits.problem)) : null,
   };
+}
+
+/**
+ * What to say in the composer about limits, worst first: Bloks AI's
+ * notice in the service's own words, and each engine's from its plan
+ * windows (server/plan-usage.ts). For one conversation, only what it runs
+ * on: a lane on Bloks AI hears about Bloks AI and nothing about the
+ * sign-in its engine would otherwise use, and any other lane hears about
+ * the engine running it. The balance is read only when Bloks AI is what is being asked about,
+ * and through the same short-lived copy Settings uses.
+ */
+async function usageNotices(threadId: string | null): Promise<UsageNotice[]> {
+  const bloksAi = async (): Promise<UsageNotice[]> => {
+    if (!creditsOffered(cfg) || !credits.canConnect()) return [];
+    const notice = (await readCreditsBalance())?.value?.notice ?? null;
+    if (!notice || (notice.resetsAt !== null && notice.resetsAt <= Date.now())) return [];
+    const { id, level, title, usedPercent, resetsAt } = notice;
+    return [{ id, source: "bloks-ai", level, title, usedPercent, resetsAt }];
+  };
+  const engine = (instance: ProviderInstance | null | undefined): UsageNotice[] =>
+    instance && instance.driverKind !== CREDITS_KIND
+      ? planNotices(instance.instanceId, instance.planUsage?.() ?? null)
+      : [];
+  if (threadId === null) return sortNotices([...(await bloksAi()), ...registry.instances().flatMap(engine)]);
+  // A phone asks with the agent's main thread whichever lane is busy, so
+  // that is read as the agent's own conversation, on its own engine. A
+  // room, or anything else that is no agent's lane, hears nothing.
+  const bot = store.bots.find((b) => b.threadId === threadId) ?? store.botByThread(threadId);
+  if (!bot) return [];
+  const instance = laneInstance(bot, threadId);
+  if (bloksAiLane(threadId, instance?.instanceId ?? bot.modelSelection.instanceId)) return bloksAi();
+  return engine(instance);
 }
 
 // A hosted workspace learns soon after it starts whether its licence is a
@@ -18064,6 +18100,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         if (latest) usage[instance.instanceId] = latest;
       }
       return json(res, 200, { usage });
+    }
+
+    // The notices in the composer about limits, for this app and a
+    // paired phone alike: the same people as the plan above, for the same
+    // reasons, and never an agent. ?thread= narrows them to what that
+    // conversation runs on; a thread nobody has is an empty list.
+    if (method === "GET" && path === "/api/usage-notices") {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      const thread = url.searchParams.has("thread") ? (url.searchParams.get("thread") ?? "") : null;
+      return json(res, 200, { notices: await usageNotices(thread) });
     }
 
     // The security checkup (server/security.ts). This machine only, and

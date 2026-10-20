@@ -13,9 +13,13 @@
 // now, a restart forgets it, and the next turn brings it back. It is for
 // the person at this Mac to read. An agent is never told it.
 //
+// The same numbers also say when a limit is coming before anyone opens
+// the card: a notice in the composer when a window is used up, nearly
+// used up, or being used faster than it renews (planNotices).
+//
 // Everything here is pure.
 
-import type { PlanUsage, PlanWindow } from "./contracts.ts";
+import type { PlanUsage, PlanWindow, UsageLevel, UsageNotice } from "./contracts.ts";
 
 /** How long each of Claude Code's windows is, by its name for it. */
 const CLAUDE_WINDOW_MINUTES: Record<string, number> = {
@@ -107,4 +111,64 @@ export function codexPlanUsage(rateLimits: unknown, now = Date.now()): PlanUsage
   if (!windows.length) return null;
   const plan = typeof said.planType === "string" && said.planType.trim() ? said.planType.trim() : null;
   return { windows, plan, at: now };
+}
+
+// ── notices ────────────────────────────────────────────────────────────
+
+/** Past this share a window is close to its limit, whatever the engine said. */
+const NEAR = 0.8;
+/** A window this new has not been used long enough to say much about pace. */
+const PACE_AFTER = 0.1;
+/** Under this share nobody needs telling, however fast it went. */
+const PACE_FROM = 0.25;
+
+/** Worst first, for sorting. */
+export const LEVEL_ORDER: Record<UsageLevel, number> = { stop: 0, warn: 1, info: 2 };
+
+/**
+ * What one engine's plan should say in the composer, worst first, at
+ * most one per window, in the few words Bloks AI's own notices use:
+ * "Limit reached", or "Approaching limit" for near it and on pace alike.
+ * When it resets says which window it is; the card has the rest.
+ *
+ * At the limit is the engine's own "rejected" or a share used up; near
+ * it is the engine's warning or past 80%; on pace is a share used ahead
+ * of the share of the window gone by, once a tenth of the window has
+ * passed and a quarter is used, so the first busy minutes of a new
+ * window do not read as a run on it.
+ *
+ * A window whose reset has passed says nothing: its numbers were
+ * replaced by ones nobody has heard yet. The id carries the window, the
+ * level and the reset, so a notice put away comes back for a new window
+ * or a worse level, and not before.
+ */
+export function planNotices(instanceId: string, usage: PlanUsage | null | undefined, now = Date.now()): UsageNotice[] {
+  if (!usage || !Array.isArray(usage.windows)) return [];
+  const notices: UsageNotice[] = [];
+  for (const window of usage.windows) {
+    if (!Number.isFinite(window.used) || window.used < 0) continue;
+    if (window.resetsAt !== null && window.resetsAt <= now) continue;
+    let level: UsageLevel | null = null;
+    if (window.status === "rejected" || window.used >= 1) level = "stop";
+    else if (window.status === "warning" || window.used >= NEAR) level = "warn";
+    else if (window.minutes && window.resetsAt !== null) {
+      const elapsed = 1 - (window.resetsAt - now) / (window.minutes * 60_000);
+      if (elapsed >= PACE_AFTER && window.used >= PACE_FROM && window.used / elapsed > 1) level = "info";
+    }
+    if (!level) continue;
+    notices.push({
+      id: `${instanceId}:${window.id}:${level}:${window.resetsAt}`,
+      source: instanceId,
+      level,
+      title: level === "stop" ? "Limit reached" : "Approaching limit",
+      usedPercent: Math.min(100, Math.max(0, Math.round(window.used * 100))),
+      resetsAt: window.resetsAt,
+    });
+  }
+  return sortNotices(notices);
+}
+
+/** Worst first, and the fuller of two alike first. */
+export function sortNotices(notices: UsageNotice[]): UsageNotice[] {
+  return [...notices].sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] || b.usedPercent - a.usedPercent);
 }
