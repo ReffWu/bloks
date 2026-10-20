@@ -116,6 +116,10 @@ contextBridge.exposeInMainWorld("bloks", {
   pendingLink: () => ipcRenderer.invoke("link:pending"),
   // the system share sheet, for a workspace invite's link (electron/main.mjs)
   shareLink: (url) => ipcRenderer.invoke("share:link", url),
+  // the Plan page: an offer opened with the licence attached, and the
+  // licence copied, both without the page ever holding it (electron/main.mjs)
+  planOpen: (url) => ipcRenderer.invoke("plan:open", url),
+  licenceCopy: () => ipcRenderer.invoke("licence:copy"),
   // the macOS menu bar's own items, Settings among them (electron/app-menu.mjs)
   onMenuCommand: subscription("menu:command"),
   pendingMenuCommand: () => ipcRenderer.invoke("menu:pending"),

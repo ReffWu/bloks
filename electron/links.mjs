@@ -40,6 +40,20 @@ export function joinLink(raw) {
   }
 }
 
+/**
+ * bloks://plan, the way bloks.dev sends somebody back after a checkout
+ * or a change in billing: it opens Settings on Plan, which looks again.
+ * Nothing else rides on it; a path or a query is not read.
+ */
+export function planLink(raw) {
+  try {
+    const url = new URL(String(raw));
+    return url.protocol === "bloks:" && url.hostname === "plan" ? { kind: "plan" } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The bloks:// link among a launch's arguments, or null. */
 export function linkInArgv(argv) {
   return (Array.isArray(argv) ? argv : []).find((arg) => typeof arg === "string" && arg.startsWith("bloks://")) ?? null;

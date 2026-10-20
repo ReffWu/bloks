@@ -99,8 +99,9 @@ import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView, type Standing as PersonStanding } from "./member-access.ts";
 import * as access from "./access.ts";
 import { asWho, createMembers } from "./members.ts";
-import { PLAN_LIMITS, ROOM_SHARING_WORDS, membersActive, pausedWords, roomSharingAllowed } from "./plan-limits.ts";
+import { PLAN_LIMITS, ROOM_SHARING_WORDS, membersActive, pausedWords, roomSharingAllowed, workspaceMemberLimit } from "./plan-limits.ts";
 import { OwnerPlan } from "./owner-plan.ts";
+import { PlanAccount, planRoute, type PlanRouteDeps } from "./plan-account.ts";
 import { Reads, type ReadMark } from "./reads.ts";
 import { JoinClient } from "./join-client.ts";
 import * as invites from "./invites.ts";
@@ -9393,12 +9394,14 @@ function licenceKey(): string | null {
 }
 
 /** Tells the desktop app about a licence this workspace was given, so
- * it keeps it once for all of them. Nothing outside the app hears it. */
-function shareLicence(key: string) {
+ * it keeps it once for all of them. Nothing outside the app hears it.
+ * `typed` is false for the one this workspace already held, offered as it
+ * starts: the app may have been told to forget that one. */
+function shareLicence(key: string, typed = true) {
   if (!CLOUD_KEY.test(key)) return;
   const app = (process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort;
   try {
-    app?.postMessage({ kind: "desktop.licence", key });
+    app?.postMessage({ kind: "desktop.licence", key, typed });
   } catch {
     /* no app to keep it: this workspace keeps its own */
   }
@@ -9412,6 +9415,78 @@ function relayBase(): string {
   const url = cfg.relay?.url || process.env.BLOKS_RELAY_URL || "https://relay.bloks.dev";
   return url.trim().replace(/\/+$/, "");
 }
+
+/**
+ * Takes this workspace offline: its slot at the relay is given back
+ * (DELETE /space/agent), not only hung up on, since a plan that keeps
+ * three online counts spaces rather than open lines. Answers why not, or
+ * null. A relay that cannot be reached leaves it online, because a slot
+ * the relay still counts must not look free.
+ */
+async function takeOffline(): Promise<string | null> {
+  const token = cfg.relay?.agentToken;
+  if (token && cfg.relay?.url) {
+    let gone: Response;
+    try {
+      gone = await fetch(`${relayBase()}/space/agent`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      return "Bloks Cloud could not be reached, so this workspace is still online. Try again in a moment";
+    }
+    // 401 or 404 means the relay has already let it go
+    if (!gone.ok && gone.status !== 401 && gone.status !== 404) {
+      return `Bloks Cloud answered HTTP ${gone.status}, so this workspace is still online`;
+    }
+  }
+  Object.assign(cfg, saveConfig({ relay: { enabled: false, agentToken: "", clientToken: "" } }));
+  syncRelay(cfg);
+  return null;
+}
+
+// ── the Plan page (server/plan-account.ts) ────────────────────────────
+
+const planAccount = new PlanAccount({ file: join(DATA_DIR, "plan-cache.json") });
+
+/**
+ * What the Plan page reads: the licence this workspace uses, the plan the
+ * gates go by, and how many people are in. A fresh look from the page
+ * (somebody back from bloks.dev) also asks the relay again, so sharing a
+ * room changes with the plan and not ten minutes later.
+ */
+const planDeps: PlanRouteDeps = {
+  licence: () => licenceKey(),
+  kept: () => Boolean(sharedLicence) && licenceKey() === sharedLicence,
+  ownerPlan: () => ownerPlan.current(),
+  heard: async (plan, fresh) => {
+    // the licence authority's own word: the gates move now, and say so
+    if (plan) ownerPlan.set(plan);
+    else if (fresh) await ownerPlan.get(true);
+    if (fresh) await currentPlan(true).catch(() => null);
+  },
+  members: () => ({ count: people.workspaceMembers().length, limit: workspaceMemberLimit(ownerPlan.current()) }),
+  forget: async () => {
+    // offline first: a space left open would keep counting against the
+    // plan with no key here to close it later
+    const problem = await takeOffline();
+    if (problem) return problem;
+    credits.forget({ licence: true });
+    sharedLicence = null;
+    try {
+      (process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort?.postMessage({
+        kind: "desktop.licence.forget",
+      });
+    } catch {
+      /* no app: this workspace's own copy is gone, which is all there was */
+    }
+    await reloadProviders();
+    await ownerPlan.get(true).catch(() => null);
+    broadcast({ kind: "credits", ...creditsSummary() });
+    return null;
+  },
+};
 
 // ── Bloks AI (server/credits.ts, server/bloks-ai.ts) ──────────────────
 
@@ -17552,27 +17627,20 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
     if (method === "DELETE" && path === "/api/relay/space") {
       if (!local) return json(res, 403, { error: "not from here" });
-      const token = cfg.relay?.agentToken;
-      if (token && cfg.relay?.url) {
-        let gone: Response;
-        try {
-          gone = await fetch(`${relayBase()}/space/agent`, {
-            method: "DELETE",
-            headers: { authorization: `Bearer ${token}` },
-            signal: AbortSignal.timeout(15_000),
-          });
-        } catch {
-          // kept as it was: a slot the relay still counts must not look free
-          return json(res, 502, { error: "Bloks Cloud could not be reached, so this workspace is still online. Try again in a moment" });
-        }
-        // 401 or 404 means the relay has already let it go
-        if (!gone.ok && gone.status !== 401 && gone.status !== 404) {
-          return json(res, 502, { error: `Bloks Cloud answered HTTP ${gone.status}, so this workspace is still online` });
-        }
-      }
-      Object.assign(cfg, saveConfig({ relay: { enabled: false, agentToken: "", clientToken: "" } }));
-      syncRelay(cfg);
+      const problem = await takeOffline();
+      if (problem) return json(res, 502, { error: problem });
       return json(res, 200, { enabled: false, connected: false, spaceId: null });
+    }
+
+    // The Plan page (server/plan-account.ts): the membership on the
+    // licence, the offers on it, the way to billing, and forgetting the
+    // key. This computer's own window only: never an agent, whose
+    // business the person's billing is not, and never a paired device,
+    // since the answer is read with the licence itself.
+    if (path === "/api/plan" || path.startsWith("/api/plan/")) {
+      if (asAgent || !local) return json(res, 403, { error: "your plan is shown on this computer only" });
+      const answered = await planRoute(method, path, url.searchParams, planDeps, planAccount);
+      if (answered) return json(res, answered.status, answered.body);
     }
 
     // Bloks AI: what is left, the background switch and a team's member
@@ -23377,6 +23445,14 @@ type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: u
   // the app's one licence, for putting this workspace online without a key
   const handed = licenceFrom(message);
   sharedLicence = handed ?? sharedLicence;
+  // the key was removed from the Plan page of some workspace: the copy
+  // this one held for the app goes, and so does its own when it was the
+  // same key, so it is not offered back the next time this starts
+  if (message?.data?.kind === "licence.forget") {
+    if (sharedLicence && credits.savedLicence() === sharedLicence) credits.forget({ licence: true });
+    sharedLicence = null;
+    void ownerPlan.get(true).catch(() => {});
+  }
   // and with it, the plan it carries can be asked
   if (handed && !licenceHeard) {
     licenceHeard = true;
@@ -23394,7 +23470,7 @@ setTimeout(() => void ownerPlan.get(true).then(tellDesktopPlan).catch(() => {}),
 // the workspaces made after it never ask for it again
 {
   const own = credits.savedLicence();
-  if (own) shareLicence(own);
+  if (own) shareLicence(own, false);
 }
 // and so is a name it already knows, for a person who gave it here before
 // the app kept one for all of them

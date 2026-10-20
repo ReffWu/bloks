@@ -184,8 +184,14 @@ declare global {
       ): () => void;
       onMeetingEnd?(handler: (payload: { code: number }) => void): () => void;
       /** bloks:// links from the website (electron/main.mjs). */
-      onLink?(handler: (link: { kind: "team"; slug: string } | { kind: "join"; fragment: string }) => void): () => void;
-      pendingLink?(): Promise<{ kind: "team"; slug: string } | { kind: "join"; fragment: string } | null>;
+      onLink?(handler: (link: { kind: "team"; slug: string } | { kind: "join"; fragment: string } | { kind: "plan" }) => void): () => void;
+      pendingLink?(): Promise<{ kind: "team"; slug: string } | { kind: "join"; fragment: string } | { kind: "plan" } | null>;
+      /** Opens one of bloks.dev's offers in the browser, the licence added
+       * in the fragment by the main process for bloks.dev alone; false for
+       * a link it will not open. */
+      planOpen?(url: string): Promise<boolean>;
+      /** Copies the licence the app keeps; false when it keeps none. */
+      licenceCopy?(): Promise<boolean>;
       /** The system share sheet for a workspace invite's link; false where
        * there is none, and the caller copies instead. */
       shareLink?(url: string): Promise<boolean>;

@@ -47,7 +47,8 @@ import { markInstall, restartIntoUpdate, takeInstallMark, within } from "./updat
 import { claimPairLink, reachOf, startLanProxy, startRemoteProxy } from "./remote.mjs";
 import { nativeSettingsObservation } from "./settings-observation.mjs";
 import { sameAppOrigin } from "./navigation.mjs";
-import { joinLink, linkInArgv, teamLink } from "./links.mjs";
+import { joinLink, linkInArgv, planLink, teamLink } from "./links.mjs";
+import { licencePrint, withLicence } from "./plan-link.mjs";
 import { terminalQuery } from "./terminal-window.mjs";
 import os from "node:os";
 
@@ -153,7 +154,7 @@ if (!app.requestSingleInstanceLock()) {
 if (app.isPackaged || !HOSTS_SERVERS) app.setAsDefaultProtocolClient("bloks");
 let pendingLink = null;
 function deliverLink(raw) {
-  const link = teamLink(raw) ?? joinLink(raw);
+  const link = teamLink(raw) ?? joinLink(raw) ?? planLink(raw);
   if (!link) return;
   const main = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w));
   if (!main || main.webContents.isLoading()) {
@@ -562,8 +563,20 @@ function handLicence(run) {
 }
 
 /** A licence a workspace was given: kept once, and handed to the rest. */
-function keepLicence(key) {
+function keepLicence(key, typed = true) {
   if (typeof key !== "string" || !LICENCE.test(key) || key === readLicence()) return;
+  // a key removed from the Plan page stays removed: a workspace that
+  // still held its own copy offers it back as it starts, and only a key
+  // somebody typed again brings it back
+  const forgotten = forgottenPrints();
+  if (forgotten.includes(licencePrint(key))) {
+    if (!typed) return;
+    try {
+      fs.writeFileSync(forgottenFile(), JSON.stringify(forgotten.filter((p) => p !== licencePrint(key))), { mode: 0o600 });
+    } catch {
+      /* typed again, and kept: the old mark only matters at the next start */
+    }
+  }
   licence = key;
   try {
     if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(licenceFile(), safeStorage.encryptString(key), { mode: 0o600 });
@@ -571,6 +584,36 @@ function keepLicence(key) {
     console.error("[licence] could not keep it:", error?.message ?? error);
   }
   for (const run of servers.values()) handLicence(run);
+}
+
+const forgottenFile = () => path.join(app.getPath("userData"), "licence-forgotten.json");
+function forgottenPrints() {
+  try {
+    const list = JSON.parse(fs.readFileSync(forgottenFile(), "utf8"));
+    return Array.isArray(list) ? list.filter((p) => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The key was removed from the Plan page: gone from the keychain file,
+ * and every workspace's server told, so none of them puts it back. */
+function forgetLicence() {
+  const was = readLicence();
+  licence = null;
+  try {
+    fs.rmSync(licenceFile(), { force: true });
+    if (was) fs.writeFileSync(forgottenFile(), JSON.stringify([...forgottenPrints(), licencePrint(was)].slice(-8)), { mode: 0o600 });
+  } catch (error) {
+    console.error("[licence] could not forget it:", error?.message ?? error);
+  }
+  for (const run of servers.values()) {
+    try {
+      run.child?.postMessage({ kind: "licence.forget" });
+    } catch {
+      /* a server on its way out never hears it, and holds no copy after */
+    }
+  }
 }
 
 // ── the person's name ──────────────────────────────────────────────────
@@ -1820,7 +1863,8 @@ function heardFromServer(id, child, said) {
   const run = servers.get(id);
   // a server from before a restart, still saying its last words
   if (!run || (run.child && run.child !== child)) return;
-  if (said?.kind === "desktop.licence") return keepLicence(said.key);
+  if (said?.kind === "desktop.licence") return keepLicence(said.key, said.typed !== false);
+  if (said?.kind === "desktop.licence.forget") return forgetLicence();
   if (said?.kind === "desktop.plan") return notePlan(said.plan);
   if (said?.kind === "desktop.name") return keepName(said.name, { seed: said.seed === true });
   if (said?.kind === "desktop.unread" && Number.isInteger(said.count)) {
@@ -1909,6 +1953,24 @@ handle("share:link", (event, url) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win.isDestroyed()) return false;
   new ShareMenu({ urls: [url] }).popup({ window: win });
+  return true;
+});
+
+// The Plan page's two needs of the licence, met here so the page never
+// holds it (electron/plan-link.mjs). An offer opens in the browser with
+// the key in the fragment, for bloks.dev alone; the key is copied straight
+// to the clipboard, for somebody setting up another computer.
+const planSite = () => (process.env.BLOKS_SITE_URL || "https://bloks.dev").trim().replace(/\/+$/, "");
+handle("plan:open", (_event, url) => {
+  const target = withLicence(url, readLicence(), planSite());
+  if (!target) return false;
+  void shell.openExternal(target);
+  return true;
+});
+handle("licence:copy", () => {
+  const key = readLicence();
+  if (!key) return false;
+  clipboard.writeText(key);
   return true;
 });
 
