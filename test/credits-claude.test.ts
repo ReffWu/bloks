@@ -1,7 +1,9 @@
-// Claude Code on Bloks credits: the CLI is started pointed at the credits
-// service with the token as its bearer and an empty API key, the token
-// is never written to a log, an empty balance is said plainly, and a
-// token the service refused is renewed before the turn is asked again.
+// Claude Code on Bloks AI: the CLI is started pointed at the service with
+// the token as its bearer, an empty API key, the alias for every model and
+// the turn's tags as custom headers; the token is never written to a log,
+// what the CLI says it ran on and what it cost never get past it, a
+// used-up allowance is said plainly, and a token the service refused is
+// renewed before the turn is asked again.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -23,6 +25,7 @@ test("on credits the CLI gets the service's base, the token and an empty key", (
   assert.equal(env.ANTHROPIC_BASE_URL, "https://credits.example/api/ai");
   assert.equal(env.ANTHROPIC_AUTH_TOKEN, "cred_123");
   assert.equal(env.ANTHROPIC_API_KEY, "", "empty, so a key in the server's environment can never be what it spends");
+  assert.equal(env.ANTHROPIC_MODEL, "bloks-ai");
   assert.equal(env.CLAUDECODE, undefined);
 });
 
@@ -64,7 +67,14 @@ async function answer() {
     token: env.ANTHROPIC_AUTH_TOKEN ?? null,
     key: "ANTHROPIC_API_KEY" in env ? env.ANTHROPIC_API_KEY : null,
   }) + String.fromCharCode(10));
-  out({ type: "system", subtype: "init", session_id: "sess-credits", model: "claude-sonnet-5" });
+  appendFileSync("__HOME__/more.jsonl", JSON.stringify({
+    model: args[args.indexOf("--model") + 1] ?? null,
+    envModel: env.ANTHROPIC_MODEL ?? null,
+    small: env.ANTHROPIC_SMALL_FAST_MODEL ?? null,
+    headers: env.ANTHROPIC_CUSTOM_HEADERS ?? null,
+  }) + String.fromCharCode(10));
+  // what a real upstream would say it ran on, and what it cost
+  out({ type: "system", subtype: "init", session_id: "sess-credits", model: "upstream-sekrit-9" });
   const res = await fetch(env.ANTHROPIC_BASE_URL + "/balance", { headers: { authorization: "Bearer " + env.ANTHROPIC_AUTH_TOKEN } });
   const body = await res.json();
   const fail = (text) => {
@@ -72,9 +82,9 @@ async function answer() {
     out({ type: "result", subtype: "success", is_error: true, num_turns: 1, session_id: "sess-credits", result: text });
   };
   if (res.status === 401) return fail("API Error: 401 " + JSON.stringify(body));
-  if (body.balance <= 0) return fail('API Error: 402 {"type":"error","error":{"type":"billing_error","message":"Your Bloks credits have run out. Top up to carry on."}}');
-  out({ type: "assistant", message: { content: [{ type: "text", text: "Answered on credits." }] } });
-  out({ type: "result", subtype: "success", is_error: false, num_turns: 1, duration_api_ms: 10, total_cost_usd: 0, session_id: "sess-credits", result: "Answered on credits." });
+  if (body.leftPercent <= 0) return fail('API Error: 402 {"type":"error","error":{"type":"billing_error","message":"Bloks AI is used up for this month. Top up to carry on."}}');
+  out({ type: "assistant", message: { model: "upstream-sekrit-9", content: [{ type: "text", text: "Answered on credits." }] } });
+  out({ type: "result", subtype: "success", is_error: false, num_turns: 1, duration_api_ms: 10, total_cost_usd: 0.4321, modelUsage: { "upstream-sekrit-9": { inputTokens: 5, costUSD: 0.4321, contextWindow: 200000 } }, session_id: "sess-credits", result: "Answered on credits." });
 }
 `;
 
@@ -133,6 +143,22 @@ test("a Claude Code agent on credits runs against the service, and its token is 
   const answered = await waitFor(async () => (await messagesOf(h, bot)).find((m) => m.role === "bot" && m.text === "Answered on credits."), 20_000);
   assert.ok(answered);
   assert.deepEqual(starts(home)[0], { base: fake.base, token, key: "" });
+  const more = JSON.parse(readFileSync(join(home, "more.jsonl"), "utf8").trim().split("\n")[0]);
+  assert.deepEqual(more, { model: "bloks-ai", envModel: "bloks-ai", small: "bloks-ai", headers: "x-bloks-work: coding" }, "the alias for every model, and the work it is");
+
+  // what the CLI said it ran on, and what it cost, got no further than it
+  await waitFor(async () => !(await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id)?.busy);
+  for (const view of [
+    JSON.stringify(await h.json("/api/usage?days=7")),
+    JSON.stringify(await h.json("/api/engines/report")),
+    JSON.stringify(await h.json("/api/activity")),
+    JSON.stringify(await messagesOf(h, bot)),
+  ]) {
+    assert.ok(!view.includes("upstream-sekrit-9"), "no model of the service's");
+    assert.ok(!view.includes("0.4321"), "no cost");
+  }
+  assert.ok(!everything(join(home, ".bloks")).includes("upstream-sekrit-9"), "not in any log or record on disk");
+  assert.ok(!everything(join(home, ".bloks")).includes("0.4321"));
 
   // where a leak would land: the server's output, every file it wrote,
   // and the diagnostics a person might paste into an issue
@@ -153,7 +179,7 @@ test("a Claude Code agent on credits runs against the service, and its token is 
 });
 
 test("an empty balance on Claude Code is said plainly and stands for the composer", async (t) => {
-  const fake = await startFakeCredits({ balance: 0 });
+  const fake = await startFakeCredits({ leftPercent: 0 });
   const token = ((await (await fetch(`${fake.base}/token`, { method: "POST", headers: { authorization: `Bearer ${LICENCE}` } })).json()) as { token: string }).token;
   const home = workspace({});
   const h = await startHarness({ HOME: home, BLOKS_CREDITS_URL: fake.base, BLOKS_CREDITS_TOKEN: token });
@@ -165,13 +191,13 @@ test("an empty balance on Claude Code is said plainly and stands for the compose
   const bot = await claudeOnCredits(h);
   await h.fetch(`/api/bots/${bot.id}/messages`, { method: "POST", body: JSON.stringify({ text: "hello" }) });
   const notice = await waitFor(async () =>
-    (await messagesOf(h, bot)).find((m) => m.kind === "notice" && (m.text ?? "").startsWith("Your Bloks credits have run out. Top up to carry on.")),
+    (await messagesOf(h, bot)).find((m) => m.kind === "notice" && (m.text ?? "").startsWith("Bloks AI is used up for this month. Top up to carry on.")),
     20_000,
   );
   assert.ok(notice, "the service's words, without the CLI's wrapping");
   assert.ok(!/API Error/.test(notice.text));
   const status = await h.json("/api/credits");
-  assert.equal(status.refused?.message, "Your Bloks credits have run out. Top up to carry on.");
+  assert.equal(status.refused?.message, "Bloks AI is used up for this month. Top up to carry on.");
 });
 
 test("a token the service refused is renewed, and the turn is asked again with the new one", async (t) => {

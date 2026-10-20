@@ -1,7 +1,8 @@
-// Bloks credits, from the app's side: a licence traded for a token once,
-// the token renewed when the service refuses it, the Bloks engine reading
-// its models and answering through the generic driver, and an empty
-// balance said in the service's own words (server/credits.ts).
+// Bloks AI, from the app's side: a licence traded for a token once, the
+// token renewed when the service refuses it, the Bloks engine with its one
+// model answering through the generic driver with its tags on every call,
+// and a used-up allowance said in the service's own words
+// (server/credits.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -9,14 +10,14 @@ import {
   CREDITS_SPEC,
   CreditsAccount,
   creditsCheckoutUrl,
-  readBalance,
   serviceWords,
   type CreditsSaved,
   type CompatAccess,
 } from "../server/credits.ts";
 import { openAiCompatDriver } from "../server/drivers/openai-compat.ts";
 import type { RuntimeEvent } from "../server/contracts.ts";
-import { startFakeCredits, type FakeCredits } from "./helpers/fake-credits.ts";
+import { readAiBalance } from "../server/bloks-ai.ts";
+import { startFakeCredits, UPSTREAM_MODEL, type FakeCredits } from "./helpers/fake-credits.ts";
 
 const LICENCE = `blok_live_${"a".repeat(32)}`;
 
@@ -66,9 +67,9 @@ async function engine(service: FakeCredits, account: CreditsAccount) {
   });
   const events: RuntimeEvent[] = [];
   instance.adapter.onEvent((event) => events.push(event));
-  const turn = async (threadId: string, text: string) => {
+  const turn = async (threadId: string, text: string, extra: Partial<Parameters<typeof instance.adapter.sendTurn>[0]> = {}) => {
     const from = events.length;
-    await instance.adapter.sendTurn({ threadId, text });
+    await instance.adapter.sendTurn({ threadId, text, ...extra });
     for (let i = 0; i < 200; i++) {
       if (events.slice(from).some((e) => e.type === "turn.completed")) break;
       await new Promise((r) => setTimeout(r, 10));
@@ -160,29 +161,41 @@ test("a trade that failed is not tried again on every look, but a new licence is
   assert.ok(await account.token(), "and a failed one is tried again after a pause");
 });
 
-test("the balance is read as the service says it, and a revoked token is renewed for it", async (t) => {
-  const service = await withService(t, { balance: 3.25 });
+test("what is left is read as shares, and a revoked token is renewed for it", async (t) => {
+  const service = await withService(t, { leftPercent: 40 });
   const account = new CreditsAccount({ store: memoryStore({ licence: LICENCE }), envToken: () => null });
   const first = (await account.token())!;
   service.revoke(first);
   const balance = await account.balance();
-  assert.equal(balance.balance, 3.25);
-  assert.equal(balance.currency, "USD");
-  assert.equal(balance.lowAt, 2);
-  assert.equal(balance.autoReload, false);
+  assert.equal(balance.leftPercent, 40);
+  assert.equal(balance.monthlyLeftPercent, 40);
+  assert.equal(balance.topUps, 1);
+  assert.equal(balance.renewsAt, Date.parse("2026-11-19T00:00:00Z"));
   assert.equal(service.traded.length, 2, "one renewal, then the balance");
+  // the amount and the model a careless service added are not even read
+  const said = JSON.stringify(balance);
+  assert.ok(!said.includes("41.17") && !said.includes(UPSTREAM_MODEL));
 });
 
-test("a balance answer is read field by field, and one without a balance is refused", () => {
-  assert.deepEqual(readBalance('{"balance":1.5,"currency":"eur","lowAt":"x","autoReload":"yes"}', 7), {
-    balance: 1.5,
-    currency: "EUR",
-    lowAt: null,
-    autoReload: false,
-    at: 7,
-  });
-  assert.throws(() => readBalance('{"currency":"usd"}'), /without a balance/);
-  assert.throws(() => readBalance("<html>"), /without a balance/);
+test("a balance answer is read field by field, and one without a share left is refused", () => {
+  assert.deepEqual(
+    readAiBalance('{"plan":"solo","usedPercent":38,"monthlyLeftPercent":"x","topUps":-2,"renewsAt":1763510400,"low":"yes","balance":12.5,"currency":"usd"}', 7),
+    {
+      plan: "solo",
+      usedPercent: 38,
+      leftPercent: 62,
+      monthlyLeftPercent: null,
+      topUps: 0,
+      renewsAt: 1763510400000,
+      low: false,
+      members: null,
+      team: null,
+      at: 7,
+    },
+  );
+  assert.equal(readAiBalance('{"leftPercent":140}').leftPercent, 100, "a share is a share");
+  assert.throws(() => readAiBalance('{"balance":12.5}'), /without what is left/, "an amount is not a share");
+  assert.throws(() => readAiBalance("<html>"), /without what is left/);
 });
 
 test("the service's own words are found in each shape it uses, and an HTML page is not words", () => {
@@ -207,23 +220,56 @@ test("the checkout page sits beside the service, on the same site", () => {
   }
 });
 
-test("the Bloks engine lists the service's models and answers through it", async (t) => {
-  const service = await withService(t, { models: ["claude-sonnet-5", "gpt-6-luna", "text-embedding-4"] });
+test("the Bloks engine has one model, Bloks AI, whatever the service lists, and answers through it", async (t) => {
+  const service = await withService(t, { models: ["bloks-auto", UPSTREAM_MODEL, "gpt-6-luna"] });
   const account = new CreditsAccount({ store: memoryStore({ licence: LICENCE }), envToken: () => null });
   const { instance, turn } = await engine(service, account);
   const snapshot = await instance.snapshot();
   assert.equal(snapshot.state, "available");
-  assert.deepEqual(
-    instance.models.options.map((o) => o.id),
-    ["claude-sonnet-5", "gpt-6-luna"],
-    "the live list, with what is not a chat model left out",
-  );
-  const events = await turn("lane-1", "hello there");
+  assert.deepEqual(instance.models, { default: "bloks-ai", options: [{ id: "bloks-ai", label: "Bloks AI" }] });
+  // an agent saved on a model the service used to list still asks for Bloks AI
+  const events = await turn("lane-1", "hello there", { model: "claude-sonnet-5" });
   const said = events.find((e) => e.type === "item.completed" && e.itemType === "assistant_text");
-  assert.ok(said && "text" in said && /credits says: hello there/.test(String(said.text)));
+  assert.ok(said && "text" in said && /bloks ai says: hello there/.test(String(said.text)));
   assert.ok(events.some((e) => e.type === "turn.completed" && e.ok));
   assert.ok(service.bearers.every((b) => b === service.issued[0]), "the token is the bearer on every call");
-  assert.equal(service.completions[0]?.model, "claude-sonnet-5");
+  assert.equal(service.completions[0]?.model, "bloks-ai");
+  const started = events.find((e) => e.type === "session.started");
+  assert.equal(started && "model" in started ? started.model : null, "bloks-ai");
+  assert.ok(!JSON.stringify(events).includes(UPSTREAM_MODEL), "what ran underneath never reaches an event");
+});
+
+test("every call carries the turn's work tag, and a member's tag when there is one", async (t) => {
+  const service = await withService(t);
+  const account = new CreditsAccount({ store: memoryStore({ licence: LICENCE }), envToken: () => null });
+  const { instance, turn } = await engine(service, account);
+  await turn("lane-1", "build it", { tags: { work: "coding" } });
+  await turn("lane-2", "from a teammate", { tags: { work: "general", member: "m_0123456789abcdef01234567" } });
+  await instance.generateText!("summarise this");
+  await instance.generateText!("draft an agent", { work: "general" });
+  assert.deepEqual(service.tags, [
+    { work: "coding", member: null },
+    { work: "general", member: "m_0123456789abcdef01234567" },
+    { work: "automation", member: null },
+    { work: "general", member: null },
+  ]);
+});
+
+test("another provider on the same driver never sends the tags", async (t) => {
+  const service = await withService(t);
+  // a key the fake accepts, held the ordinary way rather than renewed
+  const key = (await new CreditsAccount({ store: memoryStore({ licence: LICENCE }), envToken: () => null }).token())!;
+  const driver = openAiCompatDriver({ ...CREDITS_SPEC, kind: "plain", fixedModels: false });
+  const instance = await driver.create({
+    instanceId: "plain",
+    displayName: "Plain",
+    environment: { PLAIN_API_KEY: key },
+    enabled: true,
+    config: driver.decodeConfig({ url: `${service.base}/v1` }),
+  });
+  await instance.adapter.sendTurn({ threadId: "lane-x", text: "hi", model: "m", tags: { work: "coding", member: "m_0123456789abcdef01234567" } }).catch(() => {});
+  for (let i = 0; i < 100 && !service.tags.length; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(service.tags[0], { work: null, member: null });
 });
 
 test("a token refused mid-session is renewed once and the call goes through", async (t) => {
@@ -238,15 +284,15 @@ test("a token refused mid-session is renewed once and the call goes through", as
   assert.equal(service.bearers.at(-1), service.issued[1]);
 });
 
-test("an empty balance ends the turn with the service's words, marked as credits", async (t) => {
+test("a used-up allowance ends the turn with the service's words, marked as credits", async (t) => {
   const service = await withService(t);
   const account = new CreditsAccount({ store: memoryStore({ licence: LICENCE }), envToken: () => null });
   const { turn } = await engine(service, account);
-  service.empty("You are out of Bloks credits. Add more at the checkout.");
+  service.empty("Bloks AI is used up for now. Top up at bloks.dev.");
   const events = await turn("lane-1", "anything");
   const error = events.find((e) => e.type === "runtime.error");
   assert.ok(error && error.type === "runtime.error");
-  assert.equal(error.message, "You are out of Bloks credits. Add more at the checkout.");
+  assert.equal(error.message, "Bloks AI is used up for now. Top up at bloks.dev.");
   assert.equal(error.credits, "empty");
   assert.ok(events.some((e) => e.type === "turn.completed" && !e.ok));
 });

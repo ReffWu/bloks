@@ -293,9 +293,9 @@ export function useEngineNotice(bot: Bot): Notice | null {
 }
 
 /**
- * A run this agent asked for was refused because the Bloks credits balance
- * is empty. Said once, quietly, in the service's own words, with the one
- * press that fixes it: the checkout page, in the browser, never a
+ * A run this agent asked for was refused because the Bloks AI allowance
+ * is used up. Said once, quietly, in the service's own words, with the
+ * one press that fixes it: Top up, on bloks.dev in the browser, never a
  * purchase inside the app. Coming back to the window reads the balance
  * again, and once there is more the server takes the refusal back and
  * this goes by itself. Put away, it stays away until the next refusal.
@@ -323,7 +323,7 @@ export function useCreditsNotice(bot: Bot): Notice | null {
     hint: showing.message,
     actions: checkout ? (
       <TrayButton strong onClick={() => window.open(checkout, "_blank", "noopener")}>
-        Add credits
+        Top up
       </TrayButton>
     ) : undefined,
     onDismiss: () => setDismissedAt(showing.at),

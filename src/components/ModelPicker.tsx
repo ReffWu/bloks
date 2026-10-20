@@ -37,6 +37,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
 import { Segmented } from "@/components/ui/segmented";
 import { backupOptions, isOwnRun, offersBackup } from "@/lib/backupChoice";
+import { BLOKS_AI_NAME, CREDITS_ENGINE } from "@/lib/credits";
 import { quietButton, useDismiss } from "./composer/Shell";
 
 /** Catalogs this long or shorter are read at a glance, not searched. */
@@ -45,6 +46,8 @@ const SEARCH_ABOVE = 8;
 const FOLDED = 6;
 
 function modelLabel(instance: InstanceInfo | undefined, model: string): string {
+  // one model, whatever was saved before it had only one
+  if (instance?.driverKind === CREDITS_ENGINE) return BLOKS_AI_NAME;
   const label = instance?.models.options.find((o) => o.id === model)?.label;
   return label && label !== model ? label : readableId(model);
 }
@@ -228,6 +231,7 @@ export function ModelPicker({
     // never swapped for the default behind the person's back.
     const unlisted =
       isActive &&
+      instance.driverKind !== CREDITS_ENGINE &&
       selection.model &&
       !instance.models.options.some((o) => o.id === selection.model) &&
       words.every((w) => selection.model.toLowerCase().includes(w))
@@ -284,7 +288,10 @@ export function ModelPicker({
     rows[next].focus();
   };
 
-  const full = active || !custom ? modelLabel(active, effectiveModel(active, selection.model)) : (noneLabel ?? "None");
+  // Claude Code on Bloks AI runs whatever the service picks, so it is
+  // said as Bloks AI rather than as the model it would run on its own
+  const onBloksAi = !custom && active?.driverKind === "claudeAgent" && bot?.engineAccess === "credits";
+  const full = onBloksAi ? BLOKS_AI_NAME : active || !custom ? modelLabel(active, effectiveModel(active, selection.model)) : (noneLabel ?? "None");
   const name = composer ? shortName(active, full) : full;
   const portalled = (panel: ReactNode) => (composer ? panel : createPortal(panel, document.body));
   const described = active ? `${active.displayName}, ${full}` : full;

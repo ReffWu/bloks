@@ -33,6 +33,7 @@ import { User } from "@/components/icons";
 import { X } from "@/components/icons";
 import { api, useStore, type Bot, type Skill } from "@/state/store";
 import { useMcpServers, type McpServerRow } from "./McpServers";
+import { TeamSignInNotice } from "./TeamSignInNotice";
 import { AgentAvatar, BlokAvatar } from "./Avatar";
 import {
   expressionForBot,
@@ -361,7 +362,9 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                       <ModelPicker bot={bot} />
                     </div>
                   }
-                />
+                >
+                  <TeamSignInNotice bot={bot} className="mt-3" />
+                </SettingRow>
                 <SettingRow label="Reasoning effort" description="How hard it thinks, where the model supports it.">
                   <Segmented
                     aria-label="Reasoning effort"
@@ -418,14 +421,14 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                   />
                 )}
                 {instance?.driverKind === "claudeAgent" && (state.config?.credits?.offered || bot.engineAccess === "credits") && (
-                  // Credits are offered while Cloud is active. An agent
-                  // already on them keeps the choice in sight even when
-                  // they are not, so it can be moved back.
+                  // Bloks AI is offered while Cloud is active. An agent
+                  // already on it keeps the choice in sight even when it
+                  // is not, so it can be moved back.
                   <SettingRow
                     label="Access"
                     description={
                       bot.engineAccess === "credits"
-                        ? "Runs on your Bloks credits, with no sign-in of its own."
+                        ? "Runs on Bloks AI, with no sign-in of its own."
                         : "Runs on Claude Code's own sign-in on this computer."
                     }
                   >
@@ -436,7 +439,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                       onChange={(access) => patch({ engineAccess: access === "credits" ? "credits" : null })}
                       options={[
                         { value: "own", label: "Own sign-in" },
-                        { value: "credits", label: "Bloks credits" },
+                        { value: "credits", label: "Bloks AI" },
                       ]}
                     />
                   </SettingRow>

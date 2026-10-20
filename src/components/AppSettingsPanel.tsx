@@ -969,7 +969,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "Engines",
         icon: Cpu,
         description: "The AI tools and API keys your agents think with.",
-        keywords: "models providers claude codex gemini grok openai api key cli sign in bloks credits",
+        keywords: "models providers claude codex gemini grok openai api key cli sign in bloks ai credits team",
       },
       {
         id: "new-agents",
@@ -1042,7 +1042,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "Bloks Cloud",
         icon: CloudIcon,
         description: "Your agents on the go, and the relay that carries them.",
-        keywords: "subscription licence relay cloud credits balance top up add credits",
+        keywords: "subscription licence relay cloud bloks ai allowance usage top up credits team members caps",
       },
       {
         id: "computers",

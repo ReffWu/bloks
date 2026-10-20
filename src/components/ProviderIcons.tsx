@@ -175,7 +175,7 @@ export function PiMark({ size = 16, className }: IconProps) {
   );
 }
 
-/** The Bloks engine, which runs on credits: the brand's own ink carrying
+/** The Bloks engine, Bloks AI: the brand's own ink carrying
  * its foreground, so the letter reads in either theme. */
 function BloksMark({ size = 16, className }: IconProps) {
   return (

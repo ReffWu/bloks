@@ -8777,6 +8777,15 @@ async function creditsStatus(fresh = false) {
   };
 }
 
+// A hosted workspace learns soon after it starts whether its licence is a
+// team's, so the warning about personal sign-ins can be said in Settings
+// before anybody has opened Bloks AI there.
+if (HOSTED) {
+  setTimeout(() => {
+    if (creditsOffered(cfg) && credits.canConnect()) void readCreditsBalance(true).catch(() => {});
+  }, 5_000).unref?.();
+}
+
 /** Whether work nobody asked for this minute may run on this engine:
  * anything but the Bloks engine, which spends money, unless the person
  * said background work may. */

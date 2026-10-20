@@ -1,9 +1,9 @@
-// Bloks credits through the real server: offered only while a Cloud
-// licence is active or the host was started with a token, the Bloks
-// engine in the picker with the service's models, a run that answers, an
-// empty balance that leaves a standing refusal (the composer's notice)
-// and rests nothing, the balance for Settings and the phone, and a new
-// licence that forgets the old token.
+// Bloks AI through the real server: offered only while a Cloud licence is
+// active or the host was started with a token, the Bloks engine in the
+// picker with its one model, a run that answers, a used-up allowance that
+// leaves a standing refusal (the composer's notice) and rests nothing,
+// what is left for Settings and the phone, and a new licence that forgets
+// the old token.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -39,7 +39,7 @@ async function agentOnCredits(h: Harness) {
   const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Penny" }) });
   const ok = await h.fetch(`/api/bots/${bot.id}`, {
     method: "PATCH",
-    body: JSON.stringify({ modelSelection: { instanceId: "bloks", model: "claude-sonnet-5" } }),
+    body: JSON.stringify({ modelSelection: { instanceId: "bloks", model: "bloks-ai" } }),
   });
   assert.equal(ok.status, 200);
   return bot as { id: string; threadId: string };
@@ -55,11 +55,11 @@ test("without a Cloud licence or a token, credits are not offered and the engine
   assert.ok(!instances.some((i: any) => i.instanceId === "bloks"));
   const status = await h.json("/api/credits");
   assert.equal(status.offered, false);
-  assert.equal(status.balance, null);
+  assert.equal(status.leftPercent, null);
   assert.deepEqual(fake.bearers, [], "nothing is asked of the service");
 });
 
-test("a host started with a token runs agents on credits, and an empty balance stands until it is refilled", async (t) => {
+test("a host started with a token runs agents on Bloks AI, and a used-up allowance stands until it is topped up", async (t) => {
   const fake = await service(t);
   const token = await tokenFrom(fake);
   const h = await harness(t, { BLOKS_CREDITS_URL: fake.base, BLOKS_CREDITS_TOKEN: token });
@@ -70,38 +70,38 @@ test("a host started with a token runs agents on credits, and an empty balance s
     return found?.snapshot?.state === "available" && found.models.options.length ? found : null;
   });
   assert.ok(engine, "the Bloks engine is in the picker");
-  assert.deepEqual(engine.models.options.map((o: any) => o.id), ["claude-sonnet-5", "gpt-6-luna"]);
+  assert.deepEqual(engine.models.options, [{ id: "bloks-ai", label: "Bloks AI" }], "one model, whatever the service lists");
+  assert.equal(engine.displayName, "Bloks AI");
 
   const status = await h.json("/api/credits");
   assert.equal(status.offered, true);
   assert.equal(status.fromEnvironment, true);
-  assert.equal(status.balance, 12.5);
-  assert.equal(status.currency, "USD");
+  assert.equal(status.leftPercent, 62);
   assert.equal(status.low, false);
   assert.equal(status.checkoutUrl, `${fake.root}/credits`);
   assert.equal(status.refused, null);
 
   const bot = await agentOnCredits(h);
   assert.equal((await say(h, bot, "first words")).status < 300, true);
-  const answered = await waitFor(async () => (await messagesOf(h, bot)).find((m) => m.role === "bot" && /credits says/.test(m.text ?? "")));
-  assert.ok(answered, "the run answered on credits");
+  const answered = await waitFor(async () => (await messagesOf(h, bot)).find((m) => m.role === "bot" && /bloks ai says/.test(m.text ?? "")));
+  assert.ok(answered, "the run answered on Bloks AI");
 
-  fake.empty("Your Bloks credits have run out. Add more to keep going.");
+  fake.empty("Bloks AI is used up for this month. Top up to keep going.");
   await say(h, bot, "second words");
   const notice = await waitFor(async () =>
-    (await messagesOf(h, bot)).find((m) => m.kind === "notice" && /Your Bloks credits have run out/.test(m.text ?? "")),
+    (await messagesOf(h, bot)).find((m) => m.kind === "notice" && /Bloks AI is used up/.test(m.text ?? "")),
   );
   assert.ok(notice, "the refusal is said in the service's words");
   const refused = await waitFor(async () => (await h.json("/api/credits")).refused);
-  assert.equal(refused?.message, "Your Bloks credits have run out. Add more to keep going.");
+  assert.equal(refused?.message, "Bloks AI is used up for this month. Top up to keep going.");
   const config = await h.json("/api/config");
   assert.equal(config.credits.refused?.message, refused?.message, "the composer reads it with the rest of the settings");
 
-  // More is added. The next read of the balance clears the refusal, and
-  // the engine was never rested, so the next run goes at once.
-  fake.refill(5);
+  // A top-up. The next read clears the refusal, and the engine was never
+  // rested, so the next run goes at once.
+  fake.refill(50);
   const after = await h.json("/api/credits?fresh=1");
-  assert.equal(after.balance, 5);
+  assert.equal(after.leftPercent, 50);
   assert.equal(after.refused, null);
   await waitFor(async () => !(await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id)?.busy);
   await say(h, bot, "third words");
@@ -110,7 +110,7 @@ test("a host started with a token runs agents on credits, and an empty balance s
   const again = await waitFor(async () => {
     const all = await messagesOf(h, bot);
     const asked = all.findIndex((m) => m.role === "user" && m.text === "third words");
-    return asked >= 0 && all.slice(asked).find((m) => m.role === "bot" && m.kind === "text" && /credits says/.test(m.text ?? ""));
+    return asked >= 0 && all.slice(asked).find((m) => m.role === "bot" && m.kind === "text" && /bloks ai says/.test(m.text ?? ""));
   });
   assert.ok(again, "no rest after an empty balance: topping up is felt at once");
 
@@ -129,7 +129,7 @@ test("activating Cloud keeps the licence for credits, and a different licence fo
   assert.equal(saved().credits.licence, LICENCE);
   const { instances } = await h.json("/api/instances");
   assert.ok(instances.some((i: any) => i.instanceId === "bloks"), "offered once Cloud is active");
-  assert.equal((await h.json("/api/credits")).balance, 12.5);
+  assert.equal((await h.json("/api/credits")).leftPercent, 62);
 
   assert.equal((await activate(OTHER)).status, 200);
   const second = await waitFor(() => (saved().credits?.token !== first ? saved().credits?.token : null));
@@ -154,7 +154,7 @@ test("a Cloud key activated before credits existed is asked for once more, here"
   assert.equal(wrong.status, 400);
   const connected = await h.json("/api/credits/connect", { method: "POST", body: JSON.stringify({ key: LICENCE }) });
   assert.equal(connected.needsKey, false);
-  assert.equal(connected.balance, 12.5);
+  assert.equal(connected.leftPercent, 62);
 });
 
 test("background work stays off credits until the person turns it on", async (t) => {

@@ -2143,11 +2143,14 @@ only a window on this computer and never an agent. Claude Code and Codex
 report signed in or not (`claude auth status`, `codex login status`), and
 the first-run check counts an engine as ready only when it is both.
 
-## Bloks credits
+## Bloks AI
 
-A prepaid balance on the person's Bloks licence pays for model use, so an
-agent can run with no sign-in and no API key (`server/credits.ts`). The
-balance lives on bloks.dev; this machine keeps a credits token. Activating
+A monthly allowance on the person's Bloks licence, with top-ups, pays for
+model use, so an agent can run with no sign-in and no API key
+(`server/credits.ts`, `server/bloks-ai.ts`). It began as prepaid credits,
+which is why the code, the config keys (`credits.*`) and the routes
+(`/api/credits`) still say credits; nothing saved had to move. The
+allowance lives on bloks.dev; this machine keeps a token. Activating
 Cloud (`POST /api/relay/activate`) keeps the licence in `config.json`
 beside the other keys and trades it for a token at `POST <base>/token`, with
 the licence as the bearer. A 401 from the service trades it again, one
@@ -2156,45 +2159,102 @@ different licence forgets the old token. A host started with
 `BLOKS_CREDITS_TOKEN` uses that token as given; it is read once and taken
 out of the process environment, so no engine inherits it. `BLOKS_CREDITS_URL`
 moves the whole service (tests, somebody running their own), and the
-checkout page is `/credits` on the same site. A workspace whose Cloud was
-activated before credits existed is asked for the key once more
-(`POST /api/credits/connect`, this computer only).
+checkout page, which Top up opens, is `/credits` on the same site. A
+workspace whose Cloud was activated before credits existed is asked for
+the key once more (`POST /api/credits/connect`, this computer only).
 
-Two engines spend it. The Bloks engine (instance and driver kind `bloks`)
-is the generic OpenAI-compatible driver given a credential it asks for on
-every call (`CompatAccess`): its models are whatever `/v1/models` lists, a
-401 is answered by one renewal and one more try, and a 402 ends the turn
-with the service's own words, marked `credits: "empty"` on the
-`runtime.error`. It is offered while Cloud is active (`creditsOffered`) or
-the host came with a token. Claude Code spends credits when an agent's
-`engineAccess` is `"credits"`: the turn carries `credits` and the driver
-starts the CLI with `ANTHROPIC_BASE_URL` at the service, the token as
-`ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` empty (`turnEnvironment`).
-A lapsed licence refuses such a turn rather than running it on the CLI's
-own sign-in.
+The service picks the model for every call, so the app knows one model,
+`bloks-ai`, named Bloks AI. The Bloks engine (instance and driver kind
+`bloks`, displayed as Bloks AI) is the generic OpenAI-compatible driver
+with `fixedModels`: its catalog is that one model whatever `/v1/models`
+lists, every call asks for it whatever an agent saved (an old `bloks-auto`
+or a model the service once listed), and a saved selection on it reads as
+`bloks-ai` on the API. It asks for its credential on every call
+(`CompatAccess`): a 401 is answered by one renewal and one more try, and a
+402 ends the turn with the service's own words, marked `credits: "empty"`
+on the `runtime.error`. It is offered while Cloud is active
+(`creditsOffered`) or the host came with a token. Claude Code runs on
+Bloks AI when an agent's `engineAccess` is `"credits"`: the turn carries
+`credits` and the driver starts the CLI with `ANTHROPIC_BASE_URL` at the
+service, the token as `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` empty,
+`--model bloks-ai`, and `ANTHROPIC_MODEL`, the small and fast model, each
+family's default and the subagent model all set to `bloks-ai`
+(`turnEnvironment`). A lapsed licence refuses such a turn rather than
+running it on the CLI's own sign-in.
 
-An empty balance is workspace wide: the refusal stands (`refused` on
+Every call says what work it is, in `x-bloks-work`, so the service can
+choose: `automation` for a routine, a workflow step, the incident desk's
+note to a lead, words a watcher, a standing intent, a webhook or a routine
+left in the lane, a quiet compaction, and a one-shot that is Bloks' own
+bookkeeping (a summary, the memory tidy, skill suggestions); `coding` for
+a turn on Claude Code or an agent whose title, description or skills say
+engineering; `general` otherwise, the new agent draft among them
+(`workTag`, `turnOrigin`). A turn a shared room member started also
+carries `x-bloks-member`, a hash of that person's id here (`memberTag`),
+never a name or an address; the owner's turns, and anything the owner set
+up, carry none. The Bloks engine sends both as headers (`SendTurnInput.tags`,
+only on an engine with `CompatAccess`); Claude Code sends them through
+`ANTHROPIC_CUSTOM_HEADERS`, which the CLI adds to every request.
+
+What ran underneath, and what it was worth, stays with the service. Every
+frame from Claude Code on Bloks AI has its models said as `bloks-ai` and
+its prices taken out before anything reads it (`scrubFrame`), and every
+event from a Bloks AI lane is passed through `scrubEvent` by the bus
+before it is logged or heard: its model is `bloks-ai`, its cost null, its
+raw frame left behind. Usage counts a Bloks AI turn under `bloks`,
+whatever engine ran it, the engine report records its model as
+`bloks-ai`, and a shared room's spend cap does not book it (the service
+caps a team's members instead). Every agent on Bloks AI has one more line
+in its system prompt (`IDENTITY_LINE`): it runs on Bloks AI, and says so
+rather than guess when asked what powers it.
+
+A used-up allowance is workspace wide: the refusal stands (`refused` on
 `GET /api/credits`, on `/api/config` and in a `credits` frame) until a read
-of the balance finds more or a run on credits answers, and the composer of
-every agent on credits says it with Add credits, which opens the checkout
-page in the browser. A turn on credits never rests its engine
-(`recoverTurn`): adding money should be felt at once, and resting Claude
-Code would idle every agent on its own sign-in. A Claude Code turn refused
-with a 401 renews the token and is asked again. The token and the licence
-are in `SECRET_PATHS`, so backups strip them and `redactSecrets` scrubs
-them by value.
+finds something left or a run on Bloks AI answers, and the composer of
+every agent on it says it with Top up, which opens the checkout page in
+the browser. A turn on Bloks AI never rests its engine (`recoverTurn`):
+topping up should be felt at once, and resting Claude Code would idle
+every agent on its own sign-in. A Claude Code turn refused with a 401
+renews the token and is asked again. The token and the licence are in
+`SECRET_PATHS`, so backups strip them and `redactSecrets` scrubs them by
+value.
+
+What is left is read from `GET <base>/balance` as shares, never amounts
+(`readAiBalance`): `plan`, `usedPercent`, `leftPercent`,
+`monthlyLeftPercent`, `topUps` (months' worth still to spend), `renewsAt`,
+`low` and, on a team plan, `members` (`member`, `usedPercent`,
+`dailyCapPercent`). A field that is not a share is not read. Settings
+shows a meter ("62% of this month left"), the top-ups and the renewal, and
+on a team each member by name (looked up here from the tag, never sent)
+with a daily cap the owner sets as a share of the monthly allowance,
+posted to `POST <base>/settings` as `{ memberCaps }`. Whether the licence
+is a team's comes from the balance when it says, else from
+`GET /api/hosting/status` beside the service, else the Cloud plan.
 
 Work nobody asked for this minute (the nightly memory tidy, skill
-proposals, quiet compaction of idle conversations) spends credits only
+proposals, quiet compaction of idle conversations) uses Bloks AI only
 when `credits.background` is on, which it is not unless the person turns
 it on. Tidy now is asked for, so it may. The morning brief makes no model
 call either way.
 
-For a phone: `GET /api/credits` (the balance, currency, `lowAt`, `low`,
-`autoReload`, `refused`, `checkoutUrl`, `needsKey`, `problem`), `PATCH
-/api/credits` with `{ background }`, and `engineAccess` on each agent and on
-`PATCH /api/bots/:id` (`"credits"` or `"own"`; an agent's own credential may
-go back to its sign-in but never onto credits). Feature `credits`.
+A hosted workspace (`BLOKS_HOSTED=1`) on a team licence with an agent on
+somebody's personal Claude or ChatGPT sign-in (Claude Code on its own
+login, or Codex) says so, plainly and dismissibly, in Settings (Engines,
+and the Bloks AI card) and on that agent's engine choice; nothing is
+refused for it. A hosted workspace reads its balance soon after it
+starts, so it knows whether it is a team before anybody opens Settings.
+
+For a phone: `GET /api/credits` (`offered`, `background`, `refused`,
+`checkoutUrl`, `team`, `needsKey`, `connected`, `plan`, `usedPercent`,
+`leftPercent`, `monthlyLeftPercent`, `topUps`, `renewsAt`, `low`,
+`members` with each `name`, `teamSignInWarning`, `readAt`, `problem`;
+the old `balance`, `currency`, `lowAt` and `autoReload` are gone),
+`PATCH /api/credits` with `{ background }`, `{ memberCaps: { [member]:
+percent or null } }` or both, `team` in the `credits` frame and on
+`/api/config`, and `engineAccess` on each agent and on
+`PATCH /api/bots/:id` (`"credits"` or `"own"`; an agent's own credential
+may go back to its sign-in but never onto Bloks AI). Features `credits`
+and `bloks-ai`.
 
 ## Hosted mode
 

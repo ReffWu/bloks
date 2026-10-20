@@ -1,12 +1,23 @@
-// What the app says about credits and about a hosted workspace, held to
-// what the server sends: the composer's notice after an empty balance
-// (src/lib/credits.ts), the computer choices both doors offer
-// (src/lib/hosted.ts), and the keys a moved workspace asks for again
-// (src/lib/backups.ts).
+// What the app says about Bloks AI and about a hosted workspace, held to
+// what the server sends: the composer's notice after a used-up allowance
+// and the Settings card's meter, top-ups and team rows (src/lib/credits.ts),
+// the computer choices both doors offer (src/lib/hosted.ts), and the keys
+// a moved workspace asks for again (src/lib/backups.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { balanceNote, balanceText, refusalToShow, runsOnCredits } from "../src/lib/credits.ts";
+import {
+  TEAM_SIGN_IN_WARNING,
+  allowanceNote,
+  meterLine,
+  memberRows,
+  parseCap,
+  refusalToShow,
+  renewsLine,
+  runsOnCredits,
+  teamSignInWarning,
+  topUpsLine,
+} from "../src/lib/credits.ts";
 import { computerOptions } from "../src/lib/hosted.ts";
 import { keysToEnter, kindLabel } from "../src/lib/backups.ts";
 import { computerChoices } from "../server/hosted.ts";
@@ -28,7 +39,7 @@ test("an agent spends credits on the Bloks engine, or on Claude Code with its ac
 });
 
 test("the composer's notice shows a standing refusal to an agent on credits, until it is put away", () => {
-  const refused = { at: 1_000, message: "Your Bloks credits have run out." };
+  const refused = { at: 1_000, message: "Bloks AI is used up for now." };
   assert.deepEqual(refusalToShow(refused, true, null), refused);
   assert.equal(refusalToShow(refused, false, null), null, "an agent on its own sign-in was not refused");
   assert.equal(refusalToShow(null, true, null), null, "nothing standing, nothing said");
@@ -36,13 +47,54 @@ test("the composer's notice shows a standing refusal to an agent on credits, unt
   assert.deepEqual(refusalToShow({ ...refused, at: 2_000 }, true, 1_000), { ...refused, at: 2_000 }, "a later refusal is a new one");
 });
 
-test("a balance is said in the service's own currency, and nothing is converted", () => {
-  assert.equal(balanceText(12.5, "USD", "en-US"), "$12.50");
-  assert.equal(balanceText(3, "EUR", "en-US"), "€3.00");
-  assert.equal(balanceText(1, "not a currency", "en-US"), "1.00 not a currency");
-  assert.equal(balanceNote({ low: true, autoReload: false }), "Running low.");
-  assert.equal(balanceNote({ low: true, autoReload: true }), "Tops itself up when it runs low.");
-  assert.equal(balanceNote({ low: false, autoReload: false }), null);
+test("what is left is said as a share of the month, with top-ups and the renewal, and never an amount", () => {
+  assert.equal(meterLine({ monthlyLeftPercent: 62, leftPercent: 80 }), "62% of this month left");
+  assert.equal(meterLine({ monthlyLeftPercent: null, leftPercent: 40.4 }), "40% of this month left", "all that is left, when not split");
+  assert.equal(meterLine({ monthlyLeftPercent: 0.3, leftPercent: 0.3 }), "under 1% of this month left");
+  assert.equal(meterLine({ monthlyLeftPercent: 0, leftPercent: 0 }), "Nothing left this month");
+  assert.equal(topUpsLine(1), "plus 1 top-up");
+  assert.equal(topUpsLine(2.5), "plus 2.5 top-ups");
+  assert.equal(topUpsLine(0), null);
+  const renews = Date.parse("2026-11-19T12:00:00Z");
+  assert.equal(renewsLine(renews, "en-US"), "renews Nov 19");
+  assert.equal(allowanceNote({ topUps: 1, renewsAt: renews, low: false }, "en-US"), "Plus 1 top-up · renews Nov 19");
+  assert.equal(allowanceNote({ topUps: 0, renewsAt: null, low: true }), "Running low.");
+  for (const line of [meterLine({ monthlyLeftPercent: 62, leftPercent: 62 }), allowanceNote({ topUps: 1.5, renewsAt: renews, low: true }, "en-US")]) {
+    assert.ok(!/[$€£]|\d+\.\d\d\b|usd|token/i.test(line ?? ""), line ?? "");
+  }
+});
+
+test("Settings lists a team's members by name, with their use and an optional daily cap", () => {
+  const rows = memberRows([
+    { member: "m_aaaaaaaaaaaaaaaaaaaaaaaa", name: "Ada", usedPercent: 12, dailyCapPercent: 5 },
+    { member: "m_bbbbbbbbbbbbbbbbbbbbbbbb", name: null, usedPercent: 0.2, dailyCapPercent: null },
+  ]);
+  assert.deepEqual(rows, [
+    { member: "m_aaaaaaaaaaaaaaaaaaaaaaaa", name: "Ada", used: "12% used this month", cap: "Up to 5% a day", capPercent: 5 },
+    { member: "m_bbbbbbbbbbbbbbbbbbbbbbbb", name: "Someone no longer in a room", used: "under 1% used this month", cap: "No daily cap", capPercent: null },
+  ]);
+  assert.deepEqual(memberRows(null), []);
+  assert.equal(parseCap("10"), 10);
+  assert.equal(parseCap(" 7.5 % "), 7.5);
+  assert.equal(parseCap(""), null, "empty is no cap");
+  assert.equal(parseCap("0"), undefined);
+  assert.equal(parseCap("150"), undefined);
+  assert.equal(parseCap("$5"), undefined, "a cap is a share, not an amount");
+});
+
+test("the team warning shows on a hosted team for agents on a personal sign-in, and nowhere else", () => {
+  const claudeOwn = { modelSelection: { instanceId: "claude" } };
+  const claudeAi = { modelSelection: { instanceId: "claude" }, engineAccess: "credits" as const };
+  const codex = { modelSelection: { instanceId: "codex" } };
+  const ai = { modelSelection: { instanceId: "bloks" } };
+  const say = (hosted: boolean, team: boolean | null, agents: object[]) => teamSignInWarning({ hosted, team, agents, instances });
+  assert.equal(say(true, true, [claudeOwn]), TEAM_SIGN_IN_WARNING);
+  assert.equal(say(true, true, [codex, ai]), TEAM_SIGN_IN_WARNING);
+  assert.equal(say(true, true, [claudeAi, ai]), null, "Bloks AI is for a team");
+  assert.equal(say(false, true, [claudeOwn]), null, "a Mac is one person's");
+  assert.equal(say(true, false, [claudeOwn]), null);
+  assert.equal(say(true, null, [claudeOwn]), null, "not until the server knows");
+  assert.equal(TEAM_SIGN_IN_WARNING, "A personal Claude or ChatGPT sign-in is for one person. For a team, use an API key or Bloks AI.");
 });
 
 test("both doors offer the computers the server says, and a Mac's four otherwise", () => {

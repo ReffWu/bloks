@@ -331,7 +331,7 @@ export interface Bot {
   /** The engine that answers when the agent's own runs out. */
   backupSelection?: ModelSelection | null;
   /** How its engine is paid for: unset is the engine's own sign-in,
-   * "credits" runs Claude Code on the person's Bloks credits. */
+   * "credits" runs Claude Code on the person's Bloks AI. */
   engineAccess?: "credits" | null;
   /** Where this agent may act. Left unset it decides for itself: its own
    * box when it has one, otherwise this Mac. */
@@ -427,8 +427,8 @@ export interface ConfigStatus {
   /** Where a new agent starts, applied before its first turn. Absent on
    * a server that does not know about it, and then Settings says nothing. */
   agentDefaults?: AgentDefaults;
-  /** Bloks credits without the balance, which Settings reads on its own
-   * (server/credits.ts). Absent on a server that does not know them. */
+  /** Bloks AI without what is left, which Settings reads on its own
+   * (server/credits.ts). Absent on a server that does not know it. */
   credits?: CreditsSummary;
   /** A hosted workspace (server/hosted.ts): whether this is one, whether
    * its virtual desktop can be shown, and where an agent may act here. */
@@ -439,18 +439,21 @@ export interface ConfigStatus {
   };
 }
 
-/** What the server says about Bloks credits on the stream and with the
- * rest of the settings. */
+/** What the server says about Bloks AI on the stream and with the rest
+ * of the settings. */
 export interface CreditsSummary {
   /** A Cloud licence is active here, or the host came with a token. */
   offered: boolean;
-  /** Work nobody asked for this minute may spend credits. Off by default. */
+  /** Work nobody asked for this minute may use Bloks AI. Off by default. */
   background: boolean;
   /** The last run the service refused for an empty balance, in its words,
    * until more is added. */
   refused: { at: number; message: string } | null;
   /** Where more is bought, in the browser. */
   checkoutUrl: string;
+  /** Whether the licence is a team's, once the server has heard. Absent
+   * on a server from before Bloks AI. */
+  team?: boolean | null;
 }
 
 export interface AgentDefaults {
