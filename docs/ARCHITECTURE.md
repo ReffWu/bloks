@@ -2205,9 +2205,10 @@ the computer choices are this machine or off (`hosted.computers` on
 the API refuses the cloud box and the Local VM routes with code `hosted`.
 What needs the person's Mac says so: working the Mac itself (the Electron
 computer-use daemon is never read), Mac voices, and starting meeting notes.
-`GET /api/health` answers any request from a loopback peer before every
-other check, whatever Host its proxy chose and whatever credential it
-carries, and says `hosted`.
+On a hosted workspace `GET /api/health` answers any request from a loopback
+peer ahead of the other checks (a Telegram reply credential is still
+refused first), whatever Host its proxy chose and whatever credential it
+carries; on a Mac the old rule stands. Either way it says `hosted`.
 
 `BLOKS_HOSTED_VNC` (a port, or an http address on loopback with an
 optional path) is where the image serves noVNC. The server passes it
