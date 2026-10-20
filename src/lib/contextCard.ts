@@ -241,6 +241,8 @@ export interface Spent {
   output: number;
   /** In dollars, where the engine gives a price. */
   cost?: number;
+  /** Of `cost`, the dollars estimated from tokens: written "~$". */
+  estimated?: number;
   /** Replies whose engine said nothing about tokens. */
   unmeasured?: number;
 }
@@ -261,8 +263,10 @@ export function spendPhrase(spent: Spent | null | undefined, costKnown: boolean)
   if (!spent || spent.turns <= 0) return "Nothing yet";
   const cost = spent.cost ?? 0;
   if (!costKnown || !(cost > 0)) return "Not reported";
-  if (cost < 0.01) return "Under $0.01";
-  return `$${cost.toFixed(2)}`;
+  // an estimate from tokens is written as one, as the Usage page does
+  const mark = (spent.estimated ?? 0) > 0 ? "~" : "";
+  if (cost < 0.01) return `Under ${mark}$0.01`;
+  return `${mark}$${cost.toFixed(2)}`;
 }
 
 /** A token count for the card, or "Not reported" when every reply came

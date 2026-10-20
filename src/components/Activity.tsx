@@ -35,6 +35,8 @@ export interface Spend {
   input: number;
   output: number;
   cost: number;
+  /** Of `cost`, the dollars estimated from tokens. */
+  estimated?: number;
   /** Turns whose engine reported no tokens. */
   unmeasured?: number;
 }
@@ -154,8 +156,11 @@ function spentTokens(spend: Spend): string {
   return used > 0 ? `${tokens(used)} tokens, ${replies} not counted` : "Tokens not reported";
 }
 
-function money(n: number): string {
-  return n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(3)}`;
+/** Dollars, "~$" when any of it is an estimate from tokens, as the Usage
+ * page writes them. */
+function money(n: number, estimated = false): string {
+  const mark = estimated ? "~" : "";
+  return n >= 1 ? `${mark}$${n.toFixed(2)}` : `${mark}$${n.toFixed(3)}`;
 }
 
 export function ActivityPanel() {
@@ -309,7 +314,7 @@ export function ActivityPanel() {
               and a guess. */}
           {activity.costKnown ? (
             <span>
-              <span className="text-foreground">{money(activity.today.cost)}</span> spent where known
+              <span className="text-foreground">{money(activity.today.cost, (activity.today.estimated ?? 0) > 0)}</span> spent where known
             </span>
           ) : (
             <span>Cost unavailable</span>

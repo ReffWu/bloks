@@ -57,7 +57,7 @@ export interface Brief {
   headline: string;
   parts: BriefPart[];
   waiting: BriefWaiting[];
-  spend: { turns: number; cost: number; costKnown: boolean };
+  spend: { turns: number; cost: number; costKnown: boolean; estimated?: number };
   ready: Array<{ label: string; many?: string; count: number }>;
   /** What the nightly tidy did to each agent's memory; absent on briefs
    * made before there was one. */
@@ -481,7 +481,7 @@ export function BriefPanel() {
                   {[
                     sinceLine(brief),
                     brief.spend.turns > 0
-                      ? `${plural(brief.spend.turns, "reply", "replies")}${brief.spend.costKnown && brief.spend.cost > 0 ? `, about $${brief.spend.cost.toFixed(2)}` : ""}`
+                      ? `${plural(brief.spend.turns, "reply", "replies")}${brief.spend.costKnown && brief.spend.cost > 0 ? (brief.spend.estimated ?? 0) > 0 ? `, ~$${brief.spend.cost.toFixed(2)}` : `, about $${brief.spend.cost.toFixed(2)}` : ""}`
                       : "",
                     ...brief.ready.map((r) => `${r.count} ${r.count === 1 ? r.label : (r.many ?? `${r.label}s`)} ready`),
                   ]

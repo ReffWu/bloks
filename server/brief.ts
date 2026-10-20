@@ -73,7 +73,9 @@ export interface BriefInput {
   person?: string;
   agents: BriefAgent[];
   waiting: BriefWaiting[];
-  spend: { turns: number; cost: number; costKnown: boolean };
+  /** `estimated` is the part of `cost` worked out from tokens, which makes
+   * the figure an estimate, written "~$" as the Usage page writes it. */
+  spend: { turns: number; cost: number; costKnown: boolean; estimated?: number };
   /** Other things ready for a look: rehearsals, suggested notes, skills.
    * `many` is the plural when adding an s would be wrong. */
   ready?: Array<{ label: string; many?: string; count: number }>;
@@ -227,7 +229,11 @@ export function composeBrief(input: BriefInput, id: string): Brief {
       ].join(", ") + ".";
 
   const cost =
-    input.spend.costKnown && input.spend.cost > 0 ? ` It cost about $${input.spend.cost.toFixed(2)} where the provider reports a price.` : "";
+    input.spend.costKnown && input.spend.cost > 0
+      ? (input.spend.estimated ?? 0) > 0
+        ? ` It cost ~$${input.spend.cost.toFixed(2)}, estimated in part from the tokens used.`
+        : ` It cost about $${input.spend.cost.toFixed(2)} where the provider reports a price.`
+      : "";
   const opening: BriefPart = {
     botId: null,
     name: "Bloks",

@@ -462,6 +462,7 @@ function runFor(id) {
     quitting: () => quitting || run.stopped,
     start: async () => ((await startServer(run, { prefer: run.port, rounds: 1 })) ? run.child : null),
     onBack: () => {
+      handLicence(run);
       setStatus(run, "running");
       pointWindows(run.id);
     },
@@ -502,10 +503,58 @@ function launch(id) {
   const ws = entryOf(id);
   run.ready = (ws?.kind === "joined" ? openJoined(run, ws) : startServer(run)).then((up) => {
     if (up && run.child && ws?.kind !== "joined") run.keeper.watch(run.child);
+    if (up) handLicence(run);
     setStatus(run, up ? "running" : "failed");
     return up;
   });
   return run.ready;
+}
+
+// ── one Bloks Cloud licence for every workspace ─────────────────────────
+// A licence is the person's, not a workspace's: typed once (in any
+// workspace, or Personal's from before), it is kept here in the keychain
+// and handed to every workspace's server as it starts, so putting another
+// one online needs no key. It travels only over the line this app has to
+// its own servers, never in their environment, where an agent's shell
+// would read it.
+
+const LICENCE = /^blok_live_[0-9a-f]{32}$/;
+const licenceFile = () => path.join(app.getPath("userData"), "licence.bin");
+let licence = null;
+
+function readLicence() {
+  if (licence) return licence;
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    const said = safeStorage.decryptString(fs.readFileSync(licenceFile()));
+    licence = LICENCE.test(said) ? said : null;
+  } catch {
+    licence = null;
+  }
+  return licence;
+}
+
+/** Hands the licence to one workspace's server, when there is one. */
+function handLicence(run) {
+  const key = readLicence();
+  if (!key || !run?.child) return;
+  try {
+    run.child.postMessage({ kind: "licence", key });
+  } catch {
+    /* a server on its way out hears it again when it is back */
+  }
+}
+
+/** A licence a workspace was given: kept once, and handed to the rest. */
+function keepLicence(key) {
+  if (typeof key !== "string" || !LICENCE.test(key) || key === readLicence()) return;
+  licence = key;
+  try {
+    if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(licenceFile(), safeStorage.encryptString(key), { mode: 0o600 });
+  } catch (error) {
+    console.error("[licence] could not keep it:", error?.message ?? error);
+  }
+  for (const run of servers.values()) handLicence(run);
 }
 
 /** Stops one workspace's server for good (it is being deleted). */
@@ -1686,6 +1735,7 @@ function heardFromServer(id, child, said) {
   const run = servers.get(id);
   // a server from before a restart, still saying its last words
   if (!run || (run.child && run.child !== child)) return;
+  if (said?.kind === "desktop.licence") return keepLicence(said.key);
   if (said?.kind === "desktop.unread" && Number.isInteger(said.count)) {
     waitingCounts.set(id, Math.max(0, said.count));
     applyBadge();

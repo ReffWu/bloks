@@ -6,6 +6,7 @@
 
 // First, before any module below reads the data folder: a restore waiting
 // for this start is put in place (server/pending-restore.ts).
+import { CLOUD_KEY, licenceFrom, licenceToUse } from "./licence.ts";
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
 import { SaidOnce, desktopNotice, noticeKey, unreadCount as desktopUnreadCount } from "./desktop-notice.ts";
@@ -2885,11 +2886,13 @@ function makeBrief(now = Date.now()): Brief {
   const from = localDate(new Date(since));
   let turns = 0;
   let cost = 0;
+  let estimated = 0;
   let costKnown = false;
   for (const bucket of usage.since(3)) {
     if (bucket.date < from) continue;
     turns += bucket.turns;
     cost += bucket.cost;
+    estimated += bucket.estimated ?? 0;
     costKnown ||= bucket.costKnown;
   }
   const brief = composeBrief(
@@ -2905,7 +2908,7 @@ function makeBrief(now = Date.now()): Brief {
           lanes: b.tasks.map((t) => ({ threadId: t.id, title: t.title, messages: store.messagesFor(t.id) })),
         })),
       waiting: waitingOnYou(),
-      spend: { turns, cost, costKnown },
+      spend: { turns, cost, costKnown, ...(estimated > 0 ? { estimated } : {}) },
       ready: [
         { label: "rehearsal", count: rehearsals.all().filter((r) => r.state === "ready").length },
         { label: "note about you", many: "notes about you", count: profileNotes.suggested().length },
@@ -9200,11 +9203,37 @@ setInterval(() => void workspacePeople.sweep().catch(() => {}), 10 * 60_000).unr
 /** This Mac joining somebody else's workspace (server/join-client.ts). */
 const joinClient = new JoinClient(() => relayBase());
 
-/** A Bloks Cloud licence, exactly as bloks.dev mints it. Kept here so
- * the shape is checked before anything is dialled: a mistyped key is the
- * ordinary case, and it should not cost a round trip or arrive back as
- * whatever the relay decided to call it. */
-const CLOUD_KEY = /^blok_live_[0-9a-f]{32}$/;
+// A licence's shape (CLOUD_KEY, server/licence.ts) is checked before
+// anything is dialled: a mistyped key is the ordinary case, and it should
+// not cost a round trip or arrive back as whatever the relay called it.
+
+/**
+ * One Bloks Cloud licence for every workspace on this computer. The
+ * desktop app keeps it once, in the keychain, and hands it to each
+ * workspace's server as it starts (the "licence" message at the end of
+ * this file), so putting another workspace online needs no key: the
+ * relay answers with its own per-plan limit when there is no room. A
+ * server on its own, or Personal from before, keeps the one in its own
+ * settings, which wins, and offers it to the app so the others have it.
+ * In memory only, and never in an agent's environment.
+ */
+let sharedLicence: string | null = null;
+
+function licenceKey(): string | null {
+  return licenceToUse(credits.savedLicence(), sharedLicence);
+}
+
+/** Tells the desktop app about a licence this workspace was given, so
+ * it keeps it once for all of them. Nothing outside the app hears it. */
+function shareLicence(key: string) {
+  if (!CLOUD_KEY.test(key)) return;
+  const app = (process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort;
+  try {
+    app?.postMessage({ kind: "desktop.licence", key });
+  } catch {
+    /* no app to keep it: this workspace keeps its own */
+  }
+}
 
 /** Where an activation goes. A relay address already in the config wins,
  * so somebody running their own relay keeps running their own; the env
@@ -17196,7 +17225,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // activated with (Reachable online's switch), without asking for it
       const key = typeof body.key === "string" && body.key.trim()
         ? body.key.trim()
-        : body.again === true ? (credits.savedLicence() ?? "") : "";
+        : body.again === true ? (licenceKey() ?? "") : "";
       if (!CLOUD_KEY.test(key)) {
         return json(res, 400, {
           error: "that is not a Bloks Cloud key. One starts with blok_live_ and ends in 32 hex characters",
@@ -17259,6 +17288,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       Object.assign(cfg, saveConfig({ relay: { url, agentToken, clientToken, enabled: true } }));
       credits.setLicence(key);
+      shareLicence(key);
       // the token is traded now rather than at the first turn, so the
       // engine's model list is there when somebody opens the picker; a
       // failure is said in Settings and tried again then
@@ -17289,24 +17319,24 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (method === "GET" && path === "/api/relay/plan") {
       if (!local) return json(res, 403, { error: "not from here" });
       const token = cfg.relay?.agentToken;
-      if (!token || !cfg.relay?.url) return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+      if (!token || !cfg.relay?.url) return json(res, 200, { plan: null, spaces: null, licence: Boolean(licenceKey()) });
       try {
         const asked = await fetch(`${relayBase()}/space/agent/plan`, {
           headers: { authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(8_000),
         });
         const said = (await asked.json().catch(() => ({}))) as { plan?: unknown; workspaceId?: unknown; spaces?: { online?: unknown; limit?: unknown } };
-        if (!asked.ok) return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+        if (!asked.ok) return json(res, 200, { plan: null, spaces: null, licence: Boolean(licenceKey()) });
         const online = Number.isInteger(said.spaces?.online) ? (said.spaces!.online as number) : null;
         const limit = Number.isInteger(said.spaces?.limit) ? (said.spaces!.limit as number) : null;
         return json(res, 200, {
           plan: typeof said.plan === "string" ? said.plan : null,
           workspaceId: typeof said.workspaceId === "string" ? said.workspaceId : WORKSPACE_ID,
           spaces: online === null ? null : { online, limit },
-          licence: Boolean(credits.savedLicence()),
+          licence: Boolean(licenceKey()),
         });
       } catch {
-        return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+        return json(res, 200, { plan: null, spaces: null, licence: Boolean(licenceKey()) });
       }
     }
     if (method === "DELETE" && path === "/api/relay/space") {
@@ -17391,6 +17421,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           return json(res, 400, { error: "that is not a Bloks Cloud key. One starts with blok_live_ and ends in 32 hex characters" });
         }
         credits.setLicence(key);
+        shareLicence(key);
         const token = await credits.token();
         if (!token) return json(res, 502, { error: credits.problem ?? "Bloks AI could not be reached." });
         return json(res, 200, await creditsStatus(true));
@@ -21612,7 +21643,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const today = usage.since(1);
       const spend = new Map<
         string,
-        { botId: string; turns: number; input: number; output: number; cost: number; unmeasured: number }
+        { botId: string; turns: number; input: number; output: number; cost: number; estimated: number; unmeasured: number }
       >();
       let costKnown = false;
       for (const bucket of today) {
@@ -21622,12 +21653,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           input: 0,
           output: 0,
           cost: 0,
+          estimated: 0,
           unmeasured: 0,
         };
         row.turns += bucket.turns;
         row.input += bucket.input;
         row.output += bucket.output;
         row.cost += bucket.cost;
+        row.estimated += bucket.estimated ?? 0;
         row.unmeasured += bucket.unmeasured ?? 0;
         spend.set(bucket.botId, row);
         if (bucket.costKnown) costKnown = true;
@@ -23089,4 +23122,12 @@ if (testParent > 0) {
 type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: unknown } }) => void): void };
 (process as NodeJS.Process & { parentPort?: ParentPort }).parentPort?.on("message", (message) => {
   if (message?.data?.kind === "stop") shutDown();
+  // the app's one licence, for putting this workspace online without a key
+  sharedLicence = licenceFrom(message) ?? sharedLicence;
 });
+// a licence this workspace already holds is offered to the app once, so
+// the workspaces made after it never ask for it again
+{
+  const own = credits.savedLicence();
+  if (own) shareLicence(own);
+}

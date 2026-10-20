@@ -42,6 +42,9 @@ export interface Spend {
   input: number;
   output: number;
   cost: number;
+  /** Of `cost`, the dollars estimated from tokens rather than priced by
+   * the engine: any of it makes the figure an estimate, written "~$". */
+  estimated?: number;
   /** Turns whose engine said nothing about tokens, so a zero above is
    * "not reported" rather than "nothing used". */
   unmeasured?: number;
@@ -377,6 +380,7 @@ export function assemble(input: AssembleInput): Activity {
               input: today.input,
               output: today.output,
               cost: today.cost,
+              ...(today.estimated ? { estimated: today.estimated } : {}),
               ...(today.unmeasured ? { unmeasured: today.unmeasured } : {}),
             }
           : noSpend(),
@@ -402,6 +406,7 @@ export function assemble(input: AssembleInput): Activity {
     today.input += s.input;
     today.output += s.output;
     today.cost += s.cost;
+    if (s.estimated) today.estimated = (today.estimated ?? 0) + s.estimated;
     if (s.unmeasured) today.unmeasured = (today.unmeasured ?? 0) + s.unmeasured;
   }
 
