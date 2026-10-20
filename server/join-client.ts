@@ -54,6 +54,10 @@ export interface JoinFailure {
   error: string;
   triesLeft?: number;
   retryAfter?: number;
+  /** Who sent the invite and to where, when the host said: an ended
+   * invite's screen names them. */
+  host?: string;
+  workspace?: string;
 }
 
 const SESSION_TTL_MS = 25 * 60 * 60_000;
@@ -322,5 +326,7 @@ function failure(answer: { status: number; body: Record<string, unknown> }): Joi
     code: typeof b.code === "string" ? b.code : "unreachable",
     error: typeof b.error === "string" ? b.error : "That did not work. Try again.",
     ...(typeof b.triesLeft === "number" ? { triesLeft: b.triesLeft } : {}),
+    ...(typeof b.host === "string" ? { host: b.host.slice(0, 60) } : {}),
+    ...(typeof b.workspace === "string" ? { workspace: b.workspace.slice(0, 60) } : {}),
   };
 }

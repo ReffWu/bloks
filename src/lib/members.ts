@@ -145,6 +145,8 @@ export interface JoinFailure {
   error: string;
   triesLeft?: number;
   retryAfter?: number;
+  host?: string;
+  workspace?: string;
 }
 
 export interface Welcome {

@@ -49,7 +49,7 @@ type Stage =
   | { kind: "found"; session: string; invite: FoundInvite }
   | { kind: "waiting"; session: string; invite: FoundInvite; phrase: string; unreachable?: boolean }
   | { kind: "welcome"; invite: FoundInvite; welcome: Welcome; credentials: JoinCredentials; name: string }
-  | { kind: "ended"; code: string; error: string; invite?: FoundInvite };
+  | { kind: "ended"; code: string; error: string; invite?: FoundInvite; host?: string; workspace?: string };
 
 /** People are called by their first name here, the way they would be in
  * the room: "Waiting for Hamed", not a full name on every line. */
@@ -58,31 +58,36 @@ const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 /** How often a waiting request asks whether it has been answered. */
 const POLL_MS = 2_500;
 
-/** The edge screens' words (design: Edge-States), by the server's codes. */
-function ended(code: string, inviter: string, workspace: string, error: string): { title: string; body: string; note?: string } {
+/** The edge screens' words (design: Edge-States), by the server's codes.
+ * `inviter` is null when nobody said who sent the invite (Bloks Cloud only
+ * knows an invite has ended, not whose it was). */
+function ended(code: string, inviter: string | null, workspace: string | null, error: string): { title: string; body: string; note?: string } {
+  const who = inviter ?? "whoever sent it";
+  const Who = inviter ?? "Whoever sent it";
+  const ws = workspace ?? "the workspace";
   switch (code) {
     case "expired":
-      return { title: "This invite has expired", body: `Invites last 24 hours, so a code from yesterday stops working. Ask ${inviter} for a new one: it takes them a second.` };
+      return { title: "This invite has expired", body: `Invites last 24 hours, so a code from yesterday stops working. Ask ${who} for a new one: it takes them a second.` };
     case "cancelled":
-      return { title: "This invite was cancelled", body: `${inviter} cancelled it, so it no longer works. Ask them for a new one: it takes them a second.` };
+      return { title: "This invite was cancelled", body: `${Who} cancelled it, so it no longer works. Ask them for a new one: it takes them a second.` };
     case "used":
-      return { title: "This invite was already used", body: `Each invite lets one person in, and somebody has used this one. Ask ${inviter} for a new one: it takes them a second.` };
+      return { title: "This invite was already used", body: `Each invite lets one person in, and somebody has used this one. Ask ${who} for a new one: it takes them a second.` };
     case "closed":
-      return { title: "This invite is closed", body: `Too many wrong passwords were tried, so it stopped working, and ${inviter} has been told. Ask them for a new one.` };
+      return { title: "This invite is closed", body: `Too many wrong passwords were tried, so it stopped working, and ${who} has been told. Ask them for a new one.` };
     case "declined":
       return {
-        title: `${inviter} did not let this request in`,
-        body: `If you think that is a mistake, check with ${inviter}. They can send you a new invite.`,
+        title: inviter ? `${inviter} did not let this request in` : "This request was not let in",
+        body: `If you think that is a mistake, check with ${who}. They can send you a new invite.`,
         note: "No reason is shown, and nothing about the workspace stays on this Mac.",
       };
     case "already_member":
       return {
-        title: `You are already in ${workspace}`,
+        title: `You are already in ${ws}`,
         body: "This invite was for you, and you are in already. Nothing more to do.",
-        note: `The invite stays unused, so ${inviter} can cancel it or give it to someone else.`,
+        note: `The invite stays unused, so ${who} can cancel it or give it to someone else.`,
       };
     case "full":
-      return { title: `${workspace} is full`, body: error };
+      return { title: `${ws} is full`, body: error };
     default:
       return { title: "That did not work", body: error };
   }
@@ -161,7 +166,7 @@ export function JoinWorkspaceDialog({
       setProblem({ field: "code", text: found.error });
       return;
     }
-    setStage({ kind: "ended", code: found.code, error: found.error });
+    setStage({ kind: "ended", code: found.code, error: found.error, ...(found.host ? { host: found.host } : {}), ...(found.workspace ? { workspace: found.workspace } : {}) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -169,6 +174,19 @@ export function JoinWorkspaceDialog({
     if (!el || reduce) return;
     void run(el, { x: [0, -7, 6, -4, 3, 0] }, { duration: 0.36, ease: "easeOut" });
   };
+
+  // Opened from the switcher's menu, the dialog can appear while the menu
+  // is still closing, and the focus then lands nowhere. The field is the
+  // one thing to do here, so it gets the focus once the menu has gone.
+  const codeInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => {
+      const box = codeInput.current?.closest("[role=dialog]");
+      if (codeInput.current && box && !box.contains(document.activeElement)) codeInput.current.focus();
+    }, 180);
+    return () => clearTimeout(t);
+  }, [open]);
 
   // looked up as soon as what is typed can be a code; nothing to press
   useEffect(() => {
@@ -270,7 +288,7 @@ export function JoinWorkspaceDialog({
 
   const invite = "invite" in stage && stage.invite ? { ...stage.invite, inviter: firstName(stage.invite.inviter) } : undefined;
   const title =
-    stage.kind === "welcome" ? "You're in" : stage.kind === "waiting" ? `Waiting for ${firstName(stage.invite.inviter)}` : stage.kind === "ended" ? ended(stage.code, invite?.inviter ?? "them", invite?.workspace ?? "the workspace", stage.error).title : "Join a workspace";
+    stage.kind === "welcome" ? "You're in" : stage.kind === "waiting" ? `Waiting for ${firstName(stage.invite.inviter)}` : stage.kind === "ended" ? ended(stage.code, invite?.inviter ?? (stage.host ? firstName(stage.host) : null), invite?.workspace ?? stage.workspace ?? null, stage.error).title : "Join a workspace";
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -290,6 +308,7 @@ export function JoinWorkspaceDialog({
               <span className="text-small text-muted-foreground">Invite link or code</span>
               <div ref={codeBox}>
                 <Input
+                  ref={codeInput}
                   autoFocus={!initialInput}
                   value={input}
                   onChange={(e) => {
@@ -521,8 +540,8 @@ function EndedView({
   onRetry: () => void;
   onOpen?: () => void;
 }) {
-  const inviter = stage.invite ? firstName(stage.invite.inviter) : "them";
-  const workspace = stage.invite?.workspace ?? "the workspace";
+  const inviter = stage.invite ? firstName(stage.invite.inviter) : stage.host ? firstName(stage.host) : null;
+  const workspace = stage.invite?.workspace ?? stage.workspace ?? null;
   const words = ended(stage.code, inviter, workspace, stage.error);
   return (
     <div className="mt-1.5 flex flex-col gap-3">
@@ -536,7 +555,7 @@ function EndedView({
         )}
         {onOpen ? (
           <Button size="lg" onClick={onOpen}>
-            Open {workspace}
+            Open {workspace ?? "the workspace"}
           </Button>
         ) : (
           <Button size="lg" onClick={onDone}>
