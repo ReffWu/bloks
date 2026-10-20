@@ -168,12 +168,34 @@ export function intervalWords(interval: Account["interval"]): string | null {
   return interval === "month" ? "Monthly" : interval === "year" ? "Yearly" : null;
 }
 
-/** Hosting's machine state, in a word or two. */
-export function hostingWords(hosting: Account["hosting"]): string | null {
+/** Hosting's tiers, as the row names them and says what each one is. */
+const HOSTING_TIERS: Record<string, { name: string; line: string }> = {
+  lite: { name: "Hosting Lite", line: "Your own machine. It sleeps when idle and wakes for a message, a routine or a watcher." },
+  standard: { name: "Hosting Standard", line: "Your own machine, always on." },
+};
+
+/** What bloks.dev says is happening to the machine, in a word or two. A
+ * state this build has not heard of is said as it came. */
+const HOSTING_STATES: Record<string, { label: string; tone: StatusTone }> = {
+  provisioning: { label: "Setting up", tone: "wait" },
+  active: { label: "Running", tone: "on" },
+  grace: { label: "Stops soon", tone: "issue" },
+  stopped: { label: "Stopped", tone: "off" },
+};
+
+/** Hosting's row: the tier by name, a line about it, and the machine's
+ * state with its tone. */
+export function hostingWords(hosting: Account["hosting"]): { name: string; line: string; label: string; tone: StatusTone } | null {
   if (!hosting) return null;
-  const tier = hosting.tier ? planName(hosting.tier) : "Hosting";
-  const state = hosting.state ? hosting.state.replace(/[_-]+/g, " ") : null;
-  return state ? `${tier}, ${state}` : tier;
+  const tier = HOSTING_TIERS[hosting.tier?.toLowerCase() ?? ""];
+  const known = HOSTING_STATES[hosting.state?.toLowerCase() ?? ""];
+  const said = hosting.state ? hosting.state.replace(/[_-]+/g, " ") : null;
+  return {
+    name: tier?.name ?? "Hosting",
+    line: tier?.line ?? "A machine that runs your workspace for you.",
+    label: known?.label ?? (said ? said.charAt(0).toUpperCase() + said.slice(1) : "Setting up"),
+    tone: known?.tone ?? (said ? "off" : "wait"),
+  };
 }
 
 // ── coming back from the browser ───────────────────────────────────────

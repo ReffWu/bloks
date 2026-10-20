@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   RETURN_WINDOW_MS,
   cameBack,
+  hostingWords,
   ladderFor,
   planChange,
   planKey,
@@ -127,6 +128,25 @@ test("plans are named the way Bloks names them", () => {
   assert.equal(planName("team-hosted"), "Bloks Team Hosted");
   assert.equal(planName(null), "Free");
   assert.equal(planName("studio-plus"), "Studio Plus", "a plan the app has not heard of is still said readably");
+});
+
+test("a hosted machine is named by its tier and its state is said in words", () => {
+  assert.equal(hostingWords(null), null);
+  const lite = hostingWords({ tier: "lite", state: "provisioning" })!;
+  assert.equal(lite.name, "Hosting Lite");
+  assert.match(lite.line, /sleeps when idle/);
+  assert.deepEqual([lite.label, lite.tone], ["Setting up", "wait"]);
+  const standard = hostingWords({ tier: "standard", state: "active" })!;
+  assert.equal(standard.name, "Hosting Standard");
+  assert.deepEqual([standard.label, standard.tone], ["Running", "on"]);
+  assert.deepEqual(
+    [hostingWords({ tier: "lite", state: "grace" })!.label, hostingWords({ tier: "lite", state: "grace" })!.tone],
+    ["Stops soon", "issue"],
+    "a cancelled machine still runs for a while, and says so",
+  );
+  assert.equal(hostingWords({ tier: "standard", state: "stopped" })!.tone, "off");
+  const unknown = hostingWords({ tier: "plus", state: "being_moved" })!;
+  assert.deepEqual([unknown.name, unknown.label], ["Hosting", "Being moved"], "something newer is said as it came");
 });
 
 test("a focus is a return from bloks.dev only for a while after going there", () => {

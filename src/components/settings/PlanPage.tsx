@@ -360,14 +360,6 @@ function bloksAiShown(ai: ReturnType<typeof useBloksAi>, account: PlanSnapshot["
   return true;
 }
 
-function hostingTone(state: string | null): Health {
-  const s = (state ?? "").toLowerCase();
-  if (/run|ready|up|active|online/.test(s)) return "on";
-  if (/start|provision|creat|boot|pending|wak/.test(s)) return "wait";
-  if (/fail|error|down/.test(s)) return "issue";
-  return "off";
-}
-
 function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: RelayPlan | null; ai: ReturnType<typeof useBloksAi> }) {
   const { dispatch } = useStore();
   const go = (page: string) => dispatch({ type: "toggleAppSettings", open: true, page });
@@ -376,6 +368,7 @@ function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: R
   const spaces = relay?.spaces ?? null;
   const members = snapshot.members;
   const aiShown = bloksAiShown(ai, account);
+  const hosting = hostingWords(account?.hosting ?? null);
   return (
     <SettingsGroup title="What you have">
       <SettingRow
@@ -433,13 +426,7 @@ function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: R
           />
         )
       )}
-      {account?.hosting && (
-        <SettingRow
-          label="Hosting"
-          description={hostingWords(account.hosting) ?? "A machine that runs your workspace for you."}
-          control={<HealthLine tone={hostingTone(account.hosting.state)} label={account.hosting.state ? account.hosting.state.replace(/[_-]+/g, " ") : "Set up"} />}
-        />
-      )}
+      {hosting && <SettingRow label={hosting.name} description={hosting.line} control={<HealthLine tone={hosting.tone} label={hosting.label} />} />}
     </SettingsGroup>
   );
 }
