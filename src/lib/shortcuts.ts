@@ -76,6 +76,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
     desktopOnly: true,
   },
   {
+    id: "workspace",
+    group: "navigation",
+    keys: [["Mod", "1"], ["Mod", "9"]],
+    does: "Go to a workspace",
+    when: "1 is the first in the switcher, 9 the ninth",
+    desktopOnly: true,
+  },
+  {
     id: "moveSection",
     group: "navigation",
     keys: [["Alt", "Up"], ["Alt", "Down"]],

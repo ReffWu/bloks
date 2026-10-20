@@ -136,14 +136,17 @@ function DropdownMenuSubTrigger({
   className,
   children,
   value,
+  icon,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger> & { value?: React.ReactNode }) {
+}: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger> & { value?: React.ReactNode; icon?: React.ReactNode }) {
   return (
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
       className={cn(ROW, "data-[state=open]:bg-accent", className)}
       {...props}
     >
+      {/* before the label, on the grid a plain item's icon sits on */}
+      {icon}
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {value !== undefined && <span className="shrink-0 text-small text-muted-foreground">{value}</span>}
       <ChevronRight />

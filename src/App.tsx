@@ -4,7 +4,7 @@ import { Loader2 } from "@/components/icons";
 import { StoreProvider, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Onboarding } from "@/components/Onboarding";
-import { Intro, introPending } from "@/components/Intro";
+import { INTRO_KEY, Intro, introPending } from "@/components/Intro";
 import { initAnalytics, setupDone, workspaceSetupDone } from "@/lib/analytics";
 import { unreadCount } from "@/lib/unread";
 import { Sidebar } from "@/components/Sidebar";
@@ -20,6 +20,8 @@ import { NewRoomDialog } from "@/components/NewRoomDialog";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { AutomationsPanel } from "@/components/AutomationsPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
+import { WorkspaceSettings, isWorkspacePage } from "@/components/WorkspaceSettings";
+import { WorkspaceDialogs } from "@/components/WorkspaceDialogs";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutKeys } from "@/components/Shortcuts";
 import { Switcher } from "@/components/Switcher";
@@ -108,8 +110,11 @@ function Shell() {
   // its chat was, so they have the panel to themselves.
   const agentSettings = state.settingsOpen && bot !== null && !room;
   const chatPlace = !state.appSettingsOpen && !state.routinesOpen && !state.page && !agentSettings;
+  const workspacePage = state.appSettingsOpen && isWorkspacePage(state.settingsPage);
   const place = state.appSettingsOpen
-    ? "settings"
+    ? workspacePage
+      ? "workspace-settings"
+      : "settings"
     : state.routinesOpen
       ? "automations"
       : state.page
@@ -133,7 +138,9 @@ function Shell() {
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background md:flex-row md:rounded-tl-xl md:border-l md:border-t">
       {chatPlace ? <Sidebar /> : <div className="md:hidden"><Sidebar /></div>}
       <PlaceFade place={place}>
-      {state.appSettingsOpen ? (
+      {workspacePage ? (
+        <WorkspaceSettings />
+      ) : state.appSettingsOpen ? (
         <AppSettingsPanel />
       ) : state.routinesOpen ? (
         <AutomationsPanel onClose={() => dispatch({ type: "toggleRoutines", open: false })} />
@@ -182,6 +189,7 @@ function Shell() {
       {state.newRoomOpen && <NewRoomDialog />}
       {state.newAgentOpen && <NewAgentScreen />}
       <CommandPalette />
+      <WorkspaceDialogs />
       <ShortcutKeys />
       <ErrorToasts />
       {/* what is on screen, for Ctrl+Tab to come back to: a room, or one
@@ -191,6 +199,23 @@ function Shell() {
       />
     </div>
   );
+}
+
+/**
+ * The film is for a person's first Bloks, not for each workspace they
+ * make: a workspace other than Personal, or one just made, opens on the
+ * working welcome alone. Its storage is its own origin's, so without this
+ * every new workspace would start the film again.
+ */
+function skipFilmForWorkspace() {
+  const ws = window.bloks?.workspace;
+  const made = new URLSearchParams(location.search).get("welcome") === "workspace";
+  if (!made && (!ws || ws.kind === "personal")) return;
+  try {
+    if (!localStorage.getItem(INTRO_KEY)) localStorage.setItem(INTRO_KEY, String(Date.now()));
+  } catch {
+    /* storage refused: the film shows, which is only a film */
+  }
 }
 
 export default function App() {
@@ -207,6 +232,7 @@ export default function App() {
   // setup, and someone who resets setup should not sit through the film
   // twice.
   const forced = new URLSearchParams(location.search).has("intro");
+  if (!forced) skipFilmForWorkspace();
   const [introOpen, setIntroOpen] = useState(
     // never replay the film for a workspace that finished setup before the
     // intro existed; ?intro forces a showing for design review
