@@ -651,7 +651,9 @@ export function ChatView({ bot }: { bot: Bot }) {
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {/* the model is picked where you type, in the composer's footer */}
           <CallButton bot={bot} />
-          {window.bloks?.meetingStart && (
+          {/* meeting notes listen through the Mac's own microphone, so a
+              window onto a hosted workspace does not offer them */}
+          {window.bloks?.meetingStart && !state.config?.hosted?.on && (
             <Button
               variant="ghost"
               size="icon"

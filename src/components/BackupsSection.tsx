@@ -37,6 +37,7 @@ import {
   type RestoreProgress,
 } from "@/lib/backups";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
+import { MoveWorkspace } from "./MoveWorkspace";
 
 interface Status {
   folder: string;
@@ -167,7 +168,16 @@ function Backups() {
     };
   }, [watch]);
 
-  if (refused) return <Elsewhere />;
+  // A paired browser onto a hosted workspace is not this computer, but an
+  // empty hosted workspace still takes a moved one in from it.
+  if (refused) {
+    return (
+      <>
+        <Elsewhere />
+        <MoveWorkspace />
+      </>
+    );
+  }
   if (!status) {
     if (error) return <div className="px-1 py-6 text-body text-destructive">{error}</div>;
     // the page's own outline, so nothing jumps when it arrives
@@ -224,6 +234,7 @@ function Backups() {
           ))
         )}
       </SettingsGroup>
+      <MoveWorkspace />
       {restoring && (
         <RestoreDialog
           backup={restoring}

@@ -14367,7 +14367,8 @@ async function receiveMove(req: IncomingMessage): Promise<{ file: string; name: 
 async function serveMove(req: IncomingMessage, res: ServerResponse, method: string, path: string, local: boolean) {
   try {
     if (method === "GET" && path === "/api/workspace/move") {
-      return json(res, 200, { empty: workspaceEmpty(), hosted: HOSTED, running: backupRunning, restore: restoring });
+      // `canWrite`: writing one out answers only this computer
+      return json(res, 200, { empty: workspaceEmpty(), hosted: HOSTED, canWrite: local, running: backupRunning, restore: restoring });
     }
     // Writing one out is this computer's, like a backup: it is the whole
     // workspace, and it goes where the person carries it.
