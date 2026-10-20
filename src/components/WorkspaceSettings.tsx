@@ -469,7 +469,7 @@ function ReachableOnline({ ws }: { ws: WorkspaceInfo }) {
       <SettingsGroup
         footnote={
           <>
-            Bloks Cloud keeps 3 workspaces online at once, with 2 members in each. Bloks Team keeps every workspace online, with 10 members in each. Workspaces on this computer and your own network are always free.{" "}
+            Bloks Cloud keeps 3 workspaces online at once, just for you. Bloks Team keeps every workspace online and lets you bring people in, up to 10 in each. Workspaces on this computer are always free.{" "}
             <button type="button" onClick={toPlan} className="rounded font-medium text-foreground underline-offset-2 hover:underline">
               See your plan
             </button>
