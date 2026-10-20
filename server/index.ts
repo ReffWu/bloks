@@ -550,7 +550,7 @@ const PORT = Number(process.env.BLOKS_PORT || loadConfig().port || 8799);
 const STATIC_DIR = process.env.BLOKS_STATIC_DIR || null;
 /** Which of the desktop app's workspaces this server is: it says so when
  * it starts one. Its own relay space is kept under this id. */
-const WORKSPACE_ID = /^[a-z0-9_-]{1,40}$/.test(process.env.BLOKS_WORKSPACE_ID ?? "") ? process.env.BLOKS_WORKSPACE_ID! : "personal";
+const WORKSPACE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(process.env.BLOKS_WORKSPACE_ID ?? "") ? process.env.BLOKS_WORKSPACE_ID! : "personal";
 const MIME: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -16365,7 +16365,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (method === "POST" && path === "/api/relay/activate") {
       if (!local) return json(res, 403, { error: "not from here" });
       const body = await readBody(req);
-      const key = typeof body.key === "string" ? body.key.trim() : "";
+      // `again: true` puts a workspace back online with the licence it was
+      // activated with (Reachable online's switch), without asking for it
+      const key = typeof body.key === "string" && body.key.trim()
+        ? body.key.trim()
+        : body.again === true ? (credits.savedLicence() ?? "") : "";
       if (!CLOUD_KEY.test(key)) {
         return json(res, 400, {
           error: "that is not a Bloks Cloud key. One starts with blok_live_ and ends in 32 hex characters",
@@ -16447,6 +16451,60 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         url,
         enabled: Boolean(cfg.relay?.enabled),
       });
+    }
+
+    // Reachable online (the desktop app's workspace settings): how many of
+    // the plan's workspaces are online, in the relay's own words, and the
+    // switch that takes this one offline. Off frees its slot at the relay
+    // (DELETE /space/agent) rather than only hanging up, since a plan that
+    // keeps three online counts spaces, not open lines; the licence stays,
+    // so turning it on again is one click (activate with again: true).
+    if (method === "GET" && path === "/api/relay/plan") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const token = cfg.relay?.agentToken;
+      if (!token || !cfg.relay?.url) return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+      try {
+        const asked = await fetch(`${relayBase()}/space/agent/plan`, {
+          headers: { authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(8_000),
+        });
+        const said = (await asked.json().catch(() => ({}))) as { plan?: unknown; workspaceId?: unknown; spaces?: { online?: unknown; limit?: unknown } };
+        if (!asked.ok) return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+        const online = Number.isInteger(said.spaces?.online) ? (said.spaces!.online as number) : null;
+        const limit = Number.isInteger(said.spaces?.limit) ? (said.spaces!.limit as number) : null;
+        return json(res, 200, {
+          plan: typeof said.plan === "string" ? said.plan : null,
+          workspaceId: typeof said.workspaceId === "string" ? said.workspaceId : WORKSPACE_ID,
+          spaces: online === null ? null : { online, limit },
+          licence: Boolean(credits.savedLicence()),
+        });
+      } catch {
+        return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+      }
+    }
+    if (method === "DELETE" && path === "/api/relay/space") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const token = cfg.relay?.agentToken;
+      if (token && cfg.relay?.url) {
+        let gone: Response;
+        try {
+          gone = await fetch(`${relayBase()}/space/agent`, {
+            method: "DELETE",
+            headers: { authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(15_000),
+          });
+        } catch {
+          // kept as it was: a slot the relay still counts must not look free
+          return json(res, 502, { error: "Bloks Cloud could not be reached, so this workspace is still online. Try again in a moment" });
+        }
+        // 401 or 404 means the relay has already let it go
+        if (!gone.ok && gone.status !== 401 && gone.status !== 404) {
+          return json(res, 502, { error: `Bloks Cloud answered HTTP ${gone.status}, so this workspace is still online` });
+        }
+      }
+      Object.assign(cfg, saveConfig({ relay: { enabled: false, agentToken: "", clientToken: "" } }));
+      syncRelay(cfg);
+      return json(res, 200, { enabled: false, connected: false, spaceId: null });
     }
 
     // Bloks AI: what is left, the background switch and a team's member
