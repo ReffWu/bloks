@@ -45,6 +45,8 @@ import { BlockBurst } from "./BlockBurst";
 import { InviteSheet } from "./InviteSheet";
 import { AgentAccessDialog, LimitsDialog, PasswordDialog } from "./MemberDialogs";
 import { RequestCard } from "./RequestCard";
+import { NeedsTeam, UpgradeLink } from "../TeamLock";
+import { AlertTriangle } from "@/components/icons";
 
 const DEVICE_WORD = { iphone: "iPhone", mac: "Mac", browser: "Browser" } as const;
 /** How long a newcomer's row says "New". */
@@ -170,6 +172,9 @@ export function MembersPage({
   }, [newcomer]);
 
   const manage = data ? data.you.role !== "member" : false;
+  // people come in on Bloks Team only (server/plan-limits.ts); a server
+  // from before that said nothing, and stays as it was
+  const teamOn = data?.team !== false;
   const owner = data?.you.role === "owner";
   const members = useMemo(() => {
     const list = data?.members ?? [];
@@ -245,10 +250,14 @@ export function MembersPage({
         <div className="flex items-center justify-between gap-6">
           <h1 className="text-balance text-display font-bold text-foreground">Members</h1>
           {manage && (
-            <Button size="lg" onClick={() => setInviting(true)}>
-              <Plus size={16} />
-              Invite someone
-            </Button>
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <Button size="lg" onClick={() => setInviting(true)} disabled={!teamOn}>
+                <Plus size={16} />
+                Invite someone
+              </Button>
+              {/* while paused, the banner below says it once, with the way */}
+              {!teamOn && !data.paused && <NeedsTeam />}
+            </div>
           )}
         </div>
         <p className="max-w-[560px] text-pretty text-ui leading-relaxed text-muted-foreground">
@@ -256,6 +265,21 @@ export function MembersPage({
           {joining?.approveEach === false ? "The right code lets people straight in." : "Nobody gets in until you say so."}
         </p>
       </div>
+
+      {/* the owner is not on Bloks Team, and people are in: they are
+          paused, said once and plainly, with the way back */}
+      {data.paused && manage && (
+        <div role="status" className="flex items-start gap-3 rounded-[14px] border border-warning/30 bg-warning/5 px-4 py-3.5">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-pretty text-ui font-medium text-foreground">Members are paused</span>
+            <span className="text-pretty text-body leading-relaxed text-muted-foreground">
+              {ws.name} needs Bloks Team for members. Until it is back on Team, nobody here besides you can open it. Nothing is deleted: everyone and everything they had come back with Team.
+            </span>
+          </div>
+          <UpgradeLink className="mt-0.5 shrink-0 text-body" />
+        </div>
+      )}
 
       {requests.map((r) => (
         <RequestCard
@@ -439,9 +463,13 @@ export function MembersPage({
               <p className="text-pretty text-ui leading-relaxed text-muted-foreground">
                 Each invite works once and lasts 24 hours. Invite someone to get a code, a QR and a link.
               </p>
-              <Button variant="secondary" size="sm" onClick={() => setInviting(true)}>
-                Invite someone
-              </Button>
+              {teamOn ? (
+                <Button variant="secondary" size="sm" onClick={() => setInviting(true)}>
+                  Invite someone
+                </Button>
+              ) : (
+                <NeedsTeam />
+              )}
             </div>
           )}
           {!data.online.available && <p className="px-0.5 text-pretty text-small text-muted-foreground">{data.online.why}</p>}

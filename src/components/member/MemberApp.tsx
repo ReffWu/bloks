@@ -12,6 +12,7 @@ import { Gauge, Plus, Settings, UserRound, Users } from "@/components/icons";
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { WorkspaceDialogs } from "@/components/WorkspaceDialogs";
 import { WorkspaceMark } from "@/components/WorkspaceMark";
@@ -103,6 +104,10 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
   const member = mode.mode === "member";
   const me = workspace?.you.personId ?? "";
   const owner = workspace?.owner.name ?? (mode.mode === "guest" ? mode.host : "The owner");
+  const nameOf = useCallback(
+    (id: string) => (id === "owner" ? owner : id === me ? "You" : (workspace?.members.find((m) => m.id === id)?.name ?? "Someone")),
+    [owner, me, workspace],
+  );
 
   const refresh = useCallback(async () => {
     const [ws, list, mine] = await Promise.all([
@@ -111,21 +116,36 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
       memberApi.me().then((r) => r.rooms).catch(() => null),
     ]);
     if (ws) setWorkspace(ws);
-    if (list) setAgents(list);
-    if (mine) setRooms(mine);
+    if (ws?.paused) {
+      // nothing is reachable while paused; it all comes back with Team
+      setAgents([]);
+      setRooms([]);
+    } else {
+      if (list) setAgents(list);
+      if (mine) setRooms(mine);
+    }
     setLoaded(true);
   }, [member]);
   const refreshUsage = useCallback(() => {
     if (member) memberApi.usage().then(setUsage).catch(() => {});
   }, [member]);
 
+  // Paused (the owner is not on Bloks Team): nothing to stream or count,
+  // and the workspace is asked again now and then, so the app is back by
+  // itself the moment it is.
+  const paused = workspace?.paused ?? null;
   useEffect(() => {
+    if (paused) {
+      void refresh();
+      const timer = setInterval(() => void refresh(), 30_000);
+      return () => clearInterval(timer);
+    }
     startMemberStream();
     void refresh();
     refreshUsage();
     const timer = setInterval(refreshUsage, 60_000);
     return () => clearInterval(timer);
-  }, [refresh, refreshUsage]);
+  }, [refresh, refreshUsage, paused]);
 
   // the switcher's Member or Admin follows what the server says
   useEffect(() => {
@@ -214,7 +234,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
               </span>
             </span>
           ) : null}
-          {!connected && loaded && (
+          {!connected && loaded && !paused && (
             <span className="ml-3 flex items-center gap-1.5 text-small text-muted-foreground" role="status">
               <span className="size-1.5 rounded-full bg-warning" aria-hidden />
               Reaching {owner}'s computer
@@ -224,7 +244,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <nav aria-label="Agents and rooms" className="flex w-[264px] shrink-0 flex-col border-r-0 bg-sidebar">
             <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3 pt-1">
-              {member && (
+              {member && !paused && (
                 <Section title="Team agents">
                   {groups.team.map((a) => (
                     <AgentRow key={a.id} agent={a} on={openAgent?.id === a.id} onOpen={() => go({ kind: "agent", id: a.id, lane: defaultLane(a) })} />
@@ -232,7 +252,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
                   {loaded && !groups.team.length && <Empty>No team agents are open to you yet.</Empty>}
                 </Section>
               )}
-              {member && (
+              {member && !paused && (
                 <Section
                   title="Your agents"
                   action={
@@ -256,7 +276,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
                   )}
                 </Section>
               )}
-              <Section title="Rooms">
+              {!paused && <Section title="Rooms">
                 {rooms.map((r) => (
                   <Row key={r.id} on={place?.kind === "room" && place.id === r.id} onClick={() => go({ kind: "room", id: r.id })}>
                     <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted text-small font-semibold text-muted-foreground" aria-hidden>
@@ -267,9 +287,9 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
                   </Row>
                 ))}
                 {loaded && !rooms.length && <Empty>You are not in any rooms yet.</Empty>}
-              </Section>
+              </Section>}
             </div>
-            {pages.length > 0 && (
+            {pages.length > 0 && !paused && (
               <div className="flex flex-col gap-0.5 border-t border-border/60 px-2.5 py-2">
                 {pages.map((p) => {
                   const Icon = PAGE_ICON[p.page];
@@ -285,7 +305,9 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
             )}
           </nav>
           <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-tl-xl border-l border-t bg-background">
-            {!place || !workspace && member ? null : place.kind === "agent" && openAgent ? (
+            {paused && workspace ? (
+              <PausedPanel workspace={workspace} line={paused} onLeave={() => void leave()} leaving={leaving} />
+            ) : !place || !workspace && member ? null : place.kind === "agent" && openAgent ? (
               <AgentView
                 key={openAgent.id}
                 agent={openAgent}
@@ -296,9 +318,10 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
                 onLane={(lane) => go({ kind: "agent", id: openAgent.id, lane })}
                 onDelete={() => void deleteAgent(openAgent)}
                 onSent={refreshUsage}
+                nameOf={nameOf}
               />
             ) : place.kind === "room" ? (
-              <RoomView key={place.id} roomId={place.id} me={me} usage={usage} />
+              <RoomView key={place.id} roomId={place.id} me={me} usage={usage} nameOf={nameOf} />
             ) : place.kind === "page" && workspace ? (
               place.page === "usage" ? (
                 <UsagePage usage={usage} workspace={workspace} />
@@ -329,6 +352,28 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
         <WorkspaceDialogs />
       </div>
     </TooltipProvider>
+  );
+}
+
+/** Said plainly, in place of everything, while the owner is not on
+ * Bloks Team: why, and that nothing is lost. */
+function PausedPanel({ workspace, line, onLeave, leaving }: { workspace: MemberWorkspace; line: string; onLeave: () => void; leaving: boolean }) {
+  return (
+    <main className="flex flex-1 items-center justify-center p-8">
+      <div role="status" className="flex max-w-[420px] flex-col items-center gap-4 text-center">
+        <WorkspaceMark mark={workspace.workspace.mark} size={48} />
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-balance text-title font-semibold text-foreground">{workspace.workspace.name} is paused for you</h1>
+          <p className="text-pretty text-ui leading-relaxed text-muted-foreground">{line}</p>
+          <p className="text-pretty text-body leading-relaxed text-muted-foreground">
+            Nothing of yours is gone. Your conversations, rooms and agents come back as soon as it is on Bloks Team again.
+          </p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onLeave} disabled={leaving} className="text-muted-foreground">
+          Leave {workspace.workspace.name}
+        </Button>
+      </div>
+    </main>
   );
 }
 

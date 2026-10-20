@@ -13,6 +13,8 @@ export interface SegmentedOption<T extends string | undefined> {
   label: React.ReactNode;
   /** For an icon-only or abbreviated label. */
   title?: string;
+  /** Shown, and not to be chosen: what it needs is said beside it. */
+  disabled?: boolean;
 }
 
 export function Segmented<T extends string | undefined>({
@@ -38,14 +40,18 @@ export function Segmented<T extends string | undefined>({
         return (
           <button
             key={String(option.value ?? "default")}
+            type="button"
             role="radio"
             aria-checked={on}
+            aria-disabled={option.disabled || undefined}
+            disabled={option.disabled}
             title={option.title}
             onClick={() => onChange(option.value)}
             className={cn(
               "relative flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium outline-none transition-colors duration-150",
               size === "sm" ? "px-2.5 py-1 text-small" : "px-3 py-1.5 text-body",
               on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+              option.disabled && "cursor-not-allowed opacity-50 hover:text-muted-foreground",
             )}
           >
             {on && (

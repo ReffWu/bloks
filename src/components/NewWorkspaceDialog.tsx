@@ -15,6 +15,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { BUSINESS_MARK, generateMark, type Mark } from "@/lib/workspaceMark";
 import { act, useWorkspaces } from "@/lib/workspaces";
 import { WorkspaceMark } from "./WorkspaceMark";
+import { NeedsTeam } from "./TeamLock";
 
 type Kind = "business" | "custom";
 
@@ -22,6 +23,9 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
   const s = useWorkspaces();
   const list = useMemo(() => (s.available ? s.workspaces : []), [s]);
   const hasBusiness = list.some((w) => w.kind === "business");
+  // A workspace with other people in it is Bloks Team's: the licence's
+  // plan, as the workspaces' servers last told the app
+  const teamOpen = s.available && s.plan === "team";
   const [kind, setKind] = useState<Kind>("custom");
   const [name, setName] = useState("");
   const [team, setTeam] = useState(false);
@@ -57,7 +61,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
     setBusy(true);
     setError(null);
     const said = await act(
-      window.bloks?.workspaceCreate?.({ kind, name: clean || "Business", team, mark: kind === "custom" ? mark : null }),
+      window.bloks?.workspaceCreate?.({ kind, name: clean || "Business", team: team && teamOpen, mark: kind === "custom" ? mark : null }),
     );
     // on success the window is already loading the new workspace
     if (said) {
@@ -131,18 +135,22 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
             <span className="text-small font-medium text-muted-foreground">Who uses it</span>
             <Segmented<"solo" | "team">
               aria-label="Who uses it"
-              value={team ? "team" : "solo"}
-              onChange={(next) => setTeam(next === "team")}
+              value={team && teamOpen ? "team" : "solo"}
+              onChange={(next) => setTeam(next === "team" && teamOpen)}
               options={[
                 { value: "solo", label: "Just me" },
-                { value: "team", label: "Team" },
+                { value: "team", label: "Team", disabled: !teamOpen },
               ]}
             />
-            <span className="text-pretty text-small text-muted-foreground">
-              {team
-                ? "Invite people from its settings once it is made. Each has their own conversations with its agents."
-                : "Only you. You can invite people later."}
-            </span>
+            {teamOpen ? (
+              <span className="text-pretty text-small text-muted-foreground">
+                {team
+                  ? "Invite people from its settings once it is made. Each has their own conversations with its agents."
+                  : "Only you. You can invite people later."}
+              </span>
+            ) : (
+              <NeedsTeam />
+            )}
           </div>
 
           {/* how it will look in the switcher, as it will look there */}

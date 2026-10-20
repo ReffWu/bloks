@@ -5,6 +5,7 @@
 // check phrase on their screen and so does this panel; comparing the two
 // is what makes letting someone in safe, so the phrase is the biggest
 // thing on the card that asks.
+import { NeedsTeam, UpgradeLink } from "./TeamLock";
 import { useCallback, useEffect, useState } from "react";
 import { Check } from "@/components/icons";
 import { Copy } from "@/components/icons";
@@ -34,6 +35,10 @@ interface PeopleResponse {
   hostName: string;
   plan: "cloud" | "team" | null;
   limits: { rooms: number | null; members: number } | null;
+  /** Whether this licence lets a room take new guests: Team, or a Cloud
+   * licence from before sharing rooms became Team's. Absent from an
+   * older server, which shares as it always did. */
+  sharedRoom?: boolean;
   people: Array<RoomPerson & { invitedBy: string; via?: ChatPlatform }>;
   invites: PendingInvite[];
   knocks: Array<{ id: string; name: string; platform: ChatPlatform; at: number }>;
@@ -165,6 +170,15 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
           <div className="mt-4 rounded-2xl border bg-card p-4 text-body leading-relaxed text-muted-foreground">
             Inviting someone to this room alone needs Bloks Cloud. Turn it on in Settings, under Bloks Cloud.
           </div>
+        ) : data.sharedRoom === false && !shared ? (
+          // a Cloud licence from after sharing rooms became Team's
+          <div className="mt-4 flex flex-col gap-2 rounded-2xl border bg-card p-4">
+            <span className="text-ui font-medium text-foreground">Sharing rooms needs Bloks Team</span>
+            <span className="text-pretty text-body leading-relaxed text-muted-foreground">
+              Bloks Team lets people into rooms and into the whole workspace.
+            </span>
+            <UpgradeLink className="self-start text-body" />
+          </div>
         ) : !shared ? (
           <div className="mt-4 space-y-3">
             <label className="block text-body font-medium text-foreground">
@@ -251,9 +265,13 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
               </div>
             ))}
 
-            {/* inviting */}
+            {/* inviting: a room shared before keeps its guests, and only
+                Team, or a licence that holds a shared room, lets more in */}
             <section>
               <SectionTitle>Invite someone</SectionTitle>
+              {data.sharedRoom === false ? (
+                <NeedsTeam what="Sharing rooms needs Bloks Team" />
+              ) : (
               <div className="flex gap-2">
                 <select
                   value={role}
@@ -269,6 +287,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                   Make an invite link
                 </Button>
               </div>
+              )}
               {link && (
                 <div className="mt-3 flex gap-3 rounded-2xl border bg-card p-3">
                   {link.qr && (
@@ -734,7 +753,7 @@ function Toggle({
 
 /** What the plan allows, said once and plainly. */
 function PlanLine({ data }: { data: PeopleResponse }) {
-  if (data.plan !== "cloud" || !data.limits) return null;
+  if (data.plan !== "cloud" || !data.limits || data.sharedRoom === false) return null;
   return (
     <div className="mt-2 text-small leading-snug text-muted-foreground">
       Bloks Cloud includes one shared room for up to {data.limits.members} people. Bloks Team allows any
