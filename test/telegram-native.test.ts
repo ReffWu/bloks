@@ -981,7 +981,7 @@ test("reply context accepted steer matches in-app steer without quote-driven ski
   const f = await fixture(t); f.tg.say("CTX_HOLD"); await waitFor(() => existsSync(join(f.root, "ctx-started")), "no active turn");
   f.tg.say("Telegram followup", undefined, CHAT, ctxOriginal(12, "/compact $quoted_skill"));
   await waitFor(() => heardContext(f).some(c => c.method === "turn/steer"), "no Telegram steer");
-  await f.post(`/api/bots/${f.bot.id}/messages`, { text: "In-app followup", replyTo: { author: "Sample author", excerpt: "/compact $quoted_skill", id: "app-ref" } });
+  await f.post(`/api/bots/${f.bot.id}/messages`, { text: "In-app followup", replyTo: { author: "Sample author", excerpt: "/compact $quoted_skill", id: "app-ref" }, delivery: "now" });
   const calls = await waitFor(() => { const c = heardContext(f).filter(c => c.method === "turn/steer"); return c.length === 2 ? c : null }, "no in-app steer");
   for (const c of calls) { assert.match(inputWords(c), /Replying to Sample author's earlier message/); assert.equal((inputWords(c).match(/Replying to/g) ?? []).length, 1); assert.ok(c.params.input.every((i: any) => i.type === "text"), "quoted skill is not activated") }
   const rows = await f.messages(); for (const text of ["Telegram followup", "In-app followup"]) { const row = rows.find(m => m.text === text); assert.equal(row.midTurn, true); assert.ok(row.replyTo) }
