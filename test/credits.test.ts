@@ -138,6 +138,28 @@ test("a licence the service does not know is said in the service's words", async
   assert.equal(account.problem, "That licence is not one we know.");
 });
 
+test("a trade that failed is not tried again on every look, but a new licence is tried at once", async (t) => {
+  await withService(t);
+  let clock = 1_000_000;
+  let asked = 0;
+  const counting: typeof fetch = (...args) => {
+    asked++;
+    return fetch(...args);
+  };
+  const store = memoryStore({ licence: "not-a-licence" });
+  const account = new CreditsAccount({ store, envToken: () => null, now: () => clock, fetch: counting });
+  assert.equal(await account.token(), null);
+  assert.equal(await account.token(), null);
+  assert.equal(asked, 1, "the service refused the first and was not asked again");
+  account.setLicence(LICENCE);
+  assert.ok(await account.token(), "a new licence goes straight away");
+  store.write({ token: null, licence: "still-not-one" });
+  assert.equal(await account.token(), null);
+  clock += 31_000;
+  store.write({ licence: LICENCE });
+  assert.ok(await account.token(), "and a failed one is tried again after a pause");
+});
+
 test("the balance is read as the service says it, and a revoked token is renewed for it", async (t) => {
   const service = await withService(t, { balance: 3.25 });
   const account = new CreditsAccount({ store: memoryStore({ licence: LICENCE }), envToken: () => null });

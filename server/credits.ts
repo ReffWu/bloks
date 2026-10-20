@@ -137,6 +137,10 @@ export const EMPTY_WORDS = "Your Bloks credits have run out.";
 
 type Fetch = typeof fetch;
 
+/** How long a failed trade is left before the next look tries again. A
+ * refresh after a 401, or a new licence, does not wait for it. */
+const EXCHANGE_PAUSE_MS = 30_000;
+
 /**
  * The token, kept and renewed. One exchange at a time: a dozen turns
  * that all hit a 401 together trade the licence once, not twelve times.
@@ -146,12 +150,17 @@ export class CreditsAccount {
   private readonly fetch: Fetch;
   private readonly envToken: () => string | null;
   private exchanging: Promise<string | null> | null = null;
+  /** When a trade last failed. The engine's health is asked often, and a
+   * service that is down is not asked again on every look. */
+  private failedAt = 0;
+  private readonly now: () => number;
   /** Why there is no token right now, in words a screen can show. Never
    * the licence or the token. */
   problem: string | null = null;
 
-  constructor(opts: { store: CreditsStore; fetch?: Fetch; envToken?: () => string | null }) {
+  constructor(opts: { store: CreditsStore; fetch?: Fetch; envToken?: () => string | null; now?: () => number }) {
     this.store = opts.store;
+    this.now = opts.now ?? Date.now;
     this.fetch = opts.fetch ?? ((...args) => fetch(...args));
     this.envToken = opts.envToken ?? creditsEnvToken;
   }
@@ -178,6 +187,7 @@ export class CreditsAccount {
       this.problem = "Add your Bloks Cloud key to use credits.";
       return null;
     }
+    if (this.now() - this.failedAt < EXCHANGE_PAUSE_MS) return null;
     return this.exchange();
   }
 
@@ -207,6 +217,7 @@ export class CreditsAccount {
     if (saved.licence === licence && saved.token) return;
     this.store.write({ licence, token: null });
     this.problem = null;
+    this.failedAt = 0;
   }
 
   /** Forget the token, and the licence too when asked. */
@@ -219,6 +230,8 @@ export class CreditsAccount {
     this.exchanging = (async () => {
       const licence = this.store.read().licence;
       if (!licence) return null;
+      // set now and cleared on success, so every way out below counts
+      this.failedAt = this.now();
       let res: Response;
       try {
         res = await this.fetch(`${creditsBase()}/token`, {
@@ -258,6 +271,7 @@ export class CreditsAccount {
       }
       this.store.write({ token });
       this.problem = null;
+      this.failedAt = 0;
       return token;
     })().finally(() => {
       this.exchanging = null;
