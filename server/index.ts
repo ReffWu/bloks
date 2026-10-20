@@ -8,6 +8,7 @@
 // for this start is put in place (server/pending-restore.ts).
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
+import { SaidOnce, desktopNotice, noticeKey, unreadCount as desktopUnreadCount } from "./desktop-notice.ts";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, openAsBlob, readdirSync, readFileSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
@@ -547,6 +548,9 @@ const PORT = Number(process.env.BLOKS_PORT || loadConfig().port || 8799);
   }
 }
 const STATIC_DIR = process.env.BLOKS_STATIC_DIR || null;
+/** Which of the desktop app's workspaces this server is: it says so when
+ * it starts one. Its own relay space is kept under this id. */
+const WORKSPACE_ID = /^[a-z0-9_-]{1,40}$/.test(process.env.BLOKS_WORKSPACE_ID ?? "") ? process.env.BLOKS_WORKSPACE_ID! : "personal";
 const MIME: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -2235,6 +2239,11 @@ function broadcast(payload: unknown) {
   try {
     noteActivityCard(payload);
   } catch {}
+  // and to the desktop app that started this server, when one did, so a
+  // workspace in the background can still say it needs the person
+  try {
+    tellDesktop(payload);
+  } catch {}
   if ((payload as { kind?: string })?.kind !== "screen") {
     try {
       relayLink.publish(payload, wakeFor(payload));
@@ -2244,6 +2253,39 @@ function broadcast(payload: unknown) {
       console.error(redactSecrets(error instanceof Error ? error.message : "[bloks] Relay frame could not be sent."));
     }
   }
+}
+
+/**
+ * The desktop app that started this server, when one did (Electron hands
+ * its own children a port nobody else can reach). It runs a server per
+ * workspace and shows one; the others tell it here what a window would
+ * have raised a banner for (server/desktop-notice.ts) and how many
+ * conversations are waiting, for the Dock badge and the switcher's dot.
+ * The app decides, by each workspace's mute and level, what is shown.
+ */
+type DesktopPort = { postMessage(message: unknown): void };
+const desktop = (process as NodeJS.Process & { parentPort?: DesktopPort }).parentPort ?? null;
+const desktopSaid = new SaidOnce();
+let desktopUnread = -1;
+
+function tellDesktop(payload: unknown) {
+  if (!desktop) return;
+  const kind = (payload as { kind?: string })?.kind;
+  if (kind === "bot" || kind === "bot.deleted" || kind === "hello") {
+    const count = desktopUnreadCount(store.bots);
+    if (count !== desktopUnread) {
+      desktopUnread = count;
+      desktop.postMessage({ kind: "desktop.unread", count });
+    }
+    return;
+  }
+  const notice = desktopNotice(payload, {
+    bot: (threadId) => store.botByThread(threadId),
+    room: (threadId) => bloks.get(threadId) ?? null,
+    goalRunning: (threadId) =>
+      store.botByThread(threadId)?.tasks.find((t) => t.id === threadId)?.goal?.status === "active",
+  });
+  if (notice && desktopSaid.take(noticeKey(payload))) desktop.postMessage({ kind: "desktop.notice", notice });
 }
 
 /** A frame for the owner's own surfaces and nobody else: this server's
@@ -16335,6 +16377,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         minted = await fetch(`${url}/spaces`, {
           method: "POST",
           headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+          // One licence can hold a space per workspace; the desktop app
+          // names this server's workspace, and a server on its own is the
+          // one space it always was.
+          body: JSON.stringify({ workspaceId: WORKSPACE_ID }),
           signal: AbortSignal.timeout(15_000),
         });
       } catch {
@@ -22001,6 +22047,9 @@ server.on("error", (error: NodeJS.ErrnoException) => {
 settleSidebar();
 server.listen(PORT, BIND, () => {
   console.log(`bloks server on http://127.0.0.1:${PORT}`);
+  // the desktop app counts what is waiting from the first moment, not
+  // from the first agent that changes
+  tellDesktop({ kind: "hello" });
   // turns cut off when Bloks last stopped, and messages that were
   // waiting on a turn (the second inside the first)
   recoverCutOff();
