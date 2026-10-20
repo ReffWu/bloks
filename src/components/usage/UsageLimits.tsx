@@ -5,7 +5,9 @@
 // and day, as shares of the allowance and never as an amount, with the
 // way to top it up. And a spending limit the person sets on an engine
 // that runs on a key of their own (server/spend-limits.ts), the one
-// limit here that is theirs to move, so it is edited in place.
+// limit here that is theirs to move, so it is edited in place, with the
+// engine's own price per million tokens beside it for a model the
+// providers' list does not know (server/model-prices.ts).
 import { useEffect, useState } from "react";
 import { Loader2 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -17,7 +19,7 @@ import { cn } from "@/lib/cn";
 import { planName, planRows, type PlanUsage } from "@/lib/contextCard";
 import { TOP_UP_WORDS, percentText, renewsLine, type BloksAiStatus } from "@/lib/credits";
 import { resetLine } from "@/lib/usageNotice";
-import { money, topsUpLine, type SpendLimitRow } from "@/lib/usagePage";
+import { PRICES_NOTE, estimatedMoney, money, perMillionText, topsUpLine, type SpendLimitRow } from "@/lib/usagePage";
 
 /** A share as a bar. Warning colour near the end, where it matters. */
 function Bar({ fill, tone = "brand", label }: { fill: number; tone?: "brand" | "warning" | "destructive"; label: string }) {
@@ -218,31 +220,113 @@ function BloksAiCard({ badge }: { badge: string | null }) {
 
 // ── spending limits on the person's own keys ───────────────────────────
 
+/** A dollar field: the sign drawn in front, the figure typed after it. */
+function DollarInput({
+  id,
+  value,
+  onChange,
+  onCancel,
+  placeholder,
+  invalid,
+  describedBy,
+  autoFocus,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  onCancel: () => void;
+  placeholder: string;
+  invalid: boolean;
+  describedBy?: string;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div className="relative w-32">
+      <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ui text-muted-foreground">
+        $
+      </span>
+      <Input
+        id={id}
+        autoFocus={autoFocus}
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onCancel();
+        }}
+        placeholder={placeholder}
+        aria-invalid={invalid}
+        aria-describedby={describedBy}
+        className="h-8 pl-6 tabular-nums"
+      />
+    </div>
+  );
+}
+
+/** What the month's figure is made of when any of it is an estimate, and
+ * the person's own price when there is one. Their price counts from when
+ * it was set, so it is said as what comes first, not as what the month
+ * so far was priced at. */
+function estimateLine(row: SpendLimitRow): string | null {
+  if (row.ownPrice) {
+    const own = `Your price, ${perMillionText(row.ownPrice.input)} in and ${perMillionText(row.ownPrice.output)} out per million tokens, comes ahead of the list.`;
+    return row.estimated ? `Estimated from tokens. ${own}` : own;
+  }
+  return row.estimated ? `Estimated from tokens. ${PRICES_NOTE}` : null;
+}
+
 function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string | null; onSaved: (rows: SpendLimitRow[]) => void }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
+  const [priceIn, setPriceIn] = useState("");
+  const [priceOut, setPriceOut] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const save = (usd: number | string | null) => {
+  const save = (change: { usd?: number | string | null; price?: { input: string; output: string } | null }, done: string) => {
     setBusy(true);
     setError(null);
-    api(`/api/spend-limits/${encodeURIComponent(row.instanceId)}`, { method: "PUT", body: JSON.stringify({ usd }) })
+    api(`/api/spend-limits/${encodeURIComponent(row.instanceId)}`, { method: "PUT", body: JSON.stringify(change) })
       .then((body: { limits: SpendLimitRow[] }) => {
         onSaved(body.limits);
         setEditing(false);
-        toast.success(usd === null ? `Limit removed from ${row.name}` : `Limit saved for ${row.name}`);
+        toast.success(done);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
   const open = () => {
     setText(row.limit === null ? "" : String(row.limit));
+    setPriceIn(row.ownPrice ? String(row.ownPrice.input) : "");
+    setPriceOut(row.ownPrice ? String(row.ownPrice.output) : "");
     setError(null);
     setEditing(true);
   };
+  const close = () => setEditing(false);
+  /** What the form would change: a limit typed, a price typed in both
+   * fields or cleared from both, each only when it differs from before. */
+  const submit = () => {
+    const change: { usd?: string; price?: { input: string; output: string } | null } = {};
+    if (text.trim() && text.trim() !== String(row.limit ?? "")) change.usd = text.trim();
+    const typedIn = priceIn.trim();
+    const typedOut = priceOut.trim();
+    if (Boolean(typedIn) !== Boolean(typedOut)) {
+      setError("Give both prices per million tokens, or leave both empty.");
+      return;
+    }
+    if (typedIn && (typedIn !== String(row.ownPrice?.input ?? "") || typedOut !== String(row.ownPrice?.output ?? ""))) {
+      change.price = { input: typedIn, output: typedOut };
+    } else if (!typedIn && row.ownPrice) change.price = null;
+    if (!("usd" in change) && !("price" in change)) {
+      close();
+      return;
+    }
+    save(change, `Saved for ${row.name}`);
+  };
 
   const tone = row.reached ? "destructive" : row.level === "warn" ? "warning" : "brand";
+  const spentText = row.estimated ? estimatedMoney(row.spent) : money(row.spent);
+  const estimate = estimateLine(row);
   return (
     <LimitCard
       driverKind={row.driverKind}
@@ -261,21 +345,23 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
           label="This month"
           fill={row.spent / row.limit}
           tone={tone}
-          used={`${money(row.spent)} of ${money(row.limit)}`}
+          used={`${spentText} of ${money(row.limit)}`}
           note={`${row.usedPercent ?? 0}% used · ${topsUpLine(row.resetsAt)}`}
         />
       ) : (
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-body text-foreground">This month</span>
-          <span className="text-small tabular-nums text-muted-foreground">{row.priced ? money(row.spent) : "Nothing priced yet"}</span>
+          <span className="text-small tabular-nums text-muted-foreground">{row.priced ? spentText : "Nothing priced yet"}</span>
         </div>
       )}
+      {estimate && <p className="text-pretty text-small text-muted-foreground">{estimate}</p>}
       {row.reached && !editing && (
         <p className="text-pretty text-small text-destructive">New turns on {row.name} are paused until you raise the limit or the month turns.</p>
       )}
       {!row.reportsPrice && (
         <p className="text-pretty text-small text-muted-foreground">
-          {row.name} has not reported a price here yet. A limit counts only what the provider prices, so it has nothing to count until it does.
+          {row.name} has not been priced here yet. A limit counts the price the provider reports, or its tokens at the providers' list prices. For a
+          model the list does not have, set your own price per million tokens.
         </p>
       )}
       {row.limit === null && row.reportsPrice && !editing && (
@@ -283,49 +369,91 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
       )}
       {editing && (
         <form
-          className="flex flex-col gap-2"
+          className="flex flex-col gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!busy) save(text);
+            if (!busy) submit();
           }}
         >
-          <label htmlFor={`limit-${row.instanceId}`} className="text-small text-muted-foreground">
-            Monthly limit in US dollars
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-32">
-              <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ui text-muted-foreground">
-                $
-              </span>
-              <Input
+          <div className="flex flex-col gap-2">
+            <label htmlFor={`limit-${row.instanceId}`} className="text-small text-muted-foreground">
+              Monthly limit in US dollars
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <DollarInput
                 id={`limit-${row.instanceId}`}
                 autoFocus
-                inputMode="decimal"
                 value={text}
-                onChange={(e) => {
-                  setText(e.target.value);
+                onChange={(value) => {
+                  setText(value);
                   setError(null);
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setEditing(false);
-                }}
+                onCancel={close}
                 placeholder="20"
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? `limit-error-${row.instanceId}` : undefined}
-                className="h-8 pl-6 tabular-nums"
+                invalid={Boolean(error)}
+                describedBy={error ? `limit-error-${row.instanceId}` : undefined}
               />
+              {row.limit !== null && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto h-8 hover:text-destructive"
+                  disabled={busy}
+                  onClick={() => save({ usd: null }, `Limit removed from ${row.name}`)}
+                >
+                  Remove limit
+                </Button>
+              )}
             </div>
-            <Button type="submit" size="sm" className="h-8" disabled={busy || !text.trim()}>
+          </div>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 text-small text-muted-foreground">Your own price, for a host of yours or a model the list does not have</legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              <div className="flex flex-col gap-1">
+                <label htmlFor={`price-in-${row.instanceId}`} className="text-caption text-muted-foreground">
+                  Price per million input tokens
+                </label>
+                <DollarInput
+                  id={`price-in-${row.instanceId}`}
+                  value={priceIn}
+                  onChange={(value) => {
+                    setPriceIn(value);
+                    setError(null);
+                  }}
+                  onCancel={close}
+                  placeholder="3"
+                  invalid={Boolean(error)}
+                  describedBy={error ? `limit-error-${row.instanceId}` : undefined}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor={`price-out-${row.instanceId}`} className="text-caption text-muted-foreground">
+                  Per million output tokens
+                </label>
+                <DollarInput
+                  id={`price-out-${row.instanceId}`}
+                  value={priceOut}
+                  onChange={(value) => {
+                    setPriceOut(value);
+                    setError(null);
+                  }}
+                  onCancel={close}
+                  placeholder="15"
+                  invalid={Boolean(error)}
+                  describedBy={error ? `limit-error-${row.instanceId}` : undefined}
+                />
+              </div>
+            </div>
+            <p className="text-caption text-muted-foreground">Used ahead of the list for every model on {row.name}. Leave both empty to use the list.</p>
+          </fieldset>
+          <div className="flex items-center gap-2">
+            <Button type="submit" size="sm" className="h-8" disabled={busy}>
               {busy ? <Loader2 size={13} className="animate-spin" /> : "Save"}
             </Button>
-            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setEditing(false)}>
+            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={close}>
               Cancel
             </Button>
-            {row.limit !== null && (
-              <Button type="button" size="sm" variant="ghost" className="ml-auto h-8 hover:text-destructive" disabled={busy} onClick={() => save(null)}>
-                Remove limit
-              </Button>
-            )}
           </div>
           {error && (
             <p id={`limit-error-${row.instanceId}`} className="text-small text-destructive">

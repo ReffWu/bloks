@@ -174,13 +174,20 @@ function byFamily(spec: ProviderSpec, pool: string[], limit: number, created?: M
 interface Usage {
   input: number;
   output: number;
+  /** Of `input`, what the provider read from its cache, when it says. */
+  cached: number;
   cost?: number;
 }
 
-/** A turn's price so far, added up over its requests. */
+/** A turn's price so far, added up over its requests, and the tokens
+ * behind them, which price the turn from a list when the provider put
+ * no price on it (server/model-prices.ts). */
 interface Spent {
   cost: number;
   priced: boolean;
+  input: number;
+  output: number;
+  cached: number;
 }
 
 /**
@@ -193,13 +200,24 @@ interface Spent {
  */
 function readUsage(raw: any, priced: boolean): Usage | null {
   if (!raw || typeof raw !== "object") return null;
-  const usage: Usage = { input: raw.prompt_tokens ?? 0, output: raw.completion_tokens ?? 0 };
+  const input = count(raw.prompt_tokens);
+  // where each provider says what it read from its cache: OpenAI's shape
+  // (xAI and Gemini follow it), DeepSeek's own, and Moonshot's
+  const cached = count(raw.prompt_tokens_details?.cached_tokens ?? raw.prompt_cache_hit_tokens ?? raw.cached_tokens);
+  const usage: Usage = { input, output: count(raw.completion_tokens), cached: Math.min(input, cached) };
   if (priced && typeof raw.cost === "number" && Number.isFinite(raw.cost) && raw.cost >= 0) usage.cost = raw.cost;
   return usage;
 }
 
+/** A token count as a provider wrote it, or nothing. */
+const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
+
 function addPrice(spent: Spent, usage: Usage | null) {
-  if (usage?.cost === undefined) return;
+  if (!usage) return;
+  spent.input += usage.input;
+  spent.output += usage.output;
+  spent.cached += usage.cached;
+  if (usage.cost === undefined) return;
   spent.cost += usage.cost;
   spent.priced = true;
 }
@@ -1015,13 +1033,20 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
 
         // what the turn's requests were priced at, kept outside the try so
         // a turn that fails after some of them still counts what they cost
-        const spent: Spent = { cost: 0, priced: false };
+        const spent: Spent = { cost: 0, priced: false, input: 0, output: 0, cached: 0 };
+        // A turn the provider put no price on says what it used and on
+        // which model, so it can be priced from a list. Never Bloks AI's:
+        // it is an allowance, not a bill, and is never priced at all.
+        const unpriced = () =>
+          priced && !spent.priced && (spent.input > 0 || spent.output > 0)
+            ? { unpriced: { model, input: spent.input, output: spent.output, cachedInput: spent.cached } }
+            : {};
         (async () => {
           try {
             if (spec.tools) {
               await runWithTools(threadId, turnId, messages, model, turn, abort.signal, spent);
               active.delete(threadId);
-              emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: priceOf(spent) });
+              emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: priceOf(spent), ...unpriced() });
               return;
             }
             const { text, usage } = await complete(messages, model, {
@@ -1042,7 +1067,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
               });
             }
             active.delete(threadId);
-            emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: priceOf(spent) });
+            emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: priceOf(spent), ...unpriced() });
           } catch (e) {
             const entry = active.get(threadId);
             for (const settle of entry?.asks.values() ?? []) settle("The turn ended before you answered.", "turn-ended");
@@ -1062,6 +1087,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
               ok: false,
               stopReason: aborted ? "interrupted" : "error",
               cost: priceOf(spent),
+              ...unpriced(),
             });
           }
         })();

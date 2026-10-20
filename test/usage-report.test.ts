@@ -106,3 +106,38 @@ test("a month's buckets are the month's and nothing else", () => {
   assert.equal(october.length, 2);
   assert.equal(october.reduce((sum, b) => sum + b.cost, 0), 0.75);
 });
+
+test("an estimate from tokens is a cost, kept apart so it is always shown as one", () => {
+  const store = new UsageStore(join(mkdtempSync(join(tmpdir(), "bloks-usage-estimate-")), "usage.json"));
+  const day = new Date(2026, 9, 20, 9);
+  store.recordTurn("ada", "gemini", 0.4, day, true, true);
+  store.recordTurn("ada", "gemini", 0.1, day, true, true);
+  store.recordTurn("ada", "openrouter", 1, day, true);
+  const [gemini] = store.inMonth("2026-10").filter((b) => b.provider === "gemini");
+  assert.deepEqual([gemini.cost, gemini.estimated, gemini.costKnown], [0.5, 0.5, true]);
+
+  const r = usageReport(store.inMonth("2026-10"), "7d", {}, TODAY);
+  assert.equal(r.total.cost, 1.5);
+  assert.equal(r.total.estimated, 0.5, "only the estimated part");
+  assert.equal(r.priced, true);
+  assert.equal(r.unpricedTurns, 0, "an estimated turn is not an unpriced one");
+  const byEngine = Object.fromEntries(r.byEngine.map((e) => [e.id, e]));
+  assert.deepEqual([byEngine.gemini.estimated, byEngine.openrouter.estimated], [0.5, 0]);
+  assert.equal(r.daily.at(-1)!.byEngine.gemini.estimated, 0.5, "each day says which of it was estimated");
+});
+
+test("each row counts its Bloks AI turns, so an agent only ever on it can say so", () => {
+  const r = usageReport(
+    [
+      bucket({ botId: "ada", provider: "bloks", turns: 3 }),
+      bucket({ botId: "bo", provider: "bloks", turns: 1 }),
+      bucket({ botId: "bo", provider: "codex", turns: 2 }),
+    ],
+    "7d",
+    {},
+    TODAY,
+  );
+  const byAgent = Object.fromEntries(r.byAgent.map((a) => [a.id, a]));
+  assert.deepEqual([byAgent.ada.turns, byAgent.ada.bloksAiTurns, byAgent.ada.priced], [3, 3, false]);
+  assert.deepEqual([byAgent.bo.turns, byAgent.bo.bloksAiTurns], [3, 1], "partly on Bloks AI is not only on it");
+});

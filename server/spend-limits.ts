@@ -8,12 +8,14 @@
 // is raised. A turn already running finishes; stopping one halfway would
 // waste what it had already spent.
 //
-// It counts only what the engine priced (server/usage.ts). An engine
-// that reports tokens and never a price has nothing a dollar line could
-// be held against, and guessing a price for it would be inventing the
-// number a limit exists to be honest about, so its limit counts nothing
-// and the page says so. Bloks AI is never limited here: it is an
-// allowance with its own shares and its own daily cap, and has no price.
+// It counts what the engine priced and, for an engine that reports
+// tokens and no price, those tokens at the providers' list price or at
+// the person's own price for it (server/model-prices.ts), kept as an
+// estimate and said as one. A model nobody has a price for is never
+// guessed at: guessing would be inventing the number a limit exists to
+// be honest about, so its turns count nothing and the page says so.
+// Bloks AI is never limited here: it is an allowance with its own shares
+// and its own daily cap, and has no price.
 //
 // The limits live in config.json (spendLimits, by engine instance),
 // beside the keys they are about, since a key is per engine. Everything
@@ -59,16 +61,23 @@ export function readLimit(value: unknown): number | null | undefined {
 }
 
 /** What one engine has spent in a month, from the buckets of that month,
- * and whether it priced anything at all. */
-export function monthSpend(buckets: Iterable<UsageBucket>, instanceId: string, month: string): { spent: number; priced: boolean } {
+ * whether it priced anything at all, and whether any of it is an
+ * estimate from tokens, which makes the whole figure one. */
+export function monthSpend(
+  buckets: Iterable<UsageBucket>,
+  instanceId: string,
+  month: string,
+): { spent: number; priced: boolean; estimated: boolean } {
   let spent = 0;
   let priced = false;
+  let estimated = false;
   for (const b of buckets) {
     if (b.provider !== instanceId || !b.date.startsWith(`${month}-`) || !b.costKnown) continue;
     spent += b.cost;
     priced = true;
+    if ((b.estimated ?? 0) > 0) estimated = true;
   }
-  return { spent, priced };
+  return { spent, priced, estimated };
 }
 
 export interface SpendStatus {
@@ -98,9 +107,14 @@ export function spendStatus(limit: number, spent: number, now = Date.now()): Spe
   const { start, end } = monthBounds(at);
   const used = limit > 0 ? Math.max(0, spent) / limit : 0;
   const reached = limit > 0 && spent >= limit;
+  // the share as it is shown, so a card that reads "80% used" also warns:
+  // 79.6% is shown as 80%, and a warning held back for the 0.4 would be
+  // the page disagreeing with itself. Short of the line it never reads
+  // 100%, which would say turns had stopped when they have not.
+  const usedPercent = reached ? 100 : Math.min(99, Math.max(0, Math.round(used * 100)));
   let level: UsageLevel | null = null;
   if (reached) level = "stop";
-  else if (used >= NEAR) level = "warn";
+  else if (usedPercent >= NEAR * 100) level = "warn";
   else {
     const elapsed = (now - start) / (end - start);
     if (elapsed >= PACE_AFTER && used >= PACE_FROM && used / elapsed > 1) level = "info";
@@ -108,7 +122,7 @@ export function spendStatus(limit: number, spent: number, now = Date.now()): Spe
   return {
     limit,
     spent,
-    usedPercent: Math.min(100, Math.max(0, Math.round(used * 100))),
+    usedPercent,
     reached,
     level,
     resetsAt: end,

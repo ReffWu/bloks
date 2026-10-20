@@ -110,6 +110,11 @@ export type RuntimeEvent = RuntimeEventBase &
          * not be had): the message is unsent, not an engine failure. */
         preInputRefusal?: import("./codex-speed.ts").CodexSpeedRefusal;
         cost?: number | null;
+        /** What the turn used, and on which model, when the provider put
+         * no price on it: for pricing it from the providers' list prices
+         * as an estimate (server/model-prices.ts). Only from an engine on
+         * the person's own key, never from Bloks AI. */
+        unpriced?: { model: string; input: number; output: number; cachedInput: number };
         denials?: string[];
       }
     | {

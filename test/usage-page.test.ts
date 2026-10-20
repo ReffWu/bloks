@@ -6,11 +6,16 @@ import { test } from "node:test";
 
 import {
   DEFAULT_VIEW,
+  PRICES_NOTE,
   axisMoney,
   deltaLine,
+  estimatedMoney,
   figure,
+  figureOf,
   headlineNotes,
+  isEstimate,
   money,
+  perMillionText,
   niceTicks,
   readView,
   saveView,
@@ -36,6 +41,23 @@ test("dollars are written as a bill writes them, and a sliver is never $0.00", (
   assert.equal(figure(1234, "turns"), "1,234");
 });
 
+test("an estimate is written as one, and never as a bill", () => {
+  assert.equal(estimatedMoney(4.2), "~$4.20");
+  assert.equal(estimatedMoney(0.004), "under ~$0.01");
+  assert.equal(figure(4.2, "cost", true), "~$4.20");
+  assert.equal(figure(4.2, "cost"), "$4.20");
+  assert.equal(figure(1_250_000, "tokens", true), "1.3M", "only a cost is estimated");
+  assert.equal(figureOf(totals({ cost: 3, estimated: 1 }), "cost"), "~$3.00", "any estimate in it makes the whole an estimate");
+  assert.equal(figureOf(totals({ cost: 3 }), "cost"), "$3.00");
+  assert.equal(figureOf(undefined, "cost"), "$0.00");
+  assert.equal(isEstimate(totals({ estimated: 0 })), false);
+  assert.equal(isEstimate(null), false);
+  assert.equal(perMillionText(3), "$3");
+  assert.equal(perMillionText(0.15), "$0.15");
+  assert.equal(perMillionText(1.25), "$1.25");
+  assert.doesNotMatch(PRICES_NOTE, /[\u2013\u2014]/);
+});
+
 test("each metric reads its own number from a tally", () => {
   const t = totals({ turns: 3, input: 100, output: 20, cost: 0.5 });
   assert.deepEqual([valueOf(t, "cost"), valueOf(t, "tokens"), valueOf(t, "turns")], [0.5, 120, 3]);
@@ -51,6 +73,10 @@ test("the line under the headline says what the figure leaves out", () => {
     "5 turns on Bloks AI, never priced",
     "2 turns unmeasured",
   ]);
+  assert.equal(
+    headlineNotes({ ...report, total: totals({ turns: 40, cost: 2, estimated: 1 }) }, "cost")[1],
+    "estimate from what engines report, and from tokens where they report no price",
+  );
   // tokens and turns are counted for everyone, Bloks AI included
   assert.deepEqual(headlineNotes(report, "tokens"), ["40 turns", "2 turns unmeasured"]);
   assert.deepEqual(headlineNotes({ ...report, total: totals({ turns: 1 }) }, "turns"), ["1 turn"]);

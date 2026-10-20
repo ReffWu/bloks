@@ -526,6 +526,7 @@ import {
 import { emptyEnoughForMove } from "./workspace-move.ts";
 import { rangeDays, summarize, usageReport, UsageStore, USAGE_RANGES, type UsageRange } from "./usage.ts";
 import { monthBounds, monthKey, monthSpend, providerCreditNotice, readLimit, spendNotices, spendRefusal, spendStatus, MAX_LIMIT_USD, type SpendStatus } from "./spend-limits.ts";
+import { PriceBook, PRICES_URL, readOwnPrice, type OwnPrice } from "./model-prices.ts";
 import { TeamLibrary } from "./team-library.ts";
 import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam } from "./team-file.ts";
 import * as artifacts from "./artifacts.ts";
@@ -1095,6 +1096,13 @@ const deskRetries = new Set<string>();
  * only that something did. */
 const failedWords = new Map<string, string>();
 const usage = new UsageStore();
+// The providers' list prices, for a turn its engine put no price on
+// (server/model-prices.ts). Kept in the data folder and asked for at most
+// once a day, and only on a machine with an engine on a key of its own.
+const prices = new PriceBook({
+  file: join(DATA_DIR, "model-prices.json"),
+  url: process.env.BLOKS_PRICES_URL || PRICES_URL,
+});
 // What each turn did to the files in its folder, and the way back.
 const checkpoints = new Checkpoints(join(DATA_DIR, "checkpoints"));
 
@@ -1255,8 +1263,41 @@ function spendLimitOf(instanceId: string): number | null {
   return typeof limit === "number" && limit > 0 && limitableEngine(registry.get(instanceId)) ? limit : null;
 }
 
-/** What an engine has spent this month, by its own prices. */
-function spentThisMonth(instanceId: string, now = new Date()): { spent: number; priced: boolean } {
+/** The person's own price for an engine, per million tokens, or null. */
+function ownPriceOf(instanceId: string): OwnPrice | null {
+  return readOwnPrice(cfg.spendPrices?.[instanceId] ?? null) ?? null;
+}
+
+/**
+ * What a settled turn cost, and whether that is an estimate. The engine's
+ * own price when it gave one. Otherwise, for an engine on the person's
+ * own key, its tokens at the person's own price for it or at the
+ * providers' list price for its model (server/model-prices.ts), as an
+ * estimate; with neither, no price. Bloks AI is never priced, whatever
+ * the event says: its lanes are named for it by usageProvider, and it is
+ * never an engine on a key of the person's own.
+ */
+function turnPrice(event: Extract<RuntimeEvent, { type: "turn.completed" }>): { cost: number | null; estimated: boolean } {
+  const provider = usageProvider(event);
+  if (provider === CREDITS_KIND) return { cost: null, estimated: false };
+  if (typeof event.cost === "number") return { cost: event.cost, estimated: false };
+  const used = event.unpriced;
+  const instance = registry.get(provider);
+  if (!used || !limitableEngine(instance)) return { cost: null, estimated: false };
+  // for the turns after this one, when the list is a day old or missing
+  void prices.refresh();
+  const estimate = prices.estimate(used, instance.driverKind, ownPriceOf(instance.instanceId));
+  return estimate ? { cost: estimate.cost, estimated: true } : { cost: null, estimated: false };
+}
+
+// Asked for once soon after starting, when there is an engine whose turns
+// might need it, so the first unpriced turn has a list to be priced from.
+setTimeout(() => {
+  if (registry.instances().some(limitableEngine)) void prices.refresh();
+}, 3_000).unref?.();
+
+/** What an engine has spent this month, by its own prices and estimates. */
+function spentThisMonth(instanceId: string, now = new Date()): { spent: number; priced: boolean; estimated: boolean } {
   const month = monthKey(now);
   return monthSpend(usage.inMonth(month), instanceId, month);
 }
@@ -1295,7 +1336,7 @@ function spendLimitRows(now = Date.now()) {
     .filter(limitableEngine)
     .map((instance) => {
       const limit = spendLimitOf(instance.instanceId);
-      const { spent, priced } = spentThisMonth(instance.instanceId, new Date(now));
+      const { spent, priced, estimated } = spentThisMonth(instance.instanceId, new Date(now));
       const status = limit === null ? null : spendStatus(limit, spent, now);
       return {
         instanceId: instance.instanceId,
@@ -1304,6 +1345,8 @@ function spendLimitRows(now = Date.now()) {
         limit,
         spent,
         priced,
+        estimated,
+        ownPrice: ownPriceOf(instance.instanceId),
         reportsPrice: priced || year.some((b) => b.provider === instance.instanceId && b.costKnown),
         usedPercent: status?.usedPercent ?? null,
         reached: status?.reached ?? false,
@@ -4161,7 +4204,8 @@ bus.subscribe((event: RuntimeEvent) => {
       // a turn that failed on its length is asked again once it is folded
       // (runtime.error above), so it is not over yet as far as a goal goes
       const refolding = retriedForContext.has(event.threadId);
-      usage.recordTurn(bot.id, usageProvider(event), event.cost ?? null, undefined, event.ok !== false);
+      const priced = turnPrice(event);
+      usage.recordTurn(bot.id, usageProvider(event), priced.cost, undefined, event.ok !== false, priced.estimated);
       const spent = turnTokens.get(event.threadId);
       turnTokens.delete(event.threadId);
       // only solo lanes tally; a room's spend belongs to no one lane.
@@ -5550,6 +5594,9 @@ async function startClaimedTurn(
   // after a restart was running before, and finishes.
   const stopped = opts.carriedOn ? null : spendStopped(selection.instanceId);
   if (stopped) throw spendRefused(selection.instanceId, stopped, sharing ? bot.name : undefined);
+  // the list prices, by the time this turn ends, should it come back
+  // unpriced; a no-op on a list fetched today
+  if (limitableEngine(instance)) void prices.refresh();
   // Only Claude Code takes a person's turn. An API engine cannot wait on
   // the owner's approvals, and Codex reads the whole disk without asking.
   if (personSource && instance.driverKind === "codex") throw personTurnHold(CODEX_PERSON_HOLD, CODEX_PERSON_NEXT);
@@ -9513,7 +9560,8 @@ function onIdleCompaction(event: RuntimeEvent) {
       break;
     case "turn.completed": {
       if (!ahead) broadcast({ kind: "runtime", event });
-      usage.recordTurn(bot.id, usageProvider(event), event.cost ?? null, undefined, event.ok !== false);
+      const priced = turnPrice(event);
+      usage.recordTurn(bot.id, usageProvider(event), priced.cost, undefined, event.ok !== false, priced.estimated);
       const spent = turnTokens.get(event.threadId);
       turnTokens.delete(event.threadId);
       if (spent) store.addTaskUsage(event.threadId, spent.input, spent.output, running.after ?? undefined);
@@ -21370,6 +21418,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // the agents, and one that could lift it would make it no line.
     if (method === "GET" && path === "/api/spend-limits") {
       if (asAgent) return json(res, 403, { error: "not from here" });
+      // the page that shows estimates asks for the list they come from
+      if (registry.instances().some(limitableEngine)) void prices.refresh();
       return json(res, 200, { limits: spendLimitRows(), max: MAX_LIMIT_USD });
     }
     m = path.match(/^\/api\/spend-limits\/([\w.:-]+)$/);
@@ -21379,13 +21429,28 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!limitableEngine(registry.get(instanceId))) {
         return json(res, 404, { error: "a spending limit is for an engine on a key of your own, and there is no such engine" });
       }
-      const body = await readBody(req);
-      const usd = readLimit(body.usd);
-      if (usd === undefined) {
-        return json(res, 400, { error: `a limit is an amount in dollars, more than $0 and at most $${MAX_LIMIT_USD.toLocaleString("en-US")}` });
+      const sent = await readBody(req);
+      const body: Record<string, unknown> = sent && typeof sent === "object" && !Array.isArray(sent) ? sent : {};
+      // the limit, the engine's own price per million tokens, or both;
+      // each one left out stays as it was
+      const patch: Partial<AppConfig> = {};
+      if ("usd" in body) {
+        const usd = readLimit(body.usd);
+        if (usd === undefined) {
+          return json(res, 400, { error: `a limit is an amount in dollars, more than $0 and at most $${MAX_LIMIT_USD.toLocaleString("en-US")}` });
+        }
+        // null takes the limit off (saveConfig drops it from the file)
+        patch.spendLimits = { [instanceId]: usd } as unknown as Record<string, number>;
       }
-      // null takes the limit off (saveConfig drops it from the file)
-      Object.assign(cfg, saveConfig({ spendLimits: { [instanceId]: usd } } as unknown as Partial<AppConfig>));
+      if ("price" in body) {
+        const price = readOwnPrice(body.price);
+        if (price === undefined) {
+          return json(res, 400, { error: "a price is dollars per million input tokens and per million output tokens, at least one of them more than $0" });
+        }
+        patch.spendPrices = { [instanceId]: price } as unknown as Record<string, OwnPrice>;
+      }
+      if (!patch.spendLimits && !patch.spendPrices) return json(res, 400, { error: "nothing to change: send usd, price or both" });
+      Object.assign(cfg, saveConfig(patch));
       return json(res, 200, { limits: spendLimitRows(), max: MAX_LIMIT_USD });
     }
 

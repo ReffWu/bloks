@@ -1,13 +1,15 @@
 // Usage, a place on the main rail: what the agents have used, and what
 // is left of everything they run on.
 //
-// The numbers are the engines' own (server/usage.ts). A cost is only
-// ever a price an engine reported, written as an estimate in dollars; an
-// engine that reports tokens and no price shows its tokens and says
-// "not reported" where a cost would be, never a dollar figure made up
-// for it. Bloks AI is never in dollars and never in a dollar total: its
-// turns are counted with the rest, and what it has left is in Limits, as
-// shares, the way the service says it.
+// The numbers are the engines' own (server/usage.ts). A cost is a price
+// an engine reported, or, for one that reports tokens and no price, its
+// tokens at the providers' list price or the person's own price for it
+// (server/model-prices.ts), written "~$4.20" and said to be an estimate.
+// An engine nobody has a price for shows its tokens and says "not
+// reported" where a cost would be, never a dollar figure made up for it.
+// Bloks AI is never in dollars and never in a dollar total: its turns are
+// counted with the rest, and what it has left is in Limits, as shares,
+// the way the service says it.
 //
 // One span at a time, for every agent and engine or for one of each,
 // in one metric; each choice is kept on this device. Clicking an agent
@@ -36,10 +38,13 @@ import { shortTokens } from "@/lib/contextCard";
 import {
   BLOKS_AI_ENGINE,
   METRICS,
+  PRICES_NOTE,
   RANGES,
   deltaLine,
   figure,
+  figureOf,
   headlineNotes,
+  isEstimate,
   longDay,
   readView,
   saveView,
@@ -228,6 +233,7 @@ function Headline({ report, view, onMetric }: { report: UsageReport; view: Usage
   const unpriced = metric === "cost" && !report.priced;
   const value = valueOf(report.total, metric);
   const delta = unpriced ? null : deltaLine(value, valueOf(report.previous, metric), report.days);
+  const estimated = metric === "cost" && isEstimate(report.total);
   const label = METRICS.find((m) => m.value === metric)!.label;
   return (
     <div className="flex flex-col gap-1.5">
@@ -247,7 +253,7 @@ function Headline({ report, view, onMetric }: { report: UsageReport; view: Usage
       ) : (
         <>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <p className="text-[40px] font-semibold leading-[44px] tabular-nums text-foreground">{figure(value, metric)}</p>
+            <p className="text-[40px] font-semibold leading-[44px] tabular-nums text-foreground">{figure(value, metric, estimated)}</p>
             {metric === "tokens" && <span className="text-ui text-muted-foreground">tokens</span>}
             {delta && (
               <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-small tabular-nums text-muted-foreground">
@@ -257,6 +263,7 @@ function Headline({ report, view, onMetric }: { report: UsageReport; view: Usage
             )}
           </div>
           <p className="text-pretty text-small tabular-nums text-muted-foreground">{headlineNotes(report, metric).join(" · ")}</p>
+          {estimated && <p className="text-pretty text-small text-muted-foreground">{PRICES_NOTE}</p>}
         </>
       )}
     </div>
@@ -326,7 +333,32 @@ function HeaderCell({
   );
 }
 
-function Breakdown({ report, view, set }: { report: UsageReport; view: UsageView; set: (patch: Partial<UsageView>) => void }) {
+/** Where a cost would be for Bloks AI, which has none: a way to what it
+ * has left instead, in Limits. */
+function ToLimits({ label, onLimits }: { label: string; onLimits: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onLimits}
+      title="See what Bloks AI has left, in Limits"
+      className="text-muted-foreground underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground"
+    >
+      {label}
+    </button>
+  );
+}
+
+function Breakdown({
+  report,
+  view,
+  set,
+  onLimits,
+}: {
+  report: UsageReport;
+  view: UsageView;
+  set: (patch: Partial<UsageView>) => void;
+  onLimits: () => void;
+}) {
   const { state } = useStore();
   const names = useNames();
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: "value", descending: true });
@@ -371,9 +403,14 @@ function Breakdown({ report, view, set }: { report: UsageReport; view: UsageView
   const fourth = metric === "tokens" ? "Turns" : "Tokens";
 
   const valueCell = (row: Line) => {
-    if (metric === "cost" && row.bloksAi) return <span className="text-muted-foreground">In Limits</span>;
+    if (metric === "cost" && row.bloksAi) return <ToLimits label="In Limits" onLimits={onLimits} />;
+    // an agent that only ever ran on Bloks AI had nothing to report: it
+    // runs on an allowance, which Limits shows
+    if (metric === "cost" && !row.priced && row.turns > 0 && row.bloksAiTurns === row.turns) {
+      return <ToLimits label="Bloks AI" onLimits={onLimits} />;
+    }
     if (metric === "cost" && !row.priced) return <span className="text-muted-foreground">Not reported</span>;
-    return figure(valueOf(row, metric), metric);
+    return figureOf(row, metric);
   };
   const shareOf = (row: Line) => (metric === "cost" && (!row.priced || row.bloksAi) ? 0 : valueOf(row, metric));
 
@@ -545,6 +582,7 @@ export function UsagePage() {
   }, []);
   const { report, loading, failed, refresh } = useReport(view);
   const limits = useRef<HTMLElement>(null);
+  const toLimitsNow = useCallback(() => limits.current?.scrollIntoView({ block: "start", behavior: "smooth" }), []);
 
   // Opened for its limits: there once the numbers above have landed, so
   // the page does not move under the person after it got there.
@@ -604,7 +642,7 @@ export function UsagePage() {
                 />
                 {lines.length > 0 && <ChartLegend lines={lines} onPick={(engine) => set({ engine })} />}
               </section>
-              <Breakdown report={report} view={view} set={set} />
+              <Breakdown report={report} view={view} set={set} onLimits={toLimitsNow} />
             </motion.div>
           )}
 

@@ -14,7 +14,7 @@
 // table besides.
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
-import { axisFigure, figure, longDay, niceTicks, shortDay, valueOf, type UsageDay, type UsageMetric } from "@/lib/usagePage";
+import { axisFigure, figureOf, longDay, niceTicks, shortDay, valueOf, type UsageDay, type UsageMetric } from "@/lib/usagePage";
 
 export interface ChartLine {
   id: string;
@@ -89,7 +89,7 @@ export function UsageChart({
   };
 
   const day = at !== null ? days[at] : null;
-  const reading = day ? `${longDay(day.date)}: ${figure(totals[at!], metric)}` : "";
+  const reading = day ? `${longDay(day.date)}: ${figureOf(day, metric)}` : "";
 
   return (
     <div className="flex flex-col gap-3">
@@ -167,14 +167,14 @@ export function UsageChart({
             style={x(at!) > width / 2 ? { right: width - x(at!) + 12 } : { left: x(at!) + 12 }}
           >
             <div className="text-muted-foreground tabular-nums">{longDay(day.date)}</div>
-            <div className="mt-0.5 text-ui font-semibold tabular-nums text-foreground">{figure(totals[at!], metric)}</div>
+            <div className="mt-0.5 text-ui font-semibold tabular-nums text-foreground">{figureOf(day, metric)}</div>
             {lines.length > 0 && (
               <div className="mt-1.5 flex flex-col gap-0.5 border-t pt-1.5">
-                {lines.map((line, i) => (
+                {lines.map((line) => (
                   <div key={line.id} className="flex items-center gap-1.5 text-muted-foreground">
                     <span aria-hidden className="size-2 shrink-0 rounded-[3px]" style={{ background: line.colour }} />
                     <span className="min-w-0 flex-1 truncate">{line.name}</span>
-                    <span className="tabular-nums text-foreground">{figure(engineValues[i][at!], metric)}</span>
+                    <span className="tabular-nums text-foreground">{figureOf(day.byEngine[line.id], metric)}</span>
                   </div>
                 ))}
               </div>
@@ -199,12 +199,12 @@ export function UsageChart({
           </tr>
         </thead>
         <tbody>
-          {days.map((d, r) => (
+          {days.map((d) => (
             <tr key={d.date}>
               <th scope="row">{longDay(d.date)}</th>
-              <td>{figure(totals[r], metric)}</td>
-              {lines.map((line, i) => (
-                <td key={line.id}>{figure(engineValues[i][r], metric)}</td>
+              <td>{figureOf(d, metric)}</td>
+              {lines.map((line) => (
+                <td key={line.id}>{figureOf(d.byEngine[line.id], metric)}</td>
               ))}
             </tr>
           ))}

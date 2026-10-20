@@ -1,8 +1,9 @@
 // The Usage page in words and numbers: what each figure says, how it is
 // written, what a filter remembers. The server decides what was spent
 // and what counts as a price (server/usage.ts, server/spend-limits.ts);
-// this decides how to say it, and when the honest thing to say is that
-// nobody reported a price.
+// this decides how to say it, when the honest thing to say is that
+// nobody reported a price, and when a figure is an estimate from tokens
+// (server/model-prices.ts), written "~$4.20" so it never reads as a bill.
 //
 // Kept apart from the components so the wording and the arithmetic can
 // be tested without a DOM.
@@ -18,14 +19,19 @@ export interface UsageTotals {
   turns: number;
   input: number;
   output: number;
-  /** Dollars, from engines that priced their turns only. */
+  /** Dollars, from engines that priced their turns, and estimates from
+   * the tokens of those that did not where a price for them is known. */
   cost: number;
+  /** Of `cost`, the estimated part. Absent from an older server. */
+  estimated?: number;
   unmeasured: number;
 }
 
 export interface UsageRow extends UsageTotals {
   id: string;
   priced: boolean;
+  /** Of `turns`, those on Bloks AI. Absent from an older server. */
+  bloksAiTurns?: number;
 }
 
 export interface UsageDay extends UsageTotals {
@@ -59,12 +65,25 @@ export interface SpendLimitRow {
   limit: number | null;
   spent: number;
   priced: boolean;
+  /** Some of this month's figure is an estimate from tokens. */
+  estimated?: boolean;
+  /** The person's own price for the engine, dollars per million tokens. */
+  ownPrice?: OwnPrice | null;
   reportsPrice: boolean;
   usedPercent: number | null;
   reached: boolean;
   level: "info" | "warn" | "stop" | null;
   resetsAt: number;
 }
+
+/** A price the person set for an engine, per million tokens. */
+export interface OwnPrice {
+  input: number;
+  output: number;
+}
+
+/** Where an estimate's prices come from, said wherever one is shown. */
+export const PRICES_NOTE = "Prices are the providers' list prices, refreshed daily.";
 
 export const RANGES: Array<{ value: UsageRange; label: string }> = [
   { value: "7d", label: "7 days" },
@@ -150,6 +169,22 @@ export function money(usd: number): string {
   return `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** Dollars estimated from tokens: "~$4.20", and "under ~$0.01". */
+export function estimatedMoney(usd: number): string {
+  return money(usd).replace("$", "~$");
+}
+
+/** Whether a tally's cost is, at least in part, an estimate. */
+export function isEstimate(totals: Pick<UsageTotals, "estimated"> | null | undefined): boolean {
+  return (totals?.estimated ?? 0) > 0;
+}
+
+/** Dollars per million tokens, as a provider's price page writes them:
+ * "$3", "$0.15", "$1.25". */
+export function perMillionText(usd: number): string {
+  return `$${usd.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 3 })}`;
+}
+
 /** Dollars on an axis, as short as they can be and still be read. */
 export function axisMoney(usd: number): string {
   if (usd === 0) return "$0";
@@ -163,11 +198,19 @@ export function turnsText(n: number): string {
   return `${n.toLocaleString("en-US")} ${n === 1 ? "turn" : "turns"}`;
 }
 
-/** A metric's figure in full, for the headline and a tooltip. */
-export function figure(value: number, metric: UsageMetric): string {
-  if (metric === "cost") return money(value);
+/** A metric's figure in full, for the headline and a tooltip. A cost
+ * with any estimate in it is written as one. */
+export function figure(value: number, metric: UsageMetric, estimated = false): string {
+  if (metric === "cost") return estimated ? estimatedMoney(value) : money(value);
   if (metric === "tokens") return shortTokens(value);
   return value.toLocaleString("en-US");
+}
+
+/** A tally's figure in one metric, an estimate written as one. Nothing
+ * there is nothing used. */
+export function figureOf(totals: UsageTotals | null | undefined, metric: UsageMetric): string {
+  if (!totals) return figure(0, metric);
+  return figure(valueOf(totals, metric), metric, isEstimate(totals));
 }
 
 /** A metric's figure on an axis. */
@@ -203,13 +246,14 @@ export function deltaLine(now: number, before: number, days: number): { text: st
 /**
  * The quiet line under the headline: how many turns, and whatever the
  * figure leaves out. A cost is an estimate from what the engines said, in
- * US dollars; turns on an engine that names no price are not in it, and
+ * US dollars, and from their tokens at list prices where they said no
+ * price; turns on an engine nobody has a price for are not in it, and
  * Bloks AI never is.
  */
 export function headlineNotes(report: Pick<UsageReport, "total" | "unpricedTurns" | "bloksAiTurns" | "priced">, metric: UsageMetric): string[] {
   const notes = [turnsText(report.total.turns)];
   if (metric === "cost" && report.priced) {
-    notes.push("estimate from what engines report", "USD");
+    notes.push(isEstimate(report.total) ? "estimate from what engines report, and from tokens where they report no price" : "estimate from what engines report", "USD");
     if (report.unpricedTurns > 0) notes.push(`${turnsText(report.unpricedTurns)} with no price reported`);
   }
   if (metric === "cost" && report.bloksAiTurns > 0) notes.push(`${turnsText(report.bloksAiTurns)} on Bloks AI, never priced`);
