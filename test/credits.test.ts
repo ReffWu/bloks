@@ -185,7 +185,7 @@ test("a balance answer is read field by field, and one without a balance is refu
   assert.throws(() => readBalance("<html>"), /without a balance/);
 });
 
-test("the service's own words are found in each shape it uses, and markup is not words", () => {
+test("the service's own words are found in each shape it uses, and an HTML page is not words", () => {
   assert.equal(serviceWords('{"error":{"message":"No more"}}'), "No more");
   assert.equal(serviceWords('{"error":"No more"}'), "No more");
   assert.equal(serviceWords('{"message":"No more"}'), "No more");
