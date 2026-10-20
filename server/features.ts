@@ -41,6 +41,13 @@ export const FEATURES: readonly string[] = [
   // first, each { id, source, level, title, usedPercent, resetsAt }; and
   // usedTodayPercent, dailyLimitPercent and dailyResetsAt on GET /api/credits
   "usage-notices",
+  // GET /api/usage/report?range=&bot=&engine=: the Usage page's numbers,
+  // by day, agent and engine, with the span before for comparison
+  "usage-report",
+  // GET /api/spend-limits and PUT /api/spend-limits/:instance: a monthly
+  // spending limit on an engine that runs on the person's own key, and
+  // kind: "spend" on a usage notice about one
+  "spend-limits",
   // GET and POST /api/threads/:t/messages/:id/redo: what redoing a
   // message the agent already read would take back, and doing it
   "redo",

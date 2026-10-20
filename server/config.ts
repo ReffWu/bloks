@@ -213,6 +213,10 @@ export interface AppConfig {
    * reach this server from the network (see server/pairing.ts); each
    * one is a name and a token digest, never a token. */
   remote?: { enabled?: boolean; devices?: unknown[]; memberDevices?: unknown[] };
+  /** A monthly spending limit in US dollars on an engine that runs on
+   * the person's own key, by engine instance (server/spend-limits.ts).
+   * None set is no limit. */
+  spendLimits?: Record<string, number>;
   instances?: InstanceConfigMap;
 }
 
@@ -343,6 +347,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "brief",
     "backups",
     "credits",
+    "spendLimits",
   ] as const) {
     if (patch[key] && typeof patch[key] === "object") {
       // The migrated Telegram section is a complete private record. A
@@ -351,8 +356,9 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
         ? patch.telegram
         : { ...(disk[key] as object), ...patch[key] };
       // credits forgets by null: a token from an old licence must be gone
-      // from the file, not kept beside a newer one
-      if (key === "credits") {
+      // from the file, not kept beside a newer one; a limit taken off is
+      // gone the same way, not kept as a zero that reads like one
+      if (key === "credits" || key === "spendLimits") {
         const merged = disk[key] as Record<string, unknown>;
         for (const name of Object.keys(merged)) if (merged[name] === null || merged[name] === undefined) delete merged[name];
       }

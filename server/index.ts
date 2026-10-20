@@ -524,7 +524,8 @@ import {
   type CreateOptions,
 } from "./backup.ts";
 import { emptyEnoughForMove } from "./workspace-move.ts";
-import { summarize, UsageStore } from "./usage.ts";
+import { rangeDays, summarize, usageReport, UsageStore, USAGE_RANGES, type UsageRange } from "./usage.ts";
+import { monthBounds, monthKey, monthSpend, providerCreditNotice, readLimit, spendNotices, spendRefusal, spendStatus, MAX_LIMIT_USD, type SpendStatus } from "./spend-limits.ts";
 import { TeamLibrary } from "./team-library.ts";
 import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam } from "./team-file.ts";
 import * as artifacts from "./artifacts.ts";
@@ -1229,11 +1230,87 @@ setInterval(() => {
   }
 }, 60_000).unref?.();
 
-/** Whether an engine can take a turn right now, as far as we know. */
+/** Whether an engine can take a turn right now, as far as we know: there,
+ * on, not resting, and not past the person's spending limit on it. */
 function engineUsable(selection: ModelSelection | null | undefined): selection is ModelSelection {
   if (!selection?.instanceId) return false;
   const instance = registry.get(selection.instanceId);
-  return Boolean(instance && instance.enabled !== false && !cooldowns.of(selection.instanceId));
+  return Boolean(instance && instance.enabled !== false && !cooldowns.of(selection.instanceId) && !spendStopped(selection.instanceId));
+}
+
+// ── spending limits on the person's own keys (server/spend-limits.ts) ──
+
+/** Whether an engine runs on a key of the person's own, which is what a
+ * spending limit is for: a provider's API key, or a host of their own.
+ * Not a CLI on its own sign-in, not Bloks AI, not a model on this Mac. */
+function limitableEngine(instance: ProviderInstance | null | undefined): instance is ProviderInstance {
+  if (!instance || instance.driverKind === CREDITS_KIND) return false;
+  const auth = specFor(instance.driverKind)?.auth;
+  return auth === "key" || auth === "oauth";
+}
+
+/** The limit on an engine in dollars, or null for none. */
+function spendLimitOf(instanceId: string): number | null {
+  const limit = cfg.spendLimits?.[instanceId];
+  return typeof limit === "number" && limit > 0 && limitableEngine(registry.get(instanceId)) ? limit : null;
+}
+
+/** What an engine has spent this month, by its own prices. */
+function spentThisMonth(instanceId: string, now = new Date()): { spent: number; priced: boolean } {
+  const month = monthKey(now);
+  return monthSpend(usage.inMonth(month), instanceId, month);
+}
+
+/** Where an engine stands when it is at its limit, or null when it may
+ * go on. Asked before every turn: an engine with no limit is one lookup. */
+function spendStopped(instanceId: string): SpendStatus | null {
+  const limit = spendLimitOf(instanceId);
+  if (limit === null) return null;
+  const status = spendStatus(limit, spentThisMonth(instanceId).spent);
+  return status.reached ? status : null;
+}
+
+/** The refusal for a turn on an engine past its limit. `paused` so a
+ * room, a routine or a queued line says why it went quiet (sayTurnedAway).
+ * In a shared room, whose members are never told which engine or what
+ * the owner spends, it says only that the agent is paused (`agent`). */
+function spendRefused(instanceId: string, status: SpendStatus, agent?: string): Error {
+  const instance = registry.get(instanceId);
+  const name = instance?.displayName ?? instance?.driverKind ?? instanceId;
+  const text = agent
+    ? `${agent} is paused until ${hostName()} raises a spending limit.`
+    : spendRefusal(name, status.limit, status.resetsAt);
+  return Object.assign(new Error(text), { status: 409, paused: true, spendLimit: true });
+}
+
+/** Every engine on a key of the person's own, with its limit and this
+ * month so far, for the Usage page. `reportsPrice` says whether the
+ * engine has ever priced a turn here: one that never has gives a limit
+ * nothing to count, and the page says so rather than showing $0. */
+function spendLimitRows(now = Date.now()) {
+  const year = usage.since(365);
+  const { end } = monthBounds(new Date(now));
+  return registry
+    .instances()
+    .filter(limitableEngine)
+    .map((instance) => {
+      const limit = spendLimitOf(instance.instanceId);
+      const { spent, priced } = spentThisMonth(instance.instanceId, new Date(now));
+      const status = limit === null ? null : spendStatus(limit, spent, now);
+      return {
+        instanceId: instance.instanceId,
+        name: instance.displayName ?? instance.driverKind,
+        driverKind: instance.driverKind,
+        limit,
+        spent,
+        priced,
+        reportsPrice: priced || year.some((b) => b.provider === instance.instanceId && b.costKnown),
+        usedPercent: status?.usedPercent ?? null,
+        reached: status?.reached ?? false,
+        level: status?.level ?? null,
+        resetsAt: end,
+      };
+    });
 }
 
 /** Which engine a turn on this agent runs on: its own, unless it is resting
@@ -1449,7 +1526,9 @@ function preferredEngine(bot: BotRecord, fallback: boolean, laneId?: string): Mo
   const backup = bot.backupSelection && bot.backupSelection.instanceId !== own.instanceId ? bot.backupSelection : null;
   const ownRest = cooldowns.of(own.instanceId);
   const ownMissing = !registry.get(own.instanceId);
-  return (ownRest || ownMissing) && engineUsable(backup) ? backup : own;
+  // past its spending limit is out until the month turns, as far as this
+  // agent's backup is concerned; with no backup, startTurn says why
+  return (ownRest || ownMissing || spendStopped(own.instanceId)) && engineUsable(backup) ? backup : own;
 }
 
 function unavailableEngineMessage(instanceId: string): string {
@@ -5464,6 +5543,13 @@ async function startClaimedTurn(
   // a resting engine and no queued command reaches one that is paused.
   const pausedHere = pausedOn(bot, selection);
   if (pausedHere) throw pausedRefusal(bot, pausedHere);
+  // An engine on the person's own key past its monthly spending limit
+  // (server/spend-limits.ts) starts nothing new until the limit is
+  // raised or the month turns. Asked of the engine actually chosen, so an
+  // agent with a backup has already been moved to it. A turn picked up
+  // after a restart was running before, and finishes.
+  const stopped = opts.carriedOn ? null : spendStopped(selection.instanceId);
+  if (stopped) throw spendRefused(selection.instanceId, stopped, sharing ? bot.name : undefined);
   // Only Claude Code takes a person's turn. An API engine cannot wait on
   // the owner's approvals, and Codex reads the whole disk without asking.
   if (personSource && instance.driverKind === "codex") throw personTurnHold(CODEX_PERSON_HOLD, CODEX_PERSON_NEXT);
@@ -8830,9 +8916,24 @@ async function creditsStatus(fresh = false) {
 }
 
 /**
+ * What an engine on the person's own key says about money: its spending
+ * limit here (server/spend-limits.ts), and the provider's own refusal for
+ * money when it gave one, which needs no limit of Bloks' to be news.
+ */
+function ownKeyNotices(instance: ProviderInstance): UsageNotice[] {
+  if (!limitableEngine(instance)) return [];
+  const id = instance.instanceId;
+  const notices = spendNotices(id, spendLimitOf(id), spentThisMonth(id).spent);
+  const since = cooldowns.of(id)?.reason === "credit" ? cooldowns.since(id) : undefined;
+  if (since !== undefined && !notices.some((n) => n.level === "stop")) notices.push(providerCreditNotice(id, since));
+  return notices;
+}
+
+/**
  * What to say in the composer about limits, worst first: Bloks AI's
- * notice in the service's own words, and each engine's from its plan
- * windows (server/plan-usage.ts). For one conversation, only what it runs
+ * notice in the service's own words, each engine's from its plan
+ * windows (server/plan-usage.ts), and an engine on the person's own key
+ * at or near its spending limit. For one conversation, only what it runs
  * on: a lane on Bloks AI hears about Bloks AI and nothing about the
  * sign-in its engine would otherwise use, and any other lane hears about
  * the engine running it. The balance is read only when Bloks AI is what is being asked about,
@@ -8848,7 +8949,7 @@ async function usageNotices(threadId: string | null): Promise<UsageNotice[]> {
   };
   const engine = (instance: ProviderInstance | null | undefined): UsageNotice[] =>
     instance && instance.driverKind !== CREDITS_KIND
-      ? planNotices(instance.instanceId, instance.planUsage?.() ?? null)
+      ? [...planNotices(instance.instanceId, instance.planUsage?.() ?? null), ...ownKeyNotices(instance)]
       : [];
   if (threadId === null) return sortNotices([...(await bloksAi()), ...registry.instances().flatMap(engine)]);
   // A phone asks with the agent's main thread whichever lane is busy, so
@@ -21252,6 +21353,40 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const days = Math.min(Math.max(Number(url.searchParams.get("days") ?? 30) || 30, 1), 365);
       usage.flush();
       return json(res, 200, summarize(usage.since(days), days));
+    }
+    // The Usage page's numbers: one span, for one agent or one engine if
+    // asked, and the span before it under the same filters. The person's,
+    // here or on a paired phone, like the plan behind it; an agent has
+    // GET /api/usage above for what it needs to say about spending.
+    if (method === "GET" && path === "/api/usage/report") {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      const asked = url.searchParams.get("range") ?? "";
+      const range: UsageRange = (USAGE_RANGES as readonly string[]).includes(asked) ? (asked as UsageRange) : "30d";
+      const filter = { bot: url.searchParams.get("bot") || null, engine: url.searchParams.get("engine") || null };
+      return json(res, 200, usageReport(usage.since(Math.min(365, rangeDays(range) * 2)), range, filter));
+    }
+    // Spending limits on the person's own keys (server/spend-limits.ts).
+    // Never an agent's to read or to move: the line is there to stop
+    // the agents, and one that could lift it would make it no line.
+    if (method === "GET" && path === "/api/spend-limits") {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      return json(res, 200, { limits: spendLimitRows(), max: MAX_LIMIT_USD });
+    }
+    m = path.match(/^\/api\/spend-limits\/([\w.:-]+)$/);
+    if (m && method === "PUT") {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      const instanceId = m[1];
+      if (!limitableEngine(registry.get(instanceId))) {
+        return json(res, 404, { error: "a spending limit is for an engine on a key of your own, and there is no such engine" });
+      }
+      const body = await readBody(req);
+      const usd = readLimit(body.usd);
+      if (usd === undefined) {
+        return json(res, 400, { error: `a limit is an amount in dollars, more than $0 and at most $${MAX_LIMIT_USD.toLocaleString("en-US")}` });
+      }
+      // null takes the limit off (saveConfig drops it from the file)
+      Object.assign(cfg, saveConfig({ spendLimits: { [instanceId]: usd } } as unknown as Partial<AppConfig>));
+      return json(res, 200, { limits: spendLimitRows(), max: MAX_LIMIT_USD });
     }
 
     // ── routines (see server/routines.ts) ──

@@ -1,15 +1,16 @@
 // The main rail: the app's few places, one icon each, always the same
 // width. Chat is where the agents are (its own sidebar beside this one,
 // folded from the title bar);
-// the rest are full pages. Settings sits at the foot with the update
-// button above it, the way a desktop app keeps the things you visit
-// rarely out of the way of the things you visit all day.
+// the rest are full pages. Settings sits at the foot with Usage and the
+// update button above it, the way a desktop app keeps the things you
+// visit rarely out of the way of the things you visit all day.
 import { MessageCircle } from "@/components/icons";
 import { LayoutGrid } from "@/components/icons";
 import { Zap } from "@/components/icons";
 import { Brain } from "@/components/icons";
 import { Puzzle } from "@/components/icons";
 import { Settings as SettingsIcon } from "@/components/icons";
+import { Usage as UsageIcon } from "@/components/icons";
 import { useStore, type RailPage } from "@/state/store";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
@@ -162,6 +163,9 @@ export function AppRail() {
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           <UpdateRailButton />
+          <RailButton label="Usage" active={place === "usage"} onClick={() => go("usage")}>
+            <UsageIcon size={18} strokeWidth={1.75} />
+          </RailButton>
           <RailButton
             label="Settings"
             hint={securityRisky > 0 ? "Settings: security issue found" : undefined}

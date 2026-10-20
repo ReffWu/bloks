@@ -424,8 +424,9 @@ export type UsageLevel = "info" | "warn" | "stop";
 /**
  * A notice in the composer about a limit, as GET /api/usage-notices
  * sends it to this app and to a paired phone. From Bloks AI's own word
- * (source "bloks-ai") or from an engine's plan windows (source is the
- * engine instance). A share and a time, never an amount.
+ * (source "bloks-ai"), from an engine's plan windows, or from a spending
+ * limit on an engine on the person's own key (source is the engine
+ * instance). A share and a time, never an amount.
  */
 export interface UsageNotice {
   /** Stable while it says the same thing, so putting it away holds. */
@@ -437,6 +438,10 @@ export interface UsageNotice {
   usedPercent: number;
   /** Epoch milliseconds, when known. */
   resetsAt: number | null;
+  /** "spend" for a spending limit on the person's own key, whose month
+   * starts again rather than a window resetting. Absent for the rest; a
+   * client that does not know it says "Resets" for every notice. */
+  kind?: "spend";
 }
 
 // ── defining a driver ──────────────────────────────────────────────────

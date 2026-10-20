@@ -41,6 +41,7 @@ import BriefcaseHero from "@heroicons/react/24/outline/BriefcaseIcon.js";
 import BuildingLibraryHero from "@heroicons/react/24/outline/BuildingLibraryIcon.js";
 import CalendarDaysHero from "@heroicons/react/24/outline/CalendarDaysIcon.js";
 import ChartBarHero from "@heroicons/react/24/outline/ChartBarIcon.js";
+import ChartBarSquareHero from "@heroicons/react/24/outline/ChartBarSquareIcon.js";
 import ChartPieHero from "@heroicons/react/24/outline/ChartPieIcon.js";
 import ChatBubbleBottomCenterTextHero from "@heroicons/react/24/outline/ChatBubbleBottomCenterTextIcon.js";
 import ChatBubbleLeftHero from "@heroicons/react/24/outline/ChatBubbleLeftIcon.js";
@@ -220,6 +221,7 @@ const KeyboardShape = drawn(
 );
 
 export const Activity = icon(ChartBarHero, "Activity");
+export const Usage = icon(ChartBarSquareHero, "Usage");
 export const AlertTriangle = icon(ExclamationTriangleHero, "AlertTriangle");
 export const AppWindow = icon(WindowHero, "AppWindow");
 export const Archive = icon(ArchiveBoxHero, "Archive");

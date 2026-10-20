@@ -1,6 +1,6 @@
 // The main rail's full pages that are not Chat, Automations or Settings:
-// Overview, Memory (MemoryPlace.tsx) and Plugins (Customize.tsx, with
-// skills). Each shows what it holds in place, laid out as a page, rather
+// Overview, Memory (MemoryPlace.tsx), Plugins (Customize.tsx, with
+// skills) and Usage (UsagePage.tsx). Each shows what it holds in place, laid out as a page, rather
 // than opening windows over the chat.
 import { motion } from "motion/react";
 import { type RailPage } from "@/state/store";
@@ -10,6 +10,7 @@ import { MemoryPlace } from "./MemoryPlace";
 import { BriefPanel } from "./BriefPanel";
 import { ActivityPanel } from "./Activity";
 import { ProjectsPanel } from "./ProjectsPanel";
+import { UsagePage } from "./UsagePage";
 import { useActivityCount } from "@/lib/activityCount";
 
 /** A greeting for the time of day, as the page is opened. */
@@ -84,5 +85,6 @@ function OverviewPage() {
 export function RailPageView({ page }: { page: RailPage }) {
   if (page === "overview") return <OverviewPage />;
   if (page === "memory") return <MemoryPlace />;
+  if (page === "usage") return <UsagePage />;
   return <CustomizeView />;
 }

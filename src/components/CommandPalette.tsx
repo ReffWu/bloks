@@ -26,6 +26,7 @@ import { Plus } from "@/components/icons";
 import { Puzzle } from "@/components/icons";
 import { Search } from "@/components/icons";
 import { Settings as SettingsIcon } from "@/components/icons";
+import { Usage as UsageIcon } from "@/components/icons";
 import { SquarePen } from "@/components/icons";
 import { SquareTerminal } from "@/components/icons";
 import { Users } from "@/components/icons";
@@ -230,6 +231,7 @@ export function CommandPalette() {
       { id: "automations", label: "Automations", keywords: "routines schedules watchers workflows webhooks jobs", icon: Zap, run: () => dispatch({ type: "toggleRoutines", open: true }) },
       { id: "memory", label: "Memory", keywords: "notes remember about you", icon: Brain, run: () => dispatch({ type: "openPage", page: "memory" }) },
       { id: "plugins", label: "Plugins", keywords: "apps skills connectors integrations tools mcp", icon: Puzzle, run: () => dispatch({ type: "openPage", page: "plugins" }) },
+      { id: "usage", label: "Usage", keywords: "cost spend tokens spending limit plan billing", icon: UsageIcon, run: () => dispatch({ type: "openPage", page: "usage" }) },
       { id: "settings", label: "Settings", keywords: "preferences options", icon: SettingsIcon, run: () => dispatch({ type: "toggleAppSettings", open: true }) },
     ],
     [dispatch],

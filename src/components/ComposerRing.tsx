@@ -77,8 +77,8 @@ interface Today {
   failed?: boolean;
 }
 
-/** `open` and `onOpenChange` hand the card to the composer, which opens
- * it from a usage notice's "View usage" as well as from the ring. */
+/** `open` and `onOpenChange` hand the card to whoever holds the ring,
+ * for a parent that opens it from somewhere other than the ring. */
 export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const { state } = useStore();
   const lane = bot.tasks?.find((t) => t.id === (bot.activeTaskId ?? bot.threadId));
