@@ -28,7 +28,7 @@ export interface WorkspaceEntry {
 export interface Registry {
   version: number;
   current: string;
-  prefs: { theme: "light" | "dark" | "system" | null; sameAccent: boolean; accent: string | null };
+  prefs: { theme: "light" | "dark" | "system" | null; sameAccent: boolean; accent: string | null; ownerName?: string | null };
   workspaces: WorkspaceEntry[];
 }
 
@@ -40,6 +40,8 @@ export const MUTE_CHOICES: ReadonlyArray<{ id: string; label: string; ms: number
 export const NAME_MAX: number;
 
 export function cleanName(name: unknown): string;
+export function cleanPersonName(name: unknown): string;
+export function keepOwnerName(registry: Registry, name: unknown, options?: { seed?: boolean }): { registry: Registry; changed: boolean };
 export function newId(random?: (n: number) => Buffer): string;
 export function normalizeEntry(raw: unknown, index?: number): WorkspaceEntry | null;
 export function parseRegistry(text: string | null): Registry;
@@ -69,6 +71,7 @@ export function updateWorkspace(
     port: number | null;
     accent: string | null;
     members: number | null;
+    hostName: string;
   }>,
   options?: { random?: () => number },
 ): Registry;
@@ -110,6 +113,7 @@ export function snapshot(
 ): {
   available: true;
   current: string;
+  ownerName: string | null;
   workspaces: Array<{
     id: string;
     kind: WorkspaceKind;

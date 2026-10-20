@@ -37,6 +37,7 @@ import { inTeamConversation, privacyLine, type Who } from "./access.ts";
 import { audienceOf, type BlokRecord } from "./bloks.ts";
 import type { BotRecord } from "./store.ts";
 import { membersActive, pausedWords, teamRequiredWords, workspaceMemberLimit, type Plan } from "./plan-limits.ts";
+import { nameRefusal } from "./owner-name.ts";
 
 // ── the workspace this server is ───────────────────────────────────────
 
@@ -91,6 +92,9 @@ export function setIdentity(input: Record<string, unknown>): WorkspaceIdentity |
 
 export interface MembersDeps {
   hostName(): string;
+  /** Whether the owner has said what to call them: an invite says who it
+   * is from, and every screen after it says whose workspace it is. */
+  ownerNamed(): boolean;
   relay: RelayLink;
   /** Bloks Cloud is on and this workspace has a space. */
   relayReady(): boolean;
@@ -490,6 +494,7 @@ export function createMembers(deps: MembersDeps) {
     const locked = await teamRefusal(true);
     if (locked) return locked;
     if (await full()) return { status: 402, body: { code: "full", error: await fullWords() } };
+    if (!deps.ownerNamed()) return { status: 409, body: nameRefusal(actor.kind === "owner" ? "owner" : "someone else") };
     const made = invites.createInvite({ role, name: body.name, invitedBy: actor.kind === "owner" ? "owner" : actor.personId });
     if ("error" in made) return { status: 409, body: made };
     await registerAtRelay(made);

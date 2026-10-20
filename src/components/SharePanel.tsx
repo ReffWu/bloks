@@ -19,6 +19,8 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
 import { RoomAudience } from "./members/RoomAudience";
+import { askYourName } from "./YourNameDialog";
+import { needsName, readYourName } from "@/lib/yourName";
 
 interface PendingInvite {
   id: string;
@@ -87,6 +89,11 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
       .then((next: PeopleResponse) => {
         setData(next);
         setName((current) => current || (next.hostName === "The owner" ? "" : next.hostName));
+        // no name yet: the one this computer's account carries, to keep or
+        // change, so sharing is one press for most people
+        if (next.hostName === "The owner" && !next.sharing) {
+          void readYourName().then(({ suggested }) => suggested && setName((current) => current || suggested));
+        }
         // the badge on the header counts what is actually waiting
         dispatch({
           type: "joinRequest",
@@ -123,7 +130,14 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
 
   const invite = () =>
     act("invite", async () => {
-      const made = await api(`/api/bloks/${blok.id}/invites`, { method: "POST", body: JSON.stringify({ role }) });
+      const ask = () => api(`/api/bloks/${blok.id}/invites`, { method: "POST", body: JSON.stringify({ role }) });
+      // a room shared before Bloks asked names: asked now, then on with it
+      const made = await ask().catch(async (e) => {
+        if (!needsName(e)) throw e;
+        if (!(await askYourName({ why: `Everyone you invite to ${blok.name} sees it.` }))) return null;
+        return ask();
+      });
+      if (!made) return;
       const qr = await QRCode.toDataURL(made.link, {
         errorCorrectionLevel: "M",
         margin: 1,
@@ -182,7 +196,10 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
         ) : !shared ? (
           <div className="mt-4 space-y-3">
             <label className="block text-body font-medium text-foreground">
-              Your name in the room
+              Your name
+              <span className="mt-0.5 block text-small font-normal text-muted-foreground">
+                Everyone you let in sees it. It is your name in every room.
+              </span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { membersApi, useWorkspaceFrames, type AgentAccessRow, type Member } from "@/lib/members";
 import { AgentAccessDialog } from "./MemberDialogs";
+import { distinctNames } from "@/lib/names";
 
 export function AgentAccessCard({ botId }: { botId: string }) {
   const [agent, setAgent] = useState<AgentAccessRow | null>(null);
@@ -27,7 +28,9 @@ export function AgentAccessCard({ botId }: { botId: string }) {
 
   if (!agent || !members.length) return null;
   const a = agent.access;
-  const names = (ids: string[]) => ids.map((id) => members.find((m) => m.id === id)?.name.split(" ")[0]).filter(Boolean).join(", ");
+  // first names, told apart where two share one (src/lib/names.ts)
+  const called = distinctNames(members);
+  const names = (ids: string[]) => ids.map((id) => called.get(id)).filter(Boolean).join(", ");
   const summary = !a || a.mode === "everyone" ? "Everyone in the workspace" : a.mode === "only" ? `Only you${a.people.length ? `, ${names(a.people)}` : ""}${a.admins ? " and admins" : ""}` : `Everyone except ${names(a.people) || "nobody"}`;
   return (
     <div className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">

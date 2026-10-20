@@ -28,6 +28,7 @@ import { Switcher } from "@/components/Switcher";
 import { QuickAsk } from "@/components/QuickAsk";
 import { Toaster, toast } from "@/components/ui/toast";
 import { ConfirmHost } from "@/components/ui/confirm";
+import { YourNameHost } from "@/components/YourNameDialog";
 import { TerminalWindow, terminalWindowAgent } from "@/components/terminal/TerminalWindow";
 import { MemberApp } from "@/components/member/MemberApp";
 import { detectMode, type AppMode } from "@/lib/memberMode";
@@ -251,6 +252,7 @@ function WhichApp() {
       <MotionConfig reducedMotion="user">
         <MemberApp mode={mode} />
         <ConfirmHost />
+        <YourNameHost />
         <Toaster />
       </MotionConfig>
     );
@@ -307,6 +309,7 @@ function OwnerApp() {
         {/* over everything, the welcome included: a question, or a word
             about what just happened, is never behind what it is about */}
         <ConfirmHost />
+        <YourNameHost />
         <Toaster />
       </StoreProvider>
     </MotionConfig>

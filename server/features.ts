@@ -130,4 +130,8 @@ export const FEATURES: readonly string[] = [
   // with the computer choices it offers, refusals with code "hosted", and
   // POST /api/hosted/desktop for a ticket to its virtual desktop
   "hosted",
+  // the owner's name: profile.name on GET and PUT /api/config, the
+  // `workspace.owner` frame to members when it changes, and code
+  // "name_required" (409) on sharing a room or inviting anybody without one
+  "owner-name",
 ];

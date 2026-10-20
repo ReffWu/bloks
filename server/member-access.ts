@@ -316,9 +316,10 @@ const ROOM_FRAMES = new Set(["room.people", "room.sharing", "room.typing", "room
 /** Frames about one member's own conversation, keyed by its lane. */
 const LANE_FRAMES = new Set(["member.lane"]);
 /** The workspace's own news every member hears: who is in it, which way
- * the privacy setting is, and that an agent's or a room's list changed
- * (ids only, so the app asks again what it may now see). */
-const WORKSPACE_FRAMES = new Set(["workspace.people", "workspace.privacy", "workspace.access"]);
+ * the privacy setting is, that an agent's or a room's list changed (ids
+ * only, so the app asks again what it may now see), and what the owner
+ * is called now. */
+const WORKSPACE_FRAMES = new Set(["workspace.people", "workspace.privacy", "workspace.access", "workspace.owner"]);
 /** What only the people who let others in hear: somebody asking, how
  * many are waiting, who came in, an invite closed or taken back. */
 const ADMIN_FRAMES = new Set(["workspace.request", "workspace.waiting", "workspace.joined", "workspace.locked", "workspace.withdrawn", "workspace.left"]);

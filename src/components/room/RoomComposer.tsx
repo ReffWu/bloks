@@ -204,6 +204,7 @@ export function RoomComposer({
   working,
   people,
   ownerName,
+  nameOf,
   waiting,
   senderOf,
   replyTo,
@@ -221,6 +222,9 @@ export function RoomComposer({
   working: Bot[];
   people: RoomPerson[];
   ownerName?: string;
+  /** A person's name as the room calls them, told apart from anyone who
+   * shares it (src/lib/names.ts): the label in the @ list. */
+  nameOf?: (id: string) => string;
   /** What waits to join the room, in the order it was sent. */
   waiting: Message[];
   /** Who sent a waiting message that is not yours, or null for yours. */
@@ -300,9 +304,11 @@ export function RoomComposer({
   // Escape gets out of the way.
   const [mentionAt, setMentionAt] = useState<number | null>(null);
   const [pick, setPick] = useState(0);
-  const mentionable: Array<{ id: string; name: string; title?: string; bot?: Bot }> = [
+  // A person is listed as the room calls them ("Sam O."), and completes
+  // to the name they gave, which is what the server reads a mention by.
+  const mentionable: Array<{ id: string; name: string; label?: string; title?: string; bot?: Bot }> = [
     ...answering.map((b) => ({ id: b.id, name: b.name, title: b.title, bot: b })),
-    ...people.map((p) => ({ id: p.id, name: p.name, title: p.role === "viewer" ? "Viewer" : "Collaborator" })),
+    ...people.map((p) => ({ id: p.id, name: p.name, label: nameOf?.(p.id), title: p.role === "viewer" ? "Viewer" : "Collaborator" })),
   ];
   const query = mentionAt === null ? null : text.slice(mentionAt + 1, inputRef.current?.selectionStart ?? text.length);
   const matches =
@@ -576,7 +582,7 @@ export function RoomComposer({
                   )}
                 >
                   {m.bot ? <AgentAvatar bot={m.bot} size={22} /> : <Initial name={m.name} />}
-                  <span className="text-body font-medium text-foreground">{m.name}</span>
+                  <span className="text-body font-medium text-foreground">{m.label ?? m.name}</span>
                   {m.title && <span className="min-w-0 truncate text-small text-muted-foreground">{m.title}</span>}
                   {m.bot && m.id === lead?.id && answering.length > 1 && (
                     <span className="ml-auto shrink-0 text-caption text-muted-foreground">Lead</span>

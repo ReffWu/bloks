@@ -6,6 +6,10 @@
 // Personal is the one there already, so the choice is Business (one per
 // computer, with its fixed mark) or a name of your own (with a mark of its
 // own, rerolled here until it feels right).
+//
+// A Team workspace is one other people will see you in, so it starts with
+// your name: the one you gave already, or asked for here, once, before it
+// is made (src/components/YourNameDialog).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -16,6 +20,7 @@ import { BUSINESS_MARK, generateMark, type Mark } from "@/lib/workspaceMark";
 import { act, useWorkspaces } from "@/lib/workspaces";
 import { WorkspaceMark } from "./WorkspaceMark";
 import { NeedsTeam } from "./TeamLock";
+import { askYourName, ensureYourName } from "./YourNameDialog";
 
 type Kind = "business" | "custom";
 
@@ -58,10 +63,20 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
 
   const create = async () => {
     if (!ready) return;
+    const asTeam = team && teamOpen;
+    let ownerName: string | undefined;
+    if (asTeam) {
+      // a window on a workspace you joined has somebody else's server
+      // behind it, so the name is only handed to the app from there
+      const why = `Everyone you invite to ${clean || "Business"} sees it.`;
+      const said = (s.available && s.ownerName) || (window.bloks?.workspace?.kind === "joined" ? await askYourName({ why, save: false }) : await ensureYourName({ why }));
+      if (!said) return;
+      ownerName = said;
+    }
     setBusy(true);
     setError(null);
     const said = await act(
-      window.bloks?.workspaceCreate?.({ kind, name: clean || "Business", team: team && teamOpen, mark: kind === "custom" ? mark : null }),
+      window.bloks?.workspaceCreate?.({ kind, name: clean || "Business", team: asTeam, mark: kind === "custom" ? mark : null, ...(ownerName ? { ownerName } : {}) }),
     );
     // on success the window is already loading the new workspace
     if (said) {

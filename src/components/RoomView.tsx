@@ -31,7 +31,7 @@ import { ForwardDialog, MessageActionBar, Reactions, ReplyContext, useTapToShow,
 import { IntentNote, UserText, richText } from "./chat/Bubble";
 import { GroupMessage, PersonAvatar, SeenBy } from "./chat/Group";
 import { receiptsAt, runs, senderOf } from "@/lib/participants";
-import { usePersonName, useWorkspaceRoster } from "@/lib/members";
+import { useNamer, useWorkspaceRoster } from "@/lib/members";
 import { seedReads, useReadPosition, useReads } from "@/lib/readReceipts";
 import { JumpToLatest } from "./chat/JumpToLatest";
 import { RoomComposer } from "./room/RoomComposer";
@@ -437,7 +437,7 @@ function RoomMessage({
 
   // somebody else in the room: on the left, named, with their face
   if (message.role === "user" && message.author) {
-    const who = people.find((p) => p.id === message.author)?.name ?? memberName?.(message.author) ?? "A former member";
+    const who = memberName?.(message.author) ?? people.find((p) => p.id === message.author)?.name ?? "A former member";
     return (
       <GroupMessage
         mine={false}
@@ -686,7 +686,10 @@ export function RoomView({ blok }: { blok: Blok }) {
   // one, and with people in it, who has read how far
   // (src/lib/participants.ts, src/lib/readReceipts.ts).
   const roster = useWorkspaceRoster();
-  const personName = usePersonName();
+  // everyone by the name the room calls them, guests included, told apart
+  // where two share a first name (src/lib/names.ts)
+  const nameOf = useNamer(roomPeople);
+  const personName = (id: string) => nameOf(id, "A former member");
   const isBubble = (m: Message) =>
     !m.deleted && (m.role === "user" || (Boolean(m.from) && (m.kind === "text" || m.kind === "component")));
   const roomRuns = useMemo(() => runs(said, isBubble), [said]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -710,7 +713,7 @@ export function RoomView({ blok }: { blok: Blok }) {
     [withPeople, said, roomRuns, reads],
   );
   const readerName = (id: string) =>
-    id === "owner" ? (ownerName ?? roster.owner ?? "You") : (roomPeople.find((p) => p.id === id)?.name ?? personName(id));
+    id === "owner" ? (ownerName ?? roster.owner ?? "You") : personName(id);
   const receiptsFor = (id: string) => {
     const who = receiptRows.get(id);
     return who?.length ? <SeenBy people={who.map((p) => ({ id: p, name: readerName(p) }))} /> : undefined;
@@ -1224,12 +1227,13 @@ export function RoomView({ blok }: { blok: Blok }) {
         working={working}
         people={roomPeople}
         ownerName={blok.sharing ? ownerName : undefined}
+        nameOf={personName}
         waiting={waiting}
         senderOf={(m) =>
           m.role === "bot"
             ? (members.find((b) => b.id === m.from)?.name ?? "An agent")
             : m.author
-              ? (roomPeople.find((p) => p.id === m.author)?.name ?? personName(m.author))
+              ? personName(m.author)
               : m.via
                 ? (CHANNEL_NAMES[m.via] ?? "the linked chat")
                 : null

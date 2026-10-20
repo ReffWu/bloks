@@ -107,8 +107,9 @@ export async function api(path: string, init?: RequestInit): Promise<any> {
   });
   const body = await res.json().catch(() => ({}));
   // the status rides along, for a caller deciding whether trying again
-  // could ever help (a 404 will not)
-  if (!res.ok) throw Object.assign(new Error(body.error ?? `${res.status} ${res.statusText}`), { status: res.status });
+  // could ever help (a 404 will not), and the code, for one that can do
+  // something about it (a name to ask for, src/components/YourNameDialog)
+  if (!res.ok) throw Object.assign(new Error(body.error ?? `${res.status} ${res.statusText}`), { status: res.status, code: typeof body.code === "string" ? body.code : undefined });
   return body;
 }
 

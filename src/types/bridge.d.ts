@@ -77,10 +77,13 @@ export type WorkspacesState =
       plan?: "cloud" | "team" | null;
       /** "Same accent in every workspace". */
       sameAccent?: boolean;
+      /** What the person is called in their own workspaces, once they
+       * have said; null until then. Absent from an older app. */
+      ownerName?: string | null;
     };
 
 /** What a workspace action answers: done, or why not, in words to show. */
-export type WorkspaceAnswer = { ok?: boolean; id?: string; error?: string };
+export type WorkspaceAnswer = { ok?: boolean; id?: string; error?: string; code?: string };
 
 declare global {
   interface Window {
@@ -109,11 +112,15 @@ declare global {
       workspaceLeave?(id: string, options?: { force?: boolean }): Promise<WorkspaceAnswer & { told?: boolean; unreachable?: boolean }>;
       /** What you are in the joined workspace this page shows. */
       workspaceRole?(role: "member" | "admin"): Promise<void>;
+      /** What the owner of the joined workspace this page shows is called. */
+      workspaceHost?(name: string): Promise<void>;
       workspaceCreate?(input: {
         kind: "business" | "custom";
         name: string;
         team: boolean;
         mark: WorkspaceMarkValue | null;
+        /** Your name, asked for as a Team workspace is made. */
+        ownerName?: string;
       }): Promise<WorkspaceAnswer>;
       workspaceUpdate?(
         id: string,

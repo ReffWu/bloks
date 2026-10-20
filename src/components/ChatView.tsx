@@ -1,5 +1,5 @@
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
-import { usePersonName, useWorkspaceRoster } from "@/lib/members";
+import { useNamer, useWorkspaceRoster } from "@/lib/members";
 import { isGroup, otherHumans, receiptsAt, runs, senderOf, speakers, teamHumans } from "@/lib/participants";
 import { seedReads, useReadPosition, useReads } from "@/lib/readReceipts";
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
@@ -136,7 +136,10 @@ function LandMark({ on }: { on: boolean }) {
 }
 
 export function ChatView({ bot }: { bot: Bot }) {
-  const personName = usePersonName();
+  // people by the name a conversation calls them, told apart where two
+  // share a first name (src/lib/names.ts)
+  const nameOf = useNamer();
+  const personName = (id: string) => nameOf(id, "A former member");
   // On a desktop the conversation's tabs sit up in the title bar, in the
   // row with the window's own buttons; on a phone they stay under the header
   const titleSlot = useTitlebarSlot();

@@ -44,6 +44,7 @@ import { PastSessionsPage } from "./PastSessions";
 import { BoxSleep } from "./BoxSleep";
 import { AgentDefaults } from "./AgentDefaults";
 import { SettingRow, SettingsGroup, SettingsPageHeader } from "./SettingsLayout";
+import { YourName } from "./settings/YourName";
 import { Segmented } from "@/components/ui/segmented";
 import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
 import { Slider, numberStops } from "@/components/ui/slider";
@@ -938,7 +939,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "General",
         icon: SlidersHorizontal,
         description: `How Bloks looks and behaves on ${thisComputer()}.`,
-        keywords: "width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain reply replies stuck silent tool call tidy nightly archive dated expire incident incidents desk failure failed fails lead retry interrupt queue messages while working steer correction",
+        keywords: "your name owner call me width transcript narrow medium wide column theme dark light appearance sidebar conversations threads shortcut quick ask hotkey summarise compaction compact idle cache long turn tokens quota skills suggest recall remember memory other conversations files changes cards shared folder agents turn limit consecutive chain reply replies stuck silent tool call tidy nightly archive dated expire incident incidents desk failure failed fails lead retry interrupt queue messages while working steer correction",
       },
       {
         id: "about-you",
@@ -1092,6 +1093,9 @@ function GeneralPage() {
   const [conversations, setConversations] = useConversationsView();
   return (
     <>
+      <SettingsGroup>
+        <YourName />
+      </SettingsGroup>
       <SettingsGroup title="Appearance">
         <SettingRow
           label="Theme"

@@ -103,7 +103,7 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   add("shortcuts", "quickAsk", "Settings > General > Quick ask shortcut", value("shortcuts", "quickAsk") ?? null);
   add("profile", "about", "Settings > About you", value("profile", "about") ?? "");
   const name = value("profile", "name");
-  add("profile", "name", "Shared room > Your name", typeof name === "string" ? name.trim() || "The owner" : "The owner");
+  add("profile", "name", "Settings > General > Your name", typeof name === "string" ? name.trim() || "The owner" : "The owner");
   for (const [section, key, control] of [
     ["composio", "key", "Settings > Apps and keys > Connect key"],
     ["composio", "apiKey", "Settings > Apps and keys > Project key"],

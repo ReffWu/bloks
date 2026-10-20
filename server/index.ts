@@ -395,6 +395,7 @@ import { agentReadiness, engineReadiness, readinessWarning, type Readiness } fro
 import { indexMemory, indexMessages, mostOf, recallBlock, recallFrom, recallText, searchableText, termsOf, type IndexedSource, type RecallHit, type RecallMessage, type Speaker } from "./recall.ts";
 import { excerpt, IndexCache, rank, type TermIndex } from "./recall-index.ts";
 import { noteBriefing, ProfileNotes } from "./profile-notes.ts";
+import { accountName, nameRefusal } from "./owner-name.ts";
 import { briefDue, composeBrief, parseBriefTime, type Brief, type BriefWaiting } from "./brief.ts";
 import { localDate } from "./usage.ts";
 import { engineReport, TurnLogStore, type Outcome, type TurnLog } from "./engine-report.ts";
@@ -6011,7 +6012,7 @@ async function startClaimedTurn(
     // and never for a Telegram person, who is told as little of the
     // owner as a stranger's mail is
     // a member's turn hears that member's notes, never the owner's
-    notes: (!sharing && !guestMail && !personSource && (turnPerson ? workspacePeople.notesOf(turnPerson).prompt() : profileNotes.prompt())) || null,
+    notes: (!sharing && !guestMail && !personSource && (turnPerson ? workspacePeople.notesOf(turnPerson).prompt() : ownerStanding())) || null,
     // An engine with no files of its own keeps memory with the API
     // tools (memory_read, memory_write) instead.
     memory: !guestMail && !personSource && (!sharing || sharing.memoryFor?.includes(bot.id))
@@ -8230,6 +8231,62 @@ function hostName(): string {
   return cfg.profile?.name?.trim() || "The owner";
 }
 
+/** What the owner's agents are told about them in the owner's own
+ * conversations: their name, once they gave one, then the notes they
+ * kept. One part, so a new name reaches a resumed session the way a new
+ * note does, after the cached history (server/standing-prompt.ts). */
+function ownerStanding(): string | null {
+  const name = cfg.profile?.name?.trim();
+  return [name && `The person you work for is called ${name}.`, profileNotes.prompt()].filter(Boolean).join("\n\n") || null;
+}
+
+/** Whether the owner has said what to call them (server/owner-name.ts). */
+function ownerNamed(): boolean {
+  return Boolean(cfg.profile?.name?.trim());
+}
+
+/** Whether anybody besides the owner already sees the owner's name here:
+ * a member, a shared room, an invite still out. While one does, the name
+ * can change but not go, or they would be back to "The owner". */
+function othersSeeOwnerName(): boolean {
+  return people.workspaceMembers().length > 0 || bloks.bloks.some((b) => b.sharing) || invites.outstanding().length > 0;
+}
+
+/**
+ * Sets the owner's name, from their own screens ("here") or from the
+ * desktop app handing over the one the person chose in another workspace
+ * ("app"). Everyone who shows it hears: the owner's windows (the config
+ * frame), every member (workspace.owner), and every shared room's people,
+ * guests included, whose headers say it. A name chosen here goes to the
+ * app too, so each of the person's workspaces calls them the same.
+ */
+function setOwnerName(raw: unknown, from: "here" | "app"): { ok: true } | { ok: false; status: number; body: Record<string, unknown> } {
+  if (typeof raw !== "string") return { ok: false, status: 400, body: { error: "a name is text" } };
+  const name = people.cleanName(raw) ?? "";
+  if (!name && othersSeeOwnerName()) {
+    return { ok: false, status: 409, body: { ...nameRefusal(), error: "People here see your name, so it can change but not go." } };
+  }
+  if (name === (cfg.profile?.name?.trim() ?? "")) return { ok: true };
+  Object.assign(cfg, saveConfig({ profile: { ...(cfg.profile ?? {}), name } }));
+  broadcast({ kind: "config", ...configStatus() });
+  broadcast({ kind: "workspace.owner", name: hostName() });
+  for (const room of bloks.bloks) if (room.sharing) roomPeopleFrame(room.id);
+  if (from === "here") tellDesktopName(name);
+  return { ok: true };
+}
+
+/** Tells the desktop app the owner's name, so its other workspaces use it
+ * too (electron/main.mjs keeps one for the person). `seed` is a name
+ * this workspace already had when it started: the app takes it only when
+ * it has none of its own, so a stale one never undoes a newer choice. */
+function tellDesktopName(name: string, seed = false) {
+  try {
+    (process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort?.postMessage({ kind: "desktop.name", name, ...(seed ? { seed: true } : {}) });
+  } catch {
+    /* no app to tell */
+  }
+}
+
 /** Whether the owner may put this agent in a room: any team agent, and
  * their own solo agents. A member's solo agent goes into a room only by
  * its maker's hand (server/access.ts). */
@@ -9276,6 +9333,7 @@ function markRead(threadId: string, personId: string, messageId: unknown, visibl
 /** Members, invites and the door, wired to this server. */
 const workspacePeople = createMembers({
   hostName,
+  ownerNamed,
   relay: relayLink,
   relayReady: () => Boolean(cfg.relay?.enabled && cfg.relay.agentToken),
   relayUrl: () => (cfg.relay?.enabled && cfg.relay.url ? cfg.relay.url : null),
@@ -14391,8 +14449,9 @@ function configStatus() {
     composio: { configured: Boolean(cfg.composio?.key), apiKeyConfigured: Boolean(cfg.composio?.apiKey) },
     speech: speech.speechConfigured(cfg),
     box: { configured: Boolean(cfg.box?.token) },
-    // not a secret, the settings field prefills from it
-    profile: { about: cfg.profile?.about ?? "" },
+    // not secrets, the settings fields prefill from them; the name is
+    // empty until the person gives one (server/owner-name.ts)
+    profile: { about: cfg.profile?.about ?? "", name: cfg.profile?.name?.trim() ?? "" },
     // whether this workspace has ever been through the welcome
     setupDone: Boolean(cfg.setupDoneAt),
     // the desktop shell reads this at boot to register the hotkey
@@ -15354,6 +15413,8 @@ async function makeInvite(
 ): Promise<{ link: string; invite: ReturnType<typeof publicInvite> } | { error: string; status: number; code?: string }> {
   const refusal = await sharingRefusal(blok);
   if (refusal) return { ...refusal, status: 402 };
+  // whoever opens the link is told whose room it is
+  if (!ownerNamed()) return { ...nameRefusal(invitedBy === "owner" ? "owner" : "someone else"), status: 409 };
   const relayToken = await relayLink.mintClient();
   if (!relayToken) {
     return {
@@ -19807,15 +19868,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const blok = bloks.get(m[1]);
       if (!blok) return json(res, 404, { error: "no such room" });
       const body = await readBody(req);
-      if (typeof body.hostName === "string") {
-        const name = people.cleanName(body.hostName);
-        if (name) {
-          Object.assign(cfg, saveConfig({ profile: { ...(cfg.profile ?? {}), name } }));
-        }
-      }
+      // the name the share panel asked for, said with the share
+      if (typeof body.hostName === "string" && people.cleanName(body.hostName)) setOwnerName(body.hostName, "here");
       if (!blok.sharing) {
         const refusal = await sharingRefusal(blok);
         if (refusal) return json(res, 402, refusal);
+        // guests see the owner by name in the room's header and its link
+        if (!ownerNamed()) return json(res, 409, nameRefusal());
       }
       // The owner's own tools and handing approvals to collaborators are
       // Team's. Turning either off is always allowed, whatever the plan.
@@ -20722,6 +20781,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
 
     // ── what your agents know about you ──
+    // The owner's name, and the one this computer's account suggests for
+    // the field that asks. The suggestion is read on this computer and
+    // only ever handed to a window on it: a phone, even the owner's own,
+    // is told the name and nothing it was guessed from.
+    if (method === "GET" && path === "/api/profile/name") {
+      return json(res, 200, { name: cfg.profile?.name?.trim() ?? "", suggested: local ? await accountName() : null });
+    }
     if (method === "GET" && path === "/api/profile/notes") {
       return json(res, 200, { notes: profileNotes.list() });
     }
@@ -22880,6 +22946,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         Object.assign(cfg, saveConfig({ agentDefaults: next }));
         wroteSomething = true;
       }
+      // The owner's name is not a free string field: it is cleaned the
+      // way every person's name is, and it can change but not go while
+      // anybody else sees it (setOwnerName).
+      if (isRecord(body.profile) && body.profile.name !== undefined) {
+        const named = setOwnerName(body.profile.name, "here");
+        if (!named.ok) return json(res, named.status, named.body);
+        wroteSomething = true;
+      }
       if (body.setupDone === true) {
         // saying setup is done when it already is, is still a success: the
         // first answer used to be "nothing to save", a 400 for doing it right
@@ -23291,9 +23365,15 @@ if (testParent > 0) {
 // none of the above: its engines kept running, and its lock on the data
 // folder stayed behind for the next start to trip on. A message reaches
 // it the same way everywhere. Only Electron gives a process this port.
-type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: unknown } }) => void): void };
+type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: unknown; name?: unknown } }) => void): void };
 (process as NodeJS.Process & { parentPort?: ParentPort }).parentPort?.on("message", (message) => {
   if (message?.data?.kind === "stop") shutDown();
+  // the person's name, as they chose it in another workspace: one person,
+  // called the same everywhere. Never an empty one, which only ever
+  // clears the workspace it was cleared in.
+  if (message?.data?.kind === "name" && typeof message.data.name === "string" && people.cleanName(message.data.name)) {
+    setOwnerName(message.data.name, "app");
+  }
   // the app's one licence, for putting this workspace online without a key
   const handed = licenceFrom(message);
   sharedLicence = handed ?? sharedLicence;
@@ -23316,3 +23396,6 @@ setTimeout(() => void ownerPlan.get(true).then(tellDesktopPlan).catch(() => {}),
   const own = credits.savedLicence();
   if (own) shareLicence(own);
 }
+// and so is a name it already knows, for a person who gave it here before
+// the app kept one for all of them
+if (ownerNamed()) tellDesktopName(hostName(), true);

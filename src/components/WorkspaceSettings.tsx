@@ -31,6 +31,7 @@ import { SettingRow, SettingsGroup, SettingsPageHeader } from "./SettingsLayout"
 import { CloudSection } from "./CloudSection";
 import { ConnectionError, HealthLine, type Health } from "./ConnectionKit";
 import { MembersPage } from "./MembersPage";
+import { ensureYourName } from "./YourNameDialog";
 import { WorkspaceMark } from "./WorkspaceMark";
 
 export const WORKSPACE_PAGES = [
@@ -145,7 +146,11 @@ function KindRows({ ws, all }: { ws: WorkspaceInfo; all: WorkspaceInfo[] }) {
             <Segmented<"solo" | "team">
               aria-label="Who uses it"
               value={ws.team ? "team" : "solo"}
-              onChange={(next) => void run(window.bloks?.workspaceUpdate?.(ws.id, { team: next === "team" }))}
+              onChange={async (next) => {
+                // people are invited from here on, and they see your name
+                if (next === "team" && !(await ensureYourName({ why: `Everyone you invite to ${ws.name} sees it.` }))) return;
+                void run(window.bloks?.workspaceUpdate?.(ws.id, { team: next === "team" }));
+              }}
               options={[
                 { value: "solo", label: "Just me" },
                 { value: "team", label: "Team" },

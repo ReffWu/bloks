@@ -36,6 +36,8 @@ import {
 } from "@/lib/memberMode";
 import { AgentFace, OnlyYou } from "./MemberParts";
 import { AgentView, RoomView } from "./MemberViews";
+import { distinctNames } from "@/lib/names";
+import { ownerOrNull } from "@/lib/yourName";
 import { AboutYouPage, MembersAdminPage, NewSoloAgentDialog, UsagePage, WorkspacePage } from "./MemberPages";
 
 const isElectron = navigator.userAgent.includes("Electron");
@@ -104,9 +106,17 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
   const member = mode.mode === "member";
   const me = workspace?.you.personId ?? "";
   const owner = workspace?.owner.name ?? (mode.mode === "guest" ? mode.host : "The owner");
+  // Everybody in the workspace a name could be mistaken among, the owner
+  // included: each conversation tells its people apart against them all
+  // (src/lib/names.ts), so somebody is called the same everywhere.
+  const known = useMemo(
+    () => [...(ownerOrNull(owner) ? [{ id: "owner", name: owner }] : []), ...(workspace?.members ?? [])],
+    [owner, workspace?.members],
+  );
+  const called = useMemo(() => distinctNames(known), [known]);
   const nameOf = useCallback(
-    (id: string) => (id === "owner" ? owner : id === me ? "You" : (workspace?.members.find((m) => m.id === id)?.name ?? "Someone")),
-    [owner, me, workspace],
+    (id: string) => (id === me ? "You" : (called.get(id) ?? (id === "owner" ? owner : "Someone"))),
+    [called, owner, me],
   );
 
   const refresh = useCallback(async () => {
@@ -146,6 +156,12 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
     const timer = setInterval(refreshUsage, 60_000);
     return () => clearInterval(timer);
   }, [refresh, refreshUsage, paused]);
+
+  // and its owner's name, when they change it (workspace.owner)
+  useEffect(() => {
+    const named = ownerOrNull(workspace?.owner.name);
+    if (member && named) void window.bloks?.workspaceHost?.(named)?.catch(() => {});
+  }, [member, workspace?.owner.name]);
 
   // the switcher's Member or Admin follows what the server says
   useEffect(() => {
@@ -319,9 +335,10 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
                 onDelete={() => void deleteAgent(openAgent)}
                 onSent={refreshUsage}
                 nameOf={nameOf}
+                known={known}
               />
             ) : place.kind === "room" ? (
-              <RoomView key={place.id} roomId={place.id} me={me} usage={usage} nameOf={nameOf} />
+              <RoomView key={place.id} roomId={place.id} me={me} usage={usage} nameOf={nameOf} known={known} />
             ) : place.kind === "page" && workspace ? (
               place.page === "usage" ? (
                 <UsagePage usage={usage} workspace={workspace} />

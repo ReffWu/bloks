@@ -47,6 +47,7 @@ import { AgentAccessDialog, LimitsDialog, PasswordDialog } from "./MemberDialogs
 import { RequestCard } from "./RequestCard";
 import { NeedsTeam, UpgradeLink } from "../TeamLock";
 import { AlertTriangle } from "@/components/icons";
+import { distinctNames } from "@/lib/names";
 
 const DEVICE_WORD = { iphone: "iPhone", mac: "Mac", browser: "Browser" } as const;
 /** How long a newcomer's row says "New". */
@@ -496,7 +497,9 @@ export function MembersPage({
 function accessWords(agent: AgentAccessRow, members: Member[]): string {
   const a = agent.access;
   if (!a || a.mode === "everyone") return "Everyone";
-  const names = a.people.map((id) => members.find((m) => m.id === id)?.name.split(" ")[0]).filter(Boolean) as string[];
+  // first names, told apart where two share one (src/lib/names.ts)
+  const called = distinctNames(members);
+  const names = a.people.map((id) => called.get(id)).filter(Boolean) as string[];
   const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
   if (a.mode === "only") return names.length ? `Only you and ${list}` : "Only you";
   return names.length ? `Everyone except ${list}` : "Everyone";

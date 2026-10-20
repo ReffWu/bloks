@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
 import { membersApi, whenWords, type Invite, type Workspace, type WorkspaceRole } from "@/lib/members";
+import { needsName } from "@/lib/yourName";
+import { askYourName } from "@/components/YourNameDialog";
 import { WorkspaceMark } from "@/components/WorkspaceMark";
 
 const ROLE_LINE: Record<WorkspaceRole, string> = {
@@ -102,9 +104,20 @@ export function InviteSheet({
     }
     if (making.current) return;
     making.current = true;
+    // An invite says who it is from, so the first one waits for the
+    // owner's name: asked right here, then made. Not now closes the sheet.
     membersApi
       .invite({ role: "member" })
+      .catch(async (e: Error) => {
+        if (!needsName(e)) throw e;
+        if (!(await askYourName({ why: `Everyone you invite to ${workspace.name} sees it.` }))) {
+          onOpenChange(false);
+          return null;
+        }
+        return membersApi.invite({ role: "member" });
+      })
       .then((made) => {
+        if (!made) return;
         setInvite(made.invite);
         setOnline(made.online);
         onChanged?.();

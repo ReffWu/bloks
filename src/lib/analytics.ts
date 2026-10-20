@@ -49,8 +49,8 @@ export function track(event: string, props?: Record<string, number | boolean | s
   posthog.capture(event, props);
 }
 
-// first-run setup state. Bloks never asks who you are, this only
-// records that the one-time engine/permission check has been seen.
+// first-run setup state. This only records that the one-time
+// engine/permission check has been seen, never anything it asked.
 const SETUP_KEY = "bloks-setup-done";
 export function setupDone(): boolean {
   return Boolean(localStorage.getItem(SETUP_KEY));

@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld("bloks", {
   workspaceSwitch: (id, options) => ipcRenderer.invoke("workspaces:switch", id, options),
   workspaceLeave: (id, options) => ipcRenderer.invoke("workspaces:leave", id, options),
   workspaceRole: (role) => ipcRenderer.invoke("workspaces:role", role),
+  workspaceHost: (name) => ipcRenderer.invoke("workspaces:host", name),
   workspaceCreate: (input) => ipcRenderer.invoke("workspaces:create", input),
   workspaceUpdate: (id, patch) => ipcRenderer.invoke("workspaces:update", id, patch),
   workspaceReroll: (id) => ipcRenderer.invoke("workspaces:reroll", id),

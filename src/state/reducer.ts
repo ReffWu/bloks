@@ -415,8 +415,9 @@ export interface ConfigStatus {
     openaiSource?: "env" | "codex";
     openaiAvailable?: "env" | "codex";
   };
-  /** Shared context for every agent, not a secret, so it round-trips. */
-  profile?: { about: string };
+  /** Shared context for every agent, not a secret, so it round-trips;
+   * `name` is what the owner is called, empty until they say. */
+  profile?: { about: string; name?: string };
   /** How lanes are kept inside the model's window. */
   /** `beforeTurn` is the size a native session is compacted at before a
    * turn, in tokens; 0 is never. */

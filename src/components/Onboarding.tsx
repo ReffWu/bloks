@@ -4,13 +4,16 @@
 //
 //   1. engines: will this actually work on your machine
 //   2. your agents: the work you do, and who that suggests
-//   3. approvals: how much they ask, shown rather than described
+//   3. your name: what they call you, already filled in, once
+//   4. approvals: how much they ask, shown rather than described
 //   then, only when there is something to say: your setup from other
 //   tools, your past conversations with them, and the Mac's own
 //   permissions
 //
 // It ends on the team just made, and lands in the app with the first of
-// them. Bloks never asks who you are. Everything is skippable: setup must
+// them. The name is the one thing asked about you, and it is optional:
+// it is asked again only when somebody else is about to see it
+// (src/components/YourNameDialog). Everything is skippable: setup must
 // never brick the app.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
@@ -39,6 +42,9 @@ import { EngineSetupActions } from "./EngineSetup";
 import { SetupPrivacyLine, SetupReviewList, useSetupReview } from "./BringYourSetup";
 import { PastSessionsImport, PastSessionsPrivacyLine, usePastSessionPlaces } from "./PastSessions";
 import { BeatHeading, BeatLabel, PreviewCard, Stepper, beat, settleEase } from "./Beats";
+import { Input } from "@/components/ui/input";
+import { firstName } from "@/lib/names";
+import { readYourName, saveYourName } from "@/lib/yourName";
 
 type InstanceRow = {
   instanceId: string;
@@ -54,12 +60,12 @@ type InstanceRow = {
 
 type Readiness = "checking" | "ready" | "signed-out" | "missing";
 
-type StepId = "engines" | "agents" | "approvals" | "setup" | "history" | "permissions";
+type StepId = "engines" | "agents" | "name" | "approvals" | "setup" | "history" | "permissions";
 
 /** The numbers these steps have always reported as, so a funnel read
  * across this redesign still lines up. Work types and suggestions were
  * two steps and are one now; they report as the first of them. */
-const STEP_NUMBER: Record<StepId, number> = { engines: 0, agents: 1, approvals: 2, permissions: 4, setup: 5, history: 6 };
+const STEP_NUMBER: Record<StepId, number> = { engines: 0, agents: 1, approvals: 2, permissions: 4, setup: 5, history: 6, name: 7 };
 
 const isElectron = navigator.userAgent.includes("Electron");
 
@@ -163,11 +169,31 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const places = usePastSessionPlaces();
   const offerHistory = Boolean(places?.claude || places?.codex);
   const [broughtHistory, setBroughtHistory] = useState(false);
+  /** Asked only when this workspace has no name for its person yet: a
+   * workspace made after one that had it was handed it by the app. Once
+   * offered it stays, like the setup step, so saving it does not pull
+   * the step from under the person. */
+  const [offerName, setOfferName] = useState(false);
+  const [name, setName] = useState("");
+  const [nameNote, setNameNote] = useState<string | null>(null);
+  const [savingName, setSavingName] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void readYourName().then(({ name: saved, suggested }) => {
+      if (!alive || saved) return;
+      setOfferName(true);
+      setName((typed) => typed || suggested || "");
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const steps = useMemo(() => {
     const list: Array<{ id: StepId; label: string }> = [
       { id: "engines", label: "Engines" },
       { id: "agents", label: "Your agents" },
+      ...(offerName ? [{ id: "name" as const, label: "Your name" }] : []),
       { id: "approvals", label: "Approvals" },
     ];
     // Last of the agent steps, so the agents just added can be chosen as
@@ -178,11 +204,29 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     // only the desktop app can ask the Mac for these
     if (isElectron) list.push({ id: "permissions", label: "Permissions" });
     return list;
-  }, [offerSetup, offerHistory]);
+  }, [offerSetup, offerHistory, offerName]);
   const at = stage === "team" ? steps.length : steps.findIndex((s) => s.id === stage);
   const next = () => setStage(steps[at + 1]?.id ?? "team");
   const back = () => {
     if (at > 0 && stage !== "team") setStage(steps[at - 1].id);
+  };
+
+  /** Kept when there is one; an empty field is a skip, not a refusal. */
+  const chooseName = async () => {
+    const clean = name.replace(/\s+/g, " ").trim();
+    setNameNote(null);
+    if (clean) {
+      setSavingName(true);
+      try {
+        setName(await saveYourName(clean));
+      } catch (e) {
+        setSavingName(false);
+        setNameNote(e instanceof Error ? e.message : String(e));
+        return;
+      }
+      setSavingName(false);
+    }
+    next();
   };
 
   /** Where every agent starts, the ones just added included. */
@@ -473,6 +517,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <motion.div key="agents" {...beat}>
               <AgentsBeat work={work} setWork={setWork} hired={hired} hiring={hiring} onHire={hire} />
             </motion.div>
+          ) : stage === "name" ? (
+            <motion.div key="name" {...beat}>
+              <NameBeat name={name} onChange={(value) => {
+                setNameNote(null);
+                setName(value);
+              }} onSubmit={() => void chooseName()} agent={sampleAgent} />
+            </motion.div>
           ) : stage === "approvals" ? (
             <motion.div key="approvals" {...beat}>
               <ApprovalsBeat
@@ -590,6 +641,21 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   </span>
                 </span>
                 <Button size="lg" onClick={next} disabled={hiring.length > 0}>
+                  Continue
+                  <ArrowRight size={15} />
+                </Button>
+              </>
+            )}
+            {stage === "name" && (
+              <>
+                <span className={cn("mr-auto min-w-0 truncate text-body", nameNote ? "text-destructive" : "text-muted-foreground max-sm:invisible")}>
+                  {nameNote ?? "Optional. Change it any time in Settings."}
+                </span>
+                <Button variant="ghost" size="lg" onClick={next} disabled={savingName}>
+                  Skip this
+                </Button>
+                <Button size="lg" disabled={savingName} onClick={() => void chooseName()}>
+                  {savingName && <Loader2 size={15} className="animate-spin" />}
                   Continue
                   <ArrowRight size={15} />
                 </Button>
@@ -1024,7 +1090,86 @@ function AgentsBeat({
 }
 
 // ---------------------------------------------------------------------------
-// Beat three: approvals. Asked once, up front, because the default decides
+// Your name: what your agents call you. Filled in already with the name
+// this computer's account carries, so for most people it is one press of
+// Continue; a wrong guess is selected, so typing replaces it. Shown as
+// the first agent will say it, which is what the name is for.
+
+function NameBeat({
+  name,
+  onChange,
+  onSubmit,
+  agent,
+}: {
+  name: string;
+  onChange: (name: string) => void;
+  onSubmit: () => void;
+  agent: { name: string; color: BlokColor; shape?: BlokShape };
+}) {
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      field.current?.focus();
+      field.current?.select();
+    }, 120);
+    return () => clearTimeout(timer);
+  }, []);
+  const first = firstName(name.replace(/\s+/g, " ").trim());
+  return (
+    <div className="mx-auto grid w-full max-w-[1080px] grid-cols-1 gap-8 px-5 pb-12 pt-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-14 lg:pt-10">
+      <div className="min-w-0">
+        <BeatHeading
+          title="What should your agents call you?"
+          says="They use it when they talk to you. Anyone you invite later sees it too."
+        />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit();
+          }}
+        >
+          <label className="flex max-w-[420px] flex-col gap-2">
+            <span className="text-small font-medium text-muted-foreground">Your name</span>
+            <Input
+              ref={field}
+              value={name}
+              maxLength={40}
+              autoComplete="name"
+              placeholder="Your name"
+              onChange={(e) => onChange(e.target.value)}
+              className="h-11 rounded-[12px] text-lead"
+            />
+          </label>
+        </form>
+      </div>
+      <aside aria-label="How it will read">
+        <div className="lg:sticky lg:top-6">
+          <div className="overflow-hidden rounded-3xl border bg-card shadow-[0_12px_40px_-16px_var(--shadow-color)]">
+            <div className="px-5 pb-5 pt-5">
+              <div className="text-small font-medium text-muted-foreground">How it will read</div>
+              <div className="mt-3 flex items-end gap-2">
+                <BlokAvatar color={agent.color} shape={agent.shape ?? "star"} expression="friendly" size={22} />
+                <div className="min-w-0 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-body leading-relaxed text-foreground">
+                  {first ? (
+                    <>
+                      Good to meet you, <span className="font-semibold">{first}</span>. Tell me what you're working on.
+                    </>
+                  ) : (
+                    "Good to meet you. Tell me what you're working on."
+                  )}
+                </div>
+              </div>
+              <div className="mt-1 pl-[30px] text-caption text-muted-foreground">{agent.name}</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Beat four: approvals. Asked once, up front, because the default decides
 // how the first hour feels: a card for everything, or agents that get on
 // with it. Every agent starts on the choice, so it is shown landing on a
 // small task rather than described in the abstract.

@@ -17,6 +17,7 @@ import {
   cleanName,
   configuredPort,
   isMuted,
+  keepOwnerName,
   mergeDrains,
   muteFor,
   muteState,
@@ -250,6 +251,52 @@ test("the window is told what it draws, and live state where the main process ha
   assert.equal(shown.workspaces[1].waiting, 2);
   assert.deepEqual(shown.workspaces[1].mute, { muted: true, until: NOW + 60_000 });
   assert.equal(shown.workspaces[1].notify, "needs-me");
+});
+
+test("the person's name is kept once for every workspace of theirs; a stale one never undoes a newer", () => {
+  let reg = fresh();
+  assert.equal(reg.prefs.ownerName, null);
+  assert.equal(snapshot(reg).ownerName, null);
+  // a workspace that already had a name, starting: taken while there is none
+  let kept = keepOwnerName(reg, " Hamed  Rahimi ", { seed: true });
+  assert.equal(kept.changed, true);
+  reg = kept.registry;
+  assert.equal(reg.prefs.ownerName, "Hamed Rahimi");
+  // another starting with an older one changes nothing
+  kept = keepOwnerName(reg, "Hamed", { seed: true });
+  assert.equal(kept.changed, false);
+  // chosen in one workspace: the new one, everywhere
+  reg = keepOwnerName(reg, "Hamed R.").registry;
+  assert.equal(snapshot(reg).ownerName, "Hamed R.");
+  assert.equal(keepOwnerName(reg, "Hamed R.").changed, false);
+  // nothing that could restyle the line it is printed on
+  assert.equal(keepOwnerName(reg, "Ana\u202e Lima").registry.prefs.ownerName, "Ana Lima");
+  // cleared on purpose is cleared, and a seed of nothing is nothing
+  reg = keepOwnerName(reg, "").registry;
+  assert.equal(reg.prefs.ownerName, null);
+  assert.equal(keepOwnerName(reg, "", { seed: true }).changed, false);
+  // and it survives the list being read back
+  const saved = keepOwnerName(reg, "Hamed").registry;
+  assert.equal(parseRegistry(JSON.stringify(saved)).prefs.ownerName, "Hamed");
+});
+
+test("a joined workspace follows its owner's name; an owned one has no owner but you", () => {
+  const reg = parseRegistry(
+    JSON.stringify({
+      current: "personal",
+      workspaces: [
+        { id: "personal", kind: "personal", name: "Personal", dataDir: HOME_DATA },
+        { id: "ws_j", kind: "joined", name: "Rahimi Enterprises", host: { name: "Hamed", relayUrl: "https://relay.test" } },
+      ],
+    }),
+  );
+  const renamed = updateWorkspace(reg, "ws_j", { hostName: "Hamed R." });
+  assert.equal(renamed.workspaces[1].host?.name, "Hamed R.");
+  assert.equal(renamed.workspaces[1].host?.relayUrl, "https://relay.test", "only the name moves");
+  assert.equal(snapshot(renamed).workspaces[1].host, "Hamed R.");
+  // nothing is no name, and Personal has no host to rename
+  assert.equal(updateWorkspace(reg, "ws_j", { hostName: "  " }).workspaces[1].host?.name, "Hamed");
+  assert.equal(updateWorkspace(reg, "personal", { hostName: "Somebody" }).workspaces[0].host, undefined);
 });
 
 test("a workspace's own config.json may choose its port", () => {

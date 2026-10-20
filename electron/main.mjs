@@ -67,6 +67,7 @@ import {
   allowsNotice,
   badgeTotal,
   configuredPort,
+  keepOwnerName,
   mergeDrains,
   muteFor,
   nextMuteEnd,
@@ -466,6 +467,7 @@ function runFor(id) {
     start: async () => ((await startServer(run, { prefer: run.port, rounds: 1 })) ? run.child : null),
     onBack: () => {
       handLicence(run);
+      handName(run);
       setStatus(run, "running");
       pointWindows(run.id);
     },
@@ -507,6 +509,7 @@ function launch(id) {
   run.ready = (ws?.kind === "joined" ? openJoined(run, ws) : startServer(run)).then((up) => {
     if (up && run.child && ws?.kind !== "joined") run.keeper.watch(run.child);
     if (up) handLicence(run);
+    if (up) handName(run);
     setStatus(run, up ? "running" : "failed");
     return up;
   });
@@ -568,6 +571,37 @@ function keepLicence(key) {
     console.error("[licence] could not keep it:", error?.message ?? error);
   }
   for (const run of servers.values()) handLicence(run);
+}
+
+// ── the person's name ──────────────────────────────────────────────────
+// One person owns every workspace here but a joined one, so they are
+// called the same in all of them, the way the theme follows them. Each
+// server keeps the name in its own config (it works without the app);
+// the app keeps the one the person chose last and hands it to each of
+// its servers as it starts, and to all of them when it changes.
+
+/** Hands the person's name to one workspace's server, when there is one. */
+function handName(run) {
+  const name = registry?.prefs.ownerName;
+  if (!name || !run?.child) return;
+  const ws = entryOf(run.id);
+  if (!ws || ws.kind === "joined") return;
+  try {
+    run.child.postMessage({ kind: "name", name });
+  } catch {
+    /* a server on its way out hears it again when it is back */
+  }
+}
+
+/** A name a workspace's server said: kept, and handed to the rest. */
+function keepName(name, { seed = false } = {}) {
+  if (!registry || typeof name !== "string") return;
+  const kept = keepOwnerName(registry, name, { seed });
+  if (!kept.changed) return;
+  registry = kept.registry;
+  saveRegistry();
+  tellWorkspaces();
+  for (const run of servers.values()) handName(run);
 }
 
 /** Stops one workspace's server for good (it is being deleted). */
@@ -920,6 +954,17 @@ handle("workspaces:leave", (_event, id, options) =>
   }),
 );
 
+/** What the owner of the joined workspace a window shows is called now,
+ * as its server says, for the switcher and every line that names them. */
+handle("workspaces:host", (event, name) => {
+  const id = senderWorkspace(event);
+  const ws = id ? entryOf(id) : null;
+  if (!ws || ws.kind !== "joined" || typeof name !== "string" || !name.trim() || ws.host?.name === name.trim()) return;
+  registry = updateWorkspace(registry, id, { hostName: name });
+  saveRegistry();
+  tellWorkspaces();
+});
+
 /** What you are in the joined workspace a window shows, as its server
  * says, for the switcher's Member or Admin. */
 handle("workspaces:role", (event, role) => {
@@ -934,6 +979,13 @@ handle("workspaces:role", (event, role) => {
 handle("workspaces:create", (_event, input) =>
   answer(async () => {
     needsList();
+    // A Team workspace is one other people see you in, so it starts with
+    // your name: the one the window just asked for, or the one kept. Its
+    // server is handed it as it starts, before anybody can be invited.
+    if (typeof input?.ownerName === "string") keepName(input.ownerName);
+    if (input?.team === true && !registry.prefs.ownerName) {
+      return { ok: false, code: "name_required", error: "Say what people should call you first." };
+    }
     const made = addWorkspace(
       registry,
       { kind: input?.kind, name: input?.name, team: input?.team === true, mark: input?.mark ?? null },
@@ -1770,6 +1822,7 @@ function heardFromServer(id, child, said) {
   if (!run || (run.child && run.child !== child)) return;
   if (said?.kind === "desktop.licence") return keepLicence(said.key);
   if (said?.kind === "desktop.plan") return notePlan(said.plan);
+  if (said?.kind === "desktop.name") return keepName(said.name, { seed: said.seed === true });
   if (said?.kind === "desktop.unread" && Number.isInteger(said.count)) {
     waitingCounts.set(id, Math.max(0, said.count));
     applyBadge();

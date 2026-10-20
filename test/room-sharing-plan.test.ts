@@ -46,6 +46,8 @@ async function inviteWith(plan: Record<string, unknown>) {
   const h = await startHarness({ BLOKS_RELAY_URL: relay.url });
   try {
     assert.equal((await h.fetch("/api/relay/activate", { method: "POST", body: JSON.stringify({ key: KEY }) })).status, 200);
+    // whoever opens the link is told whose room it is (test/owner-name.test.ts)
+    await h.fetch("/api/config", { method: "PUT", body: JSON.stringify({ profile: { name: "Hamed" } }) });
     const said = await h.json("/api/relay/plan");
     const { bot: a } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Ada" }) });
     const { bot: b } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Ben" }) });

@@ -51,6 +51,13 @@ export function cleanName(name) {
     .trim();
 }
 
+/** A person's name as the app keeps it: as a workspace's is, and without
+ * the direction overrides that could restyle the line it is printed on,
+ * which is the rule every server keeps for names too (server/people.ts). */
+export function cleanPersonName(name) {
+  return cleanName(String(name ?? "").replace(/[\u202a-\u202e\u2066-\u2069]/g, ""));
+}
+
 const kindName = (kind) => (kind === "personal" ? "Personal" : kind === "business" ? "Business" : "");
 
 /** A new id: short, lowercase, safe as a folder name. */
@@ -144,9 +151,29 @@ export function parseRegistry(text) {
       // accent it keeps while on
       sameAccent: raw?.prefs?.sameAccent === true,
       accent: typeof accent === "string" && ACCENT_ID.test(accent) ? accent : null,
+      // what the person is called in every workspace of their own
+      ownerName: cleanPersonName(raw?.prefs?.ownerName) || null,
     },
     workspaces: sorted(workspaces),
   };
+}
+
+/**
+ * The person's name, kept once for every workspace they own, the way the
+ * theme is: one person, called the same everywhere. A workspace they
+ * joined has an owner of its own, whose name it keeps in `host`.
+ *
+ * A seed is a name a workspace already had when its server started. It
+ * is taken only while the app has none, so a workspace that was given a
+ * name long ago never undoes a newer choice made in another. An empty
+ * name that is not a seed is the person clearing theirs.
+ */
+export function keepOwnerName(registry, name, { seed = false } = {}) {
+  const clean = cleanPersonName(name) || null;
+  const was = registry.prefs.ownerName ?? null;
+  if (seed && (was || !clean)) return { registry, changed: false };
+  if (clean === was) return { registry, changed: false };
+  return { registry: { ...registry, prefs: { ...registry.prefs, ownerName: clean } }, changed: true };
 }
 
 const ACCENT_ID = /^[A-Za-z]{1,20}$/;
@@ -315,6 +342,10 @@ export function updateWorkspace(registry, id, patch, { random = Math.random } = 
   if (patch.accent !== undefined) next.accent = patch.accent;
   if (patch.members !== undefined) next.members = Number.isInteger(patch.members) && patch.members >= 0 ? patch.members : null;
   if (patch.role !== undefined && was.kind === "joined") next.role = patch.role === "admin" ? "admin" : "member";
+  // a joined workspace's owner renamed themselves, as its server says
+  if (patch.hostName !== undefined && was.kind === "joined" && cleanPersonName(patch.hostName)) {
+    next.host = { relayUrl: "", ...was.host, name: cleanPersonName(patch.hostName) };
+  }
 
   const workspaces = [...registry.workspaces];
   workspaces[at] = next;
@@ -477,6 +508,9 @@ export function snapshot(registry, live = {}, now = Date.now()) {
   return {
     available: true,
     current: registry.current,
+    // what the person is called in their own workspaces, for a window
+    // that has to ask before a Team workspace is made
+    ownerName: registry.prefs.ownerName ?? null,
     workspaces: registry.workspaces.map((w) => {
       const here = live[w.id] ?? {};
       return {

@@ -71,6 +71,7 @@ before(async () => {
   };
   members = membersMod.createMembers({
     hostName: () => "Hamed",
+    ownerNamed: () => true,
     relay: relay as any,
     relayReady: () => relayOn,
     relayUrl: () => (relayOn ? "https://relay.test" : null),

@@ -7,8 +7,10 @@
 // the two things that must happen whether or not the page is open: a
 // notification when somebody asks to join, and the waiting count the
 // switcher shows.
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { api } from "@/state/store";
+import { namer } from "./names";
+import { ownerOrNull } from "./yourName";
 import { openWorkspaceDialog } from "@/lib/workspaces";
 
 export type WorkspaceRole = "admin" | "member";
@@ -392,6 +394,11 @@ function loadNames() {
     .catch(() => {});
 }
 listeners.add((frame) => {
+  // the owner renamed themselves (server/index.ts setOwnerName)
+  if (frame.kind === "workspace.owner" && typeof frame.name === "string") {
+    roster = { ...roster, owner: frame.name };
+    nameListeners.forEach((l) => l());
+  }
   if (frame.kind === "workspace.people" && Array.isArray(frame.members)) {
     const list = frame.members as Array<{ id: string; name: string; role?: WorkspaceRole }>;
     names = Object.fromEntries(list.map((m) => [m.id, m.name]));
@@ -436,5 +443,20 @@ export function useWorkspaceRoster(): typeof roster {
     },
     () => roster,
     () => roster,
+  );
+}
+
+/**
+ * Everybody's name as a conversation shows it, told apart
+ * (src/lib/names.ts): the owner and the workspace's people, plus `also`,
+ * a room's own guests. Anybody else is the fallback ("A former member").
+ */
+export function useNamer(also: ReadonlyArray<{ id: string; name: string }> = []): (id: string, fallback?: string) => string {
+  const r = useWorkspaceRoster();
+  const owner = ownerOrNull(r.owner);
+  return useMemo(
+    () => namer([...(owner ? [{ id: "owner", name: owner }] : []), ...r.members, ...also]),
+    // the room's list arrives as a new array on every render
+    [owner, r.members, also.map((p) => `${p.id}:${p.name}`).join("\n")], // eslint-disable-line react-hooks/exhaustive-deps
   );
 }

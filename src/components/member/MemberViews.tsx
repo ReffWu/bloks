@@ -23,6 +23,8 @@ import {
   usageNotice,
 } from "@/lib/memberMode";
 import { seedReads } from "@/lib/readReceipts";
+import { distinctNames } from "@/lib/names";
+import { ownerOrNull } from "@/lib/yourName";
 import { AgentFace, MemberComposer, OnlyYou, PersonFace, Transcript } from "./MemberParts";
 
 /** A list of messages with one more folded in: added, or put in place of
@@ -74,9 +76,13 @@ export function AgentView({
   onDelete,
   onSent,
   nameOf,
+  known,
 }: {
   /** Anybody's name in the workspace, for "Seen by". */
   nameOf?: (id: string) => string;
+  /** Everybody in the workspace, for telling this conversation's people
+   * apart from anybody who shares a first name (src/lib/names.ts). */
+  known?: ReadonlyArray<{ id: string; name: string }>;
   agent: MemberAgent;
   lane: "team" | "private";
   me: string;
@@ -112,7 +118,7 @@ export function AgentView({
     ...(agent.private && !agent.solo ? [{ value: "private" as const, label: "Private" }] : []),
   ];
   const team = lane === "team" && !agent.solo;
-  const people = data?.people ?? {};
+  const told = useTold(data?.people, owner, known);
   const header =
     !team && data?.privacy ? (
       <p className="mx-auto max-w-[520px] text-balance text-center text-small text-muted-foreground">{data.privacy}</p>
@@ -159,8 +165,8 @@ export function AgentView({
         <Transcript
           messages={data.messages}
           me={me}
-          people={people}
-          owner={owner}
+          people={told.people}
+          owner={told.owner}
           shared={team}
           agentName={() => agent.name}
           threadId={data.threadId}
@@ -210,7 +216,19 @@ export function AgentView({
   );
 }
 
-export function RoomView({ roomId, me, usage, nameOf }: { roomId: string; me: string; usage: MemberUsage | null; nameOf?: (id: string) => string }) {
+export function RoomView({
+  roomId,
+  me,
+  usage,
+  nameOf,
+  known,
+}: {
+  roomId: string;
+  me: string;
+  usage: MemberUsage | null;
+  nameOf?: (id: string) => string;
+  known?: ReadonlyArray<{ id: string; name: string }>;
+}) {
   const [data, setData] = useState<MemberRoom | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
@@ -237,6 +255,7 @@ export function RoomView({ roomId, me, usage, nameOf }: { roomId: string; me: st
     ),
   );
   const people = useMemo(() => Object.fromEntries((data?.room.people ?? []).map((p) => [p.id, p.name])), [data]);
+  const told = useTold(people, data?.room.owner.name ?? "", known);
   const agentName = (id: string | undefined) => data?.room.agents.find((a) => a.id === id)?.name ?? "An agent";
   const busy = Boolean(data?.room.agents.some((a) => a.busy));
   const viewer = data?.room.role === "viewer";
@@ -263,8 +282,8 @@ export function RoomView({ roomId, me, usage, nameOf }: { roomId: string; me: st
         <Transcript
           messages={data.messages}
           me={me}
-          people={people}
-          owner={data.room.owner.name}
+          people={told.people}
+          owner={told.owner}
           shared
           agentName={agentName}
           threadId={roomId}
@@ -272,7 +291,7 @@ export function RoomView({ roomId, me, usage, nameOf }: { roomId: string; me: st
             const a = data.room.agents.find((x) => x.id === id);
             return a ? <AgentFace agent={a} size={28} /> : null;
           }}
-          nameOf={(id) => people[id] ?? nameOf?.(id) ?? "Someone"}
+          nameOf={(id) => told.people[id] ?? nameOf?.(id) ?? "Someone"}
           onRead={memberApi.read}
           streaming=""
           busy={busy}
@@ -302,4 +321,21 @@ export function RoomView({ roomId, me, usage, nameOf }: { roomId: string; me: st
       />
     </main>
   );
+}
+
+/**
+ * A conversation's people and its owner as it calls them: first names,
+ * told apart from everybody in the workspace who shares one
+ * (src/lib/names.ts), the room's own guests included.
+ */
+function useTold(people: Record<string, string> | undefined, owner: string, known: ReadonlyArray<{ id: string; name: string }> = []) {
+  return useMemo(() => {
+    const here = Object.entries(people ?? {}).map(([id, name]) => ({ id, name }));
+    const named = ownerOrNull(owner);
+    const called = distinctNames([...(named ? [{ id: "owner", name: named }] : []), ...known, ...here]);
+    return {
+      people: Object.fromEntries(here.map((p) => [p.id, called.get(p.id) ?? p.name])),
+      owner: called.get("owner") ?? owner,
+    };
+  }, [people, owner, known]);
 }
