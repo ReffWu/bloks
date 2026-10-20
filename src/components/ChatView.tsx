@@ -1,5 +1,5 @@
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { Search } from "@/components/icons";
 import { ChevronUp } from "@/components/icons";
 import { ChevronDown } from "@/components/icons";
@@ -437,6 +437,24 @@ export function ChatView({ bot }: { bot: Bot }) {
   // the words are there to read, change or finish, and the box has the
   // keyboard with the caret at their end.
   const mainRef = useRef<HTMLElement>(null);
+  // How wide the header's buttons are, so the name in the middle can keep
+  // the same room on both sides at any width. The buttons come and go
+  // (calls, meeting notes), so it is measured rather than guessed.
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const [actionsWidth, setActionsWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = actionsRef.current;
+    if (!el) return;
+    const measure = () => setActionsWidth(el.offsetWidth);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  // The room each side keeps: the buttons plus the header's own padding and
+  // a little air, and never less than the menu button a narrow window puts
+  // on the left.
+  const headerSide = Math.max(actionsWidth + 24, 72);
   const focusBox = () =>
     requestAnimationFrame(() => {
       // the composer's field is the one drawn over its skill marks
@@ -629,13 +647,15 @@ export function ChatView({ bot }: { bot: Bot }) {
 
   return (
     <main ref={mainRef} className="@container/chat relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      {/* Header. Who you are talking to sits in the middle once there is
-          room for it to sit clear of the buttons; narrower, it moves to
-          the left, where a name has the most room. */}
+      {/* Header. Who you are talking to sits in the middle at every width,
+          with the same room kept on both sides, so a narrow window does not
+          push the name against the menu button and leave the right empty.
+          A long name truncates before it reaches either side. */}
       <div className="titlebar-drag relative flex h-[52px] shrink-0 items-center justify-between gap-2 px-3 max-md:pl-16 md:px-4">
         <button
           onClick={() => dispatch({ type: "toggleSettings" })}
-          className="flex min-w-0 items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors duration-150 hover:bg-accent @[760px]/chat:absolute @[760px]/chat:left-1/2 @[760px]/chat:max-w-[40%] @[760px]/chat:-translate-x-1/2"
+          className="absolute left-1/2 flex min-w-0 -translate-x-1/2 items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors duration-150 hover:bg-accent"
+          style={{ maxWidth: `calc(100% - ${headerSide * 2}px)` }}
           title="Agent settings"
         >
           <AgentAvatar bot={bot} size={28} />
@@ -648,7 +668,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             )}
           </span>
         </button>
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <div ref={actionsRef} className="ml-auto flex shrink-0 items-center gap-1.5">
           {/* the model is picked where you type, in the composer's footer */}
           <CallButton bot={bot} />
           {/* meeting notes listen through the Mac's own microphone, so a
