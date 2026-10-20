@@ -221,7 +221,7 @@ test("the checkout page sits beside the service, on the same site", () => {
 });
 
 test("the Bloks engine has one model, Bloks AI, whatever the service lists, and answers through it", async (t) => {
-  const service = await withService(t, { models: ["bloks-auto", UPSTREAM_MODEL, "gpt-6-luna"] });
+  const service = await withService(t, { models: ["bloks-auto", UPSTREAM_MODEL, "upstream-model-c"] });
   const account = new CreditsAccount({ store: memoryStore({ licence: LICENCE }), envToken: () => null });
   const { instance, turn } = await engine(service, account);
   const snapshot = await instance.snapshot();

@@ -102,7 +102,7 @@ test("a Claude Code frame on Bloks AI names no model and no price", () => {
     total_cost_usd: 0.42,
     modelUsage: {
       "claude-opus-5.5": { inputTokens: 10, costUSD: 0.4, contextWindow: 200000 },
-      "claude-haiku-5": { inputTokens: 2, costUSD: 0.02, contextWindow: 100000 },
+      "upstream-model-b": { inputTokens: 2, costUSD: 0.02, contextWindow: 100000 },
     },
     message: { model: "claude-opus-5.5", content: [{ type: "text", text: "hi" }] },
   });
