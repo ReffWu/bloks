@@ -33,7 +33,7 @@ export function RemoteSection() {
   };
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <div className="text-ui font-semibold text-foreground">Where your Bloks runs</div>
       {status.mode === "remote" ? (
         <>
@@ -65,7 +65,7 @@ export function RemoteSection() {
               placeholder="https://bloks.dev/pair#..."
               className="h-8 font-mono text-body"
             />
-            <Button size="sm" disabled={busy || !link.trim()} onClick={() => void connect()}>
+            <Button variant="brand" size="sm" disabled={busy || !link.trim()} onClick={() => void connect()}>
               {busy ? "Pairing" : "Use that Bloks"}
             </Button>
           </div>

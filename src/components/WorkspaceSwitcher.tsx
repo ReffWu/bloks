@@ -12,7 +12,7 @@
 // and this component is drawn again by the workspace it now shows.
 import { useEffect, useRef, useState } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { BellOff, Check, ChevronsUpDown, Loader2, LogIn, Plus, RefreshCw, Settings, Wifi, LogOut } from "@/components/icons";
+import { BellOff, Check, ChevronsUpDown, Loader2, LogIn, Plus, RefreshCw, Settings, Sparkles, Wifi, LogOut } from "@/components/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -247,6 +247,18 @@ export function WorkspaceSwitcher({
           <Settings />
           Workspace settings
         </DropdownMenuItem>
+        {/* the plan is the person's, for every workspace here; only the
+            owner's window has the page, so a joined one does not offer it */}
+        {store && !onSettings && (
+          <DropdownMenuItem
+            className="gap-2.5 rounded-[9px] py-2 text-ui font-medium"
+            onSelect={() => store.dispatch({ type: "toggleAppSettings", open: true, page: "plan" })}
+          >
+            <Sparkles />
+            Plan
+            <span className="ml-auto pl-3 text-small font-normal text-muted-foreground">{s.plan === "team" ? "Bloks Team" : s.plan === "cloud" ? "Bloks Cloud" : s.plan === null ? "Free" : ""}</span>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSub>
           <DropdownMenuSubTrigger
             icon={<BellOff />}

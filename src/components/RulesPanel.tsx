@@ -115,7 +115,7 @@ export function RulesPanel() {
 
   return (
     <>
-      <div className="mt-4 rounded-2xl border bg-card p-4">
+      <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="text-ui font-semibold text-foreground">Your rules</div>
@@ -311,7 +311,7 @@ function RuleForm({
       {error && <div className="mt-2 text-small text-destructive">{error}</div>}
 
       <div className="mt-3 flex items-center gap-2">
-        <Button size="sm" disabled={busy || !value.trim()} onClick={save}>
+        <Button variant="brand" size="sm" disabled={busy || !value.trim()} onClick={save}>
           Add rule
         </Button>
         <Button variant="ghost" size="sm" onClick={onCancel}>
@@ -346,7 +346,7 @@ function Suggested() {
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {s.forAgent && (
-                <Button size="sm" onClick={() => takeSuggestion(accept, s, "agent")}>
+                <Button variant="brand" size="sm" onClick={() => takeSuggestion(accept, s, "agent")}>
                   Allow for {s.forAgent.name}
                 </Button>
               )}

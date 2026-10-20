@@ -90,7 +90,7 @@ export function DevicesSection() {
 function ThisBrowser() {
   const [leaving, setLeaving] = useState(false);
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <ConnectionHeader
         icon={<Globe size={14} className="shrink-0 text-muted-foreground" />}
         title="This browser"
@@ -344,7 +344,7 @@ function PairingControls() {
           ) : (
             <>
               <StepNote>Bloks starts listening on your local network. Only devices you pair get in.</StepNote>
-              <Button size="sm" className="mt-2" onClick={() => setEnabled(true)}>
+              <Button variant="brand" size="sm" className="mt-2" onClick={() => setEnabled(true)}>
                 Turn on
               </Button>
             </>
@@ -378,7 +378,7 @@ function PairingControls() {
     : [];
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <ConnectionHeader
         icon={<Smartphone size={14} className="shrink-0 text-muted-foreground" />}
         title="Phones and devices"

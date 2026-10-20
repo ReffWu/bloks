@@ -125,7 +125,7 @@ export function EnginePauses() {
   };
 
   return (
-    <div className="mt-4 overflow-hidden rounded-2xl border bg-card">
+    <div className="mb-9 overflow-hidden rounded-2xl border bg-card last:mb-0">
       <div className="px-4 pb-3 pt-4">
         <div className="flex items-center justify-between gap-2">
           <div>

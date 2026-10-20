@@ -3,6 +3,7 @@
 // its files stay and it wakes before the next turn that needs it.
 import { useEffect, useState } from "react";
 import { api } from "@/state/store";
+import { SettingRow, SettingsSelect } from "./SettingsLayout";
 
 const CHOICES: Array<[number, string]> = [
   [10, "10 minutes"],
@@ -21,23 +22,27 @@ export function BoxSleep() {
   }, []);
   if (minutes === null) return null;
   return (
-    <label className="flex items-center justify-between gap-3 text-body text-muted-foreground">
-      <span>Sleep idle cloud computers after</span>
-      <select
-        value={minutes}
-        onChange={(e) => {
-          const next = Number(e.target.value);
-          setMinutes(next);
-          void api("/api/box/settings", { method: "PATCH", body: JSON.stringify({ sleepAfter: next }) }).catch(() => {});
-        }}
-        className="rounded-md border bg-background px-2 py-1 text-body text-foreground"
-      >
-        {CHOICES.map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <SettingRow
+      label="Sleep idle cloud computers after"
+      description="It bills while awake."
+      control={
+        <SettingsSelect
+          aria-label="Sleep idle cloud computers after"
+          value={minutes}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            setMinutes(next);
+            void api("/api/box/settings", { method: "PATCH", body: JSON.stringify({ sleepAfter: next }) }).catch(() => {});
+          }}
+          className="w-[150px]"
+        >
+          {CHOICES.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </SettingsSelect>
+      }
+    />
   );
 }

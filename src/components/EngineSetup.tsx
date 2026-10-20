@@ -1,10 +1,11 @@
 // Install and sign in, as buttons.
 //
 // Used where an engine is missing or signed out: the first-run check and
-// Settings, Engines. The server does the work (server/engine-setup.ts) and
-// only for a window on this computer; anywhere else, and whenever a button
-// cannot finish the job, the command is still here to copy, so there is
-// always a next step and never a dead end.
+// Settings, Engines and keys. The server does the work
+// (server/engine-setup.ts) and only for a window on this computer;
+// anywhere else, and whenever a button cannot finish the job, the command
+// is still here to copy, so there is always a next step and never a dead
+// end.
 import { useEffect, useRef, useState } from "react";
 import { Check } from "@/components/icons";
 import { ChevronRight } from "@/components/icons";

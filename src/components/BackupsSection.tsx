@@ -424,7 +424,7 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
           )
         }
         control={
-          <Button size="sm" disabled={busy || working || Boolean(problem)} onClick={start} className="min-w-[112px]">
+          <Button variant="brand" size="sm" disabled={busy || working || Boolean(problem)} onClick={start} className="min-w-[112px]">
             {working ? <Loader2 size={13} className="animate-spin" /> : null}
             {working ? "Backing up" : "Back up now"}
           </Button>
@@ -531,7 +531,7 @@ function BackupRow({
             onChange={(e) => setPassphrase(e.target.value)}
           />
           <div className="flex gap-1.5">
-            <Button type="submit" size="sm" className="h-9" disabled={!passphrase || checking}>
+            <Button variant="brand" type="submit" size="sm" className="h-9" disabled={!passphrase || checking}>
               Verify
             </Button>
             <Button size="sm" variant="ghost" className="h-9" onClick={() => setAsking(false)}>

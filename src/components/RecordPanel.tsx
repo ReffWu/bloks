@@ -93,7 +93,7 @@ export function RecordPanel() {
 
   return (
     <>
-      <div className="mt-4 rounded-2xl border bg-card p-4">
+      <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="text-ui font-semibold text-foreground">The record</div>
@@ -148,7 +148,7 @@ export function RecordPanel() {
         </div>
       </div>
 
-      <div className="mt-4 rounded-2xl border bg-card p-1.5">
+      <div className="mb-9 rounded-2xl border bg-card p-1.5 last:mb-0">
         {error && (
           <div className="m-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">
             {error}

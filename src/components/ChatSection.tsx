@@ -198,7 +198,7 @@ function PlatformCard({
     body: saved ? (
       <StepNote>Tokens saved. Waiting for {name} to answer.</StepNote>
     ) : (
-      <Button size="sm" disabled={busy || !ready} onClick={connect}>
+      <Button variant="brand" size="sm" disabled={busy || !ready} onClick={connect}>
         {busy ? <Loader2 size={13} className="animate-spin" /> : null}
         {busy ? "Checking with " + name : `Connect ${name}`}
       </Button>
@@ -307,7 +307,7 @@ function PlatformCard({
         ];
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <ConnectionHeader
         icon={<MessagesSquare size={14} className="shrink-0 text-muted-foreground" />}
         title={name}
@@ -470,7 +470,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
       title: "Connect WhatsApp",
       state: busy ? "wait" : ready ? "now" : "later",
       body: (
-        <Button size="sm" disabled={busy || !ready} onClick={connect}>
+        <Button variant="brand" size="sm" disabled={busy || !ready} onClick={connect}>
           {busy ? <Loader2 size={13} className="animate-spin" /> : null}
           {busy ? "Checking with Meta" : "Connect WhatsApp"}
         </Button>
@@ -484,7 +484,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
   ];
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <ConnectionHeader
         icon={<MessagesSquare size={14} className="shrink-0 text-muted-foreground" />}
         title="WhatsApp"
@@ -609,7 +609,7 @@ function EmailCard() {
       ? { tone: "off", label: "Needs Cloud" }
       : { tone: "off", label: "Off" };
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <ConnectionHeader
         icon={<Send size={14} className="shrink-0 text-muted-foreground" />}
         title="Email"
@@ -624,7 +624,7 @@ function EmailCard() {
           />
         }
       />
-      {!status.cloud && !status.enabled && <ConnectionNote>Needs Bloks Cloud. Turn it on under Bloks Cloud.</ConnectionNote>}
+      {!status.cloud && !status.enabled && <ConnectionNote>Needs Bloks Cloud. Turn it on in Settings, under Plan.</ConnectionNote>}
       {status.enabled && (
         <>
           <div className="mt-3 space-y-2">

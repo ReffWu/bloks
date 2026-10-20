@@ -9,6 +9,7 @@
 import type { BlokColor, BlokExpression, BlokShape } from "@/lib/mascot";
 import type { LaneContext } from "@/lib/contextCard";
 import type { CodexSpeed, CodexSpeedStatus } from "@/lib/codexSpeed";
+import { resolveSettingsPage } from "../lib/settingsPages.ts";
 
 export type { BlokColor, BlokShape } from "@/lib/mascot";
 
@@ -1421,7 +1422,9 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         appSettingsOpen: open,
-        settingsPage: action.page ?? (open && !state.appSettingsOpen ? "general" : state.settingsPage),
+        // an id that moved goes where it lives now (src/lib/settingsPages.ts),
+        // so a link from anywhere, old or new, lands on a real page
+        settingsPage: action.page ? resolveSettingsPage(action.page) : open && !state.appSettingsOpen ? "general" : state.settingsPage,
         // a full page, like Automations: one of them at a time
         routinesOpen: open ? false : state.routinesOpen,
         page: open ? null : state.page,

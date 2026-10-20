@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
 import { RoomAudience } from "./members/RoomAudience";
+import { useWorkspaceFrames } from "@/lib/members";
 import { askYourName } from "./YourNameDialog";
 import { needsName, readYourName } from "@/lib/yourName";
 
@@ -111,6 +112,16 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
   useEffect(() => {
     if (open) load();
   }, [open, load, people, knocking, blok.sharing]);
+  // and when the plan changes (somebody back from bloks.dev on Team now),
+  // so the door opens without closing the panel first
+  useWorkspaceFrames(
+    useCallback(
+      (frame) => {
+        if (open && frame.kind === "workspace.plan") load();
+      },
+      [open, load],
+    ),
+  );
 
   const act = async (key: string, run: () => Promise<unknown>) => {
     setBusy(key);
@@ -182,7 +193,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
           </div>
         ) : !data.plan ? (
           <div className="mt-4 rounded-2xl border bg-card p-4 text-body leading-relaxed text-muted-foreground">
-            Inviting someone to this room alone needs Bloks Cloud. Turn it on in Settings, under Bloks Cloud.
+            Inviting someone to this room alone needs Bloks Cloud. Turn it on in Settings, under Plan.
           </div>
         ) : data.sharedRoom === false && !shared ? (
           // a Cloud licence from after sharing rooms became Team's

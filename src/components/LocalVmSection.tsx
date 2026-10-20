@@ -141,7 +141,7 @@ export function LocalVmSection() {
   const staleOrStopped = s?.container === "stopped" || (s?.container === "running" && !s.desktopReady && s.imageReady && Boolean(s.problem?.includes("older")));
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <div className="flex items-center justify-between">
         <div className="text-ui font-semibold text-foreground">Local VM</div>
         <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={load}>
@@ -213,6 +213,7 @@ export function LocalVmSection() {
           <Step index={3} done={s.imageReady} title="Prepare the Cua desktop (one-time download)">
             {s.daemonUp && (
               <Button
+                variant="brand"
                 size="sm"
                 className="mt-1.5"
                 disabled={acting !== null}
@@ -228,6 +229,7 @@ export function LocalVmSection() {
             {s.imageReady &&
               (staleOrStopped ? (
                 <Button
+                  variant="destructive"
                   size="sm"
                   className="mt-1.5"
                   disabled={acting !== null}
@@ -245,6 +247,7 @@ export function LocalVmSection() {
                 </Button>
               ) : s.container === "missing" ? (
                 <Button
+                  variant="brand"
                   size="sm"
                   className="mt-1.5"
                   disabled={acting !== null}

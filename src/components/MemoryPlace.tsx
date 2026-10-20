@@ -1298,9 +1298,9 @@ function TidySection({ bot }: { bot: Bot }) {
               Off for every agent in{" "}
               <button
                 className="underline underline-offset-2 hover:text-foreground"
-                onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "general" })}
+                onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "behaviour" })}
               >
-                Settings, General
+                Settings, Behaviour
               </button>
               . Tidy now still works.
             </>

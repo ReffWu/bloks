@@ -68,6 +68,7 @@ export function EngineSuggestionCard({ s, bot, compact }: { s: EngineSuggestion;
         {s.saves ? ` About $${s.saves.toFixed(3)} less per reply.` : ""}
       </div>
       <Button
+        variant="brand"
         size="sm"
         onClick={() => {
           dispatch({ type: "setModel", botId: s.botId, selection: { instanceId: s.to.instanceId, model: s.to.model } });
@@ -86,7 +87,7 @@ export function EngineReport() {
   if (!report) return null;
   const judged = report.engines.filter((e) => e.turns > 0);
   return (
-    <div className="mt-4 overflow-hidden rounded-2xl border bg-card">
+    <div className="mb-9 overflow-hidden rounded-2xl border bg-card last:mb-0">
       <div className="px-4 pb-3 pt-4">
         <div className="flex items-center gap-2 text-ui font-semibold text-foreground">
           <Gauge size={14} className="text-muted-foreground" /> How your engines are doing

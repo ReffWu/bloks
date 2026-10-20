@@ -144,7 +144,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
   if (!botId) {
     const bots = status?.bots ?? [];
     return (
-      <div className="mt-4 rounded-2xl border bg-card p-4">
+      <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
         <ConnectionHeader
           icon={<MessageCircle size={14} className="shrink-0 text-muted-foreground" />}
           title="Telegram"
@@ -185,7 +185,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
               {state.bots.filter((bot) => !bot.hidden).map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
             </select>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Button size="sm" disabled={busy || !migrationAgent} onClick={() => post({ botId: migrationAgent, migrate: true })}>Use previous bot</Button>
+              <Button variant="brand" size="sm" disabled={busy || !migrationAgent} onClick={() => post({ botId: migrationAgent, migrate: true })}>Use previous bot</Button>
               <Button size="sm" variant="secondary" disabled={busy} onClick={() => post({ discardPending: true })}>Remove previous bot</Button>
             </div>
           </div>
@@ -216,7 +216,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
         quietLabel={!status?.configured}
         className="min-w-0 flex-1"
       />
-      <Button size="sm" className={cn("h-8", status?.configured && "mt-[22px]")} disabled={busy || !token.trim()} onClick={saveToken}>
+      <Button variant="brand" size="sm" className={cn("h-8", status?.configured && "mt-[22px]")} disabled={busy || !token.trim()} onClick={saveToken}>
         {busy ? "Checking" : status?.configured ? "Save" : "Connect"}
       </Button>
     </div>

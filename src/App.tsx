@@ -20,7 +20,6 @@ import { NewRoomDialog } from "@/components/NewRoomDialog";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { AutomationsPanel } from "@/components/AutomationsPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
-import { WorkspaceSettings, isWorkspacePage } from "@/components/WorkspaceSettings";
 import { WorkspaceDialogs } from "@/components/WorkspaceDialogs";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutKeys } from "@/components/Shortcuts";
@@ -114,11 +113,10 @@ function Shell() {
   // its chat was, so they have the panel to themselves.
   const agentSettings = state.settingsOpen && bot !== null && !room;
   const chatPlace = !state.appSettingsOpen && !state.routinesOpen && !state.page && !agentSettings;
-  const workspacePage = state.appSettingsOpen && isWorkspacePage(state.settingsPage);
+  // the workspace's own pages are Settings pages like the rest, in the
+  // same shell, so moving between them is not a change of place
   const place = state.appSettingsOpen
-    ? workspacePage
-      ? "workspace-settings"
-      : "settings"
+    ? "settings"
     : state.routinesOpen
       ? "automations"
       : state.page
@@ -142,9 +140,7 @@ function Shell() {
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background md:flex-row md:rounded-tl-xl md:border-l md:border-t">
       {chatPlace ? <Sidebar /> : <div className="md:hidden"><Sidebar /></div>}
       <PlaceFade place={place}>
-      {workspacePage ? (
-        <WorkspaceSettings />
-      ) : state.appSettingsOpen ? (
+      {state.appSettingsOpen ? (
         <AppSettingsPanel />
       ) : state.routinesOpen ? (
         <AutomationsPanel onClose={() => dispatch({ type: "toggleRoutines", open: false })} />

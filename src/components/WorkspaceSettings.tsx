@@ -1,13 +1,16 @@
-// Workspace settings (design: Main): everything that belongs to the
-// workspace you are in, beside its mark and name.
+// The workspace's own pages in Settings: everything that belongs to the
+// workspace you are in rather than to you (its name and mark, its
+// members, whether it is online, when it may interrupt you).
 //
-// It opens in Settings' place (state.settingsPage "workspace:<page>"),
-// so leaving it, Back and Escape work as they do there. General, Reachable
-// online and Notifications are drawn here; Members is the members work's
-// page (MembersPage.tsx); Engines and keys and Usage are pages Settings
-// already has for this workspace, so they lead there instead of being
-// drawn twice.
-import { useCallback, useEffect, useRef, useState } from "react";
+// They are pages of Settings like any other (state.settingsPage
+// "workspace:<page>"), in a group of the list titled with the workspace's
+// name and mark, so moving between them and your own pages is one list,
+// one search, one Back. Settings draws the shell (AppSettingsPanel.tsx);
+// this file draws the pages. Members is the members work's page
+// (MembersPage.tsx). The workspace's Engines and keys and Usage were only
+// ever links to pages Settings already has, so their old addresses lead
+// there now (src/lib/settingsPages.ts).
+import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, BellOff, Loader2, RefreshCw, Trash2, Upload } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,13 +25,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStore } from "@/state/store";
-import { useWaitingCount } from "@/lib/members";
 import { cn } from "@/lib/cn";
-import { useEscape } from "@/lib/useEscape";
-import { MUTE_CHOICES, act, currentWorkspace, kindLabel, muteLabel, useWorkspaces } from "@/lib/workspaces";
+import { MUTE_CHOICES, act, currentWorkspace, muteLabel, useWorkspaces } from "@/lib/workspaces";
 import type { WorkspaceInfo, WorkspaceNotify } from "@/types/bridge";
-import { SettingRow, SettingsGroup, SettingsPageHeader } from "./SettingsLayout";
-import { CloudSection } from "./CloudSection";
+import { SettingRow, SettingsEmpty, SettingsGroup } from "./SettingsLayout";
 import { ConnectionError, HealthLine, type Health } from "./ConnectionKit";
 import { MembersPage } from "./MembersPage";
 import { ensureYourName } from "./YourNameDialog";
@@ -38,8 +38,6 @@ export const WORKSPACE_PAGES = [
   { id: "general", label: "General" },
   { id: "members", label: "Members" },
   { id: "online", label: "Reachable online" },
-  { id: "engines", label: "Engines and keys" },
-  { id: "usage", label: "Usage" },
   { id: "notifications", label: "Notifications" },
 ] as const;
 
@@ -280,14 +278,15 @@ function GeneralPage({ ws, all, go }: { ws: WorkspaceInfo; all: WorkspaceInfo[];
           label={LEVELS.find((l) => l.value === ws.notify)?.label ?? "All activity"}
           description={muted ? `Muted. ${muted}.` : "Not muted."}
           control={
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => go("notifications")}>
+            <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => go("notifications")}>
               Change
               <ArrowRight size={13} />
             </Button>
           }
         />
       </SettingsGroup>
-      <SettingsGroup>
+      {/* what cannot be undone sits apart, at the end, in its own colour */}
+      <SettingsGroup title="Danger zone" tone={ws.kind === "personal" ? "default" : "danger"}>
         <DeleteRow ws={ws} />
       </SettingsGroup>
     </>
@@ -400,12 +399,13 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function ReachableOnline({ ws }: { ws: WorkspaceInfo }) {
+  const { dispatch } = useStore();
   const [status, setStatus] = useState<RelayStatus | null>(null);
   const [plan, setPlan] = useState<RelayPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsKey, setNeedsKey] = useState(false);
-  const keyCard = useRef<HTMLDivElement>(null);
+  const toPlan = () => dispatch({ type: "toggleAppSettings", open: true, page: "plan" });
 
   const load = useCallback(() => {
     call<RelayStatus>("/api/relay/status").then(setStatus).catch(() => setStatus({ enabled: false, connected: false, spaceId: null }));
@@ -433,10 +433,9 @@ function ReachableOnline({ ws }: { ws: WorkspaceInfo }) {
     setError(null);
     setNeedsKey(false);
     if (next && !plan?.licence) {
-      // never activated here: the key goes in below, and that turns it on
+      // no key on this computer yet: it goes in on Plan, the one place
+      // the key lives, and activating there puts this workspace online
       setNeedsKey(true);
-      keyCard.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      keyCard.current?.querySelector("input")?.focus();
       return;
     }
     setBusy(true);
@@ -451,10 +450,32 @@ function ReachableOnline({ ws }: { ws: WorkspaceInfo }) {
     }
   };
 
+  const phonesOn = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await call("/api/pair", { method: "PATCH", body: JSON.stringify({ enabled: true }) });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+      load();
+    }
+  };
+
   const online = plan?.spaces;
   return (
     <>
-      <SettingsGroup>
+      <SettingsGroup
+        footnote={
+          <>
+            Bloks Cloud keeps 3 workspaces online at once, with 2 members in each. Bloks Team keeps every workspace online, with 10 members in each. Workspaces on this computer and your own network are always free.{" "}
+            <button type="button" onClick={toPlan} className="rounded font-medium text-foreground underline-offset-2 hover:underline">
+              See your plan
+            </button>
+          </>
+        }
+      >
         <SettingRow
           label="Online"
           description={`Your phone, and the people you invite, reach ${ws.name} from anywhere through Bloks Cloud. Off, it works on this computer and your own network.`}
@@ -467,11 +488,28 @@ function ReachableOnline({ ws }: { ws: WorkspaceInfo }) {
         >
           <ConnectionError>{error}</ConnectionError>
           {needsKey && (
-            <div className="mt-3 text-small text-muted-foreground">Activate Bloks Cloud below with your key. That puts {ws.name} online.</div>
+            <div role="status" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-brand-soft px-3.5 py-2.5">
+              <span className="text-pretty text-body text-foreground">Going online needs Bloks Cloud. Add your key on Plan, and {ws.name} goes online.</span>
+              <Button size="sm" variant="brand" onClick={toPlan}>
+                Open Plan
+              </Button>
+            </div>
           )}
         </SettingRow>
         <SettingRow label="Status" control={health ? <HealthLine tone={health.tone} label={health.label} /> : <Loader2 size={14} className="animate-spin text-muted-foreground" />}>
-          {status?.problem && on && !working && <div className="mt-1 text-pretty text-small text-muted-foreground">{status.problem}</div>}
+          {/* Phone access is the master switch, Cloud included: turning it
+              off is how somebody cuts every phone loose at once, so a
+              workspace can be online and still reach nobody */}
+          {on && status?.pairing === false ? (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-pretty text-small text-muted-foreground">Phone access is off on this computer, so nothing reaches {ws.name} from outside.</span>
+              <Button size="sm" variant="secondary" disabled={busy} onClick={() => void phonesOn()}>
+                Turn on phone access
+              </Button>
+            </div>
+          ) : (
+            status?.problem && on && !working && <div className="mt-1 text-pretty text-small text-muted-foreground">{status.problem}</div>
+          )}
         </SettingRow>
         {on && status?.spaceId && (
           <SettingRow
@@ -496,148 +534,28 @@ function ReachableOnline({ ws }: { ws: WorkspaceInfo }) {
           />
         )}
       </SettingsGroup>
-      <p className="-mt-6 mb-9 px-1 text-pretty text-small text-muted-foreground">
-        Bloks Cloud keeps 3 workspaces online at once, with 2 members in each. Bloks Team keeps every workspace online, with 10 members in each. Workspaces on this computer and your own network are always free.
-      </p>
-      <div ref={keyCard} className={cn("rounded-2xl transition-shadow duration-200", needsKey && "ring-2 ring-brand-ink/40")}>
-        <CloudSection />
-      </div>
     </>
-  );
-}
-
-// ── pages that live in Settings already ────────────────────────────────
-
-// A row opens a Settings page by its id, or, with `rail`, a page of its own
-// on the rail (Usage has one).
-function LinkRows({ rows }: { rows: Array<{ label: string; says: string; page: string; rail?: boolean }> }) {
-  const { dispatch } = useStore();
-  return (
-    <SettingsGroup>
-      {rows.map((row) => (
-        <SettingRow
-          key={row.page}
-          label={row.label}
-          description={row.says}
-          control={
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() =>
-                row.rail
-                  ? (dispatch({ type: "toggleAppSettings", open: false }), dispatch({ type: "openPage", page: "usage" }))
-                  : dispatch({ type: "toggleAppSettings", open: true, page: row.page })
-              }>
-              Open
-              <ArrowRight size={13} />
-            </Button>
-          }
-        />
-      ))}
-    </SettingsGroup>
   );
 }
 
 // ── the page ───────────────────────────────────────────────────────────
 
-const HEADINGS: Record<Exclude<WorkspacePage, "members">, (ws: WorkspaceInfo) => { title: string; description: string }> = {
-  general: (ws) => ({ title: "General", description: `What ${ws.name} is called, what it looks like, and what it tells you.` }),
-  online: () => ({ title: "Reachable online", description: "This workspace's own space at Bloks Cloud, for your phone and the people you invite." }),
-  engines: () => ({ title: "Engines and keys", description: "The engines this workspace's agents run on and the keys they use. Every workspace keeps its own." }),
-  usage: () => ({ title: "Usage", description: "What this workspace's agents have spent and used, and the limits on it." }),
-  notifications: (ws) => ({ title: "Notifications", description: `When ${ws.name} may interrupt you, here and in the Dock.` }),
-};
-
-export function WorkspaceSettings() {
-  const { state, dispatch } = useStore();
+/** One of the workspace's pages, for the workspace this window shows. */
+export function WorkspacePageBody({ page }: { page: string }) {
+  const { dispatch } = useStore();
   const s = useWorkspaces();
   const ws = currentWorkspace(s);
-  const page = pageOf(state.settingsPage);
-  const waiting = useWaitingCount();
-  const scroller = useRef<HTMLDivElement>(null);
+  const id = pageOf(page);
   const go = (next: WorkspacePage) => dispatch({ type: "toggleAppSettings", open: true, page: `workspace:${next}` });
-  useEscape(() => dispatch({ type: "toggleAppSettings", open: false }));
-  // braces, not an arrow's value: scrollTo answers a promise now, and an
-  // effect that returns one is taken for its cleanup
-  useEffect(() => {
-    scroller.current?.scrollTo({ top: 0 });
-  }, [page]);
-
   if (!s.available || !ws) {
     return (
-      <main className="flex flex-1 items-center justify-center bg-background p-8 text-center text-body text-muted-foreground">
-        Workspaces live in the Bloks desktop app.
-      </main>
+      <SettingsGroup>
+        <SettingsEmpty title="Workspaces live in the Bloks desktop app" body="Open Bloks on your computer to change this workspace's name, members and notifications." />
+      </SettingsGroup>
     );
   }
-  const all = s.workspaces;
-  const heading = page === "members" ? null : HEADINGS[page](ws);
-
-  return (
-    <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background md:flex-row">
-      <nav aria-label="Workspace settings" className="flex shrink-0 flex-col border-b bg-sidebar/60 md:w-[252px] md:border-b-0 md:border-r">
-        <div className="flex items-center gap-3 px-5 pb-4 pt-6 max-md:pl-16">
-          <WorkspaceMark mark={ws.mark} logo={ws.logo} size={34} />
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate text-lead font-semibold text-foreground">{ws.name}</span>
-            <span className="text-small text-muted-foreground">{kindLabel(ws)}</span>
-          </div>
-        </div>
-        <div className="flex gap-0.5 overflow-x-auto px-3 pb-2 [scrollbar-width:none] md:flex-1 md:flex-col md:overflow-y-auto md:pb-4 [&::-webkit-scrollbar]:hidden">
-          {WORKSPACE_PAGES.map((p) => {
-            const on = p.id === page;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => go(p.id)}
-                aria-current={on ? "page" : undefined}
-                className={cn(
-                  "flex shrink-0 items-center whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-body transition-[background-color,color] duration-150",
-                  on
-                    ? "bg-background font-medium text-foreground shadow-[0_0_0_0.5px_var(--border)]"
-                    : "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
-                )}
-              >
-                {p.label}
-                {/* somebody asking to join is said where the eye goes (design: Mac-Approve) */}
-                {p.id === "members" && waiting > 0 && <span className="ml-2 text-small font-semibold tabular-nums text-warning">{waiting} waiting</span>}
-              </button>
-            );
-          })}
-          <div className="hidden md:mt-auto md:block md:px-2.5 md:pt-4">
-            <button
-              type="button"
-              onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "general" })}
-              className="text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
-            >
-              App settings
-            </button>
-          </div>
-        </div>
-      </nav>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[760px] px-5 pb-16 pt-8 md:px-10">
-          {heading && <SettingsPageHeader title={heading.title} description={heading.description} />}
-          {page === "general" && <GeneralPage ws={ws} all={all} go={go} />}
-          {page === "members" && <MembersPage workspace={ws} />}
-          {page === "online" && <ReachableOnline ws={ws} />}
-          {page === "notifications" && <NotificationsPage ws={ws} />}
-          {page === "engines" && (
-            <LinkRows
-              rows={[
-                { label: "Engines", says: "Claude Code, Codex and the rest: which are connected here.", page: "engines" },
-                { label: "Apps and keys", says: "Accounts and tools every agent here shares.", page: "apps" },
-              ]}
-            />
-          )}
-          {page === "usage" && (
-            <LinkRows
-              rows={[
-                { label: "Usage", says: "Spend by agent and engine, plan limits, and spending limits on your keys.", page: "usage", rail: true },
-                { label: "Bloks AI", says: "This workspace's allowance, what is left, and members' caps.", page: "cloud" },
-              ]}
-            />
-          )}
-        </div>
-      </div>
-    </main>
-  );
+  if (id === "general") return <GeneralPage ws={ws} all={s.workspaces} go={go} />;
+  if (id === "members") return <MembersPage workspace={ws} />;
+  if (id === "online") return <ReachableOnline ws={ws} />;
+  return <NotificationsPage ws={ws} />;
 }

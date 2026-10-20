@@ -36,7 +36,7 @@ export function UseFromOtherApps() {
         : "In a terminal:";
 
   return (
-    <div className="mt-4 rounded-2xl border bg-card p-4">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <div className="text-ui font-semibold text-foreground">Use Bloks from other AI apps</div>
       <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
         Let Claude, Cursor and other MCP apps give your agents work and read their chats. Approvals, deleting and settings

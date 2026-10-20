@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { composioKeyMistake } from "@/lib/keyShape";
+import { rowKey } from "@/lib/settingsPages";
 
 export type ConfigSection = "composio" | "composioApi" | "box" | "elevenlabs" | "openaiSpeech";
 
@@ -66,12 +67,17 @@ export async function saveApiKey(
 export function ApiKeyRow({
   section,
   label,
+  description,
   placeholder,
   onSaved,
   info,
+  bare,
+  children,
 }: {
   section: ConfigSection;
   label: string;
+  /** One line under the label, as a settings row has. */
+  description?: string;
   placeholder: string;
   /** Fires once the save lands, with whether that section now has a
    * credential, so the surrounding UI can stop saying it is missing. */
@@ -79,12 +85,17 @@ export function ApiKeyRow({
   /** A small ? beside the label that opens an explainer, with an
    * optional guide link. */
   info?: { text: string; linkLabel?: string; linkHref?: string };
+  /** Drawn without a row's own padding, inside a card that has its own. */
+  bare?: boolean;
+  /** Anything that belongs under the field. */
+  children?: React.ReactNode;
 }) {
   const { state, dispatch } = useStore();
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
+  const id = `key-${section}`;
 
   const configured = state.config ? SECTIONS[section].flag(state.config) : false;
   const clearing = !value.trim() && configured;
@@ -105,19 +116,21 @@ export function ApiKeyRow({
       .finally(() => setSaving(false));
   };
 
+  // laid out as a settings row: the name and its state on one line, what
+  // it is for under it, and the field across the row's whole width
   return (
-    <div>
-      <div className="mb-1.5 flex items-center gap-2 text-body font-medium text-muted-foreground">
-        <span
-          className={cn("size-1.5 rounded-full", configured ? "bg-success" : "bg-muted-foreground/30")}
-        />
-        {label}
-        {configured && <span className="text-caption font-normal text-success">Connected</span>}
+    <div data-setting-row={rowKey(label)} className={cn(!bare && "px-5 py-4", "transition-colors duration-700")}>
+      <div className="flex items-center gap-2">
+        <label htmlFor={id} className="text-ui font-medium text-foreground">
+          {label}
+        </label>
         {info && (
           <button
+            type="button"
             onClick={() => setInfoOpen(!infoOpen)}
+            aria-expanded={infoOpen}
             className={cn(
-              "ml-auto rounded-full p-0.5 transition-colors",
+              "rounded-full p-0.5 transition-colors",
               infoOpen ? "text-foreground" : "text-muted-foreground/60 hover:text-foreground",
             )}
             aria-label={`About ${label}`}
@@ -125,16 +138,26 @@ export function ApiKeyRow({
             <HelpCircle size={14} />
           </button>
         )}
+        <span
+          className={cn(
+            "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-small font-medium",
+            configured ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
+          )}
+        >
+          <span aria-hidden className={cn("size-1.5 rounded-full", configured ? "bg-current" : "border border-current")} />
+          {configured ? "Saved" : "Not set"}
+        </span>
       </div>
+      {description && <div className="mt-0.5 text-pretty text-body text-muted-foreground">{description}</div>}
       {info && infoOpen && (
-        <div className="mb-2 rounded-xl bg-muted/60 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
+        <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
           {info.text}
           {info.linkHref && (
             <a
               href={info.linkHref}
               target="_blank"
               rel="noreferrer"
-              className="mt-1 flex items-center gap-1 font-medium text-brand-ink hover:underline"
+              className="mt-1 flex w-fit items-center gap-1 rounded font-medium text-brand-ink hover:underline"
             >
               {info.linkLabel ?? "Learn more"}
               <ExternalLink size={11} />
@@ -142,27 +165,33 @@ export function ApiKeyRow({
           )}
         </div>
       )}
-      <div className="flex gap-2">
+      <div className="mt-2.5 flex gap-2">
         <Input
+          id={id}
           type="password"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setError(null);
+          }}
           onKeyDown={(e) => e.key === "Enter" && save()}
           placeholder={configured ? "••••••••  (paste to replace)" : placeholder}
           autoComplete="off"
+          spellCheck={false}
+          aria-invalid={error ? true : undefined}
           className="h-8 text-body"
         />
         <Button
           variant={clearing ? "destructive" : "secondary"}
           onClick={save}
           disabled={saving || (!value.trim() && !configured)}
-          className="w-[72px]"
+          className="w-[76px]"
           title={clearing ? "Remove saved key" : "Save"}
         >
           {saving ? (
             <Loader2 size={13} className="animate-spin" />
           ) : clearing ? (
-            "Clear"
+            "Remove"
           ) : (
             <>
               <Check size={13} />
@@ -171,7 +200,12 @@ export function ApiKeyRow({
           )}
         </Button>
       </div>
-      {error && <div className="mt-1 text-small text-destructive">{error}</div>}
+      {error && (
+        <p role="alert" className="mt-2 text-small text-destructive">
+          {error}
+        </p>
+      )}
+      {children}
     </div>
   );
 }

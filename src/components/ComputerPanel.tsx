@@ -229,7 +229,7 @@ function LocalVmCard({ bot }: { bot: Bot }) {
             variant="secondary"
             size="sm"
             className="mt-2.5"
-            onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })}
+            onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "computers" })}
           >
             Set it up in Settings
           </Button>
@@ -470,6 +470,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               Add a Boat API key to give this agent a cloud computer.
             </div>
             <ApiKeyRow
+              bare
               section="box"
               label="Boat API key"
               placeholder="Paste your Boat API key"

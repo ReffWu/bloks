@@ -51,6 +51,7 @@ import {
 } from "./reducer";
 import { toast } from "@/components/ui/toast";
 import { openJoinDialog, workspaceFrame } from "@/lib/members";
+import { loadPlan } from "@/lib/planClient";
 
 export * from "./reducer";
 
@@ -672,6 +673,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // a workspace invite from bloks.dev or a scanned QR: the join dialog,
       // filled in (src/components/members/JoinWorkspaceDialog.tsx)
       if (link?.kind === "join" && link.fragment) openJoinDialog(`bloks://join#${link.fragment}`);
+      // bloks://plan: the site sending somebody back after a checkout or
+      // a change in billing, so the plan is asked fresh as the page opens
+      if (link?.kind === "plan") {
+        rawDispatch({ type: "toggleAppSettings", open: true, page: "plan" });
+        void loadPlan(true);
+      }
     };
     void bridge.pendingLink?.().then(open).catch(() => {});
     return bridge.onLink(open);

@@ -933,7 +933,7 @@ const COMPONENTS: Array<[string, string]> = [
 /**
  * What happens to what you send while this agent is in the middle of
  * something (server/delivery.ts). Its own choice, or the workspace's,
- * which Settings, General sets for every agent that has not chosen.
+ * which Settings, Behaviour sets for every agent that has not chosen.
  */
 function DeliveryRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   const { state } = useStore();
@@ -952,7 +952,7 @@ function DeliveryRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
           value={own ?? "default"}
           onChange={(next) => patch({ delivery: next === "default" ? null : next })}
           options={[
-            { value: "default", label: "Default", title: "Follow Settings, General" },
+            { value: "default", label: "Default", title: "Follow Settings, Behaviour" },
             ...DELIVERY_MODES.map((m) => ({ value: m.value, label: m.label })),
           ]}
         />
@@ -1459,7 +1459,7 @@ function MemorySummary({ bot }: { bot: Bot }) {
 
 /**
  * Whether this agent is reminded of its other conversations before your
- * turn. On by default; the workspace switch in Settings, General, turns
+ * turn. On by default; the workspace switch in Settings, Behaviour, turns
  * it off for every agent, and then this one says so instead of pretending.
  */
 function RecallRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
@@ -1471,7 +1471,7 @@ function RecallRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
       description={
         everywhere
           ? `Gives ${bot.name || "it"} up to three close matches from its other chats and notes, shown under your message.`
-          : "Off for every agent in Settings, General."
+          : "Off for every agent in Settings, Behaviour."
       }
       control={
         <Switch

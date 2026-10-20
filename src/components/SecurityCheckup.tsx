@@ -196,6 +196,7 @@ function Row({ finding }: { finding: CheckupFinding }) {
       case "permissions":
         return (
           <Button
+            variant="brand"
             size="sm"
             disabled={busy !== null}
             onClick={() => void act("permissions", () => checkupApi("/api/security/permissions", { method: "POST" }))}

@@ -69,7 +69,7 @@ function Section({ title, aside, children }: { title: React.ReactNode; aside?: R
   return (
     <section className="flex flex-col gap-2.5">
       <div className="flex min-h-8 items-center justify-between gap-4 px-0.5">
-        <h2 className="text-ui font-semibold text-foreground">{title}</h2>
+        <h2 className="text-body font-medium text-muted-foreground">{title}</h2>
         {aside}
       </div>
       {children}
@@ -249,7 +249,9 @@ export function MembersPage({
     <div className="flex flex-col gap-[26px]">
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-6">
-          <h1 className="text-balance text-display font-bold text-foreground">Members</h1>
+          {/* the same heading every Settings page has, with the one thing
+              this page offers beside it */}
+          <h1 className="text-balance text-heading font-semibold text-foreground">Members</h1>
           {manage && (
             <div className="flex shrink-0 flex-col items-end gap-1.5">
               <Button size="lg" onClick={() => setInviting(true)} disabled={!teamOn}>
@@ -261,7 +263,7 @@ export function MembersPage({
             </div>
           )}
         </div>
-        <p className="max-w-[560px] text-pretty text-ui leading-relaxed text-muted-foreground">
+        <p className="max-w-[560px] text-pretty text-body leading-relaxed text-muted-foreground">
           People who can use {ws.name}: its agents, rooms and memory.{" "}
           {joining?.approveEach === false ? "The right code lets people straight in." : "Nobody gets in until you say so."}
         </p>
