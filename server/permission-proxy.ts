@@ -132,6 +132,19 @@ const ALL_TOOLS = [
     },
   },
   {
+    name: "message_person",
+    description:
+      "Send a message to one person in this workspace, in their private conversation with you. Only when the owner or an admin asked you to, in a team conversation or a room. It is marked as sent on their behalf, and the answer says whether it went.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        person: { type: "string", description: "The person's name, as the members list shows it" },
+        text: { type: "string", description: "The message, written to them" },
+      },
+      required: ["person", "text"],
+    },
+  },
+  {
     name: "ask_user",
     description:
       "Put a question to the person you work for and wait for their reply. Use it for anything that is genuinely theirs to decide: a preference, a missing fact, or sign-off before something consequential. Guessing is worse than asking here. Their answer comes back as text.",
@@ -154,7 +167,9 @@ const ALL_TOOLS = [
 ];
 
 const only = process.env.BLOKS_PUBLISH?.split(",").filter(Boolean);
-const PUBLISHED_TOOLS = only ? ALL_TOOLS.filter((tool) => only.includes(tool.name)) : ALL_TOOLS.filter((tool) => tool.name !== "reply_to_sender");
+// reply_to_sender and message_person are each for one kind of turn, and
+// are only ever published by name
+const PUBLISHED_TOOLS = only ? ALL_TOOLS.filter((tool) => only.includes(tool.name)) : ALL_TOOLS.filter((tool) => tool.name !== "reply_to_sender" && tool.name !== "message_person");
 
 /** The CLI sometimes proposes permission rules of its own alongside a
  * request. On an "always allow" they are echoed back untouched so it can
@@ -238,6 +253,7 @@ async function dispatch(message: any) {
       const isConnection = name === "request_connection";
       const isSecret = name === "request_secret";
       const isReply = name === "reply_to_sender";
+      const isMessage = name === "message_person";
 
       if (!PUBLISHED_TOOLS.some((tool) => tool.name === name)) {
         return writeFrame({
@@ -268,6 +284,13 @@ async function dispatch(message: any) {
           id: message.id,
           result: { isError: true, content: [{ type: "text", text: "Bloks: ask_user requires a non-empty question" }] },
         });
+      }
+
+      // A message on somebody's behalf: the workspace decides and sends
+      // it (no card), and its answer comes back as the tool's result.
+      if (isMessage) {
+        const reply = await askHuman({ t: "ask", kind: "question", tool: "message_person", input: { person: args.person, text: args.text } });
+        return writeFrame({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: reply.message || BROKER_GONE }] } });
       }
 
       const reply = await askHuman(

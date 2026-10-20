@@ -202,6 +202,10 @@ export type RuntimeEventListener = (event: RuntimeEvent) => void;
 // ── running a turn ─────────────────────────────────────────────────────
 
 export interface SendTurnInput {
+  /** The owner or an admin started this turn in a team conversation or a
+   * room, so the agent may message one person privately on their behalf
+   * (server/access.ts). Claude Code gets a message_person tool for it. */
+  messagePerson?: boolean;
   /** Codex speed, resolved when the turn is dispatched and kept for the
    * whole turn, steers included. Engines other than Codex ignore it. */
   codexSpeed?: import("./codex-speed.ts").CodexSpeedChoice;

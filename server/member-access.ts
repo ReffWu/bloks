@@ -38,6 +38,8 @@ export type MemberAction =
   | { kind: "agents" }
   | { kind: "newAgent" }
   | { kind: "usage" }
+  | { kind: "dropAgent"; botId: string }
+  | { kind: "leaveWorkspace" }
   | { kind: "conversation"; botId: string; lane: "team" | "private" }
   | { kind: "say"; botId: string; lane: "team" | "private" }
   | { kind: "reply"; botId: string; lane: "team" | "private"; messageId: string }
@@ -87,6 +89,8 @@ const ROUTES: Array<{ method: string; pattern: RegExp; action: (m: RegExpMatchAr
   { method: "GET", pattern: /^\/api\/member\/agents$/, action: () => ({ kind: "agents" }) },
   { method: "POST", pattern: /^\/api\/member\/agents$/, action: () => ({ kind: "newAgent" }) },
   { method: "GET", pattern: /^\/api\/member\/usage$/, action: () => ({ kind: "usage" }) },
+  { method: "DELETE", pattern: new RegExp(`^/api/member/agents/${ID}$`), action: (m) => ({ kind: "dropAgent", botId: m[1] }) },
+  { method: "POST", pattern: /^\/api\/member\/leave$/, action: () => ({ kind: "leaveWorkspace" }) },
   {
     method: "GET",
     pattern: new RegExp(`^/api/member/agents/${ID}/(team|private)/messages$`),
@@ -115,6 +119,8 @@ const ROUTES: Array<{ method: string; pattern: RegExp; action: (m: RegExpMatchAr
     action: (m) => ({ kind: "noteDrop", noteId: m[1] }),
   },
   { method: "GET", pattern: /^\/api\/workspace\/members$/, action: () => ({ kind: "people" }) },
+  // how many are waiting to be let in: an admin's badge, nought for anyone else
+  { method: "GET", pattern: /^\/api\/workspace\/waiting$/, action: () => ({ kind: "people" }) },
   ...(
     [
       ["POST", /^\/api\/workspace\/invites$/],
@@ -151,7 +157,7 @@ export function memberCan(
   const action = route.action(path.match(route.pattern)!);
   // A guest from a chat channel is in rooms, not in the workspace: the
   // workspace's agents and people are not theirs to reach.
-  const workspaceWide = ["workspace", "agents", "newAgent", "usage", "conversation", "say", "reply", "notes", "note", "noteKeep", "noteDrop", "people", "admin"];
+  const workspaceWide = ["workspace", "agents", "newAgent", "usage", "dropAgent", "leaveWorkspace", "conversation", "say", "reply", "notes", "note", "noteKeep", "noteDrop", "people", "admin"];
   if (workspaceWide.includes(action.kind) && !workspaceRole) return { ok: false, status: 403, error: "not available to room guests" };
   if (action.kind === "admin" && workspaceRole !== "admin") {
     return { ok: false, status: 403, error: "only the owner and admins can manage people" };
@@ -302,14 +308,25 @@ export function memberMessage(message: Message, view: MemberView): Message | nul
 const ROOM_FRAMES = new Set(["room.people", "room.sharing", "room.typing", "room.activity", "room.offline"]);
 /** Frames about one member's own conversation, keyed by its lane. */
 const LANE_FRAMES = new Set(["member.lane"]);
+/** The workspace's own news every member hears: who is in it, which way
+ * the privacy setting is, and that an agent's or a room's list changed
+ * (ids only, so the app asks again what it may now see). */
+const WORKSPACE_FRAMES = new Set(["workspace.people", "workspace.privacy", "workspace.access"]);
+/** What only the people who let others in hear: somebody asking, how
+ * many are waiting, who came in, an invite closed or taken back. */
+const ADMIN_FRAMES = new Set(["workspace.request", "workspace.waiting", "workspace.joined", "workspace.locked", "workspace.withdrawn", "workspace.left"]);
+
+/** Where somebody stands: a guest of some rooms, or in the workspace. */
+export type Standing = "guest" | "member" | "admin";
 
 /**
  * A broadcast frame as one member may see it, or null. `viewOf` answers
  * how this member sees a room, or null when they are not in it.
- * `inWorkspace` is false for a guest of some rooms, who hears about those
- * rooms and nothing of the workspace around them.
+ * `standing` is "guest" for somebody in some rooms only, who hears about
+ * those rooms and nothing of the workspace around them; an admin also
+ * hears who is asking to join.
  */
-export function memberFrame(payload: unknown, viewOf: (roomId: string) => MemberView | null, inWorkspace = true): unknown | null {
+export function memberFrame(payload: unknown, viewOf: (roomId: string) => MemberView | null, standing: Standing = "member"): unknown | null {
   const frame = payload as { kind?: string; threadId?: string; roomId?: string; message?: Message; moved?: boolean; botId?: string; turnId?: string } | null;
   if (!frame || typeof frame.kind !== "string") return null;
   if (frame.kind === "ping") return frame;
@@ -331,8 +348,38 @@ export function memberFrame(payload: unknown, viewOf: (roomId: string) => Member
   if (LANE_FRAMES.has(frame.kind)) {
     return frame.threadId && viewOf(frame.threadId) ? frame : null;
   }
-  // The members list changed: everyone in the workspace may hear it, and
-  // it carries names and roles only. A guest is not in the workspace.
-  if (frame.kind === "workspace.people") return inWorkspace ? frame : null;
+  // A reply as it is written, in a conversation this member may read: the
+  // words and nothing else of what the engine said (no tools, no items,
+  // no costs), so the stream reads the way the owner's does.
+  if (frame.kind === "runtime") return memberRuntime(payload, viewOf);
+  // A guest is not in the workspace, and hears nothing of it.
+  if (standing === "guest") return null;
+  if (WORKSPACE_FRAMES.has(frame.kind)) return frame;
+  if (ADMIN_FRAMES.has(frame.kind)) return standing === "admin" ? frame : null;
+  return null;
+}
+
+/** An engine's live event as a member may see it: the text of a reply
+ * being written, and when a turn starts and ends, in a conversation they
+ * may read. Null for everything else. */
+function memberRuntime(payload: unknown, viewOf: (roomId: string) => MemberView | null): unknown | null {
+  const event = (payload as { event?: Record<string, unknown> }).event;
+  const threadId = event?.threadId;
+  if (!event || typeof threadId !== "string" || !viewOf(threadId)) return null;
+  if (event.type === "content.delta" && event.streamKind === "assistant_text" && typeof event.delta === "string") {
+    return {
+      kind: "runtime",
+      event: {
+        type: "content.delta",
+        threadId,
+        streamKind: "assistant_text",
+        delta: event.delta,
+        // the engine's own label for progress lines, which the app keeps
+        // out of the reply (src/lib/codexProgress.ts)
+        ...(event.codexText && typeof event.codexText === "object" ? { codexText: event.codexText } : {}),
+      },
+    };
+  }
+  if (event.type === "turn.started" || event.type === "turn.completed") return { kind: "runtime", event: { type: event.type, threadId } };
   return null;
 }

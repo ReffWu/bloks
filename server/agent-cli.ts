@@ -37,6 +37,10 @@ export interface AgentToken {
   reply?: { sender: import("./telegram-people.ts").TelegramSender; turn: number; attempted?: Set<string> };
   /** Only the final direct submission, retained through normal renewal. */
   report?: ReservedReport;
+  /** This credential can only message one person on somebody's behalf
+   * (POST /api/agent/message-person): a turn an admin started in a team
+   * conversation or a room, which gets none of the owner's standing. */
+  messenger?: true;
 }
 
 export interface ReportResponse { status: number; body: Record<string, unknown> }
@@ -114,6 +118,10 @@ export const RULES: Rule[] = [
   // list like everything else, because the guard runs before any route
   // does and a route nobody listed is a route nobody reaches.
   { method: "GET", path: "/api/agent/whoami", why: "find out who this credential says you are" },
+  // A message into one person's private conversation with this agent, on
+  // the owner's or an admin's word (server/access.ts decides whether it
+  // may, and the answer says so either way).
+  { method: "POST", path: "/api/agent/message-person", why: "message one person in this workspace privately, when the owner or an admin asked you to in a team conversation or a room" },
   // Settings as their owners hold them, for `bloks settings`: reading only,
   // credentials as configured or not, and a device's settings as it last
   // said them (docs/ARCHITECTURE.md, Settings inspection).
@@ -388,6 +396,15 @@ export class AgentTokens {
     return minted;
   }
 
+  /** A credential for one thing: messaging a person on the asker's
+   * behalf. For a turn the owner did not start but an admin did, which
+   * must not carry the owner's whole workspace in its environment. */
+  mintMessenger(botId: string, taskId: string, now: number): AgentToken {
+    const minted: AgentToken = { token: `blm_${randomBytes(24).toString("base64url")}`, botId, taskId, expiresAt: now + TOKEN_TTL_MS, spent: 0, messenger: true };
+    this.byToken.set(minted.token, minted);
+    return minted;
+  }
+
   /** Who is calling, or nobody. A credential past its hour still works
    * while its turn is running, and is renewed for another; once the turn
    * is over it is gone. */
@@ -483,6 +500,14 @@ export function secretHint(route: "tool" | "cli" | null, command: string): strin
   if (route === "cli") {
     return `When a task needs an API key or other secret from the user, run \`${command} secret "<what it is>" --hint "<where to find it>"\` and they get a secure field in the chat; never ask for keys in plain conversation.`;
   }
+  return null;
+}
+
+/** How a turn that may message people is told to, in terms of what its
+ * engine has: a tool, the command line, or nothing at all. */
+export function messageHint(route: "tool" | "cli" | null, command: string): string | null {
+  if (route === "tool") return "send it with the message_person tool";
+  if (route === "cli") return `send it by running \`${command} message-person "<their name>" "<the message>"\``;
   return null;
 }
 

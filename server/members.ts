@@ -501,6 +501,9 @@ export function createMembers(deps: MembersDeps) {
           name: r.name,
           audience: audienceOf(r),
           members: members.filter((p) => people.membershipsOf(p.id).some((m) => m.roomId === r.id)).map((p) => p.id),
+          // people let into this room alone, by its own invite: in it
+          // whatever the audience, and never chosen from here
+          guests: people.guestsOf(r.id).map((m) => ({ id: m.personId, name: m.person.name })),
         })),
     };
   }

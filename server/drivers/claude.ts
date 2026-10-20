@@ -615,10 +615,16 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       // with, the same test the prompt uses before mentioning it
       const askingTools = ["ask_user", "request_secret", ...(turn.person || turn.integrations?.composio?.key ? ["request_connection"] : [])];
       const personTools = ["approve", ...askingTools, "reply_to_sender"];
+      // A turn the owner or an admin started in a team conversation or a
+      // room may message one person on their behalf; the bridge publishes
+      // the tool by name for it, beside what it publishes anyway.
+      const messageTools = turn.messagePerson && !turn.person
+        ? [...(bypass ? askingTools : ["approve", "request_connection", "request_secret", "ask_user"]), "message_person"]
+        : null;
       mcpServers.bloks = {
         command: process.execPath,
         args: [PERMISSION_HELPER, socketPath],
-        env: { ...RUN_AS_NODE, ...(turn.person ? { BLOKS_PUBLISH: personTools.join(",") } : bypass ? { BLOKS_PUBLISH: askingTools.join(",") } : {}) },
+        env: { ...RUN_AS_NODE, ...(turn.person ? { BLOKS_PUBLISH: personTools.join(",") } : messageTools ? { BLOKS_PUBLISH: messageTools.join(",") } : bypass ? { BLOKS_PUBLISH: askingTools.join(",") } : {}) },
       };
       allowed.push("mcp__bloks");
 

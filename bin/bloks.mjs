@@ -327,6 +327,18 @@ const COMMANDS = {
       return request("POST", `/api/bots/${me.botId ?? me.id}/notes`, { text });
     },
   },
+  "message-person": {
+    use: 'message-person "<their name>" "<the message>"',
+    about:
+      "send one person in this workspace a message in their private conversation with you, marked as sent on behalf of whoever asked. " +
+      "Only when the owner or an admin asked you to, in a team conversation or a room; the answer says whether it went",
+    run: (args) => {
+      const [person, ...rest] = args;
+      const text = rest.join(" ").trim();
+      if (!person || !text) throw new Error('message-person needs a name and the message, like message-person "Sam" "The draft is ready"');
+      return request("POST", "/api/agent/message-person", { person, text });
+    },
+  },
   secret: {
     use: 'secret "<what it is>" [--hint "<where to find it>"]',
     about:

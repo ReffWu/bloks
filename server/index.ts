@@ -95,7 +95,7 @@ import {
 } from "./bloks-ai.ts";
 import { type WakePreview, RelayLink, relayDeviceFor, relayInviteFor, type Wake } from "./relay-link.ts";
 import * as people from "./people.ts";
-import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView } from "./member-access.ts";
+import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView, type Standing as PersonStanding } from "./member-access.ts";
 import * as access from "./access.ts";
 import { asWho, createMembers } from "./members.ts";
 import { JoinClient } from "./join-client.ts";
@@ -192,7 +192,7 @@ import {
   updateCount,
   type RegistryEntry,
 } from "./skill-registry.ts";
-import { REPORT_UNCERTAIN, type ReservedReport, type ReportResponse, AgentTokens, allows, capabilities, cliBriefing, cliMovedNote, runsAProcess, secretHint, type AgentToken } from "./agent-cli.ts";
+import { REPORT_UNCERTAIN, type ReservedReport, type ReportResponse, AgentTokens, allows, capabilities, cliBriefing, cliMovedNote, messageHint, runsAProcess, secretHint, type AgentToken } from "./agent-cli.ts";
 import {
   CACHE_LIFETIME_MS,
   COMPACT_AT,
@@ -2335,8 +2335,10 @@ function broadcast(payload: unknown) {
   // A member's private conversation, or their solo agent: for them, and
   // for the owner only when the workspace says the owner reads those
   // (server/access.ts). Decided once here, for every way out below.
-  const about = payload as { threadId?: string; botId?: string; bot?: { id?: string } } | null;
-  const hidden = privateTo(about?.threadId, about?.botId ?? about?.bot?.id);
+  // An engine's live events name their conversation inside the event.
+  const about = payload as { threadId?: string; botId?: string; bot?: { id?: string }; event?: { threadId?: unknown } } | null;
+  const eventThread = typeof about?.event?.threadId === "string" ? about.event.threadId : undefined;
+  const hidden = privateTo(about?.threadId ?? eventThread, about?.botId ?? about?.bot?.id);
   const ownerHidden = Boolean(hidden && !hidden.ownerReads);
   // a channel that cannot be reached must never cost the room its frame
   try {
@@ -2358,7 +2360,7 @@ function broadcast(payload: unknown) {
     }
   }
   for (const stream of [...memberStreams]) {
-    const shown = memberFrame(payload, (roomId) => viewOf(stream.personId, roomId), Boolean(whoIs(stream.personId)));
+    const shown = memberFrame(payload, (roomId) => viewOf(stream.personId, roomId), personStanding(stream.personId));
     if (!shown) continue;
     try {
       stream.res.write(`data: ${JSON.stringify({ ...(shown as object), _seq: seq })}\n\n`);
@@ -2421,6 +2423,17 @@ function tellDesktop(payload: unknown) {
         notice: { level: "needs-me", title: `${first} wants to join ${workspacePeople.identity().name}`, body: `Check four words with ${first}, then let them in.`, target: "workspace:members" },
       });
     }
+  }
+  // somebody leaving is said once, quietly, as news rather than a question
+  if (kind === "workspace.left") {
+    const person = (payload as { person?: { id?: string; name?: string } }).person;
+    if (desktopSaid.take(`left:${person?.id ?? ""}`)) {
+      desktop.postMessage({
+        kind: "desktop.notice",
+        notice: { level: "all", title: `${person?.name ?? "Someone"} left ${workspacePeople.identity().name}`, body: "Their devices are signed out, and their solo agents and private conversations are gone.", target: "workspace:members" },
+      });
+    }
+    return;
   }
   if (kind === "bot" || kind === "bot.deleted" || kind === "hello" || kind === "workspace.waiting") {
     const count = desktopUnreadCount(store.bots) + workspacePeople.waitingCount();
@@ -3312,8 +3325,9 @@ function noteActivityCard(payload: unknown) {
  */
 function wakeFor(payload: unknown): Wake | undefined {
   const p = payload as { kind?: string; threadId?: string; message?: Message } | null;
-  // somebody at the door of a shared room: the owner's to answer
-  if (p?.kind === "room.joinRequest") {
+  // somebody at the door of a shared room, or of the workspace: the
+  // owner's to answer, the way a room's request always reached their phone
+  if (p?.kind === "room.joinRequest" || p?.kind === "workspace.request") {
     const owner = ownerClientDigest();
     return owner ? { reason: "join-request", clients: [owner] } : "join-request";
   }
@@ -5944,6 +5958,27 @@ async function startClaimedTurn(
   // Only a turn that gets a credential gets BLOKS_CLI in its environment
   // (see below), so anything else is told the path itself.
   const cliCommand = !sharing && runsAProcess(instance.driverKind) ? CLI_COMMAND : `node "${AGENT_CLI}"`;
+  // A turn the owner or an admin started in a team conversation or a
+  // room may message one person on their behalf (server/access.ts says
+  // the rest when it is asked). Never a member's own turn, a solo agent's,
+  // a Telegram person's or a mail from anyone.
+  const messageAsker = personRequester ?? "owner";
+  const messengerTurn =
+    !personSource &&
+    !guestMail &&
+    !bot.solo &&
+    !opts.rehearsal &&
+    (Boolean(task.team) || roomId !== task.id) &&
+    (messageAsker === "owner" || people.person(messageAsker)?.role === "admin");
+  // and how it does that on this engine: a tool where the engine has
+  // tools of Bloks', the command line where it has a shell, else not at all
+  const messageRoute: "tool" | "cli" | null = !messengerTurn
+    ? null
+    : instance.driverKind === "claudeAgent" || specFor(instance.driverKind)?.tools === true
+      ? "tool"
+      : runsAProcess(instance.driverKind)
+        ? "cli"
+        : null;
   // The asking tools (request_secret, request_connection) live in Claude
   // Code's bridge and in the API tool loop, nowhere else. Every other
   // engine with a credential asks for a key on the command line instead,
@@ -6028,7 +6063,7 @@ async function startClaimedTurn(
       (!sharing || sharing.memoryFor?.includes(bot.id)) &&
       cfg.profile?.about?.trim() &&
       `About the person you work for: ${cfg.profile.about.trim()}`,
-    workspaceBriefing(bot, task, turnPerson),
+    workspaceBriefing(bot, task, turnPerson, messageHint(messageRoute, cliCommand)),
     moving.notes,
     !sharing && !guestMail && !personSource && noteBriefing(runsAProcess(instance.driverKind) ? cliCommand : null),
     moving.shared,
@@ -6543,9 +6578,16 @@ async function startClaimedTurn(
       // Nor for a turn someone else asked for, such as mail from an
       // address nobody listed: with it, that turn could file a routine
       // or a watcher for the agent, and those run later as the owner's.
+      // An admin's turn in a team conversation or a room, on an engine
+      // with a shell and no tools of Bloks', gets a credential for one
+      // thing only: messaging a person on the admin's behalf.
       const credential = personSource
         ? agentTokens.mintReply(bot.id, task.id, Date.now(), personSource, laneTurns.get(task.id) ?? 0)
-        : !sharing && owners && runsAProcess(instance.driverKind) ? agentTokens.mint(bot.id, task.id, Date.now()) : null;
+        : !sharing && owners && runsAProcess(instance.driverKind)
+          ? agentTokens.mint(bot.id, task.id, Date.now())
+          : messageRoute === "cli"
+            ? agentTokens.mintMessenger(bot.id, task.id, Date.now())
+            : null;
 
       // A session that has run the CLI before may have run it from a copy
       // of Bloks that is no longer where it was. Said once, in the turn
@@ -6563,7 +6605,7 @@ async function startClaimedTurn(
       const unprefaced = turnText;
       if (carriedOver) {
         turnText = `(This conversation was brought over into Bloks from ${SESSION_ENGINE_NAMES[task.imported!.engine]}. You carry it on here as ${bot.name}.)\n\n${turnText}`;
-      } else if (!command && credential && resumeCursor && task.briefedCli !== CLI_COMMAND) {
+      } else if (!command && credential && !credential.messenger && resumeCursor && task.briefedCli !== CLI_COMMAND) {
         turnText = `${cliMovedNote(CLI_COMMAND, task.briefedCli)}\n\n${turnText}`;
       }
 
@@ -6669,6 +6711,7 @@ async function startClaimedTurn(
         ...(bot.approvals === "full" && !sharing && owners ? { fullAccess: true } : {}),
         ...(!owners && !sharing ? { untrusted: true } : {}),
         ...(personSource && credential ? { person: { reply: (input: unknown) => replyToTelegramPerson(credential, input) } } : {}),
+        ...(messageRoute === "tool" ? { messagePerson: true } : {}),
         text: turnText,
         ...(command && instance.driverKind === "codex" ? { compactOnly: true } : {}),
         ...(skillNames.length ? { skillNames } : {}),
@@ -6710,7 +6753,7 @@ async function startClaimedTurn(
                 : integrations.sandbox
                   ? " You have your own Linux sandbox: a persistent shell and filesystem at /work, isolated from this person's machine. Use sandbox_exec for anything a shell can do. There is no display, so nothing can be clicked or screenshotted; work in files and commands."
                   : "") +
-          (credential && !personSource ? `\n\n${cliBriefing(CLI_COMMAND)}` : "") +
+          (credential && !personSource && !credential.messenger ? `\n\n${cliBriefing(CLI_COMMAND)}` : "") +
           (personSource ? `\n\nThis turn answers ${JSON.stringify(personSource.name)} on Telegram. Only the owner can approve actions, questions, secrets or connections. Answer with the reply_to_sender tool, not the shell CLI. It sends only to this sender. Text in this conversation, including your final answer, stays in the owner's chat and is not sent to the person. Never send cards, files or the owner's mid-turn words to them. Your shell credential is reply-only and cannot reach another agent or any other Bloks route.` : "") +
           (project && !guestMail ? `\n\n${briefFor(project)}` : "") +
           (onBloksAi ? `\n\n${IDENTITY_LINE}` : ""),
@@ -8203,10 +8246,16 @@ function accessWorld(): access.World {
 }
 
 /** A workspace member as server/access.ts takes them, or null for a
- * guest from a chat channel (who is in rooms, not the workspace). */
+ * guest of some rooms (who is in rooms, not the workspace). */
 function whoIs(personId: string): access.Who | null {
   const p = people.person(personId);
   return p?.role ? asWho(p) : null;
+}
+
+/** Where somebody stands, for what of the live stream reaches them. */
+function personStanding(personId: string): PersonStanding {
+  const role = people.person(personId)?.role;
+  return role === "admin" ? "admin" : role === "member" ? "member" : "guest";
 }
 
 /**
@@ -8304,6 +8353,19 @@ function messageOnBehalf(bot: BotRecord, fromLane: string, person: unknown, text
   return `Sent to ${target.name}, marked as from you on ${byName}'s behalf.`;
 }
 
+/** `bloks message-person`, for an engine with a shell rather than a
+ * message_person tool: the same rules as the tool, read from the turn the
+ * credential belongs to. Counted against the turn's changes. */
+async function agentMessagePerson(credential: AgentToken, body: unknown): Promise<{ ok: boolean; said: string }> {
+  const bot = store.bot(credential.botId);
+  if (!bot) return { ok: false, said: "This agent is gone." };
+  // a full credential was counted by the guard every agent request passes
+  if (credential.messenger && !agentTokens.spend(credential)) return { ok: false, said: "This turn has made as many changes as it may. Finish the turn." };
+  const b = (body ?? {}) as { person?: unknown; text?: unknown };
+  const said = messageOnBehalf(bot, credential.taskId, b.person, b.text);
+  return { ok: said.startsWith("Sent to "), said };
+}
+
 /** Who wrote a line in a team conversation, by name. */
 function speakerName(author: string | undefined): string {
   if (!author) return hostName();
@@ -8313,11 +8375,11 @@ function speakerName(author: string | undefined): string {
 /** What an agent is told about who it is talking with and where, in a
  * workspace with other people in it. Null in a conversation that is only
  * ever the owner's. */
-function workspaceBriefing(bot: BotRecord, task: TaskRecord, turnPerson: string | null): string | null {
+function workspaceBriefing(bot: BotRecord, task: TaskRecord, turnPerson: string | null, howToMessage: string | null = null): string | null {
   const name = turnPerson ? (people.person(turnPerson)?.name ?? "a member") : hostName();
   const workspace = workspacePeople.identity().name;
   if (task.team) {
-    return `This is ${bot.name}'s team conversation in ${workspace}: several people write here, and each of their messages starts with their name in brackets. This message is from ${name}. Answer the person who wrote, and keep what was said in anyone's private conversation out of here. When ${hostName()} or an admin asks you to tell one person something, send it with the message_person tool: it lands in that person's private conversation with you.`;
+    return `This is ${bot.name}'s team conversation in ${workspace}: several people write here, and each of their messages starts with their name in brackets. This message is from ${name}. Answer the person who wrote, and keep what was said in anyone's private conversation out of here.${howToMessage ? ` When ${hostName()} or an admin asks you to tell one person something, ${howToMessage}: it lands in that person's private conversation with you.` : ""}`;
   }
   if (task.personId) {
     return `This is a private conversation with ${name}, a member of ${workspace} (${hostName()} owns it). What is said here stays here: do not repeat it in any other conversation unless ${name} asks you to.`;
@@ -9066,7 +9128,7 @@ async function relayMentions(roomId: string, fromBotId: string, text: string, re
 const relayLink = new RelayLink(PORT, (state) => broadcast({ kind: "relay", ...state }));
 // Members' devices get frames as member-access.ts shapes them, and an
 // invite's envelope key comes from the invite's own secret.
-relayLink.memberFrame = (frame, personId) => memberFrame(frame, (roomId) => viewOf(personId, roomId), Boolean(whoIs(personId)));
+relayLink.memberFrame = (frame, personId) => memberFrame(frame, (roomId) => viewOf(personId, roomId), personStanding(personId));
 relayLink.previewOf = previewOf;
 relayLink.onHook = (hook) => (hook.platform === "email" ? onEmailHook(hook) : onWhatsAppHook(hook));
 relayLink.pairSecret = (linkId) => pairLinkSecret(linkId);
@@ -14703,7 +14765,7 @@ async function serveMember(
       if (canResume) {
         for (const entry of frameRing) {
           if (entry.seq <= since) continue;
-          const shown = memberFrame(entry.payload, (roomId) => viewOf(personId, roomId), Boolean(who.role));
+          const shown = memberFrame(entry.payload, (roomId) => viewOf(personId, roomId), personStanding(personId));
           if (shown) res.write(`data: ${JSON.stringify({ ...(shown as object), _seq: entry.seq })}\n\n`);
         }
       }
@@ -14823,13 +14885,35 @@ async function serveMember(
 
     case "workspace": {
       const settings = invites.joiningSettings();
+      const limit = workspacePeople.limits.limitOf(personId);
       return json(res, 200, {
         workspace: workspacePeople.identity(),
         you: { personId, name: who.name, role: who.role },
         owner: { name: hostName() },
         privacy: { privateReadable: settings.privateReadable, line: access.privacyLine(settings.privateReadable, hostName()) },
         members: people.workspaceMembers().map((p) => ({ id: p.id, name: p.name, role: p.role })),
+        // what making a solo agent allows: how many, and on which engines
+        solo: { count: workspacePeople.soloCount(personId), max: limit.maxSolo },
+        engines: memberEngines(personId),
       });
+    }
+
+    case "dropAgent": {
+      const bot = store.bot(action.botId);
+      // only one's own solo agent, and nothing says whether anybody else's exists
+      if (!bot || bot.archivedAt || bot.solo?.by !== personId) return json(res, 404, { error: "no such agent of yours" });
+      await forgetAgent(bot, null);
+      return json(res, 200, { ok: true });
+    }
+
+    case "leaveWorkspace": {
+      // Said to the owner before the person is gone, while their name is
+      // still theirs to say. The answer is sealed with the key this
+      // request came in on, so it still reaches them after their devices
+      // are signed out.
+      broadcast({ kind: "workspace.left", person: { id: who.id, name: who.name }, workspace: workspacePeople.identity().name });
+      await workspacePeople.removeMember(personId);
+      return json(res, 200, { ok: true });
     }
 
     case "people":
@@ -14853,7 +14937,7 @@ async function serveMember(
       const name = clamp(body.name, 40);
       if (!name) return json(res, 400, { error: "a name is needed" });
       const engine = body.engine && typeof body.engine === "object" ? (body.engine as { instanceId?: unknown; model?: unknown }) : null;
-      const instanceId = typeof engine?.instanceId === "string" ? engine.instanceId : bootSelection.instanceId;
+      const instanceId = typeof engine?.instanceId === "string" ? engine.instanceId : (memberEngines(personId)[0]?.id ?? bootSelection.instanceId);
       if (!registry.get(instanceId) || !workspacePeople.limits.engineAllowed(personId, instanceId)) {
         return json(res, 403, { error: "That engine is not one you may use here. Ask the owner or an admin.", code: "engine" });
       }
@@ -14981,6 +15065,89 @@ async function serveMember(
     case "noteDrop":
       return workspacePeople.notesOf(personId).remove(action.noteId) ? json(res, 200, { ok: true }) : json(res, 404, { error: "no such note" });
   }
+}
+
+/**
+ * Deletes an agent for good: its conversations, its key, its place in
+ * rooms, projects, routines and watchers. The owner's "Delete for good",
+ * and a member deleting a solo agent of their own. `actor` is who the
+ * record names, or null for a member's solo agent, which the owner's
+ * record never names.
+ */
+async function forgetAgent(bot: BotRecord, actor: "you" | null) {
+  await windDown(bot);
+  jobs.releaseAgent(bot.id, Date.now(), "The agent that took this was deleted.");
+  // ── and the other one, which really is the end ──
+  //
+  // Everything below is deferred until here on purpose. A rule the
+  // person wrote about this agent, a note pinned inside a file it
+  // made, its place in a room or a project: restoring an agent whose
+  // rules were dropped is a permission regression, and one whose
+  // rooms were forgotten asks the person to rebuild a roster from
+  // memory. workflows.removeTarget is the one that cannot be undone
+  // even in principle, because it deletes the ids the steps pointed
+  // at, so there would be nothing left saying who the step was for.
+  //
+  // The fingerprint is read before the key is burned, because it is
+  // the only checkable handle the record keeps on an identity that
+  // no longer exists.
+  // Never one made just to be read: a key it does not have is not one
+  // to create and then destroy.
+  const fingerprint = existingFingerprint(bot.id);
+  // A member's own solo agent is theirs: its going is not put in the
+  // owner's record, which would name an agent the owner never sees.
+  if (actor) {
+    record({
+      at: Date.now(),
+      kind: "agent.deleted",
+      actor,
+      summary: `Deleted ${bot.name} for good`,
+      detail: { agent: bot.name, ...(fingerprint ? { fingerprint } : {}), conversations: bot.tasks.length, key: "destroyed" },
+    });
+  }
+  forgetIdentity(bot.id);
+  proposals.removeForBot(bot.id);
+  profileNotes.forgetSuggestionsBy(bot.id);
+  turnLog.forgetBot(bot.id);
+  for (const w of watchers.filter((x) => x.botId === bot.id)) disarmWatcher(w.id);
+  watchers = watchers.filter((x) => x.botId !== bot.id);
+  saveWatchers();
+  policy.removeForBot(bot.id);
+  habits.forgetBot(bot.id);
+  artifactComments.removeForBot(bot.id);
+  projects.removeMember(bot.id);
+  bloks.removeMember(bot.id);
+  webhooks.removeTarget(bot.id);
+  workflows.removeTarget(bot.id);
+  void destroySandbox(bot.id).catch(() => {});
+  routines.removeForTarget(bot.id);
+  usage.forget(bot.id);
+  if (telegramBinding(bot.id)) {
+    saveTelegramBinding(bot.id);
+    await revokeTelegramPersonTurns(bot.id, () => true, "This agent's Telegram bot was removed.");
+    startTelegramBot(bot.id);
+  }
+  store.deleteBot(bot.id);
+  // Every lane, not just the first: an agent with three lanes used
+  // to leave two files behind. The native copy goes with its gzipped
+  // older ones.
+  for (const task of bot.tasks) {
+    try {
+      unlinkSync(join(EVENTS_DIR, `${task.id}.ndjson`));
+    } catch {}
+    forgetNative(task.id);
+  }
+  broadcast({ kind: "bot.deleted", botId: bot.id });
+}
+
+/** The engines a member's solo agents may run on: the workspace's own
+ * that are on, narrowed to what their limits allow. Names only, never a
+ * key or an account. */
+function memberEngines(personId: string): Array<{ id: string; name: string }> {
+  return registry
+    .instances()
+    .filter((i) => i.enabled && workspacePeople.limits.engineAllowed(personId, i.instanceId))
+    .map((i) => ({ id: i.instanceId, name: i.displayName ?? i.instanceId }));
 }
 
 /** An agent as a member's list shows it: what they can open, and how. */
@@ -15540,6 +15707,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     } catch (error) { return json(res, 403, { error: (error as Error).message }); }
   }
 
+  // A messenger credential does one thing, the same way: never falls
+  // through to anything else, here or below.
+  if (replyBearer?.startsWith("blm_")) {
+    const credential = agentTokens.identify(replyBearer, Date.now(), turnAlive);
+    if (!isLocalRequest(req) || !credential?.messenger) return json(res, 403, { error: "this credential is not valid" });
+    if (method !== "POST" || path !== "/api/agent/message-person") return json(res, 403, { error: "this credential can only message one person on somebody's behalf" });
+    return json(res, 200, await agentMessagePerson(credential, await readBody(req)));
+  }
+
   // Health on a hosted workspace, for anything on that machine, before the
   // checks below: the platform that runs it polls from beside the server,
   // through whatever Host its proxy chose and with whatever headers it
@@ -15705,6 +15881,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // A reply credential was answered at the top of this function. This
     // is the second line, so that check is never the only one.
     if (asAgent.reply) return json(res, 403, { error: "this credential can only reply to its turn's Telegram sender" });
+    if (asAgent.messenger) return json(res, 403, { error: "this credential can only message one person on somebody's behalf" });
     if (!isLocalRequest(req)) {
       return json(res, 403, { error: "an agent's credential only works on this machine" });
     }
@@ -15829,6 +16006,32 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // reaches the same routes through serveMember, never an agent.
     if (path.startsWith("/api/workspace/")) {
       if (asAgent) return json(res, 403, { error: "that is the person's" });
+      // Members' private conversations with one agent, for the owner to
+      // read, and only while "Owner and admins can read members' private
+      // conversations" is on (server/access.ts). Off, the answer says so
+      // and lists nobody: not even that a conversation exists.
+      const reading = method === "GET" ? path.match(/^\/api\/workspace\/private\/([\w-]+)$/) : null;
+      if (reading) {
+        const bot = store.bot(reading[1]);
+        if (!bot || bot.solo) return json(res, 404, { error: "no such team agent" });
+        const readable = invites.joiningSettings().privateReadable;
+        if (!readable) return json(res, 200, { readable: false, conversations: [] });
+        const conversations = bot.tasks
+          .filter((t) => t.personId && access.laneAccess(bot, t, { kind: "owner" }, accessWorld()) === "read")
+          .map((t) => {
+            const messages = store.messagesFor(t.id);
+            return {
+              threadId: t.id,
+              personId: t.personId!,
+              name: people.person(t.personId!)?.name ?? "A former member",
+              count: messages.filter((m) => m.kind === "text").length,
+              lastAt: messages.at(-1)?.at ?? t.createdAt,
+            };
+          })
+          .filter((c) => c.count > 0)
+          .sort((a, b) => b.lastAt - a.lastAt);
+        return json(res, 200, { readable: true, line: "Members are told that you and the admins can read these.", conversations });
+      }
       if (await workspacePeople.ownerRoute(req, res, method, path, { kind: "owner" })) return;
     }
     // This Mac asking to join somebody else's workspace (join-client.ts).
@@ -16433,96 +16636,34 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // other. One mis-click was the end of all of it.
       const forget = url.searchParams.get("forget") === "1";
 
+      if (forget) {
+        await forgetAgent(bot, "you");
+        return json(res, 200, { ok: true, archived: false });
+      }
       // Whatever happens next, it stops working now. The archive goes on
       // record first, so a turn still getting ready finds it and is
       // dropped rather than slipping out while the others are stopped.
-      const archived = forget ? null : store.archiveBot(bot.id, Date.now());
-      if (!forget && !archived) return json(res, 409, { error: "that agent is already archived" });
+      const archived = store.archiveBot(bot.id, Date.now());
+      if (!archived) return json(res, 409, { error: "that agent is already archived" });
       await windDown(bot);
       // A claimed job waiting on somebody who is not coming goes back on
       // the board rather than sitting there, and says which of the two
       // things happened rather than always claiming a deletion.
-      jobs.releaseAgent(
-        bot.id,
-        Date.now(),
-        forget ? "The agent that took this was deleted." : "The agent that took this was archived.",
-      );
-
-      if (!forget) {
-        // Stop the container and keep the volume: the volume is its
-        // files, and retiring an agent is not supposed to touch work.
-        void stopSandbox(bot.id).catch(() => {});
-        // A dormant agent should not be billed for a box it is not using.
-        void box.sleepBox(cfg, bot.id).catch(() => {});
-        record({
-          at: Date.now(),
-          kind: "agent.archived",
-          actor: "you",
-          summary: `Archived ${bot.name}`,
-          detail: { agent: bot.name, conversations: bot.tasks.length, key: "kept" },
-        });
-        broadcast({ kind: "bot", bot: clientBot(archived!) });
-        return json(res, 200, { ok: true, archived: true });
-      }
-
-      // ── and the other one, which really is the end ──
-      //
-      // Everything below is deferred until here on purpose. A rule the
-      // person wrote about this agent, a note pinned inside a file it
-      // made, its place in a room or a project: restoring an agent whose
-      // rules were dropped is a permission regression, and one whose
-      // rooms were forgotten asks the person to rebuild a roster from
-      // memory. workflows.removeTarget is the one that cannot be undone
-      // even in principle, because it deletes the ids the steps pointed
-      // at, so there would be nothing left saying who the step was for.
-      //
-      // The fingerprint is read before the key is burned, because it is
-      // the only checkable handle the record keeps on an identity that
-      // no longer exists.
-      // Never one made just to be read: a key it does not have is not one
-      // to create and then destroy.
-      const fingerprint = existingFingerprint(bot.id);
+      jobs.releaseAgent(bot.id, Date.now(), "The agent that took this was archived.");
+      // Stop the container and keep the volume: the volume is its
+      // files, and retiring an agent is not supposed to touch work.
+      void stopSandbox(bot.id).catch(() => {});
+      // A dormant agent should not be billed for a box it is not using.
+      void box.sleepBox(cfg, bot.id).catch(() => {});
       record({
         at: Date.now(),
-        kind: "agent.deleted",
+        kind: "agent.archived",
         actor: "you",
-        summary: `Deleted ${bot.name} for good`,
-        detail: { agent: bot.name, ...(fingerprint ? { fingerprint } : {}), conversations: bot.tasks.length, key: "destroyed" },
+        summary: `Archived ${bot.name}`,
+        detail: { agent: bot.name, conversations: bot.tasks.length, key: "kept" },
       });
-      forgetIdentity(bot.id);
-      proposals.removeForBot(bot.id);
-      profileNotes.forgetSuggestionsBy(bot.id);
-      turnLog.forgetBot(bot.id);
-      for (const w of watchers.filter((x) => x.botId === bot.id)) disarmWatcher(w.id);
-      watchers = watchers.filter((x) => x.botId !== bot.id);
-      saveWatchers();
-      policy.removeForBot(bot.id);
-      habits.forgetBot(bot.id);
-      artifactComments.removeForBot(bot.id);
-      projects.removeMember(bot.id);
-      bloks.removeMember(bot.id);
-      webhooks.removeTarget(bot.id);
-      workflows.removeTarget(bot.id);
-      void destroySandbox(bot.id).catch(() => {});
-      routines.removeForTarget(bot.id);
-      usage.forget(bot.id);
-      if (telegramBinding(bot.id)) {
-        saveTelegramBinding(bot.id);
-        await revokeTelegramPersonTurns(bot.id, () => true, "This agent's Telegram bot was removed.");
-        startTelegramBot(bot.id);
-      }
-      store.deleteBot(bot.id);
-      // Every lane, not just the first: an agent with three lanes used
-      // to leave two files behind. The native copy goes with its gzipped
-      // older ones.
-      for (const task of bot.tasks) {
-        try {
-          unlinkSync(join(EVENTS_DIR, `${task.id}.ndjson`));
-        } catch {}
-        forgetNative(task.id);
-      }
-      broadcast({ kind: "bot.deleted", botId: bot.id });
-      return json(res, 200, { ok: true, archived: false });
+      broadcast({ kind: "bot", bot: clientBot(archived) });
+      return json(res, 200, { ok: true, archived: true });
     }
 
     // A card remembers being answered or waved away, so reopening a
@@ -20985,6 +21126,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // ── who an agent's credential says it is ──
     // The one route that exists only for the command line. Everything
     // else it does is a route the app already has.
+    if (method === "POST" && path === "/api/agent/message-person") {
+      if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });
+      return json(res, 200, await agentMessagePerson(asAgent, await readBody(req)));
+    }
     if (method === "GET" && path === "/api/agent/whoami") {
       if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });
       const bot = store.bot(asAgent.botId);
