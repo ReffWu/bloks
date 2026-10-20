@@ -1,7 +1,7 @@
 # Tests
 
 ```sh
-pnpm test          # everything, about a minute and a half
+pnpm test          # everything, some four thousand tests, a few minutes
 pnpm test:watch    # rerun on change
 node --test test/rooms.test.ts   # one file
 ```
@@ -28,6 +28,14 @@ there is nothing to install and nothing to configure.
 | `genui.test.ts` | Interface answers: the library, the parse, the tree kept for the phone. |
 | `genui-actions.test.ts` | What a click in an interface answer may do, and what it may not. |
 | `genui-briefing.test.ts` | What an agent is taught, behind its switch, end to end. |
+| `workspaces.test.ts` | The desktop app's list of workspaces: the first launch leaves your folder where it is. |
+| `access.test.ts` | Who may see what in a workspace with people in it, walked through one example. |
+| `invites.test.ts` | Invite codes, links and passwords, and every way a request to join is turned away. |
+| `workspace-join.test.ts` | Joining end to end, sealed, from the invite to the welcome. |
+| `workspace-member-surface.test.ts` | A member's side against the real server: team, private and solo conversations. |
+| `reads.test.ts` | How far people have read, and who may be shown it. |
+| `spend-limits.test.ts` | A monthly limit on your own keys: what it counts, and that it stops a turn. |
+| `model-prices.test.ts` | Estimating an unpriced turn from the list prices, with no network. |
 | `palette.test.ts` | The colours, against the contrast they promise. |
 | `api.test.ts` | The real harness over real HTTP. |
 

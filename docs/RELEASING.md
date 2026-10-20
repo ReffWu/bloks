@@ -255,7 +255,13 @@ workflow, keep them.
 ## What is not automated
 
 - Release notes. Write them yourself. A changelog generated from commit
-  subjects is worse than three sentences about what changed.
+  subjects is worse than three sentences about what changed. A big
+  release can have its notes written ahead in `docs/`, as
+  [RELEASE_NOTES_3.0.md](RELEASE_NOTES_3.0.md) was, and pasted into the
+  draft (`gh release edit <tag> --notes-file docs/RELEASE_NOTES_3.0.md`).
+  Keep them to a bold first line, then `##` and `###` headings over lists
+  whose items open with a bold phrase: bloks.dev's changelog reads that
+  shape.
 - Publishing. Every tag produces a draft, never a published release.
 - Windows and Linux signing. Those builds are attached automatically but
   unsigned, so SmartScreen warns on first run; Linux does not expect a

@@ -6,7 +6,7 @@ Three pieces, one rule.
 | --- | --- | --- |
 | React app | `src/` | Chat, rooms, agent roster, panels, avatars |
 | Harness server | `server/` | HTTP API, one SSE stream, provider registry, persistence, approvals |
-| Electron shell | `electron/` | macOS window, packaged server, speech and computer bridges |
+| Electron shell | `electron/` | Desktop window, one server per workspace, speech and computer bridges |
 
 **The client holds no transports.** The React app never opens a
 connection to a model provider. It dispatches typed commands over HTTP
@@ -111,7 +111,8 @@ agents and the room.
 
 ## Persistence
 
-Plain JSON under `~/.bloks`, written synchronously. No database.
+Plain JSON in the workspace's data folder (`~/.bloks` for Personal, see
+Workspaces), written synchronously. No database.
 
 | Path | Contents |
 | --- | --- |
@@ -122,6 +123,12 @@ Plain JSON under `~/.bloks`, written synchronously. No database.
 | `room-lines.json` | Room lines waiting for a busy agent, or for Bloks to be back |
 | `engine-pauses.json` | Engines and models paused for a while, only while any are (see Engine pauses) |
 | `incidents.json` | What failed, who has it and how it ended, and the quiet desk's one card (see The incident desk) |
+| `workspace.json` | The workspace's name, kind and mark, as the app last said them, for invites |
+| `people.json`, `joining.json` | Members, guests and devices; invites, the join key and password, and the joining switches (see People in a workspace) |
+| `member-limits.json`, `owner-plan.json` | What each member may spend and has spent this month; the owner's plan as last known |
+| `reads.json` | How far each person has read each conversation (see Read positions) |
+| `usage.json`, `model-prices.json` | Daily usage by agent, engine and person; the public price list estimates come from (see Usage and spending limits) |
+| `plan-cache.json` | The Plan page's last good answers from bloks.dev, under a fingerprint of the key |
 | `messages-<id>.json` | One transcript per agent or room, same key space |
 | `config.json` | Connected providers and keys, `0600` |
 | `skills/*.md` | Installed skills |
@@ -198,6 +205,83 @@ it. CLI engines have `bloks memory --topics`, `--topic <name>` with
 Room ids and agent thread ids share one key space, which is why a room
 transcript and a solo transcript are the same kind of file.
 
+## Workspaces
+
+A workspace is a data folder and the one server that runs on it. Every
+path in this document that says `~/.bloks` means the workspace's own
+folder, `DATA_DIR` in `server/config.ts`: `BLOKS_DATA_DIR` when it names
+one, else `~/.bloks`. The server, the command line tools in `bin/` and
+the safety floor all read it from that one place, and
+`server/data-lock.ts` keeps it to one server per folder.
+
+The desktop app keeps the list (`electron/workspaces.mjs`, pure and
+tested in `test/workspaces.test.ts`) in `workspaces.json` in its own user
+data folder: each workspace's id, kind (`personal`, `business`, `custom`
+or `joined`), name, whether it is a team's, mark or logo, data folder,
+mute, notification level, order, last port and accent, and the person's
+own preferences (theme, the accent shared by every workspace when that
+is on, and the name they go by). The first launch with workspaces finds
+no list and writes one with the folder Bloks always had as Personal,
+exactly where it is: nothing is moved or rewritten to get there. Other
+workspaces get `<user data>/workspaces/<id>`, so a rename never moves a
+folder. Personal cannot be deleted. Marks are a 3x3 pattern and a colour
+(`electron/workspace-marks.mjs`): Personal's and Business's are fixed,
+and a named workspace draws one that is neither of those and that no
+other workspace on the computer wears.
+
+`electron/main.mjs` starts one server per local workspace, a few at a
+time behind the window, each a `utilityProcess` with `BLOKS_DATA_DIR`,
+`BLOKS_PORT`, `BLOKS_WORKSPACE_ID`, `BLOKS_WORKSPACES_DIR` and the
+workspace's name, kind and mark in its environment. Personal keeps the
+port order it always had (`BLOKS_PORT`, its `config.json`, the last port,
+then 8799, 18799 and 28799), because a phone paired on the network
+remembers it; the others take the port they had last, their
+`config.json`'s, or any free one. The window shows one workspace and
+switching points it at another server; the rest keep running, so a
+routine or a watcher in a workspace nobody is looking at still runs on
+time. A server that will not start is marked in the switcher with a way
+to try again, and the app opens on the next one that does. The safety
+floor keeps agents out of every folder under `BLOKS_WORKSPACES_DIR`, not
+only their own workspace's.
+
+A development run (`pnpm dev:desktop`) shows the dev server and starts
+none of its own. `BLOKS_DEV_WORKSPACES=1`, after `pnpm build`, makes it
+host the workspaces the way the installed app does.
+
+Each server talks to the app over the port Electron gives only its own
+children (`process.parentPort`), never the network:
+
+- **Banners.** What a window would have raised a banner for, decided by
+  the window's own rules (`server/desktop-notice.ts`, held to
+  `src/lib/notify.ts` by `test/desktop-notice.test.ts`) and marked
+  `needs-me` or `activity`, plus how many conversations are waiting. The
+  app holds each to that workspace's mute (15 minutes to 24 hours, or
+  until turned back on) and level (all, only what needs the person, or
+  nothing), and the Dock badge and the switcher's dots are the sum.
+- **The licence.** The app keeps one Bloks Cloud licence in the keychain
+  for every workspace and hands it to each server as it starts
+  (`{ kind: "licence", key }`); a server that already held one offers it
+  back once, and `licence.forget` takes it away everywhere. Relay
+  activation names the workspace id, so one licence holds a space per
+  workspace: `GET /api/relay/plan` says how many are online in the
+  relay's words, and `DELETE /api/relay/space` frees this workspace's
+  place while keeping the licence, so `POST /api/relay/activate` with
+  `again: true` needs nothing typed. A workspace's own licence still wins.
+- **The plan and the name.** A server says the plan it knows
+  (`desktop.plan`), so a new workspace's Team choice can say what it
+  needs, and the owner's name (`desktop.name`), which the app keeps once
+  and hands to every workspace (`{ kind: "name" }`).
+- **Stopping.** `{ kind: "stop" }` ends a server cleanly on every
+  platform, engines and folder lock included.
+
+A workspace joined on somebody else's computer has no folder here. It
+opens through the remote proxy (`electron/remote.mjs`) with the member's
+credentials, kept in the keychain like `remote.bin`, and the window
+draws a member's app from the member routes (see People in a
+workspace). One joined without Bloks Cloud is reached on the owner's own
+network only, through `startLanProxy`, a loopback stand-in like the
+relay proxy.
+
 ## Clients that are not on this machine
 
 The phone, a browser at bloks.dev/web, and the desktop app in remote mode
@@ -207,7 +291,11 @@ key per direction from it (`server/relay-crypto.ts`), every request and
 every event frame is sealed for one device, and the relay in between
 carries ciphertext it cannot open. A browser keeps the two keys as
 non-extractable WebCrypto keys and never the token. Routes that mint new
-pairings answer only on this machine.
+pairings answer only on this machine. A member's device, or a desktop
+app that joined the workspace, reaches it the same way with a member
+credential and is held to its own surface (see People in a workspace);
+one that joined on the owner's network alone calls it over plain HTTP on
+that network with its device token as the bearer.
 
 The line to the relay (`server/relay-link.ts`) is two things. The stream
 in, which carries asks, is watched for silence and redialled. What goes
@@ -265,6 +353,184 @@ Each visit owns its requests and measurement frames. Prepending holds an
 identified visible row measured after the wait, so new tail content does not
 move a reader who scrolled away. Find targets and the room's topics lens
 suppress paging that could displace their position.
+
+## People in a workspace
+
+A workspace has one owner, the person whose computer it is, who holds no
+Person record and no role. Everyone else is either a member of the
+workspace, with the role `member` or `admin`, or a guest of some of its
+rooms (`server/people.ts`, `people.json`, version 3). A member came in
+through a workspace invite, or was made an admin by the owner, and
+reaches the workspace's team agents and the rooms open to them. A guest
+came in through one room's own invite (the older share flow) or only
+ever talks from a linked chat channel, has no role, reaches that room
+and nothing else, never hears the members list, and counts against the
+room's places rather than the workspace's. Room memberships still exist
+underneath, because a room keeps its own roles (collaborator, viewer)
+and its own joining date for what history a person sees.
+
+### Who may see what
+
+Every rule is in `server/access.ts`, as plain functions over plain data,
+and the server asks it before anything leaves:
+
+- Every agent that is not solo is a team agent with one shared team
+  conversation. Its access list is everyone (the default), only some
+  people, or everyone except some (`PATCH /api/workspace/agents/:id/access`,
+  with whether admins are always in). The owner always is.
+- A room is everyone or chosen people (`PATCH /api/workspace/rooms/:id/access`).
+  Anybody in a room meets every agent in it there, whatever the agent's
+  own list says. `GET /api/workspace/access` lists both, with each room's
+  own guests apart.
+- Anybody who can reach a team agent, in its team conversation or a
+  room, also has a private conversation with it. Nobody else reads it,
+  the owner included, unless the owner turns on "Owner and admins can
+  read members' private conversations" (`PATCH /api/workspace/joining`
+  with `privateReadable`), and every member is told which way it is set
+  (`privacy.line`). While it is on, `GET /api/workspace/private/:botId`
+  lists them for the owner, to read only.
+- A solo agent is its maker's alone: not listed for anyone else, its
+  conversations theirs, and only they can put it in a room.
+- Approvals in a team conversation or a room are answered by the person
+  whose message started the work, the owner or an admin; in a private
+  conversation or a solo agent, by its person.
+- In a team conversation or a room, the owner or an admin may tell an
+  agent to message somebody who can reach it. The agent posts into that
+  person's private conversation, marked as sent on their behalf:
+  `message_person` on Claude Code's bridge and on API engines, `bloks
+  message-person` for the engines with a shell. A turn an admin started
+  gets a credential that can do that one thing. Members never message
+  each other through an agent.
+
+A member's device reaches `server/member-access.ts` and nothing else.
+Every route a member may call is named there, and anything unnamed is
+refused, so a route added anywhere else in the server is closed to
+members until somebody decides here that it should not be. The member
+routes (`/api/member/...`) give the workspace as a member sees it, the
+agents they reach and their own solo agents (made within their cap, on
+the engines they are allowed, and deleted by them alone), each agent's
+`team` and `private` messages and cards, their usage, their own notes
+about themselves (kept apart in `people/<id>/profile-notes.json`), their
+read positions, and leaving (`POST /api/member/leave`, which revokes
+every device, closes their streams, archives their solo agents and drops
+their private conversations, and tells the owner with a
+`workspace.left` frame). The event stream reaches a member only through
+`memberFrame()`, which strips what is the owner's (tool arguments,
+screenshots of the owner's screen, file paths, the buttons on
+approvals); a reply's words stream to whoever may read its
+conversation. An admin's device also reaches the people routes:
+invites, requests to join, roles, limits and access. The join password
+and the approval switch stay the owner's.
+
+### Invites and joining
+
+One invite is one person (`server/invites.ts`): a code, a QR and a link
+that are all the same invite, single use, for a day, cancellable, and at
+most twenty waiting (`POST /api/workspace/invites` with an optional name
+and a role; `PATCH` and `DELETE /api/workspace/invites/:id`). The code is
+8 characters from an alphabet with no 0, O, 1, I or L, shown as
+`K7QF-M2XR` and read in any case, with or without spaces and dashes. The
+link is `https://bloks.dev/j/<publicId>#<code>`: the public id only names
+the preview card, and the code sits after the `#`, which no server sees.
+Kept in `joining.json`, readable by the owner alone: the code's sha256
+(what the relay indexes) and the code itself, so the owner can read it
+out again, with the role, name, expiry and tries. Bloks Cloud learns the
+hash, the public id and the preview (workspace name, mark, inviter,
+role), and rate limits lookups.
+
+A code is short enough to read out, which makes it guessable, so three
+things stand behind it. Guessing is slow: Bloks Cloud limits lookups,
+and this computer limits guesses from its own network. A join password,
+when the owner sets one (`PUT` and `DELETE /api/workspace/joining/password`),
+is hashed with scrypt, checked only here, and never in the invite; five
+wrong tries close that invite and tell the owner. And with Approve each
+person on (the default), nobody is in until the owner has read the same
+four words as the person asking (`POST /api/workspace/requests/:inviteId/approve`
+or `.../decline`). The words are an HMAC keyed with the code's hash over
+the joiner's device token hash and this workspace's join key
+(`joinPhrase`), so a relay that swapped the key to read the request shows
+different words on the two screens.
+
+Joining is a sealed conversation about one thing. The joiner makes an
+X25519 key and derives one key per direction with HKDF-SHA256
+(`bloks-join-v1:joiner-to-host`, `bloks-join-v1:host-to-joiner`) against
+the workspace's join key, then asks `/api/join/lookup`, `/api/join/claim`
+(name, password, the device token's sha256, the kind of device),
+`/api/join/status` and `/api/join/cancel`, through the relay's ask route,
+or on the same network through `GET /api/join/key` and
+`POST /api/join/ask`, where the link carries the host's address after the
+code. Each ending has its own code: `wrong_code`, `expired`, `cancelled`,
+`used`, `closed`, `declined`, `password_required`, `wrong_password` with
+the tries left, `already_member`, `full`, `rate_limited`. An approved
+claim answers with the person's id and role, the relay to use (or none,
+and the owner's network address instead), and a welcome naming the
+agents. The device token never leaves the joiner's computer; the host
+keeps its sha256, as with pairing. On a Mac, `server/join-client.ts` is
+the joiner's half, behind `/api/joining/...` for the window, and the app
+keeps the result as a joined workspace.
+
+`GET /api/workspace/members` gives the Members page everything at once:
+the workspace, who is asking, each member's role, devices, solo agents,
+spend this month and limits, the waiting invites, the joining settings,
+the plan and the limit. `PATCH /api/workspace/members/:id` changes a role
+(which ends that person's sessions) or limits, and `DELETE` removes them.
+`GET /api/workspace/waiting` is the count for the switcher's dot.
+
+### Limits, the plan and the owner's name
+
+Every turn a member starts runs on the owner's engines and keys, so it is
+the owner's bill. Per member (`server/member-limits.ts`,
+`member-limits.json`), the owner and admins set a monthly limit on what
+API keys cost, a share of Bloks AI's month, how many solo agents they may
+make (three unless changed) and which engines those may use. Usage is
+booked to whoever started the turn (`personId` in `usage.json`), and a
+Bloks AI call carries the member's hashed tag, never a name. A member at
+their limit has their own requests refused with words saying why and who
+can raise it; nobody else notices.
+
+Members are Bloks Team's (`server/plan-limits.ts`). The owner's plan
+comes from the relay when this workspace is online, else from the
+licence checked with bloks.dev (`server/owner-plan.ts`, kept in
+`owner-plan.json`), and an unanswered check keeps the last answer, so a
+network blip never throws anybody out. Not on Team, inviting, claiming
+and approving refuse with `402 team_required`, and members already in
+are paused: every member route answers the same 402, except
+`GET /api/member/workspace` (which says `paused`), health and leaving.
+Nothing is deleted, and all of it returns with the plan. A room shared
+through its own invite takes new guests on Team, or on an older Cloud
+licence the relay says holds a shared room.
+
+Nobody else may see "The owner". The owner's name is kept in
+`config.profile.name` (`server/owner-name.ts`): setup asks for it,
+prefilled from this computer's account, and lets it be skipped; making a
+Team workspace, sharing a room and inviting somebody refuse with
+`409 name_required` until there is one, and the window asks there and
+carries on. Agents are told the name in the owner's own conversations.
+In conversations people go by their first name, with a last initial where
+two in one workspace share it.
+
+## Read positions
+
+How far each person has read each conversation, room or agent lane, is
+kept in `reads.json` (`server/reads.ts`): the last message they had on
+screen, per person, the owner as `owner`. A position only moves forward,
+because a person reads from more than one device in no particular order.
+Agents never write one. The owner's window says its own with
+`POST /api/threads/:threadId/read` once the messages have been on screen
+with the window in focus, a member's with
+`POST /api/member/threads/:threadId/read`, and each is broadcast as a
+`read` frame and carried on the history routes, so a fresh load shows
+them. Who sees whose is `readsShown` in `server/access.ts`: in rooms and
+team conversations everybody sees everybody's; in a private conversation
+its person sees their own, and the owner only while reading private
+conversations is on, never an admin. Seen by is drawn only where at
+least one other person is in the conversation, and never under the
+reader's own message.
+
+A room, or a team conversation with another person on its list or
+speaking in it, draws every message as a bubble, with a face and a name
+on the others' and runs from one sender grouped; a chat with one agent
+keeps its full width prose.
 
 ## Shared files
 
@@ -1937,9 +2203,15 @@ previews keep their existing percentage caps.
 The sidebar's conversations view (`src/components/SidebarParts.tsx`) is a
 per-device choice in `localStorage`. Settings is a page beside the
 sidebar, like Automations, with its pages listed once in
-`SETTINGS_PAGES` (`src/components/AppSettingsPanel.tsx`); anything that
-links into Settings passes a `page`, and the command palette searches the
-same list. Escape is handled once (`src/lib/useEscape.ts`): the most
+`SETTINGS_PAGE_LIST` (`src/lib/settingsPages.ts`), in groups: Account,
+Workspace (pages whose id starts `workspace:`, headed with which
+workspace beside the word), Agents, Integrations, Connections, Data and
+Bloks. Anything that links into Settings passes a `page`; an id that
+moved is sent on by `SETTINGS_REDIRECTS` (`cloud` is `plan` now), so an
+old link always lands somewhere real. The list's search and the command
+palette read the same list, rows included, and every page is built from
+the pieces in `src/components/SettingsLayout.tsx`. Escape is handled
+once (`src/lib/useEscape.ts`): the most
 recently opened surface that asked for it closes, and Radix menus and
 dialogs keep their own.
 
@@ -2142,6 +2414,86 @@ with the installer's own output behind a disclosure. The routes answer
 only a window on this computer and never an agent. Claude Code and Codex
 report signed in or not (`claude auth status`, `codex login status`), and
 the first-run check counts an engine as ready only when it is both.
+
+## Usage and spending limits
+
+Usage is counted from events the drivers already emit
+(`server/usage.ts`): tokens from `thread.token-usage.updated`, cost from
+`turn.completed`. It is kept in `usage.json` as daily buckets by agent,
+engine and, for a member's turn, the person who started it, about a year
+of them, a convenience rather than an accounting record. It never claims
+to know what is left of a subscription or a key: nothing exposes that,
+and inventing the denominator would be worse than leaving it out. What a
+Claude or ChatGPT plan has left comes from the engine itself, as its last
+turn said (`server/plan-usage.ts`), and Bloks AI's from its service, as
+shares.
+
+A cost is an engine's own price when it reports one (OpenRouter does, as
+`usage.cost`). Most API engines report tokens and no price, so a turn that
+comes back unpriced carries its model and tokens, cached input included,
+and is priced from OpenRouter's public model list (`server/model-prices.ts`):
+asked at most once a day while an engine on a key of the person's own is
+set up, with no key and nothing about the person in the request, kept in
+`model-prices.json` with its fetch time, and retried an hour after a
+failure. Matching takes a model id as each provider writes it and only
+ever matches an exact listed name once a date, a host's build tag or a
+dashed version is accounted for; a model the list does not name gets no
+estimate, because a wrong price is worse than none. The person's own
+price per million input and output tokens for an engine
+(`config.json`, `spendPrices`) comes ahead of the list. An estimate is
+kept apart from a reported price (`estimated` on the bucket) and always
+written as one, `~$4.20`. Bloks AI is never priced and never added to a
+dollar total.
+
+`GET /api/usage/report` is the Usage page's: one span (`range` of `7d`,
+`30d`, `90d` or `month`), for one agent or one engine if asked, and the
+span before under the same filters. The page keeps its choices on the
+device.
+
+A spending limit (`server/spend-limits.ts`) is the person's monthly line
+on an engine that runs on a key of their own (`auth` of `key` or
+`oauth`), in `config.json` as `spendLimits` by engine instance, counted
+from reported prices and estimates for the calendar month, local time.
+At the line Bloks starts no new turn on that engine, with words saying
+so, or hands the turn to the agent's backup engine, until the line is
+raised or the month turns; a turn already running finishes, since
+stopping it would waste what it had spent. `GET /api/spend-limits` lists
+them and `PUT /api/spend-limits/:instance` takes `usd`, `price` or both.
+Neither is reachable with an agent's credential: a line an agent could
+lift would be no line.
+
+`GET /api/usage-notices?thread=` gives the composer, and a paired phone,
+what is near or at a limit for what that conversation runs on, worst
+first: a Claude Code or Codex plan window used up, past its warning or
+going faster than it renews; Bloks AI's own notice from its balance; and
+a spending limit near (80%), on pace to run out, or reached. Each says
+"Approaching limit" or "Limit reached" and when it resets, and View usage
+opens the Usage page on that conversation's agent, at Limits. Dismissing
+one holds until it says something new.
+
+## Your plan
+
+Settings, Plan reads the membership on the licence this computer keeps
+(`server/plan-account.ts`). `GET /api/plan` asks bloks.dev, with the
+licence as the bearer, for the account and the offers on that plan;
+`POST /api/plan/manage` asks for the billing link only when it is
+pressed; and `DELETE /api/plan/licence` forgets the key here and takes
+the workspace offline. These answer this computer's own window only,
+never an agent or a paired device, since the answer is read with the
+licence itself. The key never comes back to the page, only masked. What
+the site sends is read as unknowns and checked one field at a time, with
+strings bounded and stripped of control and direction characters, and a
+price is shown as the site wrote it, never worked out here. The last good
+answers are kept in `plan-cache.json` under a fingerprint of the key, so
+a plan still shows, dated, when the site cannot be reached, and a fresh
+look moves the members and room sharing gates with the plan it reports.
+`BLOKS_SITE_URL` points it somewhere else for tests.
+
+The desktop app opens an offer with the key in the fragment of a
+bloks.dev link and nowhere else (`electron/plan-link.mjs`), copies the
+key without the page ever holding it, and opens Settings on Plan for a
+`bloks://plan` link. Without a key, the page says Bloks is free with the
+person's own keys.
 
 ## Bloks AI
 

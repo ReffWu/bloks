@@ -1,0 +1,120 @@
+**Workspaces, the people you work with inside them, and a clear view of what your agents spend.**
+
+The biggest release Bloks has had. Every part of your life with agents can now be a workspace of its own, each a whole Bloks with its own agents, memory, keys and rooms. A workspace can take people: send an invite, read the same four words, and they talk to your agents beside you, on your computer, within limits you set. A Usage page shows what every agent spent and puts a monthly line on your own API keys. And the app has a new shape, with answers drawn as cards, tables and charts instead of walls of text.
+
+## Headline features
+
+### Workspaces
+
+- **A workspace for each part of your life.** Personal is the Bloks you already had. Add a Business workspace, or one with a name of its own, and each is a whole Bloks: its own agents, memory, keys, rooms, routines and settings. Nothing moves between them.
+- **The switcher.** The workspace you are in sits at the top of the window with its mark. Its menu lists every workspace, with a dot where something is waiting, then Join a workspace, New workspace, Workspace settings and Mute. Cmd+1 to Cmd+9 and the command palette switch too.
+- **Marks.** Personal and Business wear fixed marks. Every other workspace gets a mark of its own that no other workspace on the computer wears; draw a new one or upload your logo.
+- **They keep working while you look elsewhere.** Each workspace runs its own server, so routines and watchers go on in the background, and their approvals and questions still reach you. The Dock badge counts every workspace.
+- **Mute and notifications, per workspace.** Mute one for 15 minutes, an hour, 3, 8 or 24 hours, or until you turn it back on. Choose whether it tells you about all activity, only what needs you, or nothing.
+- **Reachable online, per workspace.** With Bloks Cloud, each workspace has its own space and its own switch, so your phone and the people you invite reach it from anywhere. One Bloks key covers every workspace on the computer.
+
+### People in a workspace
+
+- **Invite someone.** An invite is a QR code, an 8 character code you can read out, and a link that shows as an invite card in Messages, Slack and WhatsApp. It is for one person, works once and lasts a day. No email, and no account to make.
+- **Nobody gets in by accident.** With Approve each person on, which it is unless you change it, you and they read the same four words before they are in. Add a join password if you like: it is checked only on your computer, and five wrong tries close the invite.
+- **Roles.** You are the owner. Admins invite and manage people; members use the agents, rooms and memory.
+- **Team agents.** In a workspace with people, every agent has one shared team conversation. Choose who is in it: everyone, only some people, or everyone except a few. Rooms are chosen per room, everyone or picked people.
+- **Private one to ones.** Anyone who can reach an agent can also talk to it privately. Nobody else reads those unless you turn on "Owner and admins can read members' private conversations", and members are told which way it is set.
+- **Agents message people for you.** In a team conversation or a room, you or an admin can ask an agent to message someone ("message Sam about the draft"), and it writes in Sam's private conversation, marked as sent on your behalf. Members cannot do that to each other.
+- **Solo agents.** Members can make agents of their own, private to them, on the engines you allow.
+- **Limits per member.** Set what each member may spend on your API keys a month, their share of Bloks AI, how many solo agents they may make and which engines those use. A member at their limit is stopped, and nobody else notices.
+- **Join from the desktop app.** Join a workspace from the switcher with a link or a code. It opens beside your own as a member's app: the team agents you reach, your solo agents and your rooms. On the owner's own network you can join without Bloks Cloud at all.
+- **Members come with Bloks Team.** Inviting people into a whole workspace needs the owner on Bloks Team. If that lapses, members are paused, never removed, until it is back.
+
+### Conversations with more than two
+
+- **Bubbles.** Rooms and team conversations draw every message as a bubble: yours on the right in your accent, everyone else's on the left with a face and a name. A chat with one agent stays as it was.
+- **Seen by.** Faces under the latest message show who has read how far, with names on hover. They show only where another person is in the conversation, never for agents.
+- **Your name.** Setup asks what your agents should call you, and Settings, General changes it. Bloks asks again before anyone else would see it, so no invite ever says "The owner". Two people who share a first name read as "Sam O." and "Sam K.".
+
+### Usage and spending limits
+
+- **A Usage page.** A new place on the rail shows what your agents used over 7, 30 or 90 days or this month, as cost, tokens or turns, for every agent and engine or one of each: a headline against the span before, a chart by day, and a breakdown by agent, engine or day that narrows the page with a click.
+- **Spending limits on your own keys.** Put a monthly line on any engine that runs on an API key of yours. At the line, new turns on it pause, or go to the agent's backup engine, until you raise it or the month turns. A turn already running finishes.
+- **Estimates where an engine names no price.** Most APIs report tokens and no price. Bloks now prices those turns from a public list of model prices, fetched at most once a day, and marks them with a "~". A model it cannot price is never guessed at, and you can give your own price per million tokens instead.
+- **A notice before you run out.** The message box says "Approaching limit" or "Limit reached" when a Claude or ChatGPT plan window, Bloks AI or a spending limit is close, with the day it resets and View usage.
+
+### Your plan, and Settings rebuilt
+
+- **A Plan page.** Settings, Plan shows your membership as bloks.dev has it: its status and renewal, what it includes and how much of that is in use, your key (masked, to copy, replace or remove) and where it can go next. Without a key it says plainly that Bloks is free with your own keys.
+- **Settings in one list.** Account, then Workspace, with which one beside it, then Agents, Integrations, Connections and Data. Search finds the very row a word lives on and takes you to it. The agent switches that crowded General have a page of their own, Behaviour.
+
+### Answers drawn as interface
+
+- **Answers, not walls of text.** Agents can answer with cards, tables, charts, metrics, steps, tabs, forms and buttons, drawn as the reply streams. A click can answer the agent, open a page or change the answer itself, and nothing in an answer fetches anything. Switch it off for an agent with Interactive answers in its settings.
+
+### A terminal that goes where you want
+
+- **Several shells per agent.** Up to eight terminal tabs each, renamed, restarted or cleared from a menu, with the cursor, scrollback and text size your way.
+- **Anywhere in the window.** Dock the terminal on any side of the chat, put it side by side with the chat, let it fill the window, or open it in a window of its own. Each side remembers its size.
+
+## Everything else
+
+### A new shape for the app
+
+- **The main rail.** Chat, Overview, Automations, Memory, Plugins, Usage and Settings sit on a slim rail, beside the chat's own sidebar, which you can resize or fold away. Conversation tabs move up into the title bar.
+- **Overview reads as one page.** The morning brief as a short column with what waits on you first and a slim player for Listen, then Activity, Projects and Rehearsals.
+- **The composer.** One slim row at rest, with the approval mode, the model and effort, Codex speed and a ring for context and today's spend underneath. Notices share one tray above it, and Send becomes Stop.
+- **Replies read as prose.** Real paragraphs, lists and headings, and code coloured by language. Message actions sit in a quiet row that shows on hover.
+- **Approvals say what will run.** A card shows the command, file, diff or page plainly. Commands that can delete or overwrite work are flagged and get no shortcut, and an answered card folds into one line.
+- **Accent.** Pick an accent from the eight colours of the Bloks mark, for each workspace or the same everywhere.
+- **Making agents and rooms.** A new agent is three short beats, with a draft ready in about four seconds. Agent settings open as a full page. A new room draws itself as you pick its members, and any member can wear the crown and lead that room.
+- **Rooms show who is speaking**, stream each member's reply under its name, and read a handoff as one line.
+- **First run, redone** as a full screen: engines as a live checklist, suggested agents, and approvals shown on a sample task.
+- **Small things that add up.** Toasts, a proper confirm dialog, loading skeletons, a pill that jumps back to the latest message, starters for an empty conversation, and a command palette that lands on the message it found.
+- **Plugins.** Each app has a page with things to try, 27 more apps are in the list, and Connect asks for the key right where you are.
+- **The model menu** is one grouped, searchable list, with readable names for models an engine lists only by id.
+
+### Memory
+
+- **Memory is a place on the rail.** Shared memory every agent reads, About you, and every agent with how full its memory is, with a search, a journal of every change with its diff and undo, and copying notes from one agent to another.
+- **A nightly tidy.** Each agent's memory is tidied once a night: notes past their date go, and the rest is merged and tightened as checked edits. A night undoes as a whole, and the morning brief says what changed. Turn it off in Settings, Behaviour, or tidy now from Memory.
+- **Memory for agents on API keys.** They read and write their own memory too.
+
+### Agents at work
+
+- **Messages while an agent works.** Automatic reads what you send mid-turn: a stop stops, a correction or an answer to its question goes in now, and the rest waits for the turn to end. Or choose Interrupt or Queue, per agent or for the workspace. A quiet line under your message says what happened, and one press goes the other way.
+- **An incident desk.** A turn that fails for good, a stalled call, or a routine, watcher or workflow that fails becomes an incident, handed to the room's lead, your most senior agent or the one you name, to retry once, pass on or tell you. An automation that fails three times running stops until you have a say, and the brief names what stopped.
+- **Rules from your habits.** Approve the same thing five times in two weeks, with no refusal, and Bloks offers it as a narrow rule, in the agent's tray and above your rules. Nothing that deletes, moves money or touches credentials is ever offered.
+- **Standing intents.** Words that come up in a conversation can post a note, bring an agent in or message one. Agents propose them and you approve them, in Automations, Intents.
+
+### Automations and connections
+
+- **Routines and watchers read as sentences.** Tap a part to change it, see the week ahead, and start from a common one.
+- **The workflow editor is a full sheet**: the flow drawn as a chain, earlier answers as named pills, conditions as a sentence, and Try it lighting each step as it runs.
+- **Connections as checklists.** Telegram, phones, Slack, Discord, WhatsApp and Bloks Cloud each set up as a short list of steps that tick as they happen.
+
+### Bring your history
+
+- **Past conversations.** Find your Claude Code and Codex sessions and bring them over as conversations, from Settings or the first run, then carry one on from where it stopped.
+- **Move a workspace in one file.** Backups can write out a whole workspace, and an empty workspace can take one in. Keys never travel; the ones left behind are named.
+
+### Bloks AI
+
+- **Agents with no key and no sign-in.** On a Bloks plan that includes Bloks AI, any agent can run on it, Claude Code included. Settings and Usage show what is left of the month as a meter, with top-ups, and a team can cap each member's share. Work nobody asked for, like the nightly tidy, uses it only when you switch that on.
+
+### iPhone and Apple Watch
+
+- With the iPhone app's own 3.0: workspaces in the sidebar, joining by link, QR or code with the same four words, a member's view of a workspace you joined, bubbles and Seen by, answers drawn as cards and charts, and the usage notice in the composer.
+- Notifications arrive from the agent with its face, Live Activities wear its colour, new widgets show who wants what, and Apple Watch answers approvals from your wrist.
+
+## Fixes
+
+- **Approvals work wherever a workspace's folder lives.** When a data folder's path was too long for a socket, an engine's permission requests were refused with no card and no notice. They now go through a short private folder, and a turn that still cannot start says why.
+- **Folder watchers no longer wake on their own work.** A watcher whose turn renamed or filed what woke it read that as a new file and started the same work again.
+- **The brief keeps sentences whole.** A filename such as post.md, a version or an address no longer cut a sentence in two and lost the first half.
+
+## Upgrading
+
+- **Your data becomes the Personal workspace, untouched.** `~/.bloks` stays where it is, with everything in it: becoming a workspace moves nothing. New workspaces get folders of their own in the app's own folder. `BLOKS_DATA_DIR` moves Personal's folder, and `bloks-server`'s.
+- **A workspace you join needs its owner on Bloks Team.** Without it, members are paused, with nothing deleted, until the owner's plan is back.
+- **People you shared a room with stay guests of that room.** They are not made members of the workspace and see nothing beyond the room.
+- **Settings moved, and old links still work.** Bloks Cloud is now Plan, the agent switches that sat in General are in Behaviour, and the Boat key is in Computers. A link to an old page opens the new one.
+- **Places moved to the rail.** The brief, Activity, Projects and Rehearsals are on Overview; routines, watchers and workflows are in Automations; memory is Memory; skills and plugins are Plugins.
+- **One key for every workspace.** The Bloks key you entered is kept once for the whole app, so putting another workspace online needs nothing typed.
+- **Your phone stays paired with Personal.** To have another workspace on it, pair it from that workspace's Settings, Phone and devices.

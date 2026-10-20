@@ -1,8 +1,8 @@
 # Contributing to Bloks
 
-Thanks for being here. Bloks is a local-first desktop workspace for
-personal AI agents, and it is small enough that one good pull request
-moves it noticeably.
+Thanks for being here. Bloks is a local-first desktop app for personal
+AI agents, and it is small enough that one good pull request moves it
+noticeably.
 
 ## Getting set up
 
@@ -13,7 +13,15 @@ pnpm dev          # the app, on 127.0.0.1:5199
 ```
 
 Open `http://127.0.0.1:5199`. For the desktop shell, `pnpm dev:desktop`
-in a third terminal.
+in a third terminal. It shows the dev server, which is one workspace. To
+work on workspaces themselves (the switcher, a server per workspace,
+joining), run `pnpm build`, then `BLOKS_DEV_WORKSPACES=1 pnpm dev:desktop`,
+which starts the servers itself the way the installed app does.
+
+The dev server uses `~/.bloks`, your real Personal workspace, unless you
+point it elsewhere: `BLOKS_DATA_DIR=/tmp/bloks-dev pnpm dev:server` keeps
+your own agents out of your experiments. The test suite never touches
+it.
 
 You need at least one engine to see an agent reply. The cheapest way in
 is an API key in Settings; the fullest is a CLI agent like Claude Code,
@@ -27,9 +35,9 @@ pnpm test
 pnpm build
 ```
 
-All three run in CI and all three must pass. The suite takes about a
-minute and a half and needs no credentials, so there is no excuse not to
-run it.
+All three run in CI and all three must pass. The suite is some four
+thousand tests, takes a few minutes and needs no credentials, so there is
+no excuse not to run it.
 
 ## How the pieces fit
 
@@ -41,6 +49,11 @@ provider. It sends typed commands over HTTP and folds one server-sent
 event stream. Every provider process runs in the harness server. If you
 find yourself reaching for `fetch` to a model API from `src/`, the change
 belongs in `server/` instead.
+
+A route you add to the server is closed to the members of a workspace
+until you name it in `server/member-access.ts`, and who may see what is
+decided in `server/access.ts`, never inline. If your change shows a
+member something, say in the pull request why they should see it.
 
 Adding an engine is usually data, not code:
 
@@ -93,7 +106,9 @@ HOME=/tmp/bloks-demo pnpm dev:server
 pnpm dev
 ```
 
-Edit `scripts/seed-demo.mjs` if a screenshot needs to show something new.
+`pnpm screenshots` (`scripts/shoot-screenshots.mjs`) takes the README's
+set from that seeded workspace the same way every time. Edit
+`scripts/seed-demo.mjs` if a screenshot needs to show something new.
 Nothing in it calls a model; the transcript is written by hand, because a
 screenshot should not depend on what a provider felt like saying that day.
 
@@ -127,8 +142,9 @@ the body being useful. If a commit fixes a bug, say what the bug did.
 
 Use the issue templates. The single most useful thing you can include is
 what you expected versus what happened, plus which engine the agent was
-running on. Logs live in `~/.bloks` (`events/` for the canonical stream,
-`native/` for raw provider traffic). Please scrub keys before pasting.
+running on. Logs live in the workspace's folder (`~/.bloks` for Personal;
+`events/` for the canonical stream, `native/` for raw provider traffic).
+Please scrub keys before pasting.
 
 ## Licence
 

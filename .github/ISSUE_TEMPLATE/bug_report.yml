@@ -6,8 +6,8 @@ body:
     attributes:
       value: |
         Thanks for filing this. One note before you paste anything: logs
-        under `~/.bloks` can contain API keys and the contents of your
-        conversations. Please scrub them.
+        in a workspace's folder (`~/.bloks` for Personal) can contain API
+        keys and the contents of your conversations. Please scrub them.
 
   - type: textarea
     id: what-happened
@@ -35,11 +35,13 @@ body:
     id: engine
     attributes:
       label: Which engine was the agent running on
-      description: The model picker in the chat header shows this.
+      description: The model chip under the message box shows this.
       options:
         - Claude Code
         - Codex
         - Gemini CLI
+        - Another CLI (Pi, OpenCode, Grok CLI, Antigravity)
+        - Bloks AI
         - An API provider (Gemini, Grok, Kimi, Llama, DeepSeek, Mistral, Groq, OpenRouter)
         - Ollama or another local endpoint
         - Not sure
@@ -79,6 +81,7 @@ body:
       label: Relevant logs
       description: >
         Optional. The harness prints to the terminal that runs it. The
-        canonical event stream is in `~/.bloks/events/`, raw provider
-        traffic in `~/.bloks/native/`. Scrub keys first.
+        canonical event stream is in the workspace's `events/` folder,
+        raw provider traffic in `native/` (under `~/.bloks` for
+        Personal). Scrub keys first.
       render: shell

@@ -12,27 +12,38 @@ maintainer. Please don't file a public issue for anything exploitable.
 ## The model
 
 **Everything is local.** Agents, transcripts, configuration and skills
-live in `~/.bloks` on your machine. Bloks has no backend of its own, and
-nothing you write is uploaded anywhere by us.
+live on your machine, in the workspace's own folder: `~/.bloks` for
+Personal, and a folder of its own in the app's data folder for every
+other workspace. Bloks has no backend that holds your data, and nothing
+you write is uploaded anywhere by us.
 
-Bloks itself makes two requests, both fetches, neither carrying any of
-your data: a packaged build asks GitHub for the latest release on
-launch, and browsing the skill catalog fetches
-`https://bloks.dev/skills/index.json`, held for half an hour. Point that
-second one elsewhere with `BLOKS_SKILLS_URL`. Everything else on the
-wire is the provider CLIs (Claude Code, Codex) and whatever connectors
-you configure, talking to their own services.
+Bloks itself makes a few requests, none carrying your conversations: a
+packaged build asks GitHub for the latest release on launch; npm is
+asked whether an installed engine CLI has a newer release; browsing the
+skill catalog fetches `https://bloks.dev/skills/index.json`, held for
+half an hour (point it elsewhere with `BLOKS_SKILLS_URL`), and the team
+gallery comes from bloks.dev the same way; while an engine runs on a key
+of your own, OpenRouter's public model list is fetched at most once a
+day, with no key and nothing about you, to estimate what unpriced turns
+cost; and with a Bloks key, bloks.dev is asked, with that key, about your
+plan. Everything else on the wire is the engines (Claude Code, Codex and
+the rest) and whatever connectors you configure, talking to their own
+services, and Bloks Cloud when you turn it on, which carries sealed
+traffic it cannot read.
 
-**The harness server is loopback-only and origin-checked.** It listens on
-`127.0.0.1:8799`, but loopback alone is not a boundary. A browser will
+**The harness server is loopback-only and origin-checked.** Each
+workspace runs its own, Personal on `127.0.0.1:8799` and the others on
+ports of their own, and none listens on your network unless you turn on
+phone access for that workspace. But loopback alone is not a boundary. A browser will
 happily send cross-origin requests to it from any page you visit, and a
 CORS "simple" request skips preflight entirely. So every request is
 checked: the `Origin` must be absent or loopback, and the `Host` must
 name the loopback interface, which defeats DNS rebinding. See
 `server/http-guard.ts`.
 
-**Secrets sit in a plaintext file.** `~/.bloks/config.json` holds any API
-keys you paste, written `0600` inside a `0700` directory. That keeps
+**Secrets sit in a plaintext file.** Each workspace's `config.json`
+(`~/.bloks/config.json` for Personal) holds any API keys you paste,
+written `0600` inside a `0700` directory. That keeps
 other user accounts out, but it is not encrypted at rest. Moving these
 into the macOS Keychain is the top open item.
 
@@ -62,6 +73,50 @@ for your own build, autocapture, session recording and performance
 capture are all disabled and text is masked, so only the named counters
 in `src/lib/analytics.ts` are ever sent. No message content, agent name
 or file path is included in any event.
+
+## People in your workspaces
+
+A workspace can take people, and everything they say runs on your
+computer, with your engines and your keys. So the door and the rooms
+behind it are built to be narrow.
+
+- **Getting in takes more than the link.** An invite works once, for a
+  day. Its code is never sent to a server (it sits after the `#` in the
+  link), guesses are rate limited, and a join password, when you set
+  one, is checked only on your computer and closes the invite after five
+  wrong tries. With Approve each person on, which is the default, nobody
+  is in until you and they have read the same four words. Those words are
+  bound to their device and to your workspace's join key, so a relay that
+  swapped the key to read the request would show different words on the
+  two screens.
+- **The request travels sealed.** Joining is sealed for your workspace's
+  join key, so Bloks Cloud, which carries it, cannot read the name or the
+  password in it. The joiner's device token never leaves their device;
+  your computer keeps its sha256.
+- **A member's device reaches a named list and nothing else.** Every
+  route a member may call is listed in `server/member-access.ts`, and
+  anything not listed is refused, so a new route is closed to members
+  until somebody decides otherwise. They never reach your settings, your
+  keys or your own conversations, and what crosses to them from the event
+  stream is stripped of tool arguments, file paths, screenshots of your
+  screen and the buttons on your approvals.
+- **Their turns get none of your standing trust.** A turn a member
+  starts never runs in Full access, gets none of your saved secrets, and
+  reaches your apps, tool servers or computers only where you opened them
+  to a room. Approvals in a team conversation or a room go to whoever
+  started the work, to you and to your admins; in a member's own private
+  conversation or solo agent, they answer their own.
+- **Their spending is capped by you.** Per member: a monthly limit on
+  what your API keys cost, a share of Bloks AI, how many solo agents they
+  may make and which engines those use.
+- **Private means private.** A member's one to one with an agent is
+  theirs. You can turn on reading members' private conversations for the
+  workspace, and every member is told which way it is set.
+
+Who sees what is decided in one file, `server/access.ts`, as plain
+functions a test can walk. Workspaces never share a folder, so an agent
+in one cannot read another's memory, and the safety floor keeps agents
+out of every workspace's folder, not only their own's.
 
 ## Skills are executable trust
 
@@ -94,6 +149,9 @@ from source. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## What is not yet done
 
-- Secrets are not in the Keychain.
+- Secrets are not in the Keychain. The desktop app keeps your Bloks key
+  there, but each workspace's API keys are still in its `config.json`.
 - There is no sandbox between an agent and the rest of your machine
-  beyond what the provider CLI enforces.
+  beyond what the provider CLI enforces. That includes agents a member
+  of your workspace talks to: give a team agent only the folder and the
+  tools you would let those people near.
