@@ -8,9 +8,11 @@
 // for this start is put in place (server/pending-restore.ts).
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
-import { existsSync, mkdirSync, openAsBlob, readdirSync, readFileSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, openAsBlob, readdirSync, readFileSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
+import { connect as netConnect } from "node:net";
+import type { Duplex } from "node:stream";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { extname, join, resolve, sep } from "node:path";
@@ -64,7 +66,19 @@ import {
   type AppConfig,
   type CustomEndpoint,
   type CustomKey,
+  creditsOffered,
 } from "./config.ts";
+import {
+  CREDITS_KIND,
+  CreditsAccount,
+  EMPTY_WORDS,
+  creditsAccess,
+  creditsBase,
+  creditsCheckoutUrl,
+  creditsEnvToken,
+  serviceWords,
+  type CreditsBalance,
+} from "./credits.ts";
 import { type WakePreview, RelayLink, relayDeviceFor, relayInviteFor, type Wake } from "./relay-link.ts";
 import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView } from "./member-access.ts";
@@ -84,7 +98,19 @@ import { cleanSectionOrder, placeAt, SidebarStore, sidebarView, upgradePlaces, t
 import { extractTeamPlan, MAX_HIRES, normalizePlan, TEAM_PROTOCOL, type TeamPlan } from "./teams.ts";
 import { houseStyle, HOUSE_STYLE } from "./house-style.ts";
 import { captureFrame, clickAt, typeText } from "./browser-view.ts";
-import { bearerToken, isLocalRequest, isSameOrigin } from "./http-guard.ts";
+import { bearerToken, isLocalRequest, isLoopbackPeer, isSameOrigin } from "./http-guard.ts";
+import {
+  DesktopTickets,
+  HOP_HEADERS,
+  computerChoices,
+  computerRefusal,
+  desktopRequest,
+  hostedComputer,
+  hostedRefusal,
+  isHosted,
+  viewerUrl,
+  vncTarget,
+} from "./hosted.ts";
 import {
   bindHost,
   cancelPairing,
@@ -464,6 +490,7 @@ import {
   AUTO_KEEP,
   autoBackupDue,
   BackupError,
+  backupFileName,
   backupPath,
   backupsDirFor,
   checkBackup,
@@ -474,6 +501,7 @@ import {
   newestAutomatic,
   pendingRestore,
   pruneAutomatic,
+  readBackupSummary,
   revealBackup,
   shownPath,
   stageRestore,
@@ -481,6 +509,7 @@ import {
   type BackupInfo,
   type CreateOptions,
 } from "./backup.ts";
+import { emptyEnoughForMove } from "./workspace-move.ts";
 import { summarize, UsageStore } from "./usage.ts";
 import { TeamLibrary } from "./team-library.ts";
 import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam } from "./team-file.ts";
@@ -545,6 +574,41 @@ const iconCache = new Map<string, { type: string; bytes: Buffer }>();
 widenPath();
 ensureDirs();
 const cfg = loadConfig();
+// Bloks credits (server/credits.ts): the token is kept in config.json with
+// the other keys, and the Bloks engine asks this account for it on every
+// call, so it is wired in before any engine is made.
+const credits = new CreditsAccount({
+  store: {
+    read: () => ({ licence: cfg.credits?.licence, token: cfg.credits?.token }),
+    write: (patch) => {
+      Object.assign(cfg, saveConfig({ credits: patch as NonNullable<AppConfig["credits"]> }));
+    },
+  },
+});
+creditsAccess.use(credits);
+// Hosted mode (server/hosted.ts): read once, since a workspace does not
+// become hosted while it runs.
+const HOSTED = isHosted();
+const VNC = HOSTED ? vncTarget(process.env.BLOKS_HOSTED_VNC) : null;
+if (HOSTED && process.env.BLOKS_HOSTED_VNC && !VNC) {
+  console.error("[bloks] BLOKS_HOSTED_VNC must be a port, or an http address on this machine's loopback; the desktop is not shown");
+}
+const desktopTickets = new DesktopTickets();
+/** The balance as last read, kept a little while: Settings, the composer
+ * and a phone all ask, and the answer only moves when something runs. */
+let creditsBalance: { value: CreditsBalance | null; problem: string | null; at: number } | null = null;
+const CREDITS_BALANCE_TTL_MS = 30_000;
+
+/** The last run the service refused for an empty balance, in its own
+ * words. Workspace-wide, since the balance is: every agent on credits is
+ * refused alike until more is added. Cleared by a balance that is above
+ * nothing again, or by a credits run that answers. */
+let creditsRefused: { at: number; message: string } | null = null;
+
+/** Lanes whose turn is running on credits, with the token it was given:
+ * a Claude Code turn refused with a 401 renews that token for the next
+ * try, and a credits turn never rests the engine it ran on. */
+const creditsLanes = new Map<string, { token: string | null; empty?: boolean; renewed?: boolean }>();
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
 
@@ -2200,6 +2264,10 @@ function recoverTurn(
   trying?.reservation.finished();
   if (end.ok) trying?.returned?.();
   const command = commandTurns.delete(laneId);
+  const creditsRun = creditsLanes.get(laneId);
+  creditsLanes.delete(laneId);
+  // a run on credits that answered: whatever refused one before is past
+  if (end.ok && creditsRun) clearCreditsRefused();
   // A model that answered can take work again, if it was asked after
   // the engine last ran out. A local command says nothing about quota,
   // but keeps the existing signed-in recovery.
@@ -2240,11 +2308,21 @@ function recoverTurn(
   }
   const evidence = [...errors, end.stopReason ?? ""].join("\n");
   // an ACP engine says a refusal with its stop reason alone
-  const kind = speedRefusal ? "speed" : failureOf(evidence) === "other" && end.stopReason === "refusal" ? "refusal" : failureOf(evidence);
+  let kind = speedRefusal ? "speed" : failureOf(evidence) === "other" && end.stopReason === "refusal" ? "refusal" : failureOf(evidence);
   // An engine that ran out rests, for every agent on it, since a limit
   // belongs to the account and not to one agent. A room's turn rests it
   // too: the agent's next turn there goes to its backup.
-  const out = speedRefusal ? null : outReason(evidence);
+  let out = speedRefusal ? null : outReason(evidence);
+  // Never a turn on Bloks credits. A balance belongs to the licence, so
+  // adding to it should be felt at once rather than after a rest, and
+  // resting Claude Code would idle every agent on its own sign-in for
+  // what one agent's credits said. An empty balance is not asked again;
+  // a refused token, renewed since, is.
+  if (creditsRun) {
+    if (creditsRun.empty) kind = "out";
+    else if (creditsRun.renewed && out === "signedOut") kind = "other";
+    out = null;
+  }
   const rest: Rest | null = out ? cooldowns.rest(used.instanceId, out, evidence) : null;
   // a refused session refuses every message after it, so it is never
   // resumed: the next turn, here or in a room, is told the conversation
@@ -2630,11 +2708,14 @@ const tidying = new Set<string>();
 
 /** The engine a tidy asks: the agent's own while it has a one-shot call
  * and is not paused for it, else whichever the workspace drafts with. */
-async function tidyEngine(bot: BotRecord) {
+async function tidyEngine(bot: BotRecord, manual: boolean) {
+  // The night's tidy is work nobody asked for, so it spends Bloks credits
+  // only when the person let background work; Tidy now is asked for.
+  const may = (instance: ProviderInstance | null | undefined) => manual || backgroundMay(instance);
   const own = registry.get(bot.modelSelection.instanceId);
-  if (own?.generateText && !pausedOn(bot, bot.modelSelection)) return own;
+  if (own?.generateText && !pausedOn(bot, bot.modelSelection) && may(own)) return own;
   const other = await draftWriter();
-  return other?.generateText ? other : null;
+  return other?.generateText && may(other) ? other : null;
 }
 
 /** Whether anyone but a tidy has changed this agent's memory since its
@@ -2684,7 +2765,7 @@ async function tidyMemory(botId: string, manual: boolean): Promise<TidyRun> {
     let applied: Applied | null = null;
     const notes = memoryNext?.split("\n").filter((line) => line.trim() && !/^\s{0,3}#/.test(line)).length ?? 0;
     if (memoryNext !== null && notes >= 3 && (manual || memoryMovedSinceTidy(botId))) {
-      const engine = await tidyEngine(bot);
+      const engine = await tidyEngine(bot, manual);
       if (!engine?.generateText) {
         run.note = "No engine could read it, so only notes past their date were looked at.";
       } else {
@@ -3854,6 +3935,25 @@ bus.subscribe((event: RuntimeEvent) => {
       break;
     }
     case "runtime.error": {
+      // A turn on Bloks credits: an empty balance is said in the service's
+      // own words and offered more of, and a Claude Code turn whose token
+      // was refused renews it now, so the try after the wait has the new
+      // one (the Bloks engine renews its own, inside the call).
+      const creditsRun = creditsLanes.get(event.threadId);
+      if (creditsRun) {
+        const reason = event.credits === "empty" ? "credit" : outReason(event.message);
+        if (reason === "credit") {
+          const words = event.credits === "empty" ? redactSecrets(event.message) : creditsWords(event.message);
+          creditsRun.empty = true;
+          // the service's words from here on, for the notice and the
+          // turn's end alike
+          Object.assign(event, { message: words, credits: "empty" });
+          noteCreditsRefused(words);
+        } else if (reason === "signedOut" && creditsRun.token && !creditsRun.renewed) {
+          creditsRun.renewed = true;
+          void credits.refresh(creditsRun.token).catch(() => null);
+        }
+      }
       const person = laneTelegramPerson.get(event.threadId);
       if (person) tellTelegramPersonHeld(person, event.message);
       // kept for the end of the turn, which decides whether the engine
@@ -5832,7 +5932,10 @@ async function startClaimedTurn(
       }
       // cloud | sandbox | local | off | undefined(auto), with a per-turn
       // override taking precedence over the agent's own setting
-      const wants = personSource || (othersTurn && !roomTools?.computer) ? "off" : (opts.computerOverride ?? bot.computer);
+      const asked = personSource || (othersTurn && !roomTools?.computer) ? "off" : (opts.computerOverride ?? bot.computer);
+      // On a hosted workspace the machine is the agents' computer: a box
+      // or a VM chosen on a Mac becomes this machine (server/hosted.ts)
+      const wants = HOSTED ? hostedComputer(asked) : asked;
       // "sandbox" is the stored name for the Local VM: a Cua desktop in a
       // container on this machine, shared by all agents one at a time
       let vmTurn = false;
@@ -5858,7 +5961,7 @@ async function startClaimedTurn(
         vmTurn = true;
         touchVmIdle();
       }
-      if (wants !== "off" && wants !== "local" && wants !== "sandbox" && box.boxConfigured(cfg)) {
+      if (!HOSTED && wants !== "off" && wants !== "local" && wants !== "sandbox" && box.boxConfigured(cfg)) {
         let b = await box.findBox(cfg, bot.id).catch(() => null);
         // The app shows "setting up" from the first word until the next
         // one, so a box being made or woken always ends with one, ready or
@@ -5894,7 +5997,8 @@ async function startClaimedTurn(
       // local computer (this Mac) via the Electron-hosted cua-driver: the
       // Electron main process owns the daemon (TCC attribution) and writes
       // its spawn contract to cua-connection.json; the harness only reads it
-      if (!integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "sandbox") {
+      // Never on a hosted workspace: that daemon works the person's own Mac.
+      if (!HOSTED && !integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "sandbox") {
         const cua = readCuaConnection();
         if (cua) integrations.localComputer = cua;
       }
@@ -5910,6 +6014,23 @@ async function startClaimedTurn(
         browserProfiles.set(bot.id, profileDir);
         integrations.browser = { profileDir };
       }
+
+      // Bloks credits (server/credits.ts). The Bloks engine asks for its
+      // token itself; Claude Code is handed one when the agent's access
+      // says credits. A licence that lapsed is said here rather than
+      // quietly running the agent on its own sign-in instead, which is not
+      // what the person chose.
+      const claudeOnCredits = instance.driverKind === "claudeAgent" && bot.engineAccess === "credits";
+      let creditsToken: string | null = null;
+      if (claudeOnCredits) {
+        if (!creditsOffered(cfg)) {
+          throw new Error(`${bot.name} runs on Bloks credits, which need Bloks Cloud to be active here. Turn Cloud on in Settings, or switch ${bot.name} to its own sign-in.`);
+        }
+        creditsToken = await credits.token();
+        if (!creditsToken) throw new Error(credits.problem ?? "Bloks credits are not connected yet.");
+      }
+      if (claudeOnCredits || instance.driverKind === CREDITS_KIND) creditsLanes.set(task.id, { token: creditsToken });
+      else creditsLanes.delete(task.id);
 
       // A lane keeps the folder its first turn ran in: engines key
       // sessions to a directory, and a folder that shifts mid-session
@@ -6224,6 +6345,7 @@ async function startClaimedTurn(
         model: selection.model,
         effort: bot.effort,
         ...(bot.engineHooks === false ? { noHooks: true } : {}),
+        ...(claudeOnCredits && creditsToken ? { credits: { baseUrl: creditsBase(), token: creditsToken } } : {}),
         resumeCursor,
         // A session from before Bloks is only ever carried on in a copy
         // (SendTurnInput.forkFrom), so the person's own file is not written.
@@ -6571,7 +6693,7 @@ const UNLISTED_MAIL = "Unlisted email";
  * can close. */
 function sharedSafe(driverKind: string): boolean {
   if (driverKind === "claudeAgent") return true;
-  return driverKind === CUSTOM_SPEC.kind || PROVIDER_SPECS.some((spec) => spec.kind === driverKind);
+  return driverKind === CUSTOM_SPEC.kind || driverKind === CREDITS_KIND || PROVIDER_SPECS.some((spec) => spec.kind === driverKind);
 }
 
 /**
@@ -8458,6 +8580,91 @@ function relayBase(): string {
   return url.trim().replace(/\/+$/, "");
 }
 
+// ── Bloks credits (server/credits.ts) ──────────────────────────────────
+
+
+function noteCreditsRefused(message: string) {
+  creditsRefused = { at: Date.now(), message };
+  // the balance just said something; the next read asks it again
+  creditsBalance = null;
+  broadcast({ kind: "credits", ...creditsSummary() });
+}
+
+function clearCreditsRefused() {
+  if (!creditsRefused) return;
+  creditsRefused = null;
+  broadcast({ kind: "credits", ...creditsSummary() });
+}
+
+/** What an empty balance said, from a driver's own words: the Bloks
+ * engine hands over the service's message, Claude Code wraps it in its
+ * own API error line with the JSON body after it. */
+function creditsWords(message: string): string {
+  const body = message.indexOf("{");
+  const said = body >= 0 ? serviceWords(message.slice(body)) : "";
+  return redactSecrets(said || EMPTY_WORDS);
+}
+
+/** Reads the balance, or the kept answer when it is fresh. */
+async function readCreditsBalance(fresh = false): Promise<NonNullable<typeof creditsBalance>> {
+  if (!fresh && creditsBalance && Date.now() - creditsBalance.at < CREDITS_BALANCE_TTL_MS) return creditsBalance;
+  try {
+    const value = await credits.balance();
+    creditsBalance = { value, problem: null, at: Date.now() };
+    // More than nothing again: what refused a run before would not now.
+    if (value.balance > 0) clearCreditsRefused();
+  } catch (error) {
+    creditsBalance = { value: null, problem: redactSecrets(error instanceof Error ? error.message : String(error)).slice(0, 300), at: Date.now() };
+  }
+  return creditsBalance;
+}
+
+/** The parts of the credits state that need no network, for the stream
+ * and for /api/config. */
+function creditsSummary() {
+  return {
+    offered: creditsOffered(cfg),
+    background: cfg.credits?.background === true,
+    refused: creditsRefused,
+    checkoutUrl: creditsCheckoutUrl(),
+  };
+}
+
+/** Everything a settings screen or a phone shows about credits. The
+ * numbers are the service's, passed through; nothing here prices,
+ * converts or judges them beyond saying whether the service called the
+ * balance low. */
+async function creditsStatus(fresh = false) {
+  const offered = creditsOffered(cfg);
+  const connectable = offered && credits.canConnect();
+  const read = connectable ? await readCreditsBalance(fresh) : null;
+  const value = read?.value ?? null;
+  return {
+    ...creditsSummary(),
+    instanceId: CREDITS_KIND,
+    // a token came with this host, so there is no key to enter here
+    fromEnvironment: credits.fromEnvironment(),
+    // offered, but nothing to trade for a token yet: the Cloud key was
+    // activated before credits existed, and is asked for once more
+    needsKey: offered && !credits.canConnect(),
+    connected: Boolean(value),
+    balance: value?.balance ?? null,
+    currency: value?.currency ?? null,
+    lowAt: value?.lowAt ?? null,
+    low: Boolean(value && value.lowAt !== null && value.balance <= value.lowAt),
+    autoReload: value?.autoReload ?? false,
+    readAt: value?.at ?? null,
+    problem: offered ? (read?.problem ?? (connectable ? null : credits.problem)) : null,
+  };
+}
+
+/** Whether work nobody asked for this minute may run on this engine:
+ * anything but the Bloks engine, which spends money, unless the person
+ * said background work may. */
+function backgroundMay(instance: ProviderInstance | null | undefined): boolean {
+  return Boolean(instance) && (instance!.driverKind !== CREDITS_KIND || cfg.credits?.background === true);
+}
+
 function syncRelay(config?: AppConfig) {
   // Pairing is the master switch. Turning pairing off is the documented
   // way to cut every remote device loose, and it must cut the relay too;
@@ -8819,6 +9026,9 @@ function sweepIdleLanes(now = Date.now()) {
       const seen = lastRequest.get(task.id);
       const sent = lastSent.get(task.id);
       if (!seen || !sent) continue;
+      // a quiet compaction is work nobody asked for this minute, so it
+      // spends Bloks credits only when the person said background may
+      if (sent.input.credits && cfg.credits?.background !== true) continue;
       // the session it would compact is the one the next message resumes
       const engine = selectEngine(bot).instanceId;
       if (sent.instanceId !== engine || task.lastInstanceId !== engine || typeof task.resumeCursors[engine] !== "string") continue;
@@ -9214,8 +9424,9 @@ async function reviewForSkill(botId: string, threadId: string): Promise<boolean>
   const bot = store.bot(botId);
   if (!bot) return false;
   const instance = registry.get(bot.modelSelection.instanceId);
-  // a summary or a review on an engine paused for this agent waits too
-  if (!instance?.generateText || pausedOn(bot, bot.modelSelection)) return false;
+  // a summary or a review on an engine paused for this agent waits too,
+  // and a review is background work: Bloks credits only when allowed
+  if (!instance?.generateText || pausedOn(bot, bot.modelSelection) || !backgroundMay(instance)) return false;
 
   // A Telegram person's words, and what was sent back to them, are not
   // the owner's to turn into the agent's standing skills.
@@ -13344,6 +13555,13 @@ function configStatus() {
     turns: { stallMinutes: stallLimitMs() / 60_000 },
     // not a secret: a folder, a mode and a model, for the settings form
     agentDefaults: cfg.agentDefaults ?? {},
+    // Bloks credits without the balance, which needs the network and is
+    // read from /api/credits: whether they are offered, the background
+    // switch (off unless turned on), and a refusal still standing
+    credits: creditsSummary(),
+    // a hosted workspace (server/hosted.ts): whether it is one, whether its
+    // virtual desktop can be shown, and where an agent may act here
+    hosted: { on: HOSTED, desktop: Boolean(VNC), computers: computerChoices(HOSTED) },
     // what is already here, so a first run can offer to keep it rather
     // than silently dropping somebody into a stranger's-looking workspace
     workspace: (() => {
@@ -14093,6 +14311,133 @@ async function runRestore(file: string, passphrase: string | undefined, drainMs:
   }
 }
 
+// ── moving a workspace to another machine (server/workspace-move.ts) ──
+
+/** The most a move file may be: the whole workspace, transcripts and
+ * memory included, but no Undo history and no browser profiles. */
+const MOVE_MAX_BYTES = 4 * 1024 ** 3;
+const MOVE_NOT_EMPTY =
+  "This workspace already has work in it. A workspace is moved into an empty one, so nothing here is replaced; a backup restores over what is here, from Backups.";
+
+/** Whether a move may land here: nothing said by the person yet, no rooms
+ * and no standing work. */
+function workspaceEmpty(): boolean {
+  const mine = store.bots.reduce(
+    (n, bot) => n + bot.tasks.reduce((m, task) => m + store.messagesFor(task.id).filter((msg) => msg.role === "user").length, 0),
+    0,
+  );
+  return emptyEnoughForMove({ mine, rooms: bloks.bloks.length, routines: routines.routines.length, watchers: watchers.length, intents: intents.length });
+}
+
+/** A file arriving in a request body, written beside the backups as it
+ * comes, never held whole in memory. Sealed or plain is read from its
+ * first bytes, and its name says which, the way a backup's does. */
+async function receiveMove(req: IncomingMessage): Promise<{ file: string; name: string }> {
+  const dir = backupsDirFor();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const partial = join(dir, `incoming-${newId()}.partial`);
+  let size = 0;
+  let head = Buffer.alloc(0);
+  try {
+    const out = createWriteStream(partial, { flags: "wx", mode: 0o600 });
+    await new Promise<void>((resolve, reject) => {
+      req.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (head.length < 8) head = Buffer.concat([head, chunk.subarray(0, 8 - head.length)]);
+        if (size > MOVE_MAX_BYTES) {
+          req.destroy();
+          reject(Object.assign(new Error("That file is bigger than a workspace move can be."), { status: 413 }));
+        }
+      });
+      req.on("error", reject);
+      out.on("error", reject);
+      out.on("finish", () => resolve());
+      req.pipe(out);
+    });
+    if (!size) throw Object.assign(new Error("Send the workspace file as the body of the request."), { status: 400 });
+    const sealed = head.toString("latin1") === "BLOKSENC";
+    const name = backupFileName(new Date(), "", "move", sealed).replace("-move", "-move-in");
+    const file = join(dir, name);
+    if (existsSync(file)) throw Object.assign(new Error("A workspace file is already arriving. Try again in a moment."), { status: 409 });
+    renameSync(partial, file);
+    return { file, name };
+  } finally {
+    rmSync(partial, { force: true });
+  }
+}
+
+async function serveMove(req: IncomingMessage, res: ServerResponse, method: string, path: string, local: boolean) {
+  try {
+    if (method === "GET" && path === "/api/workspace/move") {
+      // `canWrite`: writing one out answers only this computer
+      return json(res, 200, { empty: workspaceEmpty(), hosted: HOSTED, canWrite: local, running: backupRunning, restore: restoring });
+    }
+    // Writing one out is this computer's, like a backup: it is the whole
+    // workspace, and it goes where the person carries it.
+    if (method === "POST" && path === "/api/workspace/move") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const body = await readBody(req);
+      const backup = await makeBackup({ kind: "move", passphrase: passphraseIn(body) });
+      return json(res, 200, { backup, toEnter: backup.toEnter ?? [] });
+    }
+    const m = path.match(/^\/api\/workspace\/move\/([^/]+)$/);
+    if (m && method === "GET" && m[1] !== "import") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const name = decodeURIComponent(m[1]);
+      const file = backupPath(name);
+      if (checkBackupKind(file) !== "move") return json(res, 404, { error: "That is not a workspace move file." });
+      res.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "content-length": statSync(file).size,
+        "content-disposition": `attachment; filename="${name}"`,
+        "cache-control": "no-store",
+      });
+      createReadStream(file).pipe(res);
+      return;
+    }
+    // Taking one in: on this computer, or from the person's own paired
+    // device, since a hosted workspace is reached from somewhere else. Only
+    // into an empty workspace, so a move never replaces anybody's work.
+    if (method === "POST" && path === "/api/workspace/move/import") {
+      if (backupRunning || restoreUnderWay()) {
+        return json(res, 409, { error: "A backup or a restore is already under way. Try again once it is done." });
+      }
+      if (!workspaceEmpty()) return json(res, 409, { error: MOVE_NOT_EMPTY });
+      const passphrase = typeof req.headers["x-bloks-passphrase"] === "string" && req.headers["x-bloks-passphrase"] ? String(req.headers["x-bloks-passphrase"]) : undefined;
+      const { file, name } = await receiveMove(req);
+      try {
+        const summary = await checkBackup(file, passphrase);
+        if (summary.kind !== "move") throw new BackupError("That is a backup, not a workspace move file. Restore a backup from Backups.", 400);
+        if (!workspaceEmpty()) throw new BackupError(MOVE_NOT_EMPTY, 409);
+        restoring = { phase: "draining", from: name, startedAt: Date.now() };
+        void runRestore(file, passphrase, 0);
+        return json(res, 202, { restore: restoring, toEnter: summary.toEnter ?? [] });
+      } catch (error) {
+        rmSync(file, { force: true });
+        throw error;
+      }
+    }
+    return json(res, 404, { error: "not found" });
+  } catch (e) {
+    if (e instanceof BackupError) {
+      return json(res, e.status, { error: e.message, ...(e.code === "passphrase" ? { needsPassphrase: true } : {}) });
+    }
+    if (e instanceof URIError) return json(res, 400, { error: "That is not the name of a workspace file." });
+    return json(res, (e as { status?: number }).status ?? 500, {
+      error: redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 300),
+    });
+  }
+}
+
+/** The kind a backup file says it is, or null when it is not one. */
+function checkBackupKind(file: string): BackupInfo["kind"] | null {
+  try {
+    return readBackupSummary(file).summary.kind;
+  } catch {
+    return null;
+  }
+}
+
 async function serveBackups(req: IncomingMessage, res: ServerResponse, method: string, path: string) {
   try {
     if (method === "GET" && path === "/api/backups") return json(res, 200, backupsStatus());
@@ -14143,7 +14488,9 @@ async function serveBackups(req: IncomingMessage, res: ServerResponse, method: s
         const passphrase = passphraseIn(body);
         // said now, before anything stops: a wrong passphrase or a file
         // that is not a backup should cost nothing
-        await checkBackup(file, passphrase);
+        const checked = await checkBackup(file, passphrase);
+        // a move is for a workspace with nothing in it yet
+        if (checked.kind === "move" && !workspaceEmpty()) return json(res, 409, { error: MOVE_NOT_EMPTY });
         const drainMs = body.drainSeconds === undefined ? RESTORE_DRAIN_MS : drainWindow(body.drainSeconds);
         restoring = { phase: "draining", from: name, startedAt: Date.now() };
         void runRestore(file, passphrase, drainMs);
@@ -14173,11 +14520,115 @@ const server = createServer((req, res) => {
     json(res, (e as { status?: number })?.status ?? 503, { error: redactSecrets(e instanceof Error ? e.message : String(e)) });
   });
 });
+server.on("upgrade", upgradeDesktop);
+
+/** What /api/health says. `hosted` tells a phone, and the platform that
+ * runs a hosted workspace, which kind of machine this is. */
+function healthBody() {
+  return {
+    app: "bloks",
+    pid: process.pid,
+    static: Boolean(STATIC_DIR),
+    version: APP_VERSION,
+    features: FEATURES,
+    hosted: HOSTED,
+  };
+}
+
+// ── the virtual desktop of a hosted workspace (server/hosted.ts) ──
+//
+// noVNC is served on loopback by the machine's own image; this passes its
+// pages and its socket through, under a ticket the person's panel minted,
+// so the desktop is seen without a port of its own facing anywhere. The
+// ticket is checked on every request and on the socket's opening, and
+// nothing of the person's (their token, their cookies) is passed along.
+
+/** The request headers sent on to the viewer: none that belong to this
+ * hop, and none that carry who the person is. */
+function desktopHeaders(raw: IncomingMessage["headers"], target: { host: string; port: number }): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (value === undefined || HOP_HEADERS.has(name) || name === "authorization" || name === "cookie" || name === "host") continue;
+    out[name] = value;
+  }
+  out.host = `${target.host.includes(":") ? `[${target.host}]` : target.host}:${target.port}`;
+  return out;
+}
+
+function proxyDesktop(req: IncomingMessage, res: ServerResponse, path: string, search: string) {
+  const asked = desktopRequest(path);
+  if (!HOSTED || !VNC || !asked || !desktopTickets.use(asked.ticket)) return json(res, 404, { error: "not found" });
+  const upstream = httpRequest(
+    {
+      host: VNC.host,
+      port: VNC.port,
+      method: req.method,
+      path: `${VNC.prefix}${asked.rest}${search}`,
+      headers: desktopHeaders(req.headers, VNC),
+    },
+    (answer) => {
+      const headers: Record<string, string | string[]> = {};
+      for (const [name, value] of Object.entries(answer.headers)) {
+        if (value !== undefined && !HOP_HEADERS.has(name) && name !== "set-cookie") headers[name] = value;
+      }
+      res.writeHead(answer.statusCode ?? 502, {
+        ...headers,
+        // the ticket is in the address; it is not handed to anywhere the
+        // viewer links to, and the page is only ever framed by this app
+        "referrer-policy": "no-referrer",
+        "x-frame-options": "SAMEORIGIN",
+        "cache-control": "no-store",
+      });
+      answer.pipe(res);
+    },
+  );
+  upstream.on("error", () => {
+    if (!res.headersSent) json(res, 502, { error: "The virtual desktop is not answering." });
+    else res.end();
+  });
+  req.pipe(upstream);
+}
+
+/** The viewer's socket. Anything else asking to upgrade is closed, as it
+ * was before there was anything here to upgrade to. */
+function upgradeDesktop(req: IncomingMessage, socket: Duplex, head: Buffer) {
+  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+  const asked = desktopRequest(url.pathname);
+  if (!HOSTED || !VNC || !asked || !desktopTickets.use(asked.ticket)) {
+    socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n");
+    return;
+  }
+  const upstream = netConnect(VNC.port, VNC.host);
+  const close = () => {
+    socket.destroy();
+    upstream.destroy();
+  };
+  upstream.once("connect", () => {
+    const headers = desktopHeaders(req.headers, VNC);
+    // the socket's own two, which desktopHeaders leaves out as this hop's
+    headers.connection = "Upgrade";
+    headers.upgrade = String(req.headers.upgrade ?? "websocket");
+    const lines = [`${req.method ?? "GET"} ${VNC.prefix}${asked.rest}${url.search} HTTP/1.1`];
+    for (const [name, value] of Object.entries(headers)) {
+      for (const one of Array.isArray(value) ? value : [value]) lines.push(`${name}: ${one}`);
+    }
+    upstream.write(`${lines.join("\r\n")}\r\n\r\n`);
+    if (head.length) upstream.write(head);
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
+  upstream.on("error", close);
+  socket.on("error", close);
+  upstream.on("close", () => socket.destroy());
+  socket.on("close", () => upstream.destroy());
+}
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const path = url.pathname;
   const method = req.method ?? "GET";
+  // The virtual desktop's viewer on a hosted workspace, by its ticket.
+  if (path.startsWith("/hosted/desktop/")) return proxyDesktop(req, res, path, url.search);
   // Reply bearers are checked before open webhook routes too. A spent
   // reply credential never falls through to the loopback owner.
   const replyBearer = bearerToken(req);
@@ -14190,6 +14641,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       return json(res, 200, { ok: true, result });
     } catch (error) { return json(res, 403, { error: (error as Error).message }); }
   }
+
+  // Health on a hosted workspace, for anything on that machine, before the
+  // checks below: the platform that runs it polls from beside the server,
+  // through whatever Host its proxy chose and with whatever headers it
+  // carries, and a health check that needs a credential fails for the
+  // wrong reason. It says nothing a paired phone is not told. A Mac keeps
+  // its own rule, where a Host from the network is the network.
+  if (HOSTED && method === "GET" && path === "/api/health" && isLoopbackPeer(req)) return json(res, 200, healthBody());
 
   // Webhook ingress stands apart from every other boundary: the token in
   // the URL is the whole credential, exactly as webhook senders expect.
@@ -14440,6 +14899,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   try {
+    // A hosted workspace is the agents' computer already, and has no Mac
+    // of the person's behind it (server/hosted.ts).
+    if (HOSTED) {
+      const refused = hostedRefusal(method, path);
+      if (refused) return json(res, refused.status, { error: refused.error, code: "hosted" });
+    }
+    // A ticket to the virtual desktop, for the person's own Computer panel.
+    // Never an agent's: what is on that desktop is theirs to work, not to
+    // hand a link to.
+    if (method === "POST" && path === "/api/hosted/desktop") {
+      if (asAgent) return json(res, 403, { error: "that is the person's" });
+      if (!HOSTED) return json(res, 404, { error: "only a hosted workspace has a virtual desktop" });
+      if (!VNC) return json(res, 409, { error: "No virtual desktop is set up on this machine." });
+      return json(res, 200, { url: viewerUrl(desktopTickets.mint()) });
+    }
+
     // ── events stream ──
     if (method === "GET" && path === "/api/events") {
       if (sseClients.size >= MAX_SSE_CLIENTS) {
@@ -14805,6 +15280,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         ) {
           return json(res, 400, { error: "modelSelection must name an engine this workspace has and a model id" });
         }
+      }
+      if (body.computer !== undefined) {
+        const refused = computerRefusal(body.computer, HOSTED);
+        if (refused) return json(res, 400, { error: refused });
+      }
+      // Credits are the person's money: an agent may go back to its own
+      // sign-in, and only the person moves it onto credits.
+      if (body.engineAccess !== undefined) {
+        const access = body.engineAccess === "own" ? null : body.engineAccess;
+        if (access !== null && access !== "credits") return json(res, 400, { error: 'engineAccess is "credits" or "own"' });
+        if (access === "credits" && asAgent) return json(res, 403, { error: "only the person can put an agent on Bloks credits" });
+        patch.engineAccess = access;
       }
       for (const key of ["name", "title", "description", "notifications", "modelSelection", "computer", "color", "shape", "skills", "skillIds", "effort", "mascotExpression", "hidden"] as const) {
         if (body[key] !== undefined) patch[key] = body[key];
@@ -15578,8 +16065,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (typeof body.agentToken === "string") patch.agentToken = body.agentToken.trim();
       if (typeof body.clientToken === "string") patch.clientToken = body.clientToken.trim();
       if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
+      const offeredBefore = creditsOffered(cfg);
       Object.assign(cfg, saveConfig({ relay: patch }));
       syncRelay(cfg);
+      // the Bloks engine comes and goes with an active licence
+      if (creditsOffered(cfg) !== offeredBefore) await reloadProviders();
       return json(res, 200, {
         ...relayLink.state,
         url: cfg.relay?.url ?? "",
@@ -15607,10 +16097,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
     // Turning Cloud on, from the Mac that will own the space.
     //
-    // The licence key is a receipt, not a credential this machine keeps:
-    // it is spent once here for a pair of space tokens, and those are the
-    // only things that reach disk. Nothing in this route prints the key,
-    // and redactSecrets knows its shape for the errors we did not write.
+    // The key is spent here for a pair of space tokens, which are what the
+    // relay line uses. It is also kept, beside the other keys in
+    // config.json, for Bloks credits alone: a credits token is traded for
+    // it, and traded for again when the service refuses the token
+    // (server/credits.ts). A different key forgets the old token. Nothing
+    // in this route prints the key, and redactSecrets knows it by value
+    // and by shape for the errors we did not write.
     if (method === "POST" && path === "/api/relay/activate") {
       if (!local) return json(res, 403, { error: "not from here" });
       const body = await readBody(req);
@@ -15672,6 +16165,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return json(res, 502, { error: "Bloks Cloud opened a space but sent no tokens for it" });
       }
       Object.assign(cfg, saveConfig({ relay: { url, agentToken, clientToken, enabled: true } }));
+      credits.setLicence(key);
+      // the token is traded now rather than at the first turn, so the
+      // engine's model list is there when somebody opens the picker; a
+      // failure is said in Settings and tried again then
+      void credits.token().catch(() => {});
+      await reloadProviders();
       // Pairing stays exactly as the owner left it. It is the master
       // switch for every remote path (see syncRelay), and paying for
       // Cloud is not the same act as opening this Mac to the network, so
@@ -15686,6 +16185,41 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         url,
         enabled: Boolean(cfg.relay?.enabled),
       });
+    }
+
+    // Bloks credits: the balance and the background switch, for Settings
+    // and for a paired phone, and taking a Cloud key for credits on a
+    // machine that activated Cloud before credits existed. Never an
+    // agent's: an agent has no business reading the person's balance, and
+    // none at all choosing to spend it.
+    if (path === "/api/credits" || path === "/api/credits/connect") {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      if (method === "GET" && path === "/api/credits") {
+        return json(res, 200, await creditsStatus(url.searchParams.get("fresh") === "1"));
+      }
+      if (method === "PATCH" && path === "/api/credits") {
+        const body = await readBody(req);
+        if (typeof body.background !== "boolean") return json(res, 400, { error: "background is true or false" });
+        Object.assign(cfg, saveConfig({ credits: { background: body.background } }));
+        broadcast({ kind: "credits", ...creditsSummary() });
+        broadcast({ kind: "config", ...configStatus() });
+        return json(res, 200, await creditsStatus());
+      }
+      if (method === "POST" && path === "/api/credits/connect") {
+        // a key is typed on this machine, as it is for activating Cloud
+        if (!local) return json(res, 403, { error: "not from here" });
+        if (!creditsOffered(cfg)) return json(res, 409, { error: "Bloks credits need Bloks Cloud to be active here first." });
+        const body = await readBody(req);
+        const key = typeof body.key === "string" ? body.key.trim() : "";
+        if (!CLOUD_KEY.test(key)) {
+          return json(res, 400, { error: "that is not a Bloks Cloud key. One starts with blok_live_ and ends in 32 hex characters" });
+        }
+        credits.setLicence(key);
+        const token = await credits.token();
+        if (!token) return json(res, 502, { error: credits.problem ?? "Bloks credits could not be reached." });
+        return json(res, 200, await creditsStatus(true));
+      }
+      return json(res, 405, { error: "GET, PATCH, or POST /api/credits/connect" });
     }
 
     if (method === "GET" && path === "/api/relay/status") {
@@ -17290,15 +17824,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // version and features: it is updated by the App Store on a schedule
     // of its own, and this is how it knows what this Mac can do for it
     // (server/features.ts).
-    if (method === "GET" && path === "/api/health") {
-      return json(res, 200, {
-        app: "bloks",
-        pid: process.pid,
-        static: Boolean(STATIC_DIR),
-        version: APP_VERSION,
-        features: FEATURES,
-      });
-    }
+    if (method === "GET" && path === "/api/health") return json(res, 200, healthBody());
 
     // A paired phone's Live Activity tokens (server/live-activities.ts):
     // the one that lets this computer start an activity on it, and one per
@@ -20015,6 +20541,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!local || asAgent) return json(res, 403, { error: "not from here" });
       return serveBackups(req, res, method, path);
     }
+    // Moving the whole workspace to another machine. Never an agent's.
+    if (path === "/api/workspace/move" || path.startsWith("/api/workspace/move/")) {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      return serveMove(req, res, method, path, local);
+    }
 
     // ── Slack and Discord, for shared rooms ──
     if (method === "GET" && path === "/api/chat") return json(res, 200, chatSettings());
@@ -21178,13 +21709,16 @@ function redactSecrets(message: string): string {
     ...Object.values(cfg.providers ?? {}).map((p) => p?.key),
     ...(cfg.custom ?? []).flatMap((endpoint) => endpoint.keys.map((cred) => cred.key)),
     ...Object.values(cfg.secrets ?? {}),
+    cfg.credits?.licence,
+    cfg.credits?.token,
+    creditsEnvToken() ?? undefined,
   ];
   for (const secret of stored) {
     if (secret && secret.length >= 8) out = out.split(secret).join("[redacted]");
   }
   // and anything that merely looks like a key we haven't stored. A Cloud
-  // licence is the sharp case: it is spent at activation and never
-  // written to the config, so the list above can never cover it.
+  // licence is the sharp case: one pasted for activation that failed was
+  // never written to the config, so the list above cannot cover it.
   return out
     .replace(/\b(sk|ck|ak|gsk|xai)[-_][A-Za-z0-9_-]{12,}/g, "[redacted]")
     .replace(/\bblok_live_[0-9a-f]{32}\b/g, "[redacted]");

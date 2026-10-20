@@ -25,6 +25,7 @@ import type {
 import { callMcpTool, listMcpTools, type McpAccess } from "../composio.ts";
 import { newEventId, newId } from "../contracts.ts";
 import type { ProviderSpec } from "../providers.ts";
+import { CreditsEmpty, EMPTY_WORDS, serviceWords, type CompatAccess } from "../credits.ts";
 import { appendNative } from "./native.ts";
 import { BOAT_API } from "../boat.ts";
 import { callSignature } from "../repeats.ts";
@@ -387,7 +388,16 @@ function sandboxExec(handle: { runtime: string; name: string }, command: string)
   });
 }
 
-export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatConfig> {
+/**
+ * One driver per spec. `access` is for an engine whose credential can
+ * change while it is loaded (the Bloks engine's credits token, see
+ * server/credits.ts): it is asked for the key before each call, asked once
+ * for a new one when the service answers 401, and a 402 from it is the
+ * balance running out, said in the service's own words and marked so the
+ * workspace can offer to add more. Without it, the key is read once from
+ * the instance's environment, as it always was.
+ */
+export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): ProviderDriver<CompatConfig> {
   const keyEnv = `${spec.kind.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
 
   const decodeConfig = (raw: unknown): CompatConfig => {
@@ -408,7 +418,7 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
     async create(input: DriverCreateInput<CompatConfig>): Promise<ProviderInstance> {
       const { instanceId, config } = input;
       // legacy XAI_API_KEY is still honoured for the grok instance
-      const apiKey =
+      let apiKey =
         input.environment[config.apiKeyEnv] ??
         process.env[config.apiKeyEnv] ??
         (spec.kind === "grok" ? (input.environment.XAI_API_KEY ?? process.env.XAI_API_KEY) : "") ??
@@ -449,13 +459,39 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
         "content-type": "application/json",
         ...spec.headers,
       });
+      /** The key to send now: the one from the environment, or what the
+       * holder of a changing credential says. */
+      const credential = async () => {
+        if (access) apiKey = (await access.token()) ?? "";
+        return apiKey;
+      };
+      /** A call with the current key. A changing credential that is
+       * refused gets one refresh and one more try; the body is a string,
+       * so sending it twice is the same request twice. A 402 from it is
+       * the balance, not a fault. */
+      const send = async (url: string, init: RequestInit): Promise<Response> => {
+        await credential();
+        let res = await fetch(url, { ...init, headers: headers() });
+        if (res.status === 401 && access) {
+          const fresh = await access.refresh(apiKey);
+          if (fresh && fresh !== apiKey) {
+            await res.body?.cancel().catch(() => {});
+            apiKey = fresh;
+            res = await fetch(url, { ...init, headers: headers() });
+          }
+        }
+        if (res.status === 402 && access) {
+          const said = serviceWords(await res.text().catch(() => ""));
+          throw new CreditsEmpty(said || EMPTY_WORDS);
+        }
+        return res;
+      };
 
       const refreshCatalog = () => {
         if (refreshing) return refreshing;
         refreshing = (async () => {
           try {
-            const res = await fetch(`${config.url}/models`, {
-              headers: headers(),
+            const res = await send(`${config.url}/models`, {
               signal: AbortSignal.timeout(8_000),
             });
             // 401/403 is the provider saying the key is wrong; a 404 just
@@ -507,9 +543,8 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
         model: string,
         opts: { stream: boolean; signal?: AbortSignal; onDelta?: (d: string) => void },
       ): Promise<{ text: string; usage: { input: number; output: number } | null }> => {
-        const res = await fetch(`${config.url}/chat/completions`, {
+        const res = await send(`${config.url}/chat/completions`, {
           method: "POST",
-          headers: headers(),
           body: JSON.stringify({ model, messages, stream: opts.stream }),
           signal: opts.signal ?? AbortSignal.timeout(120_000),
         });
@@ -605,9 +640,8 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
         const bounded = AbortSignal.any([signal, AbortSignal.timeout(ROUND_TIMEOUT_MS)]);
         let res: Response;
         try {
-          res = await fetch(`${config.url}/chat/completions`, {
+          res = await send(`${config.url}/chat/completions`, {
             method: "POST",
-            headers: headers(),
             body: JSON.stringify({ model, messages, tools, stream: false }),
             signal: bounded,
           });
@@ -908,7 +942,7 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
 
       const sendTurn = async (turn: SendTurnInput) => {
         const { threadId } = turn;
-        if (needsKey && !apiKey) throw new Error(`${spec.name} is not connected yet`);
+        if (needsKey && !(await credential())) throw new Error(access?.problem() ?? `${spec.name} is not connected yet`);
         if (active.has(threadId)) throw new Error("a turn is already running on this thread");
         const turnId = newId();
         const abort = new AbortController();
@@ -975,7 +1009,12 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
             active.delete(threadId);
             const aborted = (e as Error).name === "AbortError";
             if (!aborted) {
-              emit({ ...base(threadId, turnId), type: "runtime.error", message: (e as Error).message });
+              emit({
+                ...base(threadId, turnId),
+                type: "runtime.error",
+                message: (e as Error).message,
+                ...(e instanceof CreditsEmpty ? { credits: "empty" as const } : {}),
+              });
             }
             emit({
               ...base(threadId, turnId),
@@ -991,8 +1030,9 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
       };
 
       const snapshot = async (): Promise<ProviderSnapshot> => {
-        if (needsKey && !apiKey) {
-          return { state: "unavailable", reason: `${spec.name} is not connected. ${spec.keyHint}.` };
+        if (needsKey && !(await credential())) {
+          const problem = access?.problem();
+          return { state: "unavailable", reason: problem ?? `${spec.name} is not connected. ${spec.keyHint}.` };
         }
         if (Date.now() - catalogAt > CATALOG_TTL_MS) {
           // Wait a beat on the first look so the picker opens with real
@@ -1011,7 +1051,7 @@ export function openAiCompatDriver(spec: ProviderSpec): ProviderDriver<CompatCon
           }
         }
         if (rejected) {
-          return { state: "unavailable", reason: `${spec.name}: ${rejected}. ${spec.keyHint}.` };
+          return { state: "unavailable", reason: access?.problem() ?? `${spec.name}: ${rejected}. ${spec.keyHint}.` };
         }
         return { state: "available", authenticated: needsKey ? true : undefined, version: null };
       };

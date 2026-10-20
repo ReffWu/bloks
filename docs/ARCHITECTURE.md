@@ -2142,3 +2142,98 @@ with the installer's own output behind a disclosure. The routes answer
 only a window on this computer and never an agent. Claude Code and Codex
 report signed in or not (`claude auth status`, `codex login status`), and
 the first-run check counts an engine as ready only when it is both.
+
+## Bloks credits
+
+A prepaid balance on the person's Bloks licence pays for model use, so an
+agent can run with no sign-in and no API key (`server/credits.ts`). The
+balance lives on bloks.dev; this machine keeps a credits token. Activating
+Cloud (`POST /api/relay/activate`) keeps the licence in `config.json`
+beside the other keys and trades it for a token at `POST <base>/token`, with
+the licence as the bearer. A 401 from the service trades it again, one
+exchange at a time however many calls were refused together, and a
+different licence forgets the old token. A host started with
+`BLOKS_CREDITS_TOKEN` uses that token as given; it is read once and taken
+out of the process environment, so no engine inherits it. `BLOKS_CREDITS_URL`
+moves the whole service (tests, somebody running their own), and the
+checkout page is `/credits` on the same site. A workspace whose Cloud was
+activated before credits existed is asked for the key once more
+(`POST /api/credits/connect`, this computer only).
+
+Two engines spend it. The Bloks engine (instance and driver kind `bloks`)
+is the generic OpenAI-compatible driver given a credential it asks for on
+every call (`CompatAccess`): its models are whatever `/v1/models` lists, a
+401 is answered by one renewal and one more try, and a 402 ends the turn
+with the service's own words, marked `credits: "empty"` on the
+`runtime.error`. It is offered while Cloud is active (`creditsOffered`) or
+the host came with a token. Claude Code spends credits when an agent's
+`engineAccess` is `"credits"`: the turn carries `credits` and the driver
+starts the CLI with `ANTHROPIC_BASE_URL` at the service, the token as
+`ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` empty (`turnEnvironment`).
+A lapsed licence refuses such a turn rather than running it on the CLI's
+own sign-in.
+
+An empty balance is workspace wide: the refusal stands (`refused` on
+`GET /api/credits`, on `/api/config` and in a `credits` frame) until a read
+of the balance finds more or a run on credits answers, and the composer of
+every agent on credits says it with Add credits, which opens the checkout
+page in the browser. A turn on credits never rests its engine
+(`recoverTurn`): adding money should be felt at once, and resting Claude
+Code would idle every agent on its own sign-in. A Claude Code turn refused
+with a 401 renews the token and is asked again. The token and the licence
+are in `SECRET_PATHS`, so backups strip them and `redactSecrets` scrubs
+them by value.
+
+Work nobody asked for this minute (the nightly memory tidy, skill
+proposals, quiet compaction of idle conversations) spends credits only
+when `credits.background` is on, which it is not unless the person turns
+it on. Tidy now is asked for, so it may. The morning brief makes no model
+call either way.
+
+For a phone: `GET /api/credits` (the balance, currency, `lowAt`, `low`,
+`autoReload`, `refused`, `checkoutUrl`, `needsKey`, `problem`), `PATCH
+/api/credits` with `{ background }`, and `engineAccess` on each agent and on
+`PATCH /api/bots/:id` (`"credits"` or `"own"`; an agent's own credential may
+go back to its sign-in but never onto credits). Feature `credits`.
+
+## Hosted mode
+
+`BLOKS_HOSTED=1` says this workspace runs on a machine somebody runs for
+the person (`server/hosted.ts`). The machine is the agents' computer, so
+the computer choices are this machine or off (`hosted.computers` on
+`/api/config`), a box or a VM chosen on a Mac becomes this machine, and
+the API refuses the cloud box and the Local VM routes with code `hosted`.
+What needs the person's Mac says so: working the Mac itself (the Electron
+computer-use daemon is never read), Mac voices, and starting meeting notes.
+On a hosted workspace `GET /api/health` answers any request from a loopback
+peer ahead of the other checks (a Telegram reply credential is still
+refused first), whatever Host its proxy chose and whatever credential it
+carries; on a Mac the old rule stands. Either way it says `hosted`.
+
+`BLOKS_HOSTED_VNC` (a port, or an http address on loopback with an
+optional path) is where the image serves noVNC. The server passes it
+through under `/hosted/desktop/<ticket>/`, pages and the websocket alike,
+so the desktop needs no port of its own. A ticket comes from
+`POST /api/hosted/desktop` (never an agent's), opens requests for ten
+minutes after its last use and twelve hours at most, and nothing of the
+person's (their token, their cookies) is passed to the viewer.
+
+## Moving a workspace
+
+`server/workspace-move.ts` makes a move a backup of kind `move`: the whole
+workspace with the computer it leaves taken out. Folders on that disk
+(an agent's or a lane's working folder, a room's desk, a project's
+folders), engine sessions only that computer's CLIs can resume (every
+lane is told the conversation on its next turn, as after
+`store.dropSession`), the Undo history, rehearsal copies, the Local VM's
+files, turns in flight, pairing links and Live Activity tokens stay
+behind, and so do `config.json`'s machine sections (port, engine
+instances, relay space, paired devices, shortcuts, cloud box). Keys never
+travel, sealed or not; the file's summary names the ones left behind
+(`toEnter`). `POST /api/workspace/move` writes one (this computer only)
+and `GET /api/workspace/move/:name` downloads it. `POST
+/api/workspace/move/import`, with the file as the body (and a passphrase
+in `x-bloks-passphrase` if it is sealed), takes one into a workspace with
+nothing said in it, no rooms and no standing work, from this computer or
+the owner's paired device, and restarts through the restore path; the
+machine it lands on keeps its own machine sections and keys.

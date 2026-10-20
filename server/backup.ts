@@ -73,6 +73,7 @@ import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
 import { OWN_GROUP } from "./no-console.ts";
 import { APP_VERSION, DATA_DIR } from "./config.ts";
 import { holderOf } from "./data-lock.ts";
+import { MOVE_REWRITES, configForMove, keepThisMachine, moveLeftOut } from "./workspace-move.ts";
 
 /** Bumped when a reader of this build could not read what it writes. */
 export const BACKUP_FORMAT = 1;
@@ -103,7 +104,9 @@ const MAX_JSON = 256 * 1024 * 1024;
 const MAX_PROBLEMS = 20;
 const LAST_RESTORE = "last-restore.json";
 
-export type BackupKind = "manual" | "automatic" | "before-restore";
+/** "move" is a whole workspace for another machine, with that machine's
+ * own parts taken out (server/workspace-move.ts). */
+export type BackupKind = "manual" | "automatic" | "before-restore" | "move";
 
 /** What a backup is, in the few lines a list needs. */
 export interface BackupSummary {
@@ -116,6 +119,9 @@ export interface BackupSummary {
   undo: boolean;
   /** Saved keys are inside, which only ever happens when it is sealed. */
   secrets: boolean;
+  /** A move: the keys left behind, by name, to be entered again where it
+   * lands. */
+  toEnter?: string[];
 }
 
 export interface ManifestFile {
@@ -225,7 +231,7 @@ export function backupFileName(at: Date, version: string, kind: BackupKind, seal
   const day = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
   const time = `${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}`;
   const v = version ? `-v${version.replace(/[^\w.]/g, "")}` : "";
-  const tag = kind === "automatic" ? "-auto" : kind === "before-restore" ? "-before-restore" : "";
+  const tag = kind === "automatic" ? "-auto" : kind === "before-restore" ? "-before-restore" : kind === "move" ? "-move" : "";
   return `bloks-backup-${day}-${time}${v}${tag}${sealed ? SEALED_EXT : PLAIN_EXT}`;
 }
 
@@ -271,6 +277,8 @@ export const SECRET_PATHS = [
   "secrets",
   "relay.agentToken",
   "relay.clientToken",
+  "credits.licence",
+  "credits.token",
   "remote.devices",
   "remote.memberDevices",
 ] as const;
@@ -395,7 +403,7 @@ interface Plan {
 /** Every file to back up, in a steady order, and what was passed over.
  * Links are passed over too: one could point anywhere, and a restore
  * writing through it is how an archive reaches outside its folder. */
-async function collect(dataDir: string, undo: boolean): Promise<Plan> {
+async function collect(dataDir: string, undo: boolean, move = false): Promise<Plan> {
   const files: string[] = [];
   const leftOut: string[] = [];
   let unlisted = 0;
@@ -421,7 +429,7 @@ async function collect(dataDir: string, undo: boolean): Promise<Plan> {
       }
       const isDir = entry.isDirectory();
       if (!isDir && !entry.isFile()) continue; // sockets and the like are a running process's
-      const why = leftOutBecause(path, isDir, undo);
+      const why = leftOutBecause(path, isDir, undo) ?? (move ? moveLeftOut(path, isDir) : null);
       if (why) {
         skip(`${path}${isDir ? "/" : ""} (${why})`);
         continue;
@@ -845,7 +853,10 @@ function isSealed(file: string): boolean {
 function checkSummary(value: unknown): BackupSummary {
   if (!isRecord(value) || value.app !== "bloks" || typeof value.format !== "number") throw notABackup();
   if (value.format > BACKUP_FORMAT) throw newer();
-  const kind: BackupKind = value.kind === "automatic" || value.kind === "before-restore" ? value.kind : "manual";
+  const kind: BackupKind = value.kind === "automatic" || value.kind === "before-restore" || value.kind === "move" ? value.kind : "manual";
+  const toEnter = Array.isArray(value.toEnter)
+    ? value.toEnter.filter((label): label is string => typeof label === "string").slice(0, 200).map((label) => label.slice(0, 200))
+    : null;
   return {
     format: value.format,
     app: "bloks",
@@ -854,6 +865,7 @@ function checkSummary(value: unknown): BackupSummary {
     kind,
     undo: value.undo === true,
     secrets: value.secrets === true,
+    ...(kind === "move" && toEnter ? { toEnter } : {}),
   };
 }
 
@@ -1123,7 +1135,30 @@ function configForBackup(file: string, keepKeys: boolean): { bytes: Buffer; left
   return { bytes: Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`), leftOut, mtime };
 }
 
-async function* archive(dataDir: string, plan: Plan, summary: BackupSummary): AsyncGenerator<Buffer> {
+/** A move's config.json, worked out before the archive starts so the keys
+ * it left behind can be named in the summary that leads the file. */
+interface MoveConfig {
+  bytes: Buffer;
+  leftOut: string[];
+  mtime: number;
+}
+
+function configForMoveFile(file: string): { move: MoveConfig; toEnter: string[] } | null {
+  const plain = configForBackup(file, false);
+  if (!plain) return null;
+  let original: unknown;
+  try {
+    original = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+  const stripped = JSON.parse(plain.bytes.toString("utf8"));
+  if (!isRecord(stripped) || !isRecord(original)) return null;
+  const { config, toEnter } = configForMove(stripped, plain.leftOut, original);
+  return { move: { bytes: Buffer.from(`${JSON.stringify(config, null, 2)}\n`), leftOut: plain.leftOut, mtime: plain.mtime }, toEnter };
+}
+
+async function* archive(dataDir: string, plan: Plan, summary: BackupSummary, move?: MoveConfig | null): AsyncGenerator<Buffer> {
   yield* fileEntry(SUMMARY_ENTRY, Buffer.from(`${JSON.stringify(summary, null, 2)}\n`), 0o600, summary.created);
   const files: ManifestFile[] = [];
   const secretsLeftOut: string[] = [];
@@ -1144,8 +1179,34 @@ async function* archive(dataDir: string, plan: Plan, summary: BackupSummary): As
       if (!secretsLeftOut.includes("identities/ (agents' signing keys)")) secretsLeftOut.push("identities/ (agents' signing keys)");
       continue;
     }
+    // A move rewrites the files that name things on the computer it
+    // leaves, whole, the way config.json is taken in whole below.
+    if (summary.kind === "move" && MOVE_REWRITES[rel]) {
+      let text: string;
+      let mtime: number;
+      try {
+        text = readFileSync(abs, "utf8");
+        mtime = Math.floor(statSync(abs).mtimeMs);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      let rewritten: Buffer;
+      try {
+        rewritten = Buffer.from(MOVE_REWRITES[rel](text));
+      } catch {
+        // the agents are the move; without them there is nothing to take
+        if (rel === "bots.json") throw new BackupError("The agents could not be read, so the workspace was not written out. Try again in a moment.", 409);
+        leftOut.push(`${rel} (it could not be read)`);
+        continue;
+      }
+      yield* fileEntry(DATA_PREFIX + rel, rewritten, 0o600, mtime);
+      files.push({ path: rel, size: rewritten.length, sha256: createHash("sha256").update(rewritten).digest("hex"), mode: 0o600, mtime });
+      bytes += rewritten.length;
+      continue;
+    }
     if (rel === "config.json") {
-      const config = configForBackup(abs, summary.secrets);
+      const config = summary.kind === "move" ? (move ?? null) : configForBackup(abs, summary.secrets);
       if (!config) {
         leftOut.push("config.json (it could not be read, so it was left out rather than risk the keys in it)");
         continue;
@@ -1233,7 +1294,11 @@ export async function createBackup(opts: CreateOptions = {}): Promise<BackupInfo
   const dataDir = opts.dataDir ?? DATA_DIR;
   const backupsDir = backupsDirFor(dataDir);
   const passphrase = opts.passphrase ? checkNewPassphrase(opts.passphrase) : undefined;
-  const secrets = opts.secrets ?? Boolean(passphrase);
+  const moving = opts.kind === "move";
+  // a move never carries keys, sealed or not: it is going to a machine
+  // somebody else runs, and the person enters them there themselves
+  if (moving && opts.secrets) throw new BackupError("Keys never go into a move. Enter them again where it lands.", 400);
+  const secrets = moving ? false : (opts.secrets ?? Boolean(passphrase));
   if (secrets && !passphrase) {
     throw new BackupError("Saved keys only go into a backup sealed with a passphrase.", 400, "passphrase");
   }
@@ -1246,21 +1311,23 @@ export async function createBackup(opts: CreateOptions = {}): Promise<BackupInfo
     version,
     created: at.getTime(),
     kind: opts.kind ?? "manual",
-    undo: Boolean(opts.undo),
+    undo: moving ? false : Boolean(opts.undo),
     secrets,
   };
+  const moveConfig = moving ? configForMoveFile(join(dataDir, "config.json")) : null;
+  if (moveConfig) summary.toEnter = moveConfig.toEnter;
   ensureBackupsDir(backupsDir);
   const name = freeName(backupsDir, backupFileName(at, version, summary.kind, Boolean(passphrase)));
   const file = join(backupsDir, name);
   const partial = `${file}.partial`;
-  const plan = await collect(dataDir, summary.undo);
+  const plan = await collect(dataDir, summary.undo, moving);
   let mine = false;
   try {
     // wx: a second backup choosing the same name in the same second (the
     // command line beside the app) fails rather than writing into this one
     const out = createWriteStream(partial, { flags: "wx", mode: 0o600, flush: true });
     out.once("open", () => (mine = true));
-    const tar = Readable.from(archive(dataDir, plan, summary));
+    const tar = Readable.from(archive(dataDir, plan, summary, moveConfig?.move));
     if (passphrase) await pipeline(tar, createGzip(), await sealer(passphrase, summary), out);
     else await pipeline(tar, createGzip(), out);
     renameSync(partial, file);
@@ -1426,13 +1493,16 @@ function readJson(file: string): unknown {
 
 /** A backup that came without keys keeps this computer's: restoring last
  * week's agents is not meant to sign every engine out. */
-function keepTheseKeys(dataDir: string, staging: string) {
+function keepTheseKeys(dataDir: string, staging: string, move = false) {
   const current = readJson(join(dataDir, "config.json"));
   if (!isRecord(current)) return;
   const file = join(staging, "config.json");
   const restored = existsSync(file) ? readJson(file) : {};
   if (!isRecord(restored)) return;
   carrySecrets(current, restored);
+  // a move brings a workspace and not a computer: this one's port, relay
+  // space, paired devices and engine paths stay as they are
+  if (move) keepThisMachine(current, restored);
   writeFileAtomic(file, JSON.stringify(restored, null, 2), 0o600);
   // and its agents' signing keys, which a backup without keys left out:
   // an agent that keeps its key keeps signing as itself
@@ -1485,7 +1555,7 @@ export async function stageRestore(
       throw new BackupError(`This backup did not check out, so nothing was changed: ${result.problems.slice(0, 3).join("; ")}.`, 422, "damaged");
     }
     keys = result.summary.secrets ? "restored" : "kept";
-    if (keys === "kept") keepTheseKeys(dataDir, staging);
+    if (keys === "kept") keepTheseKeys(dataDir, staging, result.summary.kind === "move");
   } catch (error) {
     rmSync(staging, { recursive: true, force: true });
     if ((error as NodeJS.ErrnoException)?.code === "ENOTDIR" || (error as NodeJS.ErrnoException)?.code === "EEXIST") {

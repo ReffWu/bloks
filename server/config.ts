@@ -17,6 +17,7 @@ import { readSaved, isRecord, writeFileAtomic } from "./atomic-write.ts";
 import type { InstanceConfigMap } from "./contracts.ts";
 import { usableSecrets } from "./env-names.ts";
 import { CUSTOM_SPEC, PROVIDER_SPECS, specFor } from "./providers.ts";
+import { CREDITS_KIND, CREDITS_SPEC, creditsCompatUrl, creditsEnvToken } from "./credits.ts";
 
 /** One connected engine: the credential, plus an override for people
  * pointing at a proxy or a self-hosted endpoint. */
@@ -201,6 +202,13 @@ export interface AppConfig {
    * outside the house. The token names one space; the relay never holds
    * a key that could read what travels through it. */
   relay?: { url?: string; agentToken?: string; clientToken?: string; enabled?: boolean };
+  /** Bloks credits (server/credits.ts). The licence is kept because a
+   * credits token is traded for it, again whenever the service refuses
+   * the token; the token is what every call sends. Both are secrets
+   * (backup.ts SECRET_PATHS). `background` lets work nobody asked for
+   * this minute (the nightly memory tidy, skill proposals) spend credits;
+   * off unless turned on. */
+  credits?: { licence?: string; token?: string; background?: boolean };
   /** Off unless somebody turned it on. Holds the devices allowed to
    * reach this server from the network (see server/pairing.ts); each
    * one is a name and a token digest, never a token. */
@@ -334,6 +342,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "chat",
     "brief",
     "backups",
+    "credits",
   ] as const) {
     if (patch[key] && typeof patch[key] === "object") {
       // The migrated Telegram section is a complete private record. A
@@ -341,6 +350,12 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
       disk[key] = key === "telegram" && (patch.telegram?.version === 1 || patch.telegram?.version === 2)
         ? patch.telegram
         : { ...(disk[key] as object), ...patch[key] };
+      // credits forgets by null: a token from an old licence must be gone
+      // from the file, not kept beside a newer one
+      if (key === "credits") {
+        const merged = disk[key] as Record<string, unknown>;
+        for (const name of Object.keys(merged)) if (merged[name] === null || merged[name] === undefined) delete merged[name];
+      }
     }
   }
   if (Array.isArray((patch as Record<string, unknown>).mcpServers)) {
@@ -449,6 +464,13 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
       environment: { [envVarFor(CUSTOM_SPEC.kind)]: cred.key },
     };
   }
+  // The Bloks engine, while a Cloud licence is active or this host was
+  // started with a credits token. Its key is not injected here: the
+  // driver asks for the token on each call, since a refused one is
+  // renewed while the engine stays loaded.
+  if (creditsOffered(cfg) && !map[CREDITS_KIND]) {
+    map[CREDITS_KIND] = { driver: CREDITS_SPEC.kind, displayName: CREDITS_SPEC.name, config: { url: creditsCompatUrl() } };
+  }
   for (const entry of Object.values(map)) {
     entry.environment = {
       ...usableSecrets(cfg.secrets),
@@ -475,4 +497,11 @@ export function activeCustomKey(endpoint: CustomEndpoint): CustomKey | undefined
     if (named) return named;
   }
   return endpoint.keys.find((k) => k.key);
+}
+
+/** Whether Bloks credits are offered here: an active Cloud licence (the
+ * relay's space tokens are how this machine knows one was activated), or
+ * a credits token this host was started with. */
+export function creditsOffered(cfg: AppConfig): boolean {
+  return Boolean(creditsEnvToken()) || Boolean(cfg.relay?.enabled && cfg.relay.agentToken);
 }

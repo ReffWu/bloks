@@ -122,6 +122,7 @@ import UserCircleHero from "@heroicons/react/24/outline/UserCircleIcon.js";
 import UserGroupHero from "@heroicons/react/24/outline/UserGroupIcon.js";
 import UserPlusHero from "@heroicons/react/24/outline/UserPlusIcon.js";
 import ViewfinderCircleHero from "@heroicons/react/24/outline/ViewfinderCircleIcon.js";
+import WalletHero from "@heroicons/react/24/outline/WalletIcon.js";
 import WindowHero from "@heroicons/react/24/outline/WindowIcon.js";
 import XMarkHero from "@heroicons/react/24/outline/XMarkIcon.js";
 
@@ -354,6 +355,7 @@ export const UserPlus = icon(UserPlusHero, "UserPlus");
 export const UserRound = icon(UserCircleHero, "UserRound");
 export const Users = icon(UserGroupHero, "Users");
 export const Volume2 = icon(SpeakerWaveHero, "Volume2");
+export const Wallet = icon(WalletHero, "Wallet");
 export const Webhook = icon(LinkHero, "Webhook");
 export const Workflow = icon(RectangleStackHero, "Workflow");
 export const X = icon(XMarkHero, "X");

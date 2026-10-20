@@ -31,7 +31,7 @@ import { ApprovalModeMenu } from "./composer/ApprovalMode";
 import { CodexSpeedMenu } from "./CodexSpeed";
 import { NoticeTray, RANK, TrayButton, type Notice } from "./composer/Tray";
 import { SlashMenu } from "./composer/SlashMenu";
-import { guestMailNotice, useApprovalsNotice, useEngineNotice, useOtherLanesNotice, useSuggestionNotice } from "./chat/Banners";
+import { guestMailNotice, useApprovalsNotice, useCreditsNotice, useEngineNotice, useOtherLanesNotice, useSuggestionNotice } from "./chat/Banners";
 import { useGoalNotice } from "./Goal";
 import { useQueuedNotice } from "./WaitingStrip";
 import { useDeliveryPreview, type DeliveryPreview } from "@/lib/delivery";
@@ -653,6 +653,7 @@ export function Composer({
   const delivery = useDeliveryPreview(bot.id, laneId, rehearse ? "" : text, working, deliveryChoice);
   const approvalsNotice = useApprovalsNotice(bot, approvals);
   const engineNotice = useEngineNotice(bot);
+  const creditsNotice = useCreditsNotice(bot);
   const lanesNotice = useOtherLanesNotice(bot);
   const goalNotice = useGoalNotice(bot);
   const suggestionNotice = useSuggestionNotice(bot);
@@ -762,6 +763,7 @@ export function Composer({
   const notices = [
     approvalsNotice,
     engineNotice,
+    creditsNotice,
     lanesNotice,
     goalNotice,
     queuedNotice,

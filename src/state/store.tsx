@@ -44,6 +44,7 @@ import {
   type Action,
   type AppState,
   type Bot,
+  type CreditsSummary,
   type Message,
   type OptionCardData,
 } from "./reducer";
@@ -961,6 +962,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         // credentials changed and the engines were rebuilt, so the
         // picker needs to hear that something became usable
+        // a run refused for an empty balance, or more added since
+        case "credits": {
+          const { kind: _kind, _seq, ...credits } = frame;
+          rawDispatch({ type: "credits", credits: credits as unknown as CreditsSummary });
+          break;
+        }
         case "config":
           rawDispatch({ type: "configStatus", config: configFromFrame(frame) });
           api("/api/instances")

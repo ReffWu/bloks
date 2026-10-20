@@ -330,6 +330,9 @@ export interface Bot {
   modelSelection: ModelSelection;
   /** The engine that answers when the agent's own runs out. */
   backupSelection?: ModelSelection | null;
+  /** How its engine is paid for: unset is the engine's own sign-in,
+   * "credits" runs Claude Code on the person's Bloks credits. */
+  engineAccess?: "credits" | null;
   /** Where this agent may act. Left unset it decides for itself: its own
    * box when it has one, otherwise this Mac. */
   computer?: "cloud" | "sandbox" | "local" | "off" | null;
@@ -424,6 +427,30 @@ export interface ConfigStatus {
   /** Where a new agent starts, applied before its first turn. Absent on
    * a server that does not know about it, and then Settings says nothing. */
   agentDefaults?: AgentDefaults;
+  /** Bloks credits without the balance, which Settings reads on its own
+   * (server/credits.ts). Absent on a server that does not know them. */
+  credits?: CreditsSummary;
+  /** A hosted workspace (server/hosted.ts): whether this is one, whether
+   * its virtual desktop can be shown, and where an agent may act here. */
+  hosted?: {
+    on: boolean;
+    desktop: boolean;
+    computers: Array<{ id: "cloud" | "sandbox" | "local" | "off"; label: string }>;
+  };
+}
+
+/** What the server says about Bloks credits on the stream and with the
+ * rest of the settings. */
+export interface CreditsSummary {
+  /** A Cloud licence is active here, or the host came with a token. */
+  offered: boolean;
+  /** Work nobody asked for this minute may spend credits. Off by default. */
+  background: boolean;
+  /** The last run the service refused for an empty balance, in its words,
+   * until more is added. */
+  refused: { at: number; message: string } | null;
+  /** Where more is bought, in the browser. */
+  checkoutUrl: string;
 }
 
 export interface AgentDefaults {
@@ -781,6 +808,7 @@ export type Action =
   | { type: "connectProvider"; kind: string; key?: string; url?: string }
   | { type: "disconnectProvider"; kind: string }
   | { type: "configStatus"; config: ConfigStatus }
+  | { type: "credits"; credits: CreditsSummary }
   /** `lane` opens that conversation; without it, the one that pinged. */
   | { type: "select"; id: string; lane?: string }
   | { type: "send"; botId: string; text: string; replyTo?: Message["replyTo"]; stopFirst?: boolean; delivery?: "now" | "wait"; onFailed?: () => void }
@@ -1033,6 +1061,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, providers: action.providers };
     case "configStatus":
       return { ...state, config: action.config };
+    case "credits":
+      return state.config ? { ...state, config: { ...state.config, credits: action.credits } } : state;
     case "select":
       writeSelected(action.id);
       // choosing a conversation in the sidebar means looking at it, so a

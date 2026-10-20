@@ -25,6 +25,7 @@ import { PluginSettings } from "./PluginSettings";
 import { Puzzle } from "@/components/icons";
 import { EnginesPanel } from "./EnginesPanel";
 import { CloudSection } from "./CloudSection";
+import { CreditsSection } from "./CreditsSection";
 import { DevicesSection } from "./DevicesSection";
 import { TelegramSection } from "./TelegramSection";
 import { ChatSection } from "./ChatSection";
@@ -488,6 +489,57 @@ function MemoryTidy() {
   );
 }
 
+/** The small mark a hosted workspace wears in Settings, so nobody wonders
+ * why the Mac's own options are not there. */
+function HostedMark() {
+  return (
+    <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-caption font-medium text-muted-foreground">
+      Hosted
+    </span>
+  );
+}
+
+/** Computers: the Local VM on a Mac; on a hosted workspace, what the
+ * agents' computer is instead, since the machine itself is it. */
+function ComputersPage() {
+  const { state } = useStore();
+  if (!state.config?.hosted?.on) return <LocalVmSection />;
+  return (
+    <SettingsGroup title="This machine">
+      <SettingRow
+        label="Browser and virtual desktop"
+        description={
+          state.config.hosted.desktop
+            ? "Agents work in this machine's browser and on its virtual desktop. Watch the desktop from an agent's Computer panel."
+            : "Agents work in this machine's browser. No virtual desktop is set up to watch."
+        }
+      />
+      <SettingRow
+        label="Cloud box and Local VM"
+        description="Not offered here: this machine is the agents' computer already."
+      />
+    </SettingsGroup>
+  );
+}
+
+/** Voices, with the Mac's own named only where there is a Mac. */
+function VoicesPage() {
+  const { state } = useStore();
+  const mac = state.config?.speech?.system !== false && !state.config?.hosted?.on;
+  return (
+    <SettingsGroup title="Keys">
+      <div className="flex flex-col gap-4 p-4">
+        <ApiKeyRow section="elevenlabs" label="ElevenLabs API key" placeholder="sk_…" />
+        <ApiKeyRow section="openaiSpeech" label="OpenAI API key (speech)" placeholder="sk-…" />
+        <OpenAIKeyHint />
+        <div className="text-small text-muted-foreground">
+          {mac ? "Either key works. The Mac's own voices need none." : "Either key works. Mac voices need Bloks running on a Mac."}
+        </div>
+      </div>
+    </SettingsGroup>
+  );
+}
+
 /** Shared context every agent receives. Optional, never asked for up
  * front: it lives here for whenever you feel like writing it. */
 /**
@@ -499,10 +551,20 @@ function MemoryTidy() {
  * tab there is no updater and the card says only what it knows.
  */
 function AboutCard() {
+  const { state } = useStore();
+  const hosted = Boolean(state.config?.hosted?.on);
   const [version, setVersion] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>({ state: "idle" });
 
   useEffect(() => {
+    // A window without the desktop app (a hosted workspace in a browser)
+    // has no app to ask, so the server says which build it runs.
+    if (!window.bloks?.appVersion) {
+      void fetch("/api/health")
+        .then((r) => r.json())
+        .then((health: { version?: string }) => setVersion(health.version || null))
+        .catch(() => {});
+    }
     void window.bloks?.appVersion?.().then(setVersion);
     void window.bloks?.updateState?.().then(setUpdate);
     return window.bloks?.onUpdateState?.(setUpdate);
@@ -536,6 +598,16 @@ function AboutCard() {
 
   return (
     <SettingsGroup title="Version">
+      {hosted && (
+        <SettingRow
+          label={
+            <>
+              This workspace <HostedMark />
+            </>
+          }
+          description="It runs on a machine hosted for you, not on your Mac. Its browser and its virtual desktop are your agents' computer."
+        />
+      )}
       <SettingRow
         label={`Bloks ${version ?? ""}`}
         description={description}
@@ -897,7 +969,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "Engines",
         icon: Cpu,
         description: "The AI tools and API keys your agents think with.",
-        keywords: "models providers claude codex gemini grok openai api key cli sign in",
+        keywords: "models providers claude codex gemini grok openai api key cli sign in bloks credits",
       },
       {
         id: "new-agents",
@@ -970,7 +1042,7 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
         label: "Bloks Cloud",
         icon: CloudIcon,
         description: "Your agents on the go, and the relay that carries them.",
-        keywords: "subscription licence relay cloud",
+        keywords: "subscription licence relay cloud credits balance top up add credits",
       },
       {
         id: "computers",
@@ -1163,16 +1235,7 @@ function PageBody({ id }: { id: string }) {
     case "security":
       return <SecurityCheckup />;
     case "voices":
-      return (
-        <SettingsGroup title="Keys">
-          <div className="flex flex-col gap-4 p-4">
-            <ApiKeyRow section="elevenlabs" label="ElevenLabs API key" placeholder="sk_…" />
-            <ApiKeyRow section="openaiSpeech" label="OpenAI API key (speech)" placeholder="sk-…" />
-            <OpenAIKeyHint />
-            <div className="text-small text-muted-foreground">Either key works. The Mac's own voices need none.</div>
-          </div>
-        </SettingsGroup>
-      );
+      return <VoicesPage />;
     case "plugins":
       return <PluginSettings />;
     case "apps":
@@ -1230,9 +1293,14 @@ function PageBody({ id }: { id: string }) {
         </>
       );
     case "cloud":
-      return <CloudSection />;
+      return (
+        <>
+          <CloudSection />
+          <CreditsSection />
+        </>
+      );
     case "computers":
-      return <LocalVmSection />;
+      return <ComputersPage />;
     case "record":
       return <RecordPanel />;
     case "backups":
@@ -1277,8 +1345,9 @@ export function AppSettingsPanel() {
         {/* No back button of its own: the title bar's Back (or Esc) leaves,
             and on a phone the pill's drawer does; the room on the left
             there is the pill's. */}
-        <div className="flex h-[52px] items-center px-4 max-md:pl-16">
+        <div className="flex h-[52px] items-center gap-2 px-4 max-md:pl-16">
           <span className="text-lead font-semibold text-foreground">Settings</span>
+          {state.config?.hosted?.on && <HostedMark />}
         </div>
         <div className="px-3 pb-2">
           <div className="flex items-center gap-2 rounded-xl bg-accent/70 px-3 py-[7px] transition-colors duration-150 focus-within:bg-accent">

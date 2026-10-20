@@ -182,7 +182,14 @@ export type RuntimeEvent = RuntimeEventBase &
         before: number | null;
         after: number | null;
       }
-    | { type: "runtime.error"; message: string; preInputRefusal?: import("./codex-speed.ts").CodexSpeedRefusal }
+    | {
+        type: "runtime.error";
+        message: string;
+        preInputRefusal?: import("./codex-speed.ts").CodexSpeedRefusal;
+        /** The Bloks credits balance ran out (a 402 from the credits
+         * service, server/credits.ts). `message` is the service's words. */
+        credits?: "empty";
+      }
   );
 
 export type RuntimeEventListener = (event: RuntimeEvent) => void;
@@ -286,6 +293,11 @@ export interface SendTurnInput {
    * ignores it, which is the honest outcome rather than a missing
    * feature. */
   env?: Record<string, string>;
+  /** Run on the person's Bloks credits instead of the engine's own
+   * sign-in: the service's base URL and a credits token. Only Claude Code
+   * takes it (server/drivers/claude.ts); the harness never sets it for
+   * anything else. Never logged. */
+  credits?: { baseUrl: string; token: string };
   /**
    * The whole message to send instead of `text` when the session behind
    * `resumeCursor` turns out to be gone and the driver opens a new one:

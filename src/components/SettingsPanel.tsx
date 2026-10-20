@@ -61,6 +61,7 @@ import { plural } from "@/lib/plural";
 import { stamp } from "@/lib/when";
 import { thisComputer } from "@/lib/thisComputer";
 import { sameEngineBackup } from "@/lib/backupChoice";
+import { computerOptions } from "@/lib/hosted";
 import { useEscape } from "@/lib/useEscape";
 import { EngineSuggestionCard, useEngineReport } from "./EngineReport";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, RULES_AND_MODES, type ApprovalMode } from "./ApprovalsChooser";
@@ -84,6 +85,7 @@ type Patch = Partial<
     | "browser"
     | "backupSelection"
     | "engineHooks"
+    | "engineAccess"
     | "recallBeforeTurn"
     | "delivery"
   >
@@ -414,6 +416,30 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                       />
                     }
                   />
+                )}
+                {instance?.driverKind === "claudeAgent" && (state.config?.credits?.offered || bot.engineAccess === "credits") && (
+                  // Credits are offered while Cloud is active. An agent
+                  // already on them keeps the choice in sight even when
+                  // they are not, so it can be moved back.
+                  <SettingRow
+                    label="Access"
+                    description={
+                      bot.engineAccess === "credits"
+                        ? "Runs on your Bloks credits, with no sign-in of its own."
+                        : "Runs on Claude Code's own sign-in on this computer."
+                    }
+                  >
+                    <Segmented
+                      aria-label="How Claude Code is paid for"
+                      className="mt-3 max-w-[360px]"
+                      value={bot.engineAccess === "credits" ? "credits" : "own"}
+                      onChange={(access) => patch({ engineAccess: access === "credits" ? "credits" : null })}
+                      options={[
+                        { value: "own", label: "Own sign-in" },
+                        { value: "credits", label: "Bloks credits" },
+                      ]}
+                    />
+                  </SettingRow>
                 )}
               </Group>
               <CodexSpeedControl bot={bot} />
@@ -1088,19 +1114,19 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
  * options in one row is where segmented controls stop being readable. */
 function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   const { state, dispatch } = useStore();
-  const options = [
-    ["cloud", "Cloud box"],
-    ["sandbox", "Local VM"],
-    ["local", "This computer"],
-    ["off", "Off"],
-  ] as const;
+  // A hosted workspace offers only this machine and off (server/hosted.ts),
+  // and the server says which; the Computer panel reads the same list.
+  const hosted = Boolean(state.config?.hosted?.on);
+  const options = computerOptions(state.config?.hosted?.computers);
   return (
     <SettingRow
       label="Computer"
       description={
-        bot.computer
-          ? "Where it gets a desktop and a terminal."
-          : "Uses your cloud box if you have one, otherwise this computer."
+        hosted
+          ? "This machine's browser and virtual desktop, or none."
+          : bot.computer
+            ? "Where it gets a desktop and a terminal."
+            : "Uses your cloud box if you have one, otherwise this computer."
       }
       control={
         <label className="flex items-center gap-2 text-body text-muted-foreground">
@@ -1116,7 +1142,7 @@ function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
       {/* Auto's fallback should never be a surprise: with no box
           configured it means "this Mac", and the person deciding deserves
           to know that at the moment they decide it. */}
-      {!bot.computer && !state.config?.box?.configured && (
+      {!hosted && !bot.computer && !state.config?.box?.configured && (
         <Note>
           No cloud box is set up, so Automatic uses this computer.{" "}
           <button
@@ -1128,7 +1154,11 @@ function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
         </Note>
       )}
       {bot.computer && (
-        <div role="radiogroup" aria-label="Computer" className="mt-3 grid grid-cols-2 gap-1 rounded-[10px] bg-muted p-0.5 sm:grid-cols-4">
+        <div
+          role="radiogroup"
+          aria-label="Computer"
+          className={cn("mt-3 grid grid-cols-2 gap-1 rounded-[10px] bg-muted p-0.5", options.length > 2 && "sm:grid-cols-4")}
+        >
           {options.map(([mode, label]) => (
             <button
               key={mode}

@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 
 import type { AppConfig } from "./config.ts";
+import { isHosted } from "./hosted.ts";
 
 export interface Voice {
   provider: "elevenlabs" | "openai" | "system";
@@ -98,9 +99,13 @@ export function parseSayVoices(listing: string, languages = /^en_/): Voice[] {
 
 let systemVoices: Promise<Voice[]> | null = null;
 
+/** Whether the Mac's own voices are here: on a Mac, and not a hosted
+ * workspace, whose machine is not the person's (server/hosted.ts). */
+const MAC_VOICES = process.platform === "darwin" && !isHosted();
+
 /** The Mac's voices, read once. Empty anywhere else. */
 function macVoices(): Promise<Voice[]> {
-  if (process.platform !== "darwin") return Promise.resolve([]);
+  if (!MAC_VOICES) return Promise.resolve([]);
   systemVoices ??= new Promise((resolve) => {
     execFile("/usr/bin/say", ["-v", "?"], { timeout: 10_000 }, (error, stdout) =>
       resolve(error ? [] : parseSayVoices(String(stdout))),
@@ -150,7 +155,7 @@ export function speechConfigured(cfg: AppConfig): {
   return {
     elevenlabs: Boolean(cfg.speech?.elevenlabsKey),
     openai: Boolean(openaiKey(cfg)),
-    system: process.platform === "darwin",
+    system: MAC_VOICES,
     ...(discovered && consented ? { openaiSource: discovered.source } : {}),
     ...(discovered && !consented ? { openaiAvailable: discovered.source } : {}),
   };
@@ -194,7 +199,7 @@ export async function speak(
 ): Promise<{ stream: ReadableStream<Uint8Array>; mime: string }> {
   const clipped = text.slice(0, SPEAK_MAX_CHARS);
   if (voice.provider === "system") {
-    if (process.platform !== "darwin") throw new Error("Mac voices only speak on a Mac");
+    if (!MAC_VOICES) throw new Error("Mac voices need Bloks running on a Mac.");
     // only a voice the Mac actually lists, never an arbitrary argument
     if (!(await macVoices()).some((v) => v.id === voice.id)) throw new Error("that Mac voice is not installed");
     return { stream: await sayToStream(voice.id, clipped), mime: "audio/mp4" };

@@ -1,6 +1,7 @@
 import { own, type InspectionContext } from "./settings-records.ts";
 import { scalar, type InspectionField, type InspectionValue } from "./settings-inspection.ts";
 import { PROVIDER_SPECS, CUSTOM_SPEC } from "./providers.ts";
+import { CREDITS_SPEC } from "./credits.ts";
 const get=(root:unknown,key:string)=>own(root,key).value;
 const configured=(raw:unknown):InspectionValue=>({status:'configured',configured:Boolean(raw)});
 const policy=(value:string):InspectionValue=>({status:'policy',policy:value});
@@ -28,8 +29,8 @@ export function inspectEngineSettings(input:unknown,ctx:InspectionContext,loaded
     addConfig('fullAuto',{status:'value',value:get(raw,'fullAuto')===true});
   }else if(driver==='boxAgent'){
     const poll=get(raw,'pollMs');addConfig('pollMs',scalar(typeof poll==='number'?poll:2500,ctx.redact));
-  }else if([...PROVIDER_SPECS,CUSTOM_SPEC].some((spec)=>spec.kind===driver)){
-    const spec=[...PROVIDER_SPECS,CUSTOM_SPEC].find((entry)=>entry.kind===driver)!;
+  }else if([...PROVIDER_SPECS,CUSTOM_SPEC,CREDITS_SPEC].some((spec)=>spec.kind===driver)){
+    const spec=[...PROVIDER_SPECS,CUSTOM_SPEC,CREDITS_SPEC].find((entry)=>entry.kind===driver)!;
     const url=get(raw,'url'),keyEnv=get(raw,'apiKeyEnv');
     addConfig('url',configured(typeof url==='string' && url?url.replace(/\/+$/,''):spec.url),true);
     addConfig('apiKeyEnv',configured(typeof keyEnv==='string'?keyEnv:'driver default'),true);

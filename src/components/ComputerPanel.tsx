@@ -13,6 +13,11 @@
 // Left unset, an agent picks for itself: its own box when it has one,
 // otherwise this Mac.
 //
+// A hosted workspace (server/hosted.ts) is the agents' computer already:
+// there is no box, no VM and no Mac to choose, only this machine or off,
+// and what is shown is the machine's virtual desktop, passed through the
+// server under a ticket.
+//
 // The mode also decides what may be called. Box endpoints are reachable
 // only on the cloud path, so an agent working locally can never end up
 // rendering an error response where a screenshot should be.
@@ -33,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
+import { computerOptions } from "@/lib/hosted";
 import { useEscape } from "@/lib/useEscape";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
@@ -122,6 +128,7 @@ type Phase =
   | "ready"
   | "local"
   | "local-unavailable"
+  | "hosted"
   | "off"
   | "error";
 
@@ -235,6 +242,7 @@ function LocalVmCard({ bot }: { bot: Bot }) {
 
 export function ComputerPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
+  const hosted = Boolean(state.config?.hosted?.on);
   useEscape(() => dispatch({ type: "toggleComputer", open: false }));
   const [phase, setPhase] = useState<Phase>("checking");
   const [boxState, setBoxState] = useState<string | null>(null);
@@ -254,6 +262,11 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     setLocalFrame(null);
     setError(null);
     const isElectron = Boolean(window.bloks);
+    // a hosted machine is the computer: nothing to provision or find
+    if (hosted) {
+      setPhase(bot.computer === "off" ? "off" : "hosted");
+      return;
+    }
     // sandbox has its own card and no screen to chase
     if (bot.computer === "off" || bot.computer === "sandbox") {
       setPhase("off");
@@ -291,7 +304,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     return () => {
       alive = false;
     };
-  }, [bot.id, bot.computer, retry]);
+  }, [bot.id, bot.computer, retry, hosted]);
 
   // a bot switch must never paint the previous agent's screen, even for
   // one frame; the reset happens during render, before anything shows
@@ -377,7 +390,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       .finally(() => setPending(null));
   };
 
-  const emptyState: Record<Exclude<Phase, "ready" | "local">, string> = {
+  const emptyState: Record<Exclude<Phase, "ready" | "local" | "hosted">, string> = {
     checking: "Checking…",
     starting: "Starting your agent's computer…",
     unconfigured: "No cloud computer configured",
@@ -407,7 +420,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       <div className="flex-1 overflow-y-auto px-5 pb-6">
         {/* The Local VM brings its own preview; the header and the Runs
             on picker stay put so there is always a way back. */}
-        {bot.computer === "sandbox" ? (
+        {phase === "hosted" ? (
+          <>
+            <TakeTheWheel bot={bot} />
+            <HostedDesktop bot={bot} desktop={Boolean(state.config?.hosted?.desktop)} />
+          </>
+        ) : bot.computer === "sandbox" && !hosted ? (
           <LocalVmCard bot={bot} />
         ) : (
           <>
@@ -502,14 +520,14 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
         {/* Computer source */}
         <div className="mt-4 rounded-2xl border bg-card p-4">
           <div className="text-ui font-semibold text-foreground">Runs on</div>
-          {/* The same four homes the settings card offers, in the same
-              2x2 shape. One setting, two doors; they must never disagree
-              about what the options are. */}
+          {/* The same homes the settings card offers, in the same shape,
+              from the same list (src/lib/hosted.ts). One setting, two
+              doors; they must never disagree about what the options are. */}
           <div className="mt-3 flex items-center justify-between gap-3">
             <div>
               <div className="text-body text-foreground">Automatic</div>
               <div className="text-small text-muted-foreground">
-                Cloud box if there is one, else this computer
+                {hosted ? "This machine" : "Cloud box if there is one, else this computer"}
               </div>
             </div>
             <Switch
@@ -519,7 +537,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               }
             />
           </div>
-          {!bot.computer && !state.config?.box?.configured && (
+          {!hosted && !bot.computer && !state.config?.box?.configured && (
             <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2 text-small text-muted-foreground">
               No cloud box yet, so this computer is used.
             </div>
@@ -530,14 +548,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               !bot.computer && "pointer-events-none opacity-45",
             )}
           >
-                        {(
-              [
-                ["cloud", "Cloud box"],
-                ["sandbox", "Local VM"],
-                ["local", "This computer"],
-                ["off", "Off"],
-              ] as const
-            ).map(([mode, label]) => (
+            {computerOptions(state.config?.hosted?.computers).map(([mode, label]) => (
               <button
                 key={mode}
                 onClick={() => dispatch({ type: "updateBot", botId: bot.id, patch: { computer: mode } })}
@@ -559,6 +570,60 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
       </div>
       {desktop && <DesktopOverlay bot={bot} url={desktop} onClose={() => setDesktop(null)} />}
     </aside>
+  );
+}
+
+/**
+ * A hosted machine's virtual desktop, as noVNC draws it, through a ticket
+ * the server mints for this panel (server/hosted.ts). Minted when the
+ * panel opens and never kept: a ticket that lapses is replaced by opening
+ * the panel again, and the address is not one to save or share.
+ */
+function HostedDesktop({ bot, desktop }: { bot: Bot; desktop: boolean }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!desktop) return;
+    let alive = true;
+    setUrl(null);
+    setError(null);
+    api("/api/hosted/desktop", { method: "POST", body: "{}" })
+      .then((r) => alive && setUrl(r.url))
+      .catch((e: Error) => alive && setError(e.message));
+    return () => {
+      alive = false;
+    };
+  }, [desktop, bot.id]);
+
+  return (
+    <>
+      <div className="mb-1.5 mt-3 flex items-center justify-between text-body font-medium text-muted-foreground">
+        <span>This machine's desktop</span>
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-caption font-normal hover:text-foreground"
+          >
+            <ExternalLink size={12} />
+            Open
+          </a>
+        )}
+      </div>
+      <div className="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/50">
+        {url ? (
+          <iframe title={`${bot.name}'s desktop`} src={url} referrerPolicy="no-referrer" className="h-full w-full border-0" />
+        ) : (
+          <div className="flex flex-col items-center gap-2 px-6 text-center text-muted-foreground">
+            {desktop && !error ? <Loader2 size={18} className="animate-spin" /> : <Monitor size={22} />}
+            <span className="text-small">
+              {error ?? (desktop ? "Opening the desktop…" : `${bot.name} works in this machine's browser. No virtual desktop is set up to watch.`)}
+            </span>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

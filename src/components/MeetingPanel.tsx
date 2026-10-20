@@ -94,7 +94,7 @@ function Items({ meeting, onChanged }: { meeting: MeetingRow; onChanged: () => v
 export function MeetingPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const bridge = window.bloks;
-  const available = Boolean(bridge?.meetingStart);
+  const available = Boolean(bridge?.meetingStart) && !state.config?.hosted?.on;
   const [title, setTitle] = useState("");
   const [system, setSystem] = useState(true);
   const [meetingId, setMeetingId] = useState<string | null>(null);

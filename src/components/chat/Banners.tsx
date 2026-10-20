@@ -9,12 +9,14 @@ import { Info } from "@/components/icons";
 import { MessagesSquare } from "@/components/icons";
 import { ShieldAlert } from "@/components/icons";
 import { ShieldCheck } from "@/components/icons";
+import { Wallet } from "@/components/icons";
 import { api, useStore, type Bot, type Message } from "@/state/store";
 import { readApproval } from "@/lib/approvalCard";
 import { suggestionsFor, useRuleSuggestions, whatParts, type RuleSuggestion } from "@/lib/ruleSuggestions";
 import { EngineSetupActions } from "@/components/EngineSetup";
 import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
 import { toast } from "@/components/ui/toast";
+import { refusalToShow, runsOnCredits } from "@/lib/credits";
 
 /**
  * The lane mail from senders the person has not listed is answered in.
@@ -287,5 +289,43 @@ export function useEngineNotice(bot: Bot): Notice | null {
       </div>
     ),
     onDismiss: dismiss,
+  };
+}
+
+/**
+ * A run this agent asked for was refused because the Bloks credits balance
+ * is empty. Said once, quietly, in the service's own words, with the one
+ * press that fixes it: the checkout page, in the browser, never a
+ * purchase inside the app. Coming back to the window reads the balance
+ * again, and once there is more the server takes the refusal back and
+ * this goes by itself. Put away, it stays away until the next refusal.
+ */
+export function useCreditsNotice(bot: Bot): Notice | null {
+  const { state } = useStore();
+  const refused = state.config?.credits?.refused ?? null;
+  const onCredits = runsOnCredits(bot, state.instances);
+  const [dismissedAt, setDismissedAt] = useState<number | null>(null);
+  const showing = refusalToShow(refused, onCredits, dismissedAt);
+  useEffect(() => {
+    if (!showing) return;
+    const look = () => void api("/api/credits?fresh=1").catch(() => {});
+    window.addEventListener("focus", look);
+    return () => window.removeEventListener("focus", look);
+  }, [showing]);
+  if (!showing) return null;
+  const checkout = state.config?.credits?.checkoutUrl;
+  return {
+    id: "credits",
+    tone: "warn",
+    rank: RANK.engine,
+    icon: <Wallet size={14} />,
+    title: showing.message,
+    hint: showing.message,
+    actions: checkout ? (
+      <TrayButton strong onClick={() => window.open(checkout, "_blank", "noopener")}>
+        Add credits
+      </TrayButton>
+    ) : undefined,
+    onDismiss: () => setDismissedAt(showing.at),
   };
 }

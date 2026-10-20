@@ -178,9 +178,15 @@ describe("activating Cloud", () => {
       clientToken: "client-token",
       enabled: true,
     });
-    // the licence is spent, not kept: the two space tokens are all this
-    // Mac needs again, so nothing has to hold the thing that buys more
-    assert.ok(!file.includes("blok_live_"), "the licence key was written to the config file");
+    // The relay never holds the licence: the two space tokens are all the
+    // line needs. It is kept in one place only, for Bloks credits, which
+    // trade it for a token and trade again when the service refuses one
+    // (server/credits.ts): a key like any other saved key, which backups
+    // strip and errors redact.
+    const saved = JSON.parse(file);
+    assert.equal(saved.credits?.licence, KEY, "kept for credits, trimmed");
+    assert.equal(file.split("blok_live_").length - 1, 1, "and nowhere else in the file");
+    assert.ok(!JSON.stringify(saved.relay).includes("blok_live_"));
 
     // and the link actually dials, which is the difference between
     // activated and merely saved

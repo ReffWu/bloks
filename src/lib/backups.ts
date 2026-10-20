@@ -7,7 +7,8 @@
 // engines stay signed in when they are about to be replaced, or the other
 // way round.
 
-export type BackupKind = "manual" | "automatic" | "before-restore";
+/** "move" is a whole workspace written out for another machine. */
+export type BackupKind = "manual" | "automatic" | "before-restore" | "move";
 
 export interface BackupItem {
   name: string;
@@ -39,6 +40,7 @@ export function sizeText(bytes: number): string {
 export function kindLabel(kind: BackupKind): string | null {
   if (kind === "automatic") return "Automatic";
   if (kind === "before-restore") return "Before a restore";
+  if (kind === "move") return "For moving";
   return null;
 }
 
@@ -108,4 +110,13 @@ export function passphraseProblem(passphrase: string, again: string): string | n
   if (passphrase.length < 8) return "A passphrase needs at least 8 characters.";
   if (passphrase !== again) return "The two passphrases differ.";
   return null;
+}
+
+/** What a workspace move asks of the person afterwards: the keys it left
+ * behind, by name, since keys never travel in a move. */
+export function keysToEnter(labels: string[]): string {
+  const names = [...new Set(labels.filter(Boolean))];
+  if (!names.length) return "No saved keys were left behind.";
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Keys stay behind. Enter ${names.length === 1 ? "this" : "these"} again where it lands: ${list}.`;
 }
