@@ -67,6 +67,28 @@ describe("composing a brief", () => {
   test("gist makes speech out of markdown", () => {
     assert.equal(gist("## Plan\n- **Ship** it `now`\n```js\nx()\n```\nSee https://a.b ok."), "Plan Ship it now See ok.");
   });
+
+  test("gist ends a sentence only at a stop with a space or the end after it", () => {
+    // what the brief said: "The launch post is scheduled for 10:00. md for
+    // you to pick from."
+    assert.equal(
+      gist("The launch post is scheduled for 10:00. I left two drafts of post.md for you to pick from. Both are in the folder."),
+      "The launch post is scheduled for 10:00. I left two drafts of post.md for you to pick from.",
+    );
+    assert.equal(
+      gist("The launch post.md is scheduled for 10:00. Two drafts are ready. Pick one."),
+      "The launch post.md is scheduled for 10:00. Two drafts are ready.",
+    );
+    // versions, addresses and decimals are words too
+    assert.equal(
+      gist("Bumped to v2.5.11, and the run on example.com took 3.5 seconds. Nothing else changed. Done."),
+      "Bumped to v2.5.11, and the run on example.com took 3.5 seconds. Nothing else changed.",
+    );
+    // the stops that do end one still do, however many there are
+    assert.equal(gist("Wait... really? Yes!"), "Wait... really?");
+    assert.equal(gist("No stop at all"), "No stop at all");
+    assert.equal(gist(""), "");
+  });
 });
 
 describe("when it is due", () => {

@@ -134,7 +134,11 @@ export function gist(text: string, sentences = 2, max = 240): string {
     .replace(/\|/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const parts = out.match(/[^.!?]+[.!?]+(?=\s|$)|[^.!?]+$/g) ?? [out];
+  // A sentence ends at its stop with a space or the end after it. A dot
+  // with more after it belongs to the word: a file (post.md), a version,
+  // an address, a decimal. Splitting there dropped the words before it
+  // and started a sentence at "md".
+  const parts = out.match(/\S[\s\S]*?(?:[.!?]+(?=\s|$)|$)/g) ?? [out];
   out = parts.slice(0, sentences).map((p) => p.trim()).join(" ").trim();
   if (out.length > max) out = `${out.slice(0, max - 1).replace(/\s+\S*$/, "")}…`;
   return out;
