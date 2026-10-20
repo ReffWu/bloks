@@ -1,13 +1,20 @@
 // People in the workspace and its rooms, and how they get in.
 //
 // Bloks has one owner: the person whose computer this is. Everyone else
-// is a member of the workspace (role "member" or "admin"), or, for
-// somebody who only ever talks from a linked chat channel, a guest of the
-// rooms that channel is linked to. A member is not a lesser owner. They
-// reach the workspace's rooms and their own conversations with each
-// agent, never the owner's solo chats, settings or secrets, and the
-// agents they talk to run on the owner's computer, with the owner's keys.
-// See server/member-access.ts for what a member may reach.
+// is either a member of the workspace (role "member" or "admin") or a
+// guest of some of its rooms. A member came in through a workspace invite
+// (server/invites.ts) and reaches the workspace's team agents and the
+// rooms open to them. A guest has no role: somebody let into one room
+// through that room's own invite, or somebody who only ever talks from a
+// linked chat channel. A guest reaches the rooms they were let into and
+// nothing else: no team agents, no other rooms, no members list, and they
+// count against a room's places, not the workspace's.
+//
+// A member is not a lesser owner. They reach the workspace's rooms and
+// their own conversations with each agent, never the owner's solo chats,
+// settings or secrets, and the agents they talk to run on the owner's
+// computer, with the owner's keys. See server/member-access.ts for what
+// either may reach.
 //
 // A person belongs to the workspace once. Room memberships still exist
 // underneath, because a room keeps its own roles (collaborator, viewer)
@@ -39,15 +46,18 @@ export interface Person {
   id: string;
   name: string;
   createdAt: number;
-  /** Set for a member of the workspace. Absent for a chat-channel guest,
-   * who is only ever in the rooms their channel is linked to. */
+  /** Set for a member of the workspace. Absent for a guest, who is only
+   * ever in the rooms they were let into (by a room's invite, or through
+   * a linked chat channel). */
   role?: WorkspaceRole;
   /** When they joined the workspace: what a room they have no membership
    * in shows them from, and what the members list says. */
   joinedAt?: number;
   /** "owner", or the person id of the admin whose invite they used. */
   invitedBy?: string;
-  /** The kind of device they joined from, for the members list. */
+  /** The kind of device they joined from, for the members list. Only a
+   * workspace invite sets it, which is how the move to version 3 tells
+   * somebody who joined the workspace from somebody let into a room. */
   device?: DeviceKind;
   /** The relay client token digest this person's devices use, so removing
    * them from their last room can take the relay away too. */
@@ -106,7 +116,8 @@ export interface Invite {
 }
 
 export interface PeopleFile {
-  /** 2 once people are workspace members (see migrate). Absent is 1. */
+  /** 3 once room guests and workspace members are told apart (see
+   * migrate). Absent is 1. */
   version?: number;
   people: Person[];
   memberships: Membership[];
@@ -143,25 +154,33 @@ function load(): PeopleFile {
 }
 
 /**
- * People from before workspaces were people of rooms only. Each of them
- * becomes a member of the workspace, joined on the day of their first
- * room, invited by whoever let them into it. A chat-channel guest stays a
- * guest: they have no device and no app, only a channel. Nothing else
- * changes, so open room invites keep working and every membership keeps
- * its room role. True when something was changed and should be saved.
+ * People from before workspaces were people of rooms only, and they stay
+ * that: guests of the rooms they were let into. Being invited to one room
+ * in somebody's Personal workspace is not being let into everything else
+ * there, so nobody becomes a member of the workspace by moving files.
+ *
+ * Version 2 got that wrong for a while: it made every room person a
+ * member, who then saw every team agent and every room open to everyone.
+ * Version 3 takes it back. A member whose file says they came through a
+ * workspace invite (it set their device) stays a member, and so does an
+ * admin, whom only the owner could have made one; everybody else with a
+ * room of their own becomes a guest of their rooms again. True when
+ * something was changed and should be saved.
  */
 export function migrate(data: PeopleFile): boolean {
-  if ((data.version ?? 1) >= 2) return false;
+  const from = data.version ?? 1;
+  if (from >= 3) return false;
   let changed = false;
-  for (const p of data.people) {
-    if (p.role || p.via) continue;
-    const rooms = data.memberships.filter((m) => m.personId === p.id).sort((a, b) => a.joinedAt - b.joinedAt);
-    p.role = "member";
-    p.joinedAt = rooms[0]?.joinedAt ?? p.createdAt;
-    p.invitedBy = rooms[0]?.invitedBy ?? "owner";
-    changed = true;
+  if (from === 2) {
+    for (const p of data.people) {
+      if (p.role !== "member" || p.device || p.via) continue;
+      if (!data.memberships.some((m) => m.personId === p.id)) continue;
+      delete p.role;
+      delete p.joinedAt;
+      changed = true;
+    }
   }
-  data.version = 2;
+  data.version = 3;
   // nothing to move is nothing to write: an empty workspace gets no file
   return changed;
 }
@@ -257,7 +276,8 @@ export function clearRoom(roomId: string): string[] {
 
 // ── the workspace ──────────────────────────────────────────────────────
 
-/** Everyone in the workspace besides the owner, oldest first. */
+/** Everyone in the workspace besides the owner, oldest first. Guests of
+ * rooms are not in it. */
 export function workspaceMembers(): Person[] {
   return load()
     .people.filter((p) => p.role)
@@ -329,6 +349,21 @@ export function reachOf(personId: string, roomId: string, audience: "everyone" |
   const p = data.people.find((x) => x.id === personId);
   if (!p?.role) return null;
   return { role: "collaborator", joinedAt: p.joinedAt ?? p.createdAt };
+}
+
+/** Everybody who reaches a room besides the owner: its guests and the
+ * members it holds (every member, in a room open to everyone). What a
+ * room's places are counted in. */
+export function roomHeadcount(roomId: string, audience: "everyone" | "some"): string[] {
+  const data = load();
+  const ids = new Set(data.memberships.filter((m) => m.roomId === roomId).map((m) => m.personId));
+  if (audience === "everyone") for (const p of data.people) if (p.role) ids.add(p.id);
+  return [...ids].filter((id) => data.people.some((p) => p.id === id));
+}
+
+/** The guests of a room: people in it who are not in the workspace. */
+export function guestsOf(roomId: string): Array<Membership & { person: Person }> {
+  return membersOf(roomId).filter((m) => !m.person.role);
 }
 
 /** Who of the workspace's members is in a room chosen person by person:
@@ -436,14 +471,13 @@ export function approveInvite(id: string, beforeApprove?: (person: Person) => vo
   const inv = invite(id);
   if (!live(inv) || inv.status !== "claimed" || !inv.claim) return null;
   const data = load();
-  // Somebody let into a room is somebody in the workspace: one person,
-  // a member, who reaches the room with the role the invite named.
+  // Somebody let into a room is a guest of that room, with the role the
+  // invite named, and nothing more: the workspace's agents, its other
+  // rooms and its people are for those who came in by a workspace invite.
   const p: Person = {
     id: `p_${randomBytes(9).toString("base64url")}`,
     name: inv.claim.name,
     createdAt: Date.now(),
-    role: "member",
-    joinedAt: Date.now(),
     invitedBy: inv.invitedBy,
     ...(inv.relayTokenHash ? { relayTokenHash: inv.relayTokenHash } : {}),
   };

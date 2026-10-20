@@ -70,7 +70,7 @@ test("limits are checked whole: one bad field refuses the change", () => {
   assert.deepEqual(again.limitOf("p1"), limits.DEFAULT_LIMIT);
 });
 
-test("people from before workspaces become members, guests from a channel stay guests", () => {
+test("people from before workspaces stay guests of their rooms, and never become members by moving files", () => {
   const data: import("../server/people.ts").PeopleFile = {
     people: [
       { id: "p_old", name: "Leila", createdAt: 100 },
@@ -85,18 +85,44 @@ test("people from before workspaces become members, guests from a channel stay g
     invites: [],
     knocks: [],
   };
-  assert.equal(people.migrate(data), true);
-  const [leila, daniel, zed] = data.people;
-  assert.equal(leila.role, "member");
-  assert.equal(leila.joinedAt, 200, "joined the day of their first room");
-  assert.equal(leila.invitedBy, "owner");
-  assert.equal(daniel.role, "member");
-  assert.equal(daniel.joinedAt, 300, "no room: the day they were made");
-  assert.equal(zed.role, undefined);
+  // nothing about anybody changes, so there is nothing to write
+  assert.equal(people.migrate(data), false);
+  for (const p of data.people) assert.equal(p.role, undefined, `${p.name} is nobody's member`);
   // room roles are untouched
   assert.equal(data.memberships.find((m) => m.roomId === "r2")!.role, "viewer");
-  assert.equal(data.version, 2);
-  // and it happens once
+  assert.equal(data.version, 3);
+  assert.equal(people.migrate(data), false);
+});
+
+test("a file version 2 made members of takes it back, except from those who joined the workspace", () => {
+  const data: import("../server/people.ts").PeopleFile = {
+    version: 2,
+    people: [
+      // made a member by version 2, for one room in Personal
+      { id: "p_room", name: "Leila", createdAt: 100, role: "member", joinedAt: 200, invitedBy: "owner" },
+      // came through a workspace invite: the invite set their device
+      { id: "p_ws", name: "Sam", createdAt: 300, role: "member", joinedAt: 300, invitedBy: "owner", device: "mac" },
+      // the owner made them an admin, which only the owner can
+      { id: "p_admin", name: "Ana", createdAt: 400, role: "admin", joinedAt: 400, invitedBy: "owner" },
+      { id: "p_chat", name: "Zed", createdAt: 50, via: { platform: "slack", userId: "U1" } },
+    ],
+    memberships: [
+      { personId: "p_room", roomId: "r1", role: "collaborator", joinedAt: 200, invitedBy: "owner" },
+      { personId: "p_ws", roomId: "r1", role: "collaborator", joinedAt: 350, invitedBy: "owner" },
+      { personId: "p_chat", roomId: "r1", role: "collaborator", joinedAt: 60, invitedBy: "owner" },
+    ],
+    invites: [],
+    knocks: [],
+  };
+  assert.equal(people.migrate(data), true);
+  const [leila, sam, ana, zed] = data.people;
+  assert.equal(leila.role, undefined, "a guest of r1 again");
+  assert.equal(leila.joinedAt, undefined);
+  assert.equal(sam.role, "member");
+  assert.equal(ana.role, "admin");
+  assert.equal(zed.role, undefined);
+  assert.equal(data.memberships.length, 3, "every room keeps its people");
+  assert.equal(data.version, 3);
   assert.equal(people.migrate(data), false);
 });
 

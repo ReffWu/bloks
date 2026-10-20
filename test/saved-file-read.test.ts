@@ -228,7 +228,7 @@ test("a failed config read leaves a pairing code retryable", (t) => {
   assert.equal(pairing.claimPairing(made.code, "fixture"), null);
 });
 
-test("invite approval and leaving the workspace read device settings before changing memberships", (t) => {
+test("invite approval and a guest leaving their last room read device settings before changing memberships", (t) => {
   const file = join(data, "config.json");
   writeFileSync(file, "{}");
   const { invite } = people.createInvite({ roomId: "room", role: "collaborator", invitedBy: "owner" });
@@ -244,18 +244,18 @@ test("invite approval and leaving the workspace read device settings before chan
   restore();
   const approved = people.approveInvite(invite.id, register)!;
   const registered = readFileSync(peopleFile, "utf8");
-  // someone let into a room is in the workspace, so it is leaving the
-  // workspace that takes their devices, read before anything changes
+  // someone let into a room is that room's guest, so leaving it is leaving
+  // everything, and their devices go, read before anything changes
   const restoreAgain = refuseRead(t, file, "EMFILE");
-  assert.throws(() => people.removeFromWorkspace(approved.person.id, (p) => {
-    pairing.revokePerson(p.id);
+  assert.throws(() => people.removeFromRoom(approved.person.id, "room", (roomless) => {
+    if (roomless) pairing.revokePerson(approved.person.id);
   }), /EMFILE/);
   assert.equal(people.roleIn(approved.person.id, "room"), "collaborator");
   assert.equal(readFileSync(peopleFile, "utf8"), registered);
   restoreAgain();
-  assert.equal(people.removeFromWorkspace(approved.person.id, (p) => {
-    pairing.revokePerson(p.id);
-  })?.id, approved.person.id);
+  assert.equal(people.removeFromRoom(approved.person.id, "room", (roomless) => {
+    if (roomless) pairing.revokePerson(approved.person.id);
+  }).roomless, true);
   assert.deepEqual(pairing.memberDevices(), []);
 });
 

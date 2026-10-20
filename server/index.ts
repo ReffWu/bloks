@@ -2358,7 +2358,7 @@ function broadcast(payload: unknown) {
     }
   }
   for (const stream of [...memberStreams]) {
-    const shown = memberFrame(payload, (roomId) => viewOf(stream.personId, roomId));
+    const shown = memberFrame(payload, (roomId) => viewOf(stream.personId, roomId), Boolean(whoIs(stream.personId)));
     if (!shown) continue;
     try {
       stream.res.write(`data: ${JSON.stringify({ ...(shown as object), _seq: seq })}\n\n`);
@@ -8376,13 +8376,14 @@ async function sharingRefusal(blok: BlokRecord): Promise<string | null> {
       ? "Bloks Cloud includes one shared room. Bloks Team shares as many as you like."
       : "You have shared as many rooms as your plan allows.";
   }
-  // People are counted across the workspace, not per room: someone let
-  // into a room is a member of the workspace (server/people.ts).
+  // A room's places are everybody who reaches it: its guests, and the
+  // members it holds. A guest is somebody in this room, not somebody in
+  // the workspace, so they never count against the workspace's door.
   const pending = people.invitesFor(blok.id).length;
-  if (people.workspaceMembers().length + pending >= limits.members) {
+  if (people.roomHeadcount(blok.id, audienceOf(blok)).length + pending >= limits.members) {
     return plan === "cloud"
-      ? `Bloks Cloud allows ${limits.members} members in a workspace. Bloks Team allows ${PLAN_LIMITS.team.members}.`
-      : `A workspace holds up to ${limits.members} members.`;
+      ? `Bloks Cloud allows ${limits.members} people in a shared room. Bloks Team allows ${PLAN_LIMITS.team.members}.`
+      : `A shared room holds up to ${limits.members} people.`;
   }
   return null;
 }
@@ -9065,7 +9066,7 @@ async function relayMentions(roomId: string, fromBotId: string, text: string, re
 const relayLink = new RelayLink(PORT, (state) => broadcast({ kind: "relay", ...state }));
 // Members' devices get frames as member-access.ts shapes them, and an
 // invite's envelope key comes from the invite's own secret.
-relayLink.memberFrame = (frame, personId) => memberFrame(frame, (roomId) => viewOf(personId, roomId));
+relayLink.memberFrame = (frame, personId) => memberFrame(frame, (roomId) => viewOf(personId, roomId), Boolean(whoIs(personId)));
 relayLink.previewOf = previewOf;
 relayLink.onHook = (hook) => (hook.platform === "email" ? onEmailHook(hook) : onWhatsAppHook(hook));
 relayLink.pairSecret = (linkId) => pairLinkSecret(linkId);
@@ -14616,15 +14617,19 @@ function noteTurnRefused(laneId: string, e: unknown) {
   broadcast({ kind: "message", threadId: laneId, message: notice });
 }
 
-/** The people in a room, as anyone in it sees them. */
+/** The people in a room, as anyone in it sees them: in a room open to
+ * everyone, every member of the workspace and the room's own guests. */
 function roomPeople(blok: BlokRecord) {
   if (audienceOf(blok) === "everyone") {
-    return people.workspaceMembers().map((p) => {
-      const reach = people.reachOf(p.id, blok.id, "everyone")!;
-      return { id: p.id, name: p.name, role: reach.role, joinedAt: reach.joinedAt };
-    });
+    return [
+      ...people.workspaceMembers().map((p) => {
+        const reach = people.reachOf(p.id, blok.id, "everyone")!;
+        return { id: p.id, name: p.name, role: reach.role, joinedAt: reach.joinedAt };
+      }),
+      ...people.guestsOf(blok.id).map((m) => ({ id: m.personId, name: m.person.name, role: m.role, joinedAt: m.joinedAt, guest: true })),
+    ];
   }
-  return people.membersOf(blok.id).map((m) => ({ id: m.personId, name: m.person.name, role: m.role, joinedAt: m.joinedAt }));
+  return people.membersOf(blok.id).map((m) => ({ id: m.personId, name: m.person.name, role: m.role, joinedAt: m.joinedAt, ...(m.person.role ? {} : { guest: true }) }));
 }
 
 function memberRoom(roomId: string, personId: string) {
@@ -14698,7 +14703,7 @@ async function serveMember(
       if (canResume) {
         for (const entry of frameRing) {
           if (entry.seq <= since) continue;
-          const shown = memberFrame(entry.payload, (roomId) => viewOf(personId, roomId));
+          const shown = memberFrame(entry.payload, (roomId) => viewOf(personId, roomId), Boolean(who.role));
           if (shown) res.write(`data: ${JSON.stringify({ ...(shown as object), _seq: entry.seq })}\n\n`);
         }
       }
@@ -19558,7 +19563,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       const plan = await currentPlan();
       const limits = plan ? PLAN_LIMITS[plan] : PLAN_LIMITS.cloud;
-      if (people.membersOf(blok.id).length >= limits.members) {
+      if (people.roomHeadcount(blok.id, audienceOf(blok)).length >= limits.members) {
         return json(res, 402, {
           error: plan === "team" ? `A shared room holds up to ${limits.members} people.` : "Bloks Cloud rooms hold two people. Bloks Team holds ten.",
         });

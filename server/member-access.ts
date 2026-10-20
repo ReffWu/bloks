@@ -306,8 +306,10 @@ const LANE_FRAMES = new Set(["member.lane"]);
 /**
  * A broadcast frame as one member may see it, or null. `viewOf` answers
  * how this member sees a room, or null when they are not in it.
+ * `inWorkspace` is false for a guest of some rooms, who hears about those
+ * rooms and nothing of the workspace around them.
  */
-export function memberFrame(payload: unknown, viewOf: (roomId: string) => MemberView | null): unknown | null {
+export function memberFrame(payload: unknown, viewOf: (roomId: string) => MemberView | null, inWorkspace = true): unknown | null {
   const frame = payload as { kind?: string; threadId?: string; roomId?: string; message?: Message; moved?: boolean; botId?: string; turnId?: string } | null;
   if (!frame || typeof frame.kind !== "string") return null;
   if (frame.kind === "ping") return frame;
@@ -330,7 +332,7 @@ export function memberFrame(payload: unknown, viewOf: (roomId: string) => Member
     return frame.threadId && viewOf(frame.threadId) ? frame : null;
   }
   // The members list changed: everyone in the workspace may hear it, and
-  // it carries names and roles only.
-  if (frame.kind === "workspace.people") return frame;
+  // it carries names and roles only. A guest is not in the workspace.
+  if (frame.kind === "workspace.people") return inWorkspace ? frame : null;
   return null;
 }
