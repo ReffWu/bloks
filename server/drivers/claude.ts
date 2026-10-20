@@ -32,7 +32,7 @@ import { claudePlanUsage } from "../plan-usage.ts";
 import { callSignature } from "../repeats.ts";
 import { SessionCosts } from "./session-costs.ts";
 import { readClaudeCommands, classifyClaudeCommands, type ClaudeCommandRow } from "../agent-commands.ts";
-import { createAskBroker, summarise, type AskBroker } from "../harness/ask-broker.ts";
+import { bridgeSocketPath, createAskBroker, summarise, type AskBroker } from "../harness/ask-broker.ts";
 import { checkPersonClaudeInit, checkPersonClaudeStatus, personClaudeDenials, personTurnHold, readPersonClaudeInstructions } from "../person-turn.ts";
 
 /** The answerable options of an ask, wherever the tool put them: a flat
@@ -159,7 +159,9 @@ const PERMISSION_HELPER = helperEntry("permission-proxy");
 const RUN_AS_NODE = { ELECTRON_RUN_AS_NODE: "1" };
 
 /** Socket path for a turn's permission bridge. Short and thread-derived:
- * unix socket paths have a length limit that full ids would risk. */
+ * unix socket paths have a length limit that full ids would risk. A home
+ * deep enough to break it anyway moves the socket to the temp folder
+ * (bridgeSocketPath in the ask broker). */
 function brokerSocket(threadId: string, turnId: string) {
   const tag = threadId.replace(/[^\w-]/g, "").slice(0, 8);
   // per turn too: a finished turn's process can outlive it, and its
@@ -167,6 +169,11 @@ function brokerSocket(threadId: string, turnId: string) {
   const turn = turnId.replace(/[^\w-]/g, "").slice(-6);
   return join(DATA_DIR, `perm-${tag}-${turn}.sock`);
 }
+
+/** What the person reads when no socket path can be found for the bridge:
+ * the data folder and the temp folder are both too deep for one. */
+const NO_BRIDGE =
+  "Bloks could not set up approvals for this turn, so it did not start: its data folder and the temp folder are both too deep for the socket approvals travel over. Point TMPDIR at a shorter folder (such as /tmp) and restart Bloks.";
 
 /** Pull readable text out of a message's content blocks. */
 function textOf(content: unknown): string {
@@ -369,6 +376,19 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       if (running.has(threadId)) throw new Error("a turn is already running on this thread");
 
       const turnId = newId();
+      // Where the permission bridge will listen, settled before anything
+      // starts. With nowhere to listen every approval would be denied
+      // without a card, so the turn fails out loud instead, the way an
+      // engine that cannot start does.
+      const socketPath = bridgeSocketPath(brokerSocket(threadId, turnId));
+      if (!socketPath) {
+        emit({ ...envelope(threadId, turnId), type: "turn.started" });
+        setImmediate(() => {
+          emit({ ...envelope(threadId, turnId), type: "runtime.error", message: NO_BRIDGE });
+          emit({ ...envelope(threadId, turnId), type: "turn.completed", ok: false, stopReason: "no_bridge", cost: null });
+        });
+        return { turnId };
+      }
       // A session brought over from before Bloks is carried on in a copy,
       // or, where this CLI cannot copy one, not resumed at all.
       const cursor = !turn.person && typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
@@ -555,7 +575,6 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       // something: a question, a key, an app to connect (GitHub 172). So
       // there it publishes only those, and the CLI is never pointed at
       // approve.
-      const socketPath = brokerSocket(threadId, turnId);
       let personReady = !turn.person;
       const broker = createAskBroker({
         socketPath,

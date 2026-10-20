@@ -15,8 +15,10 @@
 // process the CLI spawned, not something we can hand a callback to. One
 // socket per turn, deleted when the turn ends.
 import { createServer, type Server } from "node:net";
-import { randomUUID } from "node:crypto";
-import { unlinkSync } from "node:fs";
+import { randomBytes, randomUUID } from "node:crypto";
+import { chmodSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { isQuestionTool } from "../policy.ts";
 
@@ -71,6 +73,62 @@ export function summarise(ask: PendingAsk): string {
 
   const serialised = JSON.stringify(input);
   return serialised === "{}" ? (ask.tool ?? "tool") : serialised.slice(0, 200);
+}
+
+/** The room a unix socket's path has in the kernel's address (sun_path),
+ * its closing NUL included: 104 bytes on macOS and the BSDs, 108 on
+ * Linux. */
+const SUN_PATH = process.platform === "linux" ? 108 : 104;
+
+/** Whether a socket path fits its address. Bytes, not characters: a home
+ * folder with an accented name is shorter on screen than in the kernel. */
+export function socketPathFits(path: string, room = SUN_PATH): boolean {
+  return Buffer.byteLength(path) < room;
+}
+
+/**
+ * Where a turn's bridge can actually listen, or null when nowhere can.
+ *
+ * The preferred path sits in the data folder, beside everything else of
+ * ours. A deep home folder pushes it past what a socket address holds,
+ * and nothing says so: depending on the runtime the path is cut short or
+ * refused on its way into the kernel, the engine's side of the bridge
+ * meets a refused connection, and every permission it asks for reads as
+ * a deny nobody saw. So a path that does not fit moves to a folder of
+ * this user's own in the temp folder, made private before anything
+ * listens in it, under a short random name. The broker removes the
+ * socket when it closes, the same as it would the preferred one.
+ *
+ * Windows has no such address (its sockets are named pipes), so the path
+ * there is left as it was.
+ */
+export function bridgeSocketPath(
+  preferred: string,
+  options: { tempDir?: string; room?: number; platform?: NodeJS.Platform } = {},
+): string | null {
+  const room = options.room ?? SUN_PATH;
+  if ((options.platform ?? process.platform) === "win32" || socketPathFits(preferred, room)) return preferred;
+
+  const uid = process.getuid?.();
+  const dir = join(options.tempDir ?? tmpdir(), `bloks-${uid ?? "user"}`);
+  try {
+    mkdirSync(dir, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") return null;
+  }
+  try {
+    // A shared temp folder is anyone's to write in. A link, or a folder
+    // somebody else made under our name, could hand them the socket that
+    // carries this user's approvals, so only a real folder of our own is
+    // used, and it is closed to everyone else before it is.
+    const found = lstatSync(dir);
+    if (!found.isDirectory() || (uid !== undefined && found.uid !== uid)) return null;
+    if ((found.mode & 0o077) !== 0) chmodSync(dir, 0o700);
+  } catch {
+    return null;
+  }
+  const short = join(dir, `p-${randomBytes(5).toString("hex")}.sock`);
+  return socketPathFits(short, room) ? short : null;
 }
 
 export interface AskBrokerOptions {
