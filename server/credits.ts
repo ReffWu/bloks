@@ -317,15 +317,24 @@ export class CreditsAccount {
   }
 
   /** Whether the licence is a team's, from the hosting status beside the
-   * service. Null when it does not say. */
+   * service, which is asked with the licence itself (the Bloks AI token is
+   * for model use and the balance only). Null when it does not say. */
   async team(): Promise<boolean | null> {
-    let origin: string;
+    const licence = this.store.read().licence;
+    if (!licence) return null;
     try {
-      origin = new URL(creditsBase()).origin;
+      const res = await this.fetch(`${new URL(creditsBase()).origin}/api/hosting/status`, {
+        headers: { authorization: `Bearer ${licence}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        await res.body?.cancel().catch(() => {});
+        return null;
+      }
+      return readTeam(await res.text());
     } catch {
       return null;
     }
-    return readTeam(await this.call(`${origin}/api/hosting/status`));
   }
 }
 

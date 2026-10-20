@@ -94,14 +94,22 @@ export async function startFakeCredits(
       live.add(token);
       return send(200, { token });
     }
+    // Hosting status is the licence's, as on the real service: the key as
+    // the bearer, never the Bloks AI token
+    if (req.method === "GET" && url.pathname === "/api/hosting/status") {
+      if (!LICENCE.test(bearer)) return send(404, { error: "That is not a Bloks licence key we know." });
+      return send(200, { team: opts.team === true });
+    }
     const authorised = live.has(bearer) && !revoked.has(bearer);
-    if (url.pathname.startsWith("/api/ai/v1/") || url.pathname === "/api/ai/balance" || url.pathname === "/api/ai/settings" || url.pathname === "/api/hosting/status") {
+    if (url.pathname.startsWith("/api/ai/v1/") || url.pathname === "/api/ai/balance" || url.pathname === "/api/ai/settings") {
       bearers.push(bearer);
       if (!authorised) return send(401, { error: { message: "token revoked" } });
     }
     if (req.method === "GET" && url.pathname === "/api/ai/balance") {
       return send(200, {
         plan: opts.team ? "team" : "solo",
+        // the real balance says whether the licence is a team's
+        team: opts.team === true,
         usedPercent: 100 - left,
         leftPercent: left,
         monthlyLeftPercent: left,
@@ -122,9 +130,6 @@ export async function startFakeCredits(
         if (row) row.dailyCapPercent = cap;
       }
       return send(200, { ok: true });
-    }
-    if (req.method === "GET" && url.pathname === "/api/hosting/status") {
-      return send(200, { team: opts.team === true });
     }
     if (req.method === "GET" && url.pathname === "/api/ai/v1/models") {
       return send(200, { data: models.map((id) => ({ id, object: "model" })) });
