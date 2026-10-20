@@ -1,7 +1,7 @@
 // Watchers: a folder, a page or a feed, and a turn when it changes.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -93,6 +93,9 @@ describe("through the server", () => {
   let h: Harness;
   let page = "<p>Price: $450</p>";
   const heard: string[] = [];
+  /** What the agent does during its turn, as a test sets it: the engine
+   * runs it before it answers, so its changes land inside the turn. */
+  let duringTurn: (said: string) => void = () => {};
   let pageUrl = "";
   let closeAll = () => {};
   before(async () => {
@@ -105,6 +108,7 @@ describe("through the server", () => {
         if (req.url?.endsWith("/models")) return res.end(JSON.stringify({ data: [{ id: "m-1" }] }));
         const messages = JSON.parse(body).messages ?? [];
         heard.push(String(messages[messages.length - 1]?.content ?? ""));
+        duringTurn(String(messages[messages.length - 1]?.content ?? ""));
         res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "On it." } }] }));
       });
     });
@@ -174,6 +178,52 @@ describe("through the server", () => {
     const { bots } = await h.json("/api/bots");
     const me = bots.find((b: any) => b.id === bot.id);
     assert.deepEqual(me.tasks.map((t: any) => t.title), ["General"]);
+  });
+
+  test("what the watcher's own turn does to its folder does not wake it again, and a new file still does", async (t) => {
+    // The agent renames the file it was woken for, and its turn ends well
+    // inside the settle window. The look after that (by hand here, so no
+    // test waits twenty seconds for the timer) used to read the rename as
+    // a new file and start the same work again.
+    const dir = mkdtempSync(join(tmpdir(), "bloks-watched-own-"));
+    t.after(() => {
+      duringTurn = () => {};
+      rmSync(dir, { recursive: true, force: true });
+    });
+    const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Renamer" }) });
+    await h.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: "grok", model: "m-1" } }) });
+    const { watcher } = await h.json("/api/watchers", {
+      method: "POST",
+      body: JSON.stringify({ botId: bot.id, kind: "folder", target: dir, instruction: "Rename new invoices by date." }),
+    });
+    await waitFor(async () => ((await h.json("/api/watchers")).watchers.find((w: any) => w.id === watcher.id)?.lastCheck ? true : null));
+    duringTurn = (said) => {
+      if (said.includes("scan-0042.pdf")) renameSync(join(dir, "scan-0042.pdf"), join(dir, "2026-03-14 invoice.pdf"));
+    };
+    writeFileSync(join(dir, "scan-0042.pdf"), "pdf");
+    const fired = await h.json(`/api/watchers/${watcher.id}/check`, { method: "POST" });
+    assert.equal(fired.fired, true, fired.note);
+    const idle = () =>
+      waitFor(async () => {
+        const me = (await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id);
+        return !me.busy && me.messages.some((m: any) => m.role === "bot" && /On it/.test(m.text ?? "")) ? true : null;
+      });
+    assert.ok(await idle(), "the watcher's turn never ended");
+
+    const again = await h.json(`/api/watchers/${watcher.id}/check`, { method: "POST" });
+    assert.equal(again.fired, false, `the agent's own rename woke the watcher again: ${again.note}`);
+    const fires = (await h.json("/api/watchers")).watchers.find((w: any) => w.id === watcher.id).fires;
+    assert.equal(fires.length, 1);
+
+    duringTurn = () => {};
+    writeFileSync(join(dir, "scan-0043.pdf"), "pdf");
+    const fresh = await h.json(`/api/watchers/${watcher.id}/check`, { method: "POST" });
+    assert.equal(fresh.fired, true, `a file from somewhere else was missed: ${fresh.note}`);
+    await waitFor(async () => (heard.some((q) => /New: scan-0043\.pdf/.test(q)) ? true : null));
+    const latest = heard.filter((q) => q.includes("Rename new invoices by date.")).at(-1) ?? "";
+    assert.match(latest, /New: scan-0043\.pdf/);
+    assert.doesNotMatch(latest, /2026-03-14 invoice\.pdf/, "the agent's own rename was reported as news");
+    await h.fetch(`/api/watchers/${watcher.id}`, { method: "DELETE" });
   });
 
   test("a page fires only when it mentions what it was told to look for", async () => {

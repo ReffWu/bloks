@@ -4209,6 +4209,8 @@ bus.subscribe((event: RuntimeEvent) => {
         { ok: event.ok !== false, stopReason: event.stopReason ?? null, pickingUp, rebuilt: Boolean(rebuilt), person: laneTelegramPerson.has(event.threadId), preInputRefusal: event.preInputRefusal },
         (text, phoneText) => pushMessage({ role: "bot", kind: "notice", text, ...(phoneText ? { phoneText } : {}) }),
       );
+      // a folder watcher's own turn ending is what it has seen from now on
+      watcherTurnEnded(event.threadId, pickingUp || Boolean(handedOver) || refolding);
       // The incident desk (server/incidents.ts): a turn nothing else will
       // pick up that failed or stalled is an incident, and one that worked
       // settles the retry it was. Before settleOwners, which closes a
@@ -7047,6 +7049,34 @@ function suspendedFor(botId: string): boolean {
 const folderWatches = new Map<string, import("node:fs").FSWatcher>();
 const settleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const checking = new Set<string>();
+/**
+ * Folder watchers whose own turn has not ended yet: the lane it was given
+ * and the message that asked for it. A turn that files or renames what it
+ * was woken for changes the folder it watches, and when it ended before
+ * the folder had been still for SETTLE_MS, the next look read the agent's
+ * own work as a new file and woke it again. So the folder as that turn
+ * leaves it becomes the watcher's baseline (watcherTurnEnded): what it
+ * did is the watcher's own, and only what changes after it is news.
+ */
+const ownTurns = new Map<string, { laneId: string; messageId: string }>();
+
+/** A turn in this lane has ended. Any folder watcher whose own turn it
+ * was takes the folder as it is now as what it has seen. `goesOn` is a
+ * turn asked again or handed to a backup, which is still the watcher's
+ * and may change more, so it is looked at again when that one ends. */
+function watcherTurnEnded(laneId: string, goesOn: boolean) {
+  for (const [id, own] of ownTurns) {
+    if (own.laneId !== laneId) continue;
+    // Still waiting behind somebody else's turn in the lane: that turn
+    // ending is not this one, and what it changed is still news.
+    if (store.messagesFor(laneId).some((m) => m.id === own.messageId && m.queued)) continue;
+    const w = watchers.find((x) => x.id === id);
+    if (!goesOn || !w) ownTurns.delete(id);
+    if (!w || !existsSync(w.target)) continue;
+    w.seen = JSON.stringify(folderSnapshot(w.target));
+    saveWatchers();
+  }
+}
 
 function disarmWatcher(id: string) {
   folderWatches.get(id)?.close();
@@ -7162,12 +7192,25 @@ async function fireWatcher(w: Watcher, bot: BotRecord, what: string) {
     // as a person's message would.
     const lane = watcherLane(w, bot);
     const chain = w.chain ? { chain: w.chain } : {};
+    // what the turn does to a watched folder is its own (ownTurns), noted
+    // before it starts, since a quick one can end before startTurn returns
+    const own = (message: Message) => {
+      if (w.kind === "folder") ownTurns.set(w.id, { laneId: lane.id, messageId: message.id });
+    };
     if (laneWaits(lane)) {
-      queueOnLane(bot.id, lane.id, text, { via: "watcher", ...chain });
+      own(queueOnLane(bot.id, lane.id, text, { via: "watcher", ...chain }));
     } else {
       const said = store.appendMessage(lane.id, { role: "user", kind: "text", text, via: "watcher" });
       broadcast({ kind: "message", threadId: lane.id, message: said });
-      await startTurn(bot.id, text, { taskId: lane.id, presetMessage: true, ...chain });
+      own(said);
+      try {
+        await startTurn(bot.id, text, { taskId: lane.id, presetMessage: true, ...chain });
+      } catch (e) {
+        // refused: the change is left to be found again, and the next
+        // turn in this lane is not the watcher's
+        ownTurns.delete(w.id);
+        throw e;
+      }
     }
   }
   w.fires = [{ at: Date.now(), summary: what.split("\n")[0].slice(0, 160) }, ...w.fires].slice(0, 10);
@@ -7176,8 +7219,9 @@ async function fireWatcher(w: Watcher, bot: BotRecord, what: string) {
 /**
  * One look. The first only takes a baseline. A look while the agent is
  * busy is skipped rather than taken, so the change is still there for
- * the next one and the agent's own edits to a folder it is working in
- * are not news to it.
+ * the next one. The edits of the watcher's own turn to the folder it
+ * watches are not news to it: that turn's end is its new baseline
+ * (ownTurns).
  */
 async function checkWatcher(id: string, manual = false): Promise<{ fired: boolean; note: string }> {
   const w = watchers.find((x) => x.id === id);
@@ -7283,16 +7327,20 @@ async function checkWatcher(id: string, manual = false): Promise<{ fired: boolea
     countLook(w, true, "", Date.now());
     thingWorked(`watcher:${w.id}`, "It looked fine on its next look.");
     let fired = false;
+    // the turn this look started has already ended and left its own
+    // baseline, which is newer than what this look saw
+    let ownEnded = false;
     if (what) {
       if (mayFire(w, Date.now())) {
         await fireWatcher(w, bot, what);
         fired = true;
+        ownEnded = w.kind === "folder" && w.mode !== "rehearse" && !ownTurns.has(w.id);
       } else {
         w.lastError = "Held back: it already started six turns in the last hour.";
       }
     }
     // reached only if any turn this look called for has started
-    if ("seen" in next) w.seen = next.seen;
+    if ("seen" in next && !ownEnded) w.seen = next.seen;
     if (next.seenItems) w.seenItems = next.seenItems;
     return { fired, note: fired ? "changed, and the agent is on it" : what ? w.lastError ?? "" : manual ? "no change since the last look" : "" };
   } catch (e) {
