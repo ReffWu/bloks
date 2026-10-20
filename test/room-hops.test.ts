@@ -38,7 +38,7 @@ test("a held mention's notice says who named whom, and one notice covers both bo
   assert.match(chained, /from Bob to Alice in this room woke nobody/);
   assert.match(chained, /helps prevent repeated messages from using up your plan/);
   assert.match(chained, /limit of 12 consecutive turns/);
-  assert.match(chained, /Settings > General > Working with agents/);
+  assert.match(chained, /Settings > Behaviour/);
   // past both, the room hears of it once
   assert.equal(heldMention("Bob", ["Alice"], { hops: 4, chain: 13 }, 12), heldBy("Bob", "Alice"));
 });

@@ -41,7 +41,7 @@ export function chainExcerpt(words: string, redact: (text: string) => string): s
 /** The person's notice names only the undelivered item or skipped run.
  * Reset mechanics do not establish that the task needs their attention. */
 export function chainLimitText(what: string, limit: number, excerpt?: string): string {
-  return `${what.replace(/\.$/, "")}: agents reached the limit of ${limit} consecutive turn${limit === 1 ? "" : "s"}. This limit helps prevent repeated messages from using up your plan. Change it in Settings > General > Working with agents.${excerpt ? ` Excerpt: "${excerpt}"` : ""}`;
+  return `${what.replace(/\.$/, "")}: agents reached the limit of ${limit} consecutive turn${limit === 1 ? "" : "s"}. This limit helps prevent repeated messages from using up your plan. Change it in Settings > Behaviour.${excerpt ? ` Excerpt: "${excerpt}"` : ""}`;
 }
 
 /** The agent wraps up without assuming the person must continue the task. */

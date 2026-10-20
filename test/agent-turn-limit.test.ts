@@ -17,7 +17,7 @@ const tooHigh = [51, 1000, Number.MAX_SAFE_INTEGER];
 const explanation = (text: string) => {
   assert.match(text, /: agents reached the limit of \d+ consecutive turns?\./);
   assert.match(text, /This limit helps prevent repeated messages from using up your plan\./);
-  assert.match(text, /Change it in Settings > General > Working with agents\./);
+  assert.match(text, /Change it in Settings > Behaviour\./);
   assert.doesNotMatch(text, /switch off|\bOff\b|starts the count|person.*carr|queued|redeliver|by hand|manual run/i);
 };
 /** What the agent is told: wrap up, and nothing about lifting the limit. */

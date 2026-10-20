@@ -17,7 +17,7 @@ test("workspace answers effective defaults and the actual turn-limit control", (
     assert.deepEqual(field(rows, id).effective, { status: "value", value });
     assert.deepEqual(field(rows, id).saved, { status: "absent" });
   }
-  assert.equal(field(rows, "agents.turnLimit").control, "Settings > General > Working with agents");
+  assert.equal(field(rows, "agents.turnLimit").control, "Settings > Behaviour");
 });
 
 test("saved absent, null, false, zero and empty string stay distinguishable", () => {

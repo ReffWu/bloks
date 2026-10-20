@@ -159,7 +159,7 @@ test("two agents answering each other stop after twelve turns, and the person wr
   // and the person reads why in the conversation it was meant for
   const told = await notices(h, bravo);
   assert.ok(
-    told.some((text) => text.includes("from Alpha to Bravo was not delivered") && text.includes("Settings > General > Working with agents")),
+    told.some((text) => text.includes("from Alpha to Bravo was not delivered") && text.includes("Settings > Behaviour")),
     `nothing in Bravo's conversation says why it stopped: ${JSON.stringify(told)}`,
   );
   const heldNotices = ((await h.json(`/api/bots/${bravo.id}/messages?limit=200`)).messages as any[]).filter((m) => m.chainHeld);
@@ -245,7 +245,7 @@ test("jobs agents post for each other are a chain, and past it are not offered",
   assert.ok(held, `no job offer was refused: ${JSON.stringify((jobs as any[]).map((job) => [job.state, job.result]))}`);
   assert.match(held.result, /helps prevent repeated messages from using up your plan/);
   assert.doesNotMatch(held.result, /starts the count|person.*carr|queued|redeliver/i);
-  assert.match(held.result, /Settings > General > Working with agents/);
+  assert.match(held.result, /Settings > Behaviour/);
 });
 
 test("routines and watchers an agent files carry its place, and past the limit skip their run", async (t) => {
@@ -319,7 +319,7 @@ test("routines and watchers an agent files carry its place, and past the limit s
     assert.match(text, /limit of 12 consecutive turns/);
     assert.match(text, /helps prevent repeated messages from using up your plan/);
     assert.doesNotMatch(text, /starts the count|person.*carr|queued|redeliver|by hand|manual run/i);
-    assert.match(text, /Settings > General > Working with agents/);
+    assert.match(text, /Settings > Behaviour/);
   }
   const alphaLane = (await h.json("/api/bots?messages=0")).bots.find((b: any) => b.id === alpha.id).tasks[0];
   assert.equal(alphaLane.unread, true, "a held routine or watcher left its conversation read");

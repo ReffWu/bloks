@@ -9,7 +9,7 @@ const policy=(value:string):InspectionValue=>({status:'policy',policy:value});
 /** Input is the registry owner's retained construction input, not a newly
  * resolved instance map. Health, models and auth are never probed here. */
 export function inspectEngineSettings(input:unknown,ctx:InspectionContext,loaded:boolean):InspectionField[]{
-  const out:InspectionField[]=[];const control='Settings > Engines';
+  const out:InspectionField[]=[];const control='Settings > Engines and keys';
   const add=(id:string,saved:InspectionValue,effective:InspectionValue)=>out.push({id,scope:'workspace',control,saved,effective});
   const simple=(id:string,fallback:unknown)=>{const stored=own(input,id);add(id,stored.present?scalar(stored.value,ctx.redact):{status:'absent'},scalar(stored.value??fallback,ctx.redact));};
   for(const [id,fallback] of [['driver',null],['displayName',null],['accentColor',null],['enabled',true]] as const)simple(id,fallback);
@@ -42,12 +42,12 @@ export function inspectEngineSettings(input:unknown,ctx:InspectionContext,loaded
 }
 
 export function inspectProviderCredential(saved:unknown,runtime:unknown):InspectionField[]{
-  const control='Settings > Engines';return ['key','url'].map((id):InspectionField=>{
+  const control='Settings > Engines and keys';return ['key','url'].map((id):InspectionField=>{
     const value=own(saved,id);return {id,scope:'workspace',control,saved:value.present?configured(value.value):{status:'absent'},effective:configured(get(runtime,id))};
   });
 }
 export function inspectCustomEndpoint(root:unknown,ctx:InspectionContext):InspectionField[]{
-  const out:InspectionField[]=[];const control='Settings > Engines > Custom host';
+  const out:InspectionField[]=[];const control='Settings > Engines and keys > Your endpoints';
   const add=(id:string,value:InspectionValue)=>out.push({id,scope:'workspace',control,saved:own(root,id).present?value:{status:'absent'},effective:value});
   add('name',scalar(get(root,'name')??'',ctx.redact));add('url',configured(get(root,'url')));
   const keys=get(root,'keys');add('keys',configured(keys));

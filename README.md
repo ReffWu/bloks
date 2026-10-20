@@ -259,7 +259,7 @@ as the reply, and it can only reply to someone who wrote to it.
 
 **Engine scout.** Bloks learns which engine does your work well from
 what you do with it: a change you undo, a conversation you rewind past,
-a rehearsal you discard. Settings, Engines shows how often each one's
+a rehearsal you discard. Settings, Engines and keys shows how often each one's
 work is kept and what it costs, and when a lighter model has been doing
 as well for an agent, it says so with a button to switch.
 
@@ -317,7 +317,7 @@ each.
 
 You need one of these before an agent can reply. Any of them works.
 
-The first-run check, and Settings, Engines, install Claude Code, Codex,
+The first-run check, and Settings, Engines and keys, install Claude Code, Codex,
 Pi, Antigravity and the Grok CLI with one button. They go into your own
 `~/.local`, so no admin password and no npm permission errors, and an
 engine that is installed but not signed in says so, with a button that

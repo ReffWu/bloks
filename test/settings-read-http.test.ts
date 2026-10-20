@@ -25,7 +25,7 @@ async function fixture(t: {after:(fn:()=>Promise<void>)=>void}) {
       token === 'Bearer agent' ? {role:'agent',identity:'fixture-agent'} : null;
     if (!reader) { res.writeHead(token === 'Bearer member' ? 403 : 401, {'cache-control':'no-store'}); res.end('{}'); return; }
     serveSettingsRead(reader,req.method!,url.searchParams,res,pages,() => {
-      reads++; return [{id:'workspace',visible:true,project:() => ({fields:[{id:'agents.turnLimit',effective:{status:'value',value:24},control:'Settings > General > Working with agents'}]})}];
+      reads++; return [{id:'workspace',visible:true,project:() => ({fields:[{id:'agents.turnLimit',effective:{status:'value',value:24},control:'Settings > Behaviour'}]})}];
     });
   });
   server.listen(0,'127.0.0.1'); await once(server,'listening');

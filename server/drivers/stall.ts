@@ -77,7 +77,7 @@ export function describeStall(call: OpenCall, quietMs: number, bundleId = "dev.b
   const detail = callDetail(call.input);
   let text =
     `${call.name}${detail ? ` (${detail})` : ""} made no progress for ${minutes(quietMs)}, so Bloks stopped this turn. ` +
-    "Whatever it was waiting on never answered. The limit is in Settings, General, under Working with agents.";
+    "Whatever it was waiting on never answered. The limit is in Settings, under Behaviour.";
   if (mentionsCloudFolder(call.input)) {
     text +=
       " That path is in a cloud folder, where macOS can hold a read until the file downloads or until you allow Bloks to read the cloud app's files." +

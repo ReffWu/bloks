@@ -456,7 +456,7 @@ it, `familyOf`), a kind of engine (every Codex), one configured engine,
 or one model, for every agent or for the ones named, until a time. Every
 pause has an end, a week at most. Nothing about any agent's engine or
 backup is changed, so there is nothing to put back when it ends. The
-owner adds, sees and ends pauses in Settings, Engines, Pauses, here or
+owner adds, sees and ends pauses in Settings, Engines and keys, Pauses, here or
 from a paired device (`/api/engine-pauses`, feature `engine-pauses`). An
 agent may pause only itself, for a day at most, and sees only the
 pauses that cover it, with no other agent named (`bloks pause`,
@@ -772,7 +772,7 @@ reading and go in as described below. Each agent has a delivery mode
 (`BotRecord.delivery`, `PATCH /api/bots/:id` with `auto`, `interrupt`,
 `queue`, or `null` to follow the workspace; never from an agent's
 credential), and the workspace has `delivery.mode` in config.json
-(`PUT /api/config`, Settings, General), Automatic when unset. Automatic
+(`PUT /api/config`, Settings, Behaviour), Automatic when unset. Automatic
 reads the words by rules: a short stop stops the turn, and the message
 starts the next one; "wait", a correction ("no", "actually",
 "instead"), urgent words, or a short reply to a question the agent's
@@ -883,7 +883,7 @@ workspace's `agents.turnLimit` is refused, with no message kept for
 later delivery. It defaults to twelve (`MAX_AGENT_CHAIN` in
 `server/agent-chain.ts`) and takes a whole number from 1 to 50; there is
 no Off, because the whole-chain count is the bound on cost. Settings,
-General, Working with agents exposes the live setting. A malformed
+Behaviour exposes the live setting. A malformed
 stored value reads as twelve, and one above 50 as 50. The recipient's
 notice names the undelivered item or skipped run, the reached limit, its
 cost reason and where the limit is set. It does not say that the task

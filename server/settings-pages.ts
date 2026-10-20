@@ -3,12 +3,12 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 export const SETTINGS_PAGE_ROWS = 20;
 export const SETTINGS_PAGE_BYTES = 32_768;
 export const SETTINGS_CATEGORIES = [
-  ["workspace.general", "General"], ["workspace.profile", "About you"],
-  ["workspace.import", "Bring your setup"], ["workspace.engines", "Engines"],
+  ["workspace.general", "General and Behaviour"], ["workspace.profile", "About you"],
+  ["workspace.import", "Bring your setup"], ["workspace.engines", "Engines and keys"],
   ["workspace.agentDefaults", "New agents"], ["workspace.policy", "Rules and approvals"],
   ["workspace.security", "Security checkup"], ["workspace.voices", "Voices"],
   ["workspace.apps", "Apps and keys"], ["workspace.devices", "Phone and devices"],
-  ["workspace.channels", "Chat and email"], ["workspace.cloud", "Bloks Cloud"],
+  ["workspace.channels", "Chat and email"], ["workspace.cloud", "Plan and Reachable online"],
   ["workspace.computers", "Computers"], ["workspace.record", "Record"],
   ["workspace.backups", "Backups"], ["workspace.about", "About and updates"],
   ["workspace.launch", "Server launch"], ["agent", "Agent settings"],

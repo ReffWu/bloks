@@ -41,9 +41,9 @@ export function inspectWorkspaceCategory(category:SettingsCategory,input:Workspa
     plain(['backups','auto'],'Settings > Backups',read('backups','auto')!==false);
     add(['backups','location'],'Settings > Backups',policy('directory beside the workspace data directory; inspection does not create or read backups'));
   }else if(category==='workspace.cloud'){
-    plain(['relay','enabled'],'Settings > Bloks Cloud',Boolean(read('relay','enabled')));
-    for(const key of ['url','agentToken','clientToken'])opaque(['relay',key],'Settings > Bloks Cloud');
-    add(['relay','eligibility'],'Settings > Bloks Cloud',policy('requires pairing enabled, configured relay URL and workspace credential; connection health is not probed'));
+    plain(['relay','enabled'],'Settings > Workspace > Reachable online',Boolean(read('relay','enabled')));
+    for(const key of ['url','agentToken','clientToken'])opaque(['relay',key],'Settings > Workspace > Reachable online');
+    add(['relay','eligibility'],'Settings > Workspace > Reachable online',policy('requires pairing enabled, configured relay URL and workspace credential; connection health is not probed'));
   }else if(category==='workspace.devices'){
     plain(['remote','enabled'],'Settings > Phone and devices',read('remote','enabled')===true);
     add(['remote','listening'],'Settings > Phone and devices',{status:'unknown',reason:'boot_listener_metadata_required'});

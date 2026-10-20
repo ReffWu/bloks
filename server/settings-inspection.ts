@@ -80,7 +80,7 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
     });
   };
   const value = (section: string, key: string) => ownAt(input.runtime, section, key).value;
-  const general = "Settings > General > Working with agents";
+  const general = "Settings > Behaviour";
   add("compaction", "micro", general, Boolean(value("compaction", "micro")));
   add("compaction", "idle", general, Boolean(value("compaction", "idle")));
   add("compaction", "beforeTurn", general, input.resolved.beforeTurn);
@@ -99,19 +99,19 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   add("changes", "showShared", general, value("changes", "showShared") !== false);
   // Bloks credits (server/credits.ts): background work spends them only
   // when the person turned this on
-  add("credits", "background", "Settings > Bloks Cloud > Bloks AI", value("credits", "background") === true);
+  add("credits", "background", "Settings > Plan > Bloks AI", value("credits", "background") === true);
   add("shortcuts", "quickAsk", "Settings > General > Quick ask shortcut", value("shortcuts", "quickAsk") ?? null);
   add("profile", "about", "Settings > About you", value("profile", "about") ?? "");
   const name = value("profile", "name");
   add("profile", "name", "Settings > General > Your name", typeof name === "string" ? name.trim() || "The owner" : "The owner");
   for (const [section, key, control] of [
-    ["composio", "key", "Settings > Apps and keys > Connect key"],
-    ["composio", "apiKey", "Settings > Apps and keys > Project key"],
+    ["composio", "key", "Settings > Apps and keys > Composio Connect key"],
+    ["composio", "apiKey", "Settings > Apps and keys > Composio API key"],
     ["speech", "elevenlabsKey", "Settings > Voices > Keys"],
     ["speech", "openaiKey", "Settings > Voices > Keys"],
-    ["box", "token", "Settings > Apps and keys > Boat API key"],
-    ["credits", "licence", "Settings > Bloks Cloud > Bloks AI"],
-    ["credits", "token", "Settings > Bloks Cloud > Bloks AI"],
+    ["box", "token", "Settings > Computers > Boat API key"],
+    ["credits", "licence", "Settings > Plan > Your key"],
+    ["credits", "token", "Settings > Plan > Bloks AI"],
   ] as const) add(section, key, control, value(section, key), true);
   // Finite fields and whole-value string bounds keep this slice bounded.
   return fields;
