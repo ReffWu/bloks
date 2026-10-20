@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
 import { membersApi, whenWords, type Invite, type Workspace, type WorkspaceRole } from "@/lib/members";
-import { WorkspaceMark } from "./WorkspaceMark";
+import { WorkspaceMark } from "@/components/WorkspaceMark";
 
 const ROLE_LINE: Record<WorkspaceRole, string> = {
   member: "Members use the agents, rooms and memory. Admins can also invite and manage people.",
@@ -205,7 +205,7 @@ export function InviteSheet({
                   <path d={qr.d} fill="#0b0c0e" />
                 </svg>
               ) : (
-                <div className="size-[172px] animate-pulse rounded-lg bg-[#f1f1f3]" aria-label="Making the invite" />
+                <div className="size-[172px] animate-pulse rounded-lg bg-black/5" aria-label="Making the invite" />
               )}
               {qr && (
                 <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[11px] shadow-[0_0_0_4px_#fff]">
@@ -256,9 +256,9 @@ export function InviteSheet({
         </div>
 
         {passwordSet && (
-          <div className="mx-[22px] mt-3.5 flex items-center gap-2.5 rounded-xl border border-[#e9c46a]/40 bg-[#f0b44c]/10 px-3.5 py-3 dark:border-[#3a3220] dark:bg-[#1d1a12]">
-            <Lock size={18} className="shrink-0 text-[#b7791f] dark:text-[#f0b44c]" />
-            <span className="flex-1 text-pretty text-body leading-relaxed text-[#7a5410] dark:text-[#e7d6ae]">
+          <div className="mx-[22px] mt-3.5 flex items-center gap-2.5 rounded-xl border border-warning/30 bg-warning/10 px-3.5 py-3">
+            <Lock size={18} className="shrink-0 text-warning" />
+            <span className="flex-1 text-pretty text-body leading-relaxed text-foreground/85">
               {who} will also need the join password. It is not in the invite: tell them yourself.
             </span>
           </div>

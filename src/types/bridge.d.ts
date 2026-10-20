@@ -110,6 +110,15 @@ declare global {
       workspaceLogoClear?(id: string): Promise<WorkspaceAnswer>;
       /** How many people this workspace has, for the switcher's count. */
       workspaceMembers?(count: number): Promise<void>;
+      /** Keeps a joined workspace's credentials and lists it; with `open`,
+       * switches to it. */
+      workspaceJoined?(input: {
+        profile: { relayUrl: string | null; relayToken: string | null; deviceId: string; deviceToken: string };
+        name: string;
+        mark: WorkspaceMarkValue | null;
+        host?: string;
+        open: boolean;
+      }): Promise<WorkspaceAnswer>;
       /** The theme is the person's, kept across every workspace. */
       prefsTheme?(theme: "light" | "dark" | "system"): Promise<void>;
       /** The accent is this workspace's own. */

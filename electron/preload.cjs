@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld("bloks", {
   workspaceLogoClear: (id) => ipcRenderer.invoke("workspaces:logo-clear", id),
   /** How many people this workspace has, for the switcher (Members). */
   workspaceMembers: (count) => ipcRenderer.invoke("workspaces:members", count),
+  // a workspace joined from this Mac (src/components/members/JoinWorkspaceDialog)
+  workspaceJoined: (input) => ipcRenderer.invoke("workspaces:joined", input),
   prefsTheme: (theme) => ipcRenderer.invoke("prefs:theme", theme),
   prefsAccent: (accent) => ipcRenderer.invoke("prefs:accent", accent),
   /** What a banner clicked before this page loaded was about. */

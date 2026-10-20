@@ -95,7 +95,18 @@ function useCopy() {
   ] as const;
 }
 
-export function MembersPage({ onOpenRoom }: { onOpenRoom?: () => void } = {}) {
+export function MembersPage({
+  onOpenRoom,
+  workspace,
+  onCount,
+}: {
+  onOpenRoom?: () => void;
+  /** The workspace as the app lists it, when there is a list: its name and
+   * mark are told to the server, which puts them on invites. */
+  workspace?: { name: string; kind: string; mark: { color: string; pattern: string } | null };
+  /** How many people are in it, the owner included, for the switcher. */
+  onCount?: (count: number) => void;
+} = {}) {
   const [data, setData] = useState<MembersData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -118,6 +129,20 @@ export function MembersPage({ onOpenRoom }: { onOpenRoom?: () => void } = {}) {
       .catch((e: Error) => setError(e.message));
   }, []);
   useEffect(load, [load]);
+
+  // The app's name and mark for this workspace are the truth; the server
+  // only borrows them for invites, so it is told when they differ.
+  useEffect(() => {
+    if (!data || data.you.role !== "owner" || !workspace?.mark) return;
+    const same = data.workspace.name === workspace.name && data.workspace.mark.color === workspace.mark.color && data.workspace.mark.pattern === workspace.mark.pattern;
+    if (same) return;
+    void membersApi.setIdentity({ name: workspace.name, kind: workspace.kind, mark: workspace.mark }).then(load).catch(() => {});
+  }, [data, workspace, load]);
+
+  const people = data ? data.members.length + 1 : null;
+  useEffect(() => {
+    if (people !== null) onCount?.(people);
+  }, [people, onCount]);
 
   useWorkspaceFrames(
     useCallback(

@@ -136,13 +136,9 @@ function load(): PeopleFile {
     invites: Array.isArray(raw.invites) ? raw.invites : [],
     knocks: Array.isArray(raw.knocks) ? raw.knocks : [],
   };
-  if (migrate(cache)) {
-    try {
-      save();
-    } catch {
-      /* moved in memory; the next save writes it */
-    }
-  }
+  // moved in memory only: reading never writes, and the next change
+  // saves the file in its new shape along with itself
+  migrate(cache);
   return cache;
 }
 

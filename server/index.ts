@@ -2410,8 +2410,20 @@ let desktopUnread = -1;
 function tellDesktop(payload: unknown) {
   if (!desktop) return;
   const kind = (payload as { kind?: string })?.kind;
-  if (kind === "bot" || kind === "bot.deleted" || kind === "hello") {
-    const count = desktopUnreadCount(store.bots);
+  // somebody asking to join a workspace nobody is looking at is a banner
+  // of its own, and counts as waiting (server/members.ts)
+  if (kind === "workspace.request") {
+    const request = (payload as { request?: { name?: string } }).request;
+    const first = (request?.name ?? "Someone").split(" ")[0];
+    if (desktopSaid.take(`join:${(payload as { request?: { inviteId?: string } }).request?.inviteId ?? ""}`)) {
+      desktop.postMessage({
+        kind: "desktop.notice",
+        notice: { level: "needs-me", title: `${first} wants to join ${workspacePeople.identity().name}`, body: `Check four words with ${first}, then let them in.`, target: "workspace:members" },
+      });
+    }
+  }
+  if (kind === "bot" || kind === "bot.deleted" || kind === "hello" || kind === "workspace.waiting") {
+    const count = desktopUnreadCount(store.bots) + workspacePeople.waitingCount();
     if (count !== desktopUnread) {
       desktopUnread = count;
       desktop.postMessage({ kind: "desktop.unread", count });

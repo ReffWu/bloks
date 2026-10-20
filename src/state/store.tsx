@@ -695,12 +695,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const bridge = window.bloks;
     if (!bridge?.onNotifyActivate) return;
-    void bridge.pendingNotifyTarget?.().then((target) => {
-      if (target) rawDispatch({ type: "select", id: target });
-    }).catch(() => {});
-    return bridge.onNotifyActivate(({ target }) => {
-      if (target) rawDispatch({ type: "select", id: target });
-    });
+    // somebody asking to join opens Members, where their request is
+    const open = (target: string | null | undefined) => {
+      if (!target) return;
+      if (target === "workspace:members") rawDispatch({ type: "toggleAppSettings", open: true, page: "workspace:members" });
+      else rawDispatch({ type: "select", id: target });
+    };
+    void bridge.pendingNotifyTarget?.().then(open).catch(() => {});
+    return bridge.onNotifyActivate(({ target }) => open(target));
   }, []);
 
   useEffect(() => {

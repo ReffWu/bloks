@@ -23,13 +23,11 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import type { BlokColor, BlokShape } from "@/lib/mascot";
 import {
-  closeJoinDialog,
   codeIn,
   formatCode,
   joinApi,
   looksLikeInvite,
   ROLE_NAME,
-  useJoinAsked,
   whenWords,
   type FoundInvite,
   type JoinCredentials,
@@ -37,7 +35,7 @@ import {
   type Welcome,
 } from "@/lib/members";
 import { BlockConfetti } from "./BlockBurst";
-import { WorkspaceMark } from "./WorkspaceMark";
+import { WorkspaceMark } from "@/components/WorkspaceMark";
 
 export interface Joined {
   credentials: JoinCredentials;
@@ -418,10 +416,10 @@ export function JoinWorkspaceDialog({
                 </div>
               ))}
             </div>
-            <div role="status" className="flex items-center justify-center gap-2.5 text-ui text-muted-foreground">
+            <div role="status" className="flex items-center justify-center gap-2.5 text-pretty text-ui text-muted-foreground">
               {stage.unreachable ? (
                 <>
-                  <Clock size={15} />
+                  <Clock size={18} className="shrink-0" />
                   {firstName(stage.invite.inviter)}'s computer is not reachable. It may be asleep or offline; your request is saved, and goes through the moment it wakes.
                 </>
               ) : (
@@ -547,23 +545,5 @@ function EndedView({
         )}
       </div>
     </div>
-  );
-}
-
-/**
- * The dialog, opened from anywhere through openJoinDialog() (a bloks://
- * join link, the switcher's "Join a workspace"). Mount once.
- */
-export function JoinWorkspaceHost({ currentWorkspace, onJoined }: { currentWorkspace?: string; onJoined?: (joined: Joined) => void }) {
-  const asked = useJoinAsked();
-  return (
-    <JoinWorkspaceDialog
-      key={asked?.at ?? 0}
-      open={asked !== null}
-      onOpenChange={(o) => !o && closeJoinDialog()}
-      initialInput={asked?.input ?? ""}
-      currentWorkspace={currentWorkspace}
-      onJoined={onJoined}
-    />
   );
 }

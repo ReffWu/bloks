@@ -9,6 +9,7 @@
 // switcher shows.
 import { useEffect, useSyncExternalStore } from "react";
 import { api } from "@/state/store";
+import { openWorkspaceDialog } from "@/lib/workspaces";
 
 export type WorkspaceRole = "admin" | "member";
 export type Role = WorkspaceRole | "owner";
@@ -117,6 +118,8 @@ export const membersApi = {
   clearPassword: () => api("/api/workspace/joining/password", { method: "DELETE" }),
   setJoining: (patch: { approveEach?: boolean; privateReadable?: boolean }) =>
     api("/api/workspace/joining", { method: "PATCH", body: JSON.stringify(patch) }),
+  setIdentity: (body: { name: string; kind: string; mark: WorkspaceMark }) =>
+    api("/api/workspace/identity", { method: "PUT", body: JSON.stringify(body) }),
   access: (): Promise<{ agents: AgentAccessRow[]; rooms: Array<{ id: string; name: string; audience: "everyone" | "some"; members: string[] }> }> =>
     api("/api/workspace/access"),
   setAgentAccess: (botId: string, body: { mode: "everyone" | "only" | "except"; people?: string[]; admins?: boolean }) =>
@@ -338,31 +341,21 @@ export function tintOf(id: string): string {
 
 // ── opening the join dialog from anywhere ─────────────────────────────
 
-let joinAsked: { input: string; at: number } | null = null;
-const joinListeners = new Set<() => void>();
+let joinInput = "";
 
-/** Opens the join dialog, filled in with a link or code when there is one:
- * a bloks://join link, the switcher's "Join a workspace", a menu. */
+/** Opens the join dialog (the switcher's, src/lib/workspaces.ts), filled
+ * in with a link or code when there is one: a bloks://join link from
+ * bloks.dev or a scanned QR. */
 export function openJoinDialog(input = "") {
-  joinAsked = { input, at: Date.now() };
-  joinListeners.forEach((l) => l());
+  joinInput = input;
+  openWorkspaceDialog("join");
 }
 
-export function closeJoinDialog() {
-  joinAsked = null;
-  joinListeners.forEach((l) => l());
-}
-
-/** What the join dialog was last asked to open with, or null when closed. */
-export function useJoinAsked(): { input: string; at: number } | null {
-  return useSyncExternalStore(
-    (l) => {
-      joinListeners.add(l);
-      return () => joinListeners.delete(l);
-    },
-    () => joinAsked,
-    () => joinAsked,
-  );
+/** The link or code the dialog was opened with, given once. */
+export function takeJoinInput(): string {
+  const input = joinInput;
+  joinInput = "";
+  return input;
 }
 
 // ── names of the people in the workspace ─────────────────────────────

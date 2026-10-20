@@ -9,7 +9,6 @@
 // leave behind), and search finds the page a word lives on.
 import { useEffect, useRef, useState } from "react";
 import { Check } from "@/components/icons";
-import { Users } from "@/components/icons";
 import { Monitor } from "@/components/icons";
 import { Moon } from "@/components/icons";
 import { Sun } from "@/components/icons";
@@ -45,8 +44,6 @@ import { PastSessionsPage } from "./PastSessions";
 import { BoxSleep } from "./BoxSleep";
 import { AgentDefaults } from "./AgentDefaults";
 import { SettingRow, SettingsGroup, SettingsPageHeader } from "./SettingsLayout";
-import { MembersPage } from "./members/MembersPage";
-import { openJoinDialog } from "@/lib/members";
 import { Segmented } from "@/components/ui/segmented";
 import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
 import { Slider, numberStops } from "@/components/ui/slider";
@@ -1056,21 +1053,6 @@ export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = [
       },
     ],
   },
-  // Temporary home for the workspace's Members page until the workspace
-  // settings frame lands (src/components/members/MembersPage.tsx): this
-  // group and its one case in PageBody are all there is to remove.
-  {
-    group: "Workspace",
-    pages: [
-      {
-        id: "members",
-        label: "Members",
-        icon: Users,
-        description: "",
-        keywords: "people invite join team members admin roles password approve code qr link",
-      },
-    ],
-  },
   {
     group: "Data",
     pages: [
@@ -1233,13 +1215,6 @@ function WorkspaceApprovals() {
   );
 }
 
-/** The Members page where it lives for now, with "Say hello in a room"
- * taking the person back to the app. */
-function MembersMount() {
-  const { dispatch } = useStore();
-  return <MembersPage onOpenRoom={() => dispatch({ type: "toggleAppSettings", open: false })} />;
-}
-
 function PageBody({ id }: { id: string }) {
   switch (id) {
     case "general":
@@ -1305,18 +1280,6 @@ function PageBody({ id }: { id: string }) {
           </SettingsGroup>
           {/* MCP servers are managed in Plugins now, beside apps and skills */}
           <UseFromOtherApps />
-        </>
-      );
-    case "members":
-      return (
-        <>
-          <MembersMount />
-          <p className="mt-10 text-body text-muted-foreground">
-            Joining somebody else's workspace?{" "}
-            <button type="button" className="font-medium text-brand-ink underline-offset-2 hover:underline" onClick={() => openJoinDialog()}>
-              Join a workspace
-            </button>
-          </p>
         </>
       );
     case "devices":
@@ -1456,7 +1419,7 @@ export function AppSettingsPanel() {
         {/* Plugins draws its own header, with its tools, and lists that
             want the room of a wider column */}
         <div className={cn("mx-auto w-full px-5 pb-16 pt-8 md:px-10", pageId === "plugins" ? "max-w-[960px]" : "max-w-[760px]")}>
-          {pageId !== "plugins" && pageId !== "members" && <SettingsPageHeader title={page.label} description={page.description} />}
+          {pageId !== "plugins" && <SettingsPageHeader title={page.label} description={page.description} />}
           <div className="[&>div:first-child]:mt-0">
             <PageBody id={pageId} />
           </div>

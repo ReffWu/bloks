@@ -20,11 +20,12 @@
 // The joiner's own side, when this Mac is the one joining somewhere else,
 // is server/join-client.ts.
 import { randomUUID, createHash } from "node:crypto";
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 
 import { DATA_DIR } from "./config.ts";
+import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
 import * as people from "./people.ts";
 import * as invites from "./invites.ts";
 import { addMemberDevice, memberDevices, revokePerson, seenAt } from "./pairing.ts";
@@ -48,21 +49,41 @@ export interface WorkspaceIdentity {
 /** Personal's own mark: the workspace every Bloks starts as. */
 const PERSONAL = { color: "#E9A83A", pattern: "010111101" };
 
+const identityFile = () => join(DATA_DIR, "workspace.json");
+const COLOR = /^#[0-9A-Fa-f]{6}$/;
+const PATTERN = /^[01]{9}$/;
+
 /**
- * Which workspace this server is, as the app that started it said: one
- * server runs per workspace, and the registry that names them lives in
- * the app (BLOKS_WORKSPACE_*). A server started on its own is Personal.
+ * Which workspace this server is. One server runs per workspace, and the
+ * app's list names them (electron/workspaces.mjs): the app says the name
+ * and mark when it starts the server (BLOKS_WORKSPACE_*), and the owner's
+ * window says them again whenever it opens Members (setIdentity), so a
+ * rename reaches invites and the welcome without a restart. A server
+ * started on its own is Personal.
  */
 export function workspaceIdentity(env: NodeJS.ProcessEnv = process.env): WorkspaceIdentity {
-  const color = /^#[0-9A-Fa-f]{6}$/.test(env.BLOKS_WORKSPACE_COLOR ?? "") ? env.BLOKS_WORKSPACE_COLOR! : PERSONAL.color;
-  const pattern = /^[01]{9}$/.test(env.BLOKS_WORKSPACE_PATTERN ?? "") ? env.BLOKS_WORKSPACE_PATTERN! : PERSONAL.pattern;
-  const name = people.cleanName(env.BLOKS_WORKSPACE_NAME) ?? "Personal";
+  const saved = readSaved<Partial<WorkspaceIdentity>>(identityFile(), {}, isRecord);
+  const savedMark = (saved.mark ?? {}) as Partial<WorkspaceIdentity["mark"]>;
+  const color = COLOR.test(savedMark.color ?? "") ? savedMark.color! : COLOR.test(env.BLOKS_WORKSPACE_COLOR ?? "") ? env.BLOKS_WORKSPACE_COLOR! : PERSONAL.color;
+  const pattern = PATTERN.test(savedMark.pattern ?? "") ? savedMark.pattern! : PATTERN.test(env.BLOKS_WORKSPACE_PATTERN ?? "") ? env.BLOKS_WORKSPACE_PATTERN! : PERSONAL.pattern;
+  const name = people.cleanName(saved.name) ?? people.cleanName(env.BLOKS_WORKSPACE_NAME) ?? "Personal";
   return {
     id: /^[\w-]{1,64}$/.test(env.BLOKS_WORKSPACE_ID ?? "") ? env.BLOKS_WORKSPACE_ID! : "personal",
     name,
-    kind: people.cleanName(env.BLOKS_WORKSPACE_KIND) ?? (name === "Personal" ? "Personal" : "Team"),
+    kind: people.cleanName(saved.kind) ?? people.cleanName(env.BLOKS_WORKSPACE_KIND) ?? (name === "Personal" ? "Personal" : "Team"),
     mark: { color, pattern },
   };
+}
+
+/** The owner's window telling this server its name and mark. */
+export function setIdentity(input: Record<string, unknown>): WorkspaceIdentity | null {
+  const name = people.cleanName(input.name);
+  const mark = (input.mark ?? null) as { color?: unknown; pattern?: unknown } | null;
+  if (!name || !mark || typeof mark.color !== "string" || !COLOR.test(mark.color) || typeof mark.pattern !== "string" || !PATTERN.test(mark.pattern)) return null;
+  const kind = people.cleanName(input.kind);
+  mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+  writeFileAtomic(identityFile(), JSON.stringify({ name, mark: { color: mark.color, pattern: mark.pattern }, ...(kind ? { kind } : {}) }, null, 2), 0o600);
+  return workspaceIdentity();
 }
 
 // ── what the server hands over ─────────────────────────────────────────
@@ -489,13 +510,24 @@ export function createMembers(deps: MembersDeps) {
    * member-access.ts has already let this far). True when it answered.
    */
   async function ownerRoute(req: IncomingMessage, res: ServerResponse, method: string, path: string, actor: Actor): Promise<boolean> {
-    if (!path.startsWith("/api/workspace/")) return false;
+    // only this file's routes: others live under /api/workspace/ too (a
+    // workspace moving computers, server/workspace-move.ts)
+    if (!/^\/api\/workspace\/(members|waiting|identity|invites|requests|access|agents|rooms|joining)(\/|$)/.test(path)) return false;
     const owner = actor.kind === "owner";
     const manage = owner || actor.role === "admin";
     let m: RegExpMatchArray | null;
 
     if (method === "GET" && path === "/api/workspace/members") {
       json(res, 200, await listFor(actor));
+      return true;
+    }
+    if (method === "PUT" && path === "/api/workspace/identity") {
+      if (!owner) {
+        json(res, 403, { error: "only the owner names the workspace" });
+        return true;
+      }
+      const set = setIdentity(await readBody(req));
+      json(res, set ? 200 : 400, set ? { workspace: set } : { error: "name and mark { color, pattern } are needed" });
       return true;
     }
     if (method === "GET" && path === "/api/workspace/waiting") {

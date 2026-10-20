@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStore } from "@/state/store";
+import { useWaitingCount } from "@/lib/members";
 import { cn } from "@/lib/cn";
 import { useEscape } from "@/lib/useEscape";
 import { MUTE_CHOICES, act, currentWorkspace, kindLabel, muteLabel, useWorkspaces } from "@/lib/workspaces";
@@ -544,6 +545,7 @@ export function WorkspaceSettings() {
   const s = useWorkspaces();
   const ws = currentWorkspace(s);
   const page = pageOf(state.settingsPage);
+  const waiting = useWaitingCount();
   const scroller = useRef<HTMLDivElement>(null);
   const go = (next: WorkspacePage) => dispatch({ type: "toggleAppSettings", open: true, page: `workspace:${next}` });
   useEscape(() => dispatch({ type: "toggleAppSettings", open: false }));
@@ -590,6 +592,8 @@ export function WorkspaceSettings() {
                 )}
               >
                 {p.label}
+                {/* somebody asking to join is said where the eye goes (design: Mac-Approve) */}
+                {p.id === "members" && waiting > 0 && <span className="ml-2 text-small font-semibold tabular-nums text-warning">{waiting} waiting</span>}
               </button>
             );
           })}

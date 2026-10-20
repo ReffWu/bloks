@@ -52,7 +52,7 @@ export function RequestCard({
   return (
     <section
       aria-label={`${request.name} is asking to join`}
-      className="flex animate-rise-in flex-col gap-[18px] rounded-[18px] border border-[#f0b44c]/45 bg-card px-6 py-[22px] shadow-[0_0_0_4px_rgba(240,180,76,0.08)] dark:border-[#3a3220]"
+      className="flex animate-rise-in flex-col gap-[18px] rounded-[18px] border border-warning/40 bg-card px-6 py-[22px] shadow-[0_0_0_4px_color-mix(in_srgb,var(--warning)_8%,transparent)]"
     >
       <div className="flex items-center gap-3.5">
         <span
