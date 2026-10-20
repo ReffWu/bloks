@@ -295,11 +295,17 @@ export function AppSettingsPanel() {
     else items[next]?.focus();
   };
 
+  // Every group is headed by what kind of settings it holds; the workspace
+  // group says so too, and keeps which workspace it is on the right, small,
+  // so its pages are never mistaken for the app's own.
   const groupTitle = (id: string, label: string) =>
     id === "workspace" && ws ? (
-      <span className="flex min-w-0 items-center gap-1.5">
-        <WorkspaceMark mark={ws.mark} logo={ws.logo} size={14} />
-        <span className="truncate">{ws.name}</span>
+      <span className="flex w-full min-w-0 items-center justify-between gap-2">
+        <span className="shrink-0">{label}</span>
+        <span className="flex min-w-0 items-center gap-1.5 font-normal">
+          <WorkspaceMark mark={ws.mark} logo={ws.logo} size={12} />
+          <span className="truncate">{ws.name}</span>
+        </span>
       </span>
     ) : (
       label
