@@ -107,6 +107,13 @@ export const FEATURES: readonly string[] = [
   // address), engineAccess on PATCH /api/bots/:id and on each agent, and
   // the `credits` frame on the stream
   "credits",
+  // Bloks AI, which credits became: GET /api/credits says what is left
+  // as shares of the plan (leftPercent, monthlyLeftPercent, topUps,
+  // renewsAt, low, plan), never an amount, with `members` on a team plan
+  // and `team` and `teamSignInWarning`; PATCH /api/credits takes
+  // { memberCaps: { [member]: percent or null } } from the owner; the
+  // Bloks engine has one model, "bloks-ai"
+  "bloks-ai",
   // a hosted workspace: `hosted` on /api/health, `hosted` on /api/config
   // with the computer choices it offers, refusals with code "hosted", and
   // POST /api/hosted/desktop for a ticket to its virtual desktop

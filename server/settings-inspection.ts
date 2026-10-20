@@ -99,7 +99,7 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   add("changes", "showShared", general, value("changes", "showShared") !== false);
   // Bloks credits (server/credits.ts): background work spends them only
   // when the person turned this on
-  add("credits", "background", "Settings > Bloks Cloud > Bloks credits", value("credits", "background") === true);
+  add("credits", "background", "Settings > Bloks Cloud > Bloks AI", value("credits", "background") === true);
   add("shortcuts", "quickAsk", "Settings > General > Quick ask shortcut", value("shortcuts", "quickAsk") ?? null);
   add("profile", "about", "Settings > About you", value("profile", "about") ?? "");
   const name = value("profile", "name");
@@ -110,8 +110,8 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
     ["speech", "elevenlabsKey", "Settings > Voices > Keys"],
     ["speech", "openaiKey", "Settings > Voices > Keys"],
     ["box", "token", "Settings > Apps and keys > Boat API key"],
-    ["credits", "licence", "Settings > Bloks Cloud > Bloks credits"],
-    ["credits", "token", "Settings > Bloks Cloud > Bloks credits"],
+    ["credits", "licence", "Settings > Bloks Cloud > Bloks AI"],
+    ["credits", "token", "Settings > Bloks Cloud > Bloks AI"],
   ] as const) add(section, key, control, value(section, key), true);
   // Finite fields and whole-value string bounds keep this slice bounded.
   return fields;

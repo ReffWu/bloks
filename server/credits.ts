@@ -1,27 +1,32 @@
-// Bloks credits: a prepaid balance on the person's Bloks licence that pays
-// for model use, so an agent can run with no sign-in and no API key.
+// Bloks AI: a monthly allowance on the person's Bloks licence, with
+// top-ups, that pays for model use, so an agent can run with no sign-in
+// and no API key. (It began as prepaid credits, which is why the code
+// still says credits: the identifiers, the config keys and the routes
+// kept their names so nothing saved had to move.)
 //
-// The balance lives on bloks.dev, not here. What this machine keeps is a
-// credits token, traded once for the licence key and sent as a bearer on
-// every call. The server can revoke a token without touching the licence,
-// so a token is the thing that travels and the licence stays home: it is
-// only spent again when the server says the token is no good (a 401), and
-// the token is forgotten the moment the licence changes, since a token
-// from an old licence spends somebody else's balance or nobody's.
+// The allowance lives on bloks.dev, not here. What this machine keeps is
+// a token, traded once for the licence key and sent as a bearer on every
+// call. The server can revoke a token without touching the licence, so a
+// token is the thing that travels and the licence stays home: it is only
+// spent again when the server says the token is no good (a 401), and the
+// token is forgotten the moment the licence changes, since a token from
+// an old licence spends somebody else's allowance or nobody's.
 //
 // Two engines spend it. The Bloks engine is the generic OpenAI-compatible
-// driver pointed at the credits base with the token as its key, its model
-// list read from /v1/models like any other provider's. Claude Code spends
-// it when an agent's access says so, through the Anthropic Messages API
-// the same base answers, by way of the CLI's own base URL and token
-// variables (server/drivers/claude.ts).
+// driver pointed at the service with the token as its key. Claude Code
+// spends it when an agent's access says so, through the Anthropic
+// Messages API the same base answers, by way of the CLI's own base URL
+// and token variables (server/drivers/claude.ts). Either way the service
+// picks the model, and the app only ever knows it as Bloks AI
+// (server/bloks-ai.ts).
 //
-// Everything about money is the server's to say. This file never decides
-// what anything costs, how much is left or when it is low: it reads the
-// balance, shows whatever came back, and sends the person to the checkout
-// page in their browser when they want more.
+// Everything about the allowance is the server's to say. This file never
+// decides how much is left or when it is low: it reads the balance as
+// shares of the plan, shows whatever came back, and sends the person to
+// the checkout page in their browser when they want more.
 import { hostname } from "node:os";
 
+import { BLOKS_AI_MODEL, BLOKS_AI_NAME, readAiBalance, readTeam, type AiBalance } from "./bloks-ai.ts";
 import type { ProviderSpec } from "./providers.ts";
 
 /** The credits service, overridable for tests and for somebody running
@@ -58,38 +63,25 @@ export function creditsEnvToken(): string | null {
 export const CREDITS_KIND = "bloks";
 
 /** The Bloks engine. Its URL is decided when the instance is made, from
- * creditsBase(), so a test or a self-hosted service is honoured; the
- * model list is whatever /v1/models says, which is why there is no
- * fallback catalog here to go stale. */
+ * creditsBase(), so a test or a self-hosted service is honoured. It has
+ * one model, Bloks AI, whatever /v1/models lists: the service picks what
+ * runs each call, and what it lists is never shown (fixedModels). */
 export const CREDITS_SPEC: ProviderSpec = {
   kind: CREDITS_KIND,
-  name: "Bloks",
+  name: BLOKS_AI_NAME,
   url: "",
   auth: "key",
-  keyHint: "Uses the credits on your Bloks licence",
+  keyHint: "Uses Bloks AI on your Bloks licence",
   docsUrl: "https://bloks.dev/credits",
-  models: { default: "", options: [] },
-  limit: 40,
-  // the service speaks OpenAI function calling for every model it lists
+  models: { default: BLOKS_AI_MODEL, options: [{ id: BLOKS_AI_MODEL, label: BLOKS_AI_NAME }] },
+  fixedModels: true,
+  // the service speaks OpenAI function calling on every call
   tools: true,
 };
 
 /** The OpenAI-compatible root the Bloks engine talks to. */
 export function creditsCompatUrl(): string {
   return `${creditsBase()}/v1`;
-}
-
-/** What the person's balance is, as the service said it. */
-export interface CreditsBalance {
-  /** In whole units of `currency` (dollars for USD), as sent. */
-  balance: number;
-  currency: string;
-  /** The amount the service calls low, when it says. */
-  lowAt: number | null;
-  /** Whether the service tops the balance up by itself. */
-  autoReload: boolean;
-  /** When it was read. */
-  at: number;
 }
 
 /** The part of the workspace's settings this file reads and writes. */
@@ -104,8 +96,9 @@ export interface CreditsStore {
   write(patch: { licence?: string | null; token?: string | null }): void;
 }
 
-/** Thrown when the service refuses for want of money (a 402): its own
- * words, which say what happened better than anything written here. */
+/** Thrown when the service refuses because the allowance is used up (a
+ * 402): its own words, which say what happened better than anything
+ * written here. */
 export class CreditsEmpty extends Error {
   readonly credits = "empty" as const;
   constructor(message: string) {
@@ -132,8 +125,8 @@ export function serviceWords(body: string): string {
   return said.replace(/\s+/g, " ").trim().slice(0, 300);
 }
 
-/** What an empty balance says when the service gave no words of its own. */
-export const EMPTY_WORDS = "Your Bloks credits have run out.";
+/** What a used-up allowance says when the service gave no words of its own. */
+export const EMPTY_WORDS = "Bloks AI has used up what is left for now. Top up for another month's worth, or wait for it to renew.";
 
 type Fetch = typeof fetch;
 
@@ -184,7 +177,7 @@ export class CreditsAccount {
     const saved = this.store.read();
     if (saved.token) return saved.token;
     if (!saved.licence) {
-      this.problem = "Add your Bloks Cloud key to use credits.";
+      this.problem = "Add your Bloks Cloud key to use Bloks AI.";
       return null;
     }
     if (this.now() - this.failedAt < EXCHANGE_PAUSE_MS) return null;
@@ -198,14 +191,14 @@ export class CreditsAccount {
     const env = this.envToken();
     if (env) {
       // nothing to trade: the token came from whoever started this host
-      this.problem = "The credits token this host was started with was not accepted.";
+      this.problem = "The Bloks AI token this host was started with was not accepted.";
       return null;
     }
     const saved = this.store.read();
     if (saved.token && rejected !== undefined && saved.token !== rejected) return saved.token;
     if (saved.token) this.store.write({ token: null });
     if (!saved.licence) {
-      this.problem = "Add your Bloks Cloud key to use credits.";
+      this.problem = "Add your Bloks Cloud key to use Bloks AI.";
       return null;
     }
     return this.exchange();
@@ -245,7 +238,7 @@ export class CreditsAccount {
         });
       } catch {
         // never the thrown message: a failed fetch can quote its request
-        this.problem = "Bloks credits could not be reached. Check the connection and try again.";
+        this.problem = "Bloks AI could not be reached. Check the connection and try again.";
         return null;
       }
       const text = await res.text().catch(() => "");
@@ -254,8 +247,8 @@ export class CreditsAccount {
         this.problem =
           said ||
           (res.status === 401 || res.status === 403
-            ? "That Bloks Cloud key was not accepted for credits."
-            : `Bloks credits answered HTTP ${res.status}.`);
+            ? "That Bloks Cloud key was not accepted for Bloks AI."
+            : `Bloks AI answered HTTP ${res.status}.`);
         return null;
       }
       let token = "";
@@ -266,7 +259,7 @@ export class CreditsAccount {
         /* not JSON; said below */
       }
       if (!token) {
-        this.problem = "Bloks credits answered without a token.";
+        this.problem = "Bloks AI answered without a token.";
         return null;
       }
       this.store.write({ token });
@@ -279,15 +272,18 @@ export class CreditsAccount {
     return this.exchanging;
   }
 
-  /** The balance, as the service says it. A 401 is answered by one
+  /** A call to the service with the token, a 401 answered by one
    * refresh and one more try; anything else comes back as an error with
-   * the service's own words. */
-  async balance(): Promise<CreditsBalance> {
+   * the service's own words. `url` is a whole address, since the hosting
+   * status sits beside the service rather than under it. */
+  private async call(url: string, init: { method?: string; body?: string } = {}): Promise<string> {
     let token = await this.token();
-    if (!token) throw new Error(this.problem ?? "No credits token.");
+    if (!token) throw new Error(this.problem ?? "No Bloks AI token.");
     const ask = (bearer: string) =>
-      this.fetch(`${creditsBase()}/balance`, {
-        headers: { authorization: `Bearer ${bearer}` },
+      this.fetch(url, {
+        method: init.method ?? "GET",
+        headers: { authorization: `Bearer ${bearer}`, ...(init.body ? { "content-type": "application/json" } : {}) },
+        ...(init.body ? { body: init.body } : {}),
         signal: AbortSignal.timeout(10_000),
       });
     let res: Response;
@@ -296,35 +292,41 @@ export class CreditsAccount {
       if (res.status === 401) {
         await res.body?.cancel().catch(() => {});
         const fresh = await this.refresh(token);
-        if (!fresh) throw new Error(this.problem ?? "The credits token was not accepted.");
+        if (!fresh) throw new Error(this.problem ?? "The Bloks AI token was not accepted.");
         token = fresh;
         res = await ask(token);
       }
     } catch (error) {
       if (error instanceof Error && !/fetch failed|network|timeout|abort/i.test(error.message)) throw error;
-      throw new Error("Bloks credits could not be reached.");
+      throw new Error("Bloks AI could not be reached.");
     }
     const text = await res.text().catch(() => "");
-    if (!res.ok) throw new Error(serviceWords(text) || `Bloks credits answered HTTP ${res.status}.`);
-    return readBalance(text);
+    if (!res.ok) throw new Error(serviceWords(text) || `Bloks AI answered HTTP ${res.status}.`);
+    return text;
   }
-}
 
-/** A balance answer, checked one field at a time: another service's JSON,
- * any field of which a bad day could deliver as null or a string. */
-export function readBalance(text: string, now = Date.now()): CreditsBalance {
-  let parsed: Record<string, unknown> = {};
-  try {
-    const value = JSON.parse(text);
-    if (value && typeof value === "object") parsed = value as Record<string, unknown>;
-  } catch {
-    /* read as empty below */
+  /** What is left, as the service says it: shares of the plan. */
+  async balance(): Promise<AiBalance> {
+    return readAiBalance(await this.call(`${creditsBase()}/balance`));
   }
-  const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
-  const balance = number(parsed.balance);
-  if (balance === null) throw new Error("Bloks credits answered without a balance.");
-  const currency = typeof parsed.currency === "string" && /^[A-Za-z]{3}$/.test(parsed.currency) ? parsed.currency.toUpperCase() : "USD";
-  return { balance, currency, lowAt: number(parsed.lowAt), autoReload: parsed.autoReload === true, at: now };
+
+  /** The owner's per-member caps, each a share of the monthly allowance
+   * a member may use in a day, or null for none. */
+  async setMemberCaps(memberCaps: Record<string, number | null>): Promise<void> {
+    await this.call(`${creditsBase()}/settings`, { method: "POST", body: JSON.stringify({ memberCaps }) });
+  }
+
+  /** Whether the licence is a team's, from the hosting status beside the
+   * service. Null when it does not say. */
+  async team(): Promise<boolean | null> {
+    let origin: string;
+    try {
+      origin = new URL(creditsBase()).origin;
+    } catch {
+      return null;
+    }
+    return readTeam(await this.call(`${origin}/api/hosting/status`));
+  }
 }
 
 /** What the generic driver needs from whoever holds a credential that

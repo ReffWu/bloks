@@ -26,6 +26,7 @@ import { callMcpTool, listMcpTools, type McpAccess } from "../composio.ts";
 import { newEventId, newId } from "../contracts.ts";
 import type { ProviderSpec } from "../providers.ts";
 import { CreditsEmpty, EMPTY_WORDS, serviceWords, type CompatAccess } from "../credits.ts";
+import { tagHeaders, type CallTags } from "../bloks-ai.ts";
 import { appendNative } from "./native.ts";
 import { BOAT_API } from "../boat.ts";
 import { callSignature } from "../repeats.ts";
@@ -396,6 +397,10 @@ function sandboxExec(handle: { runtime: string; name: string }, command: string)
  * balance running out, said in the service's own words and marked so the
  * workspace can offer to add more. Without it, the key is read once from
  * the instance's environment, as it always was.
+ *
+ * Only an engine with `access` sends a turn's tags (what the work is, and
+ * whose), since only that service picks the model by them; any other
+ * provider never hears of them.
  */
 export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): ProviderDriver<CompatConfig> {
   const keyEnv = `${spec.kind.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
@@ -469,15 +474,16 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
        * refused gets one refresh and one more try; the body is a string,
        * so sending it twice is the same request twice. A 402 from it is
        * the balance, not a fault. */
-      const send = async (url: string, init: RequestInit): Promise<Response> => {
+      const send = async (url: string, init: RequestInit, tags?: CallTags): Promise<Response> => {
         await credential();
-        let res = await fetch(url, { ...init, headers: headers() });
+        const extra = access ? tagHeaders(tags) : {};
+        let res = await fetch(url, { ...init, headers: { ...headers(), ...extra } });
         if (res.status === 401 && access) {
           const fresh = await access.refresh(apiKey);
           if (fresh && fresh !== apiKey) {
             await res.body?.cancel().catch(() => {});
             apiKey = fresh;
-            res = await fetch(url, { ...init, headers: headers() });
+            res = await fetch(url, { ...init, headers: { ...headers(), ...extra } });
           }
         }
         if (res.status === 402 && access) {
@@ -498,6 +504,12 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
             // means it does not publish a model list, which is fine
             rejected = res.status === 401 || res.status === 403 ? "that key was rejected" : null;
             if (!res.ok) return;
+            // the catalog is the spec's, and what was listed goes unread
+            if (spec.fixedModels) {
+              await res.body?.cancel().catch(() => {});
+              catalogAt = Date.now();
+              return;
+            }
             const json: any = await res.json();
             const rows: any[] = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
             // OpenRouter says which models take tools; others say nothing,
@@ -541,13 +553,13 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
       const complete = async (
         messages: Array<{ role: string; content: string }>,
         model: string,
-        opts: { stream: boolean; signal?: AbortSignal; onDelta?: (d: string) => void },
+        opts: { stream: boolean; signal?: AbortSignal; onDelta?: (d: string) => void; tags?: CallTags },
       ): Promise<{ text: string; usage: { input: number; output: number } | null }> => {
         const res = await send(`${config.url}/chat/completions`, {
           method: "POST",
           body: JSON.stringify({ model, messages, stream: opts.stream }),
           signal: opts.signal ?? AbortSignal.timeout(120_000),
-        });
+        }, opts.tags);
         if (!res.ok) {
           const body = await res.text().catch(() => "");
           throw new Error(`${spec.name} HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
@@ -634,6 +646,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         model: string,
         tools: any[],
         signal: AbortSignal,
+        tags?: CallTags,
       ): Promise<{ message: any; usage: { input: number; output: number } | null }> => {
         // The turn's own signal ends it on stop; the bound ends it when the
         // provider simply never answers, which the turn signal never does.
@@ -644,7 +657,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
             method: "POST",
             body: JSON.stringify({ model, messages, tools, stream: false }),
             signal: bounded,
-          });
+          }, tags);
         } catch (e) {
           if ((e as Error).name === "TimeoutError") {
             throw new Error(`${spec.name} took more than ${ROUND_TIMEOUT_MS / 60_000} minutes to answer, so this reply was stopped. Send it again.`);
@@ -715,7 +728,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         let usageTotal = { input: 0, output: 0 };
 
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-          const { message, usage } = await completeRaw(messages, model, tools, signal);
+          const { message, usage } = await completeRaw(messages, model, tools, signal, turn.tags);
           if (usage) {
             usageTotal = { input: usageTotal.input + usage.input, output: usageTotal.output + usage.output };
             // Each request has its own prompt, while accounting still
@@ -948,6 +961,9 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         const abort = new AbortController();
         const asks = new Map<string, (answer: string, source?: string) => void>();
         active.set(threadId, { abort, turnId, asks });
+        // An engine whose service picks the model is asked for its one
+        // model, whatever an agent saved before it had only one.
+        const model = spec.fixedModels ? spec.models.default : turn.model || models.default;
 
         const messages = [
           ...(turn.system ? [{ role: "system", content: turn.system }] : []),
@@ -960,7 +976,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         appendNative(threadId, {
           dir: "out",
           source: `${spec.kind}.chat.completions`,
-          msg: { model: turn.model, messages },
+          msg: { model, messages },
         });
 
         emit({ ...base(threadId, turnId), type: "turn.started" });
@@ -968,27 +984,21 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
           ...base(threadId, turnId),
           type: "session.started",
           sessionId: null,
-          model: turn.model ?? models.default,
+          model,
         });
 
         (async () => {
           try {
             if (spec.tools) {
-              await runWithTools(
-                threadId,
-                turnId,
-                messages,
-                turn.model || models.default,
-                turn,
-                abort.signal,
-              );
+              await runWithTools(threadId, turnId, messages, model, turn, abort.signal);
               active.delete(threadId);
               emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: null });
               return;
             }
-            const { text, usage } = await complete(messages, turn.model || models.default, {
+            const { text, usage } = await complete(messages, model, {
               stream: true,
               signal: abort.signal,
+              tags: turn.tags,
               onDelta: (delta) =>
                 emit({ ...base(threadId, turnId), type: "content.delta", streamKind: "assistant_text", delta }),
             });
@@ -1083,9 +1093,12 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
           },
         },
         smallText: Boolean(spec.small),
-        generateText: async (prompt: string) => {
+        // A one-shot is Bloks' own bookkeeping (a summary, a tidy, a title)
+        // unless the caller says somebody is waiting on it.
+        generateText: async (prompt: string, options?: { work?: CallTags["work"] }) => {
           const { text } = await complete([{ role: "user", content: prompt }], spec.small || models.default, {
             stream: false,
+            tags: { work: options?.work ?? "automation" },
           });
           return text;
         },

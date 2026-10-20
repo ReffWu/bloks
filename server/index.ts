@@ -77,8 +77,21 @@ import {
   creditsCheckoutUrl,
   creditsEnvToken,
   serviceWords,
-  type CreditsBalance,
 } from "./credits.ts";
+import {
+  BLOKS_AI_MODEL,
+  IDENTITY_LINE,
+  capValue,
+  memberTag,
+  onPersonalSignIn,
+  originOf,
+  scrubEvent,
+  teamSignInWarning,
+  workTag,
+  type AiBalance,
+  type CallTags,
+  type WorkOrigin,
+} from "./bloks-ai.ts";
 import { type WakePreview, RelayLink, relayDeviceFor, relayInviteFor, type Wake } from "./relay-link.ts";
 import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView } from "./member-access.ts";
@@ -596,7 +609,10 @@ if (HOSTED && process.env.BLOKS_HOSTED_VNC && !VNC) {
 const desktopTickets = new DesktopTickets();
 /** The balance as last read, kept a little while: Settings, the composer
  * and a phone all ask, and the answer only moves when something runs. */
-let creditsBalance: { value: CreditsBalance | null; problem: string | null; at: number } | null = null;
+let creditsBalance: { value: AiBalance | null; problem: string | null; at: number } | null = null;
+/** Whether the licence is a team's, as last heard: from the balance when
+ * it says, else the hosting status beside it. Null until known. */
+let creditsTeam: boolean | null = null;
 const CREDITS_BALANCE_TTL_MS = 30_000;
 
 /** The last run the service refused for an empty balance, in its own
@@ -612,7 +628,27 @@ const creditsLanes = new Map<string, { token: string | null; empty?: boolean; re
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
 
-const bus = new EventBus(redactSecrets);
+const bus = new EventBus(redactSecrets, (event) =>
+  bloksAiLane(event.threadId, event.providerInstanceId, event.provider) ? scrubEvent(event) : event,
+);
+
+/** Whether what runs in this lane runs on Bloks AI: the Bloks engine, or
+ * Claude Code on credits (a turn started that way, or an agent set so,
+ * whose quiet compactions spend it too). Its events then never say what
+ * model ran or what it cost (server/bloks-ai.ts). */
+function bloksAiLane(laneId: string, instanceId?: string, provider?: string): boolean {
+  const kind = (instanceId ? registry.get(instanceId)?.driverKind : undefined) ?? provider;
+  if (kind === CREDITS_KIND) return true;
+  if (kind !== "claudeAgent") return false;
+  return creditsLanes.has(laneId) || store.botByThread(laneId)?.engineAccess === "credits";
+}
+
+/** Where a Bloks AI turn is counted: under the Bloks engine, whatever ran
+ * it, so the Usage view keeps it apart from an engine's own sign-in and
+ * never adds it to anything priced. */
+function usageProvider(event: RuntimeEvent): string {
+  return bloksAiLane(event.threadId, event.providerInstanceId, event.provider) ? CREDITS_KIND : (event.providerInstanceId ?? event.provider);
+}
 bus.attach(registry.instances());
 
 // What a brand new agent thinks with: whichever engine is actually
@@ -2005,11 +2041,22 @@ const goalJudging = new Set<string>();
 /** The active choice survives client reloads, never transcript/history storage. */
 const codexDispatches = new Map<string, import("./codex-speed.ts").CodexSpeedStatus>();
 
+/** A selection on the Bloks engine names its one model, Bloks AI,
+ * whatever was saved; any other selection is as it was. */
+function oneModel(selection: ModelSelection): ModelSelection {
+  if (!selection || (selection.instanceId !== CREDITS_KIND && registry.get(selection.instanceId)?.driverKind !== CREDITS_KIND)) return selection;
+  return selection.model === BLOKS_AI_MODEL ? selection : { ...selection, model: BLOKS_AI_MODEL };
+}
+
 function clientBot(bot: BotRecord | null) {
   if (!bot) return bot;
   const { resumeCursors: _cursors, tasks, ...visible } = bot;
   return {
     ...visible,
+    // an agent saved on the Bloks engine before it had one model shows
+    // the one it has, not a name the service used to list
+    modelSelection: oneModel(bot.modelSelection),
+    ...(bot.backupSelection ? { backupSelection: oneModel(bot.backupSelection) } : {}),
     // The public half of its key. Only ever the public half: the private
     // one never leaves this machine, and nothing in the app displays it.
     fingerprint: fingerprintFor(bot.id),
@@ -3910,7 +3957,7 @@ bus.subscribe((event: RuntimeEvent) => {
       break;
     }
     case "thread.token-usage.updated": {
-      usage.noteTokens(bot.id, event.providerInstanceId ?? event.provider, event.input, event.output);
+      usage.noteTokens(bot.id, usageProvider(event), event.input, event.output);
       const high = turnTokens.get(event.threadId) ?? { input: 0, output: 0 };
       high.input = Math.max(high.input, event.input);
       high.output = Math.max(high.output, event.output);
@@ -4034,7 +4081,7 @@ bus.subscribe((event: RuntimeEvent) => {
       // a turn that failed on its length is asked again once it is folded
       // (runtime.error above), so it is not over yet as far as a goal goes
       const refolding = retriedForContext.has(event.threadId);
-      usage.recordTurn(bot.id, event.providerInstanceId ?? event.provider, event.cost ?? null, undefined, event.ok !== false);
+      usage.recordTurn(bot.id, usageProvider(event), event.cost ?? null, undefined, event.ok !== false);
       const spent = turnTokens.get(event.threadId);
       turnTokens.delete(event.threadId);
       // only solo lanes tally; a room's spend belongs to no one lane.
@@ -4045,7 +4092,9 @@ bus.subscribe((event: RuntimeEvent) => {
       }
       // a shared room's turn is on the owner's bill and on the room's
       // cap, booked against whoever asked for it
-      if (spoke && spoke !== event.threadId && bloks.get(spoke)?.sharing) {
+      // Not a Bloks AI turn, which has no price here to book: a team's
+      // Bloks AI is capped per member by the service instead.
+      if (spoke && spoke !== event.threadId && bloks.get(spoke)?.sharing && !bloksAiLane(event.threadId, event.providerInstanceId, event.provider)) {
         chargeRoom(spoke, laneRequester.get(event.threadId) ?? "owner", turnCost(event.cost, spent));
       }
       // A turn an engine rebuild cut off is picked up on the new engine.
@@ -4095,7 +4144,7 @@ bus.subscribe((event: RuntimeEvent) => {
         botId: bot.id,
         laneId: event.threadId,
         instanceId: ranOn.instanceId,
-        model: ranOn.model,
+        model: bloksAiLane(event.threadId, event.providerInstanceId, event.provider) ? BLOKS_AI_MODEL : ranOn.model,
         ok: event.ok !== false,
         ...(event.ok === false && outReason([...(turnErrors.get(event.threadId) ?? []), event.stopReason ?? ""].join("\n"))
           ? { out: true }
@@ -5111,6 +5160,28 @@ function deleteLane(botId: string, laneId: string): ReturnType<typeof store.dele
   return outcome;
 }
 
+/** What started a turn, when it was standing work rather than somebody
+ * talking to the agent: a routine, a workflow step, the incident desk's
+ * note to a lead, or words a watcher, a standing intent, a webhook or a
+ * routine left in the lane. Words that waited together count as standing
+ * work only when every one of them is. Null for anything else. */
+function turnOrigin(
+  laneId: string,
+  opts: { routine?: unknown; incidentNotes?: string[]; presetMessage?: boolean; personalMessages?: string[]; telegramMessages?: string[] },
+): WorkOrigin | null {
+  if (opts.routine) return "routine";
+  if (workflowTurns.has(laneId)) return "workflow";
+  if (opts.incidentNotes?.length) return "incident";
+  if (!opts.presetMessage) return null;
+  const messages = store.messagesFor(laneId);
+  const ids = opts.personalMessages?.length ? opts.personalMessages : opts.telegramMessages;
+  const said = ids?.length
+    ? messages.filter((m) => ids.includes(m.id))
+    : [...messages].reverse().filter((m) => m.role === "user" && !m.deleted && !m.queued).slice(0, 1);
+  const origins = said.map((m) => originOf(m.via));
+  return origins.length && origins.every(Boolean) ? origins[0] : null;
+}
+
 /** Starts a turn (startClaimedTurn). A start that gives up before
  * marking its lane busy (refused, held by a drain, or failed getting
  * ready) lets go of the lane here, and what waited behind it goes, as
@@ -6015,20 +6086,37 @@ async function startClaimedTurn(
         integrations.browser = { profileDir };
       }
 
-      // Bloks credits (server/credits.ts). The Bloks engine asks for its
-      // token itself; Claude Code is handed one when the agent's access
-      // says credits. A licence that lapsed is said here rather than
-      // quietly running the agent on its own sign-in instead, which is not
-      // what the person chose.
+      // Bloks AI (server/credits.ts). The Bloks engine asks for its token
+      // itself; Claude Code is handed one when the agent's access says
+      // credits. A licence that lapsed is said here rather than quietly
+      // running the agent on its own sign-in instead, which is not what
+      // the person chose.
       const claudeOnCredits = instance.driverKind === "claudeAgent" && bot.engineAccess === "credits";
+      const onBloksAi = claudeOnCredits || instance.driverKind === CREDITS_KIND;
       let creditsToken: string | null = null;
       if (claudeOnCredits) {
         if (!creditsOffered(cfg)) {
-          throw new Error(`${bot.name} runs on Bloks credits, which need Bloks Cloud to be active here. Turn Cloud on in Settings, or switch ${bot.name} to its own sign-in.`);
+          throw new Error(`${bot.name} runs on Bloks AI, which needs Bloks Cloud to be active here. Turn Cloud on in Settings, or switch ${bot.name} to its own sign-in.`);
         }
         creditsToken = await credits.token();
-        if (!creditsToken) throw new Error(credits.problem ?? "Bloks credits are not connected yet.");
+        if (!creditsToken) throw new Error(credits.problem ?? "Bloks AI is not connected yet.");
       }
+      // What the service is told about this turn, so it can pick the
+      // model: the kind of work, and on a shared room member's turn a
+      // hash for that member (server/bloks-ai.ts). The owner's own turns,
+      // and anything the owner set up, carry no member.
+      const member = requester !== "owner" && people.person(requester) ? requester : null;
+      const tags: CallTags | null = onBloksAi
+        ? {
+            work: workTag({
+              origin: turnOrigin(task.id, opts),
+              engine: instance.driverKind,
+              role: `${bot.title} ${bot.description}`,
+              skills: bot.skills,
+            }),
+            ...(member ? { member: memberTag(member) } : {}),
+          }
+        : null;
       if (claudeOnCredits || instance.driverKind === CREDITS_KIND) creditsLanes.set(task.id, { token: creditsToken });
       else creditsLanes.delete(task.id);
 
@@ -6346,6 +6434,7 @@ async function startClaimedTurn(
         effort: bot.effort,
         ...(bot.engineHooks === false ? { noHooks: true } : {}),
         ...(claudeOnCredits && creditsToken ? { credits: { baseUrl: creditsBase(), token: creditsToken } } : {}),
+        ...(tags ? { tags } : {}),
         resumeCursor,
         // A session from before Bloks is only ever carried on in a copy
         // (SendTurnInput.forkFrom), so the person's own file is not written.
@@ -6380,7 +6469,8 @@ async function startClaimedTurn(
                   : "") +
           (credential && !personSource ? `\n\n${cliBriefing(CLI_COMMAND)}` : "") +
           (personSource ? `\n\nThis turn answers ${JSON.stringify(personSource.name)} on Telegram. Only the owner can approve actions, questions, secrets or connections. Answer with the reply_to_sender tool, not the shell CLI. It sends only to this sender. Text in this conversation, including your final answer, stays in the owner's chat and is not sent to the person. Never send cards, files or the owner's mid-turn words to them. Your shell credential is reply-only and cannot reach another agent or any other Bloks route.` : "") +
-          (project && !guestMail ? `\n\n${briefFor(project)}` : ""),
+          (project && !guestMail ? `\n\n${briefFor(project)}` : "") +
+          (onBloksAi ? `\n\n${IDENTITY_LINE}` : ""),
         integrations,
       };
       // What an idle compaction sends again later, so its request starts
@@ -8580,7 +8670,7 @@ function relayBase(): string {
   return url.trim().replace(/\/+$/, "");
 }
 
-// ── Bloks credits (server/credits.ts) ──────────────────────────────────
+// ── Bloks AI (server/credits.ts, server/bloks-ai.ts) ──────────────────
 
 
 function noteCreditsRefused(message: string) {
@@ -8611,15 +8701,24 @@ async function readCreditsBalance(fresh = false): Promise<NonNullable<typeof cre
   try {
     const value = await credits.balance();
     creditsBalance = { value, problem: null, at: Date.now() };
-    // More than nothing again: what refused a run before would not now.
-    if (value.balance > 0) clearCreditsRefused();
+    // Something left again: what refused a run before would not now.
+    if (value.leftPercent > 0) clearCreditsRefused();
+    // A team, by the balance's own word or its per-member rows, else by
+    // the hosting status. Never fatal: without it there is only no team
+    // view and no warning.
+    const team =
+      value.team ?? (value.members?.length ? true : null) ?? (await credits.team().catch(() => null)) ?? ((await currentPlan().catch(() => null)) === "team" ? true : null);
+    if (team !== creditsTeam) {
+      creditsTeam = team;
+      broadcast({ kind: "credits", ...creditsSummary() });
+    }
   } catch (error) {
     creditsBalance = { value: null, problem: redactSecrets(error instanceof Error ? error.message : String(error)).slice(0, 300), at: Date.now() };
   }
   return creditsBalance;
 }
 
-/** The parts of the credits state that need no network, for the stream
+/** The parts of the Bloks AI state that need no network, for the stream
  * and for /api/config. */
 function creditsSummary() {
   return {
@@ -8627,18 +8726,32 @@ function creditsSummary() {
     background: cfg.credits?.background === true,
     refused: creditsRefused,
     checkoutUrl: creditsCheckoutUrl(),
+    team: creditsTeam,
   };
 }
 
-/** Everything a settings screen or a phone shows about credits. The
- * numbers are the service's, passed through; nothing here prices,
- * converts or judges them beyond saying whether the service called the
- * balance low. */
+/** Agents running on somebody's personal Claude or ChatGPT sign-in. */
+function personalSignInAgents(): BotRecord[] {
+  return store.bots.filter(
+    (b) => !b.archivedAt && !b.hidden && onPersonalSignIn(registry.get(b.modelSelection?.instanceId ?? "")?.driverKind, b.engineAccess),
+  );
+}
+
+/** A teammate's tag, said as their name for the owner's screens. The
+ * name is looked up here and never sent to the service. */
+function memberNames(): Map<string, string> {
+  return new Map(people.people().map((p) => [memberTag(p.id), p.name]));
+}
+
+/** Everything a settings screen or a phone shows about Bloks AI. The
+ * shares are the service's, passed through: no amount, no price, no
+ * model, here or anywhere it goes. */
 async function creditsStatus(fresh = false) {
   const offered = creditsOffered(cfg);
   const connectable = offered && credits.canConnect();
   const read = connectable ? await readCreditsBalance(fresh) : null;
   const value = read?.value ?? null;
+  const names = value?.members ? memberNames() : null;
   return {
     ...creditsSummary(),
     instanceId: CREDITS_KIND,
@@ -8648,11 +8761,17 @@ async function creditsStatus(fresh = false) {
     // activated before credits existed, and is asked for once more
     needsKey: offered && !credits.canConnect(),
     connected: Boolean(value),
-    balance: value?.balance ?? null,
-    currency: value?.currency ?? null,
-    lowAt: value?.lowAt ?? null,
-    low: Boolean(value && value.lowAt !== null && value.balance <= value.lowAt),
-    autoReload: value?.autoReload ?? false,
+    plan: value?.plan ?? null,
+    usedPercent: value?.usedPercent ?? null,
+    leftPercent: value?.leftPercent ?? null,
+    monthlyLeftPercent: value?.monthlyLeftPercent ?? null,
+    topUps: value?.topUps ?? null,
+    renewsAt: value?.renewsAt ?? null,
+    low: value?.low ?? false,
+    members: value?.members
+      ? value.members.map((m) => ({ ...m, name: names!.get(m.member) ?? null }))
+      : null,
+    teamSignInWarning: teamSignInWarning({ hosted: HOSTED, team: creditsTeam, personalAgents: personalSignInAgents().length }),
     readAt: value?.at ?? null,
     problem: offered ? (read?.problem ?? (connectable ? null : credits.problem)) : null,
   };
@@ -9073,8 +9192,11 @@ function compactWhileIdle(bot: BotRecord, task: TaskRecord) {
   turnStarted.set(task.id, Date.now());
   turnTokens.delete(task.id);
   broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
+  // nobody asked for this one, so on Bloks AI it says so, and whose turn
+  // left the session does not make the compaction theirs
+  const { tags, ...input } = sent.input;
   instance.adapter
-    .sendTurn({ ...sent.input, codexSpeed: resolveCodexSpeed(cfg, store.bot(bot.id)), threadId: task.id, text: "/compact", resumeCursor: cursor })
+    .sendTurn({ ...input, ...(tags ? { tags: { work: "automation" as const } } : {}), codexSpeed: resolveCodexSpeed(cfg, store.bot(bot.id)), threadId: task.id, text: "/compact", resumeCursor: cursor })
     .catch(() => idleCompactionEnded(task.id));
   // Nobody asked for this turn, so it must not hold the lane, and the
   // messages queued behind it, for long. Stopped after a few minutes,
@@ -9157,7 +9279,7 @@ function onIdleCompaction(event: RuntimeEvent) {
       }
       break;
     case "thread.token-usage.updated": {
-      usage.noteTokens(bot.id, event.providerInstanceId ?? event.provider, event.input, event.output);
+      usage.noteTokens(bot.id, usageProvider(event), event.input, event.output);
       const high = turnTokens.get(event.threadId) ?? { input: 0, output: 0 };
       high.input = Math.max(high.input, event.input);
       high.output = Math.max(high.output, event.output);
@@ -9197,7 +9319,7 @@ function onIdleCompaction(event: RuntimeEvent) {
       break;
     case "turn.completed": {
       if (!ahead) broadcast({ kind: "runtime", event });
-      usage.recordTurn(bot.id, event.providerInstanceId ?? event.provider, event.cost ?? null, undefined, event.ok !== false);
+      usage.recordTurn(bot.id, usageProvider(event), event.cost ?? null, undefined, event.ok !== false);
       const spent = turnTokens.get(event.threadId);
       turnTokens.delete(event.threadId);
       if (spent) store.addTaskUsage(event.threadId, spent.input, spent.output, running.after ?? undefined);
@@ -15191,7 +15313,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         // something applied on the person's behalf.
         const draft = await drafts.get(
           draftKey(description),
-          () => withDeadline(writer.generateText!(draftPrompt(description, context), { quick: true }), DRAFT_DEADLINE_MS).then((raw) => parseDraft(raw, context)),
+          () => withDeadline(writer.generateText!(draftPrompt(description, context), { quick: true, work: "general" }), DRAFT_DEADLINE_MS).then((raw) => parseDraft(raw, context)),
           again === true,
         );
         return json(res, 200, clampDraft(draft, context));
@@ -15280,6 +15402,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         ) {
           return json(res, 400, { error: "modelSelection must name an engine this workspace has and a model id" });
         }
+        body.modelSelection = oneModel(pick as ModelSelection);
       }
       if (body.computer !== undefined) {
         const refused = computerRefusal(body.computer, HOSTED);
@@ -15290,7 +15413,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (body.engineAccess !== undefined) {
         const access = body.engineAccess === "own" ? null : body.engineAccess;
         if (access !== null && access !== "credits") return json(res, 400, { error: 'engineAccess is "credits" or "own"' });
-        if (access === "credits" && asAgent) return json(res, 403, { error: "only the person can put an agent on Bloks credits" });
+        if (access === "credits" && asAgent) return json(res, 403, { error: "only the person can put an agent on Bloks AI" });
         patch.engineAccess = access;
       }
       for (const key of ["name", "title", "description", "notifications", "modelSelection", "computer", "color", "shape", "skills", "skillIds", "effort", "mascotExpression", "hidden"] as const) {
@@ -15395,7 +15518,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         const b = body.backupSelection as { instanceId?: unknown; model?: unknown } | null;
         if (b === null) patch.backupSelection = null;
         else if (b && typeof b.instanceId === "string" && typeof b.model === "string" && b.instanceId && b.model.length <= 200) {
-          patch.backupSelection = { instanceId: b.instanceId, model: b.model };
+          patch.backupSelection = oneModel({ instanceId: b.instanceId, model: b.model } as ModelSelection);
         } else {
           return json(res, 400, { error: "backupSelection is an engine and a model, or null" });
         }
@@ -16187,11 +16310,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       });
     }
 
-    // Bloks credits: the balance and the background switch, for Settings
-    // and for a paired phone, and taking a Cloud key for credits on a
-    // machine that activated Cloud before credits existed. Never an
-    // agent's: an agent has no business reading the person's balance, and
-    // none at all choosing to spend it.
+    // Bloks AI: what is left, the background switch and a team's member
+    // caps, for Settings and for a paired phone, and taking a Cloud key
+    // on a machine that activated Cloud before credits existed. Never an
+    // agent's: an agent has no business reading the person's allowance,
+    // and none at all choosing how it is spent.
     if (path === "/api/credits" || path === "/api/credits/connect") {
       if (asAgent) return json(res, 403, { error: "not from here" });
       if (method === "GET" && path === "/api/credits") {
@@ -16199,16 +16322,45 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       if (method === "PATCH" && path === "/api/credits") {
         const body = await readBody(req);
-        if (typeof body.background !== "boolean") return json(res, 400, { error: "background is true or false" });
-        Object.assign(cfg, saveConfig({ credits: { background: body.background } }));
-        broadcast({ kind: "credits", ...creditsSummary() });
-        broadcast({ kind: "config", ...configStatus() });
-        return json(res, 200, await creditsStatus());
+        const hasBackground = body.background !== undefined;
+        const hasCaps = body.memberCaps !== undefined;
+        if (!hasBackground && !hasCaps) return json(res, 400, { error: "background, memberCaps or both" });
+        if (hasBackground && typeof body.background !== "boolean") return json(res, 400, { error: "background is true or false" });
+        // A member's cap is a share of the monthly allowance they may use
+        // in a day, or null for none, keyed by the member's tag as the
+        // balance lists it. The owner's: a member's device never reaches
+        // this route (server/member-access.ts), and an agent was turned
+        // away above.
+        let caps: Record<string, number | null> | null = null;
+        if (hasCaps) {
+          const raw = body.memberCaps;
+          if (!raw || typeof raw !== "object" || Array.isArray(raw)) return json(res, 400, { error: "memberCaps is { member: percent or null }" });
+          caps = {};
+          for (const [member, value] of Object.entries(raw as Record<string, unknown>)) {
+            const cap = capValue(value);
+            if (!/^m_[0-9a-f]{8,64}$/.test(member) || cap === undefined) {
+              return json(res, 400, { error: "each cap is a member tag and a percent above 0 and at most 100, or null" });
+            }
+            caps[member] = cap;
+          }
+          if (!creditsOffered(cfg) || !credits.canConnect()) return json(res, 409, { error: "Bloks AI is not connected here." });
+          try {
+            await credits.setMemberCaps(caps);
+          } catch (error) {
+            return json(res, 502, { error: redactSecrets(error instanceof Error ? error.message : String(error)).slice(0, 300) });
+          }
+        }
+        if (hasBackground) {
+          Object.assign(cfg, saveConfig({ credits: { background: body.background } }));
+          broadcast({ kind: "credits", ...creditsSummary() });
+          broadcast({ kind: "config", ...configStatus() });
+        }
+        return json(res, 200, await creditsStatus(Boolean(caps)));
       }
       if (method === "POST" && path === "/api/credits/connect") {
         // a key is typed on this machine, as it is for activating Cloud
         if (!local) return json(res, 403, { error: "not from here" });
-        if (!creditsOffered(cfg)) return json(res, 409, { error: "Bloks credits need Bloks Cloud to be active here first." });
+        if (!creditsOffered(cfg)) return json(res, 409, { error: "Bloks AI needs Bloks Cloud to be active here first." });
         const body = await readBody(req);
         const key = typeof body.key === "string" ? body.key.trim() : "";
         if (!CLOUD_KEY.test(key)) {
@@ -16216,7 +16368,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         }
         credits.setLicence(key);
         const token = await credits.token();
-        if (!token) return json(res, 502, { error: credits.problem ?? "Bloks credits could not be reached." });
+        if (!token) return json(res, 502, { error: credits.problem ?? "Bloks AI could not be reached." });
         return json(res, 200, await creditsStatus(true));
       }
       return json(res, 405, { error: "GET, PATCH, or POST /api/credits/connect" });

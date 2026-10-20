@@ -71,6 +71,7 @@ import type {
 } from "../contracts.ts";
 import { newEventId, newId } from "../contracts.ts";
 import { appendNative } from "./native.ts";
+import { BLOKS_AI_MODEL, CLAUDE_MODEL_ENV, customHeaders, scrubFrame } from "../bloks-ai.ts";
 import { describeEarlyExit, describeSpawnError } from "./spawn-error.ts";
 import { DEFAULT_STALL_MINUTES, STOP_GRACE_MS, describeStall, isStalled, type OpenCall } from "./stall.ts";
 import { OWN_GROUP } from "../no-console.ts";
@@ -257,10 +258,16 @@ export function isLimitNotice(text: unknown): text is string {
  * removed: Claude Code prefers a key to a token when it finds one, and an
  * empty one is how it is told there is none, so a key in this server's
  * own environment can never be what a credits turn spends.
+ *
+ * The service is Bloks AI, which picks the model itself, so every model
+ * the CLI could name (its main one, its small one, each family's and a
+ * subagent's) is the alias, and the CLI never asks for a real one or
+ * prints one back. The turn's tags (what the work is, and whose) ride in
+ * ANTHROPIC_CUSTOM_HEADERS, which the CLI sends on every request.
  */
 export function turnEnvironment(
   base: NodeJS.ProcessEnv,
-  turn: Pick<SendTurnInput, "env" | "shared" | "person" | "credits">,
+  turn: Pick<SendTurnInput, "env" | "shared" | "person" | "credits" | "tags">,
 ): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {
     ...base,
@@ -284,6 +291,9 @@ export function turnEnvironment(
     env.ANTHROPIC_BASE_URL = turn.credits.baseUrl;
     env.ANTHROPIC_AUTH_TOKEN = turn.credits.token;
     env.ANTHROPIC_API_KEY = "";
+    Object.assign(env, CLAUDE_MODEL_ENV);
+    const headers = customHeaders(turn.tags ?? { work: "coding" }, env.ANTHROPIC_CUSTOM_HEADERS);
+    if (headers) env.ANTHROPIC_CUSTOM_HEADERS = headers;
   }
   return env;
 }
@@ -412,7 +422,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         // rather than the system prompt the session started with.
         if (snapshotOffSupported) argv.push("--system-prompt-snapshot", "off");
       } else argv.push("--session-id", newId());
-      if (turn.model) argv.push("--model", turn.model);
+      // on Bloks AI the model is the service's, and is asked for by alias
+      if (turn.credits) argv.push("--model", BLOKS_AI_MODEL);
+      else if (turn.model) argv.push("--model", turn.model);
       // this agent's owner switched hooks off: a plugin's session-start
       // text would otherwise land in its context as if it were an order
       if (turn.noHooks || turn.person) argv.push("--settings", JSON.stringify({ disableAllHooks: true }));
@@ -737,6 +749,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         } catch {
           return; // a log line, not protocol
         }
+        // On Bloks AI a frame never says what model ran it or what it
+        // cost, in the log or anywhere after (server/bloks-ai.ts).
+        if (turn.credits) frame = scrubFrame(frame);
         // initialize also returns account, models, pid and session state.
         // None of those belong in Bloks' logs, transcript or event stream.
         if (frame.type === "control_response") {

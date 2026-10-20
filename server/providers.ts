@@ -39,6 +39,11 @@ export interface ProviderSpec {
   freeSlots?: number;
   /** Extra request headers (attribution, routing). */
   headers?: Record<string, string>;
+  /** The service picks the model itself: `models` is the whole catalog,
+   * /models is asked only whether the key is good and what it lists is
+   * never shown, and every call names the catalog's one model whatever an
+   * agent has saved. The Bloks engine (server/credits.ts). */
+  fixedModels?: boolean;
   /** A cheap model for one-shot calls: names, titles, summaries. */
   small?: string;
   /** Whether this provider reliably speaks OpenAI function calling. Flags

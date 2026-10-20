@@ -84,8 +84,8 @@ export function secretLabel(path: string, config: Record<string, unknown>): stri
     "chat.whatsapp.verifyToken": "WhatsApp verify token",
     "telegram.token": "Telegram bot token",
     "telegram.pending.token": "Telegram bot token",
-    "credits.licence": "Bloks Cloud key, for credits",
-    "credits.token": "Bloks Cloud key, for credits",
+    "credits.licence": "Bloks Cloud key, for Bloks AI",
+    "credits.token": "Bloks Cloud key, for Bloks AI",
   };
   return known[path] ?? path;
 }

@@ -22,9 +22,14 @@ export class EventBus {
   private detachers = new Map<string, () => void>();
 
   private readonly redact: (text: string) => string;
+  /** What an event may say before anybody hears it or it is written down:
+   * a Bloks AI turn's events lose their model and price here, once, so no
+   * log or subscriber can see them (server/bloks-ai.ts). */
+  private readonly scrub: (event: RuntimeEvent) => RuntimeEvent;
 
-  constructor(redact: (text: string) => string) {
+  constructor(redact: (text: string) => string, scrub: (event: RuntimeEvent) => RuntimeEvent = (event) => event) {
     this.redact = redact;
+    this.scrub = scrub;
   }
 
   /** Start relaying from these instances. Safe to call again after a
@@ -48,6 +53,7 @@ export class EventBus {
   }
 
   publish(event: RuntimeEvent) {
+    event = this.scrub(event);
     if (event.type === "item.started" && event.itemType === "tool" && event.command !== undefined) {
       const { command, ...rest } = event;
       const safe = toolCommand(command, this.redact);

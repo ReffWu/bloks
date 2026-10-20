@@ -81,7 +81,7 @@ test("config for a move: the machine's sections go, and each key left behind is 
     "Key for Together",
     "Saved secret WEATHER_TOKEN",
     "Saved secret MAPS_KEY",
-    "Bloks Cloud key, for credits",
+    "Bloks Cloud key, for Bloks AI",
   ]);
 });
 
