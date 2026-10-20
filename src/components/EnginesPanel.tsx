@@ -15,6 +15,7 @@ import { ProviderMark } from "./ProviderIcons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
+import { CREDITS_ENGINE } from "@/lib/credits";
 import { CodexSpeedControl } from "./CodexSpeed";
 import { EngineReport } from "./EngineReport";
 import { EnginePauses } from "./EnginePauses";
@@ -181,6 +182,17 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
 
       {open && !provider.connected && (
         <KeyForm provider={provider} onDone={() => setOpen(false)} />
+      )}
+      {/* an engine on the person's own key can have a monthly limit,
+          set where its spending is shown (UsagePage) */}
+      {provider.connected && (provider.auth === "key" || provider.auth === "oauth") && provider.kind !== CREDITS_ENGINE && (
+        <button
+          type="button"
+          onClick={() => dispatch({ type: "openUsage", section: "limits" })}
+          className="ml-10 mt-1 text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
+        >
+          Monthly spending limit
+        </button>
       )}
       {provider.auth === "cli" && (!provider.connected || provider.needsSignIn) && (
         <div className="pl-10">

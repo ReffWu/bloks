@@ -1121,7 +1121,11 @@ function GeneralPage() {
         />
         <SettingRow
           label="Accent"
-          description="Your messages, the main buttons and selected things. From the Bloks logo."
+          description={
+            window.bloks?.workspace
+              ? "Your messages, the main buttons and selected things, in this workspace. Each workspace keeps its own."
+              : "Your messages, the main buttons and selected things. From the Bloks logo."
+          }
           control={<AccentPicker />}
         />
         <SettingRow

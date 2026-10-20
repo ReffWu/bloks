@@ -25,7 +25,7 @@ import type {
 import { callMcpTool, listMcpTools, type McpAccess } from "../composio.ts";
 import { newEventId, newId } from "../contracts.ts";
 import type { ProviderSpec } from "../providers.ts";
-import { CreditsEmpty, EMPTY_WORDS, serviceWords, type CompatAccess } from "../credits.ts";
+import { CREDITS_KIND, CreditsEmpty, EMPTY_WORDS, serviceWords, type CompatAccess } from "../credits.ts";
 import { tagHeaders, type CallTags } from "../bloks-ai.ts";
 import { appendNative } from "./native.ts";
 import { BOAT_API } from "../boat.ts";
@@ -168,6 +168,62 @@ function byFamily(spec: ProviderSpec, pool: string[], limit: number, created?: M
 // are non-streaming on purpose: accumulating fragmented tool_call deltas
 // is where OpenAI-compatible gateways disagree with each other most, and
 // a wrong reassembly silently corrupts arguments.
+
+/** Tokens a response used, and its price when the provider put one in
+ * the response itself. */
+interface Usage {
+  input: number;
+  output: number;
+  /** Of `input`, what the provider read from its cache, when it says. */
+  cached: number;
+  cost?: number;
+}
+
+/** A turn's price so far, added up over its requests, and the tokens
+ * behind them, which price the turn from a list when the provider put
+ * no price on it (server/model-prices.ts). */
+interface Spent {
+  cost: number;
+  priced: boolean;
+  input: number;
+  output: number;
+  cached: number;
+}
+
+/**
+ * What a response's usage says. Some providers price each answer in the
+ * response itself (OpenRouter does, as usage.cost, in dollars), and that
+ * price is the only one an engine like this has: the rest say tokens and
+ * nothing else, and their turns are counted without a price rather than
+ * as free (server/usage.ts). Bloks AI's own service is never read for
+ * one, whatever it sends: it is an allowance, not a bill.
+ */
+function readUsage(raw: any, priced: boolean): Usage | null {
+  if (!raw || typeof raw !== "object") return null;
+  const input = count(raw.prompt_tokens);
+  // where each provider says what it read from its cache: OpenAI's shape
+  // (xAI and Gemini follow it), DeepSeek's own, and Moonshot's
+  const cached = count(raw.prompt_tokens_details?.cached_tokens ?? raw.prompt_cache_hit_tokens ?? raw.cached_tokens);
+  const usage: Usage = { input, output: count(raw.completion_tokens), cached: Math.min(input, cached) };
+  if (priced && typeof raw.cost === "number" && Number.isFinite(raw.cost) && raw.cost >= 0) usage.cost = raw.cost;
+  return usage;
+}
+
+/** A token count as a provider wrote it, or nothing. */
+const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
+
+function addPrice(spent: Spent, usage: Usage | null) {
+  if (!usage) return;
+  spent.input += usage.input;
+  spent.output += usage.output;
+  spent.cached += usage.cached;
+  if (usage.cost === undefined) return;
+  spent.cost += usage.cost;
+  spent.priced = true;
+}
+
+/** What turn.completed says the turn cost: its price, or null for none. */
+const priceOf = (spent: Spent) => (spent.priced ? spent.cost : null);
 
 const MAX_TOOL_ROUNDS = 10;
 const ASK_TIMEOUT_MS = 15 * 60_000;
@@ -424,6 +480,7 @@ function sandboxExec(handle: { runtime: string; name: string }, command: string)
  */
 export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): ProviderDriver<CompatConfig> {
   const keyEnv = `${spec.kind.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
+  const priced = spec.kind !== CREDITS_KIND;
 
   const decodeConfig = (raw: unknown): CompatConfig => {
     const o = (raw ?? {}) as Record<string, unknown>;
@@ -574,7 +631,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         messages: Array<{ role: string; content: string }>,
         model: string,
         opts: { stream: boolean; signal?: AbortSignal; onDelta?: (d: string) => void; tags?: CallTags },
-      ): Promise<{ text: string; usage: { input: number; output: number } | null }> => {
+      ): Promise<{ text: string; usage: Usage | null }> => {
         const res = await send(`${config.url}/chat/completions`, {
           method: "POST",
           body: JSON.stringify({ model, messages, stream: opts.stream }),
@@ -586,15 +643,10 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         }
         if (!opts.stream) {
           const json: any = await res.json();
-          return {
-            text: json.choices?.[0]?.message?.content ?? "",
-            usage: json.usage
-              ? { input: json.usage.prompt_tokens ?? 0, output: json.usage.completion_tokens ?? 0 }
-              : null,
-          };
+          return { text: json.choices?.[0]?.message?.content ?? "", usage: readUsage(json.usage, priced) };
         }
         let text = "";
-        let usage: { input: number; output: number } | null = null;
+        let usage: Usage | null = null;
         const reader = res.body!.getReader();
         const decoder = new TextDecoder();
         let buf = "";
@@ -648,12 +700,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
               text += delta;
               opts.onDelta?.(delta);
             }
-            if (chunk.usage) {
-              usage = {
-                input: chunk.usage.prompt_tokens ?? 0,
-                output: chunk.usage.completion_tokens ?? 0,
-              };
-            }
+            if (chunk.usage) usage = readUsage(chunk.usage, priced);
           }
         }
         return { text, usage };
@@ -667,7 +714,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         tools: any[],
         signal: AbortSignal,
         tags?: CallTags,
-      ): Promise<{ message: any; usage: { input: number; output: number } | null }> => {
+      ): Promise<{ message: any; usage: Usage | null }> => {
         // The turn's own signal ends it on stop; the bound ends it when the
         // provider simply never answers, which the turn signal never does.
         const bounded = AbortSignal.any([signal, AbortSignal.timeout(ROUND_TIMEOUT_MS)]);
@@ -689,12 +736,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
           throw new Error(`${spec.name} HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
         }
         const json: any = await res.json();
-        return {
-          message: json.choices?.[0]?.message ?? {},
-          usage: json.usage
-            ? { input: json.usage.prompt_tokens ?? 0, output: json.usage.completion_tokens ?? 0 }
-            : null,
-        };
+        return { message: json.choices?.[0]?.message ?? {}, usage: readUsage(json.usage, priced) };
       };
 
       /**
@@ -713,6 +755,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         model: string,
         turn: SendTurnInput,
         signal: AbortSignal,
+        spent: Spent,
       ) => {
         const computer = turn.integrations?.computer;
         const sandbox = turn.integrations?.sandbox;
@@ -751,6 +794,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
           const { message, usage } = await completeRaw(messages, model, tools, signal, turn.tags);
           if (usage) {
             usageTotal = { input: usageTotal.input + usage.input, output: usageTotal.output + usage.output };
+            addPrice(spent, usage);
             // Each request has its own prompt, while accounting still
             // receives the whole turn's sum below.
             if (Number.isFinite(usage.input) && usage.input > 0) {
@@ -1007,12 +1051,22 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
           model,
         });
 
+        // what the turn's requests were priced at, kept outside the try so
+        // a turn that fails after some of them still counts what they cost
+        const spent: Spent = { cost: 0, priced: false, input: 0, output: 0, cached: 0 };
+        // A turn the provider put no price on says what it used and on
+        // which model, so it can be priced from a list. Never Bloks AI's:
+        // it is an allowance, not a bill, and is never priced at all.
+        const unpriced = () =>
+          priced && !spent.priced && (spent.input > 0 || spent.output > 0)
+            ? { unpriced: { model, input: spent.input, output: spent.output, cachedInput: spent.cached } }
+            : {};
         (async () => {
           try {
             if (spec.tools) {
-              await runWithTools(threadId, turnId, messages, model, turn, abort.signal);
+              await runWithTools(threadId, turnId, messages, model, turn, abort.signal, spent);
               active.delete(threadId);
-              emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: null });
+              emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: priceOf(spent), ...unpriced() });
               return;
             }
             const { text, usage } = await complete(messages, model, {
@@ -1026,13 +1080,14 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
             if (text.trim()) {
               emit({ ...base(threadId, turnId), type: "item.completed", itemType: "assistant_text", text });
             }
+            addPrice(spent, usage);
             if (usage) {
-              emit({ ...base(threadId, turnId), type: "thread.token-usage.updated", ...usage,
+              emit({ ...base(threadId, turnId), type: "thread.token-usage.updated", input: usage.input, output: usage.output,
                 ...(Number.isFinite(usage.input) && usage.input > 0 ? { context: usage.input } : {}),
               });
             }
             active.delete(threadId);
-            emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: null });
+            emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: priceOf(spent), ...unpriced() });
           } catch (e) {
             const entry = active.get(threadId);
             for (const settle of entry?.asks.values() ?? []) settle("The turn ended before you answered.", "turn-ended");
@@ -1051,7 +1106,8 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
               type: "turn.completed",
               ok: false,
               stopReason: aborted ? "interrupted" : "error",
-              cost: null,
+              cost: priceOf(spent),
+              ...unpriced(),
             });
           }
         })();

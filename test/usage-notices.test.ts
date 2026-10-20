@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { startHarness, type Harness } from "./helpers/server.ts";
 import { waitFor } from "./helpers/turns.ts";
 import { startFakeCredits, type FakeCredits } from "./helpers/fake-credits.ts";
-import { fromBloksAi, noticeToShow, readDismissed, readNotices, resetLine, saveDismissed, withDismissed, type UsageNotice } from "../src/lib/usageNotice.ts";
+import { noticeLine, noticeToShow, readDismissed, readNotices, resetLine, saveDismissed, withDismissed, type UsageNotice } from "../src/lib/usageNotice.ts";
 
 const LICENCE = `blok_live_${"e".repeat(32)}`;
 
@@ -208,10 +208,15 @@ test("the second line says the day it resets, in the person's own time zone", ()
   assert.equal(resetLine(Date.UTC(2026, 9, 20, 23, 0), NOW, tokyo), "Resets tomorrow", "8 AM the next morning there");
 });
 
-test("View usage goes to Bloks AI's card for its notice and to the ring for an engine's", () => {
-  assert.equal(fromBloksAi({ source: "bloks-ai" }), true);
-  assert.equal(fromBloksAi({ source: "claude" }), false);
-  assert.equal(fromBloksAi({ source: "codex-work" }), false);
+test("a spending limit's second line says how much is used and when it tops up; the rest say when they reset", () => {
+  const utc = { locale: "en-US", timeZone: "UTC" };
+  const nov = Date.UTC(2026, 10, 1, 0, 0);
+  assert.equal(noticeLine({ kind: "spend", usedPercent: 84, resetsAt: nov }, NOW, utc), "84% used · Tops up Nov 1");
+  assert.equal(noticeLine({ kind: "spend", usedPercent: 100, resetsAt: null }, NOW, utc), "100% used");
+  assert.equal(noticeLine({ usedPercent: 84, resetsAt: nov }, NOW, utc), "Resets Nov 1", "every other notice is unchanged");
+  assert.equal(noticeLine({ usedPercent: 84, resetsAt: null }, NOW, utc), null);
+  // a kind this app has never heard of reads as any other notice
+  assert.equal(readNotices({ notices: [{ ...NOTICE, kind: "spend" }] })[0].kind, "spend");
 });
 
 test("only whole notices are read, and the first not put away is shown", () => {

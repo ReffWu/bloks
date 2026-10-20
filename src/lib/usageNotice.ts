@@ -21,6 +21,9 @@ export interface UsageNotice {
   usedPercent: number;
   /** Epoch milliseconds, when known. */
   resetsAt: number | null;
+  /** "spend" for a spending limit on the person's own key, whose month
+   * tops up rather than a window resetting. */
+  kind?: "spend";
 }
 
 const LEVELS: ReadonlySet<string> = new Set<UsageLevel>(["info", "warn", "stop"]);
@@ -75,10 +78,21 @@ export function resetLine(resetsAt: number | null, now: number, format: { locale
   return `Resets ${date}`;
 }
 
-/** Whether a notice is Bloks AI's, whose usage is in Settings, rather
- * than an engine's, whose plan is on the composer's ring. */
-export function fromBloksAi(notice: Pick<UsageNotice, "source">): boolean {
-  return notice.source === "bloks-ai";
+/**
+ * The second line, whatever the notice: a spending limit says how much
+ * of it is used and when its month tops up ("84% used · Tops up Nov 1"),
+ * the rest when they reset (resetLine). Null when there is nothing to say.
+ */
+export function noticeLine(notice: Pick<UsageNotice, "kind" | "usedPercent" | "resetsAt">, now: number, format: { locale?: string; timeZone?: string } = {}): string | null {
+  if (notice.kind !== "spend") return resetLine(notice.resetsAt, now, format);
+  const used = `${Math.round(notice.usedPercent)}% used`;
+  if (notice.resetsAt === null || !Number.isFinite(notice.resetsAt) || notice.resetsAt <= now) return used;
+  const date = new Intl.DateTimeFormat(format.locale, {
+    month: "short",
+    day: "numeric",
+    ...(format.timeZone ? { timeZone: format.timeZone } : {}),
+  }).format(new Date(notice.resetsAt));
+  return `${used} · Tops up ${date}`;
 }
 
 // ── put away ───────────────────────────────────────────────────────────

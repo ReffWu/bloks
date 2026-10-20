@@ -76,6 +76,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch {
       /* private mode, theme still applies for this session */
     }
+    // the theme is the person's, so every workspace opens in it
+    // (electron/main.mjs keeps it; each workspace is an origin of its own)
+    void window.bloks?.prefsTheme?.(next)?.catch?.(() => {});
     setThemeState(next);
   }, []);
 

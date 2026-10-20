@@ -37,12 +37,20 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+/** The data folder, the way the server decides it (server/config.ts
+ * dataDirFrom): BLOKS_DATA_DIR when set, else ~/.bloks. */
+function dataDir() {
+  const said = process.env.BLOKS_DATA_DIR?.trim();
+  if (!said) return join(homedir(), ".bloks");
+  if (said === "~") return homedir();
+  return said.startsWith("~/") ? join(homedir(), said.slice(2)) : resolve(said);
+}
 /** Where the server is: BLOKS_PORT, then the port the running server
  * wrote down, then one chosen in config.json, then the usual one. */
 function knownPort() {
   const read = (file, pick) => {
     try {
-      return pick(readFileSync(join(homedir(), ".bloks", file), "utf8"));
+      return pick(readFileSync(join(dataDir(), file), "utf8"));
     } catch {
       return null;
     }

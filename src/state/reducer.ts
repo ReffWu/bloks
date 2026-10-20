@@ -13,7 +13,16 @@ import type { CodexSpeed, CodexSpeedStatus } from "@/lib/codexSpeed";
 export type { BlokColor, BlokShape } from "@/lib/mascot";
 
 /** The full pages the main rail opens besides Chat, Automations and Settings. */
-export type RailPage = "overview" | "memory" | "plugins";
+export type RailPage = "overview" | "memory" | "plugins" | "usage";
+
+/** What a link into Usage asked for: one agent's numbers, and the limits
+ * rather than the top of the page. `at` tells two asks for the same
+ * thing apart, so the page goes there again each time. */
+export interface UsageFocus {
+  botId: string | null;
+  section: "limits" | null;
+  at: number;
+}
 /** One routine or watcher, for a link into Automations. */
 export type AutomationsFocus = { kind: "routine" | "watcher"; id: string };
 /** The two pages of Customize, the rail's Plugins place (Customize.tsx). */
@@ -686,7 +695,7 @@ export interface AppState {
   config: ConfigStatus | null;
   selectedId: string;
   /** Which of the main rail's full pages covers the chat (AppRail): the
-   * overview, memory or plugins. Settings and Automations keep their
+   * overview, memory, plugins or usage. Settings and Automations keep their
    * own flags; null with both of those closed is the chat. */
   page: RailPage | null;
   /** Which Customize page shows when Plugins is the place. */
@@ -708,6 +717,8 @@ export interface AppState {
    * null until something is picked or a link asks for one, when the
    * place chooses (notes waiting on you, else the agent in view). */
   memoryTarget: MemoryTarget | null;
+  /** What the last link into Usage asked for, or null (UsagePage). */
+  usageFocus: UsageFocus | null;
   /** The agent taking meeting notes, while its panel is open. */
   meetingFor: string | null;
   /** The conversation whose "Set a goal" dialog is open (GoalDialog). */
@@ -863,6 +874,8 @@ export type Action =
   /** The Memory place, on `target` when given (an agent's id, "you" or
    * "shared"), else on whatever it had open; null lets the place choose. */
   | { type: "openMemory"; target?: MemoryTarget | null }
+  /** Usage, narrowed to one agent and scrolled to its limits when asked. */
+  | { type: "openUsage"; botId?: string | null; section?: "limits" | null }
   | { type: "toggleComputer"; open?: boolean }
   /** `page` opens Settings on that page (see SETTINGS_PAGES). */
   | { type: "toggleAppSettings"; open?: boolean; page?: string }
@@ -1341,9 +1354,10 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
     case "openPage":
-      // one full page at a time, the rail's own and Settings or Automations
+      // one full page at a time, the rail's own and Settings or Automations;
+      // Usage opened plainly is the whole picture, not the last link's
       return action.page
-        ? { ...state, page: action.page, routinesOpen: false, appSettingsOpen: false, settingsOpen: false }
+        ? { ...state, page: action.page, usageFocus: null, routinesOpen: false, appSettingsOpen: false, settingsOpen: false }
         : { ...state, page: null };
     case "openCustomize":
       return {
@@ -1376,6 +1390,15 @@ export function reducer(state: AppState, action: Action): AppState {
         settingsOpen: false,
       };
     }
+    case "openUsage":
+      return {
+        ...state,
+        page: "usage",
+        usageFocus: { botId: action.botId ?? null, section: action.section ?? null, at: Date.now() },
+        routinesOpen: false,
+        appSettingsOpen: false,
+        settingsOpen: false,
+      };
     case "toggleComputer": {
       const open = action.open ?? !state.computerOpen;
       return {
@@ -1479,6 +1502,7 @@ export const initialState: AppState = {
   newAgentOpen: false,
   newAgentFirstRun: false,
   memoryTarget: null,
+  usageFocus: null,
   meetingFor: null,
   goalFor: null,
   rehearsalsTick: 0,

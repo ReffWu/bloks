@@ -10,6 +10,7 @@ export type Place =
   | { kind: "chat"; id: string; lane?: string }
   | { kind: "agent"; id: string }
   | { kind: "overview" }
+  | { kind: "usage" }
   | { kind: "memory"; target: MemoryTarget | null }
   | { kind: "customize"; tab: CustomizeTab; app?: string }
   | { kind: "automations" }
@@ -29,6 +30,7 @@ export function placeOf(state: AppState): Place | null {
   // Plugins is a step, the same as Back from one chat to another, and
   // from one agent's memory to another's
   if (state.page === "overview") return { kind: "overview" };
+  if (state.page === "usage") return { kind: "usage" };
   if (state.page === "memory") return { kind: "memory", target: state.memoryTarget };
   if (state.page === "plugins")
     return { kind: "customize", tab: state.customize, ...(state.customizeApp ? { app: state.customizeApp } : {}) };
@@ -54,6 +56,8 @@ export function goTo(place: Place): Action[] {
       return [{ type: "select", id: place.id }, { type: "toggleSettings", open: true }];
     case "overview":
       return [{ type: "openPage", page: "overview" }];
+    case "usage":
+      return [{ type: "openPage", page: "usage" }];
     case "memory":
       return [{ type: "openMemory", target: place.target }];
     case "customize":

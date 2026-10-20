@@ -1,12 +1,14 @@
 // A limit coming, said where the next message is written.
 //
 // A small panel at the top of the composer's box when the conversation's
-// agent is on Bloks AI and the service says something about it, or is on
+// agent is on Bloks AI and the service says something about it, is on
 // Claude Code or Codex and that plan's windows are used up, nearly used
-// up, or going faster than they renew. Which of those applies, and what
-// it is called, is the server's call (GET /api/usage-notices); this shows
-// the worst one the person has not put away, when it resets, and the way
-// to the numbers behind it. The X puts it away until it has something new
+// up, or going faster than they renew, or is on a key of the person's own
+// that is at, near or racing toward its spending limit. Which of those
+// applies, and what it is called, is the server's call (GET
+// /api/usage-notices); this shows the worst one the person has not put
+// away, when it resets or tops up, and the way to the numbers behind it:
+// the Usage page, on this agent, at its limits. The X puts it away until it has something new
 // to say. It sits inside the box rather than in the tray because it is
 // about the next message, the way the box's own chips are.
 //
@@ -19,23 +21,11 @@ import { useEffect, useState } from "react";
 import { X } from "@/components/icons";
 import { api, openLaneWorking, useStore, type Bot } from "@/state/store";
 import { usePageVisible } from "@/lib/pageVisible";
-import { fromBloksAi, noticeToShow, readDismissed, readNotices, resetLine, saveDismissed, withDismissed, type UsageNotice as Said } from "@/lib/usageNotice";
+import { noticeLine, noticeToShow, readDismissed, readNotices, saveDismissed, withDismissed, type UsageNotice as Said } from "@/lib/usageNotice";
 
 const EVERY_MS = 60_000;
 
-/** Settings opens on its Bloks Cloud page; the Bloks AI card is further
- * down it, and is drawn a moment after the page is. */
-function showBloksAiUsage() {
-  let tries = 0;
-  const look = () => {
-    const card = document.getElementById("bloks-ai");
-    if (card) card.scrollIntoView({ block: "start", behavior: "smooth" });
-    else if (++tries < 30) requestAnimationFrame(look);
-  };
-  requestAnimationFrame(look);
-}
-
-export function UsageNotice({ bot, onViewPlan }: { bot: Bot; /** Opens the ring's card, where the plan is. */ onViewPlan: () => void }) {
+export function UsageNotice({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
   const laneId = bot.activeTaskId ?? bot.threadId;
   const working = openLaneWorking(bot);
@@ -71,18 +61,14 @@ export function UsageNotice({ bot, onViewPlan }: { bot: Bot; /** Opens the ring'
 
   const notice = heard?.laneId === laneId ? noticeToShow(heard.notices, dismissed) : null;
   if (!notice) return null;
-  const reset = resetLine(notice.resetsAt, Date.now());
+  const reset = noticeLine(notice, Date.now());
   const dismiss = () =>
     setDismissed((was) => {
       const next = withDismissed(was, notice.id);
       saveDismissed(next);
       return next;
     });
-  const viewUsage = () => {
-    if (!fromBloksAi(notice)) return onViewPlan();
-    dispatch({ type: "toggleAppSettings", open: true, page: "cloud" });
-    showBloksAiUsage();
-  };
+  const viewUsage = () => dispatch({ type: "openUsage", botId: bot.id, section: "limits" });
 
   return (
     <div className="px-2 pt-2">

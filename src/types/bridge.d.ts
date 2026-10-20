@@ -29,6 +29,46 @@ export interface CuaPermissions {
   reason?: string;
 }
 
+/** A workspace's mark: a colour and nine blocks, row by row. */
+export interface WorkspaceMarkValue {
+  color: string;
+  pattern: string;
+}
+
+export type WorkspaceKind = "personal" | "business" | "custom" | "joined";
+export type WorkspaceNotify = "all" | "needs-me" | "nothing";
+
+/** One workspace as the main process tells the window about it
+ * (electron/workspaces.mjs snapshot). */
+export interface WorkspaceInfo {
+  id: string;
+  kind: WorkspaceKind;
+  name: string;
+  team: boolean;
+  mark: WorkspaceMarkValue | null;
+  /** An uploaded logo, as a data URL, drawn instead of the mark. */
+  logo: string | null;
+  /** How many people, once the Members page has said; null until then. */
+  members: number | null;
+  status: "starting" | "running" | "failed" | "stopped";
+  /** Why it will not start, when it will not. */
+  problem: string | null;
+  /** Conversations with something waiting. */
+  waiting: number;
+  notify: WorkspaceNotify;
+  mute: { muted: boolean; until: number | "forever" | null };
+  dataDir: string | null;
+  /** For a joined workspace: whose computer it is on. */
+  host?: string;
+}
+
+export type WorkspacesState =
+  | { available: false }
+  | { available: true; current: string; workspaces: WorkspaceInfo[] };
+
+/** What a workspace action answers: done, or why not, in words to show. */
+export type WorkspaceAnswer = { ok?: boolean; id?: string; error?: string };
+
 declare global {
   interface Window {
     /** Set when this UI runs at bloks.dev/web rather than in the app:
@@ -41,6 +81,41 @@ declare global {
       /** One frame of this Mac's screen as a data: URL. Goes through the
        * main process so macOS attributes Screen Recording to the app. */
       screenFrame(): Promise<string | null>;
+
+      /** Which workspace this page is, said before the page drew; null
+       * outside one (a development run, a Bloks on another computer). */
+      workspace?: { id: string; kind: WorkspaceKind; name: string; mark: WorkspaceMarkValue | null } | null;
+      /** The workspaces on this computer (electron/workspaces.mjs). */
+      workspacesState?(): Promise<WorkspacesState>;
+      onWorkspaces?(handler: (state: WorkspacesState) => void): () => void;
+      workspaceSwitch?(id: string): Promise<WorkspaceAnswer>;
+      workspaceCreate?(input: {
+        kind: "business" | "custom";
+        name: string;
+        team: boolean;
+        mark: WorkspaceMarkValue | null;
+      }): Promise<WorkspaceAnswer>;
+      workspaceUpdate?(
+        id: string,
+        patch: Partial<{ name: string; kind: "business" | "custom"; team: boolean; notify: WorkspaceNotify; mark: WorkspaceMarkValue }>,
+      ): Promise<WorkspaceAnswer>;
+      workspaceReroll?(id: string): Promise<WorkspaceAnswer>;
+      /** One of 15m, 1h, 3h, 8h, 24h, forever, or "off". */
+      workspaceMute?(id: string, choice: string): Promise<WorkspaceAnswer>;
+      workspaceRetry?(id: string): Promise<WorkspaceAnswer>;
+      workspaceReorder?(ids: string[]): Promise<WorkspaceAnswer>;
+      /** Moves its folder to the Trash; never Personal. */
+      workspaceDelete?(id: string): Promise<WorkspaceAnswer>;
+      workspaceLogoPick?(id: string): Promise<WorkspaceAnswer>;
+      workspaceLogoClear?(id: string): Promise<WorkspaceAnswer>;
+      /** How many people this workspace has, for the switcher's count. */
+      workspaceMembers?(count: number): Promise<void>;
+      /** The theme is the person's, kept across every workspace. */
+      prefsTheme?(theme: "light" | "dark" | "system"): Promise<void>;
+      /** The accent is this workspace's own. */
+      prefsAccent?(accent: string): Promise<void>;
+      /** What a banner clicked before this page loaded was about. */
+      pendingNotifyTarget?(): Promise<string | null>;
 
       /** Dictation, handled by a native helper rather than the web speech
        * APIs, which are not available offline. */

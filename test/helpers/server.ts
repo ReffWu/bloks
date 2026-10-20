@@ -93,10 +93,18 @@ export async function startHarness(extraEnv: Record<string, string> = {}): Promi
         ANTHROPIC_API_KEY: "",
         // a test run from inside a Bloks agent would otherwise act as it
         BLOKS_TOKEN: "",
+        // the throwaway HOME is the whole point: a data folder named by the
+        // shell this ran in would put the test in someone's real workspace
+        BLOKS_DATA_DIR: "",
+        BLOKS_WORKSPACE_ID: "",
+        BLOKS_WORKSPACES_DIR: "",
         // Bloks credits: never the real service, and never a token this
         // machine was started with; a test that wants one brings its own
         BLOKS_CREDITS_URL: "http://127.0.0.1:9/api/ai",
         BLOKS_CREDITS_TOKEN: "",
+        // the providers' price list (server/model-prices.ts): never the
+        // real one; a test that wants a list serves its own
+        BLOKS_PRICES_URL: "http://127.0.0.1:9/api/v1/models",
         BLOKS_HOSTED: "",
         BLOKS_HOSTED_VNC: "",
         // tests speak as the dev UI (origin :5199), which a server serving

@@ -14,7 +14,7 @@
 // else: no network, no dependencies, no state of its own.
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 
 const PORTS = [8799, 18799, 28799];
@@ -24,8 +24,17 @@ let base = process.env.BLOKS_URL || null;
 /** The port the running server wrote down, first: when the usual ports
  * are taken the app listens somewhere else. */
 function writtenPort() {
+  // in the data folder, which BLOKS_DATA_DIR can move
+  const said = process.env.BLOKS_DATA_DIR?.trim();
+  const dir = !said
+    ? join(homedir(), ".bloks")
+    : said === "~"
+      ? homedir()
+      : said.startsWith("~/")
+        ? join(homedir(), said.slice(2))
+        : resolve(said);
   try {
-    const port = Number(readFileSync(join(homedir(), ".bloks", "port"), "utf8").trim());
+    const port = Number(readFileSync(join(dir, "port"), "utf8").trim());
     return Number.isInteger(port) && port > 0 ? [port] : [];
   } catch {
     return [];

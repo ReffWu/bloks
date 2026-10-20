@@ -323,6 +323,12 @@ export class Cooldowns {
     if (entry && entry.lastOut < startedAt) this.resting.delete(instanceId);
   }
 
+  /** When an engine's current rest began, or undefined when it is not
+   * resting: the same rest, however often it is renewed, has one start. */
+  since(instanceId: string, now = Date.now()): number | undefined {
+    return this.of(instanceId, now) ? this.resting.get(instanceId)?.since : undefined;
+  }
+
   clear(instanceId: string) {
     this.resting.delete(instanceId);
   }

@@ -70,6 +70,12 @@ export interface BloksAiStatus {
   monthlyLeftPercent: number | null;
   topUps: number | null;
   renewsAt: number | null;
+  /** Of the month, the share used today, and a day's limit as a share
+   * of the month (it can be set above the whole month). A server from
+   * before the daily limit leaves them out. */
+  usedTodayPercent?: number | null;
+  dailyLimitPercent?: number | null;
+  dailyResetsAt?: number | null;
   low: boolean;
   members: Array<{ member: string; name: string | null; usedPercent: number; dailyCapPercent: number | null }> | null;
   teamSignInWarning: string | null;

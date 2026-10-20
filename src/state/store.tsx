@@ -689,10 +689,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return bridge.onMenuCommand(run);
   }, []);
 
-  // Clicking a banner opens what it was about.
+  // Clicking a banner opens what it was about. A banner from another
+  // workspace switched the window here first, so this page loaded after
+  // the click and asks for it once it is listening.
   useEffect(() => {
     const bridge = window.bloks;
     if (!bridge?.onNotifyActivate) return;
+    void bridge.pendingNotifyTarget?.().then((target) => {
+      if (target) rawDispatch({ type: "select", id: target });
+    }).catch(() => {});
     return bridge.onNotifyActivate(({ target }) => {
       if (target) rawDispatch({ type: "select", id: target });
     });

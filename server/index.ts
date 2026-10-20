@@ -8,6 +8,7 @@
 // for this start is put in place (server/pending-restore.ts).
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
+import { SaidOnce, desktopNotice, noticeKey, unreadCount as desktopUnreadCount } from "./desktop-notice.ts";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, openAsBlob, readdirSync, readFileSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
@@ -528,7 +529,9 @@ import {
   type CreateOptions,
 } from "./backup.ts";
 import { emptyEnoughForMove } from "./workspace-move.ts";
-import { summarize, UsageStore } from "./usage.ts";
+import { rangeDays, summarize, usageReport, UsageStore, USAGE_RANGES, type UsageRange } from "./usage.ts";
+import { monthBounds, monthKey, monthSpend, providerCreditNotice, readLimit, spendNotices, spendRefusal, spendStatus, MAX_LIMIT_USD, type SpendStatus } from "./spend-limits.ts";
+import { PriceBook, PRICES_URL, readOwnPrice, type OwnPrice } from "./model-prices.ts";
 import { TeamLibrary } from "./team-library.ts";
 import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam } from "./team-file.ts";
 import * as artifacts from "./artifacts.ts";
@@ -551,6 +554,9 @@ const PORT = Number(process.env.BLOKS_PORT || loadConfig().port || 8799);
   }
 }
 const STATIC_DIR = process.env.BLOKS_STATIC_DIR || null;
+/** Which of the desktop app's workspaces this server is: it says so when
+ * it starts one. Its own relay space is kept under this id. */
+const WORKSPACE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(process.env.BLOKS_WORKSPACE_ID ?? "") ? process.env.BLOKS_WORKSPACE_ID! : "personal";
 const MIME: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -1104,6 +1110,13 @@ const deskRetries = new Set<string>();
  * only that something did. */
 const failedWords = new Map<string, string>();
 const usage = new UsageStore();
+// The providers' list prices, for a turn its engine put no price on
+// (server/model-prices.ts). Kept in the data folder and asked for at most
+// once a day, and only on a machine with an engine on a key of its own.
+const prices = new PriceBook({
+  file: join(DATA_DIR, "model-prices.json"),
+  url: process.env.BLOKS_PRICES_URL || PRICES_URL,
+});
 // What each turn did to the files in its folder, and the way back.
 const checkpoints = new Checkpoints(join(DATA_DIR, "checkpoints"));
 
@@ -1239,11 +1252,122 @@ setInterval(() => {
   }
 }, 60_000).unref?.();
 
-/** Whether an engine can take a turn right now, as far as we know. */
+/** Whether an engine can take a turn right now, as far as we know: there,
+ * on, not resting, and not past the person's spending limit on it. */
 function engineUsable(selection: ModelSelection | null | undefined): selection is ModelSelection {
   if (!selection?.instanceId) return false;
   const instance = registry.get(selection.instanceId);
-  return Boolean(instance && instance.enabled !== false && !cooldowns.of(selection.instanceId));
+  return Boolean(instance && instance.enabled !== false && !cooldowns.of(selection.instanceId) && !spendStopped(selection.instanceId));
+}
+
+// ── spending limits on the person's own keys (server/spend-limits.ts) ──
+
+/** Whether an engine runs on a key of the person's own, which is what a
+ * spending limit is for: a provider's API key, or a host of their own.
+ * Not a CLI on its own sign-in, not Bloks AI, not a model on this Mac. */
+function limitableEngine(instance: ProviderInstance | null | undefined): instance is ProviderInstance {
+  if (!instance || instance.driverKind === CREDITS_KIND) return false;
+  const auth = specFor(instance.driverKind)?.auth;
+  return auth === "key" || auth === "oauth";
+}
+
+/** The limit on an engine in dollars, or null for none. */
+function spendLimitOf(instanceId: string): number | null {
+  const limit = cfg.spendLimits?.[instanceId];
+  return typeof limit === "number" && limit > 0 && limitableEngine(registry.get(instanceId)) ? limit : null;
+}
+
+/** The person's own price for an engine, per million tokens, or null. */
+function ownPriceOf(instanceId: string): OwnPrice | null {
+  return readOwnPrice(cfg.spendPrices?.[instanceId] ?? null) ?? null;
+}
+
+/**
+ * What a settled turn cost, and whether that is an estimate. The engine's
+ * own price when it gave one. Otherwise, for an engine on the person's
+ * own key, its tokens at the person's own price for it or at the
+ * providers' list price for its model (server/model-prices.ts), as an
+ * estimate; with neither, no price. Bloks AI is never priced, whatever
+ * the event says: its lanes are named for it by usageProvider, and it is
+ * never an engine on a key of the person's own.
+ */
+function turnPrice(event: Extract<RuntimeEvent, { type: "turn.completed" }>): { cost: number | null; estimated: boolean } {
+  const provider = usageProvider(event);
+  if (provider === CREDITS_KIND) return { cost: null, estimated: false };
+  if (typeof event.cost === "number") return { cost: event.cost, estimated: false };
+  const used = event.unpriced;
+  const instance = registry.get(provider);
+  if (!used || !limitableEngine(instance)) return { cost: null, estimated: false };
+  // for the turns after this one, when the list is a day old or missing
+  void prices.refresh();
+  const estimate = prices.estimate(used, instance.driverKind, ownPriceOf(instance.instanceId));
+  return estimate ? { cost: estimate.cost, estimated: true } : { cost: null, estimated: false };
+}
+
+// Asked for once soon after starting, when there is an engine whose turns
+// might need it, so the first unpriced turn has a list to be priced from.
+setTimeout(() => {
+  if (registry.instances().some(limitableEngine)) void prices.refresh();
+}, 3_000).unref?.();
+
+/** What an engine has spent this month, by its own prices and estimates. */
+function spentThisMonth(instanceId: string, now = new Date()): { spent: number; priced: boolean; estimated: boolean } {
+  const month = monthKey(now);
+  return monthSpend(usage.inMonth(month), instanceId, month);
+}
+
+/** Where an engine stands when it is at its limit, or null when it may
+ * go on. Asked before every turn: an engine with no limit is one lookup. */
+function spendStopped(instanceId: string): SpendStatus | null {
+  const limit = spendLimitOf(instanceId);
+  if (limit === null) return null;
+  const status = spendStatus(limit, spentThisMonth(instanceId).spent);
+  return status.reached ? status : null;
+}
+
+/** The refusal for a turn on an engine past its limit. `paused` so a
+ * room, a routine or a queued line says why it went quiet (sayTurnedAway).
+ * In a shared room, whose members are never told which engine or what
+ * the owner spends, it says only that the agent is paused (`agent`). */
+function spendRefused(instanceId: string, status: SpendStatus, agent?: string): Error {
+  const instance = registry.get(instanceId);
+  const name = instance?.displayName ?? instance?.driverKind ?? instanceId;
+  const text = agent
+    ? `${agent} is paused until ${hostName()} raises a spending limit.`
+    : spendRefusal(name, status.limit, status.resetsAt);
+  return Object.assign(new Error(text), { status: 409, paused: true, spendLimit: true });
+}
+
+/** Every engine on a key of the person's own, with its limit and this
+ * month so far, for the Usage page. `reportsPrice` says whether the
+ * engine has ever priced a turn here: one that never has gives a limit
+ * nothing to count, and the page says so rather than showing $0. */
+function spendLimitRows(now = Date.now()) {
+  const year = usage.since(365);
+  const { end } = monthBounds(new Date(now));
+  return registry
+    .instances()
+    .filter(limitableEngine)
+    .map((instance) => {
+      const limit = spendLimitOf(instance.instanceId);
+      const { spent, priced, estimated } = spentThisMonth(instance.instanceId, new Date(now));
+      const status = limit === null ? null : spendStatus(limit, spent, now);
+      return {
+        instanceId: instance.instanceId,
+        name: instance.displayName ?? instance.driverKind,
+        driverKind: instance.driverKind,
+        limit,
+        spent,
+        priced,
+        estimated,
+        ownPrice: ownPriceOf(instance.instanceId),
+        reportsPrice: priced || year.some((b) => b.provider === instance.instanceId && b.costKnown),
+        usedPercent: status?.usedPercent ?? null,
+        reached: status?.reached ?? false,
+        level: status?.level ?? null,
+        resetsAt: end,
+      };
+    });
 }
 
 /** Which engine a turn on this agent runs on: its own, unless it is resting
@@ -1459,7 +1583,9 @@ function preferredEngine(bot: BotRecord, fallback: boolean, laneId?: string): Mo
   const backup = bot.backupSelection && bot.backupSelection.instanceId !== own.instanceId ? bot.backupSelection : null;
   const ownRest = cooldowns.of(own.instanceId);
   const ownMissing = !registry.get(own.instanceId);
-  return (ownRest || ownMissing) && engineUsable(backup) ? backup : own;
+  // past its spending limit is out until the month turns, as far as this
+  // agent's backup is concerned; with no backup, startTurn says why
+  return (ownRest || ownMissing || spendStopped(own.instanceId)) && engineUsable(backup) ? backup : own;
 }
 
 function unavailableEngineMessage(instanceId: string): string {
@@ -2252,6 +2378,11 @@ function broadcast(payload: unknown) {
   try {
     noteActivityCard(payload);
   } catch {}
+  // and to the desktop app that started this server, when one did, so a
+  // workspace in the background can still say it needs the person
+  try {
+    tellDesktop(payload);
+  } catch {}
   if ((payload as { kind?: string })?.kind !== "screen") {
     try {
       relayLink.publish(payload, ownerHidden ? undefined : wakeFor(payload), false, ownerHidden ? hidden!.personId : undefined);
@@ -2261,6 +2392,39 @@ function broadcast(payload: unknown) {
       console.error(redactSecrets(error instanceof Error ? error.message : "[bloks] Relay frame could not be sent."));
     }
   }
+}
+
+/**
+ * The desktop app that started this server, when one did (Electron hands
+ * its own children a port nobody else can reach). It runs a server per
+ * workspace and shows one; the others tell it here what a window would
+ * have raised a banner for (server/desktop-notice.ts) and how many
+ * conversations are waiting, for the Dock badge and the switcher's dot.
+ * The app decides, by each workspace's mute and level, what is shown.
+ */
+type DesktopPort = { postMessage(message: unknown): void };
+const desktop = (process as NodeJS.Process & { parentPort?: DesktopPort }).parentPort ?? null;
+const desktopSaid = new SaidOnce();
+let desktopUnread = -1;
+
+function tellDesktop(payload: unknown) {
+  if (!desktop) return;
+  const kind = (payload as { kind?: string })?.kind;
+  if (kind === "bot" || kind === "bot.deleted" || kind === "hello") {
+    const count = desktopUnreadCount(store.bots);
+    if (count !== desktopUnread) {
+      desktopUnread = count;
+      desktop.postMessage({ kind: "desktop.unread", count });
+    }
+    return;
+  }
+  const notice = desktopNotice(payload, {
+    bot: (threadId) => store.botByThread(threadId),
+    room: (threadId) => bloks.get(threadId) ?? null,
+    goalRunning: (threadId) =>
+      store.botByThread(threadId)?.tasks.find((t) => t.id === threadId)?.goal?.status === "active",
+  });
+  if (notice && desktopSaid.take(noticeKey(payload))) desktop.postMessage({ kind: "desktop.notice", notice });
 }
 
 /** A frame for the owner's own surfaces and nobody else: this server's
@@ -4113,7 +4277,8 @@ bus.subscribe((event: RuntimeEvent) => {
         const asked = laneRequester.get(event.threadId);
         return asked && whoIs(asked) ? asked : undefined;
       })();
-      usage.recordTurn(bot.id, usageProvider(event), event.cost ?? null, undefined, event.ok !== false, bookedTo);
+      const priced = turnPrice(event);
+      usage.recordTurn(bot.id, usageProvider(event), priced.cost, undefined, event.ok !== false, priced.estimated, bookedTo);
       const spent = turnTokens.get(event.threadId);
       turnTokens.delete(event.threadId);
       if (bookedTo && !bloksAiLane(event.threadId, event.providerInstanceId, event.provider)) {
@@ -5513,6 +5678,16 @@ async function startClaimedTurn(
   // a resting engine and no queued command reaches one that is paused.
   const pausedHere = pausedOn(bot, selection);
   if (pausedHere) throw pausedRefusal(bot, pausedHere);
+  // An engine on the person's own key past its monthly spending limit
+  // (server/spend-limits.ts) starts nothing new until the limit is
+  // raised or the month turns. Asked of the engine actually chosen, so an
+  // agent with a backup has already been moved to it. A turn picked up
+  // after a restart was running before, and finishes.
+  const stopped = opts.carriedOn ? null : spendStopped(selection.instanceId);
+  if (stopped) throw spendRefused(selection.instanceId, stopped, sharing ? bot.name : undefined);
+  // the list prices, by the time this turn ends, should it come back
+  // unpriced; a no-op on a list fetched today
+  if (limitableEngine(instance)) void prices.refresh();
   // Only Claude Code takes a person's turn. An API engine cannot wait on
   // the owner's approvals, and Codex reads the whole disk without asking.
   if (personSource && instance.driverKind === "codex") throw personTurnHold(CODEX_PERSON_HOLD, CODEX_PERSON_NEXT);
@@ -9076,9 +9251,24 @@ async function creditsStatus(fresh = false) {
 }
 
 /**
+ * What an engine on the person's own key says about money: its spending
+ * limit here (server/spend-limits.ts), and the provider's own refusal for
+ * money when it gave one, which needs no limit of Bloks' to be news.
+ */
+function ownKeyNotices(instance: ProviderInstance): UsageNotice[] {
+  if (!limitableEngine(instance)) return [];
+  const id = instance.instanceId;
+  const notices = spendNotices(id, spendLimitOf(id), spentThisMonth(id).spent);
+  const since = cooldowns.of(id)?.reason === "credit" ? cooldowns.since(id) : undefined;
+  if (since !== undefined && !notices.some((n) => n.level === "stop")) notices.push(providerCreditNotice(id, since));
+  return notices;
+}
+
+/**
  * What to say in the composer about limits, worst first: Bloks AI's
- * notice in the service's own words, and each engine's from its plan
- * windows (server/plan-usage.ts). For one conversation, only what it runs
+ * notice in the service's own words, each engine's from its plan
+ * windows (server/plan-usage.ts), and an engine on the person's own key
+ * at or near its spending limit. For one conversation, only what it runs
  * on: a lane on Bloks AI hears about Bloks AI and nothing about the
  * sign-in its engine would otherwise use, and any other lane hears about
  * the engine running it. The balance is read only when Bloks AI is what is being asked about,
@@ -9094,7 +9284,7 @@ async function usageNotices(threadId: string | null): Promise<UsageNotice[]> {
   };
   const engine = (instance: ProviderInstance | null | undefined): UsageNotice[] =>
     instance && instance.driverKind !== CREDITS_KIND
-      ? planNotices(instance.instanceId, instance.planUsage?.() ?? null)
+      ? [...planNotices(instance.instanceId, instance.planUsage?.() ?? null), ...ownKeyNotices(instance)]
       : [];
   if (threadId === null) return sortNotices([...(await bloksAi()), ...registry.instances().flatMap(engine)]);
   // A phone asks with the agent's main thread whichever lane is busy, so
@@ -9662,7 +9852,8 @@ function onIdleCompaction(event: RuntimeEvent) {
       break;
     case "turn.completed": {
       if (!ahead) broadcast({ kind: "runtime", event });
-      usage.recordTurn(bot.id, usageProvider(event), event.cost ?? null, undefined, event.ok !== false);
+      const priced = turnPrice(event);
+      usage.recordTurn(bot.id, usageProvider(event), priced.cost, undefined, event.ok !== false, priced.estimated);
       const spent = turnTokens.get(event.threadId);
       turnTokens.delete(event.threadId);
       if (spent) store.addTaskUsage(event.threadId, spent.input, spent.output, running.after ?? undefined);
@@ -16843,7 +17034,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (method === "POST" && path === "/api/relay/activate") {
       if (!local) return json(res, 403, { error: "not from here" });
       const body = await readBody(req);
-      const key = typeof body.key === "string" ? body.key.trim() : "";
+      // `again: true` puts a workspace back online with the licence it was
+      // activated with (Reachable online's switch), without asking for it
+      const key = typeof body.key === "string" && body.key.trim()
+        ? body.key.trim()
+        : body.again === true ? (credits.savedLicence() ?? "") : "";
       if (!CLOUD_KEY.test(key)) {
         return json(res, 400, {
           error: "that is not a Bloks Cloud key. One starts with blok_live_ and ends in 32 hex characters",
@@ -16855,6 +17050,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         minted = await fetch(`${url}/spaces`, {
           method: "POST",
           headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+          // One licence can hold a space per workspace; the desktop app
+          // names this server's workspace, and a server on its own is the
+          // one space it always was.
+          body: JSON.stringify({ workspaceId: WORKSPACE_ID }),
           signal: AbortSignal.timeout(15_000),
         });
       } catch {
@@ -16921,6 +17120,60 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         url,
         enabled: Boolean(cfg.relay?.enabled),
       });
+    }
+
+    // Reachable online (the desktop app's workspace settings): how many of
+    // the plan's workspaces are online, in the relay's own words, and the
+    // switch that takes this one offline. Off frees its slot at the relay
+    // (DELETE /space/agent) rather than only hanging up, since a plan that
+    // keeps three online counts spaces, not open lines; the licence stays,
+    // so turning it on again is one click (activate with again: true).
+    if (method === "GET" && path === "/api/relay/plan") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const token = cfg.relay?.agentToken;
+      if (!token || !cfg.relay?.url) return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+      try {
+        const asked = await fetch(`${relayBase()}/space/agent/plan`, {
+          headers: { authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(8_000),
+        });
+        const said = (await asked.json().catch(() => ({}))) as { plan?: unknown; workspaceId?: unknown; spaces?: { online?: unknown; limit?: unknown } };
+        if (!asked.ok) return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+        const online = Number.isInteger(said.spaces?.online) ? (said.spaces!.online as number) : null;
+        const limit = Number.isInteger(said.spaces?.limit) ? (said.spaces!.limit as number) : null;
+        return json(res, 200, {
+          plan: typeof said.plan === "string" ? said.plan : null,
+          workspaceId: typeof said.workspaceId === "string" ? said.workspaceId : WORKSPACE_ID,
+          spaces: online === null ? null : { online, limit },
+          licence: Boolean(credits.savedLicence()),
+        });
+      } catch {
+        return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+      }
+    }
+    if (method === "DELETE" && path === "/api/relay/space") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const token = cfg.relay?.agentToken;
+      if (token && cfg.relay?.url) {
+        let gone: Response;
+        try {
+          gone = await fetch(`${relayBase()}/space/agent`, {
+            method: "DELETE",
+            headers: { authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(15_000),
+          });
+        } catch {
+          // kept as it was: a slot the relay still counts must not look free
+          return json(res, 502, { error: "Bloks Cloud could not be reached, so this workspace is still online. Try again in a moment" });
+        }
+        // 401 or 404 means the relay has already let it go
+        if (!gone.ok && gone.status !== 401 && gone.status !== 404) {
+          return json(res, 502, { error: `Bloks Cloud answered HTTP ${gone.status}, so this workspace is still online` });
+        }
+      }
+      Object.assign(cfg, saveConfig({ relay: { enabled: false, agentToken: "", clientToken: "" } }));
+      syncRelay(cfg);
+      return json(res, 200, { enabled: false, connected: false, spaceId: null });
     }
 
     // Bloks AI: what is left, the background switch and a team's member
@@ -21773,6 +22026,57 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       usage.flush();
       return json(res, 200, summarize(usage.since(days), days));
     }
+    // The Usage page's numbers: one span, for one agent or one engine if
+    // asked, and the span before it under the same filters. The person's,
+    // here or on a paired phone, like the plan behind it; an agent has
+    // GET /api/usage above for what it needs to say about spending.
+    if (method === "GET" && path === "/api/usage/report") {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      const asked = url.searchParams.get("range") ?? "";
+      const range: UsageRange = (USAGE_RANGES as readonly string[]).includes(asked) ? (asked as UsageRange) : "30d";
+      const filter = { bot: url.searchParams.get("bot") || null, engine: url.searchParams.get("engine") || null };
+      return json(res, 200, usageReport(usage.since(Math.min(365, rangeDays(range) * 2)), range, filter));
+    }
+    // Spending limits on the person's own keys (server/spend-limits.ts).
+    // Never an agent's to read or to move: the line is there to stop
+    // the agents, and one that could lift it would make it no line.
+    if (method === "GET" && path === "/api/spend-limits") {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      // the page that shows estimates asks for the list they come from
+      if (registry.instances().some(limitableEngine)) void prices.refresh();
+      return json(res, 200, { limits: spendLimitRows(), max: MAX_LIMIT_USD });
+    }
+    m = path.match(/^\/api\/spend-limits\/([\w.:-]+)$/);
+    if (m && method === "PUT") {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      const instanceId = m[1];
+      if (!limitableEngine(registry.get(instanceId))) {
+        return json(res, 404, { error: "a spending limit is for an engine on a key of your own, and there is no such engine" });
+      }
+      const sent = await readBody(req);
+      const body: Record<string, unknown> = sent && typeof sent === "object" && !Array.isArray(sent) ? sent : {};
+      // the limit, the engine's own price per million tokens, or both;
+      // each one left out stays as it was
+      const patch: Partial<AppConfig> = {};
+      if ("usd" in body) {
+        const usd = readLimit(body.usd);
+        if (usd === undefined) {
+          return json(res, 400, { error: `a limit is an amount in dollars, more than $0 and at most $${MAX_LIMIT_USD.toLocaleString("en-US")}` });
+        }
+        // null takes the limit off (saveConfig drops it from the file)
+        patch.spendLimits = { [instanceId]: usd } as unknown as Record<string, number>;
+      }
+      if ("price" in body) {
+        const price = readOwnPrice(body.price);
+        if (price === undefined) {
+          return json(res, 400, { error: "a price is dollars per million input tokens and per million output tokens, at least one of them more than $0" });
+        }
+        patch.spendPrices = { [instanceId]: price } as unknown as Record<string, OwnPrice>;
+      }
+      if (!patch.spendLimits && !patch.spendPrices) return json(res, 400, { error: "nothing to change: send usd, price or both" });
+      Object.assign(cfg, saveConfig(patch));
+      return json(res, 200, { limits: spendLimitRows(), max: MAX_LIMIT_USD });
+    }
 
     // ── routines (see server/routines.ts) ──
     // Scheduled work an agent does without being asked. The schedule is a
@@ -22521,6 +22825,9 @@ server.on("error", (error: NodeJS.ErrnoException) => {
 settleSidebar();
 server.listen(PORT, BIND, () => {
   console.log(`bloks server on http://127.0.0.1:${PORT}`);
+  // the desktop app counts what is waiting from the first moment, not
+  // from the first agent that changes
+  tellDesktop({ kind: "hello" });
   // turns cut off when Bloks last stopped, and messages that were
   // waiting on a turn (the second inside the first)
   recoverCutOff();

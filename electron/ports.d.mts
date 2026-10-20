@@ -30,4 +30,6 @@ export function failurePage(input: {
   inUse?: { pid: number; port: number } | null;
   /** the server started, then kept dying each time it was brought back */
   stopped?: boolean;
+  /** the data folder, as a person would find it; ~/.bloks by default */
+  folder?: string;
 }): string;

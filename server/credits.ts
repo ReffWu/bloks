@@ -204,6 +204,14 @@ export class CreditsAccount {
     return this.exchange();
   }
 
+  /** The licence this workspace was activated with, if it kept one: a
+   * workspace taken offline and put back online spends it again rather
+   * than asking for it twice. Never sent anywhere but the relay. */
+  savedLicence(): string | null {
+    const licence = this.store.read().licence;
+    return typeof licence === "string" && licence ? licence : null;
+  }
+
   /** A new licence: the old token goes with the old one. */
   setLicence(licence: string): void {
     const saved = this.store.read();

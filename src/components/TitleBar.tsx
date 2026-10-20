@@ -1,7 +1,8 @@
 // The window's top row: room for macOS's traffic lights over the rail,
-// then back and forward and the sidebar toggle, set where the panel below
-// begins. The whole row is the window's handle; its buttons are not.
-import { useEffect } from "react";
+// then back and forward and the sidebar toggle, then the workspace you
+// are in (WorkspaceSwitcher.tsx). The whole row is the window's handle;
+// its buttons are not.
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft } from "@/components/icons";
 import { ArrowRight } from "@/components/icons";
 import { PanelLeft } from "@/components/icons";
@@ -12,6 +13,7 @@ import { platformOf } from "@/lib/shortcuts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { TITLEBAR_TABS_ID } from "@/lib/titlebarSlot";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 const isElectron = navigator.userAgent.includes("Electron");
 /** The main rail's width (AppRail.tsx, w-14). */
@@ -83,6 +85,20 @@ export function TitleBar() {
     };
   }, [history]);
 
+  // Where the buttons on the left end, so a conversation's tabs start
+  // after them: the workspace's name is as long as its owner made it.
+  const cluster = useRef<HTMLDivElement>(null);
+  const [clusterEnd, setClusterEnd] = useState((isElectron ? 78 : 56) + 120);
+  useLayoutEffect(() => {
+    const el = cluster.current;
+    if (!el) return;
+    const measure = () => setClusterEnd(el.offsetLeft + el.offsetWidth);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+
   const mod = mac ? "⌘" : "Ctrl+";
   return (
     <TooltipProvider delayDuration={400}>
@@ -91,7 +107,7 @@ export function TitleBar() {
             electron/main.mjs), which reach past the slim rail below; a
             browser has none, so its buttons start at the rail's edge */}
         <div className={cn("shrink-0", isElectron ? "w-[78px]" : "w-14")} />
-        <div className="flex items-center gap-0.5 pl-1.5">
+        <div ref={cluster} className="flex min-w-0 items-center gap-0.5 pl-1.5">
           <BarButton label="Back" keys={`${mod}[`} disabled={!history.canBack} onClick={history.back}>
             <ArrowLeft size={17} strokeWidth={1.75} />
           </BarButton>
@@ -107,6 +123,10 @@ export function TitleBar() {
           >
             <PanelLeft size={17} strokeWidth={1.75} />
           </BarButton>
+          {/* the workspace you are in, right after the buttons that move
+              you around inside it, a hairline apart so the two read as
+              different things; nothing at all outside the desktop app */}
+          <WorkspaceSwitcher divider />
         </div>
         {/* An open conversation puts its tabs here (lib/titlebarSlot.ts),
             starting where the conversation itself starts so the open tab
@@ -116,7 +136,7 @@ export function TitleBar() {
         <div
           id={TITLEBAR_TABS_ID}
           className="absolute inset-y-0 right-0 flex min-w-0 items-end"
-          style={{ left: Math.max(RAIL + (chat && sidebar.open ? sidebar.width : 0) + 12, (isElectron ? 78 : 56) + 120) }}
+          style={{ left: Math.max(RAIL + (chat && sidebar.open ? sidebar.width : 0) + 12, clusterEnd + 8) }}
         />
       </div>
     </TooltipProvider>
