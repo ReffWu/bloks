@@ -13,3 +13,18 @@ export function startRemoteProxy(
   profile: RemoteProfile,
   options?: { staticDir?: string; port?: number; onState?: (state: Record<string, unknown>) => void; client?: string },
 ): Promise<{ port: number; stop: () => void }>;
+
+export interface JoinedProfile {
+  relayUrl?: string | null;
+  relayToken?: string | null;
+  deviceId: string;
+  deviceToken: string;
+  lan?: string | null;
+}
+
+export function reachOf(profile: Partial<JoinedProfile> | null | undefined): "relay" | "lan" | null;
+
+export function startLanProxy(
+  profile: JoinedProfile,
+  options?: { staticDir?: string; port?: number; client?: string; fetcher?: typeof fetch },
+): Promise<{ port: number; stop: () => void }>;

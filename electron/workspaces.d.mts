@@ -21,7 +21,8 @@ export interface WorkspaceEntry {
   accent: string | null;
   members: number | null;
   createdAt: number;
-  host?: { name: string; relayUrl: string };
+  host?: { name: string; relayUrl: string; lan?: string };
+  role?: "member" | "admin";
 }
 
 export interface Registry {
@@ -61,6 +62,7 @@ export function updateWorkspace(
     kind: string;
     team: boolean;
     notify: string;
+    role: "member" | "admin";
     mute: number | "forever" | null;
     mark: Mark;
     logo: string | null;
@@ -120,5 +122,7 @@ export function snapshot(
     mute: { muted: boolean; until: number | "forever" | null };
     dataDir: string | null;
     host?: string;
+    role?: "member" | "admin";
+    lanOnly?: boolean;
   }>;
 };

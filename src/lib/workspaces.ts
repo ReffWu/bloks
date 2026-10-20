@@ -48,12 +48,20 @@ export function currentWorkspace(s: WorkspacesState): WorkspaceInfo | null {
   return s.available ? (s.workspaces.find((w) => w.id === s.current) ?? null) : null;
 }
 
-/** "Just me", how many people, or "Team" before anyone has counted. */
-export function peopleLabel(ws: Pick<WorkspaceInfo, "team" | "members" | "kind">): string {
-  if (ws.kind === "joined") return ws.members ? `${ws.members} members` : "Joined";
+/** "Just me", how many people, or "Team" before anyone has counted. A
+ * workspace you joined says what you are there instead. */
+export function peopleLabel(ws: Pick<WorkspaceInfo, "team" | "members" | "kind"> & { role?: "member" | "admin" }): string {
+  if (ws.kind === "joined") return ws.role === "admin" ? "Admin" : "Member";
   if (!ws.team) return "Just me";
   if (ws.members === null) return "Team";
   return ws.members === 1 ? "1 member" : `${ws.members} members`;
+}
+
+/** The plain line a joined workspace reached only on its owner's own
+ * network carries, or null. */
+export function reachLine(ws: Pick<WorkspaceInfo, "kind" | "host"> & { lanOnly?: boolean }): string | null {
+  if (ws.kind !== "joined" || !ws.lanOnly) return null;
+  return `Reached only on ${ws.host ? `${ws.host}'s` : "its owner's"} network. Away from it, this workspace waits until you are back.`;
 }
 
 /** What the kind is called on its own line, under a name. */

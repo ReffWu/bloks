@@ -29,6 +29,9 @@ import { QuickAsk } from "@/components/QuickAsk";
 import { Toaster, toast } from "@/components/ui/toast";
 import { ConfirmHost } from "@/components/ui/confirm";
 import { TerminalWindow, terminalWindowAgent } from "@/components/terminal/TerminalWindow";
+import { MemberApp } from "@/components/member/MemberApp";
+import { detectMode, type AppMode } from "@/lib/memberMode";
+import { openWorkspaceDialog } from "@/lib/workspaces";
 
 /**
  * Whatever went wrong, said over every view as an error toast. It used to
@@ -226,7 +229,36 @@ export default function App() {
   // So does an agent's terminal popped out into a window of its own.
   const terminalFor = terminalWindowAgent(location.search);
   if (terminalFor) return <TerminalWindow botId={terminalFor} />;
+  return <WhichApp />;
+}
 
+/**
+ * The owner's app, or a member's. Decided once, as the page loads: a
+ * workspace this app runs itself is the owner's without asking; a joined
+ * one asks the member routes whether this credential is a member's
+ * (src/lib/memberMode.ts), and draws the member's app if so. Until it
+ * knows, the window holds on its own background for the moment a
+ * loopback request takes.
+ */
+function WhichApp() {
+  const [mode, setMode] = useState<AppMode | null>(null);
+  useEffect(() => {
+    void detectMode(window.bloks?.workspace?.kind).then(setMode);
+  }, []);
+  if (!mode) return <div className="h-full bg-background" />;
+  if (mode.mode !== "owner") {
+    return (
+      <MotionConfig reducedMotion="user">
+        <MemberApp mode={mode} />
+        <ConfirmHost />
+        <Toaster />
+      </MotionConfig>
+    );
+  }
+  return <OwnerApp />;
+}
+
+function OwnerApp() {
   // First launch runs the cinematic intro, then the working onboarding.
   // Two separate flags on purpose: someone who skips the intro still needs
   // setup, and someone who resets setup should not sit through the film
@@ -246,6 +278,9 @@ export default function App() {
   // the few milliseconds a loopback request takes.
   const [settled, setSettled] = useState(() => introPending() && !setupDone());
   useEffect(() => {
+    // sent here from a joined workspace's switcher to join another one:
+    // joining runs on this computer's own server, which this page has
+    if (new URLSearchParams(location.search).get("open") === "join") openWorkspaceDialog("join");
     initAnalytics();
     // The browser's flag is only a first guess: it is per origin, and the
     // app's origin moves with its port. The workspace itself is the

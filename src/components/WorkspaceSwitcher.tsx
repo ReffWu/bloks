@@ -12,7 +12,7 @@
 // and this component is drawn again by the workspace it now shows.
 import { useEffect, useRef, useState } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { BellOff, Check, ChevronsUpDown, Loader2, LogIn, Plus, RefreshCw, Settings } from "@/components/icons";
+import { BellOff, Check, ChevronsUpDown, Loader2, LogIn, Plus, RefreshCw, Settings, Wifi, LogOut } from "@/components/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/toast";
-import { useStore } from "@/state/store";
+import { useOptionalStore } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { platformOf } from "@/lib/shortcuts";
 import {
@@ -37,6 +37,7 @@ import {
   muteLabel,
   openWorkspaceDialog,
   peopleLabel,
+  reachLine,
   useWorkspaces,
   workspaceForKey,
 } from "@/lib/workspaces";
@@ -44,8 +45,8 @@ import type { WorkspaceInfo, WorkspacesState } from "@/types/bridge";
 import { WorkspaceMark } from "./WorkspaceMark";
 
 /** Goes to another workspace, saying so if it cannot. */
-export async function goToWorkspace(id: string) {
-  const error = await act(window.bloks?.workspaceSwitch?.(id));
+export async function goToWorkspace(id: string, options?: { open?: "join" }) {
+  const error = await act(window.bloks?.workspaceSwitch?.(id, options));
   if (error) toast.error(error);
 }
 
@@ -95,6 +96,7 @@ function WorkspaceRow({ ws, current, index }: { ws: WorkspaceInfo; current: stri
     >
       <WorkspaceMark mark={ws.mark} logo={ws.logo} size={24} />
       <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+      {ws.lanOnly && <Wifi size={13} className="shrink-0 text-muted-foreground" aria-label="Only on its owner's network" />}
       {hasWaiting(ws, current) && (
         <span className="size-1.5 shrink-0 rounded-full bg-brand-ink" role="img" aria-label="Something is waiting" />
       )}
@@ -130,16 +132,34 @@ function WorkspaceRow({ ws, current, index }: { ws: WorkspaceInfo; current: stri
   );
 }
 
-export function WorkspaceSwitcher({ className, divider = false }: { className?: string; divider?: boolean }) {
+export function WorkspaceSwitcher({
+  className,
+  divider = false,
+  onSettings,
+  onLeave,
+}: {
+  className?: string;
+  divider?: boolean;
+  /** Where Workspace settings goes in a member's app, which has no
+   * owner's settings to open. */
+  onSettings?: () => void;
+  /** Leaving the joined workspace on screen, in a member's app. */
+  onLeave?: () => void;
+}) {
   const s = useWorkspaces();
   const toDialog = useRef(false);
-  const { dispatch } = useStore();
+  const store = useOptionalStore();
   useWorkspaceKeys(s);
   const current = currentWorkspace(s);
   if (!s.available || !current) return null;
 
   const waitingElsewhere = s.workspaces.some((w) => hasWaiting(w, s.current));
   const muted = muteLabel(current.mute);
+  const reach = reachLine(current);
+  // Joining runs on a server of this computer's own, which a joined
+  // workspace's window does not have: it is done from Personal.
+  const joinHere = current.kind !== "joined";
+  const home = s.workspaces.find((w) => w.kind === "personal") ?? s.workspaces.find((w) => w.kind !== "joined");
 
   const mute = async (choice: string) => {
     const error = await act(window.bloks?.workspaceMute?.(current.id, choice));
@@ -204,6 +224,7 @@ export function WorkspaceSwitcher({ className, divider = false }: { className?: 
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator className="mx-1 my-1.5" />
         <DropdownMenuItem className="gap-2.5 rounded-[9px] py-2 text-ui font-medium" onSelect={() => {
+            if (!joinHere && home) return void goToWorkspace(home.id, { open: "join" });
             toDialog.current = true;
             openWorkspaceDialog("join");
           }}>
@@ -218,9 +239,10 @@ export function WorkspaceSwitcher({ className, divider = false }: { className?: 
           New workspace
         </DropdownMenuItem>
         <DropdownMenuSeparator className="mx-1 my-1.5" />
+        {reach && <p className="max-w-[270px] text-pretty px-2.5 pb-1.5 pt-0.5 text-small text-muted-foreground">{reach}</p>}
         <DropdownMenuItem
           className="gap-2.5 rounded-[9px] py-2 text-ui font-medium"
-          onSelect={() => dispatch({ type: "toggleAppSettings", open: true, page: "workspace:general" })}
+          onSelect={() => (onSettings ? onSettings() : store?.dispatch({ type: "toggleAppSettings", open: true, page: "workspace:general" }))}
         >
           <Settings />
           Workspace settings
@@ -250,6 +272,12 @@ export function WorkspaceSwitcher({ className, divider = false }: { className?: 
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        {current.kind === "joined" && onLeave && (
+          <DropdownMenuItem variant="destructive" className="gap-2.5 rounded-[9px] py-2 text-ui font-medium" onSelect={onLeave}>
+            <LogOut />
+            Leave {current.name}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

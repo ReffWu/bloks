@@ -94,6 +94,8 @@ export function ConfirmHost() {
           // a fresh dialog per question, so its focus starts over
           key={asking.id}
           showCloseButton={false}
+          // a question with no way past it but an answer: an alert dialog
+          role="alertdialog"
           className="w-[calc(100%-2rem)] max-w-[400px]"
           // no body, no description: said outright, or Radix warns
           {...(paragraphs.length ? {} : { "aria-describedby": undefined })}

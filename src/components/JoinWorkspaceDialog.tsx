@@ -18,7 +18,11 @@ async function keep(joined: Joined) {
       relayToken: credentials.relayToken,
       deviceId: credentials.deviceId,
       deviceToken: credentials.deviceToken,
+      // where it answers on the owner's network: the only way in for a
+      // join that never touched Bloks Cloud
+      lan: credentials.lan,
     },
+    role: credentials.role,
     name: welcome.workspace.name,
     mark: welcome.workspace.mark,
     host: welcome.inviter,

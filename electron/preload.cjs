@@ -57,7 +57,9 @@ contextBridge.exposeInMainWorld("bloks", {
   // the workspaces on this computer (electron/workspaces.mjs)
   workspacesState: () => ipcRenderer.invoke("workspaces:state"),
   onWorkspaces: subscription("workspaces:state"),
-  workspaceSwitch: (id) => ipcRenderer.invoke("workspaces:switch", id),
+  workspaceSwitch: (id, options) => ipcRenderer.invoke("workspaces:switch", id, options),
+  workspaceLeave: (id, options) => ipcRenderer.invoke("workspaces:leave", id, options),
+  workspaceRole: (role) => ipcRenderer.invoke("workspaces:role", role),
   workspaceCreate: (input) => ipcRenderer.invoke("workspaces:create", input),
   workspaceUpdate: (id, patch) => ipcRenderer.invoke("workspaces:update", id, patch),
   workspaceReroll: (id) => ipcRenderer.invoke("workspaces:reroll", id),

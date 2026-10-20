@@ -99,7 +99,12 @@ export function normalizeEntry(raw, index = 0) {
     entry.host = {
       name: typeof host.name === "string" ? host.name.slice(0, 60) : "",
       relayUrl: typeof host.relayUrl === "string" ? host.relayUrl : "",
+      // where it answers on the owner's own network, for a join that never
+      // touched Bloks Cloud: then that network is the only way in
+      lan: typeof host.lan === "string" && /^[0-9a-zA-Z.:[\]-]{3,80}$/.test(host.lan) ? host.lan : "",
     };
+    // what you are there, as its server last said: Member or Admin
+    entry.role = raw.role === "admin" ? "admin" : "member";
   }
   return entry;
 }
@@ -256,6 +261,7 @@ export function updateWorkspace(registry, id, patch, { random = Math.random } = 
   if (patch.port !== undefined) next.port = patch.port;
   if (patch.accent !== undefined) next.accent = patch.accent;
   if (patch.members !== undefined) next.members = Number.isInteger(patch.members) && patch.members >= 0 ? patch.members : null;
+  if (patch.role !== undefined && was.kind === "joined") next.role = patch.role === "admin" ? "admin" : "member";
 
   const workspaces = [...registry.workspaces];
   workspaces[at] = next;
@@ -434,7 +440,14 @@ export function snapshot(registry, live = {}, now = Date.now()) {
         notify: w.notify,
         mute: muteState(w, now),
         dataDir: w.dataDir,
-        ...(w.kind === "joined" ? { host: w.host?.name ?? "" } : {}),
+        ...(w.kind === "joined"
+          ? {
+              host: w.host?.name ?? "",
+              role: w.role === "admin" ? "admin" : "member",
+              // reached on the owner's network alone, with no Bloks Cloud
+              lanOnly: !w.host?.relayUrl && Boolean(w.host?.lan),
+            }
+          : {}),
       };
     }),
   };

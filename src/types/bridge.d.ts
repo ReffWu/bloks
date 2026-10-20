@@ -60,6 +60,10 @@ export interface WorkspaceInfo {
   dataDir: string | null;
   /** For a joined workspace: whose computer it is on. */
   host?: string;
+  /** For a joined workspace: what you are there. */
+  role?: "member" | "admin";
+  /** For a joined workspace reached only on its owner's own network. */
+  lanOnly?: boolean;
 }
 
 export type WorkspacesState =
@@ -88,7 +92,14 @@ declare global {
       /** The workspaces on this computer (electron/workspaces.mjs). */
       workspacesState?(): Promise<WorkspacesState>;
       onWorkspaces?(handler: (state: WorkspacesState) => void): () => void;
-      workspaceSwitch?(id: string): Promise<WorkspaceAnswer>;
+      /** With `open: "join"`, the workspace opens on the join dialog. */
+      workspaceSwitch?(id: string, options?: { open?: "join" }): Promise<WorkspaceAnswer>;
+      /** Leaves a joined workspace: tells its owner, forgets its
+       * credentials and its place in the list. `force` forgets it here
+       * even when the owner's computer cannot be told. */
+      workspaceLeave?(id: string, options?: { force?: boolean }): Promise<WorkspaceAnswer & { told?: boolean; unreachable?: boolean }>;
+      /** What you are in the joined workspace this page shows. */
+      workspaceRole?(role: "member" | "admin"): Promise<void>;
       workspaceCreate?(input: {
         kind: "business" | "custom";
         name: string;
@@ -113,7 +124,8 @@ declare global {
       /** Keeps a joined workspace's credentials and lists it; with `open`,
        * switches to it. */
       workspaceJoined?(input: {
-        profile: { relayUrl: string | null; relayToken: string | null; deviceId: string; deviceToken: string };
+        profile: { relayUrl: string | null; relayToken: string | null; deviceId: string; deviceToken: string; lan?: string | null };
+        role?: "member" | "admin";
         name: string;
         mark: WorkspaceMarkValue | null;
         host?: string;

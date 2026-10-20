@@ -1005,6 +1005,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
+/** The store, or null outside one: a member's app (src/components/member)
+ * has none, and the few pieces shared with it ask this way. */
+export function useOptionalStore() {
+  return useContext(StoreContext);
+}
+
 export function useStore() {
   const ctx = useContext(StoreContext);
   if (!ctx) throw new Error("useStore outside provider");

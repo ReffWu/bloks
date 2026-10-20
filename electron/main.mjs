@@ -44,7 +44,7 @@ import { appMenuTemplate } from "./app-menu.mjs";
 import { drainWait } from "./drain-wait.mjs";
 import { mayLookAgain, newestBeforeInstall, updateFrame } from "./update-check.mjs";
 import { markInstall, restartIntoUpdate, takeInstallMark, within } from "./update-restart.mjs";
-import { claimPairLink, startRemoteProxy } from "./remote.mjs";
+import { claimPairLink, reachOf, startLanProxy, startRemoteProxy } from "./remote.mjs";
 import { nativeSettingsObservation } from "./settings-observation.mjs";
 import { sameAppOrigin } from "./navigation.mjs";
 import { joinLink, linkInArgv, teamLink } from "./links.mjs";
@@ -660,7 +660,7 @@ function tellWorkspaces() {
  * next launch. `target` is a conversation to open once it has loaded,
  * from a banner's click; `welcome` is a workspace just made.
  */
-async function switchWorkspace(id, { target = null, welcome = false } = {}) {
+async function switchWorkspace(id, { target = null, welcome = false, query = "" } = {}) {
   const ws = entryOf(id);
   if (!ws) throw new Error("There is no such workspace.");
   if (!(await launch(id))) throw new Error(`${ws.name} would not start. ${servers.get(id)?.problem ?? ""}`.trim());
@@ -675,7 +675,7 @@ async function switchWorkspace(id, { target = null, welcome = false } = {}) {
     createWindow();
   } else {
     raise(win);
-    if (moved || welcome) void showIn(win, id, welcome ? "welcome=workspace" : "");
+    if (moved || welcome) void showIn(win, id, welcome ? "welcome=workspace" : query);
     else if (target) {
       pendingNotifyTarget = null;
       win.webContents.send("notify:activate", { target });
@@ -716,7 +716,7 @@ function readJoinedProfile(id) {
   try {
     if (!safeStorage.isEncryptionAvailable()) return null;
     const profile = JSON.parse(safeStorage.decryptString(fs.readFileSync(joinedFile(id))));
-    return profile?.deviceId && profile.deviceToken && profile.relayUrl ? profile : null;
+    return profile?.deviceId && profile.deviceToken && reachOf(profile) ? profile : null;
   } catch {
     return null;
   }
@@ -725,11 +725,12 @@ function readJoinedProfile(id) {
 /** Adds a joined workspace to the list, keeping its credentials in the
  * keychain. For the members work to call once an invite is approved;
  * answers the new entry. */
-export function addJoinedWorkspace(profile, { name, mark = null, team = true } = {}) {
+export function addJoinedWorkspace(profile, { name, mark = null, team = true, role = "member" } = {}) {
   if (!safeStorage.isEncryptionAvailable()) throw new Error("This computer cannot keep the membership safely, so it was not saved.");
   const id = `ws_${Date.now().toString(36)}`;
   fs.writeFileSync(joinedFile(id), safeStorage.encryptString(JSON.stringify(profile)), { mode: 0o600 });
-  registry = { ...registry, workspaces: [...registry.workspaces, { id, kind: "joined", name, team, mark, logo: null, dataDir: null, mute: null, notify: "all", order: registry.workspaces.length, port: null, accent: null, members: null, createdAt: Date.now(), host: { name: profile.host ?? "", relayUrl: profile.relayUrl } }] };
+  const host = { name: profile.host ?? "", relayUrl: profile.relayUrl ?? "", lan: profile.lan ?? "" };
+  registry = { ...registry, workspaces: [...registry.workspaces, { id, kind: "joined", name, team, mark, logo: null, dataDir: null, mute: null, notify: "all", order: registry.workspaces.length, port: null, accent: null, members: null, createdAt: Date.now(), host, role: role === "admin" ? "admin" : "member" }] };
   registry = settle(registry, { personalDataDir: personalDataDir() });
   saveRegistry();
   tellWorkspaces();
@@ -744,15 +745,21 @@ handle("workspaces:joined", (_event, input) =>
   answer(async () => {
     needsList();
     const p = input?.profile ?? {};
-    const ok =
-      typeof p.relayUrl === "string" && /^https:\/\/|^http:\/\/127\.0\.0\.1/.test(p.relayUrl) &&
-      typeof p.relayToken === "string" && typeof p.deviceId === "string" && typeof p.deviceToken === "string";
-    if (!ok) throw new Error("This workspace can only be reached on its own network for now, so it was not added. Ask for it to be made reachable online.");
+    // Through Bloks Cloud when the membership has a way through it, which
+    // works from anywhere; otherwise on the owner's own network, when the
+    // join never touched the relay at all.
+    const relay =
+      typeof p.relayUrl === "string" && /^https:\/\/|^http:\/\/127\.0\.0\.1/.test(p.relayUrl) && typeof p.relayToken === "string" && p.relayToken
+        ? { relayUrl: p.relayUrl.replace(/\/+$/, ""), relayToken: p.relayToken }
+        : null;
+    const lan = typeof p.lan === "string" && /^[0-9a-zA-Z.:[\]-]{3,80}$/.test(p.lan) ? p.lan : null;
+    const ok = typeof p.deviceId === "string" && typeof p.deviceToken === "string" && (relay || lan);
+    if (!ok) throw new Error("This membership did not say how to reach that computer, so it was not added. Ask for a new invite.");
     const mark = input?.mark && typeof input.mark.color === "string" && typeof input.mark.pattern === "string" ? { color: input.mark.color, pattern: input.mark.pattern } : null;
     const name = typeof input?.name === "string" && input.name.trim() ? input.name.trim().slice(0, 60) : "A workspace";
     const entry = addJoinedWorkspace(
-      { relayUrl: p.relayUrl.replace(/\/+$/, ""), relayToken: p.relayToken, deviceId: p.deviceId, deviceToken: p.deviceToken, host: typeof input?.host === "string" ? input.host.slice(0, 60) : "" },
-      { name, mark },
+      { ...(relay ?? {}), ...(lan ? { lan } : {}), deviceId: p.deviceId, deviceToken: p.deviceToken, host: typeof input?.host === "string" ? input.host.slice(0, 60) : "" },
+      { name, mark, role: input?.role === "admin" ? "admin" : "member" },
     );
     if (input?.open) await switchWorkspace(entry.id);
     return { ok: true, id: entry.id };
@@ -767,11 +774,14 @@ async function openJoined(run, ws) {
   }
   try {
     const system = { darwin: "macOS", win32: "Windows", linux: "Linux" }[process.platform] ?? process.platform;
-    run.proxy = await startRemoteProxy(profile, {
+    // the owner's own network when the membership has no way through Bloks
+    // Cloud; the same stand-in on loopback either way
+    const start = reachOf(profile) === "lan" ? startLanProxy : startRemoteProxy;
+    run.proxy = await start(profile, {
       staticDir: serverSource().ui,
       client: `${system} ${app.getVersion()}`,
       port: ws.port ?? 0,
-    }).catch(() => startRemoteProxy(profile, { staticDir: serverSource().ui, client: `${system} ${app.getVersion()}`, port: 0 }));
+    }).catch(() => start(profile, { staticDir: serverSource().ui, client: `${system} ${app.getVersion()}`, port: 0 }));
     run.port = run.proxy.port;
     rememberPort(ws, run.port);
     return true;
@@ -799,12 +809,58 @@ const needsList = () => {
 
 handle("workspaces:state", () => workspacesState());
 
-handle("workspaces:switch", (_event, id) =>
+// `open: "join"` opens the workspace on the join dialog: joining runs on a
+// server of this computer's own, which a joined workspace's window has not.
+handle("workspaces:switch", (_event, id, options) =>
   answer(async () => {
     needsList();
-    await switchWorkspace(String(id));
+    await switchWorkspace(String(id), { query: options?.open === "join" ? "open=join" : "" });
   }),
 );
+
+// Leaving a workspace joined on someone else's computer: its owner is told
+// (the member route takes the person out at once), then the credentials
+// and its place in the list go. When that computer cannot be reached the
+// window is told so, and may ask again with `force` to forget it here.
+handle("workspaces:leave", (_event, id, options) =>
+  answer(async () => {
+    needsList();
+    const ws = entryOf(String(id));
+    if (!ws || ws.kind !== "joined") throw new Error("Only a workspace you joined can be left.");
+    let told = false;
+    if (await launch(ws.id).catch(() => false)) {
+      const port = servers.get(ws.id)?.port;
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/member/leave`, { method: "POST", signal: AbortSignal.timeout(20_000) });
+        // already out is out
+        told = res.ok || res.status === 401 || res.status === 403;
+      } catch {
+        told = false;
+      }
+    }
+    if (!told && options?.force !== true) return { ok: false, unreachable: true };
+    if (shownId === ws.id) await switchWorkspace(PERSONAL_ID);
+    await halt(ws.id);
+    registry = removeWorkspace(registry, ws.id).registry;
+    saveRegistry();
+    waitingCounts.delete(ws.id);
+    fs.rmSync(joinedFile(ws.id), { force: true });
+    tellWorkspaces();
+    applyBadge();
+    return { ok: true, told };
+  }),
+);
+
+/** What you are in the joined workspace a window shows, as its server
+ * says, for the switcher's Member or Admin. */
+handle("workspaces:role", (event, role) => {
+  const id = senderWorkspace(event);
+  const ws = id ? entryOf(id) : null;
+  if (!ws || ws.kind !== "joined" || (role !== "admin" && role !== "member") || ws.role === role) return;
+  registry = updateWorkspace(registry, id, { role });
+  saveRegistry();
+  tellWorkspaces();
+});
 
 handle("workspaces:create", (_event, input) =>
   answer(async () => {

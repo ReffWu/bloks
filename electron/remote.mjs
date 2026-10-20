@@ -400,3 +400,110 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
     },
   };
 }
+
+// ── a workspace joined on the owner's own network ──────────────────────
+// A join that never touched Bloks Cloud still makes a membership: the
+// device token the owner's computer knows, and where it answers on the
+// network. This stands in for that computer on loopback the same way,
+// calling it directly with the member's token, so the window cannot tell
+// the difference. It only works while both computers are on that network,
+// which the switcher says.
+
+/** Where a joined workspace is reached: Bloks Cloud when the membership
+ * has a way through it, which works from anywhere, else the owner's own
+ * network, else nowhere this app knows. */
+export function reachOf(profile) {
+  if (profile?.relayUrl && profile.relayToken) return "relay";
+  if (typeof profile?.lan === "string" && /^[0-9a-zA-Z.:[\]-]{3,80}$/.test(profile.lan)) return "lan";
+  return null;
+}
+
+/**
+ * Serves the UI from `staticDir` and forwards the API to the owner's
+ * computer on this network, with the member's own token. Resolves with
+ * the port and a stop function.
+ */
+export async function startLanProxy(profile, { staticDir, port = 0, client, fetcher = fetch } = {}) {
+  const base = `http://${profile.lan}`;
+  const auth = { authorization: `Bearer ${profile.deviceToken}`, ...(client ? { "x-bloks-client": client } : {}) };
+  const open = new Set();
+  const serveStatic = (req, res) => {
+    const url = new URL(req.url, "http://x");
+    const path = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, "");
+    let file = join(staticDir, path);
+    if (!file.startsWith(staticDir) || !existsSync(file) || statSync(file).isDirectory()) file = join(staticDir, "index.html");
+    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", ...PAGE_HEADERS });
+    res.end(readFileSync(file));
+  };
+  const server = createServer(async (req, res) => {
+    if (!fromThisComputer(req)) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not from this computer" }));
+      return;
+    }
+    const url = new URL(req.url, "http://x");
+    if (!url.pathname.startsWith("/api/")) return serveStatic(req, res);
+    if (url.pathname === "/api/events") {
+      // the owner's computer's own stream, passed through as it comes; the
+      // window's EventSource dials again when it ends
+      const abort = new AbortController();
+      open.add(abort);
+      req.on("close", () => {
+        abort.abort();
+        open.delete(abort);
+      });
+      try {
+        const upstream = await fetcher(`${base}/api/events${url.search}`, { headers: { accept: "text/event-stream", ...auth }, signal: abort.signal });
+        if (upstream.status !== 200 || !upstream.body) throw new Error(String(upstream.status));
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+        const reader = upstream.body.getReader();
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+      } catch {
+        /* not on that network right now: the window shows it offline */
+      }
+      if (!res.headersSent) res.writeHead(503, { "content-type": "application/json" });
+      res.end();
+      return;
+    }
+    try {
+      const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
+      const answer = await fetcher(`${base}${url.pathname}${url.search}`, {
+        method: req.method,
+        headers: { ...(body && body.length ? { "content-type": req.headers["content-type"] ?? "application/json" } : {}), ...auth },
+        ...(body && body.length ? { body } : {}),
+        signal: AbortSignal.timeout(75_000),
+      });
+      const type = answer.headers.get("content-type") ?? "application/octet-stream";
+      res.writeHead(answer.status, {
+        "content-type": type,
+        "x-content-type-options": "nosniff",
+        // a file served as itself stays sandboxed off this origin, as the
+        // owner's server would have had it
+        ...(/^application\/json\b/i.test(type) ? {} : { "content-security-policy": "sandbox allow-scripts" }),
+      });
+      res.end(Buffer.from(await answer.arrayBuffer()));
+    } catch (e) {
+      const status = e?.status ?? 503;
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: status === 413 ? e.message : "the owner's computer is not reachable on this network" }));
+    }
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  return {
+    port: server.address().port,
+    stop: () => {
+      for (const abort of open) abort.abort();
+      server.close();
+    },
+  };
+}
