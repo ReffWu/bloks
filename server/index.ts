@@ -14627,12 +14627,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const path = url.pathname;
   const method = req.method ?? "GET";
-  // Health, for anything on this machine, before any other check: the
-  // platform that runs a hosted workspace polls it from beside the server,
-  // through whatever Host its proxy chose and with whatever headers it
-  // carries, and a health check that needs a credential is one that fails
-  // for the wrong reason. It says nothing a paired phone is not told.
-  if (method === "GET" && path === "/api/health" && isLoopbackPeer(req)) return json(res, 200, healthBody());
   // The virtual desktop's viewer on a hosted workspace, by its ticket.
   if (path.startsWith("/hosted/desktop/")) return proxyDesktop(req, res, path, url.search);
   // Reply bearers are checked before open webhook routes too. A spent
@@ -14647,6 +14641,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       return json(res, 200, { ok: true, result });
     } catch (error) { return json(res, 403, { error: (error as Error).message }); }
   }
+
+  // Health on a hosted workspace, for anything on that machine, before the
+  // checks below: the platform that runs it polls from beside the server,
+  // through whatever Host its proxy chose and with whatever headers it
+  // carries, and a health check that needs a credential fails for the
+  // wrong reason. It says nothing a paired phone is not told. A Mac keeps
+  // its own rule, where a Host from the network is the network.
+  if (HOSTED && method === "GET" && path === "/api/health" && isLoopbackPeer(req)) return json(res, 200, healthBody());
 
   // Webhook ingress stands apart from every other boundary: the token in
   // the URL is the whole credential, exactly as webhook senders expect.
