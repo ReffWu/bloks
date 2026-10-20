@@ -85,7 +85,7 @@ export function describeAttempt(attempt) {
  * brought back (electron/server-life.mjs), which is not a port problem
  * either.
  */
-export function failurePage({ attempts, crash, backdrop, machine, inUse = null, stopped = false }) {
+export function failurePage({ attempts, crash, backdrop, machine, inUse = null, stopped = false, folder = "~/.bloks" }) {
   const crashed = !inUse && (stopped || attempts.some((a) => a.why === "exited")) && crash;
   const title = inUse
     ? "Bloks is already running on this " + machine
@@ -95,7 +95,7 @@ export function failurePage({ attempts, crash, backdrop, machine, inUse = null, 
         ? "The Bloks server stopped while starting"
         : "Couldn't find a free port for Bloks";
   const lead = inUse
-    ? `Another Bloks server (process ${inUse.pid}) is using your Bloks data in ~/.bloks, at http://127.0.0.1:${inUse.port}. ` +
+    ? `Another Bloks server (process ${inUse.pid}) is using your Bloks data in ${escapeHtml(folder)}, at http://127.0.0.1:${inUse.port}. ` +
       "Two servers on one data folder overwrite each other's changes, so this window does not start a second one. " +
       "Open that address in a browser to use it, or stop that server and reopen Bloks."
     : stopped

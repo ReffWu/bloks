@@ -20,7 +20,60 @@ function subscription(channel) {
   };
 }
 
+/**
+ * The workspace this page belongs to, with the theme and accent the app
+ * keeps for it (electron/main.mjs, workspaces:boot), asked before the
+ * page's own scripts run. Every workspace is an origin of its own, and an
+ * origin's storage starts empty, so without this a workspace opened for
+ * the first time would draw itself in the default theme and then flip.
+ * The page's storage is the same storage the page reads, from here.
+ */
+const boot = (() => {
+  let said = null;
+  try {
+    said = ipcRenderer.sendSync("workspaces:boot");
+  } catch {
+    return null;
+  }
+  if (!said) return null;
+  try {
+    if (said.theme) localStorage.setItem("bloks-theme", said.theme);
+    else {
+      // the first workspace to open after the update hands over the
+      // theme it already had, so nobody's choice is lost
+      const mine = localStorage.getItem("bloks-theme");
+      if (mine) ipcRenderer.invoke("prefs:theme", mine).catch(() => {});
+    }
+    if (said.accent) localStorage.setItem("bloks-accent", said.accent);
+  } catch {
+    /* storage refused; the page falls back to its defaults */
+  }
+  return said.workspace ?? null;
+})();
+
 contextBridge.exposeInMainWorld("bloks", {
+  /** Which workspace this page is, or null outside one. */
+  workspace: boot,
+  // the workspaces on this computer (electron/workspaces.mjs)
+  workspacesState: () => ipcRenderer.invoke("workspaces:state"),
+  onWorkspaces: subscription("workspaces:state"),
+  workspaceSwitch: (id) => ipcRenderer.invoke("workspaces:switch", id),
+  workspaceCreate: (input) => ipcRenderer.invoke("workspaces:create", input),
+  workspaceUpdate: (id, patch) => ipcRenderer.invoke("workspaces:update", id, patch),
+  workspaceReroll: (id) => ipcRenderer.invoke("workspaces:reroll", id),
+  workspaceMute: (id, choice) => ipcRenderer.invoke("workspaces:mute", id, choice),
+  workspaceRetry: (id) => ipcRenderer.invoke("workspaces:retry", id),
+  workspaceReorder: (ids) => ipcRenderer.invoke("workspaces:reorder", ids),
+  workspaceDelete: (id) => ipcRenderer.invoke("workspaces:delete", id),
+  workspaceLogoPick: (id) => ipcRenderer.invoke("workspaces:logo-pick", id),
+  workspaceLogoClear: (id) => ipcRenderer.invoke("workspaces:logo-clear", id),
+  /** How many people this workspace has, for the switcher (Members). */
+  workspaceMembers: (count) => ipcRenderer.invoke("workspaces:members", count),
+  prefsTheme: (theme) => ipcRenderer.invoke("prefs:theme", theme),
+  prefsAccent: (accent) => ipcRenderer.invoke("prefs:accent", accent),
+  /** What a banner clicked before this page loaded was about. */
+  pendingNotifyTarget: () => ipcRenderer.invoke("notify:pending"),
+
   screenFrame: () => ipcRenderer.invoke("screen:frame"),
 
   notifyShow: (notice) => ipcRenderer.invoke("notify:show", notice),
