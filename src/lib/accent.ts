@@ -183,6 +183,19 @@ export function chooseAccent(id: string) {
   } catch {
     /* holds for this visit */
   }
+  // The accent belongs to the workspace, so each can look like itself;
+  // the desktop app keeps it too, since a workspace's storage belongs to
+  // its port and a port can move (electron/main.mjs prefs:accent).
+  void window.bloks?.prefsAccent?.(accent.id)?.catch?.(() => {});
   applyAccent(accent);
   return accent;
+}
+
+/** Whether this origin has an accent of its own yet. */
+export function hasStoredAccent(): boolean {
+  try {
+    return Boolean(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return true;
+  }
 }

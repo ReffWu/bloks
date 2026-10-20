@@ -14,10 +14,17 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 
-// the running server writes its port down, and it is not always 8799
+// the running server writes its port down, and it is not always 8799;
+// it writes it in its data folder, which BLOKS_DATA_DIR can move
+const dataDir = (() => {
+  const said = process.env.BLOKS_DATA_DIR?.trim();
+  if (!said) return join(homedir(), ".bloks");
+  if (said === "~") return homedir();
+  return said.startsWith("~/") ? join(homedir(), said.slice(2)) : resolve(said);
+})();
 const writtenPort = (() => {
   try {
-    return readFileSync(join(homedir(), ".bloks", "port"), "utf8").trim();
+    return readFileSync(join(dataDir, "port"), "utf8").trim();
   } catch {
     return "";
   }

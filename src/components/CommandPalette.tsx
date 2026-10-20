@@ -38,6 +38,10 @@ import { askChat } from "@/lib/chatAsk";
 import { splitHighlight } from "@/lib/find";
 import { keysFor, platformOf } from "@/lib/shortcuts";
 import { cn } from "@/lib/cn";
+import { openWorkspaceDialog, useWorkspaces } from "@/lib/workspaces";
+import type { WorkspaceInfo } from "@/types/bridge";
+import { WorkspaceMark } from "./WorkspaceMark";
+import { goToWorkspace } from "./WorkspaceSwitcher";
 
 interface MessageHit {
   threadId: string;
@@ -224,6 +228,30 @@ export function CommandPalette() {
     return list;
   }, [bot, working, dispatch]);
 
+  // The other workspaces are places too, and the way to them at any
+  // width: the switcher lives in the title bar, which a narrow window hides.
+  const workspaces = useWorkspaces();
+  const elsewhere = useMemo<Command[]>(() => {
+    if (!workspaces.available) return [];
+    const markOf = (ws: WorkspaceInfo): Icon => {
+      const Mark = ({ size = 16 }: { size?: number }) => <WorkspaceMark mark={ws.mark} logo={ws.logo} size={size} />;
+      return Mark;
+    };
+    return [
+      ...workspaces.workspaces
+        .filter((ws) => ws.id !== workspaces.current && ws.status !== "failed")
+        .map((ws) => ({
+          id: `workspace:${ws.id}`,
+          label: `Switch to ${ws.name}`,
+          keywords: "workspace switch go open",
+          icon: markOf(ws),
+          run: () => void goToWorkspace(ws.id),
+        })),
+      { id: "workspaceSettings", label: "Workspace settings", keywords: "workspace name mark members online notifications mute", icon: SettingsIcon, quiet: true, run: () => dispatch({ type: "toggleAppSettings", open: true, page: "workspace:general" }) },
+      { id: "newWorkspace", label: "New workspace", keywords: "workspace create add business team", icon: Plus, quiet: true, run: () => openWorkspaceDialog("new") },
+    ];
+  }, [workspaces, dispatch]);
+
   // The app's places, as the rail has them.
   const places = useMemo<Command[]>(
     () => [
@@ -233,8 +261,9 @@ export function CommandPalette() {
       { id: "plugins", label: "Plugins", keywords: "apps skills connectors integrations tools mcp", icon: Puzzle, run: () => dispatch({ type: "openPage", page: "plugins" }) },
       { id: "usage", label: "Usage", keywords: "cost spend tokens spending limit plan billing", icon: UsageIcon, run: () => dispatch({ type: "openPage", page: "usage" }) },
       { id: "settings", label: "Settings", keywords: "preferences options", icon: SettingsIcon, run: () => dispatch({ type: "toggleAppSettings", open: true }) },
+      ...elsewhere,
     ],
-    [dispatch],
+    [dispatch, elsewhere],
   );
 
   const commands = useMemo(

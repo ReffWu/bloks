@@ -8,6 +8,7 @@
 // for this start is put in place (server/pending-restore.ts).
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
+import { SaidOnce, desktopNotice, noticeKey, unreadCount as desktopUnreadCount } from "./desktop-notice.ts";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, openAsBlob, readdirSync, readFileSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
@@ -549,6 +550,9 @@ const PORT = Number(process.env.BLOKS_PORT || loadConfig().port || 8799);
   }
 }
 const STATIC_DIR = process.env.BLOKS_STATIC_DIR || null;
+/** Which of the desktop app's workspaces this server is: it says so when
+ * it starts one. Its own relay space is kept under this id. */
+const WORKSPACE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(process.env.BLOKS_WORKSPACE_ID ?? "") ? process.env.BLOKS_WORKSPACE_ID! : "personal";
 const MIME: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -2357,6 +2361,11 @@ function broadcast(payload: unknown) {
   try {
     noteActivityCard(payload);
   } catch {}
+  // and to the desktop app that started this server, when one did, so a
+  // workspace in the background can still say it needs the person
+  try {
+    tellDesktop(payload);
+  } catch {}
   if ((payload as { kind?: string })?.kind !== "screen") {
     try {
       relayLink.publish(payload, wakeFor(payload));
@@ -2366,6 +2375,39 @@ function broadcast(payload: unknown) {
       console.error(redactSecrets(error instanceof Error ? error.message : "[bloks] Relay frame could not be sent."));
     }
   }
+}
+
+/**
+ * The desktop app that started this server, when one did (Electron hands
+ * its own children a port nobody else can reach). It runs a server per
+ * workspace and shows one; the others tell it here what a window would
+ * have raised a banner for (server/desktop-notice.ts) and how many
+ * conversations are waiting, for the Dock badge and the switcher's dot.
+ * The app decides, by each workspace's mute and level, what is shown.
+ */
+type DesktopPort = { postMessage(message: unknown): void };
+const desktop = (process as NodeJS.Process & { parentPort?: DesktopPort }).parentPort ?? null;
+const desktopSaid = new SaidOnce();
+let desktopUnread = -1;
+
+function tellDesktop(payload: unknown) {
+  if (!desktop) return;
+  const kind = (payload as { kind?: string })?.kind;
+  if (kind === "bot" || kind === "bot.deleted" || kind === "hello") {
+    const count = desktopUnreadCount(store.bots);
+    if (count !== desktopUnread) {
+      desktopUnread = count;
+      desktop.postMessage({ kind: "desktop.unread", count });
+    }
+    return;
+  }
+  const notice = desktopNotice(payload, {
+    bot: (threadId) => store.botByThread(threadId),
+    room: (threadId) => bloks.get(threadId) ?? null,
+    goalRunning: (threadId) =>
+      store.botByThread(threadId)?.tasks.find((t) => t.id === threadId)?.goal?.status === "active",
+  });
+  if (notice && desktopSaid.take(noticeKey(payload))) desktop.postMessage({ kind: "desktop.notice", notice });
 }
 
 /** A frame for the owner's own surfaces and nobody else: this server's
@@ -16472,7 +16514,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (method === "POST" && path === "/api/relay/activate") {
       if (!local) return json(res, 403, { error: "not from here" });
       const body = await readBody(req);
-      const key = typeof body.key === "string" ? body.key.trim() : "";
+      // `again: true` puts a workspace back online with the licence it was
+      // activated with (Reachable online's switch), without asking for it
+      const key = typeof body.key === "string" && body.key.trim()
+        ? body.key.trim()
+        : body.again === true ? (credits.savedLicence() ?? "") : "";
       if (!CLOUD_KEY.test(key)) {
         return json(res, 400, {
           error: "that is not a Bloks Cloud key. One starts with blok_live_ and ends in 32 hex characters",
@@ -16484,6 +16530,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         minted = await fetch(`${url}/spaces`, {
           method: "POST",
           headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+          // One licence can hold a space per workspace; the desktop app
+          // names this server's workspace, and a server on its own is the
+          // one space it always was.
+          body: JSON.stringify({ workspaceId: WORKSPACE_ID }),
           signal: AbortSignal.timeout(15_000),
         });
       } catch {
@@ -16550,6 +16600,60 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         url,
         enabled: Boolean(cfg.relay?.enabled),
       });
+    }
+
+    // Reachable online (the desktop app's workspace settings): how many of
+    // the plan's workspaces are online, in the relay's own words, and the
+    // switch that takes this one offline. Off frees its slot at the relay
+    // (DELETE /space/agent) rather than only hanging up, since a plan that
+    // keeps three online counts spaces, not open lines; the licence stays,
+    // so turning it on again is one click (activate with again: true).
+    if (method === "GET" && path === "/api/relay/plan") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const token = cfg.relay?.agentToken;
+      if (!token || !cfg.relay?.url) return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+      try {
+        const asked = await fetch(`${relayBase()}/space/agent/plan`, {
+          headers: { authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(8_000),
+        });
+        const said = (await asked.json().catch(() => ({}))) as { plan?: unknown; workspaceId?: unknown; spaces?: { online?: unknown; limit?: unknown } };
+        if (!asked.ok) return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+        const online = Number.isInteger(said.spaces?.online) ? (said.spaces!.online as number) : null;
+        const limit = Number.isInteger(said.spaces?.limit) ? (said.spaces!.limit as number) : null;
+        return json(res, 200, {
+          plan: typeof said.plan === "string" ? said.plan : null,
+          workspaceId: typeof said.workspaceId === "string" ? said.workspaceId : WORKSPACE_ID,
+          spaces: online === null ? null : { online, limit },
+          licence: Boolean(credits.savedLicence()),
+        });
+      } catch {
+        return json(res, 200, { plan: null, spaces: null, licence: Boolean(credits.savedLicence()) });
+      }
+    }
+    if (method === "DELETE" && path === "/api/relay/space") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const token = cfg.relay?.agentToken;
+      if (token && cfg.relay?.url) {
+        let gone: Response;
+        try {
+          gone = await fetch(`${relayBase()}/space/agent`, {
+            method: "DELETE",
+            headers: { authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(15_000),
+          });
+        } catch {
+          // kept as it was: a slot the relay still counts must not look free
+          return json(res, 502, { error: "Bloks Cloud could not be reached, so this workspace is still online. Try again in a moment" });
+        }
+        // 401 or 404 means the relay has already let it go
+        if (!gone.ok && gone.status !== 401 && gone.status !== 404) {
+          return json(res, 502, { error: `Bloks Cloud answered HTTP ${gone.status}, so this workspace is still online` });
+        }
+      }
+      Object.assign(cfg, saveConfig({ relay: { enabled: false, agentToken: "", clientToken: "" } }));
+      syncRelay(cfg);
+      return json(res, 200, { enabled: false, connected: false, spaceId: null });
     }
 
     // Bloks AI: what is left, the background switch and a team's member
@@ -22201,6 +22305,9 @@ server.on("error", (error: NodeJS.ErrnoException) => {
 settleSidebar();
 server.listen(PORT, BIND, () => {
   console.log(`bloks server on http://127.0.0.1:${PORT}`);
+  // the desktop app counts what is waiting from the first moment, not
+  // from the first agent that changes
+  tellDesktop({ kind: "hello" });
   // turns cut off when Bloks last stopped, and messages that were
   // waiting on a turn (the second inside the first)
   recoverCutOff();
