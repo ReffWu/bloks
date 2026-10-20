@@ -29,7 +29,7 @@ test("hosted offers this machine and off, and refuses a box or a VM", () => {
   assert.equal(computerRefusal("local", true), null);
   assert.equal(computerRefusal(null, true), null);
   assert.equal(computerRefusal("cloud", false), null, "on a Mac nothing changes");
-  assert.ok(computerRefusal("moon", false), "and nonsense is refused anywhere");
+  assert.ok(computerRefusal("moon", true), "and nonsense is refused on a hosted workspace");
 });
 
 test("a box or a VM chosen on a Mac becomes this machine once hosted, and off stays off", () => {

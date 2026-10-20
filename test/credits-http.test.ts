@@ -6,7 +6,8 @@
 // licence that forgets the old token.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { startHarness, type Harness } from "./helpers/server.ts";
@@ -179,4 +180,45 @@ test("an agent's access is credits or its own sign-in, and nothing else", async 
   assert.equal((await patch({ engineAccess: "own" })).status, 200);
   const off = (await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id);
   assert.equal(off.engineAccess ?? null, null);
+});
+
+test("the nightly tidy leaves an agent on credits alone until background work may spend them; Tidy now always may", async (t) => {
+  const fake = await service(t);
+  const token = await tokenFrom(fake);
+  const clockHome = mkdtempSync(join(tmpdir(), "bloks-credits-clock-"));
+  t.after(() => rmSync(clockHome, { recursive: true, force: true }));
+  const clockFile = join(clockHome, "offset");
+  writeFileSync(clockFile, "0");
+  const h = await harness(t, {
+    BLOKS_CREDITS_URL: fake.base,
+    BLOKS_CREDITS_TOKEN: token,
+    NODE_OPTIONS: `--import=${new URL("./helpers/scheduler-clock.mjs", import.meta.url).href}`,
+    BLOKS_TEST_CLOCK_FILE: clockFile,
+  });
+  // the brief should not be made by the clock passing eight
+  await h.fetch("/api/briefs/settings", { method: "PATCH", body: JSON.stringify({ enabled: false }) });
+  const bot = await agentOnCredits(h);
+  const remember = (text: string) => h.fetch(`/api/bots/${bot.id}/memory`, { method: "PUT", body: JSON.stringify({ text }) });
+  await remember("- Opens at seven.\n- Closes at three.\n- Sourdough on Fridays.\n- Rye on Tuesdays.\n");
+  await waitFor(async () => (await h.json("/api/instances")).instances.find((i: any) => i.instanceId === "bloks" && i.snapshot.state === "available"));
+  const tidyAsked = () => fake.completions.length;
+
+  const now = new Date();
+  const night = (days: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, 2, 30).getTime() - now.getTime();
+  writeFileSync(clockFile, String(night(1)));
+  const first = await waitFor(async () => (await h.json(`/api/bots/${bot.id}/memory/tidy`)).runs[0], 20_000);
+  assert.ok(first, "the night came");
+  assert.match(first.note ?? "", /No engine could read it/);
+  assert.equal(tidyAsked(), 0, "nothing was spent on work nobody asked for");
+
+  await h.fetch("/api/credits", { method: "PATCH", body: JSON.stringify({ background: true }) });
+  await remember("- Opens at seven.\n- Closes at four now.\n- Sourdough on Fridays.\n- Rye on Tuesdays.\n");
+  writeFileSync(clockFile, String(night(2)));
+  const second = await waitFor(async () => (await h.json(`/api/bots/${bot.id}/memory/tidy`)).runs.length >= 2, 20_000);
+  assert.ok(second);
+  assert.equal(tidyAsked(), 1, "allowed, the night's tidy runs on credits");
+
+  await h.fetch("/api/credits", { method: "PATCH", body: JSON.stringify({ background: false }) });
+  await h.fetch(`/api/bots/${bot.id}/memory/tidy`, { method: "POST" });
+  assert.equal(tidyAsked(), 2, "Tidy now is asked for, so it may");
 });

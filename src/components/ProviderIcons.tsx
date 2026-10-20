@@ -175,6 +175,19 @@ export function PiMark({ size = 16, className }: IconProps) {
   );
 }
 
+/** The Bloks engine, which runs on credits: the brand's own ink carrying
+ * its foreground, so the letter reads in either theme. */
+function BloksMark({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={cn(className)}>
+      <rect width="24" height="24" rx="6" fill="var(--brand-ink)" />
+      <text x="12" y="16.5" textAnchor="middle" fontSize="13" fontWeight="600" fill="var(--brand-foreground)" fontFamily="Inter, system-ui, sans-serif">
+        B
+      </text>
+    </svg>
+  );
+}
+
 const LETTERED: Record<string, { letter: string; tone: string }> = {
   deepseek: { letter: "D", tone: "#4d6bfe" },
   mistral: { letter: "M", tone: "#fa520f" },
@@ -207,6 +220,8 @@ export function ProviderMark({ driverKind, size, className }: IconProps & { driv
       return <RouterMark size={size} className={className} />;
     case "pi":
       return <PiMark size={size} className={className} />;
+    case "bloks":
+      return <BloksMark size={size} className={className} />;
   }
   const lettered = LETTERED[driverKind];
   if (lettered) return <LetterMark {...lettered} size={size} className={className} />;

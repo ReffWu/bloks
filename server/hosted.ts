@@ -50,13 +50,15 @@ export function computerChoices(hosted: boolean): Array<{ id: ComputerMode; labe
 }
 
 /** Why an agent's computer cannot be set to `value`, or null when it can.
- * Null is automatic and is always allowed. */
+ * Null is automatic and is always allowed. On a Mac nothing is refused
+ * here, as before hosted mode existed: what a phone already sends keeps
+ * working. A hosted workspace holds the value to what it offers. */
 export function computerRefusal(value: unknown, hosted: boolean): string | null {
-  if (value === null) return null;
+  if (value === null || !hosted) return null;
   if (typeof value !== "string" || !MODES.includes(value as ComputerMode)) {
-    return "computer is cloud, sandbox, local, off or null";
+    return "computer is local, off or null on a hosted workspace";
   }
-  if (hosted && (value === "cloud" || value === "sandbox")) {
+  if (value === "cloud" || value === "sandbox") {
     return "This workspace is hosted, so it is the agents' computer already: its browser and its virtual desktop. The cloud box and the Local VM are not offered here.";
   }
   return null;

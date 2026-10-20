@@ -2708,12 +2708,14 @@ const tidying = new Set<string>();
 
 /** The engine a tidy asks: the agent's own while it has a one-shot call
  * and is not paused for it, else whichever the workspace drafts with. */
-async function tidyEngine(bot: BotRecord) {
+async function tidyEngine(bot: BotRecord, manual: boolean) {
+  // The night's tidy is work nobody asked for, so it spends Bloks credits
+  // only when the person let background work; Tidy now is asked for.
+  const may = (instance: ProviderInstance | null | undefined) => manual || backgroundMay(instance);
   const own = registry.get(bot.modelSelection.instanceId);
-  // Bloks credits only when the person let background work spend them
-  if (own?.generateText && !pausedOn(bot, bot.modelSelection) && backgroundMay(own)) return own;
+  if (own?.generateText && !pausedOn(bot, bot.modelSelection) && may(own)) return own;
   const other = await draftWriter();
-  return other?.generateText && backgroundMay(other) ? other : null;
+  return other?.generateText && may(other) ? other : null;
 }
 
 /** Whether anyone but a tidy has changed this agent's memory since its
@@ -2763,7 +2765,7 @@ async function tidyMemory(botId: string, manual: boolean): Promise<TidyRun> {
     let applied: Applied | null = null;
     const notes = memoryNext?.split("\n").filter((line) => line.trim() && !/^\s{0,3}#/.test(line)).length ?? 0;
     if (memoryNext !== null && notes >= 3 && (manual || memoryMovedSinceTidy(botId))) {
-      const engine = await tidyEngine(bot);
+      const engine = await tidyEngine(bot, manual);
       if (!engine?.generateText) {
         run.note = "No engine could read it, so only notes past their date were looked at.";
       } else {
@@ -6691,7 +6693,7 @@ const UNLISTED_MAIL = "Unlisted email";
  * can close. */
 function sharedSafe(driverKind: string): boolean {
   if (driverKind === "claudeAgent") return true;
-  return driverKind === CUSTOM_SPEC.kind || PROVIDER_SPECS.some((spec) => spec.kind === driverKind);
+  return driverKind === CUSTOM_SPEC.kind || driverKind === CREDITS_KIND || PROVIDER_SPECS.some((spec) => spec.kind === driverKind);
 }
 
 /**
