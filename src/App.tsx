@@ -25,6 +25,7 @@ import { ShortcutKeys } from "@/components/Shortcuts";
 import { Switcher } from "@/components/Switcher";
 import { QuickAsk } from "@/components/QuickAsk";
 import { Toaster, toast } from "@/components/ui/toast";
+import { JoinWorkspaceHost } from "@/components/members/JoinWorkspaceDialog";
 import { ConfirmHost } from "@/components/ui/confirm";
 import { TerminalWindow, terminalWindowAgent } from "@/components/terminal/TerminalWindow";
 
@@ -245,6 +246,9 @@ export default function App() {
         {introOpen && <Intro onDone={() => setIntroOpen(false)} />}
         {/* over everything, the welcome included: a question, or a word
             about what just happened, is never behind what it is about */}
+        {/* the join dialog, for bloks://join links until the workspace
+            switcher hosts it (src/components/members/JoinWorkspaceDialog.tsx) */}
+        <JoinWorkspaceHost />
         <ConfirmHost />
         <Toaster />
       </StoreProvider>

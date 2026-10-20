@@ -29,6 +29,7 @@ import {
   screen,
   session,
   shell,
+  ShareMenu,
   systemPreferences,
   utilityProcess,
 } from "electron";
@@ -45,7 +46,7 @@ import { markInstall, restartIntoUpdate, takeInstallMark, within } from "./updat
 import { claimPairLink, startRemoteProxy } from "./remote.mjs";
 import { nativeSettingsObservation } from "./settings-observation.mjs";
 import { sameAppOrigin } from "./navigation.mjs";
-import { linkInArgv, teamLink } from "./links.mjs";
+import { joinLink, linkInArgv, teamLink } from "./links.mjs";
 import { terminalQuery } from "./terminal-window.mjs";
 import os from "node:os";
 
@@ -130,7 +131,7 @@ if (!app.requestSingleInstanceLock()) {
 app.setAsDefaultProtocolClient("bloks");
 let pendingLink = null;
 function deliverLink(raw) {
-  const link = teamLink(raw);
+  const link = teamLink(raw) ?? joinLink(raw);
   if (!link) return;
   const main = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w));
   if (!main || main.webContents.isLoading()) {
@@ -957,6 +958,20 @@ handle("dialog:pick-folder", async (event) => {
  * icon. Windows has no badge, so it gets a small overlay on the taskbar
  * icon instead.
  */
+// The system share sheet, for a workspace invite's link: Messages, Mail,
+// AirDrop, whatever this Mac has. Only an https link to bloks.dev is ever
+// shared from here, so a page cannot dress anything else up as an invite.
+// False where there is no share sheet (Windows, Linux), and the window
+// copies the link instead.
+handle("share:link", (event, url) => {
+  if (process.platform !== "darwin" || typeof ShareMenu !== "function") return false;
+  if (typeof url !== "string" || !/^https:\/\/bloks\.dev\/j\/[a-z0-9]{6}#[0-9A-Z~.:[\]-]{8,80}$/.test(url)) return false;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return false;
+  new ShareMenu({ urls: [url] }).popup({ window: win });
+  return true;
+});
+
 let badgeOverlay = null;
 handle("badge:set", (event, value) => {
   const count = normalizeBadgeCount(value);

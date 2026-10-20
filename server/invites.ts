@@ -389,7 +389,24 @@ export function noteRelay(id: string, relay: WorkspaceInvite["relay"], relayToke
   if (!inv) return;
   inv.relay = relay;
   if (relayTokenHash) inv.relayTokenHash = relayTokenHash;
+  else if (relay !== "registered") delete inv.relayTokenHash;
   save();
+}
+
+/** Renames an invite or changes its role while nobody has used it: the
+ * invite sheet makes the invite as it opens, and the person filling it in
+ * is still deciding. Null when it can no longer change. */
+export function updateInvite(id: string, patch: { name?: unknown; role?: unknown }): WorkspaceInvite | null {
+  const inv = invite(id);
+  if (!inv || inv.status !== "open" || expired(inv)) return null;
+  if (patch.role === "member" || patch.role === "admin") inv.role = patch.role;
+  if (patch.name !== undefined) {
+    const name = cleanName(patch.name);
+    if (name) inv.name = name;
+    else delete inv.name;
+  }
+  save();
+  return inv;
 }
 
 /** Cancels an invite that has not been used. Null when there is none to

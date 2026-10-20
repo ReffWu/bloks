@@ -49,6 +49,7 @@ import {
   type OptionCardData,
 } from "./reducer";
 import { toast } from "@/components/ui/toast";
+import { openJoinDialog, workspaceFrame } from "@/lib/members";
 
 export * from "./reducer";
 
@@ -659,12 +660,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // "Add to Bloks" on the website: a gallery team opens in the hire
-  // review (NewRoomDialog), whether the app was running or not.
+  // review (NewRoomDialog), whether the app was running or not. A
+  // workspace invite opens the join dialog the same way.
   useEffect(() => {
     const bridge = window.bloks;
     if (!bridge?.onLink) return;
-    const open = (link: { kind?: string; slug?: string } | null) => {
+    const open = (link: { kind?: string; slug?: string; fragment?: string } | null) => {
       if (link?.kind === "team" && link.slug) rawDispatch({ type: "openTeamLink", slug: link.slug });
+      // a workspace invite from bloks.dev or a scanned QR: the join dialog,
+      // filled in (src/components/members/JoinWorkspaceDialog.tsx)
+      if (link?.kind === "join" && link.fragment) openJoinDialog(`bloks://join#${link.fragment}`);
     };
     void bridge.pendingLink?.().then(open).catch(() => {});
     return bridge.onLink(open);
@@ -774,6 +779,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // aside, never folded into state (src/lib/settings-client.ts).
       if (consumeSettingsRequest(frame)) return;
       if (typeof frame._seq === "number") lastSeq = frame._seq;
+      // the workspace's people go to their own small bus (src/lib/members.ts)
+      if (typeof frame.kind === "string" && frame.kind.startsWith("workspace.")) {
+        workspaceFrame(frame, typeof frame._seq !== "number" || frame._seq > replayUntil.current);
+      }
       switch (frame.kind) {
         case "hello":
           // Everything up to the server's current sequence is either

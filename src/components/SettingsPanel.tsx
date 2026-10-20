@@ -34,6 +34,7 @@ import { X } from "@/components/icons";
 import { api, useStore, type Bot, type Skill } from "@/state/store";
 import { useMcpServers, type McpServerRow } from "./McpServers";
 import { TeamSignInNotice } from "./TeamSignInNotice";
+import { AgentAccessCard } from "./members/AgentAccessCard";
 import { AgentAvatar, BlokAvatar } from "./Avatar";
 import {
   expressionForBot,
@@ -450,6 +451,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
             </Section>
 
             <Section id="behaviour" title="Behaviour and approvals">
+              <AgentAccessCard botId={bot.id} />
               <ApprovalsCard bot={bot} />
               <Group>
                 <DeliveryRow bot={bot} patch={patch} />

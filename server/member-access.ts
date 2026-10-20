@@ -119,6 +119,7 @@ const ROUTES: Array<{ method: string; pattern: RegExp; action: (m: RegExpMatchAr
     [
       ["POST", /^\/api\/workspace\/invites$/],
       ["DELETE", new RegExp(`^/api/workspace/invites/${ID}$`)],
+      ["PATCH", new RegExp(`^/api/workspace/invites/${ID}$`)],
       ["POST", new RegExp(`^/api/workspace/requests/${ID}/(approve|decline)$`)],
       ["PATCH", new RegExp(`^/api/workspace/members/${ID}$`)],
       ["DELETE", new RegExp(`^/api/workspace/members/${ID}$`)],

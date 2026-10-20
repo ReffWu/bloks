@@ -20,6 +20,26 @@ export function teamLink(raw) {
   }
 }
 
+/**
+ * A workspace invite handed over by bloks.dev's "Open in Bloks", or a QR
+ * scanned on this Mac: bloks://join#<code>, the fragment exactly as typed
+ * (a dash, any case), sometimes with where the inviting computer answers
+ * on this network after a "~". Passed on as text for the join dialog to
+ * read the way it reads anything pasted; it opens nothing by itself.
+ */
+export function joinLink(raw) {
+  const text = String(raw ?? "");
+  if (!/^bloks:\/\/join\/?#/i.test(text) || text.length > 200) return null;
+  const fragment = text.slice(text.indexOf("#") + 1);
+  // a code is 8 of the readable characters, give or take dashes and spaces
+  if (!/^[0-9A-Za-z\s\-~.:[\]%]{8,120}$/.test(fragment)) return null;
+  try {
+    return { kind: "join", fragment: decodeURIComponent(fragment) };
+  } catch {
+    return null;
+  }
+}
+
 /** The bloks:// link among a launch's arguments, or null. */
 export function linkInArgv(argv) {
   return (Array.isArray(argv) ? argv : []).find((arg) => typeof arg === "string" && arg.startsWith("bloks://")) ?? null;

@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld("bloks", {
   // bloks:// links from the website (electron/main.mjs)
   onLink: subscription("link:open"),
   pendingLink: () => ipcRenderer.invoke("link:pending"),
+  // the system share sheet, for a workspace invite's link (electron/main.mjs)
+  shareLink: (url) => ipcRenderer.invoke("share:link", url),
   // the macOS menu bar's own items, Settings among them (electron/app-menu.mjs)
   onMenuCommand: subscription("menu:command"),
   pendingMenuCommand: () => ipcRenderer.invoke("menu:pending"),

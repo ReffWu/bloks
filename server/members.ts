@@ -425,30 +425,34 @@ export function createMembers(deps: MembersDeps) {
     };
   }
 
+  /** Tells Bloks Cloud about an invite, when this workspace is online. */
+  async function registerAtRelay(made: invites.WorkspaceInvite) {
+    if (!deps.relayReady()) return;
+    // A member client token of its own for this invite: the relay hands
+    // it to whoever looks the code up, so they can ask through it, and
+    // whoever is let in keeps it. No token, no registration: the relay
+    // will not index an invite it could not route.
+    const ws = identity();
+    const token = await deps.relay.mintClient();
+    const ok = token
+      ? await deps.relay.registerInvite({
+          codeHash: made.codeHash,
+          publicId: made.publicId,
+          preview: { workspace: ws.name, mark: ws.mark, inviter: inviterName(made.invitedBy), role: made.role },
+          expiresAt: made.expiresAt,
+          host: { token, key: invites.hostKey().publicRaw },
+        })
+      : false;
+    if (!ok && token) await deps.relay.revokeClient(sha256(token)).catch(() => false);
+    invites.noteRelay(made.id, ok ? "registered" : "unavailable", ok && token ? sha256(token) : undefined);
+  }
+
   async function makeInvite(actor: Actor, body: Record<string, unknown>) {
     const role: people.WorkspaceRole = body.role === "admin" ? "admin" : "member";
     if (await full()) return { status: 402, body: { code: "full", error: await fullWords() } };
     const made = invites.createInvite({ role, name: body.name, invitedBy: actor.kind === "owner" ? "owner" : actor.personId });
     if ("error" in made) return { status: 409, body: made };
-    if (deps.relayReady()) {
-      // A member client token of its own for this invite: the relay hands
-      // it to whoever looks the code up, so they can ask through it, and
-      // whoever is let in keeps it. No token, no registration: the relay
-      // will not index an invite it could not route.
-      const ws = identity();
-      const token = await deps.relay.mintClient();
-      const ok = token
-        ? await deps.relay.registerInvite({
-            codeHash: made.codeHash,
-            publicId: made.publicId,
-            preview: { workspace: ws.name, mark: ws.mark, inviter: inviterName(made.invitedBy), role },
-            expiresAt: made.expiresAt,
-            host: { token, key: invites.hostKey().publicRaw },
-          })
-        : false;
-      if (!ok && token) await deps.relay.revokeClient(sha256(token)).catch(() => false);
-      invites.noteRelay(made.id, ok ? "registered" : "unavailable", ok && token ? sha256(token) : undefined);
-    }
+    await registerAtRelay(made);
     peopleFrame();
     const inv = invites.invite(made.id)!;
     return { status: 201, body: { invite: inviteView(inv), online: online() } };
@@ -506,6 +510,29 @@ export function createMembers(deps: MembersDeps) {
     if (method === "POST" && path === "/api/workspace/invites") {
       const made = await makeInvite(actor, await readBody(req));
       json(res, made.status, made.body);
+      return true;
+    }
+    if ((m = path.match(/^\/api\/workspace\/invites\/([\w-]+)$/)) && method === "PATCH") {
+      const body = await readBody(req);
+      if (body.role !== undefined && body.role !== "member" && body.role !== "admin") {
+        json(res, 400, { error: "role is member or admin" });
+        return true;
+      }
+      const before = invites.invite(m[1]);
+      const roleBefore = before?.role;
+      const inv = invites.updateInvite(m[1], body);
+      if (!inv) {
+        json(res, 409, { error: "that invite can no longer change" });
+        return true;
+      }
+      // The link page says the role, so a changed role is registered again
+      // (a fresh token with it): the old entry and its token go first.
+      if (inv.role !== roleBefore && inv.relay === "registered") {
+        await retire(inv).catch(() => {});
+        await registerAtRelay(inv);
+      }
+      peopleFrame();
+      json(res, 200, { invite: inviteView(inv) });
       return true;
     }
     if ((m = path.match(/^\/api\/workspace\/invites\/([\w-]+)$/)) && method === "DELETE") {

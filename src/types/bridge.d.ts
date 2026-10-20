@@ -69,8 +69,11 @@ declare global {
       ): () => void;
       onMeetingEnd?(handler: (payload: { code: number }) => void): () => void;
       /** bloks:// links from the website (electron/main.mjs). */
-      onLink?(handler: (link: { kind: "team"; slug: string }) => void): () => void;
-      pendingLink?(): Promise<{ kind: "team"; slug: string } | null>;
+      onLink?(handler: (link: { kind: "team"; slug: string } | { kind: "join"; fragment: string }) => void): () => void;
+      pendingLink?(): Promise<{ kind: "team"; slug: string } | { kind: "join"; fragment: string } | null>;
+      /** The system share sheet for a workspace invite's link; false where
+       * there is none, and the caller copies instead. */
+      shareLink?(url: string): Promise<boolean>;
       /** A choice from the macOS menu bar for this window to carry out
        * (electron/app-menu.mjs), and one made while no window was
        * listening yet. */
