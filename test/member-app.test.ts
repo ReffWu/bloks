@@ -18,6 +18,8 @@ import {
   foldRuntime,
   memberPages,
   modeFrom,
+  roomAccessBody,
+  roomAudienceLine,
   shouldAskMemberMode,
   soloRoom,
   speaker,
@@ -127,6 +129,15 @@ test("lines say who wrote them, and cards whether they are this person's to answ
   assert.equal(cardState({ title: "Approval needed", subtitle: "", options: ["Allow", "Deny"] }), "open");
   assert.equal(cardState({ title: "Approval needed", subtitle: "", options: [], ownerOnly: true }), "waiting-on-others");
   assert.equal(cardState({ title: "Approval needed", subtitle: "", options: ["Allow"], answered: "Allow" }), "done");
+});
+
+test("the room picker sends everyone or the people ticked, and says who is in", () => {
+  assert.deepEqual(roomAccessBody("everyone", ["p_b"]), { audience: "everyone" });
+  assert.deepEqual(roomAccessBody("some", ["p_b", "p_a", "p_b"]), { audience: "some", members: ["p_a", "p_b"] });
+  assert.deepEqual(roomAccessBody("some", []), { audience: "some", members: [] });
+  assert.match(roomAudienceLine("everyone", 0, 3, 0), /Everyone in the workspace is in this room, 3 members and you/);
+  assert.match(roomAudienceLine("some", 0, 3, 0), /^Only you, for now/);
+  assert.match(roomAudienceLine("some", 2, 3, 1), /2 of 3 members and you\. Plus 1 guest/);
 });
 
 test("a reply streams until its message lands", () => {

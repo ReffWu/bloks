@@ -278,3 +278,20 @@ export function foldRuntime(current: Record<string, string>, frame: Frame, progr
   }
   return current;
 }
+
+// ── who is in a room, chosen by the owner or an admin ─────────────────
+
+/** What the room picker sends: everyone, or the people ticked. A room of
+ * some people with nobody ticked is still that: the owner's own room,
+ * which the picker says rather than refuses. */
+export function roomAccessBody(audience: "everyone" | "some", chosen: Iterable<string>): { audience: "everyone" } | { audience: "some"; members: string[] } {
+  return audience === "everyone" ? { audience } : { audience, members: [...new Set(chosen)].sort() };
+}
+
+/** The picker's one line about who is in a room. */
+export function roomAudienceLine(audience: "everyone" | "some", chosen: number, total: number, guests: number, owner = "you"): string {
+  const outside = guests ? ` Plus ${guests} ${guests === 1 ? "guest" : "guests"} let in by this room's own invite.` : "";
+  if (audience === "everyone") return `Everyone in the workspace is in this room, ${total} ${total === 1 ? "member" : "members"} and ${owner}.${outside}`;
+  if (!chosen) return `Only ${owner}, for now. Tick the people to bring in.${outside}`;
+  return `${chosen} of ${total} ${total === 1 ? "member" : "members"} and ${owner}.${outside}`;
+}

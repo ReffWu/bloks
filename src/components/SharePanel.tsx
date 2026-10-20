@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
+import { RoomAudience } from "./members/RoomAudience";
 
 interface PendingInvite {
   id: string;
@@ -152,6 +153,9 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
         {error && (
           <div className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">{error}</div>
         )}
+
+        {/* who from the workspace: the room's audience, whatever its sharing */}
+        <RoomAudience roomId={blok.id} className="mt-4" />
 
         {!data ? (
           <div className="mt-6 flex justify-center text-muted-foreground">

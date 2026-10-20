@@ -8,6 +8,7 @@
 // One scroll rather than a page per group because an agent is one thing:
 // seeing its engine a flick below its instructions is part of knowing it,
 // and nothing here is so long that it needs hiding behind a tab.
+import { PrivateReader } from "./members/PrivateReader";
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { Archive } from "@/components/icons";
@@ -516,6 +517,8 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
               </Group>
             </Section>
 
+            {/* members' private conversations, only while the owner may read them */}
+            <PrivateReader botId={bot.id} botName={bot.name} />
             <Section id="danger" title="Danger zone">
               <DangerZone bot={bot} />
             </Section>
