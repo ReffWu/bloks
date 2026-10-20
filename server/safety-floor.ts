@@ -28,6 +28,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { DATA_DIR } from "./config.ts";
+
 /** The parts of a request the floor reads. The same shape as policy's
  * Ask, so either can be handed in. */
 export interface FloorAsk {
@@ -84,8 +86,13 @@ function secretPlace(path: string): string | null {
   // Bloks' own folder holds every agent's keys and the workspace's
   // settings; an agent reading or writing there on a standing yes is
   // exactly what the floor exists to stop.
-  const own = join(homedir(), ".bloks").replace(/\\/g, "/").toLowerCase();
-  if (lower === own || lower.startsWith(`${own}/`) || /(^|\/)\.bloks(\/|$)/.test(lower)) return "it is Bloks' own folder, with your keys in it";
+  // Every workspace's folder counts, not only this one's: an agent in one
+  // workspace has no business in another's keys either (nothing moves
+  // between workspaces), and the desktop app names where they all live.
+  const owned = [DATA_DIR, join(homedir(), ".bloks"), process.env.BLOKS_WORKSPACES_DIR ?? ""]
+    .filter(Boolean)
+    .map((dir) => dir.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase());
+  if (owned.some((own) => lower === own || lower.startsWith(`${own}/`)) || /(^|\/)\.bloks(\/|$)/.test(lower)) return "it is Bloks' own folder, with your keys in it";
   return null;
 }
 

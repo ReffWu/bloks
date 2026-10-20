@@ -2,7 +2,9 @@
 //
 // Everything is under ~/.bloks: one config file, the agents, every
 // transcript, and the logs. That is the whole storage story, and it is
-// deliberate. A person can read it, back it up, move it to another Mac, or
+// deliberate. BLOKS_DATA_DIR moves the whole of it somewhere else: the
+// desktop app runs one server per workspace, each on a folder of its own,
+// and only Personal keeps ~/.bloks. A person can read it, back it up, move it to another Mac, or
 // delete it and be genuinely rid of the app.
 //
 // Credentials may also arrive from the environment, which is what a
@@ -10,7 +12,7 @@
 // writing a key to disk at all.
 import { readFileSync, mkdirSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readSaved, isRecord, writeFileAtomic } from "./atomic-write.ts";
@@ -216,7 +218,18 @@ export interface AppConfig {
   instances?: InstanceConfigMap;
 }
 
-export const DATA_DIR = join(homedir(), ".bloks");
+/** The data folder: BLOKS_DATA_DIR when it names one, else ~/.bloks. A
+ * leading ~ is the home folder, the way a person would write it in a
+ * shell; a relative path is taken from where the server was started. */
+export function dataDirFrom(env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string {
+  const said = env.BLOKS_DATA_DIR?.trim();
+  if (!said) return join(home, ".bloks");
+  if (said === "~") return home;
+  if (said.startsWith("~/")) return join(home, said.slice(2));
+  return isAbsolute(said) ? said : resolve(said);
+}
+
+export const DATA_DIR = dataDirFrom();
 export const EVENTS_DIR = join(DATA_DIR, "events");
 export const NATIVE_DIR = join(DATA_DIR, "native");
 /** User-installed skills, one markdown file each. */
