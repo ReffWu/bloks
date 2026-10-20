@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld("bloks", {
   workspaceJoined: (input) => ipcRenderer.invoke("workspaces:joined", input),
   prefsTheme: (theme) => ipcRenderer.invoke("prefs:theme", theme),
   prefsAccent: (accent) => ipcRenderer.invoke("prefs:accent", accent),
+  prefsSameAccent: (on, showing) => ipcRenderer.invoke("prefs:same-accent", on, showing),
   /** What a banner clicked before this page loaded was about. */
   pendingNotifyTarget: () => ipcRenderer.invoke("notify:pending"),
 

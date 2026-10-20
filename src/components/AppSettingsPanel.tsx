@@ -69,6 +69,8 @@ import { Luggage } from "@/components/icons";
 import { useEscape } from "@/lib/useEscape";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, useWorkspaceApprovals, type ApprovalMode } from "./ApprovalsChooser";
 import { AccentPicker } from "./AccentPicker";
+import { setSameAccent } from "@/lib/accent";
+import { useWorkspaces } from "@/lib/workspaces";
 
 const THEME_OPTIONS: Array<{ value: Theme; label: string; icon: React.ReactNode }> = [
   { value: "light", label: "Light", icon: <Sun size={14} /> },
@@ -1085,6 +1087,7 @@ const ALL_PAGES = SETTINGS_PAGES.flatMap((g) => g.pages);
 
 function GeneralPage() {
   const { theme, setTheme } = useTheme();
+  const workspaces = useWorkspaces();
   const [width, setWidth] = useTranscriptWidth();
   const [conversations, setConversations] = useConversationsView();
   return (
@@ -1104,12 +1107,28 @@ function GeneralPage() {
         <SettingRow
           label="Accent"
           description={
-            window.bloks?.workspace
-              ? "Your messages, the main buttons and selected things, in this workspace. Each workspace keeps its own."
-              : "Your messages, the main buttons and selected things. From the Bloks logo."
+            !window.bloks?.workspace
+              ? "Your messages, the main buttons and selected things. From the Bloks logo."
+              : workspaces.available && workspaces.sameAccent
+                ? "Your messages, the main buttons and selected things, in every workspace."
+                : "Your messages, the main buttons and selected things, in this workspace. Each workspace keeps its own."
           }
           control={<AccentPicker />}
         />
+        {/* only where there are workspaces to share it between */}
+        {window.bloks?.workspace && workspaces.available && window.bloks.prefsSameAccent && (
+          <SettingRow
+            label="Same accent in every workspace"
+            description="On, the accent you choose applies everywhere. Off, each workspace keeps its own."
+            control={
+              <Switch
+                aria-label="Same accent in every workspace"
+                checked={Boolean(workspaces.sameAccent)}
+                onCheckedChange={(on) => void setSameAccent(on)}
+              />
+            }
+          />
+        )}
         <SettingRow
           label="Transcript width"
           description="How wide chats get on this device."

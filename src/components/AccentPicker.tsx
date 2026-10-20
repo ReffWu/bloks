@@ -1,13 +1,19 @@
 // The eight colours of the Bloks mark as a row of swatches. Picking one
 // recolours the app at once: the variables it sets are the ones every
 // accented thing already reads (lib/accent.ts).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check } from "@/components/icons";
-import { ACCENTS, chooseAccent, onFill, storedAccent } from "@/lib/accent";
+import { ACCENT_EVENT, ACCENTS, chooseAccent, onFill, storedAccent } from "@/lib/accent";
 import { cn } from "@/lib/cn";
 
 export function AccentPicker() {
   const [chosen, setChosen] = useState(() => storedAccent().id);
+  // the shared accent turned on or off changes what is drawn from outside
+  useEffect(() => {
+    const follow = () => setChosen(storedAccent().id);
+    window.addEventListener(ACCENT_EVENT, follow);
+    return () => window.removeEventListener(ACCENT_EVENT, follow);
+  }, []);
   return (
     <div role="radiogroup" aria-label="Accent" className="flex flex-wrap items-center gap-2">
       {ACCENTS.map((accent) => {

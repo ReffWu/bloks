@@ -174,6 +174,34 @@ export function applyAccent(accent: Accent) {
     document.head.appendChild(el);
   }
   el.textContent = `:root:root { ${block(t.light)} } :root.dark { ${block(t.dark)} }`;
+  // the picker shows what is drawn, whoever chose it
+  window.dispatchEvent(new CustomEvent(ACCENT_EVENT, { detail: accent.id }));
+}
+
+/** Said on the window whenever the accent drawn changes. */
+export const ACCENT_EVENT = "bloks-accent";
+
+/** Draws an accent the app chose for this window (the shared one turned
+ * on or off), keeping it in the page's storage, without telling the app
+ * back what it just said. */
+export function adoptAccent(id: string | null | undefined) {
+  const accent = ACCENTS.find((a) => a.id === id);
+  if (!accent) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, accent.id);
+  } catch {
+    /* holds for this visit */
+  }
+  applyAccent(accent);
+}
+
+/** "Same accent in every workspace", from this window: on, what it shows
+ * becomes everyone's; off, every workspace goes back to its own, which
+ * this window then draws. Kept by the desktop app (electron/main.mjs),
+ * which hands every workspace its accent before it draws. */
+export async function setSameAccent(on: boolean): Promise<void> {
+  const now = await window.bloks?.prefsSameAccent?.(on, storedAccent().id);
+  if (now) adoptAccent(now);
 }
 
 export function chooseAccent(id: string) {
@@ -183,9 +211,10 @@ export function chooseAccent(id: string) {
   } catch {
     /* holds for this visit */
   }
-  // The accent belongs to the workspace, so each can look like itself;
-  // the desktop app keeps it too, since a workspace's storage belongs to
-  // its port and a port can move (electron/main.mjs prefs:accent).
+  // The accent belongs to the workspace, so each can look like itself,
+  // unless the person chose one for every workspace; either way the
+  // desktop app keeps it, since a workspace's storage belongs to its port
+  // and a port can move (electron/main.mjs prefs:accent).
   void window.bloks?.prefsAccent?.(accent.id)?.catch?.(() => {});
   applyAccent(accent);
   return accent;

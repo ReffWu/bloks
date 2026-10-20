@@ -61,7 +61,9 @@ import { anyFreePort, failurePage, parseLsof, portFree, portOrder } from "./port
 import { keepServerUp, stopServer } from "./server-life.mjs";
 import {
   PERSONAL_ID,
+  accentOf,
   addWorkspace,
+  chooseAccent,
   allowsNotice,
   badgeTotal,
   configuredPort,
@@ -73,6 +75,7 @@ import {
   reorder,
   rerollMark,
   setCurrent,
+  setSameAccent,
   settle,
   snapshot,
   updateWorkspace,
@@ -534,6 +537,16 @@ function readLicence() {
   return licence;
 }
 
+/** The licence's plan, as the workspace servers say it (server/owner-plan.ts):
+ * "team", "cloud", or null for no licence. Undefined until one has said. */
+let licencePlan = undefined;
+function notePlan(plan) {
+  const next = plan === "team" || plan === "cloud" ? plan : null;
+  if (next === licencePlan) return;
+  licencePlan = next;
+  tellWorkspaces();
+}
+
 /** Hands the licence to one workspace's server, when there is one. */
 function handLicence(run) {
   const key = readLicence();
@@ -679,7 +692,14 @@ function workspacesState() {
       logo: logoData(ws),
     };
   }
-  return { ...snapshot(registry, live), current: shownId };
+  return {
+    ...snapshot(registry, live),
+    current: shownId,
+    // the licence's plan, as the workspaces' servers last said it, for a
+    // new workspace's Team choice; and the one accent, when shared
+    plan: licencePlan,
+    sameAccent: registry.prefs.sameAccent,
+  };
 }
 
 /** Every window hears the list again; anything the switcher draws may
@@ -1070,8 +1090,21 @@ handle("prefs:theme", (_event, theme) => {
 handle("prefs:accent", (event, accent) => {
   const id = senderWorkspace(event);
   if (!registry || !id || typeof accent !== "string") return;
-  registry = updateWorkspace(registry, id, { accent });
+  registry = chooseAccent(registry, id, accent);
   saveRegistry();
+  tellWorkspaces();
+});
+// "Same accent in every workspace" (src/components/AccentPicker.tsx): on,
+// the window's accent becomes everyone's; off, each goes back to its own.
+// Answers the accent the asking window should draw in now.
+handle("prefs:same-accent", (event, on, showing) => {
+  const id = senderWorkspace(event);
+  if (!registry || typeof on !== "boolean") return null;
+  const done = setSameAccent(registry, id, on, showing);
+  registry = done.registry;
+  saveRegistry();
+  tellWorkspaces();
+  return done.accent;
 });
 
 /** Asked by the preload, synchronously, before the page's own scripts
@@ -1080,7 +1113,7 @@ ipcMain.on("workspaces:boot", (event) => {
   // returnValue answers the moment it is set, so it is set once
   const ws = fromOurPage(event) && registry ? entryOf(senderWorkspace(event)) : null;
   event.returnValue = ws
-    ? { theme: registry.prefs.theme, accent: ws.accent, workspace: { id: ws.id, kind: ws.kind, name: ws.name, mark: ws.mark } }
+    ? { theme: registry.prefs.theme, accent: accentOf(registry, ws.id), sameAccent: registry.prefs.sameAccent, workspace: { id: ws.id, kind: ws.kind, name: ws.name, mark: ws.mark } }
     : null;
 });
 
@@ -1736,6 +1769,7 @@ function heardFromServer(id, child, said) {
   // a server from before a restart, still saying its last words
   if (!run || (run.child && run.child !== child)) return;
   if (said?.kind === "desktop.licence") return keepLicence(said.key);
+  if (said?.kind === "desktop.plan") return notePlan(said.plan);
   if (said?.kind === "desktop.unread" && Number.isInteger(said.count)) {
     waitingCounts.set(id, Math.max(0, said.count));
     applyBadge();

@@ -134,12 +134,65 @@ export function parseRegistry(text) {
     workspaces.push(entry);
   });
   const theme = raw?.prefs?.theme;
+  const accent = raw?.prefs?.accent;
   return {
     version: REGISTRY_VERSION,
     current: typeof raw?.current === "string" ? raw.current : PERSONAL_ID,
-    prefs: { theme: theme === "light" || theme === "dark" || theme === "system" ? theme : null },
+    prefs: {
+      theme: theme === "light" || theme === "dark" || theme === "system" ? theme : null,
+      // "Same accent in every workspace": off unless chosen, and the one
+      // accent it keeps while on
+      sameAccent: raw?.prefs?.sameAccent === true,
+      accent: typeof accent === "string" && ACCENT_ID.test(accent) ? accent : null,
+    },
     workspaces: sorted(workspaces),
   };
+}
+
+const ACCENT_ID = /^[A-Za-z]{1,20}$/;
+
+/**
+ * The accent a workspace's window draws in. Each workspace keeps its own,
+ * so it can look like itself; with "Same accent in every workspace" on,
+ * the one shared accent wins everywhere, and each workspace's own waits
+ * underneath for the day it is turned off. Null for the page's default.
+ */
+export function accentOf(registry, id) {
+  const own = registry.workspaces.find((w) => w.id === id)?.accent ?? null;
+  return registry.prefs.sameAccent ? (registry.prefs.accent ?? own) : own;
+}
+
+/** A workspace's window chose an accent: everywhere's while the setting
+ * is on, else that workspace's alone. */
+export function chooseAccent(registry, id, accent) {
+  if (typeof accent !== "string" || !ACCENT_ID.test(accent)) return registry;
+  if (registry.prefs.sameAccent) return { ...registry, prefs: { ...registry.prefs, accent } };
+  if (!registry.workspaces.some((w) => w.id === id)) return registry;
+  return updateWorkspace(registry, id, { accent });
+}
+
+/**
+ * Turns "Same accent in every workspace" on or off, from one workspace's
+ * window, which is showing `showing`. On: what that window shows becomes
+ * everyone's. Off: every workspace goes back to its own, and one that
+ * never had its own keeps the shared one it was wearing. Returns the
+ * registry and the accent that window should draw in now.
+ */
+export function setSameAccent(registry, id, on, showing) {
+  const shown = typeof showing === "string" && ACCENT_ID.test(showing) ? showing : accentOf(registry, id);
+  if (on) {
+    const next = { ...registry, prefs: { ...registry.prefs, sameAccent: true, accent: shown ?? registry.prefs.accent } };
+    return { registry: next, accent: accentOf(next, id) };
+  }
+  const shared = registry.prefs.accent ?? shown;
+  let next = { ...registry, prefs: { ...registry.prefs, sameAccent: false } };
+  if (shared) {
+    next = {
+      ...next,
+      workspaces: next.workspaces.map((w) => (w.accent ? w : { ...w, accent: shared })),
+    };
+  }
+  return { registry: next, accent: accentOf(next, id) };
 }
 
 const sorted = (list) => [...list].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);

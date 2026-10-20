@@ -68,7 +68,16 @@ export interface WorkspaceInfo {
 
 export type WorkspacesState =
   | { available: false }
-  | { available: true; current: string; workspaces: WorkspaceInfo[] };
+  | {
+      available: true;
+      current: string;
+      workspaces: WorkspaceInfo[];
+      /** The licence's plan as the workspaces' servers last said: absent
+       * until one has, null for no licence. */
+      plan?: "cloud" | "team" | null;
+      /** "Same accent in every workspace". */
+      sameAccent?: boolean;
+    };
 
 /** What a workspace action answers: done, or why not, in words to show. */
 export type WorkspaceAnswer = { ok?: boolean; id?: string; error?: string };
@@ -135,6 +144,9 @@ declare global {
       prefsTheme?(theme: "light" | "dark" | "system"): Promise<void>;
       /** The accent is this workspace's own. */
       prefsAccent?(accent: string): Promise<void>;
+      /** Turns the one accent for every workspace on or off; answers the
+       * accent this window should draw in now. */
+      prefsSameAccent?(on: boolean, showing: string): Promise<string | null>;
       /** What a banner clicked before this page loaded was about. */
       pendingNotifyTarget?(): Promise<string | null>;
 

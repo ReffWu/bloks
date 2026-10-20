@@ -28,7 +28,7 @@ export interface WorkspaceEntry {
 export interface Registry {
   version: number;
   current: string;
-  prefs: { theme: "light" | "dark" | "system" | null };
+  prefs: { theme: "light" | "dark" | "system" | null; sameAccent: boolean; accent: string | null };
   workspaces: WorkspaceEntry[];
 }
 
@@ -72,6 +72,9 @@ export function updateWorkspace(
   }>,
   options?: { random?: () => number },
 ): Registry;
+export function accentOf(registry: Registry, id: string | null): string | null;
+export function chooseAccent(registry: Registry, id: string | null, accent: unknown): Registry;
+export function setSameAccent(registry: Registry, id: string | null, on: boolean, showing?: unknown): { registry: Registry; accent: string | null };
 export function rerollMark(registry: Registry, id: string, options?: { random?: () => number }): Registry;
 export function removeWorkspace(registry: Registry, id: string): { registry: Registry; removed: WorkspaceEntry };
 export function reorder(registry: Registry, ids: string[]): Registry;
