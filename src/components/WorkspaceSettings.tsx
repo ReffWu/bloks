@@ -502,7 +502,9 @@ function ReachableOnline({ ws }: { ws: WorkspaceInfo }) {
 
 // ── pages that live in Settings already ────────────────────────────────
 
-function LinkRows({ rows }: { rows: Array<{ label: string; says: string; page: string }> }) {
+// A row opens a Settings page by its id, or, with `rail`, a page of its own
+// on the rail (Usage has one).
+function LinkRows({ rows }: { rows: Array<{ label: string; says: string; page: string; rail?: boolean }> }) {
   const { dispatch } = useStore();
   return (
     <SettingsGroup>
@@ -512,7 +514,11 @@ function LinkRows({ rows }: { rows: Array<{ label: string; says: string; page: s
           label={row.label}
           description={row.says}
           control={
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: row.page })}>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() =>
+                row.rail
+                  ? (dispatch({ type: "toggleAppSettings", open: false }), dispatch({ type: "openPage", page: "usage" }))
+                  : dispatch({ type: "toggleAppSettings", open: true, page: row.page })
+              }>
               Open
               <ArrowRight size={13} />
             </Button>
@@ -529,7 +535,7 @@ const HEADINGS: Record<Exclude<WorkspacePage, "members">, (ws: WorkspaceInfo) =>
   general: (ws) => ({ title: "General", description: `What ${ws.name} is called, what it looks like, and what it tells you.` }),
   online: () => ({ title: "Reachable online", description: "This workspace's own space at Bloks Cloud, for your phone and the people you invite." }),
   engines: () => ({ title: "Engines and keys", description: "The engines this workspace's agents run on and the keys they use. Every workspace keeps its own." }),
-  usage: () => ({ title: "Usage", description: "What this workspace's agents have used of Bloks AI, and what is left." }),
+  usage: () => ({ title: "Usage", description: "What this workspace's agents have spent and used, and the limits on it." }),
   notifications: (ws) => ({ title: "Notifications", description: `When ${ws.name} may interrupt you, here and in the Dock.` }),
 };
 
@@ -614,7 +620,12 @@ export function WorkspaceSettings() {
             />
           )}
           {page === "usage" && (
-            <LinkRows rows={[{ label: "Bloks AI", says: "This workspace's allowance, what is left, and members' caps.", page: "cloud" }]} />
+            <LinkRows
+              rows={[
+                { label: "Usage", says: "Spend by agent and engine, plan limits, and spending limits on your keys.", page: "usage", rail: true },
+                { label: "Bloks AI", says: "This workspace's allowance, what is left, and members' caps.", page: "cloud" },
+              ]}
+            />
           )}
         </div>
       </div>
