@@ -13,8 +13,11 @@ import { Markdownish } from "@/components/Markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { shapeForBot, type BlokColor, type BlokShape } from "@/lib/mascot";
-import { initials, tintOf } from "@/lib/members";
 import { cardState, speaker, type MemberCard, type MemberMessage } from "@/lib/memberMode";
+import { receiptsAt, runs, type Said } from "@/lib/participants";
+import { useReadPosition, useReads } from "@/lib/readReceipts";
+import { GroupMessage, PersonAvatar, SeenBy } from "@/components/chat/Group";
+import { richText } from "@/components/chat/Bubble";
 import { formatTime } from "@/state/store";
 
 export function AgentFace({ agent, size }: { agent: { id: string; name: string; color: string; shape: string | null }; size: number }) {
@@ -27,16 +30,9 @@ export function AgentFace({ agent, size }: { agent: { id: string; name: string; 
   );
 }
 
+/** A person's face, the same one every group conversation draws. */
 export function PersonFace({ id, name, size = 28 }: { id: string; name: string; size?: number }) {
-  return (
-    <span
-      aria-hidden
-      className="grid shrink-0 place-items-center rounded-full font-semibold text-white/90"
-      style={{ width: size, height: size, background: tintOf(id), fontSize: Math.round(size * 0.38) }}
-    >
-      {initials(name)}
-    </span>
-  );
+  return <PersonAvatar id={id} name={name} size={size} />;
 }
 
 /** "Only you": the mark a solo agent wears wherever it is listed. */
@@ -66,9 +62,18 @@ export interface TranscriptProps {
   header?: React.ReactNode;
   empty?: React.ReactNode;
   onAnswer?: (messageId: string, answer: string) => Promise<void>;
+  /** The conversation's id, for "Seen by" and for saying how far this
+   * person has read. */
+  threadId?: string | null;
+  /** An agent's face by id, for its bubbles in a group. */
+  agentFace?: (id: string | undefined) => React.ReactNode;
+  /** Anybody's name by id, readers who never wrote here included. */
+  nameOf?: (id: string) => string;
+  /** Says this person's place (src/lib/readReceipts.ts). */
+  onRead?: (threadId: string, messageId: string) => Promise<unknown>;
 }
 
-export function Transcript({ messages, me, people, owner, shared, agentName, streaming, busy, header, empty, onAnswer }: TranscriptProps) {
+export function Transcript({ messages, me, people, owner, shared, agentName, streaming, busy, header, empty, onAnswer, threadId = null, agentFace, nameOf, onRead }: TranscriptProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const seen = useRef(new Set<string>());
@@ -87,6 +92,26 @@ export function Transcript({ messages, me, people, owner, shared, agentName, str
   }, [messages]);
 
   const shown = messages.filter((m) => !m.deleted);
+  // Shared with other people (a room, a team conversation): every
+  // message a bubble, a run as one, and "Seen by" under where each other
+  // person has read to (src/lib/participants.ts).
+  const isBubble = (m: MemberMessage) => m.kind === "text" && !m.deleted;
+  const said = shown as unknown as Array<MemberMessage & Said>;
+  const place = shared ? runs(said, isBubble) : null;
+  const reads = useReads(shared ? threadId : null);
+  useReadPosition({
+    threadId: shared ? threadId : null,
+    scroller,
+    enabled: shared && Boolean(onRead),
+    post: (thread, messageId) => onRead?.(thread, messageId) ?? Promise.resolve(),
+    tick: messages.length,
+  });
+  const seenRows = place ? receiptsAt(said.map((m) => m.id), new Set(place.keys()), reads, me) : null;
+  const nameFor = (id: string) => (id === "owner" ? owner : (nameOf?.(id) ?? people[id] ?? "Someone"));
+  const receiptsFor = (id: string) => {
+    const who = seenRows?.get(id);
+    return who?.length ? <SeenBy people={who.map((p) => ({ id: p, name: nameFor(p) }))} /> : undefined;
+  };
   return (
     <div
       ref={scroller}
@@ -115,10 +140,26 @@ export function Transcript({ messages, me, people, owner, shared, agentName, str
               agentName={agentName}
               compact={Boolean(sameSpeaker)}
               onAnswer={onAnswer}
+              place={place?.get(m.id)}
+              receipts={receiptsFor(m.id)}
+              agentFace={agentFace}
             />
           );
         })}
-        {streaming ? (
+        {streaming && shared ? (
+          <div aria-live="polite">
+            <GroupMessage
+              mine={false}
+              first
+              last={false}
+              face={agentFace?.(undefined)}
+              name={agentName(undefined)}
+              at={Date.now()}
+              rich={streaming.length > 400 || richText(streaming)}
+              bubble={<Markdownish text={streaming} streaming />}
+            />
+          </div>
+        ) : streaming ? (
           <div className="text-lead text-foreground" aria-live="polite">
             <Markdownish text={streaming} streaming />
           </div>
@@ -143,6 +184,9 @@ function Line({
   agentName,
   compact,
   onAnswer,
+  place,
+  receipts,
+  agentFace,
 }: {
   message: MemberMessage;
   fresh: boolean;
@@ -153,7 +197,40 @@ function Line({
   agentName: (id: string | undefined) => string;
   compact: boolean;
   onAnswer?: (messageId: string, answer: string) => Promise<void>;
+  place?: { first: boolean; last: boolean };
+  receipts?: React.ReactNode;
+  agentFace?: (id: string | undefined) => React.ReactNode;
 }) {
+  // several people here: every message a bubble, as the owner's own app
+  // draws a room (src/components/chat/Group.tsx)
+  if (shared && place && m.kind === "text") {
+    const human = m.role === "user";
+    const mine = human && m.author === me;
+    const who = human ? speaker(m, me, people, owner) : agentName(m.from);
+    return (
+      <GroupMessage
+        mine={mine}
+        first={place.first}
+        last={place.last}
+        face={human ? <PersonAvatar id={m.author ?? "owner"} name={who} /> : agentFace?.(m.from)}
+        name={who}
+        at={m.at}
+        rich={!human && richText(m.text ?? "")}
+        readId={m.id}
+        // a run from one sender sits close together
+        className={cn(fresh && (mine ? "animate-send-in" : human ? "animate-receive-in" : "animate-fade-in"), !place.first && "-mt-4")}
+        bubbleClassName={human ? "whitespace-pre-wrap" : undefined}
+        bubble={
+          <>
+            {m.onBehalf && <div className="mb-1 text-caption text-muted-foreground">Sent on {m.onBehalf.name}'s behalf</div>}
+            {human ? m.text : <Markdownish text={m.text ?? ""} />}
+          </>
+        }
+        under={mine && m.queued ? <span className="mt-1 px-1 text-caption text-muted-foreground">Waiting for the reply before it</span> : undefined}
+        receipts={receipts}
+      />
+    );
+  }
   if (m.role === "user" && m.kind === "text") {
     const mine = m.author === me;
     const who = speaker(m, me, people, owner);

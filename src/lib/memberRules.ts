@@ -13,6 +13,9 @@
 export type MemberRole = "member" | "admin";
 
 export interface MemberWorkspace {
+  /** Set while the owner is not on Bloks Team: members are paused, and
+   * this is the line that says so. Nothing of theirs is gone. */
+  paused?: string;
   workspace: { id: string; name: string; kind: string; mark: { color: string; pattern: string } };
   you: { personId: string; name: string; role: MemberRole };
   owner: { name: string };
@@ -83,6 +86,8 @@ export interface Conversation {
   owner: { name: string };
   privacy?: string;
   messages: MemberMessage[];
+  /** How far each person has read, as far as this member may see. */
+  reads?: Array<{ personId: string; messageId: string; at: number }>;
 }
 
 export interface MemberUsage {
@@ -112,6 +117,7 @@ export interface MemberRoom {
     people: Array<{ id: string; name: string; role: string; joinedAt: number; guest?: boolean }>;
   };
   messages: MemberMessage[];
+  reads?: Array<{ personId: string; messageId: string; at: number }>;
 }
 
 // ── deciding, once ─────────────────────────────────────────────────────
@@ -149,6 +155,7 @@ export function modeFrom(
         members: ws.members ?? [],
         solo: ws.solo ?? { count: 0, max: 0 },
         engines: ws.engines ?? [],
+        ...(typeof ws.paused === "string" ? { paused: ws.paused } : {}),
       },
     };
   }

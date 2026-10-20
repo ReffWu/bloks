@@ -28,7 +28,11 @@ import { splitWaiting } from "@/lib/transcript";
 import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { ArtifactCard } from "./Artifacts";
 import { ForwardDialog, MessageActionBar, Reactions, ReplyContext, useTapToShow, type ReplyDraft } from "./MessageActions";
-import { IntentNote, UserText } from "./chat/Bubble";
+import { IntentNote, UserText, richText } from "./chat/Bubble";
+import { GroupMessage, PersonAvatar, SeenBy } from "./chat/Group";
+import { receiptsAt, runs } from "@/lib/participants";
+import { usePersonName, useWorkspaceRoster } from "@/lib/members";
+import { seedReads, useReadPosition, useReads } from "@/lib/readReceipts";
 import { JumpToLatest } from "./chat/JumpToLatest";
 import { RoomComposer } from "./room/RoomComposer";
 import { OptionCard } from "./OptionCard";
@@ -51,7 +55,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { replyCounts, replyLabel } from "@/lib/threads";
-import { queuedLine, stamp } from "@/lib/when";
+import { queuedLine } from "@/lib/when";
 import { cn } from "@/lib/cn";
 import { roomLead } from "@/lib/roomLead";
 import { useStickToBottom } from "@/lib/useStickToBottom";
@@ -83,20 +87,6 @@ const CHANNEL_NAMES: Partial<Record<NonNullable<Message["via"]>, string>> = {
   discord: "Discord",
   whatsapp: "WhatsApp",
 };
-
-/** A person in a shared room: their initial, never an agent's avatar, so
- * who is a person and who is an agent is never in doubt. */
-function PersonDot({ name, size = 30 }: { name: string; size?: number }) {
-  return (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-full bg-secondary font-semibold text-secondary-foreground"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
-      aria-hidden
-    >
-      {(name.trim()[0] ?? "?").toUpperCase()}
-    </span>
-  );
-}
 
 /** A member's last words in the room, which its stream is cut after. */
 function lastWordsOf(said: readonly Message[], botId: string): { id: string; text: string } | undefined {
@@ -246,7 +236,7 @@ function HandoffLine({ from, to, ask, onOpen }: { from: string; to: string; ask:
   return (
     // a little more room above than below: it opens what follows rather
     // than closing what came before
-    <div className="mt-1.5 flex pl-11">
+    <div className="mt-1.5 flex pl-9">
       <button
         onClick={onOpen}
         className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md py-0.5 text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
@@ -269,19 +259,20 @@ function HandoffLine({ from, to, ask, onOpen }: { from: string; to: string; ask:
  * a jump. The caret is the stream's own (styles.css, .streaming-text). */
 function LiveWords({ bot, text, showSpeaker, mentions }: { bot: Bot; text: string; showSpeaker: boolean; mentions: string[] }) {
   return (
-    <div className="flex gap-2.5">
-      <div className="w-8 shrink-0 pt-0.5">{showSpeaker && <AgentAvatar bot={bot} size={30} />}</div>
-      <div className="min-w-0 flex-1">
-        {showSpeaker && (
-          <div className="mb-0.5 flex items-baseline gap-1.5">
-            <span className="text-body font-semibold text-foreground">{bot.name}</span>
-          </div>
-        )}
-        <div className="streaming-text min-w-0 text-lead leading-relaxed text-foreground">
+    <GroupMessage
+      mine={false}
+      first={showSpeaker}
+      last={false}
+      face={<AgentAvatar bot={bot} size={28} />}
+      name={bot.name}
+      at={Date.now()}
+      rich={text.length > 400 || richText(text)}
+      bubble={
+        <div className="streaming-text min-w-0">
           <Markdownish text={text} mentions={mentions} streaming />
         </div>
-      </div>
-    </div>
+      }
+    />
   );
 }
 
@@ -291,7 +282,7 @@ function LiveWords({ bot, text, showSpeaker, mentions }: { bot: Bot; text: strin
 function WorkingLine({ bots }: { bots: Bot[] }) {
   return (
     <div role="status" className="flex animate-fade-in items-center gap-2.5 text-small text-muted-foreground">
-      <span className="flex w-8 shrink-0 justify-end -space-x-1">
+      <span className="flex w-7 shrink-0 justify-end -space-x-1">
         {bots.slice(0, 3).map((b) => (
           <AgentAvatar key={b.id} bot={b} size={16} className="rounded-[5px] ring-2 ring-background" />
         ))}
@@ -371,14 +362,6 @@ function RoomWelcome({
   );
 }
 
-/**
- * The verbs under a room message, in the chat's row. A room is compact,
- * a name and a face for each speaker and lines close together, so the
- * row lends most of its height to the gap below rather than pushing the
- * next message down by all of it: what it borrows is the icons' own
- * padding and the gap, never a line of words.
- */
-const ROOM_ROW = "-mb-2.5";
 
 function RoomMessage({
   message,
@@ -386,6 +369,10 @@ function RoomMessage({
   people,
   ownerName,
   showSpeaker,
+  place,
+  receipts,
+  fresh,
+  memberName,
   roomId,
   onReply,
   onForward,
@@ -395,6 +382,15 @@ function RoomMessage({
   people: RoomPerson[];
   ownerName?: string;
   showSpeaker: boolean;
+  /** Where it sits in its sender's run: a room is always a group, so
+   * every message is a bubble (src/lib/participants.ts). */
+  place: { first: boolean; last: boolean };
+  receipts?: React.ReactNode;
+  fresh?: boolean;
+  /** A workspace member's name: in a room open to everyone, members are
+   * in it without a membership of their own, so the room's list alone
+   * does not name them. */
+  memberName?: (id: string) => string;
   roomId: string;
   onReply: (draft: ReplyDraft) => void;
   onForward: (message: Message, author: string) => void;
@@ -406,14 +402,12 @@ function RoomMessage({
   // where nothing hovers, a tap on the words shows the row
   const tap = useTapToShow();
 
-  // The time is in the header over a speaker's first message, so the
-  // row says it only under the ones that follow, where nothing else does.
-  const verbs = (author: string, align: "start" | "end" = "start") => (
+  // The verbs float on the bubble's top edge on hover, with its time,
+  // so a hover moves nothing and a run stays close together.
+  const verbs = (author: string) => (
     <MessageActionBar
-      look="row"
-      align={align}
-      at={showSpeaker && align === "start" ? undefined : message.at}
-      className={ROOM_ROW}
+      look="pill"
+      at={message.at}
       open={tap.open}
       message={message}
       author={author}
@@ -423,10 +417,17 @@ function RoomMessage({
       onDelete={() => deleteRoomMessage(roomId, message.id)}
     />
   );
+  const reactions = (
+    <Reactions
+      reactions={message.reactions}
+      onToggle={(emoji: string) => reactTo(roomId, message.id, emoji)}
+      nameOf={nameOfReactor}
+    />
+  );
 
   if (message.deleted) {
     return (
-      <div className={cn("flex", message.role === "user" ? "justify-end" : "justify-start pl-11")}>
+      <div className={cn("flex", message.role === "user" ? "justify-end" : "justify-start pl-9")}>
         <div className="rounded-2xl border border-dashed px-3 py-1.5 text-body italic text-muted-foreground">
           Message taken back
         </div>
@@ -434,62 +435,66 @@ function RoomMessage({
     );
   }
 
-  // somebody else in a shared room: on the left, named, like an agent
+  // somebody else in the room: on the left, named, with their face
   if (message.role === "user" && message.author) {
-    const who = people.find((p) => p.id === message.author)?.name ?? "A former member";
+    const who = people.find((p) => p.id === message.author)?.name ?? memberName?.(message.author) ?? "A former member";
     return (
-      <div ref={tap.row} className="group flex gap-2.5">
-        <div className="w-8 shrink-0 pt-0.5">{showSpeaker && <PersonDot name={who} />}</div>
-        <div className="flex min-w-0 flex-1 flex-col items-start">
-          {showSpeaker && (
-            <div className="mb-0.5 flex items-baseline gap-1.5">
-              <span className="text-body font-semibold text-foreground">{who}</span>
-              <span className="text-caption tabular-nums text-muted-foreground">{stamp(message.at)}</span>
-            </div>
-          )}
-          <div
-            onPointerUp={tap.onPointerUp}
-            className="min-w-0 max-w-full rounded-2xl rounded-tl-md bg-muted px-3.5 py-2 text-lead leading-relaxed text-foreground"
-          >
+      <GroupMessage
+        mine={false}
+        first={place.first}
+        last={place.last}
+        face={<PersonAvatar id={message.author} name={who} />}
+        name={who}
+        at={message.at}
+        readId={message.id}
+        rowRef={tap.row}
+        onPointerUp={tap.onPointerUp}
+        className={cn(fresh && "animate-receive-in")}
+        bubble={
+          <>
             {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
             <Markdownish text={message.text ?? ""} mentions={names} />
-          </div>
-          <Reactions
-            reactions={message.reactions}
-            onToggle={(emoji: string) => reactTo(roomId, message.id, emoji)}
-            nameOf={nameOfReactor}
-          />
-          {verbs(who)}
-        </div>
-      </div>
+          </>
+        }
+        under={reactions}
+        actions={verbs(who)}
+        receipts={receipts}
+      />
     );
   }
 
+  // your own words: on your side, in your accent
   if (message.role === "user") {
     return (
-      <div ref={tap.row} className="group flex flex-col items-end">
-        <div className="flex max-w-[76%] flex-col items-end">
-          <div
-            onPointerUp={tap.onPointerUp}
-            // the same soft bubble your words wear in a chat with one agent
-            className="min-w-0 whitespace-pre-wrap rounded-2xl bg-secondary px-4 py-2.5 text-lead text-foreground [overflow-wrap:anywhere]"
-          >
-            {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
+      <GroupMessage
+        mine
+        first={place.first}
+        last={place.last}
+        at={message.at}
+        readId={message.id}
+        rowRef={tap.row}
+        onPointerUp={tap.onPointerUp}
+        className={cn(fresh && "animate-send-in")}
+        bubbleClassName="whitespace-pre-wrap"
+        bubble={
+          <>
+            {message.replyTo && <ReplyContext replyTo={message.replyTo} onAccent />}
             <UserText text={message.text ?? ""} />
-          </div>
-          <Reactions
-            reactions={message.reactions}
-            onToggle={(emoji: string) => reactTo(roomId, message.id, emoji)}
-            nameOf={nameOfReactor}
-          />
-          {message.deliveredAt && (
-            <div className="mt-0.5 px-1 text-caption leading-4 tabular-nums text-muted-foreground">
-              {queuedLine(message.queuedAt ?? message.at, message.deliveredAt)}
-            </div>
-          )}
-        </div>
-        {verbs("You", "end")}
-      </div>
+          </>
+        }
+        under={
+          <>
+            {reactions}
+            {message.deliveredAt && (
+              <div className="mt-0.5 px-1 text-caption leading-4 tabular-nums text-muted-foreground">
+                {queuedLine(message.queuedAt ?? message.at, message.deliveredAt)}
+              </div>
+            )}
+          </>
+        }
+        actions={verbs("You")}
+        receipts={receipts}
+      />
     );
   }
 
@@ -499,7 +504,7 @@ function RoomMessage({
 
   if (message.kind === "notice" && message.intent) {
     return (
-      <div className="pl-11">
+      <div className="pl-9">
         <IntentNote message={message} />
       </div>
     );
@@ -508,7 +513,7 @@ function RoomMessage({
   // what failed in the room, put to the person (server/incidents.ts)
   if (message.kind === "notice" && message.incident && message.incident.kind !== "note") {
     return (
-      <div className="pl-11">
+      <div className="pl-9">
         <IncidentNotice message={message} />
       </div>
     );
@@ -516,7 +521,7 @@ function RoomMessage({
 
   if (message.kind === "notice") {
     return (
-      <div className="flex gap-2.5 pl-11">
+      <div className="flex gap-2.5 pl-9">
         <div className="flex max-w-[560px] gap-2 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2">
           <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
           <div className="whitespace-pre-wrap text-body leading-relaxed text-foreground">
@@ -530,7 +535,7 @@ function RoomMessage({
 
   if (message.kind === "artifact" && message.artifact) {
     return (
-      <div className="pl-11">
+      <div className="pl-9">
         <ArtifactCard botId={message.from ?? ""} artifact={message.artifact} />
       </div>
     );
@@ -544,47 +549,56 @@ function RoomMessage({
     );
   }
 
-  const prose = message.kind !== "component" && message.kind !== "changes" && message.kind !== "options";
-  return (
-    <div ref={prose ? tap.row : undefined} className={cn("flex gap-2.5", prose && "group")}>
-      <div className="w-8 shrink-0 pt-0.5">
-        {showSpeaker && (
-          <AgentAvatar bot={speaker} size={30} />
-        )}
+  // a card asks or reports rather than says: it keeps its own shape,
+  // lined up with the bubbles, under the agent's name
+  if (message.kind === "changes" || message.kind === "options") {
+    return (
+      <div className="flex gap-2">
+        <div className="w-7 shrink-0 pt-0.5">{showSpeaker && <AgentAvatar bot={speaker} size={28} />}</div>
+        <div className="min-w-0 flex-1">
+          {showSpeaker && <div className="mb-1 px-1 text-small font-medium text-muted-foreground">{speaker.name}</div>}
+          {message.kind === "changes" ? (
+            <ChangesCard message={message} />
+          ) : (
+            // an agent can need you mid-room; the ask has to be answerable here
+            <OptionCard botId={speaker.id} roomId={roomId} message={message} />
+          )}
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        {showSpeaker && (
-          <div className="mb-0.5 flex items-baseline gap-1.5">
-            <span className="text-body font-semibold text-foreground">{speaker.name}</span>
-            <span className="text-caption tabular-nums text-muted-foreground">{stamp(message.at)}</span>
-          </div>
-        )}
-        {message.kind === "component" && message.component ? (
+    );
+  }
+
+  const ui = message.kind === "component" && message.component;
+  return (
+    <GroupMessage
+      mine={false}
+      first={place.first}
+      last={place.last}
+      face={<AgentAvatar bot={speaker} size={28} />}
+      name={speaker.name}
+      at={message.at}
+      rich={Boolean(ui) || richText(message.text ?? "")}
+      readId={message.id}
+      rowRef={ui ? undefined : tap.row}
+      onPointerUp={ui ? undefined : tap.onPointerUp}
+      className={cn(fresh && "animate-fade-in")}
+      bubble={
+        ui ? (
           <MessageComponent message={message} threadId={roomId} />
-        ) : message.kind === "changes" ? (
-          <ChangesCard message={message} />
-        ) : message.kind === "options" ? (
-          // an agent can need you mid-room; the ask has to be answerable here
-          <OptionCard botId={speaker.id} roomId={roomId} message={message} />
         ) : (
           <>
-            <div onPointerUp={tap.onPointerUp} className="min-w-0 text-lead leading-relaxed text-foreground">
-              {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
-              {/* a click in the answer goes back to this agent, in this room */}
-              <GenUiHost target={{ kind: "room", roomId, agentName: speaker.name }}>
-                <Markdownish text={message.text ?? ""} mentions={names} />
-              </GenUiHost>
-            </div>
-            <Reactions
-              reactions={message.reactions}
-              onToggle={(emoji: string) => reactTo(roomId, message.id, emoji)}
-              nameOf={nameOfReactor}
-            />
-            {verbs(speaker.name)}
+            {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
+            {/* a click in the answer goes back to this agent, in this room */}
+            <GenUiHost target={{ kind: "room", roomId, agentName: speaker.name }}>
+              <Markdownish text={message.text ?? ""} mentions={names} />
+            </GenUiHost>
           </>
-        )}
-      </div>
-    </div>
+        )
+      }
+      under={ui ? undefined : reactions}
+      actions={ui ? undefined : verbs(speaker.name)}
+      receipts={receipts}
+    />
   );
 }
 
@@ -667,6 +681,40 @@ export function RoomView({ blok }: { blok: Blok }) {
   const start = earlier.start;
   // which messages have answers hanging off them, for the stream's hint
   const counts = replyCounts(said);
+
+  // A room is a group: every message a bubble, a run from one sender as
+  // one, and with people in it, who has read how far
+  // (src/lib/participants.ts, src/lib/readReceipts.ts).
+  const roster = useWorkspaceRoster();
+  const personName = usePersonName();
+  const isBubble = (m: Message) =>
+    !m.deleted && (m.role === "user" || (Boolean(m.from) && (m.kind === "text" || m.kind === "component")));
+  const roomRuns = useMemo(() => runs(said, isBubble), [said]); // eslint-disable-line react-hooks/exhaustive-deps
+  const withPeople = roomPeople.length > 0 || roster.members.length > 0;
+  const reads = useReads(withPeople ? blok.id : null);
+  useEffect(() => {
+    if (!withPeople) return;
+    api(`/api/threads/${blok.id}/reads`)
+      .then((r: { reads?: unknown }) => seedReads(blok.id, r.reads))
+      .catch(() => {});
+  }, [withPeople, blok.id]);
+  useReadPosition({
+    threadId: withPeople ? blok.id : null,
+    scroller: scrollRef,
+    enabled: withPeople && lens === "stream",
+    post: (threadId, messageId) => api(`/api/threads/${threadId}/read`, { method: "POST", body: JSON.stringify({ messageId }) }),
+    tick: said.length,
+  });
+  const receiptRows = useMemo(
+    () => (withPeople ? receiptsAt(said.map((m) => m.id), new Set(roomRuns.keys()), reads, "owner") : new Map<string, string[]>()),
+    [withPeople, said, roomRuns, reads],
+  );
+  const readerName = (id: string) =>
+    id === "owner" ? (ownerName ?? roster.owner ?? "You") : (roomPeople.find((p) => p.id === id)?.name ?? personName(id));
+  const receiptsFor = (id: string) => {
+    const who = receiptRows.get(id);
+    return who?.length ? <SeenBy people={who.map((p) => ({ id: p, name: readerName(p) }))} /> : undefined;
+  };
   // Each agent's finished turn is one line above its reply
   // (src/lib/turnFold.ts). A room's transcript does not say where a turn
   // began, so where one seen starting began is kept here: nothing of it
@@ -925,14 +973,14 @@ export function RoomView({ blok }: { blok: Blok }) {
           if (next.kind !== "activity" || next.from !== m.from || next.deleted || !next.tool) break;
           run.push(next);
         }
-        return [...handoffsBefore(indices[i]), <ToolRun key={m.id} messages={run} className="pl-11" />];
+        return [...handoffsBefore(indices[i]), <ToolRun key={m.id} messages={run} className="pl-9" />];
       }
       const showSpeaker = !prev || prev.from !== m.from || prev.role !== m.role;
       const answers = replyLabel(counts.get(m.id) ?? 0);
       const lit = flashId === m.id;
       return [
         ...handoffsBefore(indices[i]),
-        <div key={m.id} data-room-msg={m.id} className="relative isolate">
+        <div key={m.id} data-room-msg={m.id} className={cn("relative isolate", roomRuns.get(m.id)?.first === false && "-mt-1.5")}>
           <LandMark on={lit} />
           <RoomMessage
             message={m}
@@ -940,6 +988,9 @@ export function RoomView({ blok }: { blok: Blok }) {
             people={roomPeople}
             ownerName={blok.sharing ? ownerName : undefined}
             showSpeaker={showSpeaker}
+            place={roomRuns.get(m.id) ?? { first: showSpeaker, last: true }}
+            receipts={receiptsFor(m.id)}
+            memberName={personName}
             roomId={blok.id}
             onReply={setReplyTo}
             onForward={(message, author) => setForwarding({ message, author })}
@@ -947,7 +998,7 @@ export function RoomView({ blok }: { blok: Blok }) {
           {answers && (
             <button
               onClick={() => setLensAnd("forum")}
-              className="ml-11 mt-0.5 rounded-md px-1.5 py-0.5 text-small text-brand-ink transition-colors duration-150 hover:bg-accent"
+              className="ml-9 mt-0.5 rounded-md px-1.5 py-0.5 text-small text-brand-ink transition-colors duration-150 hover:bg-accent"
             >
               {answers}
             </button>
@@ -1130,7 +1181,7 @@ export function RoomView({ blok }: { blok: Blok }) {
                     fold={row.fold}
                     open={openFolds.has(row.fold.key)}
                     onToggle={() => toggleFold(row.fold.key)}
-                    className="pl-11"
+                    className="pl-9"
                   >
                     {openFolds.has(row.fold.key) && rowsOf(row.fold.messages, row.fold.indices)}
                   </TurnFoldLine>,
@@ -1153,7 +1204,7 @@ export function RoomView({ blok }: { blok: Blok }) {
           })}
           {quiet.length > 0 && <WorkingLine bots={quiet} />}
           {typingNow && (
-            <div className="flex items-center gap-2.5 pl-11 text-small text-muted-foreground">
+            <div className="flex items-center gap-2.5 pl-9 text-small text-muted-foreground">
               <span className="size-1.5 rounded-full bg-muted-foreground motion-safe:animate-pulse" />
               {typingNow} is typing
             </div>
@@ -1178,7 +1229,7 @@ export function RoomView({ blok }: { blok: Blok }) {
           m.role === "bot"
             ? (members.find((b) => b.id === m.from)?.name ?? "An agent")
             : m.author
-              ? (roomPeople.find((p) => p.id === m.author)?.name ?? "A former member")
+              ? (roomPeople.find((p) => p.id === m.author)?.name ?? personName(m.author))
               : m.via
                 ? (CHANNEL_NAMES[m.via] ?? "the linked chat")
                 : null

@@ -4,6 +4,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { WorkspaceKind } from "@/types/bridge";
 import { isProgressText } from "@/lib/codexProgress";
+import { takeReadFrame } from "@/lib/readReceipts";
 import {
   foldRuntime,
   modeFrom,
@@ -71,6 +72,8 @@ export const memberApi = {
   addNote: (text: string) => call<{ note: MemberNote }>("/api/member/notes", { method: "POST", body: JSON.stringify({ text }) }),
   keepNote: (id: string, text?: string) => call<{ note: MemberNote }>(`/api/member/notes/${id}/keep`, { method: "POST", body: JSON.stringify(text === undefined ? {} : { text }) }),
   dropNote: (id: string) => call<{ ok: true }>(`/api/member/notes/${id}`, { method: "DELETE" }),
+  read: (threadId: string, messageId: string) =>
+    call<{ read: unknown }>(`/api/member/threads/${threadId}/read`, { method: "POST", body: JSON.stringify({ messageId }) }),
 };
 
 // ── the live stream ────────────────────────────────────────────────────
@@ -117,6 +120,7 @@ export function startMemberStream() {
         return;
       }
       if (typeof frame?.kind !== "string") return;
+      takeReadFrame(frame);
       const next = foldRuntime(streaming, frame, (c) => isProgressText(c as Parameters<typeof isProgressText>[0]));
       if (next !== streaming) setStreaming(next);
       frameListeners.forEach((l) => l(frame));

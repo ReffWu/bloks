@@ -22,6 +22,7 @@ import {
   type MemberUsage,
   usageNotice,
 } from "@/lib/memberMode";
+import { seedReads } from "@/lib/readReceipts";
 import { AgentFace, MemberComposer, OnlyYou, PersonFace, Transcript } from "./MemberParts";
 
 /** A list of messages with one more folded in: added, or put in place of
@@ -72,7 +73,10 @@ export function AgentView({
   onLane,
   onDelete,
   onSent,
+  nameOf,
 }: {
+  /** Anybody's name in the workspace, for "Seen by". */
+  nameOf?: (id: string) => string;
   agent: MemberAgent;
   lane: "team" | "private";
   me: string;
@@ -89,6 +93,7 @@ export function AgentView({
     memberApi
       .conversation(agent.id, lane)
       .then((c) => {
+        seedReads(c.threadId, c.reads);
         setData(c);
         setBusy(c.busy);
         setError(null);
@@ -158,6 +163,10 @@ export function AgentView({
           owner={owner}
           shared={team}
           agentName={() => agent.name}
+          threadId={data.threadId}
+          agentFace={() => <AgentFace agent={agent} size={28} />}
+          nameOf={nameOf}
+          onRead={memberApi.read}
           streaming={streaming}
           busy={busy}
           header={header}
@@ -201,13 +210,14 @@ export function AgentView({
   );
 }
 
-export function RoomView({ roomId, me, usage }: { roomId: string; me: string; usage: MemberUsage | null }) {
+export function RoomView({ roomId, me, usage, nameOf }: { roomId: string; me: string; usage: MemberUsage | null; nameOf?: (id: string) => string }) {
   const [data, setData] = useState<MemberRoom | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
     memberApi
       .room(roomId)
       .then((r) => {
+        seedReads(roomId, r.reads);
         setData(r);
         setError(null);
       })
@@ -257,6 +267,13 @@ export function RoomView({ roomId, me, usage }: { roomId: string; me: string; us
           owner={data.room.owner.name}
           shared
           agentName={agentName}
+          threadId={roomId}
+          agentFace={(id) => {
+            const a = data.room.agents.find((x) => x.id === id);
+            return a ? <AgentFace agent={a} size={28} /> : null;
+          }}
+          nameOf={(id) => people[id] ?? nameOf?.(id) ?? "Someone"}
+          onRead={memberApi.read}
           streaming=""
           busy={busy}
           header={

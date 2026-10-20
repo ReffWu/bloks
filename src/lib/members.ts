@@ -86,6 +86,10 @@ export interface MembersData {
   privacy: { privateReadable: boolean; line: string };
   plan: "cloud" | "team" | null;
   limit: number | null;
+  /** Members are Bloks Team's: whether the owner is on it now. */
+  team?: boolean;
+  /** People are in, and the owner is not on Team: they are paused. */
+  paused?: boolean;
   online: { available: boolean; why?: string };
 }
 
@@ -372,6 +376,9 @@ export function takeJoinInput(): string {
 // ── names of the people in the workspace ─────────────────────────────
 
 let names: Record<string, string> = {};
+/** The same people with their roles, for who is in a team agent's
+ * conversation (src/lib/participants.ts teamHumans), and the owner's. */
+let roster: { owner: string | null; members: Array<{ id: string; name: string; role: WorkspaceRole }> } = { owner: null, members: [] };
 let namesAsked = false;
 const nameListeners = new Set<() => void>();
 
@@ -379,13 +386,16 @@ function loadNames() {
   api("/api/workspace/members")
     .then((data: MembersData) => {
       names = Object.fromEntries(data.members.map((m) => [m.id, m.name]));
+      roster = { owner: data.owner?.name ?? null, members: data.members.map((m) => ({ id: m.id, name: m.name, role: m.role })) };
       nameListeners.forEach((l) => l());
     })
     .catch(() => {});
 }
 listeners.add((frame) => {
   if (frame.kind === "workspace.people" && Array.isArray(frame.members)) {
-    names = Object.fromEntries((frame.members as Array<{ id: string; name: string }>).map((m) => [m.id, m.name]));
+    const list = frame.members as Array<{ id: string; name: string; role?: WorkspaceRole }>;
+    names = Object.fromEntries(list.map((m) => [m.id, m.name]));
+    roster = { ...roster, members: list.map((m) => ({ id: m.id, name: m.name, role: m.role === "admin" ? "admin" : "member" })) };
     nameListeners.forEach((l) => l());
   }
 });
@@ -408,4 +418,23 @@ export function usePersonName(): (id: string) => string {
     () => names,
   );
   return (id: string) => current[id] ?? "A former member";
+}
+
+/** The workspace's people with their roles, and the owner's name, as the
+ * window knows them; asked once, then kept by frames. */
+export function useWorkspaceRoster(): typeof roster {
+  useEffect(() => {
+    if (!namesAsked) {
+      namesAsked = true;
+      loadNames();
+    }
+  }, []);
+  return useSyncExternalStore(
+    (l) => {
+      nameListeners.add(l);
+      return () => nameListeners.delete(l);
+    },
+    () => roster,
+    () => roster,
+  );
 }

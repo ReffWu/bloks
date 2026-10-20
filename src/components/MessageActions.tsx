@@ -440,6 +440,9 @@ export function MessageActionBar({
             </Verb>
           </Tip>
         ))}
+        {/* a bubble in a group says its time here, on hover, rather than
+            under every message of a run */}
+        {at ? <SaidAt at={at} /> : null}
       </div>
     </TooltipProvider>
   );
@@ -452,27 +455,32 @@ export function MessageActionBar({
 export function ReplyContext({
   replyTo,
   onDark,
+  onAccent,
 }: {
   replyTo: NonNullable<Message["replyTo"]>;
   onDark?: boolean;
+  /** Inside the reader's own bubble in a group, which wears the accent. */
+  onAccent?: boolean;
 }) {
   return (
     <div
       className={cn(
         "mb-1.5 flex items-start gap-1.5 rounded-lg border-l-2 px-2 py-1",
-        onDark
-          ? "border-primary-foreground/60 bg-primary-foreground/20"
-          : "border-brand/50 bg-foreground/[0.05]",
+        onAccent
+          ? "border-brand-foreground/60 bg-brand-foreground/15"
+          : onDark
+            ? "border-primary-foreground/60 bg-primary-foreground/20"
+            : "border-brand/50 bg-foreground/[0.05]",
       )}
     >
       <span className="min-w-0 text-small leading-snug">
-        <span className={cn("font-medium", onDark ? "text-primary-foreground" : "text-brand-ink")}>
+        <span className={cn("font-medium", onAccent ? "text-brand-foreground" : onDark ? "text-primary-foreground" : "text-brand-ink")}>
           {replyTo.author}
         </span>
         <span
           className={cn(
             "block truncate",
-            onDark ? "text-primary-foreground/80" : "text-muted-foreground",
+            onAccent ? "text-brand-foreground/80" : onDark ? "text-primary-foreground/80" : "text-muted-foreground",
           )}
         >
           {replyTo.excerpt}

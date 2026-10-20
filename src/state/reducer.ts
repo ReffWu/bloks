@@ -301,6 +301,11 @@ export interface Bot {
   id: string;
   /** The active task's thread; messages below belong to it. */
   threadId: string;
+  /** Who shares a team agent's conversation (server/access.ts); absent
+   * is everyone in the workspace. */
+  access?: { mode: "everyone" | "only" | "except"; people: string[]; admins?: boolean };
+  /** A solo agent: its maker's alone. */
+  solo?: { by: string };
   name: string;
   title: string;
   description: string;

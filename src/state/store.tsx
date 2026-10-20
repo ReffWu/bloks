@@ -9,6 +9,7 @@
 // The app also owns no provider connections of its own. It sends typed
 // commands and folds one event stream; anything that talks to a model
 // happens in the harness.
+import { takeReadFrame } from "@/lib/readReceipts";
 import { consumeSettingsRequest } from "@/lib/settings-client";
 import {
   createContext,
@@ -790,6 +791,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (typeof frame.kind === "string" && frame.kind.startsWith("workspace.")) {
         workspaceFrame(frame, typeof frame._seq !== "number" || frame._seq > replayUntil.current);
       }
+      // how far somebody has read, for "Seen by" (src/lib/readReceipts.ts)
+      if (frame.kind === "read") return takeReadFrame(frame);
       switch (frame.kind) {
         case "hello":
           // Everything up to the server's current sequence is either

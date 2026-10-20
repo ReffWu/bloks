@@ -21,6 +21,27 @@ import { cn } from "@/lib/cn";
 import { goalNoteForPerson } from "@/lib/goalNote";
 import { redoLine, type RedoPreview } from "@/lib/redo";
 import { FailingNotice, IncidentNotice } from "./IncidentCard";
+import { GroupMessage } from "./Group";
+
+/** How a message sits in a conversation of more than two
+ * (src/lib/participants.ts): whose side, where in its sender's run, the
+ * sender's face, and who has read up to it. Absent, the message is drawn
+ * as a chat with one agent always has. */
+export interface GroupPlace {
+  mine: boolean;
+  first: boolean;
+  last: boolean;
+  face?: React.ReactNode;
+  receipts?: React.ReactNode;
+  /** The id this row says the reader's place with. */
+  readId?: string;
+}
+
+/** Whether an answer holds something that needs the whole bubble: a
+ * table, code, a picture, a list of any length. */
+export function richText(text: string): boolean {
+  return /```|^\s*\|.+\|\s*$|!\[[^\]]*\]\(|^\s*(?:[-*]|\d+\.)\s.+\n(?:.*\n){3,}/m.test(text);
+}
 
 
 /** The line over a goal turn: from Bloks, and which turn of how many. */
@@ -184,8 +205,11 @@ export function Bubble({
   highlight = "",
   isHit,
   editNow,
+  group,
 }: {
   message: Message;
+  /** Drawn as one of several voices: see GroupPlace. */
+  group?: GroupPlace;
   /** The next bubble says the same time. The time now shows only with a
    * message's actions, one message at a time, so nothing repeats and
    * every message can still say when it was sent. Kept so callers that
@@ -299,6 +323,53 @@ export function Bubble({
   // by anybody.
   const queued = Boolean(message.deliveredAt && message.via !== "goal" && message.via !== "incident");
 
+  if (!user && group) {
+    return (
+      <GroupMessage
+        mine={false}
+        first={group.first}
+        last={group.last}
+        face={group.face}
+        name={author}
+        at={message.at}
+        rich={richText(message.text ?? "")}
+        readId={group.readId}
+        rowRef={tap.row}
+        onPointerUp={tap.onPointerUp}
+        className={cn(fresh && "animate-fade-in")}
+        bubbleClassName={cn(isHit && "ring-2 ring-warning/70")}
+        bubble={
+          <>
+            {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
+            <Markdownish text={message.text ?? ""} highlight={highlight} />
+            {message.editedAt && <span className="ml-1.5 align-baseline text-caption text-muted-foreground">edited</span>}
+          </>
+        }
+        under={
+          <Reactions
+            reactions={message.reactions}
+            onToggle={(emoji: string) => onReact?.(message.id, emoji)}
+            nameOf={nameOf ?? ((id) => (id === "user" ? "You" : author))}
+          />
+        }
+        actions={
+          <MessageActionBar
+            look="pill"
+            at={message.at}
+            open={tap.open}
+            message={message}
+            author={author}
+            onReply={onReply}
+            onForward={onForward}
+            onReact={onReact ? (emoji) => onReact(message.id, emoji) : undefined}
+            onDelete={onDelete ? () => onDelete(message.id) : undefined}
+          />
+        }
+        receipts={group.receipts}
+      />
+    );
+  }
+
   if (!user) {
     return (
       <div
@@ -349,6 +420,141 @@ export function Bubble({
     );
   }
 
+  // The editor, opened where the message is, and the words otherwise:
+  // the same in a chat with one agent and in a group.
+  const draft = editing ?? "";
+  const editor = (
+            <div className="flex flex-col gap-1.5">
+              <textarea
+                autoFocus
+                value={draft}
+                onChange={(e) => setEditing(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") stopEditing();
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void submit();
+                  }
+                }}
+                rows={Math.min(8, draft.split("\n").length + 1)}
+                className="w-full resize-none rounded-lg border bg-background px-2.5 py-1.5 text-lead outline-none"
+              />
+              {offer ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-small text-muted-foreground">
+                    <button
+                      onClick={() => draft.trim() && redoNow(draft.trim())}
+                      disabled={redoing}
+                      className="font-medium text-foreground underline underline-offset-2 disabled:opacity-60"
+                    >
+                      Redo
+                    </button>
+                    {/* the smaller way out: the words change, and the
+                        agent goes on with the ones it read */}
+                    <button onClick={() => stopEditing(draft.trim() || undefined)} disabled={redoing} className="text-caption hover:text-foreground">
+                      Save only
+                    </button>
+                    <button onClick={() => stopEditing()} className="text-caption hover:text-foreground">
+                      Cancel
+                    </button>
+                    <span>{redoing ? "Redoing…" : "Enter redoes, Escape cancels"}</span>
+                  </div>
+                  <div className="text-small leading-snug text-muted-foreground" role="status">
+                    {redoError ?? redoLine(offer, agentName ?? "the agent")}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 text-small text-muted-foreground">
+                  <button
+                    onClick={() => stopEditing(draft.trim() || undefined)}
+                    className="font-medium text-foreground underline underline-offset-2"
+                  >
+                    Save
+                  </button>
+                  <button onClick={() => stopEditing()} className="hover:text-foreground">
+                    Cancel
+                  </button>
+                  <span>Enter saves, Escape cancels</span>
+                </div>
+              )}
+            </div>
+  );
+  const words = <UserText text={message.via === "goal" ? goalNoteForPerson(message.text ?? "").body : (message.text ?? "")} highlight={highlight} />;
+
+  if (group) {
+    const fromSomewhere = message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal" || message.via === "intent" || message.via === "incident";
+    return (
+      <GroupMessage
+        mine={group.mine}
+        first={group.first}
+        last={group.last}
+        face={group.face}
+        name={author}
+        at={message.at}
+        // an editor gets the room the words may grow into
+        rich={editing !== null}
+        readId={group.readId}
+        rowRef={tap.row}
+        onPointerUp={tap.onPointerUp}
+        className={cn(fresh && (group.mine ? "animate-send-in" : "animate-receive-in"))}
+        bubbleClassName={cn(
+          "whitespace-pre-wrap",
+          // Bloks keeping a goal going, or handing a lead what failed: a
+          // quieter bubble, so it never reads as the person's words
+          (message.via === "goal" || message.via === "incident") && "border border-brand/25 bg-brand-soft text-foreground",
+          editing !== null && "bg-muted text-foreground",
+          isHit && "ring-2 ring-warning/70",
+        )}
+        bubble={
+          <>
+            {fromSomewhere && (
+              <div className="mb-0.5 text-caption opacity-80">
+                {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? "From your watcher" : message.via === "intent" ? `From your standing intent${message.intent?.name ? ` ${message.intent.name}` : ""}` : message.via === "webhook" ? "From a webhook" : message.via === "goal" ? goalLabel(message.text ?? "") : message.via === "incident" ? "From Bloks, about something that failed" : "By email"}
+              </div>
+            )}
+            {message.replyTo && <ReplyContext replyTo={message.replyTo} onAccent={group.mine && editing === null && message.via !== "goal" && message.via !== "incident"} />}
+            {editing !== null ? editor : words}
+            {message.editedAt && editing === null && <span className="ml-1.5 align-baseline text-caption opacity-75">edited</span>}
+          </>
+        }
+        under={
+          <>
+            <Reactions
+              reactions={message.reactions}
+              onToggle={(emoji: string) => onReact?.(message.id, emoji)}
+              nameOf={nameOf ?? ((id) => (id === "user" ? "You" : author))}
+            />
+            {message.recalled?.length ? <RecalledNotes notes={message.recalled} /> : null}
+            {queued && message.at && message.deliveredAt && (
+              <div className="mt-1 px-1 text-caption tabular-nums text-muted-foreground">{queuedLine(message.queuedAt ?? message.at, message.deliveredAt)}</div>
+            )}
+            {message.delivery && message.delivery.route !== "queued" && !message.queued && (
+              <div className="mt-1 px-1 text-caption text-muted-foreground">{message.delivery.line}</div>
+            )}
+          </>
+        }
+        actions={
+          editing === null ? (
+            <MessageActionBar
+              look="pill"
+              at={message.at}
+              open={tap.open}
+              message={message}
+              author={author}
+              onReply={onReply}
+              onForward={onForward}
+              onReact={onReact ? (emoji) => onReact(message.id, emoji) : undefined}
+              onEdit={group.mine && onEdit && message.via !== "goal" && message.via !== "incident" ? startEditing : undefined}
+              onDelete={onDelete ? () => onDelete(message.id) : undefined}
+              onRewind={group.mine && onRewind ? () => onRewind(message.id) : undefined}
+            />
+          ) : null
+        }
+        receipts={group.receipts}
+      />
+    );
+  }
+
   return (
     <div
       ref={tap.row}
@@ -386,64 +592,7 @@ export function Bubble({
           )}
         >
           {message.replyTo && <ReplyContext replyTo={message.replyTo} />}
-          {editing !== null ? (
-            <div className="flex flex-col gap-1.5">
-              <textarea
-                autoFocus
-                value={editing}
-                onChange={(e) => setEditing(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") stopEditing();
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void submit();
-                  }
-                }}
-                rows={Math.min(8, editing.split("\n").length + 1)}
-                className="w-full resize-none rounded-lg border bg-background px-2.5 py-1.5 text-lead outline-none"
-              />
-              {offer ? (
-                <>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-small text-muted-foreground">
-                    <button
-                      onClick={() => editing.trim() && redoNow(editing.trim())}
-                      disabled={redoing}
-                      className="font-medium text-foreground underline underline-offset-2 disabled:opacity-60"
-                    >
-                      Redo
-                    </button>
-                    {/* the smaller way out: the words change, and the
-                        agent goes on with the ones it read */}
-                    <button onClick={() => stopEditing(editing.trim() || undefined)} disabled={redoing} className="text-caption hover:text-foreground">
-                      Save only
-                    </button>
-                    <button onClick={() => stopEditing()} className="text-caption hover:text-foreground">
-                      Cancel
-                    </button>
-                    <span>{redoing ? "Redoing…" : "Enter redoes, Escape cancels"}</span>
-                  </div>
-                  <div className="text-small leading-snug text-muted-foreground" role="status">
-                    {redoError ?? redoLine(offer, agentName ?? "the agent")}
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center gap-2 text-small text-muted-foreground">
-                  <button
-                    onClick={() => stopEditing(editing.trim() || undefined)}
-                    className="font-medium text-foreground underline underline-offset-2"
-                  >
-                    Save
-                  </button>
-                  <button onClick={() => stopEditing()} className="hover:text-foreground">
-                    Cancel
-                  </button>
-                  <span>Enter saves, Escape cancels</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <UserText text={message.via === "goal" ? goalNoteForPerson(message.text ?? "").body : (message.text ?? "")} highlight={highlight} />
-          )}
+          {editing !== null ? editor : words}
           {message.editedAt && editing === null && (
             <span className="ml-1.5 align-baseline text-caption text-muted-foreground">edited</span>
           )}

@@ -1,5 +1,7 @@
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
-import { usePersonName } from "@/lib/members";
+import { usePersonName, useWorkspaceRoster } from "@/lib/members";
+import { isGroup, otherHumans, receiptsAt, runs, speakers, teamHumans } from "@/lib/participants";
+import { seedReads, useReadPosition, useReads } from "@/lib/readReceipts";
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { Search } from "@/components/icons";
 import { ChevronUp } from "@/components/icons";
@@ -44,6 +46,8 @@ import { foldHolding, foldTurns, lastFoldKey, rowsFrom, turnRunning } from "@/li
 import { type RedoPreview } from "@/lib/redo";
 
 import { Bubble, Notice, QuietCheckIns, Rewound, TakenBack } from "./chat/Bubble";
+import { GroupMessage, PersonAvatar, SeenBy } from "./chat/Group";
+import { Markdownish } from "./Markdown";
 import { LiveBrowser, ScreenFrame, StreamingBubble, WorkingClock, WorkingLine } from "./chat/Live";
 import { EmptyState } from "./chat/EmptyState";
 import { JumpToLatest } from "./chat/JumpToLatest";
@@ -150,6 +154,57 @@ export function ChatView({ bot }: { bot: Bot }) {
   // The conversation, and what waits to join it above the composer.
   const { said, waiting } = useMemo(() => splitWaiting(bot.messages), [bot.messages]);
   const arrivals = useArrivals(bot.id, said);
+
+  // More than two in this conversation (src/lib/participants.ts): a team
+  // agent's shared one with somebody else on its list or speaking, or
+  // anyone writing in from Telegram. Then every message is a bubble, and
+  // "Seen by" says who has read how far. A chat with one agent stays as
+  // it always was.
+  const roster = useWorkspaceRoster();
+  const groupLane = bot.tasks?.find((t) => t.id === (bot.activeTaskId ?? bot.threadId));
+  const participants = useMemo(() => {
+    const humans = groupLane?.team ? teamHumans(bot.access, roster.members) : new Set<string>(["owner"]);
+    for (const id of speakers(said)) humans.add(id);
+    return { humans, agents: new Set([bot.id]) };
+  }, [groupLane?.team, bot.access, bot.id, roster.members, said]);
+  const group = isGroup(participants);
+  const withPeople = group && otherHumans(participants, "owner") > 0;
+  const reads = useReads(withPeople ? bot.threadId : null);
+  useEffect(() => {
+    if (!withPeople) return;
+    api(`/api/threads/${bot.threadId}/reads`)
+      .then((r: { reads?: unknown }) => seedReads(bot.threadId, r.reads))
+      .catch(() => {});
+  }, [withPeople, bot.threadId]);
+  useReadPosition({
+    threadId: withPeople ? bot.threadId : null,
+    scroller: scrollRef,
+    enabled: withPeople,
+    post: (threadId, messageId) => api(`/api/threads/${threadId}/read`, { method: "POST", body: JSON.stringify({ messageId }) }),
+    tick: said.length,
+  });
+  // which rows are bubbles, where each sits in its sender's run, and
+  // under which one each other person's place is shown
+  const isBubble = (m: Message) =>
+    !m.deleted && !m.quiet && !m.takeBack && !(m.agent && m.agent.dir !== "reply" && (m.kind === "text" || m.kind === "activity")) && (m.kind === "text" || m.kind === "component");
+  const groupRuns = useMemo(() => (group ? runs(said, isBubble, bot.id) : new Map<string, { first: boolean; last: boolean }>()), [group, said, bot.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const receiptRows = useMemo(
+    () => (withPeople ? receiptsAt(said.map((m) => m.id), new Set(groupRuns.keys()), reads, "owner") : new Map<string, string[]>()),
+    [withPeople, said, groupRuns, reads],
+  );
+  const readerName = (id: string) => (id === "owner" ? (roster.owner ?? "You") : personName(id));
+  const receiptsFor = (id: string) => {
+    const who = receiptRows.get(id);
+    return who?.length ? <SeenBy people={who.map((p) => ({ id: p, name: readerName(p) }))} /> : undefined;
+  };
+  const faceOf = (m: Message) =>
+    m.role === "bot" ? (
+      <AgentAvatar bot={bot} size={28} />
+    ) : m.telegramPerson ? (
+      <PersonAvatar id={m.telegramPerson.personId} name={m.telegramPerson.name} />
+    ) : (
+      <PersonAvatar id={m.author ?? "owner"} name={m.author ? personName(m.author) : (roster.owner ?? "You")} />
+    );
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [forwarding, setForwarding] = useState<{ message: Message; author: string } | null>(null);
   // A rewind hands your message back to the composer, to send again or
@@ -564,7 +619,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           // marked like any other row, so Find and the approvals bar can
           // reach a card by its message
           return (
-            <div key={m.id} data-msg-index={absolute} data-message-id={m.id} className="relative">
+            <div key={m.id} data-msg-index={absolute} data-message-id={m.id} className={cn("relative", group && "pl-9")}>
               <LandMark on={lit === m.id} />
               <OptionCard botId={bot.id} message={m} />
             </div>
@@ -579,7 +634,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             if (next.kind !== "activity" || next.deleted || next.agent || next.takeBack || next.quiet) break;
             run.push(next);
           }
-          return <ToolRun key={m.id} messages={run} fresh={fresh} />;
+          return <ToolRun key={m.id} messages={run} fresh={fresh} className={group ? "pl-9" : undefined} />;
         }
         case "notice":
           return <Notice key={m.id} message={m} fresh={fresh} />;
@@ -592,6 +647,26 @@ export function ChatView({ bot }: { bot: Bot }) {
             </div>
           ) : null;
         case "component":
+          if (m.component && group) {
+            // an answer drawn as interface keeps the whole bubble's width
+            const place = groupRuns.get(m.id) ?? { first: true, last: true };
+            return (
+              <GroupMessage
+                key={m.id}
+                mine={false}
+                first={place.first}
+                last={place.last}
+                face={faceOf(m)}
+                name={bot.name}
+                at={m.at}
+                rich
+                readId={m.id}
+                className={cn(fresh && "animate-receive-in", !place.first && "-mt-2")}
+                bubble={<MessageComponent message={m} threadId={bot.threadId} />}
+                receipts={receiptsFor(m.id)}
+              />
+            );
+          }
           return m.component ? (
             <div key={m.id} className={cn("flex", fresh && "animate-receive-in")}>
               <MessageComponent message={m} threadId={bot.threadId} />
@@ -608,12 +683,15 @@ export function ChatView({ bot }: { bot: Bot }) {
           // prompted it, a click from the exchange, and nothing more.
           // Once its turn has folded, the line above it says who asked.
           const after = folded.named.has(m.id) ? undefined : (m.afterAgent ?? (m.agent?.dir === "reply" ? m.agent : undefined));
+          // a run from one sender sits close together
+          const continued = group && groupRuns.get(m.id)?.first === false && !after;
           return (
-            <div key={m.id} data-msg-index={absolute} data-message-id={m.id} className="relative">
+            <div key={m.id} data-msg-index={absolute} data-message-id={m.id} className={cn("relative", continued && "-mt-2")}>
               <LandMark on={lit === m.id} />
-            {m.telegramPerson && <div className="mb-1 text-small text-muted-foreground">Message from {m.telegramPerson.name} (Telegram)</div>}
-            {/* a team conversation: whose words these are (src/lib/members.ts) */}
-            {m.role === "user" && m.author && <div className="mb-1 text-small font-medium text-muted-foreground">{personName(m.author)}</div>}
+            {/* in a group the bubble names its sender; with one agent, a
+                line over the words says whose they are */}
+            {!group && m.telegramPerson && <div className="mb-1 text-small text-muted-foreground">Message from {m.telegramPerson.name} (Telegram)</div>}
+            {!group && m.role === "user" && m.author && <div className="mb-1 text-small font-medium text-muted-foreground">{personName(m.author)}</div>}
             {m.telegramSent && <div className="mb-1 text-small text-muted-foreground">To {m.telegramSent.name} (Telegram): {m.telegramSent.state === "sent" ? "sent" : m.telegramSent.state === "sending" ? "sending" : m.telegramSent.state === "failed" ? "failed" : "delivery uncertain"}</div>}
             {after && (
               <AfterAgentLink
@@ -642,6 +720,17 @@ export function ChatView({ bot }: { bot: Bot }) {
               isHit={absolute === currentHit}
               editNow={editAsk?.id === m.id ? editAsk.nonce : undefined}
               nameOf={(id) => (id === "user" ? "You" : (state.bots.find((b) => b.id === id)?.name ?? bot.name))}
+              group={
+                group
+                  ? {
+                      mine: m.role === "user" && !m.author && !m.telegramPerson,
+                      ...(groupRuns.get(m.id) ?? { first: true, last: true }),
+                      face: faceOf(m),
+                      receipts: receiptsFor(m.id),
+                      readId: m.id,
+                    }
+                  : undefined
+              }
             />
             </div>
           );
@@ -872,7 +961,25 @@ export function ChatView({ bot }: { bot: Bot }) {
                   ],
             )}
             {liveBrowser && <LiveBrowser botId={bot.id} frame={liveBrowser} />}
-            {streaming && <StreamingBubble text={streaming} />}
+            {streaming &&
+              (group ? (
+                <GroupMessage
+                  mine={false}
+                  first={said[said.length - 1]?.role !== "bot" || !isBubble(said[said.length - 1])}
+                  last={false}
+                  face={<AgentAvatar bot={bot} size={28} />}
+                  name={bot.name}
+                  at={Date.now()}
+                  rich={streaming.length > 400}
+                  bubble={
+                    <div className="streaming-text">
+                      <Markdownish text={streaming} streaming />
+                    </div>
+                  }
+                />
+              ) : (
+                <StreamingBubble text={streaming} />
+              ))}
           </GenUiHost>
           <WorkingLine
             threadKey={threadKey}
