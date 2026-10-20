@@ -59,7 +59,7 @@ function keepPlace(place: MemberPlace) {
 const PAGE_ICON = { usage: Gauge, about: UserRound, members: Users, settings: Settings } as const;
 
 /** Leaves the joined workspace this window shows, after asking. */
-async function leaveWorkspace(id: string, name: string, owner: string): Promise<boolean> {
+async function leaveWorkspace(id: string, name: string, owner: string, started: () => void): Promise<boolean> {
   const yes = await confirm({
     title: `Leave ${name}?`,
     body: `You lose every room and agent in ${name} at once. Your solo agents and your private conversations there are deleted from ${owner}'s computer, and ${owner} is told you left.\n\nTo come back you need a new invite.`,
@@ -67,6 +67,7 @@ async function leaveWorkspace(id: string, name: string, owner: string): Promise<
     destructive: true,
   });
   if (!yes) return false;
+  started();
   const said = await window.bloks?.workspaceLeave?.(id);
   if (said?.unreachable) {
     const anyway = await confirm({
@@ -169,8 +170,8 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
 
   const leave = async () => {
     if (!entry || !workspace) return;
-    setLeaving(true);
-    const gone = await leaveWorkspace(entry.id, workspace.workspace.name, owner);
+    // busy only once the person has said yes, while the owner is told
+    const gone = await leaveWorkspace(entry.id, workspace.workspace.name, owner, () => setLeaving(true));
     if (!gone) setLeaving(false);
   };
 

@@ -163,7 +163,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
           </div>
         ) : !data.plan ? (
           <div className="mt-4 rounded-2xl border bg-card p-4 text-body leading-relaxed text-muted-foreground">
-            Sharing a room needs Bloks Cloud. Turn it on in Settings, under Bloks Cloud.
+            Inviting someone to this room alone needs Bloks Cloud. Turn it on in Settings, under Bloks Cloud.
           </div>
         ) : !shared ? (
           <div className="mt-4 space-y-3">

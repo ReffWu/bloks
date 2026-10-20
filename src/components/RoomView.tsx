@@ -985,6 +985,7 @@ export function RoomView({ blok }: { blok: Blok }) {
             onClick={() => setSharingOpen(true)}
             className={cn("relative", blok.sharing && "text-foreground")}
             title={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : "Share room"}
+            aria-label={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : "Share room"}
           >
             <UserPlus size={16} />
             {knocking > 0 && (
