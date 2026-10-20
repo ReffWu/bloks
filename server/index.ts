@@ -8,7 +8,7 @@
 // for this start is put in place (server/pending-restore.ts).
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
-import { existsSync, mkdirSync, openAsBlob, readdirSync, readFileSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, openAsBlob, readdirSync, readFileSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect as netConnect } from "node:net";
@@ -490,6 +490,7 @@ import {
   AUTO_KEEP,
   autoBackupDue,
   BackupError,
+  backupFileName,
   backupPath,
   backupsDirFor,
   checkBackup,
@@ -500,6 +501,7 @@ import {
   newestAutomatic,
   pendingRestore,
   pruneAutomatic,
+  readBackupSummary,
   revealBackup,
   shownPath,
   stageRestore,
@@ -507,6 +509,7 @@ import {
   type BackupInfo,
   type CreateOptions,
 } from "./backup.ts";
+import { emptyEnoughForMove } from "./workspace-move.ts";
 import { summarize, UsageStore } from "./usage.ts";
 import { TeamLibrary } from "./team-library.ts";
 import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam } from "./team-file.ts";
@@ -14306,6 +14309,132 @@ async function runRestore(file: string, passphrase: string | undefined, drainMs:
   }
 }
 
+// ── moving a workspace to another machine (server/workspace-move.ts) ──
+
+/** The most a move file may be: the whole workspace, transcripts and
+ * memory included, but no Undo history and no browser profiles. */
+const MOVE_MAX_BYTES = 4 * 1024 ** 3;
+const MOVE_NOT_EMPTY =
+  "This workspace already has work in it. A workspace is moved into an empty one, so nothing here is replaced; a backup restores over what is here, from Backups.";
+
+/** Whether a move may land here: nothing said by the person yet, no rooms
+ * and no standing work. */
+function workspaceEmpty(): boolean {
+  const mine = store.bots.reduce(
+    (n, bot) => n + bot.tasks.reduce((m, task) => m + store.messagesFor(task.id).filter((msg) => msg.role === "user").length, 0),
+    0,
+  );
+  return emptyEnoughForMove({ mine, rooms: bloks.bloks.length, routines: routines.routines.length, watchers: watchers.length, intents: intents.length });
+}
+
+/** A file arriving in a request body, written beside the backups as it
+ * comes, never held whole in memory. Sealed or plain is read from its
+ * first bytes, and its name says which, the way a backup's does. */
+async function receiveMove(req: IncomingMessage): Promise<{ file: string; name: string }> {
+  const dir = backupsDirFor();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const partial = join(dir, `incoming-${newId()}.partial`);
+  let size = 0;
+  let head = Buffer.alloc(0);
+  try {
+    const out = createWriteStream(partial, { flags: "wx", mode: 0o600 });
+    await new Promise<void>((resolve, reject) => {
+      req.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (head.length < 8) head = Buffer.concat([head, chunk.subarray(0, 8 - head.length)]);
+        if (size > MOVE_MAX_BYTES) {
+          req.destroy();
+          reject(Object.assign(new Error("That file is bigger than a workspace move can be."), { status: 413 }));
+        }
+      });
+      req.on("error", reject);
+      out.on("error", reject);
+      out.on("finish", () => resolve());
+      req.pipe(out);
+    });
+    if (!size) throw Object.assign(new Error("Send the workspace file as the body of the request."), { status: 400 });
+    const sealed = head.toString("latin1") === "BLOKSENC";
+    const name = backupFileName(new Date(), "", "move", sealed).replace("-move", "-move-in");
+    const file = join(dir, name);
+    if (existsSync(file)) throw Object.assign(new Error("A workspace file is already arriving. Try again in a moment."), { status: 409 });
+    renameSync(partial, file);
+    return { file, name };
+  } finally {
+    rmSync(partial, { force: true });
+  }
+}
+
+async function serveMove(req: IncomingMessage, res: ServerResponse, method: string, path: string, local: boolean) {
+  try {
+    if (method === "GET" && path === "/api/workspace/move") {
+      return json(res, 200, { empty: workspaceEmpty(), hosted: HOSTED, running: backupRunning, restore: restoring });
+    }
+    // Writing one out is this computer's, like a backup: it is the whole
+    // workspace, and it goes where the person carries it.
+    if (method === "POST" && path === "/api/workspace/move") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const body = await readBody(req);
+      const backup = await makeBackup({ kind: "move", passphrase: passphraseIn(body) });
+      return json(res, 200, { backup, toEnter: backup.toEnter ?? [] });
+    }
+    const m = path.match(/^\/api\/workspace\/move\/([^/]+)$/);
+    if (m && method === "GET" && m[1] !== "import") {
+      if (!local) return json(res, 403, { error: "not from here" });
+      const name = decodeURIComponent(m[1]);
+      const file = backupPath(name);
+      if (checkBackupKind(file) !== "move") return json(res, 404, { error: "That is not a workspace move file." });
+      res.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "content-length": statSync(file).size,
+        "content-disposition": `attachment; filename="${name}"`,
+        "cache-control": "no-store",
+      });
+      createReadStream(file).pipe(res);
+      return;
+    }
+    // Taking one in: on this computer, or from the person's own paired
+    // device, since a hosted workspace is reached from somewhere else. Only
+    // into an empty workspace, so a move never replaces anybody's work.
+    if (method === "POST" && path === "/api/workspace/move/import") {
+      if (backupRunning || restoreUnderWay()) {
+        return json(res, 409, { error: "A backup or a restore is already under way. Try again once it is done." });
+      }
+      if (!workspaceEmpty()) return json(res, 409, { error: MOVE_NOT_EMPTY });
+      const passphrase = typeof req.headers["x-bloks-passphrase"] === "string" && req.headers["x-bloks-passphrase"] ? String(req.headers["x-bloks-passphrase"]) : undefined;
+      const { file, name } = await receiveMove(req);
+      try {
+        const summary = await checkBackup(file, passphrase);
+        if (summary.kind !== "move") throw new BackupError("That is a backup, not a workspace move file. Restore a backup from Backups.", 400);
+        if (!workspaceEmpty()) throw new BackupError(MOVE_NOT_EMPTY, 409);
+        restoring = { phase: "draining", from: name, startedAt: Date.now() };
+        void runRestore(file, passphrase, 0);
+        return json(res, 202, { restore: restoring, toEnter: summary.toEnter ?? [] });
+      } catch (error) {
+        rmSync(file, { force: true });
+        throw error;
+      }
+    }
+    return json(res, 404, { error: "not found" });
+  } catch (e) {
+    if (e instanceof BackupError) {
+      return json(res, e.status, { error: e.message, ...(e.code === "passphrase" ? { needsPassphrase: true } : {}) });
+    }
+    if (e instanceof URIError) return json(res, 400, { error: "That is not the name of a workspace file." });
+    return json(res, (e as { status?: number }).status ?? 500, {
+      error: redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 300),
+    });
+  }
+}
+
+/** The kind a backup file says it is, or null when it is not one. */
+function checkBackupKind(file: string): BackupInfo["kind"] | null {
+  try {
+    return readBackupSummary(file).summary.kind;
+  } catch {
+    return null;
+  }
+}
+
 async function serveBackups(req: IncomingMessage, res: ServerResponse, method: string, path: string) {
   try {
     if (method === "GET" && path === "/api/backups") return json(res, 200, backupsStatus());
@@ -14356,7 +14485,9 @@ async function serveBackups(req: IncomingMessage, res: ServerResponse, method: s
         const passphrase = passphraseIn(body);
         // said now, before anything stops: a wrong passphrase or a file
         // that is not a backup should cost nothing
-        await checkBackup(file, passphrase);
+        const checked = await checkBackup(file, passphrase);
+        // a move is for a workspace with nothing in it yet
+        if (checked.kind === "move" && !workspaceEmpty()) return json(res, 409, { error: MOVE_NOT_EMPTY });
         const drainMs = body.drainSeconds === undefined ? RESTORE_DRAIN_MS : drainWindow(body.drainSeconds);
         restoring = { phase: "draining", from: name, startedAt: Date.now() };
         void runRestore(file, passphrase, drainMs);
@@ -20404,6 +20535,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (path === "/api/backups" || path.startsWith("/api/backups/")) {
       if (!local || asAgent) return json(res, 403, { error: "not from here" });
       return serveBackups(req, res, method, path);
+    }
+    // Moving the whole workspace to another machine. Never an agent's.
+    if (path === "/api/workspace/move" || path.startsWith("/api/workspace/move/")) {
+      if (asAgent) return json(res, 403, { error: "not from here" });
+      return serveMove(req, res, method, path, local);
     }
 
     // ── Slack and Discord, for shared rooms ──
