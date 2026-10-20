@@ -1,9 +1,11 @@
 // Packs bloks-server: the Bloks server with no desktop around it, for a
 // computer that never sleeps. Run after `pnpm build` and `pnpm build:server`.
 //
-// The server has no npm dependencies, so the package is only the compiled
-// server, the built UI it serves, the two command line entry points, and a
-// package.json to mark it as ES modules. Anything with Node 22 runs it.
+// The package is the compiled server with the few npm packages it imports
+// already beside it (dist-server/node_modules, staged by
+// scripts/stage-server-deps.mjs), the built UI it serves, the two command
+// line entry points, and a package.json to mark it as ES modules. Nothing
+// is installed after unpacking: anything with Node 22 runs it.
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -14,7 +16,7 @@ const { version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
 const out = join(root, "release");
 const stage = join(out, "bloks-server");
 
-for (const need of ["dist-server/index.js", "dist/index.html", "bin/bloks-server.mjs", "bin/bloks.mjs"]) {
+for (const need of ["dist-server/index.js", "dist-server/node_modules", "dist/index.html", "bin/bloks-server.mjs", "bin/bloks.mjs"]) {
   if (!existsSync(join(root, need))) {
     console.error(`missing ${need}: run pnpm build and pnpm build:server first`);
     process.exit(1);

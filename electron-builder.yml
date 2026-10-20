@@ -6,11 +6,12 @@ directories:
   buildResources: build
   output: release
 
-# Nothing in the packaged app needs node_modules at runtime, which is
-# what keeps the bundle small and the signing simple. Three pieces ship:
-# the Electron entry files as plain .mjs/.cjs, the interface as built
-# static files, and the harness server as compiled JavaScript. The last
-# two live in Resources, and the server runs on the Node inside Electron
+# Nothing in the packaged app needs the repository's node_modules at
+# runtime, which is what keeps the bundle small and the signing simple.
+# Three pieces ship: the Electron entry files as plain .mjs/.cjs, the
+# interface as built static files, and the harness server as compiled
+# JavaScript, with the few npm packages it imports beside it. The last two
+# live in Resources, and the server runs on the Node inside Electron
 # itself (ELECTRON_RUN_AS_NODE), so no second runtime is bundled.
 files:
   - electron/**
@@ -30,6 +31,13 @@ extraResources:
   # a package.json that happens to sit above the install folder.
   - from: dist-server
     to: server
+  # The npm packages the server imports (scripts/stage-server-deps.mjs).
+  # Named on their own because the builder drops any path with a
+  # node_modules segment below a source, as the computer use entry below
+  # found out.
+  - from: dist-server/node_modules
+    to: server/node_modules
+    filter: ["**/*"]
   # The agent's own command line. It is resolved at runtime relative to
   # the server module (see AGENT_CLI in server/index.ts), so it has to
   # land beside it in Resources or every command an agent runs fails in

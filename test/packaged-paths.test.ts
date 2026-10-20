@@ -12,9 +12,10 @@
 // check the runtime paths against it, rather than against the checkout.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (relative: string) => readFileSync(join(root, relative), "utf8");
@@ -106,5 +107,31 @@ test("the platform sections are not read as top-level entries", () => {
       !entry.from.startsWith("electron/resources/"),
       `${entry.from} belongs to a platform section, not the top-level block`,
     );
+  }
+});
+
+test("the npm packages the server imports ship beside it, in the app and in bloks-server", () => {
+  // From source the repository's node_modules answers every import, so a
+  // package the server needs and neither packaging carries stops only the
+  // packaged server, before it listens. scripts/stage-server-deps.mjs puts
+  // them in dist-server/node_modules; both packagings have to take that.
+  const manifest = JSON.parse(read("package.json")) as { scripts: Record<string, string>; dependencies: Record<string, string> };
+  assert.match(manifest.scripts["build:server"], /stage-server-deps\.mjs/, "build:server no longer stages the server's packages");
+  assert.equal(shippedAs("dist-server/node_modules"), "server/node_modules", "the packaged app leaves the server's packages behind");
+  assert.match(read("scripts/pack-server.mjs"), /"dist-server\/node_modules"/, "bloks-server is packed without the server's packages");
+
+  // And each one is a dependency, which the stage copies, never a
+  // devDependency, which a release install may not have.
+  const sources = (dir: string): string[] =>
+    readdirSync(join(root, dir)).flatMap((name) => {
+      const rel = join(dir, name);
+      return statSync(join(root, rel)).isDirectory() ? sources(rel) : rel.endsWith(".ts") ? [rel] : [];
+    });
+  for (const file of sources("server")) {
+    for (const { fileName } of ts.preProcessFile(read(file), true, true).importedFiles) {
+      if (/^[./]|^node:/.test(fileName)) continue;
+      const name = fileName.split("/").slice(0, fileName.startsWith("@") ? 2 : 1).join("/");
+      assert.ok(manifest.dependencies[name], `${file} imports ${name}, which package.json does not list in dependencies`);
+    }
   }
 });
