@@ -276,6 +276,11 @@ export function deviceForToken(token: string | null, config?: AppConfig): Paired
   return null;
 }
 
+/** When a paired device was last heard from, or null since this start. */
+export function seenAt(deviceId: string): number | null {
+  return seen.get(deviceId) ?? null;
+}
+
 /** Note that a paired device was just heard from. A token on the network
  * says so in deviceForToken; a sealed request through Bloks Cloud never
  * shows a token, so the relay says so itself once the request opens. */

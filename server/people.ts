@@ -1,11 +1,19 @@
-// People in shared rooms, and how they get in.
+// People in the workspace and its rooms, and how they get in.
 //
 // Bloks has one owner: the person whose computer this is. Everyone else
-// is a member of one or more rooms the owner has shared, and nothing
-// more. A member is not a lesser owner. They cannot see the owner's solo
-// chats, settings, other rooms or secrets, and the agents they talk to
-// run on the owner's computer, with the owner's keys, under the owner's
-// approval. See server/member-access.ts for what a member may reach.
+// is a member of the workspace (role "member" or "admin"), or, for
+// somebody who only ever talks from a linked chat channel, a guest of the
+// rooms that channel is linked to. A member is not a lesser owner. They
+// reach the workspace's rooms and their own conversations with each
+// agent, never the owner's solo chats, settings or secrets, and the
+// agents they talk to run on the owner's computer, with the owner's keys.
+// See server/member-access.ts for what a member may reach.
+//
+// A person belongs to the workspace once. Room memberships still exist
+// underneath, because a room keeps its own roles (collaborator, viewer)
+// and its own "joined at" for what history a person sees; a workspace
+// member with no membership in a room reaches it as a collaborator from
+// the day they joined the workspace.
 //
 // Getting in is an invite, and an invite alone is not enough. The link
 // carries a secret the host only stores the digest of; the person who
@@ -21,11 +29,26 @@ import { DATA_DIR } from "./config.ts";
 import { readSaved, isRecord } from "./atomic-write.ts";
 
 export type MemberRole = "collaborator" | "viewer";
+/** A person's place in the workspace. The owner is not a role anyone
+ * holds: it is whoever this computer belongs to, and has no Person. */
+export type WorkspaceRole = "admin" | "member";
+/** What a person joined from, as their app said it. */
+export type DeviceKind = "iphone" | "mac" | "browser";
 
 export interface Person {
   id: string;
   name: string;
   createdAt: number;
+  /** Set for a member of the workspace. Absent for a chat-channel guest,
+   * who is only ever in the rooms their channel is linked to. */
+  role?: WorkspaceRole;
+  /** When they joined the workspace: what a room they have no membership
+   * in shows them from, and what the members list says. */
+  joinedAt?: number;
+  /** "owner", or the person id of the admin whose invite they used. */
+  invitedBy?: string;
+  /** The kind of device they joined from, for the members list. */
+  device?: DeviceKind;
   /** The relay client token digest this person's devices use, so removing
    * them from their last room can take the relay away too. */
   relayTokenHash?: string;
@@ -82,7 +105,9 @@ export interface Invite {
   deviceId?: string;
 }
 
-interface PeopleFile {
+export interface PeopleFile {
+  /** 2 once people are workspace members (see migrate). Absent is 1. */
+  version?: number;
   people: Person[];
   memberships: Membership[];
   invites: Invite[];
@@ -105,16 +130,48 @@ function load(): PeopleFile {
   if (cache) return cache;
   const raw = readSaved<Partial<PeopleFile>>(FILE(), {}, isRecord);
   cache = {
+    ...(typeof raw.version === "number" ? { version: raw.version } : {}),
     people: Array.isArray(raw.people) ? raw.people : [],
     memberships: Array.isArray(raw.memberships) ? raw.memberships : [],
     invites: Array.isArray(raw.invites) ? raw.invites : [],
     knocks: Array.isArray(raw.knocks) ? raw.knocks : [],
   };
+  if (migrate(cache)) {
+    try {
+      save();
+    } catch {
+      /* moved in memory; the next save writes it */
+    }
+  }
   return cache;
 }
 
+/**
+ * People from before workspaces were people of rooms only. Each of them
+ * becomes a member of the workspace, joined on the day of their first
+ * room, invited by whoever let them into it. A chat-channel guest stays a
+ * guest: they have no device and no app, only a channel. Nothing else
+ * changes, so open room invites keep working and every membership keeps
+ * its room role. True when something was changed and should be saved.
+ */
+export function migrate(data: PeopleFile): boolean {
+  if ((data.version ?? 1) >= 2) return false;
+  let changed = false;
+  for (const p of data.people) {
+    if (p.role || p.via) continue;
+    const rooms = data.memberships.filter((m) => m.personId === p.id).sort((a, b) => a.joinedAt - b.joinedAt);
+    p.role = "member";
+    p.joinedAt = rooms[0]?.joinedAt ?? p.createdAt;
+    p.invitedBy = rooms[0]?.invitedBy ?? "owner";
+    changed = true;
+  }
+  data.version = 2;
+  // nothing to move is nothing to write: an empty workspace gets no file
+  return changed;
+}
+
 function save() {
-  const data = load();
+  const data = cache ?? load();
   const now = Date.now();
   data.invites = data.invites.filter((i) => i.createdAt + INVITE_KEEP_MS > now);
   data.knocks = data.knocks.filter((k) => k.at + INVITE_KEEP_MS > now);
@@ -176,15 +233,18 @@ export function setRole(personId: string, roomId: string, role: MemberRole): boo
 }
 
 /**
- * Takes a person out of a room. Returns whether they are now in no shared
- * room at all, which is when the caller should revoke their devices and
- * their relay token: a person with no rooms has nothing left to reach.
+ * Takes a person out of a room. Returns whether they now have nothing
+ * left to reach (a guest in no room at all), which is when the caller
+ * should revoke their devices and their relay token. A workspace member
+ * leaving a room is still in the workspace, so is never roomless here:
+ * taking them out of the workspace is removeFromWorkspace.
  */
 export function removeFromRoom(personId: string, roomId: string, beforeRemove?: (roomless: boolean) => void): { removed: boolean; roomless: boolean } {
   const data = load();
   const left = data.memberships.filter((m) => !(m.personId === personId && m.roomId === roomId));
   const removed = left.length !== data.memberships.length;
-  const roomless = !left.some((m) => m.personId === personId);
+  const member = Boolean(data.people.find((p) => p.id === personId)?.role);
+  const roomless = !member && !left.some((m) => m.personId === personId);
   if (removed) beforeRemove?.(roomless);
   data.memberships = left;
   if (roomless) data.people = data.people.filter((p) => p.id !== personId);
@@ -197,6 +257,107 @@ export function removeFromRoom(personId: string, roomId: string, beforeRemove?: 
 export function clearRoom(roomId: string): string[] {
   const inRoom = membersOf(roomId).map((m) => m.personId);
   return inRoom.filter((id) => removeFromRoom(id, roomId).roomless);
+}
+
+// ── the workspace ──────────────────────────────────────────────────────
+
+/** Everyone in the workspace besides the owner, oldest first. */
+export function workspaceMembers(): Person[] {
+  return load()
+    .people.filter((p) => p.role)
+    .sort((a, b) => (a.joinedAt ?? a.createdAt) - (b.joinedAt ?? b.createdAt));
+}
+
+/** A person's role in the workspace, or null for a guest or a stranger. */
+export function workspaceRole(personId: string): WorkspaceRole | null {
+  return load().people.find((p) => p.id === personId)?.role ?? null;
+}
+
+/** Lets somebody into the workspace: the one place a member is made.
+ * `beforeAdmit` registers their device (server/pairing.ts) before anything
+ * here changes, so a refused settings read leaves nobody half admitted. */
+export function admitToWorkspace(
+  input: { name: string; role: WorkspaceRole; invitedBy: string; device?: DeviceKind; relayTokenHash?: string },
+  beforeAdmit?: (person: Person) => void,
+): Person {
+  const now = Date.now();
+  const p: Person = {
+    id: `p_${randomBytes(9).toString("base64url")}`,
+    name: cleanName(input.name) ?? "Someone",
+    createdAt: now,
+    role: input.role,
+    joinedAt: now,
+    invitedBy: input.invitedBy,
+    ...(input.device ? { device: input.device } : {}),
+    ...(input.relayTokenHash ? { relayTokenHash: input.relayTokenHash } : {}),
+  };
+  beforeAdmit?.(p);
+  load().people.push(p);
+  save();
+  return p;
+}
+
+export function setWorkspaceRole(personId: string, role: WorkspaceRole): Person | null {
+  const p = load().people.find((x) => x.id === personId && x.role);
+  if (!p) return null;
+  if (p.role === role) return p;
+  p.role = role;
+  save();
+  return p;
+}
+
+/** Out of the workspace and every room in it, at once. Returns who they
+ * were, so the caller can revoke their devices and relay token, or null
+ * when they were not a member. `beforeRemove` runs first, for the same
+ * reason as admitToWorkspace's. */
+export function removeFromWorkspace(personId: string, beforeRemove?: (person: Person) => void): Person | null {
+  const data = load();
+  const p = data.people.find((x) => x.id === personId && x.role);
+  if (!p) return null;
+  beforeRemove?.(p);
+  data.people = data.people.filter((x) => x.id !== personId);
+  data.memberships = data.memberships.filter((m) => m.personId !== personId);
+  save();
+  return p;
+}
+
+/** A room as a person reaches it: their own membership when they have
+ * one (its role, its joined date); in a room open to everyone, a workspace
+ * member with no membership comes in as a collaborator from the day they
+ * joined the workspace. Null when they are not in it. */
+export function reachOf(personId: string, roomId: string, audience: "everyone" | "some"): { role: MemberRole; joinedAt: number } | null {
+  const data = load();
+  const m = data.memberships.find((x) => x.personId === personId && x.roomId === roomId);
+  if (m) return { role: m.role, joinedAt: m.joinedAt };
+  if (audience !== "everyone") return null;
+  const p = data.people.find((x) => x.id === personId);
+  if (!p?.role) return null;
+  return { role: "collaborator", joinedAt: p.joinedAt ?? p.createdAt };
+}
+
+/** Who of the workspace's members is in a room chosen person by person:
+ * memberships made for the newly chosen (as collaborators), and taken
+ * away from members left off. Guests from a chat channel are untouched;
+ * they belong to the channel. Returns who was added and who removed. */
+export function setRoomPeople(roomId: string, personIds: readonly string[], invitedBy = "owner"): { added: string[]; removed: string[] } {
+  const data = load();
+  const wanted = new Set(personIds.filter((id) => data.people.some((p) => p.id === id && p.role)));
+  const added: string[] = [];
+  const removed: string[] = [];
+  data.memberships = data.memberships.filter((m) => {
+    if (m.roomId !== roomId) return true;
+    const p = data.people.find((x) => x.id === m.personId);
+    if (!p?.role || wanted.has(m.personId)) return true;
+    removed.push(m.personId);
+    return false;
+  });
+  for (const id of wanted) {
+    if (data.memberships.some((m) => m.roomId === roomId && m.personId === id)) continue;
+    data.memberships.push({ personId: id, roomId, role: "collaborator", joinedAt: Date.now(), invitedBy });
+    added.push(id);
+  }
+  if (added.length || removed.length) save();
+  return { added, removed };
 }
 
 // ── invites ────────────────────────────────────────────────────────────
@@ -279,10 +440,15 @@ export function approveInvite(id: string, beforeApprove?: (person: Person) => vo
   const inv = invite(id);
   if (!live(inv) || inv.status !== "claimed" || !inv.claim) return null;
   const data = load();
+  // Somebody let into a room is somebody in the workspace: one person,
+  // a member, who reaches the room with the role the invite named.
   const p: Person = {
     id: `p_${randomBytes(9).toString("base64url")}`,
     name: inv.claim.name,
     createdAt: Date.now(),
+    role: "member",
+    joinedAt: Date.now(),
+    invitedBy: inv.invitedBy,
     ...(inv.relayTokenHash ? { relayTokenHash: inv.relayTokenHash } : {}),
   };
   // Registering the device reads another saved file. Do it before the
@@ -425,6 +591,17 @@ const WORDS = (
  */
 export function checkPhrase(secretHash: string, tokenHash: string): string {
   const mac = createHmac("sha256", Buffer.from(secretHash, "hex")).update(`bloks-check-v1:${tokenHash}`).digest();
+  return [0, 1, 2, 3].map((i) => WORDS[mac[i] % WORDS.length]).join(" ");
+}
+
+/**
+ * The same four words for a workspace invite, bound to the host's join key
+ * as well (server/invites.ts). The joiner seals its request for the key it
+ * was told; if anyone on the way swapped that key for their own, the two
+ * screens show different words and the owner declines.
+ */
+export function joinPhrase(codeHash: string, tokenHash: string, hostKey: string): string {
+  const mac = createHmac("sha256", Buffer.from(codeHash, "hex")).update(`bloks-join-v1:${tokenHash}:${hostKey}`).digest();
   return [0, 1, 2, 3].map((i) => WORDS[mac[i] % WORDS.length]).join(" ");
 }
 

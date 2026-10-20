@@ -95,6 +95,10 @@ import {
 import { type WakePreview, RelayLink, relayDeviceFor, relayInviteFor, type Wake } from "./relay-link.ts";
 import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView } from "./member-access.ts";
+import * as access from "./access.ts";
+import { asWho, createMembers } from "./members.ts";
+import { JoinClient } from "./join-client.ts";
+import * as invites from "./invites.ts";
 import { CLI_PROVIDERS, CUSTOM_SPEC, PROVIDER_SPECS, normalizeCompatUrl, specFor } from "./providers.ts";
 import { callbackPage, finishOAuth, startOAuth, supportsOAuth } from "./oauth.ts";
 import type { ModelSelection, PlanUsage, ProviderInstance, ProviderSnapshot, RuntimeEvent, SendTurnInput, UsageNotice } from "./contracts.ts";
@@ -106,8 +110,8 @@ import { forgetNative, slimNativeLogs, tidyNativeLogs } from "./drivers/native.t
 import { DEFAULT_STALL_MINUTES, STALL_CHOICES, stallPreface } from "./drivers/stall.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
-import { MAX_TASKS, Store, type AgentNote, type BotRecord, type Message, type NewBotProfile, type RecalledNote, type TaskRecord } from "./store.ts";
-import { addressees, BlokStore, currentSpend, leadOf, MAX_MEMBERS, ranksForExport, type BlokRecord, type RoomSharing } from "./bloks.ts";
+import { MAX_TASKS, ownerLanes, Store, type AgentNote, type BotRecord, type Message, type NewBotProfile, type RecalledNote, type TaskRecord } from "./store.ts";
+import { addressees, audienceOf, BlokStore, currentSpend, DEFAULT_SHARING, leadOf, MAX_MEMBERS, ranksForExport, type BlokRecord, type RoomSharing } from "./bloks.ts";
 import { cleanSectionOrder, placeAt, SidebarStore, sidebarView, upgradePlaces, type Placed } from "./sidebar.ts";
 import { extractTeamPlan, MAX_HIRES, normalizePlan, TEAM_PROTOCOL, type TeamPlan } from "./teams.ts";
 import { houseStyle, HOUSE_STYLE } from "./house-style.ts";
@@ -845,10 +849,16 @@ function suggestNote(bot: BotRecord, text: unknown, laneId?: string | null): str
   const lane = laneId ?? "";
   const offered = notesThisTurn.get(lane) ?? 0;
   if (offered >= NOTES_PER_TURN) return "That is enough notes for one turn. Keep working.";
-  const note = profileNotes.suggest(text, { id: bot.id, name: bot.name }, laneId ?? undefined);
+  // A turn a member started learns about that member: the note is theirs
+  // to keep or drop, and never lands in the owner's list.
+  const asked = laneId ? laneRequester.get(laneId) : undefined;
+  const member = asked && whoIs(asked) ? asked : null;
+  const notes = member ? workspacePeople.notesOf(member) : profileNotes;
+  const note = notes.suggest(text, { id: bot.id, name: bot.name }, laneId ?? undefined);
   if (!note) return "Not added: it is empty, already known, or there are too many suggestions waiting for them.";
   notesThisTurn.set(lane, offered + 1);
-  broadcast({ kind: "profile" });
+  if (member) broadcast({ kind: "member.notes", personId: member });
+  else broadcast({ kind: "profile" });
   return "Suggested. They will see it and decide whether to keep it.";
 }
 const policy = new PolicyStore();
@@ -1612,7 +1622,7 @@ function sessionImportDeps(): SessionImportDeps {
     agent(id) {
       const bot = store.bot(id);
       if (!bot || bot.archivedAt) return null;
-      return { id: bot.id, name: bot.name, room: Math.max(0, MAX_TASKS - bot.tasks.length) };
+      return { id: bot.id, name: bot.name, room: Math.max(0, MAX_TASKS - ownerLanes(bot).length) };
     },
     laneThere: importedLaneThere,
     resumes(botId, session, engine) {
@@ -2068,8 +2078,9 @@ function clientBot(bot: BotRecord | null) {
     // from "an older harness that does not say".
     held: wheel.heldBy(bot.id),
     // lanes ship as summaries: state is derived here so every client
-    // renders the same truth without holding every lane's transcript
-    tasks: tasks.map((task) => {
+    // renders the same truth without holding every lane's transcript.
+    // Members' private conversations are theirs and never listed here.
+    tasks: tasks.filter((task) => !task.personId).map((task) => {
       // A question only counts as waiting while its turn can still hear
       // the answer. A turn that errored out, or a server that restarted,
       // leaves the card on screen but nobody behind it; that lane is
@@ -2171,7 +2182,7 @@ function closeMemberStreams(personId: string) {
  * cannot cover gets told so, honestly, and re-hydrates. */
 let frameSeq = 0;
 const RING_SIZE = 512;
-const frameRing: Array<{ seq: number; frame: string; payload: unknown }> = [];
+const frameRing: Array<{ seq: number; frame: string; payload: unknown; ownerHidden?: boolean }> = [];
 
 /** Look for engine releases on a schedule, so the news is waiting in the
  * model list rather than found by someone wondering where a model went.
@@ -2195,19 +2206,25 @@ setTimeout(() => void checkEngineUpdates(), 20_000).unref?.();
 setInterval(() => void checkEngineUpdates(), 6 * 60 * 60_000).unref?.();
 
 function broadcast(payload: unknown) {
+  // A member's private conversation, or their solo agent: for them, and
+  // for the owner only when the workspace says the owner reads those
+  // (server/access.ts). Decided once here, for every way out below.
+  const about = payload as { threadId?: string; botId?: string; bot?: { id?: string } } | null;
+  const hidden = privateTo(about?.threadId, about?.botId ?? about?.bot?.id);
+  const ownerHidden = Boolean(hidden && !hidden.ownerReads);
   // a channel that cannot be reached must never cost the room its frame
   try {
-    mirrorToChat(payload);
+    if (!hidden) mirrorToChat(payload);
   } catch {}
   const seq = ++frameSeq;
   const frame = `data: ${JSON.stringify({ ...(payload as object), _seq: seq })}\n\n`;
   // screen frames are megabytes of now-or-never pixels; replaying them
   // to a reconnecting phone would be all cost and no truth
   if ((payload as { kind?: string })?.kind !== "screen") {
-    frameRing.push({ seq, frame, payload });
+    frameRing.push({ seq, frame, payload, ...(ownerHidden ? { ownerHidden } : {}) });
     if (frameRing.length > RING_SIZE) frameRing.shift();
   }
-  for (const res of [...sseClients]) {
+  for (const res of ownerHidden ? [] : [...sseClients]) {
     try {
       res.write(frame);
     } catch {
@@ -2237,7 +2254,7 @@ function broadcast(payload: unknown) {
   } catch {}
   if ((payload as { kind?: string })?.kind !== "screen") {
     try {
-      relayLink.publish(payload, wakeFor(payload));
+      relayLink.publish(payload, ownerHidden ? undefined : wakeFor(payload), false, ownerHidden ? hidden!.personId : undefined);
     } catch (error) {
       // Device settings may be unreadable. Do not turn an already saved
       // message into a failed request that the sender repeats.
@@ -3600,6 +3617,13 @@ bus.subscribe((event: RuntimeEvent) => {
       }
       // the agent asking for an app: plant sign-in cards and answer the
       // tool right away so the model can wrap up instead of blocking
+      // a message to one person, asked for by the owner or an admin
+      if (event.tool === "message_person" && event.requestId) {
+        const input = (event.input ?? {}) as { person?: unknown; text?: unknown };
+        const answer = messageOnBehalf(bot, event.threadId, input.person, input.text);
+        void asker?.adapter.respondToRequest(event.threadId, event.requestId, { behavior: "answer", message: answer }).catch(() => {});
+        break;
+      }
       // a note about the person, suggested for them to keep or not
       if (event.tool === "note_about_person" && event.requestId) {
         const inShared = bloks.bloks.some((b) => b.sharing && b.lanes?.[bot.id] === event.threadId);
@@ -4082,9 +4106,19 @@ bus.subscribe((event: RuntimeEvent) => {
       // a turn that failed on its length is asked again once it is folded
       // (runtime.error above), so it is not over yet as far as a goal goes
       const refolding = retriedForContext.has(event.threadId);
-      usage.recordTurn(bot.id, usageProvider(event), event.cost ?? null, undefined, event.ok !== false);
+      // whoever started the turn is who it is booked to (usage.json), and a
+      // member's API cost counts toward their own limit; Bloks AI's share
+      // is counted by its service against the turn's member tag instead
+      const bookedTo = (() => {
+        const asked = laneRequester.get(event.threadId);
+        return asked && whoIs(asked) ? asked : undefined;
+      })();
+      usage.recordTurn(bot.id, usageProvider(event), event.cost ?? null, undefined, event.ok !== false, bookedTo);
       const spent = turnTokens.get(event.threadId);
       turnTokens.delete(event.threadId);
+      if (bookedTo && !bloksAiLane(event.threadId, event.providerInstanceId, event.provider)) {
+        workspacePeople.limits.recordSpend(bookedTo, turnCost(event.cost, spent));
+      }
       // only solo lanes tally; a room's spend belongs to no one lane.
       // solo turns map the lane to itself, room turns map it elsewhere
       const spoke = activeRoom.get(event.threadId);
@@ -4945,7 +4979,7 @@ function mainLaneOf(bot: BotRecord) {
     ...bloks.roomsFor(bot.id).map((r) => r.lanes?.[bot.id]).filter((id): id is string => Boolean(id)),
   ]);
   const byAge = [...bot.tasks].sort((a, b) => a.createdAt - b.createdAt);
-  return byAge.find((t) => !side.has(t.id) && !rehearsals.forTask(t.id) && !t.guestMail) ?? byAge[0];
+  return byAge.find((t) => !side.has(t.id) && !rehearsals.forTask(t.id) && !t.guestMail && !t.team && !t.personId) ?? byAge[0];
 }
 
 /** The lane the person has open, as somewhere for work that names no
@@ -5298,6 +5332,17 @@ async function startClaimedTurn(
   if (personRequester?.startsWith("telegram:") && !personSource) throw new Error("The Telegram person's identity could not be recovered. This turn was not run as the owner.");
   if (personSource && (!store.bot(personSource.botId) || personSource.botId !== botId || !telegramSenderCurrent(telegramBinding(botId), personSource))) throw new Error("This Telegram person was removed or their connection changed before the message could start.");
   if (personSource) opts = { ...opts, telegramPerson: personSource, requester: personSource.requester, personal: false };
+  // A workspace member's turn: one they asked for, or anything on their
+  // own solo agent. It runs on the owner's engines and keys, so it stops
+  // at the member's own limits (server/member-limits.ts), and only theirs.
+  const turnPerson = (() => {
+    const asked = personRequester ?? (bot.solo && bot.solo.by !== "owner" ? bot.solo.by : undefined);
+    return asked && whoIs(asked) ? asked : null;
+  })();
+  if (turnPerson && !opts.carriedOn && !opts.fallback && !opts.retry) {
+    const stopped = workspacePeople.limitRefusal(turnPerson);
+    if (stopped) throw Object.assign(new Error(stopped), { status: 402, limit: true });
+  }
 
   // Somebody at the wheel stops the agent, not just its questions.
   //
@@ -5459,6 +5504,10 @@ async function startClaimedTurn(
   const instance = registry.get(selection.instanceId);
   if (!instance) {
     throw Object.assign(new Error(unavailableEngineMessage(selection.instanceId)), { status: 409 });
+  }
+  // a member's solo agent runs only on the engines the owner allowed them
+  if (bot.solo && bot.solo.by !== "owner" && !workspacePeople.limits.engineAllowed(bot.solo.by, selection.instanceId)) {
+    throw Object.assign(new Error(`${bot.name} is set to an engine you may not use in this workspace. Pick another in its settings, or ask the owner or an admin.`), { status: 403 });
   }
   // The pause door above, asked of the engine actually chosen: no try of
   // a resting engine and no queued command reaches one that is paused.
@@ -5684,7 +5733,8 @@ async function startClaimedTurn(
       .filter((m) => !personSource || personsOwn(m, personSource.personId))
       .map((m) => ({
         role: m.role === "user" ? ("user" as const) : ("assistant" as const),
-        text: storedPrompt(m),
+        // in a team conversation several people write: each line says whose
+        text: task.team && m.role === "user" ? `[${speakerName(m.author)}] ${storedPrompt(m)}` : storedPrompt(m),
       }));
     return assembleTranscript(settled, personSource ? null : task.context ?? null, transcriptBudget);
   };
@@ -5729,7 +5779,8 @@ async function startClaimedTurn(
     // to add to it; never in a room other people are reading
     // and never for a Telegram person, who is told as little of the
     // owner as a stranger's mail is
-    notes: (!sharing && !guestMail && !personSource && profileNotes.prompt()) || null,
+    // a member's turn hears that member's notes, never the owner's
+    notes: (!sharing && !guestMail && !personSource && (turnPerson ? workspacePeople.notesOf(turnPerson).prompt() : profileNotes.prompt())) || null,
     // An engine with no files of its own keeps memory with the API
     // tools (memory_read, memory_write) instead.
     memory: !guestMail && !personSource && (!sharing || sharing.memoryFor?.includes(bot.id))
@@ -5786,9 +5837,11 @@ async function startClaimedTurn(
     // reading the replies.
     !guestMail &&
       !personSource &&
+      !turnPerson &&
       (!sharing || sharing.memoryFor?.includes(bot.id)) &&
       cfg.profile?.about?.trim() &&
       `About the person you work for: ${cfg.profile.about.trim()}`,
+    workspaceBriefing(bot, task, turnPerson),
     moving.notes,
     !sharing && !guestMail && !personSource && noteBriefing(runsAProcess(instance.driverKind) ? cliCommand : null),
     moving.shared,
@@ -5848,7 +5901,7 @@ async function startClaimedTurn(
   // A backup engine or a retry after a fold goes on with the turn before
   // it, for whoever asked for that one (a pickup is told who, by the
   // record of the turn it picks up).
-  const requester = opts.requester ?? (opts.fallback || opts.retry || opts.carriedOn ? askedLast.get(task.id) : undefined) ?? "owner";
+  const requester = opts.requester ?? (opts.fallback || opts.retry || opts.carriedOn ? askedLast.get(task.id) : undefined) ?? turnPerson ?? "owner";
   laneRequester.set(task.id, requester);
   // somebody else's turn in a mail's lane: what it says is not emailed
   if (!opts.answersMail && !opts.carriedOn && !opts.fallback && !opts.retry) mailAnswering.delete(task.id);
@@ -7450,7 +7503,7 @@ async function openRehearsals(bots: BotRecord[], text: string, opts: { quiet?: b
     throw Object.assign(new Error(`${bots[0].name}'s folder cannot be rehearsed: it is missing, or it is a whole home folder.`), { status: 400 });
   }
   for (const b of bots) {
-    if (b.tasks.length >= MAX_TASKS + REHEARSAL_LANES) {
+    if (ownerLanes(b).length >= MAX_TASKS + REHEARSAL_LANES) {
       throw Object.assign(new Error(`${b.name} has too many lanes open. Close a finished rehearsal first.`), { status: 409 });
     }
   }
@@ -7938,21 +7991,167 @@ function hostName(): string {
   return cfg.profile?.name?.trim() || "The owner";
 }
 
-/** How one member sees one room, or null when they are not in it or the
- * room is no longer shared. */
-function viewOf(personId: string, roomId: string): MemberView | null {
-  const blok = bloks.get(roomId);
-  if (!blok?.sharing) return null;
-  const membership = people.membershipsOf(personId).find((m) => m.roomId === roomId);
-  if (!membership) return null;
+/** Whether the owner may put this agent in a room: any team agent, and
+ * their own solo agents. A member's solo agent goes into a room only by
+ * its maker's hand (server/access.ts). */
+function roomMayHold(botId: string): boolean {
+  const bot = store.bot(botId);
+  return Boolean(bot && (!bot.solo || bot.solo.by === "owner"));
+}
+
+/** The workspace as server/access.ts reads it: who is in which room, and
+ * whether the owner reads members' private conversations. */
+function accessWorld(): access.World {
   return {
-    joinedAt: membership.joinedAt,
-    history: blok.sharing.history,
-    activityDetail: blok.sharing.activityDetail,
-    personId,
-    role: membership.role,
-    approvals: approvalsShared(blok),
+    rooms: bloks.bloks
+      .filter((b) => !b.archived)
+      .map((b) => ({
+        id: b.id,
+        agentIds: b.memberIds,
+        audience: audienceOf(b),
+        peopleIds: people.membersOf(b.id).map((m) => m.personId),
+      })),
+    privateReadable: invites.joiningSettings().privateReadable,
   };
+}
+
+/** A workspace member as server/access.ts takes them, or null for a
+ * guest from a chat channel (who is in rooms, not the workspace). */
+function whoIs(personId: string): access.Who | null {
+  const p = people.person(personId);
+  return p?.role ? asWho(p) : null;
+}
+
+/**
+ * How one person sees one room or one agent conversation, or null when
+ * they may not see it at all. Rooms keep their sharing settings (history,
+ * tool detail) whoever opens them; who is in a room and which agent
+ * conversations a person reaches is server/access.ts's to say.
+ */
+function viewOf(personId: string, id: string): MemberView | null {
+  const who = whoIs(personId);
+  const blok = bloks.get(id);
+  if (blok) {
+    if (!who) {
+      // a guest from before workspaces: shared rooms they are in, as ever
+      if (!blok.sharing) return null;
+      const membership = people.membershipsOf(personId).find((m) => m.roomId === id);
+      if (!membership) return null;
+      return {
+        joinedAt: membership.joinedAt,
+        history: blok.sharing.history,
+        activityDetail: blok.sharing.activityDetail,
+        personId,
+        role: membership.role,
+        approvals: approvalsShared(blok),
+      };
+    }
+    if (blok.archived) return null;
+    const reach = people.reachOf(personId, id, audienceOf(blok));
+    if (!reach) return null;
+    const sharing = blok.sharing ?? DEFAULT_SHARING();
+    return {
+      joinedAt: reach.joinedAt,
+      history: sharing.history,
+      activityDetail: sharing.activityDetail,
+      personId,
+      role: reach.role,
+      approvals: approvalsShared(blok),
+      thread: "room",
+      admin: who.kind === "member" && who.role === "admin",
+    };
+  }
+  if (!who) return null;
+  const found = store.taskByThread(id);
+  if (!found) return null;
+  const how = access.laneAccess(found.bot, found.task, who, accessWorld());
+  if (!how) return null;
+  // the one conversation a person reaches on a solo agent is its first
+  if (found.bot.solo && found.task.id !== mainLaneOf(found.bot).id) return null;
+  return {
+    joinedAt: 0,
+    history: "all",
+    activityDetail: false,
+    personId,
+    role: how === "write" ? "collaborator" : "viewer",
+    approvals: false,
+    thread: found.bot.solo ? "solo" : found.task.team ? "team" : "private",
+    admin: who.kind === "member" && who.role === "admin",
+  };
+}
+
+/**
+ * An agent posting into one person's private conversation with it, on
+ * the owner's or an admin's word from a team conversation or a room. The
+ * rules are server/access.ts's; this finds the people and writes it.
+ * Answers the agent in words, whether it went or why not.
+ */
+function messageOnBehalf(bot: BotRecord, fromLane: string, person: unknown, text: unknown): string {
+  const words = clamp(text, 4_000);
+  const wanted = typeof person === "string" ? person.trim().toLowerCase() : "";
+  if (!words || !wanted) return "Say who to message and what to say.";
+  const room = activeRoom.get(fromLane);
+  const lane = store.taskByThread(fromLane)?.task;
+  const where = room && room !== fromLane ? "room" : lane?.team ? "team" : lane?.personId ? "private" : bot.solo ? "solo" : "owner";
+  const asked = laneRequester.get(fromLane) ?? "owner";
+  const asker: access.Who | null = asked === "owner" ? { kind: "owner" } : whoIs(asked);
+  const matches = people.workspaceMembers().filter((p) => p.name.toLowerCase() === wanted || p.id === wanted);
+  if (matches.length > 1) return `More than one person here is called ${String(person)}. Ask which one.`;
+  const target = matches[0];
+  if (!target) return `Nobody in this workspace is called ${String(person)}.`;
+  if (!asker || !access.mayMessageOnBehalf(bot, { asker, where }, asWho(target), accessWorld())) {
+    return where === "team" || where === "room"
+      ? `Not sent: only ${hostName()} or an admin can ask you to message someone, and only someone who can reach you.`
+      : "Not sent: messages to other people go out only from a team conversation or a room, when the owner or an admin asks.";
+  }
+  const lanePrivate = store.memberLane(bot.id, target.id);
+  if (!lanePrivate) return "Not sent: that conversation could not be opened.";
+  const byName = asker.kind === "owner" ? hostName() : (people.person(asked)?.name ?? "An admin");
+  const message = store.appendMessage(lanePrivate.id, {
+    role: "bot",
+    kind: "text",
+    text: words,
+    onBehalf: { by: asked, name: byName },
+  });
+  broadcast({ kind: "message", threadId: lanePrivate.id, message });
+  return `Sent to ${target.name}, marked as from you on ${byName}'s behalf.`;
+}
+
+/** Who wrote a line in a team conversation, by name. */
+function speakerName(author: string | undefined): string {
+  if (!author) return hostName();
+  return people.person(author)?.name ?? "A former member";
+}
+
+/** What an agent is told about who it is talking with and where, in a
+ * workspace with other people in it. Null in a conversation that is only
+ * ever the owner's. */
+function workspaceBriefing(bot: BotRecord, task: TaskRecord, turnPerson: string | null): string | null {
+  const name = turnPerson ? (people.person(turnPerson)?.name ?? "a member") : hostName();
+  const workspace = workspacePeople.identity().name;
+  if (task.team) {
+    return `This is ${bot.name}'s team conversation in ${workspace}: several people write here, and each of their messages starts with their name in brackets. This message is from ${name}. Answer the person who wrote, and keep what was said in anyone's private conversation out of here. When ${hostName()} or an admin asks you to tell one person something, send it with the message_person tool: it lands in that person's private conversation with you.`;
+  }
+  if (task.personId) {
+    return `This is a private conversation with ${name}, a member of ${workspace} (${hostName()} owns it). What is said here stays here: do not repeat it in any other conversation unless ${name} asks you to.`;
+  }
+  if (bot.solo && turnPerson) {
+    return `You are ${name}'s own agent in ${workspace}. Only ${name} talks with you.`;
+  }
+  return null;
+}
+
+/** A lane private to one person: a member's private conversation, or any
+ * conversation of a member's solo agent. Frames about it go to that
+ * person's devices and, when the owner may read members' private
+ * conversations, to the owner's screens as well; never to anyone else. */
+function privateTo(threadId: string | undefined, botId?: string): { personId: string; ownerReads: boolean } | null {
+  const bot = threadId ? store.taskByThread(threadId)?.bot : botId ? store.bot(botId) : undefined;
+  if (!bot) return null;
+  if (bot.solo && bot.solo.by !== "owner") return { personId: bot.solo.by, ownerReads: false };
+  const lane = threadId ? bot.tasks.find((t) => t.id === threadId) : undefined;
+  if (lane?.personId) return { personId: lane.personId, ownerReads: invites.joiningSettings().privateReadable };
+  return null;
 }
 
 /** The relay client digest of the owner's own phones. */
@@ -7963,7 +8162,8 @@ function ownerClientDigest(): string | null {
 
 /** Plans, and what they allow. Cloud gets a taste; Team is the real thing.
  * The host enforces this, from the plan the relay last heard from the
- * licence authority. */
+ * licence authority. `members` is people besides the owner in the whole
+ * workspace (the same numbers as server/members.ts's door). */
 const PLAN_LIMITS = {
   cloud: { rooms: 1, members: 2 },
   team: { rooms: Number.POSITIVE_INFINITY, members: 10 },
@@ -7989,11 +8189,13 @@ async function sharingRefusal(blok: BlokRecord): Promise<string | null> {
       ? "Bloks Cloud includes one shared room. Bloks Team shares as many as you like."
       : "You have shared as many rooms as your plan allows.";
   }
+  // People are counted across the workspace, not per room: someone let
+  // into a room is a member of the workspace (server/people.ts).
   const pending = people.invitesFor(blok.id).length;
-  if (people.membersOf(blok.id).length + pending >= limits.members) {
+  if (people.workspaceMembers().length + pending >= limits.members) {
     return plan === "cloud"
-      ? `Bloks Cloud allows ${limits.members} people in a shared room. Bloks Team allows ${PLAN_LIMITS.team.members}.`
-      : `A shared room holds up to ${limits.members} people.`;
+      ? `Bloks Cloud allows ${limits.members} members in a workspace. Bloks Team allows ${PLAN_LIMITS.team.members}.`
+      : `A workspace holds up to ${limits.members} members.`;
   }
   return null;
 }
@@ -8507,7 +8709,9 @@ function laneBusy(bot: BotRecord, roomId: string): boolean {
 
 /** A lane of a shared room, as opposed to one of an agent's own. */
 function isSharedLane(laneId: string): boolean {
-  return bloks.bloks.some((b) => b.lanes && Object.values(b.lanes).includes(laneId));
+  // a team agent's shared conversation and a member's private one are
+  // other people's too, and kept out of the owner's background work alike
+  return Boolean(store.laneKind(laneId)) || bloks.bloks.some((b) => b.lanes && Object.values(b.lanes).includes(laneId));
 }
 
 /** How long the next speaker in a room waits for the last one's turn. A
@@ -8704,6 +8908,48 @@ relayLink.inviteSecret = (inviteId) => {
   if (Date.now() > inv.expiresAt + 60 * 60_000) return null;
   return inv.secretHash;
 };
+// ── the people of the workspace (server/members.ts) ──────────────────
+
+/** Members, invites and the door, wired to this server. */
+const workspacePeople = createMembers({
+  hostName,
+  relay: relayLink,
+  relayReady: () => Boolean(cfg.relay?.enabled && cfg.relay.agentToken),
+  relayUrl: () => (cfg.relay?.enabled && cfg.relay.url ? cfg.relay.url : null),
+  plan: () => currentPlan(),
+  bots: () => store.bots,
+  rooms: () => bloks.bloks,
+  engines: () => registry.instances().filter((i) => i.enabled).map((i) => ({ id: i.instanceId, name: i.displayName ?? i.instanceId })),
+  broadcast: (frame) => broadcast(frame),
+  closeStreams: (personId) => closeMemberStreams(personId),
+  lanAddress: () => {
+    const status = pairingStatus();
+    return status.listening === "network" && status.addresses[0] ? `${status.addresses[0]}:${PORT}` : null;
+  },
+  aiUsedPercent: (personId) => creditsBalance?.value?.members?.find((m) => m.member === memberTag(personId))?.usedPercent ?? null,
+  dropAgentsOf: (personId) => {
+    // their solo agents are archived, never handed to anyone, and their
+    // private conversations with team agents go
+    for (const bot of store.bots) if (bot.solo?.by === personId && !bot.archivedAt) store.archiveBot(bot.id, Date.now());
+    store.dropMemberLanes(personId);
+  },
+  setAccess: (botId, value) => {
+    const bot = store.patchBot(botId, { access: value });
+    if (bot) broadcast({ kind: "bot", bot: clientBot(bot) });
+  },
+  setAudience: (roomId, audience) => {
+    const blok = bloks.setAudience(roomId, audience);
+    if (blok) broadcast({ kind: "blok", blok });
+  },
+});
+relayLink.joinAsk = (envelope) => workspacePeople.joinAsk(envelope, "relay");
+// invites that ran out give their relay tokens back, without waiting for
+// somebody to open the Members page
+setInterval(() => void workspacePeople.sweep().catch(() => {}), 10 * 60_000).unref?.();
+
+/** This Mac joining somebody else's workspace (server/join-client.ts). */
+const joinClient = new JoinClient(() => relayBase());
+
 /** A Bloks Cloud licence, exactly as bloks.dev mints it. Kept here so
  * the shape is checked before anything is dialled: a mistyped key is the
  * ordinary case, and it should not cost a round trip or arrive back as
@@ -8934,6 +9180,10 @@ const liveActivities = new LiveActivities({
 });
 store.onBusy = (laneId, busy) => {
   if (!busy) liveActivities.settled(laneId);
+  // a member's own lane is told to their app the same moment (memberFrame
+  // lets it through to whoever may see that conversation)
+  if (store.laneKind(laneId)) broadcast({ kind: "member.lane", threadId: laneId, busy });
+  if (!busy && memberWaiting.has(laneId)) setTimeout(() => drainMemberWaiting(laneId), 0);
 };
 // soon after a restart, for turns that ended while this was down, and
 // then now and then for any end that did not get through
@@ -14135,6 +14385,45 @@ async function serveInviteRequest(
 
 /** A room as a member sees it: who is in it, and the messages they may
  * read, shaped by member-access.ts. */
+/** Words members wrote to an agent while it was busy, in order, per lane:
+ * each starts its own turn as the lane frees, as that member's. */
+const memberWaiting = new Map<string, Array<{ personId: string; messageId: string; text: string; botId: string }>>();
+
+function drainMemberWaiting(laneId: string) {
+  const list = memberWaiting.get(laneId);
+  const found = store.taskByThread(laneId);
+  if (!list?.length || !found) return void memberWaiting.delete(laneId);
+  // the owner's own queued words go first, as they always have
+  if (found.task.busy || steerQueues.get(laneId)?.items.length) return;
+  const next = list.shift()!;
+  if (!list.length) memberWaiting.delete(laneId);
+  const queued = store.patchMessage(laneId, next.messageId, { queued: false });
+  if (queued) broadcast({ kind: "message.patch", threadId: laneId, message: queued });
+  void startTurn(next.botId, next.text, { taskId: laneId, presetMessage: true, requester: next.personId }).catch((e) => noteTurnRefused(laneId, e));
+}
+
+/** A member's turn that could not start says why, in the conversation it
+ * was asked in, rather than the words seeming to vanish. */
+function noteTurnRefused(laneId: string, e: unknown) {
+  const notice = store.appendMessage(laneId, {
+    role: "bot",
+    kind: "notice",
+    text: redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 400),
+  });
+  broadcast({ kind: "message", threadId: laneId, message: notice });
+}
+
+/** The people in a room, as anyone in it sees them. */
+function roomPeople(blok: BlokRecord) {
+  if (audienceOf(blok) === "everyone") {
+    return people.workspaceMembers().map((p) => {
+      const reach = people.reachOf(p.id, blok.id, "everyone")!;
+      return { id: p.id, name: p.name, role: reach.role, joinedAt: reach.joinedAt };
+    });
+  }
+  return people.membersOf(blok.id).map((m) => ({ id: m.personId, name: m.person.name, role: m.role, joinedAt: m.joinedAt }));
+}
+
 function memberRoom(roomId: string, personId: string) {
   const blok = bloks.get(roomId)!;
   const view = viewOf(personId, roomId)!;
@@ -14156,13 +14445,11 @@ function memberRoom(roomId: string, personId: string) {
     room: {
       id: blok.id,
       name: blok.name,
-      role: people.roleIn(personId, roomId),
-      sharing: memberSharing(blok.sharing!),
+      role: view.role,
+      sharing: memberSharing(blok.sharing ?? DEFAULT_SHARING()),
       owner: { name: hostName() },
       agents,
-      people: people
-        .membersOf(roomId)
-        .map((m) => ({ id: m.personId, name: m.person.name, role: m.role, joinedAt: m.joinedAt })),
+      people: roomPeople(blok),
     },
     messages,
   };
@@ -14184,11 +14471,13 @@ async function serveMember(
   const personId = device.personId!;
   const who = people.person(personId);
   if (!who) return json(res, 401, { error: "you are no longer in any shared room" });
+  // who is in which room is viewOf's to say (server/access.ts behind it)
   const verdict = memberCan(
     method,
     path,
-    (roomId) => (bloks.get(roomId)?.sharing ? people.roleIn(personId, roomId) : null),
+    (roomId) => (bloks.get(roomId) ? (viewOf(personId, roomId)?.role ?? null) : null),
     (roomId) => Boolean(bloks.get(roomId)?.sharing?.collaboratorsInvite),
+    who.role ?? null,
   );
   if (!verdict.ok) return json(res, verdict.status, { error: verdict.error });
   const action: MemberAction = verdict.action;
@@ -14226,23 +14515,29 @@ async function serveMember(
 
     case "me":
       return json(res, 200, {
-        person: { id: who.id, name: who.name },
+        person: { id: who.id, name: who.name, ...(who.role ? { role: who.role } : {}) },
         host: hostName(),
-        rooms: people
-          .membershipsOf(personId)
-          .map((m) => ({ m, blok: bloks.get(m.roomId) }))
-          .filter(({ blok }) => blok?.sharing)
-          .map(({ m, blok }) => ({ id: blok!.id, name: blok!.name, role: m.role, joinedAt: m.joinedAt })),
+        ...(who.role ? { workspace: workspacePeople.identity() } : {}),
+        rooms: bloks.bloks
+          .map((blok) => ({ blok, view: viewOf(personId, blok.id) }))
+          .filter(({ view }) => view)
+          .map(({ blok, view }) => ({ id: blok.id, name: blok.name, role: view!.role, joinedAt: view!.joinedAt })),
       });
 
     case "room":
       return json(res, 200, memberRoom(action.roomId, personId));
 
     case "post": {
-      const blok = bloks.get(action.roomId)!;
+      let blok = bloks.get(action.roomId)!;
       const body = await readBody(req);
       const text = clamp(body.text, 8_000);
       if (!text) return json(res, 400, { error: "say something first" });
+      const stopped = who.role ? workspacePeople.limitRefusal(personId) : null;
+      if (stopped) return json(res, 402, { error: stopped, code: "limit" });
+      // A room open to everyone that nobody had shared yet becomes shared
+      // the moment a member speaks in it: from now on other people read
+      // its replies, so the room's rules for that apply.
+      if (!blok.sharing) blok = bloks.share(blok.id, {}) ?? blok;
       // a human message starts a fresh chain: whoever it wakes is at no hops
       const { message } = enqueueRoomPost(blok, text, { personId, hops: 0, replyTo: replyRef(body.replyTo) });
       const view = viewOf(personId, blok.id)!;
@@ -14317,7 +14612,187 @@ async function serveMember(
     case "typing":
       broadcast({ kind: "room.typing", roomId: action.roomId, personId, name: who.name, at: Date.now() });
       return json(res, 200, { ok: true });
+
+    case "workspace": {
+      const settings = invites.joiningSettings();
+      return json(res, 200, {
+        workspace: workspacePeople.identity(),
+        you: { personId, name: who.name, role: who.role },
+        owner: { name: hostName() },
+        privacy: { privateReadable: settings.privateReadable, line: access.privacyLine(settings.privateReadable, hostName()) },
+        members: people.workspaceMembers().map((p) => ({ id: p.id, name: p.name, role: p.role })),
+      });
+    }
+
+    case "people":
+    case "admin":
+      await workspacePeople.ownerRoute(req, res, method, path, { kind: "member", personId, role: who.role! });
+      return;
+
+    case "agents": {
+      const me = asWho(who);
+      const world = accessWorld();
+      const agents = store.bots
+        .filter((b) => !b.archivedAt && access.listed(b, me, world))
+        .map((b) => memberAgent(b, me, world));
+      return json(res, 200, { agents });
+    }
+
+    case "newAgent": {
+      const body = await readBody(req);
+      const refused = workspacePeople.limits.soloRefusal(personId, workspacePeople.soloCount(personId));
+      if (refused) return json(res, 403, { error: refused, code: "solo_limit" });
+      const name = clamp(body.name, 40);
+      if (!name) return json(res, 400, { error: "a name is needed" });
+      const engine = body.engine && typeof body.engine === "object" ? (body.engine as { instanceId?: unknown; model?: unknown }) : null;
+      const instanceId = typeof engine?.instanceId === "string" ? engine.instanceId : bootSelection.instanceId;
+      if (!registry.get(instanceId) || !workspacePeople.limits.engineAllowed(personId, instanceId)) {
+        return json(res, 403, { error: "That engine is not one you may use here. Ask the owner or an admin.", code: "engine" });
+      }
+      const made = store.createBot({
+        name,
+        ...(typeof body.title === "string" ? { title: clamp(body.title, 80) } : {}),
+        ...(typeof body.description === "string" ? { description: clamp(body.description, 600) } : {}),
+      } as NewBotProfile);
+      const bot = store.patchBot(made.id, {
+        solo: { by: personId },
+        modelSelection: { instanceId, model: typeof engine?.model === "string" ? engine.model : instanceId === bootSelection.instanceId ? bootSelection.model : null } as ModelSelection,
+      })!;
+      broadcast({ kind: "bot", bot: clientBot(bot) });
+      return json(res, 201, { agent: memberAgent(bot, asWho(who), accessWorld()) });
+    }
+
+    case "usage":
+      return json(res, 200, workspacePeople.usageOf(personId));
+
+    case "conversation":
+    case "say":
+    case "reply": {
+      const bot = store.bot(action.botId);
+      const me = asWho(who);
+      const world = accessWorld();
+      if (!bot || !access.listed(bot, me, world)) return json(res, 404, { error: "no such agent" });
+      const lane = bot.solo
+        ? action.lane === "private" ? mainLaneOf(bot) : null
+        : action.lane === "team"
+          ? access.inTeamConversation(bot, me) ? store.teamLane(bot.id) : null
+          : access.canReach(bot, me, world) ? store.memberLane(bot.id, personId) : null;
+      if (!lane) return json(res, 404, { error: action.lane === "team" ? "you are not in this agent's team conversation" : "no such conversation" });
+      const view = viewOf(personId, lane.id);
+      if (!view) return json(res, 404, { error: "no such conversation" });
+
+      if (action.kind === "conversation") {
+        const messages = store
+          .messagesFor(lane.id)
+          .map((m) => memberMessage(m, view))
+          .filter((m): m is Message => m !== null)
+          .slice(-300);
+        const authors = [...new Set(messages.map((m) => m.author).filter((a): a is string => Boolean(a)))];
+        return json(res, 200, {
+          agent: memberAgent(bot, me, world),
+          threadId: lane.id,
+          kind: view.thread,
+          busy: Boolean(lane.busy),
+          people: Object.fromEntries(authors.map((id) => [id, people.person(id)?.name ?? "A former member"])),
+          owner: { name: hostName() },
+          ...(view.thread === "private" ? { privacy: access.privacyLine(invites.joiningSettings().privateReadable, hostName()) } : {}),
+          messages,
+        });
+      }
+
+      if (action.kind === "say") {
+        const body = await readBody(req);
+        const text = clamp(body.text, 8_000);
+        if (!text) return json(res, 400, { error: "say something first" });
+        const stopped = workspacePeople.limitRefusal(personId);
+        if (stopped) return json(res, 402, { error: stopped, code: "limit" });
+        if (bot.archivedAt) return json(res, 409, { error: `${bot.name} is archived.` });
+        const busy = Boolean(lane.busy) || Boolean(steerQueues.get(lane.id)?.items.length) || memberWaiting.has(lane.id);
+        const message = store.appendMessage(lane.id, {
+          role: "user",
+          kind: "text",
+          text,
+          author: personId,
+          ...(busy ? { queued: true, queuedAt: Date.now() } : {}),
+        });
+        broadcast({ kind: "message", threadId: lane.id, message });
+        // in the team conversation the engine hears whose words these are
+        const said = lane.team ? `[${who.name}] ${text}` : text;
+        if (busy) {
+          const list = memberWaiting.get(lane.id) ?? [];
+          list.push({ personId, messageId: message.id, text: said, botId: bot.id });
+          memberWaiting.set(lane.id, list);
+        } else {
+          void startTurn(bot.id, said, { taskId: lane.id, presetMessage: true, requester: personId }).catch((e) => noteTurnRefused(lane.id, e));
+        }
+        return json(res, 202, { message: memberMessage(message, view), queued: busy });
+      }
+
+      // a card in the conversation: an approval or a question
+      const message = store.messagesFor(lane.id).find((m) => m.id === action.messageId);
+      if (!message?.card || message.kind !== "options") return json(res, 404, { error: "no such card" });
+      if (message.card.answered || message.card.dismissed) return json(res, 409, { error: "already answered" });
+      if (!access.mayAnswer({ agent: bot, lane }, message.card, me, world)) {
+        return json(res, 403, { error: `${message.card.askedFor ? (people.person(message.card.askedFor)?.name ?? "Whoever asked") : hostName()}, ${hostName()} or an admin answers this one.` });
+      }
+      const body = await readBody(req);
+      const answer = clamp(body.answer, 2_000);
+      if (!answer) return json(res, 400, { error: "an answer is needed" });
+      const approval = Boolean(message.card.tool) || message.card.title === "Approval needed";
+      const askThread = message.card.requestId ? askThreadByRequest.get(message.card.requestId) : undefined;
+      const instance = message.card.requestId ? askInstance(bot, askThread, message.card.requestId) : null;
+      if (!message.card.requestId || !askThread || !instance) return json(res, 409, { error: "that request has closed" });
+      if (approval) {
+        if (answer !== "Allow" && answer !== "Deny") return json(res, 400, { error: "Allow or Deny" });
+        decidedByMember.set(message.card.requestId, who.name);
+        await instance.adapter
+          .respondToRequest(askThread, message.card.requestId, {
+            behavior: answer === "Allow" ? "allow" : "deny",
+            ...(answer === "Deny" ? { message: `${who.name} declined this.` } : {}),
+          })
+          .catch(() => {});
+        return json(res, 200, { ok: true });
+      }
+      await instance.adapter
+        .respondToRequest(askThread, message.card.requestId, { behavior: "answer", message: lane.team ? `${who.name} answered: ${answer}` : answer })
+        .catch(() => {});
+      return json(res, 200, { ok: true });
+    }
+
+    case "notes":
+      return json(res, 200, { notes: workspacePeople.notesOf(personId).list() });
+    case "note": {
+      const note = workspacePeople.notesOf(personId).add((await readBody(req)).text);
+      return note ? json(res, 201, { note }) : json(res, 400, { error: "that note is empty, or there are too many kept already" });
+    }
+    case "noteKeep": {
+      const body = await readBody(req);
+      const note = workspacePeople.notesOf(personId).keep(action.noteId, typeof body.text === "string" ? body.text : undefined);
+      return note ? json(res, 200, { note }) : json(res, 404, { error: "no such note" });
+    }
+    case "noteDrop":
+      return workspacePeople.notesOf(personId).remove(action.noteId) ? json(res, 200, { ok: true }) : json(res, 404, { error: "no such note" });
   }
+}
+
+/** An agent as a member's list shows it: what they can open, and how. */
+function memberAgent(bot: BotRecord, me: access.Who, world: access.World) {
+  const team = !bot.solo && access.inTeamConversation(bot, me);
+  const mine = me.kind === "member" ? store.bot(bot.id)?.tasks.find((t) => t.personId === me.personId) : undefined;
+  return {
+    id: bot.id,
+    name: bot.name,
+    title: bot.title,
+    color: bot.color,
+    shape: bot.shape ?? null,
+    solo: Boolean(bot.solo),
+    mine: Boolean(bot.solo && me.kind === "member" && bot.solo.by === me.personId),
+    // the shared team conversation, when they are on its list
+    team: team ? { threadId: bot.tasks.find((t) => t.team)?.id ?? null } : null,
+    // a private conversation with it, open to anyone who can reach it
+    private: access.canReach(bot, me, world) || bot.solo ? { threadId: bot.solo ? mainLaneOf(bot).id : (mine?.id ?? null) } : null,
+    busy: Boolean(bot.busy),
+  };
 }
 
 /**
@@ -15068,6 +15543,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (!remoteEnabled() || !isSameOrigin(req)) {
       return json(res, 403, { error: "cross-origin requests are not allowed" });
     }
+    // Somebody on this network holding a workspace invite: this
+    // workspace's public join key, and one sealed request about joining
+    // (server/members.ts), rate limited by address. Nothing else.
+    if ((method === "GET" && path === "/api/join/key") || (method === "POST" && path === "/api/join/ask")) {
+      if (await workspacePeople.lanRoute(req, res, method, path, req.socket.remoteAddress ?? "unknown")) return;
+    }
     // Two things a device does before it holds a token: confirm it found
     // Bloks at all, and trade its code in. Nothing else.
     const open =
@@ -15130,6 +15611,39 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       return json(res, 200, { url: viewerUrl(desktopTickets.mint()) });
     }
 
+    // The join door answers the same on this computer as on the network:
+    // a Mac joining a workspace on this very computer is the same request.
+    if ((method === "GET" && path === "/api/join/key") || (method === "POST" && path === "/api/join/ask")) {
+      if (await workspacePeople.lanRoute(req, res, method, path, req.socket.remoteAddress ?? "local")) return;
+    }
+    // ── the workspace's people (server/members.ts) ──
+    // The owner's, from this window or one of their own devices. An admin
+    // reaches the same routes through serveMember, never an agent.
+    if (path.startsWith("/api/workspace/")) {
+      if (asAgent) return json(res, 403, { error: "that is the person's" });
+      if (await workspacePeople.ownerRoute(req, res, method, path, { kind: "owner" })) return;
+    }
+    // This Mac asking to join somebody else's workspace (join-client.ts).
+    // Only from this computer's own window: the device token it makes is
+    // this computer's to keep.
+    if (path.startsWith("/api/joining/")) {
+      if (asAgent || !local) return json(res, 403, { error: "joining happens from this computer's own window" });
+      if (method !== "POST") return json(res, 405, { error: "POST" });
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const answer =
+        path === "/api/joining/lookup"
+          ? await joinClient.lookup(body.input)
+          : path === "/api/joining/claim"
+            ? await joinClient.claim(body.session, { name: body.name, password: body.password, device: "mac" })
+            : path === "/api/joining/status"
+              ? await joinClient.status(body.session)
+              : path === "/api/joining/cancel"
+                ? await joinClient.cancel(body.session)
+                : null;
+      if (!answer) return json(res, 404, { error: "no such route" });
+      return json(res, answer.ok === false ? (answer as unknown as { status: number }).status : 200, answer);
+    }
+
     // ── events stream ──
     if (method === "GET" && path === "/api/events") {
       if (sseClients.size >= MAX_SSE_CLIENTS) {
@@ -15153,7 +15667,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       );
       if (canResume) {
         for (const entry of frameRing) {
-          if (entry.seq > since) res.write(entry.frame);
+          if (entry.seq > since && !entry.ownerHidden) res.write(entry.frame);
         }
       }
       sseClients.add(res);
@@ -15183,19 +15697,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         Number.isFinite(tail) && tail >= 0 ? list.slice(-tail) : list;
       // What recall gave an agent came from its other conversations, which
       // another agent reading this one's chat has no business seeing.
-      const lists = store.bots.map((b) => zero ? [] : trim(store.messagesFor(b.threadId)))
+      // a member's solo agent is theirs: not listed for the owner at all
+      const shown = store.bots.filter((b) => !b.solo || b.solo.by === "owner");
+      const lists = shown.map((b) => zero ? [] : trim(store.messagesFor(b.threadId)))
         .map((list) => asAgent ? list.map(({ recalled: _recalled, ...message }) => message) : list);
       // Through Bloks Cloud the cut is made from the whole conversation, so
       // what stayed behind counts every older message, not only those past
       // a list already trimmed to the tail; a client pages back by it.
       const fitted = viaRelay
-        ? fitTranscripts(store.bots.map((b) => store.messagesFor(b.threadId)), Number.isFinite(tail) && tail >= 0 ? Math.floor(tail) : RELAY_TAIL)
+        ? fitTranscripts(shown.map((b) => store.messagesFor(b.threadId)), Number.isFinite(tail) && tail >= 0 ? Math.floor(tail) : RELAY_TAIL)
         : null;
       // Another agent reads whether each one can answer now (GitHub 239);
       // the person's app has its banner, and asks the engines itself.
-      const engines = asAgent ? await Promise.all(store.bots.map((b) => readinessOf(b))) : null;
+      const engines = asAgent ? await Promise.all(shown.map((b) => readinessOf(b))) : null;
       return json(res, 200, {
-        bots: store.bots.map((b, i) => ({
+        bots: shown.map((b, i) => ({
           ...clientBot(b)!,
           ...(fitted ? fitted[i] : { messages: lists[i] }),
           ...(engines ? { engine: { ...engines[i].readiness, ...(engines[i].engine ? { name: engines[i].engine } : {}) } } : {}),
@@ -15963,11 +16479,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // Earlier messages of one of this agent's conversations, the page
       // before `before`, for a transcript that arrived trimmed.
       const bot = store.bot(m[1]);
-      if (!bot) return json(res, 404, { error: "no such agent" });
+      if (!bot || (bot.solo && bot.solo.by !== "owner")) return json(res, 404, { error: "no such agent" });
       const thread = url.searchParams.get("thread") || bot.threadId;
       if (thread !== bot.threadId && !(bot.tasks ?? []).some((t) => t.id === thread)) {
         return json(res, 404, { error: "no such conversation" });
       }
+      // a member's private conversation: the owner reads it only when the
+      // workspace says so (server/access.ts)
+      const lane = bot.tasks.find((t) => t.id === thread);
+      if (lane && !access.laneAccess(bot, lane, { kind: "owner" }, accessWorld())) return json(res, 404, { error: "no such conversation" });
       return json(res, 200, earlierPage(store.messagesFor(thread), url));
     }
     if (m && method === "POST") {
@@ -18508,7 +19028,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const body = await readBody(req);
       const memberIds = Array.isArray(body.memberIds)
         ? (body.memberIds as unknown[]).filter(
-            (id): id is string => typeof id === "string" && Boolean(store.bot(id)),
+            (id): id is string => typeof id === "string" && roomMayHold(id),
           )
         : [];
       if (memberIds.length < 2) {
@@ -18556,7 +19076,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       if (Array.isArray(body.memberIds)) {
         patch.memberIds = (body.memberIds as unknown[]).filter(
-          (id): id is string => typeof id === "string" && Boolean(store.bot(id)),
+          (id): id is string => typeof id === "string" && roomMayHold(id),
         );
       }
       if ("leadId" in body) {

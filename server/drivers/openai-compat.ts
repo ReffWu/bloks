@@ -236,6 +236,26 @@ function toolSchemas(hasComputer: boolean, hasSandbox: boolean) {
         },
       },
     },
+    // In a workspace with other people: posting into one person's private
+    // conversation with this agent, when the owner or an admin asks for
+    // it from a team conversation or a room. The workspace decides whether
+    // it may (server/access.ts) and says so in the answer.
+    {
+      type: "function",
+      function: {
+        name: "message_person",
+        description:
+          "Send a message to one person in this workspace, in their private conversation with you. Only when the owner or an admin asked you to, in a team conversation or a room. It is marked as sent on their behalf.",
+        parameters: {
+          type: "object",
+          properties: {
+            person: { type: "string", description: "The person's name, as the members list shows it" },
+            text: { type: "string", description: "The message, written to them" },
+          },
+          required: ["person", "text"],
+        },
+      },
+    },
     // Memory for an engine with no files of its own: the same MEMORY.md
     // and topic files a CLI engine edits with its file tools, answered by
     // the workspace like note_about_person, and journaled as the agent's.
@@ -784,7 +804,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
               result = await requestSecret(threadId, turnId, args);
             } else if (
               name === "search_history" || name === "read_message" || name === "note_about_person" ||
-              name === "memory_read" || name === "memory_write"
+              name === "memory_read" || name === "memory_write" || name === "message_person"
             ) {
               result = await askWorkspace(threadId, turnId, name, args ?? {});
             } else if (name === "sandbox_exec" && sandbox) {
