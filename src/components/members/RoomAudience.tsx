@@ -93,7 +93,7 @@ export function RoomAudience({ roomId, className }: { roomId: string; className?
                 <span
                   aria-hidden
                   className={cn(
-                    "grid size-4 place-items-center rounded-[5px] border transition-colors duration-150 peer-focus-visible:ring-2 peer-focus-visible:ring-ring/50",
+                    "grid size-4 place-items-center rounded-[5px] border transition-colors duration-150 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
                     on ? "border-primary bg-primary text-primary-foreground" : "bg-background",
                   )}
                 >
