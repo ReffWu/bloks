@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { shapeForBot, type BlokColor, type BlokShape } from "@/lib/mascot";
 import { cardState, speaker, type MemberCard, type MemberMessage } from "@/lib/memberMode";
-import { receiptsAt, runs, type Said } from "@/lib/participants";
+import { receiptsAt, runs, senderOf, type Said } from "@/lib/participants";
 import { useReadPosition, useReads } from "@/lib/readReceipts";
 import { GroupMessage, PersonAvatar, SeenBy } from "@/components/chat/Group";
 import { richText } from "@/components/chat/Bubble";
@@ -106,7 +106,7 @@ export function Transcript({ messages, me, people, owner, shared, agentName, str
     post: (thread, messageId) => onRead?.(thread, messageId) ?? Promise.resolve(),
     tick: messages.length,
   });
-  const seenRows = place ? receiptsAt(said.map((m) => m.id), new Set(place.keys()), reads, me) : null;
+  const seenRows = place ? receiptsAt(said.map((m) => m.id), new Set(place.keys()), reads, me, new Map(said.map((m) => [m.id, senderOf(m)]))) : null;
   const nameFor = (id: string) => (id === "owner" ? owner : (nameOf?.(id) ?? people[id] ?? "Someone"));
   const receiptsFor = (id: string) => {
     const who = seenRows?.get(id);

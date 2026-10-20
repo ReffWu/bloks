@@ -1,6 +1,6 @@
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
 import { usePersonName, useWorkspaceRoster } from "@/lib/members";
-import { isGroup, otherHumans, receiptsAt, runs, speakers, teamHumans } from "@/lib/participants";
+import { isGroup, otherHumans, receiptsAt, runs, senderOf, speakers, teamHumans } from "@/lib/participants";
 import { seedReads, useReadPosition, useReads } from "@/lib/readReceipts";
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { Search } from "@/components/icons";
@@ -189,7 +189,7 @@ export function ChatView({ bot }: { bot: Bot }) {
     !m.deleted && !m.quiet && !m.takeBack && !(m.agent && m.agent.dir !== "reply" && (m.kind === "text" || m.kind === "activity")) && (m.kind === "text" || m.kind === "component");
   const groupRuns = useMemo(() => (group ? runs(said, isBubble, bot.id) : new Map<string, { first: boolean; last: boolean }>()), [group, said, bot.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const receiptRows = useMemo(
-    () => (withPeople ? receiptsAt(said.map((m) => m.id), new Set(groupRuns.keys()), reads, "owner") : new Map<string, string[]>()),
+    () => (withPeople ? receiptsAt(said.map((m) => m.id), new Set(groupRuns.keys()), reads, "owner", new Map(said.map((m) => [m.id, senderOf(m)]))) : new Map<string, string[]>()),
     [withPeople, said, groupRuns, reads],
   );
   const readerName = (id: string) => (id === "owner" ? (roster.owner ?? "You") : personName(id));

@@ -30,7 +30,7 @@ import { ArtifactCard } from "./Artifacts";
 import { ForwardDialog, MessageActionBar, Reactions, ReplyContext, useTapToShow, type ReplyDraft } from "./MessageActions";
 import { IntentNote, UserText, richText } from "./chat/Bubble";
 import { GroupMessage, PersonAvatar, SeenBy } from "./chat/Group";
-import { receiptsAt, runs } from "@/lib/participants";
+import { receiptsAt, runs, senderOf } from "@/lib/participants";
 import { usePersonName, useWorkspaceRoster } from "@/lib/members";
 import { seedReads, useReadPosition, useReads } from "@/lib/readReceipts";
 import { JumpToLatest } from "./chat/JumpToLatest";
@@ -706,7 +706,7 @@ export function RoomView({ blok }: { blok: Blok }) {
     tick: said.length,
   });
   const receiptRows = useMemo(
-    () => (withPeople ? receiptsAt(said.map((m) => m.id), new Set(roomRuns.keys()), reads, "owner") : new Map<string, string[]>()),
+    () => (withPeople ? receiptsAt(said.map((m) => m.id), new Set(roomRuns.keys()), reads, "owner", new Map(said.map((m) => [m.id, senderOf(m)]))) : new Map<string, string[]>()),
     [withPeople, said, roomRuns, reads],
   );
   const readerName = (id: string) =>

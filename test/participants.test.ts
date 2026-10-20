@@ -85,3 +85,15 @@ test("receipts: under the latest message drawn each other person read, never the
   assert.deepEqual(receiptsAt(order, anchors, reads, "p_sam").get("m2")?.sort(), ["owner", "p_ana"]);
   assert.equal(seenLine(["Sam", "Ana"]), "Seen by Sam, Ana");
 });
+
+test("receipts: nobody's place shows under their own message", () => {
+  const order = ["m1", "m2"];
+  const anchors = new Set(order);
+  const senders = new Map([["m1", "agent:scout"], ["m2", "p_ana"]]);
+  const reads = [
+    { personId: "p_ana", messageId: "m2", at: 2 },
+    { personId: "p_sam", messageId: "m2", at: 3 },
+  ];
+  const seen = receiptsAt(order, anchors, reads, "owner", senders);
+  assert.deepEqual(seen.get("m2"), ["p_sam"], "Ana wrote m2, so her place there says nothing");
+});

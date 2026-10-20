@@ -107,9 +107,18 @@ export interface ReadMark {
  * row (a tool line, a folded check-in) moves back to the nearest one that
  * is. `order` is every message id in the conversation, oldest first;
  * `anchors` the ones that can carry a receipt. The reader's own place is
- * never shown to them.
+ * never shown to them, and nor is anybody's place on their own message:
+ * of course they have read what they wrote, and a face under its own
+ * words only looks like a second avatar. `senders` maps message ids to
+ * who sent them (senderOf).
  */
-export function receiptsAt(order: readonly string[], anchors: ReadonlySet<string>, reads: readonly ReadMark[], me: string): Map<string, string[]> {
+export function receiptsAt(
+  order: readonly string[],
+  anchors: ReadonlySet<string>,
+  reads: readonly ReadMark[],
+  me: string,
+  senders?: ReadonlyMap<string, string>,
+): Map<string, string[]> {
   const out = new Map<string, string[]>();
   const index = new Map(order.map((id, i) => [id, i]));
   for (const r of reads) {
@@ -119,6 +128,7 @@ export function receiptsAt(order: readonly string[], anchors: ReadonlySet<string
     while (i >= 0 && !anchors.has(order[i])) i--;
     if (i < 0) continue;
     const at = order[i];
+    if (senders?.get(at) === r.personId) continue;
     out.set(at, [...(out.get(at) ?? []), r.personId]);
   }
   return out;
