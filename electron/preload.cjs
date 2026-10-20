@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld("bloks", {
   workspaceLogoClear: (id) => ipcRenderer.invoke("workspaces:logo-clear", id),
   /** How many people this workspace has, for the switcher (Members). */
   workspaceMembers: (count) => ipcRenderer.invoke("workspaces:members", count),
+  // a workspace joined from this Mac (src/components/members/JoinWorkspaceDialog)
+  workspaceJoined: (input) => ipcRenderer.invoke("workspaces:joined", input),
   prefsTheme: (theme) => ipcRenderer.invoke("prefs:theme", theme),
   prefsAccent: (accent) => ipcRenderer.invoke("prefs:accent", accent),
   /** What a banner clicked before this page loaded was about. */
@@ -108,6 +110,8 @@ contextBridge.exposeInMainWorld("bloks", {
   // bloks:// links from the website (electron/main.mjs)
   onLink: subscription("link:open"),
   pendingLink: () => ipcRenderer.invoke("link:pending"),
+  // the system share sheet, for a workspace invite's link (electron/main.mjs)
+  shareLink: (url) => ipcRenderer.invoke("share:link", url),
   // the macOS menu bar's own items, Settings among them (electron/app-menu.mjs)
   onMenuCommand: subscription("menu:command"),
   pendingMenuCommand: () => ipcRenderer.invoke("menu:pending"),

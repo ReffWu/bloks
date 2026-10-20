@@ -110,6 +110,15 @@ declare global {
       workspaceLogoClear?(id: string): Promise<WorkspaceAnswer>;
       /** How many people this workspace has, for the switcher's count. */
       workspaceMembers?(count: number): Promise<void>;
+      /** Keeps a joined workspace's credentials and lists it; with `open`,
+       * switches to it. */
+      workspaceJoined?(input: {
+        profile: { relayUrl: string | null; relayToken: string | null; deviceId: string; deviceToken: string };
+        name: string;
+        mark: WorkspaceMarkValue | null;
+        host?: string;
+        open: boolean;
+      }): Promise<WorkspaceAnswer>;
       /** The theme is the person's, kept across every workspace. */
       prefsTheme?(theme: "light" | "dark" | "system"): Promise<void>;
       /** The accent is this workspace's own. */
@@ -144,8 +153,11 @@ declare global {
       ): () => void;
       onMeetingEnd?(handler: (payload: { code: number }) => void): () => void;
       /** bloks:// links from the website (electron/main.mjs). */
-      onLink?(handler: (link: { kind: "team"; slug: string }) => void): () => void;
-      pendingLink?(): Promise<{ kind: "team"; slug: string } | null>;
+      onLink?(handler: (link: { kind: "team"; slug: string } | { kind: "join"; fragment: string }) => void): () => void;
+      pendingLink?(): Promise<{ kind: "team"; slug: string } | { kind: "join"; fragment: string } | null>;
+      /** The system share sheet for a workspace invite's link; false where
+       * there is none, and the caller copies instead. */
+      shareLink?(url: string): Promise<boolean>;
       /** A choice from the macOS menu bar for this window to carry out
        * (electron/app-menu.mjs), and one made while no window was
        * listening yet. */

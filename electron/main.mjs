@@ -30,6 +30,7 @@ import {
   screen,
   session,
   shell,
+  ShareMenu,
   systemPreferences,
   utilityProcess,
 } from "electron";
@@ -46,7 +47,7 @@ import { markInstall, restartIntoUpdate, takeInstallMark, within } from "./updat
 import { claimPairLink, startRemoteProxy } from "./remote.mjs";
 import { nativeSettingsObservation } from "./settings-observation.mjs";
 import { sameAppOrigin } from "./navigation.mjs";
-import { linkInArgv, teamLink } from "./links.mjs";
+import { joinLink, linkInArgv, teamLink } from "./links.mjs";
 import { terminalQuery } from "./terminal-window.mjs";
 import os from "node:os";
 
@@ -148,7 +149,7 @@ if (!app.requestSingleInstanceLock()) {
 if (app.isPackaged || !HOSTS_SERVERS) app.setAsDefaultProtocolClient("bloks");
 let pendingLink = null;
 function deliverLink(raw) {
-  const link = teamLink(raw);
+  const link = teamLink(raw) ?? joinLink(raw);
   if (!link) return;
   const main = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w));
   if (!main || main.webContents.isLoading()) {
@@ -243,6 +244,12 @@ async function startServerOn(port, ws) {
       // live, so its agents are kept out of the others' folders too
       BLOKS_WORKSPACE_ID: ws.id,
       BLOKS_WORKSPACES_DIR: workspacesDir(),
+      // what its invites and its welcome call it (server/members.ts); the
+      // window says it again when the name or mark changes
+      BLOKS_WORKSPACE_NAME: ws.name ?? "",
+      BLOKS_WORKSPACE_KIND: ws.kind ?? "",
+      BLOKS_WORKSPACE_COLOR: ws.mark?.color ?? "",
+      BLOKS_WORKSPACE_PATTERN: ws.mark?.pattern ?? "",
     },
     execArgv: source.execArgv,
     // stderr is read as well as passed on, so a server that dies while
@@ -728,6 +735,29 @@ export function addJoinedWorkspace(profile, { name, mark = null, team = true } =
   tellWorkspaces();
   return entryOf(id);
 }
+
+// A join the window finished (src/components/members/JoinWorkspaceDialog):
+// the credentials it was handed, kept here, and the workspace switched to
+// when the person pressed Open. The profile is checked for its shape: it
+// becomes a keychain entry and a proxy's credentials.
+handle("workspaces:joined", (_event, input) =>
+  answer(async () => {
+    needsList();
+    const p = input?.profile ?? {};
+    const ok =
+      typeof p.relayUrl === "string" && /^https:\/\/|^http:\/\/127\.0\.0\.1/.test(p.relayUrl) &&
+      typeof p.relayToken === "string" && typeof p.deviceId === "string" && typeof p.deviceToken === "string";
+    if (!ok) throw new Error("This workspace can only be reached on its own network for now, so it was not added. Ask for it to be made reachable online.");
+    const mark = input?.mark && typeof input.mark.color === "string" && typeof input.mark.pattern === "string" ? { color: input.mark.color, pattern: input.mark.pattern } : null;
+    const name = typeof input?.name === "string" && input.name.trim() ? input.name.trim().slice(0, 60) : "A workspace";
+    const entry = addJoinedWorkspace(
+      { relayUrl: p.relayUrl.replace(/\/+$/, ""), relayToken: p.relayToken, deviceId: p.deviceId, deviceToken: p.deviceToken, host: typeof input?.host === "string" ? input.host.slice(0, 60) : "" },
+      { name, mark },
+    );
+    if (input?.open) await switchWorkspace(entry.id);
+    return { ok: true, id: entry.id };
+  }),
+);
 
 async function openJoined(run, ws) {
   const profile = readJoinedProfile(ws.id);
@@ -1673,6 +1703,20 @@ handle("dialog:pick-folder", async (event) => {
     properties: ["openDirectory", "createDirectory"],
   });
   return canceled ? null : (filePaths[0] ?? null);
+});
+
+// The system share sheet, for a workspace invite's link: Messages, Mail,
+// AirDrop, whatever this Mac has. Only an https link to bloks.dev is ever
+// shared from here, so a page cannot dress anything else up as an invite.
+// False where there is no share sheet (Windows, Linux), and the window
+// copies the link instead.
+handle("share:link", (event, url) => {
+  if (process.platform !== "darwin" || typeof ShareMenu !== "function") return false;
+  if (typeof url !== "string" || !/^https:\/\/bloks\.dev\/j\/[a-z0-9]{6}#[0-9A-Z~.:[\]-]{8,80}$/.test(url)) return false;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return false;
+  new ShareMenu({ urls: [url] }).popup({ window: win });
+  return true;
 });
 
 // ── the About card's three questions ───────────────────────────────────

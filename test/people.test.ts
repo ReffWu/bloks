@@ -49,7 +49,7 @@ test("both ends compute the same check phrase, and another device gets different
   for (const word of phrase.split(" ")) assert.ok(people.CHECK_WORDS.includes(word));
 });
 
-test("approval makes a person and a membership; leaving the last room forgets them", () => {
+test("approval makes a workspace member and a membership; leaving the last room keeps them in the workspace", () => {
   const { invite } = people.createInvite({ roomId: "r9", role: "viewer", invitedBy: "owner" });
   people.claimInvite(invite.id, { name: "  Ada‮  Lovelace\u0007 ", token: "c".repeat(43) });
   const approved = people.approveInvite(invite.id)!;
@@ -57,10 +57,15 @@ test("approval makes a person and a membership; leaving the last room forgets th
   assert.equal(people.roleIn(approved.person.id, "r9"), "viewer");
   assert.equal(people.approveInvite(invite.id), null, "an invite is used once");
 
+  // somebody let into a room is somebody in the workspace
+  assert.equal(people.workspaceRole(approved.person.id), "member");
   const { roomless } = people.removeFromRoom(approved.person.id, "r9");
-  assert.equal(roomless, true);
-  assert.equal(people.person(approved.person.id), null);
+  assert.equal(roomless, false, "a workspace member has the workspace left to reach");
+  assert.equal(people.person(approved.person.id)?.id, approved.person.id);
   assert.equal(people.roleIn(approved.person.id, "r9"), null);
+  // out of the workspace is out of everything
+  assert.equal(people.removeFromWorkspace(approved.person.id)?.id, approved.person.id);
+  assert.equal(people.person(approved.person.id), null);
 });
 
 test("a cancelled or expired invite cannot be claimed", () => {

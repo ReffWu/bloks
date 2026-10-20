@@ -23,6 +23,11 @@ export interface BlokRecord {
   name: string;
   /** Agents in the room. The user is always present implicitly. */
   memberIds: string[];
+  /** Which of the workspace's people are in the room: "everyone", or
+   * "some", who are then the room's memberships in server/people.ts.
+   * Absent reads as "some" for a room shared before workspaces (its
+   * invited people are exactly who was in it) and "everyone" otherwise. */
+  audience?: "everyone" | "some";
   /** When set, a message that names nobody wakes only the lead (see
    * leadOf) instead of the whole room. The lead can still delegate with
    * @name, so the work happens either way; what changes is that six
@@ -291,6 +296,15 @@ export class BlokStore {
     return spend;
   }
 
+  /** Who of the workspace is in the room (BlokRecord.audience). */
+  setAudience(id: string, audience: "everyone" | "some"): BlokRecord | null {
+    const blok = this.get(id);
+    if (!blok) return null;
+    blok.audience = audience;
+    this.save();
+    return blok;
+  }
+
   /** Links a shared room to a chat channel, or unlinks it with null. */
   setChat(id: string, link: ChatLink | null): BlokRecord | null {
     const blok = this.get(id);
@@ -433,4 +447,9 @@ export function addressees(
     return { ids: members.filter((m) => order.has(m.id)).map((m) => m.id), mentioned: true };
   }
   return { ids: members.map((m) => m.id), mentioned: false };
+}
+
+/** Who is in a room, read with the default for rooms from before. */
+export function audienceOf(blok: Pick<BlokRecord, "audience" | "sharing">): "everyone" | "some" {
+  return blok.audience ?? (blok.sharing ? "some" : "everyone");
 }

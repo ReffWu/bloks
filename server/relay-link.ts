@@ -251,6 +251,10 @@ export class RelayLink {
    * envelopes are keyed from, and what spending it does. */
   pairSecret: (linkId: string) => string | null = () => null;
   pairClaim: (linkId: string, body: unknown) => unknown | null = () => null;
+  /** Somebody holding a workspace invite's code and nothing else
+   * (server/members.ts): their sealed request in, the sealed answer out,
+   * or null for an envelope that does not open. */
+  joinAsk: (envelope: Envelope) => Promise<{ status: number; payload: string } | null> = async () => null;
   /** Called when the relay refuses this Mac's token. Another Bloks on the
    * same ~/.bloks (the app beside a headless server) may have activated
    * Cloud again and saved new tokens this process has not read yet. */
@@ -306,9 +310,11 @@ export class RelayLink {
    * key and the relay is a dumb fan-out. A phone silently drops envelopes
    * addressed to anyone else. `ownersOnly` keeps a frame meant for the
    * owner's own devices off members' phones entirely, rather than trusting
-   * member-access.ts to drop a kind it has never heard of.
+   * member-access.ts to drop a kind it has never heard of. `onlyPerson`
+   * is the opposite: a frame about one member's own conversation, sealed
+   * for nobody else's devices.
    */
-  publish(frame: unknown, wake?: Wake, ownersOnly = false) {
+  publish(frame: unknown, wake?: Wake, ownersOnly = false, onlyPerson?: string) {
     if (!this.config || !this.state.connected) return;
     const devices = pairedDevices();
     // No devices still posts an empty batch: /space/agent/events touches
@@ -326,6 +332,9 @@ export class RelayLink {
     const wantsPreview = typeof wake === "object" && wake.preview === true;
     for (const d of devices) {
       if (ownersOnly && d.personId) continue;
+      // a member's own conversation goes to that member's devices alone,
+      // the owner's included among those it does not go to
+      if (onlyPerson && d.personId !== onlyPerson) continue;
       const shown = d.personId ? this.memberFrame(frame, d.personId) : frame;
       if (shown === null || shown === undefined) continue;
       frames.push(seal(deviceKey(d.hash, "mac-to-phone"), d.id, shown));
@@ -443,6 +452,54 @@ export class RelayLink {
       return typeof body.clientToken === "string" ? body.clientToken : null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Tells Bloks Cloud about a workspace invite, so whoever has the code
+   * can find this computer from anywhere. `preview` is what the link page
+   * may show. `host.token` is a member client token minted for this
+   * invite, which the relay hands whoever looks the code up so they can
+   * ask through it (and drops the invite with, if it is revoked);
+   * `host.key` is the public join key the joiner seals for. False when the
+   * relay is off, unreachable, or refuses: the invite still works on this
+   * network.
+   */
+  async registerInvite(body: {
+    codeHash: string;
+    publicId: string;
+    preview: { workspace: string; mark: { color: string; pattern: string }; inviter: string; role: string };
+    expiresAt: number;
+    host: { token: string; key: string };
+  }): Promise<boolean> {
+    if (!this.config) return false;
+    try {
+      const res = await fetch(`${this.config.url}/space/agent/invites`, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Takes an invite back out of Bloks Cloud's index. Best effort: an
+   * entry left behind expires there on its own, and this computer refuses
+   * a closed invite whatever the relay still says. */
+  async cancelInvite(publicId: string): Promise<boolean> {
+    if (!this.config) return false;
+    try {
+      const res = await fetch(`${this.config.url}/space/agent/invites/${encodeURIComponent(publicId)}`, {
+        method: "DELETE",
+        headers: this.headers(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return res.ok || res.status === 404;
+    } catch {
+      return false;
     }
   }
 
@@ -675,6 +732,7 @@ export class RelayLink {
     const envelope = peek(payload);
     if (envelope?.d.startsWith("inv_")) return void this.serveInvite(id, envelope);
     if (envelope?.d.startsWith("pair_")) return void this.servePairLink(id, envelope);
+    if (envelope?.d.startsWith("wjn_")) return void this.serveJoin(id, envelope);
     const device = envelope ? pairedDevices().find((d) => d.id === envelope.d) : null;
     // An envelope for an unknown device is a revoked phone or a forgery,
     // and both get the same nothing.
@@ -871,6 +929,16 @@ export class RelayLink {
     const claimed = this.pairClaim(linkId, request.body);
     if (!claimed) return void this.answer(id, 410, { error: "this pairing link was already used or has expired" }, replyKey, linkId);
     this.answer(id, 200, claimed, replyKey, linkId);
+  }
+
+  /** Somebody asking to join the workspace with an invite's code. The
+   * opening, the checks and the sealed answer are server/members.ts's;
+   * this only carries them. */
+  private async serveJoin(id: string, envelope: Envelope) {
+    const answered = await this.joinAsk(envelope).catch(() => null);
+    if (!answered) return void this.answer(id, 401, null, null, null);
+    if (!this.config) return;
+    void this.deliver(JSON.stringify({ id, status: answered.status, payload: answered.payload }), 8_000);
   }
 
   private async serveHook(id: string, raw: string) {

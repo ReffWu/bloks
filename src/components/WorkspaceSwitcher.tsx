@@ -10,7 +10,7 @@
 // Switching is the main process pointing the window at another
 // workspace's server, which is already running, so the page loads afresh
 // and this component is drawn again by the workspace it now shows.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { BellOff, Check, ChevronsUpDown, Loader2, LogIn, Plus, RefreshCw, Settings } from "@/components/icons";
 import {
@@ -132,6 +132,7 @@ function WorkspaceRow({ ws, current, index }: { ws: WorkspaceInfo; current: stri
 
 export function WorkspaceSwitcher({ className, divider = false }: { className?: string; divider?: boolean }) {
   const s = useWorkspaces();
+  const toDialog = useRef(false);
   const { dispatch } = useStore();
   useWorkspaceKeys(s);
   const current = currentWorkspace(s);
@@ -176,7 +177,19 @@ export function WorkspaceSwitcher({ className, divider = false }: { className?: 
           </span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" sideOffset={8} className="w-[300px] rounded-[14px] p-1.5">
+      <DropdownMenuContent
+        align="start"
+        sideOffset={8}
+        className="w-[300px] rounded-[14px] p-1.5"
+        // A dialog opened from here keeps the focus it starts with: the
+        // menu handing it back to its button would take it from the field
+        // the person is about to type in.
+        onCloseAutoFocus={(e) => {
+          if (!toDialog.current) return;
+          toDialog.current = false;
+          e.preventDefault();
+        }}
+      >
         <DropdownMenuLabel className="px-2.5 pb-1.5 pt-2">Workspaces</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={s.current}
@@ -190,11 +203,17 @@ export function WorkspaceSwitcher({ className, divider = false }: { className?: 
           ))}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator className="mx-1 my-1.5" />
-        <DropdownMenuItem className="gap-2.5 rounded-[9px] py-2 text-ui font-medium" onSelect={() => openWorkspaceDialog("join")}>
+        <DropdownMenuItem className="gap-2.5 rounded-[9px] py-2 text-ui font-medium" onSelect={() => {
+            toDialog.current = true;
+            openWorkspaceDialog("join");
+          }}>
           <LogIn />
           Join a workspace
         </DropdownMenuItem>
-        <DropdownMenuItem className="gap-2.5 rounded-[9px] py-2 text-ui font-medium" onSelect={() => openWorkspaceDialog("new")}>
+        <DropdownMenuItem className="gap-2.5 rounded-[9px] py-2 text-ui font-medium" onSelect={() => {
+            toDialog.current = true;
+            openWorkspaceDialog("new");
+          }}>
           <Plus />
           New workspace
         </DropdownMenuItem>

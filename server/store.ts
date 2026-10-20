@@ -194,6 +194,10 @@ export interface Message {
    * server/people.ts. Absent means the owner, which is every message
    * written before rooms could be shared. */
   author?: string;
+  /** An agent's message in somebody's private conversation that the
+   * owner or an admin asked it to send from a team conversation or a
+   * room: who asked ("owner" or a person id), and their name then. */
+  onBehalf?: { by: string; name: string };
   kind:
     | "text"
     | "options"
@@ -423,6 +427,19 @@ export interface TaskRecord {
    * before Bloks (server/session-import.ts). Goes with the lane: a lane
    * cleared is not that conversation any more. */
   imported?: ImportedLane;
+  /** A team agent's one shared conversation, which everyone on the
+   * agent's access list reads and writes (server/access.ts). */
+  team?: boolean;
+  /** A workspace member's private conversation with a team agent. Theirs;
+   * see server/access.ts for who else may ever read it. Absent, and not
+   * the team lane, is one of the owner's own. */
+  personId?: string;
+}
+
+/** The owner's own lanes, which are what the lane cap and the owner's
+ * lane list count. The team lane and members' private lanes are not. */
+export function ownerLanes(bot: Pick<BotRecord, "tasks">): TaskRecord[] {
+  return bot.tasks.filter((t) => !t.personId && !t.team);
 }
 
 /** Where an imported lane came from, and whether it carries on there. */
@@ -450,6 +467,15 @@ export interface ImportedLane {
  * time. */
 export const MAX_TASKS = 20;
 
+/** Who is in a team agent's own conversation: everyone in the workspace,
+ * only the people listed, or everyone except them. The owner always is;
+ * admins are too unless `admins` is false. */
+export interface AgentAccess {
+  mode: "everyone" | "only" | "except";
+  people: string[];
+  admins?: boolean;
+}
+
 export interface BotRecord {
   id: string;
   /** The ACTIVE task's id. Kept as an alias of activeTaskId so the many
@@ -471,6 +497,14 @@ export interface BotRecord {
   /** The agent that hired this one, when an agent did. One of the two
    * relationships that let one agent stop another's turn (GitHub 141). */
   hiredBy?: string;
+  /** A solo agent: private to whoever made it ("owner", or a workspace
+   * member's person id). Only they see it, its conversation and its
+   * cards, and only they can put it in a room. Absent is a team agent. */
+  solo?: { by: string };
+  /** Who shares a team agent's own conversation (see AgentAccess). Absent
+   * is everyone in the workspace. Rooms are decided per room: somebody
+   * not in this list still meets the agent in a room they are in. */
+  access?: AgentAccess;
   /** How hard the engine should think, where the engine has the dial.
    * Unset means the engine's own default. */
   effort?: "low" | "medium" | "high";
@@ -976,7 +1010,7 @@ export class Store {
    * own and should not have to wait for one of yours to close. */
   createTask(botId: string, title: string, extra = 0): TaskRecord | null {
     const bot = this.bot(botId);
-    if (!bot || bot.tasks.length >= MAX_TASKS + extra) return null;
+    if (!bot || ownerLanes(bot).length >= MAX_TASKS + extra) return null;
     const task: TaskRecord = { id: newId(), title, resumeCursors: {}, createdAt: Date.now() };
     bot.tasks.push(task);
     this.setActiveTask(botId, task.id);
@@ -1002,7 +1036,7 @@ export class Store {
     },
   ): TaskRecord | null {
     const bot = this.bot(botId);
-    if (!bot || bot.tasks.length >= MAX_TASKS) return null;
+    if (!bot || ownerLanes(bot).length >= MAX_TASKS) return null;
     const task: TaskRecord = {
       id: newId(),
       title: input.title,
@@ -1054,6 +1088,62 @@ export class Store {
     bot.threadId = task.id;
     this.saveBots();
     return true;
+  }
+
+  /** A team agent's shared conversation, made the first time anyone
+   * opens it. Never the agent's active lane: the owner's screen does not
+   * move because the team started talking. */
+  teamLane(botId: string): TaskRecord | null {
+    const bot = this.bot(botId);
+    if (!bot) return null;
+    const found = bot.tasks.find((t) => t.team);
+    if (found) return found;
+    const task: TaskRecord = { id: newId(), title: "Team", resumeCursors: {}, createdAt: Date.now(), team: true };
+    bot.tasks.push(task);
+    this.saveBots();
+    return task;
+  }
+
+  /** A member's private conversation with a team agent, made the first
+   * time it is opened or written to. One per member per agent. */
+  memberLane(botId: string, personId: string): TaskRecord | null {
+    const bot = this.bot(botId);
+    if (!bot) return null;
+    const found = bot.tasks.find((t) => t.personId === personId);
+    if (found) return found;
+    const task: TaskRecord = { id: newId(), title: "Private", resumeCursors: {}, createdAt: Date.now(), personId };
+    bot.tasks.push(task);
+    this.saveBots();
+    return task;
+  }
+
+  /** Who may decide anything about a turn in this lane: a member's id for
+   * their private lane, "team" for a team lane, null for the owner's. */
+  laneKind(threadId: string): { personId: string } | { team: true } | null {
+    const task = this.taskByThread(threadId)?.task;
+    if (task?.personId) return { personId: task.personId };
+    if (task?.team) return { team: true };
+    return null;
+  }
+
+  /** A member's private conversations, gone with them when they leave
+   * the workspace. Busy ones are kept until their turn ends; returned. */
+  dropMemberLanes(personId: string): string[] {
+    const kept: string[] = [];
+    let changed = false;
+    for (const bot of this.bots) {
+      for (const task of bot.tasks.filter((t) => t.personId === personId)) {
+        if (task.busy) {
+          kept.push(task.id);
+          continue;
+        }
+        bot.tasks = bot.tasks.filter((t) => t.id !== task.id);
+        this.dropTranscript(task.id);
+        changed = true;
+      }
+    }
+    if (changed) this.saveBots();
+    return kept;
   }
 
   /** Closing a lane deletes it and its transcript. General, the first
@@ -1108,6 +1198,9 @@ export class Store {
     const bot = this.bot(botId);
     const task = bot?.tasks.find((t) => t.id === taskId);
     if (!bot || !task) return;
+    // a member's private conversation never lights the agent up on the
+    // owner's screen: it is not the owner's to read
+    if (task.personId && unread) return;
     task.unread = unread || undefined;
     bot.unread = bot.tasks.some((t) => t.unread);
     this.saveBots();

@@ -1,4 +1,5 @@
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
+import { usePersonName } from "@/lib/members";
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { Search } from "@/components/icons";
 import { ChevronUp } from "@/components/icons";
@@ -131,6 +132,7 @@ function LandMark({ on }: { on: boolean }) {
 }
 
 export function ChatView({ bot }: { bot: Bot }) {
+  const personName = usePersonName();
   // On a desktop the conversation's tabs sit up in the title bar, in the
   // row with the window's own buttons; on a phone they stay under the header
   const titleSlot = useTitlebarSlot();
@@ -610,6 +612,8 @@ export function ChatView({ bot }: { bot: Bot }) {
             <div key={m.id} data-msg-index={absolute} data-message-id={m.id} className="relative">
               <LandMark on={lit === m.id} />
             {m.telegramPerson && <div className="mb-1 text-small text-muted-foreground">Message from {m.telegramPerson.name} (Telegram)</div>}
+            {/* a team conversation: whose words these are (src/lib/members.ts) */}
+            {m.role === "user" && m.author && <div className="mb-1 text-small font-medium text-muted-foreground">{personName(m.author)}</div>}
             {m.telegramSent && <div className="mb-1 text-small text-muted-foreground">To {m.telegramSent.name} (Telegram): {m.telegramSent.state === "sent" ? "sent" : m.telegramSent.state === "sending" ? "sending" : m.telegramSent.state === "failed" ? "failed" : "delivery uncertain"}</div>}
             {after && (
               <AfterAgentLink
@@ -623,7 +627,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               // a folded check-in below says no time of its own
               hideTime={list[offset + 1]?.quiet ? false : timeSaidBelow(m, list[offset + 1])}
               fresh={fresh}
-              author={m.telegramPerson?.name ?? (m.role === "user" ? "You" : bot.name)}
+              author={m.telegramPerson?.name ?? (m.role === "user" ? (m.author ? personName(m.author) : "You") : bot.name)}
               onReply={setReplyTo}
               onForward={(message, author) => setForwarding({ message, author })}
               onReact={(messageId, emoji) => reactTo(bot.threadId, messageId, emoji)}

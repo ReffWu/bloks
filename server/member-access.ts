@@ -1,4 +1,4 @@
-// What a member of a shared room may reach, and what they are shown.
+// What a member of the workspace may reach, and what they are shown.
 //
 // An owner's paired device gets the whole remote surface. A member's gets
 // this file, and nothing in this file is inherited: every route a member
@@ -6,12 +6,20 @@
 // added anywhere else in the server is therefore closed to members until
 // someone decides here that it should not be.
 //
+// A member reaches what server/access.ts says they may: team
+// conversations they are on the list for, rooms they are in with every
+// agent there, their own private conversation with any agent they can
+// reach, and the solo agents they made. This file names the routes and
+// shapes what crosses them; access.ts holds the rules. An admin also reaches the people routes: invites,
+// requests to join, roles, limits, who is in which room and agent. The
+// join password and the approval switch stay the owner's.
+//
 // The same goes for the live event stream. The server broadcasts one
 // stream for the owner; a member sees a frame only when it is about a
 // room they are in, and only after it has been passed through
 // memberFrame(), which strips what belongs to the owner: tool arguments,
 // screenshots of the owner's screen, file paths, the buttons on approvals.
-import type { MemberRole } from "./people.ts";
+import type { MemberRole, WorkspaceRole } from "./people.ts";
 import type { Message } from "./store.ts";
 
 /** What a member route is about, once matched. */
@@ -24,7 +32,22 @@ export type MemberAction =
   | { kind: "answer"; roomId: string; messageId: string }
   | { kind: "invite"; roomId: string }
   | { kind: "leave"; roomId: string }
-  | { kind: "typing"; roomId: string };
+  | { kind: "typing"; roomId: string }
+  // the workspace, and the member's own conversations with its agents
+  | { kind: "workspace" }
+  | { kind: "agents" }
+  | { kind: "newAgent" }
+  | { kind: "usage" }
+  | { kind: "conversation"; botId: string; lane: "team" | "private" }
+  | { kind: "say"; botId: string; lane: "team" | "private" }
+  | { kind: "reply"; botId: string; lane: "team" | "private"; messageId: string }
+  | { kind: "notes" }
+  | { kind: "note" }
+  | { kind: "noteKeep"; noteId: string }
+  | { kind: "noteDrop"; noteId: string }
+  // the people routes: anyone may list who is in, an admin may change it
+  | { kind: "people" }
+  | { kind: "admin"; method: string; path: string };
 
 const ID = "([A-Za-z0-9_-]{1,64})";
 
@@ -60,6 +83,51 @@ const ROUTES: Array<{ method: string; pattern: RegExp; action: (m: RegExpMatchAr
     pattern: new RegExp(`^/api/member/rooms/${ID}/typing$`),
     action: (m) => ({ kind: "typing", roomId: m[1] }),
   },
+  { method: "GET", pattern: /^\/api\/member\/workspace$/, action: () => ({ kind: "workspace" }) },
+  { method: "GET", pattern: /^\/api\/member\/agents$/, action: () => ({ kind: "agents" }) },
+  { method: "POST", pattern: /^\/api\/member\/agents$/, action: () => ({ kind: "newAgent" }) },
+  { method: "GET", pattern: /^\/api\/member\/usage$/, action: () => ({ kind: "usage" }) },
+  {
+    method: "GET",
+    pattern: new RegExp(`^/api/member/agents/${ID}/(team|private)/messages$`),
+    action: (m) => ({ kind: "conversation", botId: m[1], lane: m[2] as "team" | "private" }),
+  },
+  {
+    method: "POST",
+    pattern: new RegExp(`^/api/member/agents/${ID}/(team|private)/messages$`),
+    action: (m) => ({ kind: "say", botId: m[1], lane: m[2] as "team" | "private" }),
+  },
+  {
+    method: "POST",
+    pattern: new RegExp(`^/api/member/agents/${ID}/(team|private)/cards/${ID}$`),
+    action: (m) => ({ kind: "reply", botId: m[1], lane: m[2] as "team" | "private", messageId: m[3] }),
+  },
+  { method: "GET", pattern: /^\/api\/member\/notes$/, action: () => ({ kind: "notes" }) },
+  { method: "POST", pattern: /^\/api\/member\/notes$/, action: () => ({ kind: "note" }) },
+  {
+    method: "POST",
+    pattern: new RegExp(`^/api/member/notes/${ID}/keep$`),
+    action: (m) => ({ kind: "noteKeep", noteId: m[1] }),
+  },
+  {
+    method: "DELETE",
+    pattern: new RegExp(`^/api/member/notes/${ID}$`),
+    action: (m) => ({ kind: "noteDrop", noteId: m[1] }),
+  },
+  { method: "GET", pattern: /^\/api\/workspace\/members$/, action: () => ({ kind: "people" }) },
+  ...(
+    [
+      ["POST", /^\/api\/workspace\/invites$/],
+      ["DELETE", new RegExp(`^/api/workspace/invites/${ID}$`)],
+      ["PATCH", new RegExp(`^/api/workspace/invites/${ID}$`)],
+      ["POST", new RegExp(`^/api/workspace/requests/${ID}/(approve|decline)$`)],
+      ["PATCH", new RegExp(`^/api/workspace/members/${ID}$`)],
+      ["DELETE", new RegExp(`^/api/workspace/members/${ID}$`)],
+      ["GET", /^\/api\/workspace\/access$/],
+      ["PATCH", new RegExp(`^/api/workspace/agents/${ID}/access$`)],
+      ["PATCH", new RegExp(`^/api/workspace/rooms/${ID}/access$`)],
+    ] as const
+  ).map(([method, pattern]) => ({ method, pattern, action: (m: RegExpMatchArray) => ({ kind: "admin" as const, method, path: m[0] }) })),
 ];
 
 export type Verdict = { ok: true; action: MemberAction } | { ok: false; status: number; error: string };
@@ -76,10 +144,18 @@ export function memberCan(
   path: string,
   roleIn: (roomId: string) => MemberRole | null,
   canInvite: (roomId: string) => boolean,
+  workspaceRole: WorkspaceRole | null = null,
 ): Verdict {
   const route = ROUTES.find((r) => r.method === method && r.pattern.test(path));
   if (!route) return { ok: false, status: 403, error: "not available to room members" };
   const action = route.action(path.match(route.pattern)!);
+  // A guest from a chat channel is in rooms, not in the workspace: the
+  // workspace's agents and people are not theirs to reach.
+  const workspaceWide = ["workspace", "agents", "newAgent", "usage", "conversation", "say", "reply", "notes", "note", "noteKeep", "noteDrop", "people", "admin"];
+  if (workspaceWide.includes(action.kind) && !workspaceRole) return { ok: false, status: 403, error: "not available to room guests" };
+  if (action.kind === "admin" && workspaceRole !== "admin") {
+    return { ok: false, status: 403, error: "only the owner and admins can manage people" };
+  }
   if (!("roomId" in action)) return { ok: true, action };
 
   const role = roleIn(action.roomId);
@@ -107,12 +183,30 @@ export interface MemberView {
   role?: MemberRole;
   /** Whether the owner lets collaborators answer approvals here. */
   approvals?: boolean;
+  /** What is being looked at: a room, a team agent's one shared
+   * conversation, or the member's own solo agent. Absent reads as a room,
+   * which is all a view was before agents could be shared. */
+  thread?: "room" | "team" | "private" | "solo";
+  /** The member is an admin, who answers approvals as the owner would. */
+  admin?: boolean;
 }
 
-/** Whether this member may answer this approval: the owner has handed
+/** Whether this member may answer this approval. In the workspace's own
+ * terms: a solo agent's maker; in a team agent or a room, an admin or the
+ * person whose message started the work. A room view from before
+ * workspaces (no `thread`) keeps the older rule: the owner has handed
  * approvals to collaborators, they are one, and it is not their own
- * request. Nobody approves what they asked for. */
+ * request. */
 export function mayApprove(card: { askedFor?: string }, view: MemberView): boolean {
+  if (!view.personId) return false;
+  // A solo agent's cards are its maker's, a private conversation's its
+  // person's: nobody else is in either.
+  if (view.thread === "solo" || view.thread === "private") return true;
+  // In a team agent or a room the say is the owner's and the admins', and
+  // the person whose message started the work.
+  if (view.admin) return true;
+  if (view.thread === "team") return card.askedFor === view.personId;
+  if (card.askedFor === view.personId && view.thread === "room") return true;
   return Boolean(
     view.approvals && view.role === "collaborator" && view.personId && card.askedFor !== view.personId,
   );
@@ -206,6 +300,8 @@ export function memberMessage(message: Message, view: MemberView): Message | nul
 /** The frame kinds a member can ever receive, besides messages. Each is
  * emitted by the server specifically for rooms and carries a roomId. */
 const ROOM_FRAMES = new Set(["room.people", "room.sharing", "room.typing", "room.activity", "room.offline"]);
+/** Frames about one member's own conversation, keyed by its lane. */
+const LANE_FRAMES = new Set(["member.lane"]);
 
 /**
  * A broadcast frame as one member may see it, or null. `viewOf` answers
@@ -230,5 +326,11 @@ export function memberFrame(payload: unknown, viewOf: (roomId: string) => Member
   if (ROOM_FRAMES.has(frame.kind)) {
     return frame.roomId && viewOf(frame.roomId) ? frame : null;
   }
+  if (LANE_FRAMES.has(frame.kind)) {
+    return frame.threadId && viewOf(frame.threadId) ? frame : null;
+  }
+  // The members list changed: everyone in the workspace may hear it, and
+  // it carries names and roles only.
+  if (frame.kind === "workspace.people") return frame;
   return null;
 }
