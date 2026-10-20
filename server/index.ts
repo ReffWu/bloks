@@ -99,6 +99,9 @@ import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView, type Standing as PersonStanding } from "./member-access.ts";
 import * as access from "./access.ts";
 import { asWho, createMembers } from "./members.ts";
+import { PLAN_LIMITS, ROOM_SHARING_WORDS, membersActive, pausedWords, roomSharingAllowed } from "./plan-limits.ts";
+import { OwnerPlan } from "./owner-plan.ts";
+import { Reads, type ReadMark } from "./reads.ts";
 import { JoinClient } from "./join-client.ts";
 import * as invites from "./invites.ts";
 import { CLI_PROVIDERS, CUSTOM_SPEC, PROVIDER_SPECS, normalizeCompatUrl, specFor } from "./providers.ts";
@@ -2249,6 +2252,9 @@ function clientBot(bot: BotRecord | null) {
         // own words never land there (activeLaneOf), so the app says so in
         // it rather than letting what is typed seem to vanish.
         ...(task.guestMail ? { guestMail: true } : {}),
+        // a team agent's one shared conversation, which several people
+        // write in: the app draws it as a group (src/lib/participants.ts)
+        ...(task.team ? { team: true } : {}),
         // Brought over from a session before Bloks: from which engine,
         // when, and whether it carries on that session. Never the file's
         // path or the engine's id for it.
@@ -8255,9 +8261,11 @@ function whoIs(personId: string): access.Who | null {
   return p?.role ? asWho(p) : null;
 }
 
-/** Where somebody stands, for what of the live stream reaches them. */
+/** Where somebody stands, for what of the live stream reaches them. A
+ * member while the workspace's members are paused hears nothing. */
 function personStanding(personId: string): PersonStanding {
   const role = people.person(personId)?.role;
+  if (role && membersPausedNow()) return "guest";
   return role === "admin" ? "admin" : role === "member" ? "member" : "guest";
 }
 
@@ -8269,6 +8277,9 @@ function personStanding(personId: string): PersonStanding {
  */
 function viewOf(personId: string, id: string): MemberView | null {
   const who = whoIs(personId);
+  // members are Bloks Team's: while the owner is not on it, a member sees
+  // nothing at all, and nothing of theirs is gone when it comes back
+  if (who && membersPausedNow()) return null;
   const blok = bloks.get(id);
   if (blok) {
     if (!who) {
@@ -8412,28 +8423,41 @@ function ownerClientDigest(): string | null {
   return token ? createHash("sha256").update(token).digest("hex") : null;
 }
 
-/** Plans, and what they allow. Cloud gets a taste; Team is the real thing.
- * The host enforces this, from the plan the relay last heard from the
- * licence authority. `members` is people besides the owner in the whole
- * workspace (the same numbers as server/members.ts's door). */
-const PLAN_LIMITS = {
-  cloud: { rooms: 1, members: 2 },
-  team: { rooms: Number.POSITIVE_INFINITY, members: 10 },
-} as const;
-let planCache: { plan: "cloud" | "team"; at: number } | null = null;
+// Plans, and what they allow, are server/plan-limits.ts's: Cloud shares
+// one room with its own guests; Team is the real thing, members included.
+// The host enforces this, from the plan the relay last heard from the
+// licence authority.
+let planCache: { plan: "cloud" | "team"; sharedRoom: boolean | null; at: number } | null = null;
 
 async function currentPlan(fresh = false): Promise<"cloud" | "team" | null> {
   if (!cfg.relay?.enabled || !cfg.relay.agentToken) return null;
   if (!fresh && planCache && Date.now() - planCache.at < 10 * 60_000) return planCache.plan;
-  const plan = await relayLink.plan();
-  if (plan) planCache = { plan, at: Date.now() };
-  return plan ?? planCache?.plan ?? "cloud";
+  const said = await relayLink.planDetail();
+  if (said) planCache = { ...said, at: Date.now() };
+  return said?.plan ?? planCache?.plan ?? "cloud";
 }
 
-/** Why a room cannot take one more person, or null when it can. */
-async function sharingRefusal(blok: BlokRecord): Promise<string | null> {
-  const plan = await currentPlan();
+/** Whether this licence may share a room with guests of its own, as the
+ * relay last said (server/plan-limits.ts roomSharingAllowed). */
+async function roomSharing(fresh = false): Promise<{ plan: "cloud" | "team" | null; allowed: boolean; sharedRoom: boolean | null }> {
+  const plan = await currentPlan(fresh);
+  const sharedRoom = planCache?.sharedRoom ?? null;
+  return { plan, allowed: roomSharingAllowed(plan, sharedRoom), sharedRoom };
+}
+
+/** Why a room cannot take one more person, or null when it can. A Cloud
+ * licence from after rooms became Team's shares none: its rooms already
+ * shared keep who is in them, and nobody new comes in. */
+async function sharingRefusal(blok: BlokRecord): Promise<{ error: string; code?: "team_required" } | null> {
+  const refusal = await roomSharingWords(blok);
+  if (!refusal) return null;
+  return typeof refusal === "string" ? { error: refusal } : refusal;
+}
+
+async function roomSharingWords(blok: BlokRecord): Promise<string | { error: string; code: "team_required" } | null> {
+  const { plan, allowed } = await roomSharing();
   if (!plan) return "Sharing a room needs Bloks Cloud. Turn it on in Settings, then invite people.";
+  if (!allowed) return { error: ROOM_SHARING_WORDS, code: "team_required" };
   const limits = PLAN_LIMITS[plan];
   const sharedRooms = bloks.bloks.filter((b) => b.sharing && b.id !== blok.id).length;
   if (!blok.sharing && sharedRooms >= limits.rooms) {
@@ -9163,13 +9187,99 @@ relayLink.inviteSecret = (inviteId) => {
 };
 // ── the people of the workspace (server/members.ts) ──────────────────
 
+/**
+ * Whether the licence lets members in (server/owner-plan.ts): the relay's
+ * word when this workspace is online, else the licence's own, asked of
+ * bloks.dev. The app hands its licence over a moment after starting this
+ * server, so "no licence" only counts once it has had the chance: until
+ * then nothing is known, and the last answer stands.
+ */
+const startedAt = Date.now();
+let licenceHeard = !(process as NodeJS.Process & { parentPort?: unknown }).parentPort;
+const ownerPlan = new OwnerPlan(
+  join(DATA_DIR, "owner-plan.json"),
+  {
+    online: () => Boolean(cfg.relay?.enabled && cfg.relay.agentToken),
+    relay: () => relayLink.plan(),
+    licence: () => licenceKey() ?? (licenceHeard || Date.now() - startedAt > 20_000 ? null : undefined),
+    team: (licence) => credits.team(licence),
+  },
+  (plan, was) => {
+    // the owner's screens and the app hear it; a member paused now is
+    // hung up on, so nothing more reaches them until it comes back
+    broadcast({ kind: "workspace.plan", plan, team: membersActive(plan) });
+    tellDesktopPlan(plan);
+    if (membersActive(was) && !membersActive(plan)) for (const p of people.workspaceMembers()) closeMemberStreams(p.id);
+  },
+);
+
+/** The app keeps the plan for its own screens (a new workspace's Team
+ * choice), which may be a member's window with no owner routes to ask. */
+function tellDesktopPlan(plan: "cloud" | "team" | null) {
+  try {
+    (process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort?.postMessage({ kind: "desktop.plan", plan });
+  } catch {
+    /* no app to tell */
+  }
+}
+
+/** Whether this workspace's members are paused: the owner is not on
+ * Bloks Team. As last known, for the frame filters, which cannot wait. */
+function membersPausedNow(): boolean {
+  return !membersActive(ownerPlan.current());
+}
+
+// ── how far people have read (server/reads.ts) ────────────────────────
+
+const reads = new Reads(join(DATA_DIR, "reads.json"));
+
+/** What kind of conversation a thread is, for whose reads show there. */
+function readPlace(threadId: string): { where: "room" | "team" | "private" | "solo" | "owner"; laneOwner: string | null } | null {
+  if (bloks.get(threadId)) return { where: "room", laneOwner: null };
+  const found = store.taskByThread(threadId);
+  if (!found) return null;
+  if (found.bot.solo) return { where: "solo", laneOwner: found.bot.solo.by };
+  if (found.task.team) return { where: "team", laneOwner: null };
+  if (found.task.personId) return { where: "private", laneOwner: found.task.personId };
+  return { where: "owner", laneOwner: "owner" };
+}
+
+/** The read positions in a conversation that `viewer` ("owner" or a
+ * person id, already let into it) may be shown (access.readsShown). */
+function readsFor(threadId: string, viewer: string): ReadMark[] {
+  const place = readPlace(threadId);
+  if (!place) return [];
+  const privateReadable = invites.joiningSettings().privateReadable;
+  return reads.of(threadId).filter((r) => access.readsShown(place.where, viewer, r.personId, { laneOwner: place.laneOwner, privateReadable }));
+}
+
+/**
+ * Somebody read a conversation up to a message: kept, and said to
+ * everyone who may see it (broadcast's own filters, and readsShown behind
+ * memberFrame). Only a person who takes part writes a position: the owner
+ * reading a member's private conversation is not in it.
+ */
+function markRead(threadId: string, personId: string, messageId: unknown, visible: (m: Message) => boolean): { status: number; body: unknown } {
+  if (typeof messageId !== "string" || !/^[\w-]{1,80}$/.test(messageId)) return { status: 400, body: { error: "messageId is the last message on screen" } };
+  const place = readPlace(threadId);
+  if (!place) return { status: 404, body: { error: "no such conversation" } };
+  if ((place.where === "private" || place.where === "solo" || place.where === "owner") && place.laneOwner !== personId) {
+    return { status: 403, body: { error: "only its own person reads this conversation" } };
+  }
+  const order = store.messagesFor(threadId).filter(visible).map((m) => m.id);
+  if (!order.includes(messageId)) return { status: 404, body: { error: "no such message" } };
+  const mark = reads.mark(threadId, personId, messageId, order);
+  if (mark) broadcast({ kind: "read", threadId, personId, messageId, at: mark.at });
+  return { status: 200, body: { read: mark ?? reads.of(threadId).find((r) => r.personId === personId) ?? null } };
+}
+
 /** Members, invites and the door, wired to this server. */
 const workspacePeople = createMembers({
   hostName,
   relay: relayLink,
   relayReady: () => Boolean(cfg.relay?.enabled && cfg.relay.agentToken),
   relayUrl: () => (cfg.relay?.enabled && cfg.relay.url ? cfg.relay.url : null),
-  plan: () => currentPlan(),
+  plan: (fresh) => ownerPlan.get(fresh),
   bots: () => store.bots,
   rooms: () => bloks.bloks,
   engines: () => registry.instances().filter((i) => i.enabled).map((i) => ({ id: i.instanceId, name: i.displayName ?? i.instanceId })),
@@ -9185,6 +9295,7 @@ const workspacePeople = createMembers({
     // private conversations with team agents go
     for (const bot of store.bots) if (bot.solo?.by === personId && !bot.archivedAt) store.archiveBot(bot.id, Date.now());
     store.dropMemberLanes(personId);
+    reads.forgetPerson(personId);
   },
   setAccess: (botId, value) => {
     const bot = store.patchBot(botId, { access: value });
@@ -14751,6 +14862,7 @@ function memberRoom(roomId: string, personId: string) {
       people: roomPeople(blok),
     },
     messages,
+    reads: readsFor(roomId, personId),
   };
 }
 
@@ -14770,6 +14882,26 @@ async function serveMember(
   const personId = device.personId!;
   const who = people.person(personId);
   if (!who) return json(res, 401, { error: "you are no longer in any shared room" });
+  // A member while the owner is not on Bloks Team: paused, not removed.
+  // They may still ask what the workspace is (it says it is paused, and
+  // the app says so plainly) and leave it; everything else waits.
+  if (who.role && !membersActive(await ownerPlan.get())) {
+    const paused = pausedWords(hostName());
+    if (method === "GET" && path === "/api/member/workspace") {
+      return json(res, 200, {
+        workspace: workspacePeople.identity(),
+        you: { personId, name: who.name, role: who.role },
+        owner: { name: hostName() },
+        privacy: { privateReadable: false, line: "" },
+        members: [],
+        solo: { count: 0, max: 0 },
+        engines: [],
+        paused,
+      });
+    }
+    if (method === "GET" && path === "/api/health") return json(res, 200, { app: "bloks", member: true, paused: true });
+    if (!(method === "POST" && path === "/api/member/leave")) return json(res, 402, { code: "team_required", error: paused });
+  }
   // who is in which room is viewOf's to say (server/access.ts behind it)
   const verdict = memberCan(
     method,
@@ -14895,7 +15027,7 @@ async function serveMember(
     case "invite": {
       const blok = bloks.get(action.roomId)!;
       const made = await makeInvite(blok, "collaborator", personId);
-      return "error" in made ? json(res, made.status, { error: made.error }) : json(res, 201, made);
+      return "error" in made ? json(res, made.status, { error: made.error, ...(made.code ? { code: made.code } : {}) }) : json(res, 201, made);
     }
 
     case "leave": {
@@ -14911,6 +15043,15 @@ async function serveMember(
     case "typing":
       broadcast({ kind: "room.typing", roomId: action.roomId, personId, name: who.name, at: Date.now() });
       return json(res, 200, { ok: true });
+
+    case "read": {
+      // a room they are in, or a conversation they may open; a message
+      // they were never shown cannot be one they read
+      const view = viewOf(personId, action.threadId);
+      if (!view) return json(res, 404, { error: "no such conversation" });
+      const said = markRead(action.threadId, personId, (await readBody(req)).messageId, (m) => memberMessage(m, view) !== null);
+      return json(res, said.status, said.body);
+    }
 
     case "workspace": {
       const settings = invites.joiningSettings();
@@ -15018,6 +15159,7 @@ async function serveMember(
           owner: { name: hostName() },
           ...(view.thread === "private" ? { privacy: access.privacyLine(invites.joiningSettings().privateReadable, hostName()) } : {}),
           messages,
+          reads: readsFor(lane.id, personId),
         });
       }
 
@@ -15209,9 +15351,9 @@ async function makeInvite(
   blok: BlokRecord,
   role: people.MemberRole,
   invitedBy: string,
-): Promise<{ link: string; invite: ReturnType<typeof publicInvite> } | { error: string; status: number }> {
+): Promise<{ link: string; invite: ReturnType<typeof publicInvite> } | { error: string; status: number; code?: string }> {
   const refusal = await sharingRefusal(blok);
-  if (refusal) return { error: refusal, status: 402 };
+  if (refusal) return { ...refusal, status: 402 };
   const relayToken = await relayLink.mintClient();
   if (!relayToken) {
     return {
@@ -16866,7 +17008,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // workspace says so (server/access.ts)
       const lane = bot.tasks.find((t) => t.id === thread);
       if (lane && !access.laneAccess(bot, lane, { kind: "owner" }, accessWorld())) return json(res, 404, { error: "no such conversation" });
-      return json(res, 200, earlierPage(store.messagesFor(thread), url));
+      return json(res, 200, { ...earlierPage(store.messagesFor(thread), url), ...(asAgent ? {} : { reads: readsFor(thread, "owner") }) });
     }
     if (m && method === "POST") {
       const body = await readBody(req);
@@ -17325,12 +17467,20 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           headers: { authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(8_000),
         });
-        const said = (await asked.json().catch(() => ({}))) as { plan?: unknown; workspaceId?: unknown; spaces?: { online?: unknown; limit?: unknown } };
+        const said = (await asked.json().catch(() => ({}))) as { plan?: unknown; sharedRoom?: unknown; workspaceId?: unknown; spaces?: { online?: unknown; limit?: unknown } };
         if (!asked.ok) return json(res, 200, { plan: null, spaces: null, licence: Boolean(licenceKey()) });
         const online = Number.isInteger(said.spaces?.online) ? (said.spaces!.online as number) : null;
         const limit = Number.isInteger(said.spaces?.limit) ? (said.spaces!.limit as number) : null;
+        const plan = said.plan === "team" ? "team" : said.plan === "cloud" ? "cloud" : null;
+        const sharedRoom = typeof said.sharedRoom === "boolean" ? said.sharedRoom : null;
+        // the same answer the room door reads, kept so it agrees with this
+        if (plan) planCache = { plan, sharedRoom, at: Date.now() };
         return json(res, 200, {
           plan: typeof said.plan === "string" ? said.plan : null,
+          // whether this licence shares a room of its own: Team always,
+          // Cloud when bought before rooms became Team's; absent from an
+          // older relay, which keeps Cloud's room
+          sharedRoom: roomSharingAllowed(plan, sharedRoom),
           workspaceId: typeof said.workspaceId === "string" ? said.workspaceId : WORKSPACE_ID,
           spaces: online === null ? null : { online, limit },
           licence: Boolean(licenceKey()),
@@ -17748,6 +17898,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       } finally {
         choosingDecisions.delete(key);
       }
+    }
+
+    // ── how far the owner has read (server/reads.ts) ──
+    // Said by the owner's own screens as messages come into view, never by
+    // an agent: a position is a person's.
+    m = path.match(/^\/api\/threads\/([\w-]+)\/read$/);
+    if (m && method === "POST") {
+      if (asAgent) return json(res, 403, { error: "read positions are a person's, not an agent's" });
+      const said = markRead(m[1], "owner", (await readBody(req)).messageId, () => true);
+      return json(res, said.status, said.body);
+    }
+    m = path.match(/^\/api\/threads\/([\w-]+)\/reads$/);
+    if (m && method === "GET") {
+      if (asAgent) return json(res, 403, { error: "read positions are a person's, not an agent's" });
+      if (!readPlace(m[1])) return json(res, 404, { error: "no such conversation" });
+      return json(res, 200, { reads: readsFor(m[1], "owner") });
     }
 
     // ── picking up a turn cut off long ago ──
@@ -19550,7 +19716,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!room || (asAgent && !room.memberIds.includes(asAgent.botId))) {
         return json(res, 404, { error: "no such room" });
       }
-      return json(res, 200, earlierPage(store.messagesFor(room.id), url));
+      return json(res, 200, { ...earlierPage(store.messagesFor(room.id), url), ...(asAgent ? {} : { reads: readsFor(room.id, "owner") }) });
     }
     if (m && method === "POST") {
       const blok = bloks.get(m[1]);
@@ -19603,12 +19769,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const blok = bloks.get(m[1]);
       if (!blok) return json(res, 404, { error: "no such room" });
       // asked fresh: this is where someone looks right after upgrading
-      const plan = await currentPlan(true);
+      const { plan, allowed } = await roomSharing(true);
       return json(res, 200, {
         sharing: blok.sharing ?? null,
         hostName: hostName(),
         plan,
         limits: plan ? PLAN_LIMITS[plan] : null,
+        // whether a room may take new guests on this licence: false for a
+        // Cloud licence from after sharing rooms became Team's
+        sharedRoom: allowed,
         people: people
           .membersOf(blok.id)
           .map((x) => ({ id: x.personId, name: x.person.name, role: x.role, joinedAt: x.joinedAt, invitedBy: x.invitedBy, via: x.person.via?.platform })),
@@ -19646,7 +19815,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       if (!blok.sharing) {
         const refusal = await sharingRefusal(blok);
-        if (refusal) return json(res, 402, { error: refusal });
+        if (refusal) return json(res, 402, refusal);
       }
       // The owner's own tools and handing approvals to collaborators are
       // Team's. Turning either off is always allowed, whatever the plan.
@@ -19733,7 +19902,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         roomPeopleFrame(blok.id);
         return json(res, 200, { ok: true });
       }
-      const plan = await currentPlan();
+      const { plan, allowed } = await roomSharing();
+      // somebody new from the channel is a new guest, which a Cloud
+      // licence without a shared room of its own does not take
+      if (plan && !allowed) return json(res, 402, { code: "team_required", error: ROOM_SHARING_WORDS });
       const limits = plan ? PLAN_LIMITS[plan] : PLAN_LIMITS.cloud;
       if (people.roomHeadcount(blok.id, audienceOf(blok)).length >= limits.members) {
         return json(res, 402, {
@@ -19760,7 +19932,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
       const role: people.MemberRole = body.role === "viewer" ? "viewer" : "collaborator";
       const made = await makeInvite(blok, role, "owner");
-      return "error" in made ? json(res, made.status, { error: made.error }) : json(res, 201, made);
+      return "error" in made ? json(res, made.status, { error: made.error, ...(made.code ? { code: made.code } : {}) }) : json(res, 201, made);
     }
 
     m = path.match(/^\/api\/invites\/([\w-]+)\/(approve|decline)$/);
@@ -23123,8 +23295,21 @@ type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: u
 (process as NodeJS.Process & { parentPort?: ParentPort }).parentPort?.on("message", (message) => {
   if (message?.data?.kind === "stop") shutDown();
   // the app's one licence, for putting this workspace online without a key
-  sharedLicence = licenceFrom(message) ?? sharedLicence;
+  const handed = licenceFrom(message);
+  sharedLicence = handed ?? sharedLicence;
+  // and with it, the plan it carries can be asked
+  if (handed && !licenceHeard) {
+    licenceHeard = true;
+    void ownerPlan.get(true).catch(() => {});
+  }
 });
+// what the plan was when this server last knew, said to the app at once,
+// then asked again once the app has had the moment to hand its licence
+tellDesktopPlan(ownerPlan.current());
+// and kept current while nobody asks, so a plan that lapsed pauses
+// members without waiting for one of them to knock
+setInterval(() => void ownerPlan.get().catch(() => {}), 10 * 60_000).unref?.();
+setTimeout(() => void ownerPlan.get(true).then(tellDesktopPlan).catch(() => {}), 21_000).unref();
 // a licence this workspace already holds is offered to the app once, so
 // the workspaces made after it never ask for it again
 {

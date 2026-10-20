@@ -164,3 +164,27 @@ export function privacyLine(privateReadable: boolean, owner: string): string {
     ? `${owner} and the admins can read your private conversations with agents here. They are stored on ${owner}'s computer.`
     : `Your private conversations with agents here are yours: nobody else reads them, ${owner} included. They are stored on ${owner}'s computer.`;
 }
+
+/**
+ * Whether one person's read position in a conversation may be shown to
+ * somebody already allowed into it. In a room or a team conversation,
+ * everybody there sees everybody's: that is what "Seen by" is for. A
+ * private conversation's position is its person's own, shown to them and
+ * to the owner only while the owner may read members' private
+ * conversations (never to an admin: reading is the setting's word, being
+ * told when somebody read is not). A solo agent's, or one of the owner's
+ * own, is its person's alone. Ids are person ids, or "owner".
+ */
+export function readsShown(
+  where: "room" | "team" | "private" | "solo" | "owner",
+  viewer: string,
+  reader: string,
+  ctx: { laneOwner?: string | null; privateReadable: boolean },
+): boolean {
+  if (where === "room" || where === "team") return true;
+  if (where === "private") {
+    if (!ctx.laneOwner || reader !== ctx.laneOwner) return false;
+    return viewer === ctx.laneOwner || (viewer === "owner" && ctx.privateReadable);
+  }
+  return reader === viewer;
+}

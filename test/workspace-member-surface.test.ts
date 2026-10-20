@@ -9,14 +9,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { startHarness } from "./helpers/server.ts";
+import { teamPlan } from "./helpers/team-plan.ts";
 import { JoinClient } from "../server/join-client.ts";
 
 test("team, private and solo conversations reach exactly who they should", async (t) => {
   const home = mkdtempSync(join(tmpdir(), "bloks-member-surface-"));
   mkdirSync(join(home, ".bloks"), { recursive: true });
+  // members are Bloks Team's (server/plan-limits.ts)
+  const licence = await teamPlan();
+  t.after(() => licence.close());
   // the network surface on, so a member's device can be one
-  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ remote: { enabled: true }, profile: { name: "Hamed" } }));
-  const h = await startHarness({ HOME: home });
+  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ remote: { enabled: true }, profile: { name: "Hamed" }, ...licence.config }));
+  const h = await startHarness({ HOME: home, ...licence.env });
   t.after(() => h.stop());
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const lan = new URL(h.url).host;

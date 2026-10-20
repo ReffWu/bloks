@@ -522,6 +522,14 @@ export class RelayLink {
   /** Which plan this space is on, per the licence the relay last checked.
    * Null when it could not be asked. */
   async plan(): Promise<"cloud" | "team" | null> {
+    return (await this.planDetail())?.plan ?? null;
+  }
+
+  /** The plan and whether it holds a shared room of its own (Cloud
+   * licences from before rooms became Team's do; Team always does).
+   * `sharedRoom` is null when the relay is too old to say. Null when the
+   * relay could not be asked. */
+  async planDetail(): Promise<{ plan: "cloud" | "team"; sharedRoom: boolean | null } | null> {
     if (!this.config) return null;
     try {
       const res = await fetch(`${this.config.url}/space/agent/plan`, {
@@ -529,8 +537,10 @@ export class RelayLink {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return null;
-      const body = (await res.json()) as { plan?: unknown };
-      return body.plan === "team" ? "team" : body.plan === "cloud" ? "cloud" : null;
+      const body = (await res.json()) as { plan?: unknown; sharedRoom?: unknown };
+      const plan = body.plan === "team" ? "team" : body.plan === "cloud" ? "cloud" : null;
+      if (!plan) return null;
+      return { plan, sharedRoom: typeof body.sharedRoom === "boolean" ? body.sharedRoom : null };
     } catch {
       return null;
     }

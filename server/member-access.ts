@@ -33,6 +33,8 @@ export type MemberAction =
   | { kind: "invite"; roomId: string }
   | { kind: "leave"; roomId: string }
   | { kind: "typing"; roomId: string }
+  // how far they have read a room or a conversation, theirs to say
+  | { kind: "read"; threadId: string }
   // the workspace, and the member's own conversations with its agents
   | { kind: "workspace" }
   | { kind: "agents" }
@@ -84,6 +86,11 @@ const ROUTES: Array<{ method: string; pattern: RegExp; action: (m: RegExpMatchAr
     method: "POST",
     pattern: new RegExp(`^/api/member/rooms/${ID}/typing$`),
     action: (m) => ({ kind: "typing", roomId: m[1] }),
+  },
+  {
+    method: "POST",
+    pattern: new RegExp(`^/api/member/threads/${ID}/read$`),
+    action: (m) => ({ kind: "read", threadId: m[1] }),
   },
   { method: "GET", pattern: /^\/api\/member\/workspace$/, action: () => ({ kind: "workspace" }) },
   { method: "GET", pattern: /^\/api\/member\/agents$/, action: () => ({ kind: "agents" }) },
@@ -347,6 +354,16 @@ export function memberFrame(payload: unknown, viewOf: (roomId: string) => Member
   }
   if (LANE_FRAMES.has(frame.kind)) {
     return frame.threadId && viewOf(frame.threadId) ? frame : null;
+  }
+  // Somebody read a conversation this member is in. In a private one, or
+  // a solo agent's, only their own position ever comes back to them: who
+  // else reads there is not theirs to learn (server/access.ts readsShown).
+  if (frame.kind === "read") {
+    const view = frame.threadId ? viewOf(frame.threadId) : null;
+    if (!view) return null;
+    const reader = (frame as { personId?: unknown }).personId;
+    if ((view.thread === "private" || view.thread === "solo") && reader !== view.personId) return null;
+    return frame;
   }
   // A reply as it is written, in a conversation this member may read: the
   // words and nothing else of what the engine said (no tools, no items,

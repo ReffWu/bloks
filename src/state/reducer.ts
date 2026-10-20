@@ -269,6 +269,8 @@ export interface TaskSummary {
   /** Where mail from senders the person has not listed is answered. The
    * person's own words go to the first conversation instead (typedLane). */
   guestMail?: boolean;
+  /** A team agent's one shared conversation (server/access.ts). */
+  team?: boolean;
   /** The room this lane's turn is speaking in, while it runs. */
   room?: string;
   /** What this lane keeps working toward, turn after turn (server/goals.ts). */

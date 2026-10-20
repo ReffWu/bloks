@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { startHarness } from "./helpers/server.ts";
+import { teamPlan } from "./helpers/team-plan.ts";
 import { JoinClient } from "../server/join-client.ts";
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -18,6 +19,9 @@ test("a person made a member by the old migration is a guest of their room again
   const home = mkdtempSync(join(tmpdir(), "bloks-guests-"));
   const dir = join(home, ".bloks");
   mkdirSync(dir, { recursive: true });
+  // members are Bloks Team's (server/plan-limits.ts)
+  const team = await teamPlan();
+  t.after(() => team.close());
   const guestToken = randomBytes(32).toString("base64url");
   writeFileSync(
     join(dir, "config.json"),
@@ -27,6 +31,7 @@ test("a person made a member by the old migration is a guest of their room again
         memberDevices: [{ id: "d_leila", name: "Leila", hash: sha(guestToken), pairedAt: 1, personId: "p_room" }],
       },
       profile: { name: "Hamed" },
+      ...team.config,
     }),
   );
   // as version 2 left it: Leila, invited to one shared room, made a member
@@ -48,7 +53,7 @@ test("a person made a member by the old migration is a guest of their room again
       { id: "r_open", name: "Everyone's room", memberIds: [], audience: "everyone", createdAt: 2, pinned: true },
     ]),
   );
-  const h = await startHarness({ HOME: home });
+  const h = await startHarness({ HOME: home, ...team.env });
   t.after(() => h.stop());
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const lan = new URL(h.url).host;

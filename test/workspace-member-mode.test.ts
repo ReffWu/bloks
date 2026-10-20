@@ -10,14 +10,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { startHarness } from "./helpers/server.ts";
+import { teamPlan } from "./helpers/team-plan.ts";
 import { JoinClient } from "../server/join-client.ts";
 import { memberFrame, type MemberView } from "../server/member-access.ts";
 
 test("a member's app is told enough to draw itself, and an admin's reaches the Members page", async (t) => {
   const home = mkdtempSync(join(tmpdir(), "bloks-member-mode-"));
   mkdirSync(join(home, ".bloks"), { recursive: true });
-  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ remote: { enabled: true }, profile: { name: "Hamed" } }));
-  const h = await startHarness({ HOME: home });
+  // members are Bloks Team's (server/plan-limits.ts)
+  const team = await teamPlan();
+  t.after(() => team.close());
+  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ remote: { enabled: true }, profile: { name: "Hamed" }, ...team.config }));
+  const h = await startHarness({ HOME: home, ...team.env });
   t.after(() => h.stop());
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const lan = new URL(h.url).host;

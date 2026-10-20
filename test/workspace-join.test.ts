@@ -24,7 +24,8 @@ let JoinClient: typeof import("../server/join-client.ts").JoinClient;
 const frames: Array<Record<string, any>> = [];
 const closed: string[] = [];
 const relayCalls: Array<[string, unknown]> = [];
-let plan: "cloud" | "team" | null = null;
+// members are Bloks Team's: the tests below run on it unless they say
+let plan: "cloud" | "team" | null = "team";
 let relayOn = false;
 const bots: any[] = [
   { id: "b1", name: "Chief of Staff", title: "Chief", color: "blue", shape: "rounded", tasks: [] },
@@ -248,19 +249,64 @@ test("a joiner can take their request back", async () => {
   await call(`/api/workspace/invites/${inv.id}`, { method: "DELETE" });
 });
 
+test("members are Bloks Team's: on Cloud or with no licence nobody is invited, asks, or is let in, and those in are paused", async () => {
+  // an invite made while on Team, and somebody asking on it
+  const inv = await invite({ name: "Noor" });
+  const waiting = joiner();
+  const found = (await waiting.lookup(`${inv.link}~${lan}`)) as any;
+  assert.equal(((await waiting.claim(found.session, { name: "Noor" })) as any).status, "waiting");
+  const late = await invite({ name: "Ola" });
+
+  for (const lapsed of ["cloud", null] as const) {
+    plan = lapsed;
+    // no new invite
+    const refused = await call("/api/workspace/invites", { method: "POST", body: { role: "member" } });
+    assert.equal(refused.status, 402);
+    assert.equal(refused.body.code, "team_required");
+    assert.match(refused.body.error, /needs Bloks Team/);
+    // nobody let in from a request already waiting
+    const approve = await call(`/api/workspace/requests/${inv.id}/approve`, { method: "POST" });
+    assert.equal(approve.status, 402);
+    assert.equal(approve.body.code, "team_required");
+    // and an invite already out cannot be claimed
+    const asking = joiner();
+    const seen = (await asking.lookup(`${late.link}~${lan}`)) as any;
+    assert.ok(seen.ok, "the invite itself still reads");
+    const claim = (await asking.claim(seen.session, { name: "Ola" })) as any;
+    assert.equal(claim.ok, false);
+    assert.equal(claim.code, "team_required");
+    assert.equal(claim.error, "Hamed's workspace needs Bloks Team for members right now.");
+    // the owner is told the members are paused, and nobody was removed
+    const list = (await call("/api/workspace/members")).body;
+    assert.equal(list.team, false);
+    assert.equal(list.paused, true);
+    assert.equal(list.limit, 0);
+    assert.equal(people.workspaceMembers().length, 2);
+  }
+
+  // back on Team: all of it comes back, nothing lost
+  plan = "team";
+  const list = (await call("/api/workspace/members")).body;
+  assert.equal(list.team, true);
+  assert.equal(list.paused, false);
+  assert.equal(list.limit, 10);
+  assert.equal((await call(`/api/workspace/requests/${inv.id}/approve`, { method: "POST" })).status, 200);
+  assert.equal(people.workspaceMembers().length, 3);
+  const noor = people.workspaceMembers().find((p) => p.name === "Noor")!;
+  await call(`/api/workspace/members/${noor.id}`, { method: "DELETE" });
+  await call(`/api/workspace/invites/${late.id}`, { method: "DELETE" });
+});
+
 test("the plan's member limit is counted across the workspace", async () => {
-  plan = "cloud";
-  // two are in already (Sam and Leila)
-  assert.equal(people.workspaceMembers().length, 2);
+  // Sam and Leila are in; ten is Team's limit
+  const extra: string[] = [];
+  for (let i = 0; i < 8; i++) extra.push(people.admitToWorkspace({ name: `Extra ${i}`, role: "member", invitedBy: "owner" }).id);
   const refused = await call("/api/workspace/invites", { method: "POST", body: { role: "member" } });
   assert.equal(refused.status, 402);
   assert.equal(refused.body.code, "full");
-  assert.match(refused.body.error, /2 members.*Bloks Team allows 10/);
-  const list = (await call("/api/workspace/members")).body;
-  assert.equal(list.limit, 2);
-  plan = "team";
+  assert.match(refused.body.error, /10 members/);
+  for (const id of extra) people.removeFromWorkspace(id);
   assert.equal((await call("/api/workspace/invites", { method: "POST", body: {} })).status, 201);
-  plan = null;
 });
 
 test("roles: admins manage people but not how people join; members only read the list", async () => {

@@ -326,9 +326,11 @@ export class CreditsAccount {
 
   /** Whether the licence is a team's, from the hosting status beside the
    * service, which is asked with the licence itself (the Bloks AI token is
-   * for model use and the balance only). Null when it does not say. */
-  async team(): Promise<boolean | null> {
-    const licence = this.store.read().licence;
+   * for model use and the balance only). Null when it does not say.
+   * `given` asks about another licence: the one the app keeps for every
+   * workspace, for a workspace that never saved its own. */
+  async team(given?: string): Promise<boolean | null> {
+    const licence = given ?? this.store.read().licence;
     if (!licence) return null;
     try {
       const res = await this.fetch(`${new URL(creditsBase()).origin}/api/hosting/status`, {

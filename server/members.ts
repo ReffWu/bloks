@@ -36,6 +36,7 @@ import { ProfileNotes } from "./profile-notes.ts";
 import { inTeamConversation, privacyLine, type Who } from "./access.ts";
 import { audienceOf, type BlokRecord } from "./bloks.ts";
 import type { BotRecord } from "./store.ts";
+import { membersActive, pausedWords, teamRequiredWords, workspaceMemberLimit, type Plan } from "./plan-limits.ts";
 
 // ── the workspace this server is ───────────────────────────────────────
 
@@ -94,7 +95,9 @@ export interface MembersDeps {
   /** Bloks Cloud is on and this workspace has a space. */
   relayReady(): boolean;
   relayUrl(): string | null;
-  plan(): Promise<"cloud" | "team" | null>;
+  /** The owner's plan, for who may be let in (server/owner-plan.ts).
+   * `fresh` asks again rather than taking the last answer. */
+  plan(fresh?: boolean): Promise<Plan | null>;
   bots(): BotRecord[];
   rooms(): BlokRecord[];
   engines(): Array<{ id: string; name: string }>;
@@ -117,24 +120,22 @@ export interface MembersDeps {
 
 export type Actor = { kind: "owner" } | { kind: "member"; personId: string; role: people.WorkspaceRole };
 
-const PLAN_MEMBERS = { cloud: 2, team: 10 } as const;
-
 /** A member as server/access.ts takes them. */
 export function asWho(p: Pick<people.Person, "id" | "role">): Who {
   return { kind: "member", personId: p.id, role: p.role ?? "member" };
 }
 
-/** The most people besides the owner a plan lets in. Unlimited when the
- * workspace is not online at all: a local workspace is free. */
-export function memberLimitFor(plan: "cloud" | "team" | null): number {
-  return plan ? PLAN_MEMBERS[plan] : Number.POSITIVE_INFINITY;
+/** The most people besides the owner a plan lets in: Bloks Team's ten,
+ * and nobody without it (server/plan-limits.ts). */
+export function memberLimitFor(plan: Plan | null): number {
+  return workspaceMemberLimit(plan);
 }
 
 const ROLE_WORD: Record<people.WorkspaceRole, string> = { member: "Member", admin: "Admin" };
 
 /** The words for every way a request to join is turned away, said as the
  * joiner's screen says them (design: Edge-States). */
-function joinWords(error: invites.JoinError, ctx: { host: string; workspace: string; triesLeft?: number }): string {
+function joinWords(error: invites.JoinError, ctx: { host: string; owner: string; workspace: string; triesLeft?: number }): string {
   switch (error) {
     case "wrong_code":
       return `That code does not match an invite. Check each letter with ${ctx.host} and try again.`;
@@ -156,6 +157,8 @@ function joinWords(error: invites.JoinError, ctx: { host: string; workspace: str
       return `You are already in ${ctx.workspace}.`;
     case "full":
       return `${ctx.workspace} has as many members as its plan allows. Ask ${ctx.host} to make room.`;
+    case "team_required":
+      return pausedWords(ctx.owner);
     case "invalid":
       return "A name is needed to ask.";
   }
@@ -213,11 +216,16 @@ export function createMembers(deps: MembersDeps) {
   }
 
   async function fullWords(): Promise<string> {
-    const plan = await deps.plan();
-    const limit = memberLimitFor(plan);
-    return plan === "cloud"
-      ? `${identity().name} has ${limit} members, as many as Bloks Cloud allows. Bloks Team allows ${PLAN_MEMBERS.team}.`
-      : `${identity().name} has ${limit} members, as many as a workspace holds.`;
+    const limit = memberLimitFor(await deps.plan());
+    return `${identity().name} has ${limit} members, as many as a workspace holds.`;
+  }
+
+  /** Why nobody can be let in right now, when the owner is not on Bloks
+   * Team; null when they are. Said to whoever tried. */
+  async function teamRefusal(fresh = false): Promise<{ status: 402; body: { code: "team_required"; error: string } } | null> {
+    const plan = await deps.plan(fresh);
+    if (membersActive(plan)) return null;
+    return { status: 402, body: { code: "team_required", error: teamRequiredWords(identity().name) } };
   }
 
   function isMemberDevice(tokenHash: string): boolean {
@@ -351,6 +359,8 @@ export function createMembers(deps: MembersDeps) {
    */
   async function admit(inv: invites.WorkspaceInvite): Promise<{ ok: true; person: people.Person } | { ok: false; status: number; code: string; error: string }> {
     if (inv.status !== "waiting" || !inv.claim) return { ok: false, status: 409, code: "gone", error: "Nobody is waiting on that invite any more." };
+    const locked = await teamRefusal();
+    if (locked) return { ok: false, ...locked.body, status: locked.status };
     if (await full()) return { ok: false, status: 402, code: "full", error: await fullWords() };
     if (isMemberDevice(inv.claim.tokenHash)) return { ok: false, status: 409, code: "already_member", error: "That device is already in the workspace." };
     // Whoever came through the invite's own relay token keeps it, as a
@@ -423,7 +433,9 @@ export function createMembers(deps: MembersDeps) {
   async function listFor(actor: Actor) {
     await sweep();
     const manage = actor.kind === "owner" || actor.role === "admin";
-    const plan = await deps.plan();
+    // asked fresh: this is where somebody looks right after upgrading
+    const plan = await deps.plan(true);
+    const team = membersActive(plan);
     const settings = invites.joiningSettings();
     const me = actor.kind === "owner" ? null : actor.personId;
     return {
@@ -441,7 +453,12 @@ export function createMembers(deps: MembersDeps) {
         : {}),
       privacy: { privateReadable: settings.privateReadable, line: privacyLine(settings.privateReadable, deps.hostName()) },
       plan,
-      limit: Number.isFinite(memberLimitFor(plan)) ? memberLimitFor(plan) : null,
+      limit: memberLimitFor(plan),
+      // Members are Bloks Team's. Without it nobody new comes in, and
+      // whoever is in already is paused, not removed: it all comes back
+      // with the plan.
+      team,
+      paused: !team && people.workspaceMembers().length > 0,
       online: online(),
     };
   }
@@ -470,6 +487,8 @@ export function createMembers(deps: MembersDeps) {
 
   async function makeInvite(actor: Actor, body: Record<string, unknown>) {
     const role: people.WorkspaceRole = body.role === "admin" ? "admin" : "member";
+    const locked = await teamRefusal(true);
+    if (locked) return locked;
     if (await full()) return { status: 402, body: { code: "full", error: await fullWords() } };
     const made = invites.createInvite({ role, name: body.name, invitedBy: actor.kind === "owner" ? "owner" : actor.personId });
     if ("error" in made) return { status: 409, body: made };
@@ -759,7 +778,7 @@ export function createMembers(deps: MembersDeps) {
     const host = inv ? inviterName(inv.invitedBy) : deps.hostName();
     const refuse = (error: invites.JoinError, extra: Record<string, unknown> = {}) => ({
       status: invites.JOIN_STATUS[error],
-      body: { code: error, error: joinWords(error, { host, workspace: ws.name, triesLeft: extra.triesLeft as number | undefined }), workspace: ws.name, host, ...extra },
+      body: { code: error, error: joinWords(error, { host, owner: deps.hostName(), workspace: ws.name, triesLeft: extra.triesLeft as number | undefined }), workspace: ws.name, host, ...extra },
     });
     if (!inv) {
       const limiter = ctx.via === "relay" ? relayGuesses : guesses;
@@ -783,6 +802,9 @@ export function createMembers(deps: MembersDeps) {
     }
 
     if (path === "/api/join/claim") {
+      // Members are Bloks Team's: without it nobody is let in, or even
+      // put in front of the owner to be let in
+      if (await teamRefusal()) return refuse("team_required");
       const isFull = await full();
       const result = invites.claim(inv, body as unknown as invites.ClaimInput, {
         hostKey: invites.hostKey().publicRaw,

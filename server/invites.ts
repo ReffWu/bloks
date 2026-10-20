@@ -487,6 +487,7 @@ export type JoinError =
   | "wrong_password"
   | "already_member"
   | "full"
+  | "team_required"
   | "invalid";
 
 /** The HTTP status each answers with. */
@@ -501,6 +502,7 @@ export const JOIN_STATUS: Record<JoinError, number> = {
   wrong_password: 401,
   already_member: 409,
   full: 402,
+  team_required: 402,
   invalid: 400,
 };
 
