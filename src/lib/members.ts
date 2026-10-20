@@ -252,6 +252,15 @@ export function workspaceFrame(frame: Frame, news: boolean) {
       urgent: false,
     });
   }
+  if (news && frame.kind === "workspace.left") {
+    const person = frame.person as { name?: string } | undefined;
+    void window.bloks?.notifyShow({
+      title: `${person?.name ?? "Someone"} left ${String(frame.workspace ?? "your workspace")}`,
+      body: "Their devices are signed out, and their solo agents and private conversations are gone.",
+      target: "workspace:members",
+      urgent: false,
+    });
+  }
   listeners.forEach((l) => l(frame));
 }
 
