@@ -52,7 +52,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     keys: [["Mod", "K"]],
     does: "Search everything",
   },
-  { id: "toggleSidebar", group: "navigation", keys: [["Mod", "B"]], does: "Show or hide the sidebar" },
+  { id: "toggleSidebar", group: "navigation", keys: [["Mod", "B"]], does: "Show or hide the sidebar beside the page" },
   { id: "back", group: "navigation", keys: [["Mod", "["]], does: "Back" },
   { id: "forward", group: "navigation", keys: [["Mod", "]"]], does: "Forward again" },
   {

@@ -47,7 +47,9 @@ import {
 } from "@/lib/sections";
 import { refreshCheckup, riskyCount, useSecurityCheckup } from "@/lib/securityCheckup";
 import { ConversationRows, LaneRing, WaitingRow } from "./SidebarParts";
-import { CHAT_SIDEBAR, setChatSidebarOpen, setChatSidebarWidth, toggleChatSidebar, useChatSidebar } from "@/lib/chatSidebar";
+import { CHAT_SIDEBAR, useChatSidebar } from "@/lib/chatSidebar";
+import { CHAT_COLUMN } from "@/lib/sideColumn";
+import { SideColumn } from "./SideColumn";
 import { openSearch } from "./CommandPalette";
 import { setLanesInSidebar, useConversationsView } from "@/lib/conversationsView";
 import { ListTree } from "@/components/icons";
@@ -641,7 +643,6 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
   const [filing, setFiling] = useState<FilingState | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const sidebar = useChatSidebar();
-  const [resizing, setResizing] = useState(false);
   // Phone-narrow windows have no room for two columns, so the sidebar
   // becomes a header (below); everywhere else it is a column whose width
   // is dragged, never collapsed to a rail of faces.
@@ -655,17 +656,8 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
   useEffect(() => {
     setLanesInSidebar(conversations && sidebar.open && !mobile);
   }, [conversations, sidebar.open, mobile]);
-  // ⌘B folds the sidebar away and brings it back, as the rail's Chat does.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        toggleChatSidebar();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // ⌘B is the title bar's now (TitleBar.tsx): it folds whichever column
+  // the place in view keeps, and this list is only one of them.
   // Folded sections, by name. Kept on this device like the rail choice:
   // how much of the list you want in view depends on the screen, not on
   // the workspace. A name that stops existing just sits here unused.
@@ -958,73 +950,12 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
       );
     });
 
-  if (!sidebar.open && !drawer) return null;
-
-  // Dragging the right edge sizes the column; let go narrower than it can
-  // usefully be and it folds away, as ⌘B does. Pointer capture keeps the
-  // drag when the pointer runs ahead of the edge.
-  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const handle = e.currentTarget;
-    handle.setPointerCapture(e.pointerId);
-    const left = handle.parentElement!.getBoundingClientRect().left;
-    // folded, it opens again at the width it had before this drag, not
-    // the minimum the drag passed through on its way to folding
-    const before = sidebar.width;
-    setResizing(true);
-    const move = (ev: PointerEvent) => setChatSidebarWidth(ev.clientX - left, false);
-    const up = (ev: PointerEvent) => {
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", up);
-      handle.removeEventListener("pointercancel", up);
-      setResizing(false);
-      const width = ev.clientX - left;
-      if (width < CHAT_SIDEBAR.foldBelow) {
-        setChatSidebarWidth(before);
-        setChatSidebarOpen(false);
-      } else setChatSidebarWidth(width);
-    };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", up);
-    handle.addEventListener("pointercancel", up);
-  };
-
-  return (
-    <aside
-      aria-label="Agents and rooms"
-      className={cn(
-        "relative flex h-full shrink-0 flex-col bg-sidebar",
-        drawer ? "min-w-0 flex-1" : "border-r",
-        resizing && "select-none",
-      )}
-      style={drawer ? undefined : { width: sidebar.width }}
-    >
-      {!drawer && (
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        aria-valuemin={CHAT_SIDEBAR.min}
-        aria-valuemax={CHAT_SIDEBAR.max}
-        aria-valuenow={sidebar.width}
-        tabIndex={0}
-        onPointerDown={startResize}
-        onDoubleClick={() => setChatSidebarWidth(CHAT_SIDEBAR.initial)}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowLeft") (e.preventDefault(), setChatSidebarWidth(sidebar.width - 16));
-          else if (e.key === "ArrowRight") (e.preventDefault(), setChatSidebarWidth(sidebar.width + 16));
-        }}
-        className="group absolute inset-y-0 -right-1.5 z-10 w-3 cursor-col-resize outline-none"
-      >
-        <span
-          className={cn(
-            "absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors duration-150 group-hover:bg-ring/60 group-focus-visible:bg-ring",
-            resizing && "bg-ring",
-          )}
-        />
-      </div>
-      )}
+  // The list itself, the same in the column and in the phone's drawer. The
+  // column is a page column like the rest (SideColumn.tsx), with the
+  // brand line for its edge: dragged to size it, folded by the title
+  // bar's toggle, ⌘B, or a drag narrower than it can usefully be.
+  const body = (
+    <>
       {/* the same height as the chat's header beside it, so the two read
           as one strip; it is the window's handle too */}
       <div
@@ -1218,7 +1149,20 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
       {menu && <RowMenu menu={menu} onClose={() => setMenu(null)} onFile={setFiling} />}
       {filing && <SectionPicker filing={filing} onClose={() => setFiling(null)} />}
       {showArchived && <ArchivedAgents onClose={() => setShowArchived(false)} />}
-    </aside>
+    </>
+  );
+
+  if (drawer) {
+    return (
+      <aside aria-label="Agents and rooms" className="relative flex h-full min-w-0 flex-1 flex-col bg-sidebar">
+        {body}
+      </aside>
+    );
+  }
+  return (
+    <SideColumn id={CHAT_COLUMN} size={CHAT_SIDEBAR} label="Agents and rooms" page={false} className="relative h-full bg-sidebar">
+      {body}
+    </SideColumn>
   );
 }
 

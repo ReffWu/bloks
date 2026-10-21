@@ -51,6 +51,17 @@
      two are the same value below. */
   --brand-ink: #4a59e6;
 
+  /* The brand gradient: the mark's colours in one run, the deep blue at
+     both ends so it can repeat with no seam. Stops only, so a line can
+     run it across (90deg) or down (to bottom). A line of it sits at
+     --brand-line, brighter at --brand-line-strong when it is a handle in
+     use; dark mode lifts both, since the same colours read dimmer on
+     near black. */
+  --brand-gradient: #004aad 0%, #5ce1e6 9%, #cb6ce6 21%, #ff5757 30%, #ff751f 43%, #ffbd59 51%, #7ed957 62%,
+    #5ce1e6 70%, #cb6ce6 83%, #ff5757 91%, #004aad 100%;
+  --brand-line: 0.4;
+  --brand-line-strong: 0.62;
+
   /* Status colours carry meaning, so they have to be readable at 11px
      and on their own tint, which is where a badge puts them. The lighter
      versions of these came out at about 3:1 on white and under 3:1 on a
@@ -114,6 +125,8 @@
   --brand-ink: #7c8aff;
   --brand-foreground: #14151f;
   --brand-soft: rgba(124, 138, 255, 0.14);
+  --brand-line: 0.55;
+  --brand-line-strong: 0.78;
 
   --destructive: #ff6369;
   --destructive-foreground: #1a0d0e;
@@ -659,4 +672,76 @@
 .tab-joined::after {
   right: -10px;
   background: radial-gradient(circle at 100% 0, transparent 9.5px, var(--background) 10px);
+}
+
+/* The edge of a page's column (SideColumn.tsx): the brand gradient as a
+ * hairline running down it, gone at the top and the bottom and strongest
+ * through the middle, with a glow beside it on the page's side so faint
+ * it reads as light more than colour. It is the drag handle's whole look,
+ * so it brightens a little under the pointer and while it is dragged.
+ *
+ * The box is wider than the line so the blur has room inside the mask,
+ * which would otherwise cut it off at the line's own edges. The colours
+ * drift the way they do along the header line, a tile's length every 70
+ * seconds, but by moving the strip rather than its background, so the
+ * drift costs the compositor and not a repaint every frame. */
+.side-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 12px);
+  width: 36px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: var(--brand-line);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent);
+  transition: opacity 150ms ease-out;
+}
+.side-divider::before,
+.side-divider::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 11.25px;
+  width: 1.5px;
+  /* two tiles, each twice the visible line, as along the header */
+  height: 400%;
+  background: linear-gradient(to bottom, var(--brand-gradient));
+  background-size: 100% 50%;
+}
+.side-divider::after {
+  /* the line and the 7px beside it, toward the page, blurred */
+  width: 8.5px;
+  filter: blur(6px);
+  opacity: 0.45;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .side-divider::before,
+  .side-divider::after {
+    animation: side-divider-drift 70s linear infinite;
+  }
+}
+@keyframes side-divider-drift {
+  from { transform: translateY(-50%); }
+  to { transform: translateY(0); }
+}
+.side-edge:hover .side-divider,
+.side-edge[data-dragging] .side-divider {
+  opacity: var(--brand-line-strong);
+}
+/* the keyboard's own mark: the line at full strength, since the global
+   ring would draw a box the height of the window */
+.side-edge:focus-visible {
+  box-shadow: none;
+}
+.side-edge:focus-visible .side-divider {
+  opacity: 1;
+}
+/* While an edge is in hand the pointer can run ahead of it, over text and
+   buttons; it keeps the resize cursor and selects nothing on the way. */
+:root[data-column-resize],
+:root[data-column-resize] * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }

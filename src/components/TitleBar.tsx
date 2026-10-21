@@ -8,7 +8,8 @@ import { ArrowRight } from "@/components/icons";
 import { PanelLeft } from "@/components/icons";
 import { useStore } from "@/state/store";
 import { useNavHistory } from "@/lib/navHistory";
-import { toggleChatSidebar, useChatSidebar } from "@/lib/chatSidebar";
+import { useChatSidebar } from "@/lib/chatSidebar";
+import { CHAT_COLUMN, toggleColumn, usePageColumn, useSideColumn } from "@/lib/sideColumn";
 import { platformOf } from "@/lib/shortcuts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
@@ -63,8 +64,15 @@ export function TitleBar() {
   const history = useNavHistory(state, dispatch);
   const sidebar = useChatSidebar();
   const mac = platformOf() === "mac";
-  // an agent's settings cover the chat sidebar too, so its toggle rests
+  // an agent's settings cover the chat sidebar too
   const chat = !state.appSettingsOpen && !state.routinesOpen && !state.page && !state.settingsOpen;
+  // The toggle and ⌘B fold the column of the place in view: the chat's
+  // list in the chat, a page's own column on a page that keeps one
+  // (SideColumn.tsx). A page with none, such as Overview, has nothing for
+  // them to fold, and the toggle rests.
+  const pageColumn = usePageColumn();
+  const column = chat ? CHAT_COLUMN : pageColumn;
+  const columnOpen = useSideColumn(column ?? CHAT_COLUMN).open;
 
   // ⌘[ and ⌘] as in a browser, and the mouse's own back and forward
   useEffect(() => {
@@ -72,6 +80,10 @@ export function TitleBar() {
       if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
       if (e.key === "[") (e.preventDefault(), history.back());
       else if (e.key === "]") (e.preventDefault(), history.forward());
+      else if (e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        if (column) toggleColumn(column);
+      }
     };
     const onMouse = (e: MouseEvent) => {
       if (e.button === 3) (e.preventDefault(), history.back());
@@ -83,7 +95,7 @@ export function TitleBar() {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mouseup", onMouse);
     };
-  }, [history]);
+  }, [history, column]);
 
   // Where the buttons on the left end, so a conversation's tabs start
   // after them: the workspace's name is as long as its owner made it.
@@ -117,9 +129,9 @@ export function TitleBar() {
           <BarButton
             label="Toggle sidebar"
             keys={`${mod}B`}
-            disabled={!chat}
-            pressed={chat && sidebar.open}
-            onClick={toggleChatSidebar}
+            disabled={!column}
+            pressed={Boolean(column) && columnOpen}
+            onClick={() => column && toggleColumn(column)}
           >
             <PanelLeft size={17} strokeWidth={1.75} />
           </BarButton>
@@ -133,9 +145,14 @@ export function TitleBar() {
             joins the page under it rather than the sidebar; with the
             sidebar closed they start after these buttons instead. The
             rest of the strip stays a handle for moving the window. */}
+        {/* It moves with the sidebar as it folds, at the fold's own pace,
+            and with the pointer, at once, while the edge is dragged. */}
         <div
           id={TITLEBAR_TABS_ID}
-          className="absolute inset-y-0 right-0 flex min-w-0 items-end"
+          className={cn(
+            "absolute inset-y-0 right-0 flex min-w-0 items-end",
+            !sidebar.resizing && "transition-[left] duration-200 ease-out-quart",
+          )}
           style={{ left: Math.max(RAIL + (chat && sidebar.open ? sidebar.width : 0) + 12, clusterEnd + 8) }}
         />
       </div>
