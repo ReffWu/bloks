@@ -553,7 +553,15 @@ export function createMembers(deps: MembersDeps) {
         json(res, 403, { error: "only the owner names the workspace" });
         return true;
       }
-      const set = setIdentity(await readBody(req));
+      const body = await readBody(req);
+      // A window switching workspaces can still be talking to the one it is
+      // leaving, so a name meant for another workspace is turned away here
+      // rather than written over this one's.
+      if (typeof body.id === "string" && body.id !== workspaceIdentity().id) {
+        json(res, 409, { error: "that name is for another workspace" });
+        return true;
+      }
+      const set = setIdentity(body);
       json(res, set ? 200 : 400, set ? { workspace: set } : { error: "name and mark { color, pattern } are needed" });
       return true;
     }

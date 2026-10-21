@@ -32,6 +32,7 @@ import {
   expiresIn,
   initials,
   membersApi,
+  serverIdOf,
   ROLE_NAME,
   shortDate,
   tintOf,
@@ -106,7 +107,7 @@ export function MembersPage({
   onOpenRoom?: () => void;
   /** The workspace as the app lists it, when there is a list: its name and
    * mark are told to the server, which puts them on invites. */
-  workspace?: { name: string; kind: string; mark: { color: string; pattern: string } | null };
+  workspace?: { id: string; name: string; kind: string; mark: { color: string; pattern: string } | null };
   /** How many people are in it, the owner included, for the switcher. */
   onCount?: (count: number) => void;
 } = {}) {
@@ -134,12 +135,16 @@ export function MembersPage({
   useEffect(load, [load]);
 
   // The app's name and mark for this workspace are the truth; the server
-  // only borrows them for invites, so it is told when they differ.
+  // only borrows them for invites, so it is told when they differ. Only
+  // when the server that answered is this workspace's: mid switch, the list
+  // can already name the next workspace while the page still reads the last.
   useEffect(() => {
     if (!data || data.you.role !== "owner" || !workspace?.mark) return;
+    const id = serverIdOf(workspace);
+    if (data.workspace.id !== id) return;
     const same = data.workspace.name === workspace.name && data.workspace.mark.color === workspace.mark.color && data.workspace.mark.pattern === workspace.mark.pattern;
     if (same) return;
-    void membersApi.setIdentity({ name: workspace.name, kind: workspace.kind, mark: workspace.mark }).then(load).catch(() => {});
+    void membersApi.setIdentity({ id, name: workspace.name, kind: workspace.kind, mark: workspace.mark }).then(load).catch(() => {});
   }, [data, workspace, load]);
 
   const people = data ? data.members.length + 1 : null;

@@ -124,7 +124,7 @@ export const membersApi = {
   clearPassword: () => api("/api/workspace/joining/password", { method: "DELETE" }),
   setJoining: (patch: { approveEach?: boolean; privateReadable?: boolean }) =>
     api("/api/workspace/joining", { method: "PATCH", body: JSON.stringify(patch) }),
-  setIdentity: (body: { name: string; kind: string; mark: WorkspaceMark }) =>
+  setIdentity: (body: { id: string; name: string; kind: string; mark: WorkspaceMark }) =>
     api("/api/workspace/identity", { method: "PUT", body: JSON.stringify(body) }),
   access: (): Promise<{ agents: AgentAccessRow[]; rooms: Array<{ id: string; name: string; audience: "everyone" | "some"; members: string[] }> }> =>
     api("/api/workspace/access"),
@@ -202,6 +202,12 @@ const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 
 /** The eight characters of a code in whatever was typed, or null. The
  * server reads input the same way (server/invites.ts normalizeCode). */
+/** The id a workspace's own server goes by. A hosted machine's is always
+ * "hosted", whatever this Mac calls it in its list. */
+export function serverIdOf(workspace: { id: string; kind: string }): string {
+  return workspace.kind === "hosted" ? "hosted" : workspace.id;
+}
+
 export function codeIn(raw: string): string | null {
   const text = raw.includes("#") ? (raw.split("#")[1] ?? "").split("~")[0] : raw;
   const code = text.toUpperCase().replace(/[\s\-_.\u2010-\u2015\u2212]/g, "");

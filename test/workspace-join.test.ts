@@ -407,3 +407,16 @@ test("the workspace setting for private conversations is the owner's, and member
   assert.equal((await call("/api/workspace/joining", { method: "PATCH", body: { privateReadable: false }, actor: `${sam.id}:admin` })).status, 403);
   await call("/api/workspace/joining", { method: "PATCH", body: { privateReadable: false } });
 });
+
+test("a name meant for another workspace is turned away, so a window mid switch cannot rename this one", async () => {
+  const mark = { color: "#149E8E", pattern: "110101011" };
+  const before = (await call("/api/workspace/members")).body.workspace;
+  assert.equal(before.id, "personal");
+  const crossed = await call("/api/workspace/identity", { method: "PUT", body: { id: "w_bakery", name: "Maple Street Bakery", kind: "Team", mark } });
+  assert.equal(crossed.status, 409);
+  assert.equal((await call("/api/workspace/members")).body.workspace.name, before.name);
+  const own = await call("/api/workspace/identity", { method: "PUT", body: { id: "personal", name: "Brightwater", kind: "Team", mark } });
+  assert.equal(own.status, 200);
+  assert.equal(own.body.workspace.name, "Brightwater");
+  assert.equal((await call("/api/workspace/identity", { method: "PUT", body: { id: "personal", name: before.name, kind: before.kind, mark: before.mark } })).status, 200);
+});
