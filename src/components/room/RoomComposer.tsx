@@ -25,6 +25,7 @@ import { type ReplyDraft } from "@/components/MessageActions";
 import { BoxButton, ComposerShell, SendStop } from "@/components/composer/Shell";
 import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
 import { useQueuedNotice } from "@/components/WaitingStrip";
+import { useUnsentNotice } from "@/components/chat/HeldSends";
 import {
   attachmentBasename,
   composeOutgoing,
@@ -474,8 +475,10 @@ export function RoomComposer({
     onSendAgain: sendAgain,
     editAsk,
   });
+  const unsentNotice = useUnsentNotice(draftKey);
   const notices = [
     queuedNotice,
+    unsentNotice,
     dictation.notice,
     attachNotice
       ? {

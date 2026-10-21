@@ -32,6 +32,7 @@ import { TerminalWindow, terminalWindowAgent } from "@/components/terminal/Termi
 import { MemberApp } from "@/components/member/MemberApp";
 import { detectMode, type AppMode } from "@/lib/memberMode";
 import { openWorkspaceDialog } from "@/lib/workspaces";
+import { WakingStrip } from "@/components/WakingStrip";
 
 /**
  * Whatever went wrong, said over every view as an error toast. It used to
@@ -130,6 +131,8 @@ function Shell() {
     <div className="relative flex h-full min-w-0 flex-col overflow-hidden bg-sidebar">
       <TitleBar />
       <MobileNav />
+      {/* your hosted workspace waking up, said once for the whole window */}
+      <WakingStrip />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
       <div className="hidden h-full md:flex">
         <AppRail />
@@ -293,7 +296,16 @@ function OwnerApp() {
       })
       .finally(() => setSettled(true));
   }, [forced]);
-  if (!settled) return <div className="h-full bg-background" />;
+  // A hosted workspace that is asleep takes its time to answer that first
+  // question, and the window says why rather than staying blank. Below the
+  // title bar's height, clear of the window's own buttons.
+  if (!settled) {
+    return (
+      <div className="flex h-full flex-col bg-background">
+        <WakingStrip className="mt-11" follow />
+      </div>
+    );
+  }
   return (
     // Reduce motion on the Mac means reduce it here: movement goes, and
     // the opacity that explains a change stays.

@@ -34,6 +34,8 @@ import { receiptsAt, runs, senderOf } from "@/lib/participants";
 import { useNamer, useWorkspaceRoster } from "@/lib/members";
 import { seedReads, useReadPosition, useReads } from "@/lib/readReceipts";
 import { JumpToLatest } from "./chat/JumpToLatest";
+import { HeldSends } from "./chat/HeldSends";
+import { heldToShow, isHostedWindow, useHeldSends, useWake } from "@/lib/waking";
 import { RoomComposer } from "./room/RoomComposer";
 import { OptionCard } from "./OptionCard";
 import { Markdownish } from "./Markdown";
@@ -836,12 +838,16 @@ export function RoomView({ blok }: { blok: Blok }) {
   );
 
   // A room with nothing in it yet but its opening line: a welcome, with
-  // the members and how to reach one of them.
+  // the members and how to reach one of them. A first message waiting for
+  // your hosted workspace to wake is something in it already.
+  const wake = useWake();
+  const held = heldToShow(useHeldSends(`room:${blok.id}`), { waking: wake.waking, hosted: isHostedWindow() }, said, waiting);
   const fresh =
     lens === "stream" &&
     !blok.olderMessages &&
     !working.length &&
     !waiting.length &&
+    !held.length &&
     said.every((m) => m.role === "bot" && !m.from && m.kind === "text");
   /** Puts @name in the box, for a member picked on the welcome. */
   const [mentionAsk, setMentionAsk] = useState<{ name: string; nonce: number } | null>(null);
@@ -1190,6 +1196,8 @@ export function RoomView({ blok }: { blok: Blok }) {
                   </TurnFoldLine>,
                 ],
           )}
+          {/* sent while your hosted workspace wakes, faded until it goes */}
+          <HeldSends conversation={`room:${blok.id}`} said={said} queued={waiting} group />
           {/* what members are saying right now, each under its own
               name, after the handoff that started it when one did */}
           {voices.flatMap(({ bot, text: words }, i) => {

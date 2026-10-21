@@ -11,7 +11,16 @@ export interface RemoteProfile {
 
 export function startRemoteProxy(
   profile: RemoteProfile,
-  options?: { staticDir?: string; port?: number; onState?: (state: Record<string, unknown>) => void; client?: string },
+  options?: {
+    staticDir?: string;
+    port?: number;
+    onState?: (state: Record<string, unknown>) => void;
+    client?: string;
+    /** A workspace that may sleep: Bloks Cloud's "not connected" is asleep. */
+    hosted?: boolean;
+    /** The clock a wait for a waking workspace keeps (waking.mjs). */
+    waking?: import("./waking.mjs").WakeClock;
+  },
 ): Promise<{ port: number; stop: () => void }>;
 
 export interface JoinedProfile {

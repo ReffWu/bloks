@@ -34,6 +34,7 @@ import { SlashMenu } from "./composer/SlashMenu";
 import { guestMailNotice, useApprovalsNotice, useCreditsNotice, useEngineNotice, useOtherLanesNotice, useSuggestionNotice } from "./chat/Banners";
 import { useGoalNotice } from "./Goal";
 import { useQueuedNotice } from "./WaitingStrip";
+import { useUnsentNotice } from "./chat/HeldSends";
 import { UsageNotice } from "./composer/UsageNotice";
 import { useDeliveryPreview, type DeliveryPreview } from "@/lib/delivery";
 import {
@@ -658,6 +659,7 @@ export function Composer({
   const lanesNotice = useOtherLanesNotice(bot);
   const goalNotice = useGoalNotice(bot);
   const suggestionNotice = useSuggestionNotice(bot);
+  const unsentNotice = useUnsentNotice(draftKey);
   const queuedNotice = useQueuedNotice({
     messages: waiting,
     threadId: bot.threadId,
@@ -674,6 +676,7 @@ export function Composer({
     editAsk,
   });
   const own: Array<Notice | null> = [
+    unsentNotice,
     attachNotice
       ? {
           id: "attach",

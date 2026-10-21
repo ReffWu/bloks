@@ -29,6 +29,7 @@ import { sendCardAnswer } from "@/lib/cardAnswer";
 import { sendMessage } from "@/lib/sendMessage";
 import { sendRoomPatch } from "@/lib/roomPatch";
 import { keepTrying } from "@/lib/retry";
+import { sendHeld, takeWake, wakeFetch, wakeGaveUp } from "@/lib/waking";
 import { placeRow, type Listed } from "@/lib/sections";
 import { maybeAutoSpeak } from "@/components/Voice";
 import {
@@ -102,15 +103,23 @@ function forgetLocalSectionOrder() {
 
 // ── talking to the harness ─────────────────────────────────────────────
 export async function api(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(path, {
+  // a read waits in the page while a hosted workspace wakes (src/lib/waking.ts)
+  const res = await wakeFetch(path, {
     headers: { "content-type": "application/json" },
     ...init,
   });
   const body = await res.json().catch(() => ({}));
   // the status rides along, for a caller deciding whether trying again
   // could ever help (a 404 will not), and the code, for one that can do
-  // something about it (a name to ask for, src/components/YourNameDialog)
-  if (!res.ok) throw Object.assign(new Error(body.error ?? `${res.status} ${res.statusText}`), { status: res.status, code: typeof body.code === "string" ? body.code : undefined });
+  // something about it (a name to ask for, src/components/YourNameDialog),
+  // and the mark of a hosted workspace that never woke (src/lib/waking.ts)
+  if (!res.ok) {
+    throw Object.assign(new Error(body.error ?? `${res.status} ${res.statusText}`), {
+      status: res.status,
+      code: typeof body.code === "string" ? body.code : undefined,
+      ...(body.waking === true ? { waking: true } : {}),
+    });
+  }
   return body;
 }
 
@@ -220,7 +229,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const bot = stateRef.current.bots.find((b) => b.id === action.botId);
           const typedIn = bot ? (bot.activeTaskId ?? bot.threadId) : undefined;
           const taskId = bot ? typedLane(bot) : undefined;
-          sendMessage(api, { ...action, taskId }).then(
+          // kept with the conversation it was typed in (the composer's key)
+          // until it has gone, which on a hosted workspace that is asleep
+          // is once it wakes (src/lib/waking.ts)
+          sendHeld(`${action.botId}:${typedIn}`, action.text, () => sendMessage(api, { ...action, taskId }), {
+            after: bot?.messages[bot.messages.length - 1]?.id ?? null,
+          }).then(
             (r) => {
               // Typed in the lane strangers' mail is answered in, the words
               // went to the first conversation, so the screen goes there
@@ -232,7 +246,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               wrapped({ type: "selectTask", botId: action.botId, taskId: r.taskId });
             },
             (e) => {
-              showError(e);
+              // a hosted workspace that never woke is said by the composer,
+              // beside the words it hands back, not in a toast
+              if (!wakeGaveUp(e)) showError(e);
               action.onFailed?.();
             },
           );
@@ -444,15 +460,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .then(adoptAnswer)
             .catch(showError);
           break;
-        case "sendToRoom":
-          api(`/api/bloks/${action.blokId}/messages`, {
-            method: "POST",
-            body: JSON.stringify({ text: action.text, replyTo: action.replyTo }),
-          }).catch((e) => {
-            showError(e);
+        case "sendToRoom": {
+          const room = stateRef.current.bloks.find((b) => b.id === action.blokId);
+          sendHeld(
+            `room:${action.blokId}`,
+            action.text,
+            () =>
+              api(`/api/bloks/${action.blokId}/messages`, {
+                method: "POST",
+                body: JSON.stringify({ text: action.text, replyTo: action.replyTo }),
+              }),
+            { after: room?.messages[room.messages.length - 1]?.id ?? null },
+          ).catch((e) => {
+            if (!wakeGaveUp(e)) showError(e);
             action.onFailed?.();
           });
           break;
+        }
         case "markLaneUnread": {
           const shown = stateRef.current.bots.find((b) => b.id === action.botId);
           if (action.botId === stateRef.current.selectedId && shown && (shown.activeTaskId ?? shown.threadId) === action.taskId) {
@@ -794,6 +818,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // An inspection asking what this window's settings are: answered
       // aside, never folded into state (src/lib/settings-client.ts).
       if (consumeSettingsRequest(frame)) return;
+      // your hosted workspace waking up, from the app's stand-in for its
+      // server rather than from the server: this window's, never the
+      // workspace's, so it is never folded into state (src/lib/waking.ts)
+      if (frame?.kind === "remote.wake") return takeWake(frame);
       if (typeof frame._seq === "number") lastSeq = frame._seq;
       // the workspace's people go to their own small bus (src/lib/members.ts)
       if (typeof frame.kind === "string" && frame.kind.startsWith("workspace.")) {

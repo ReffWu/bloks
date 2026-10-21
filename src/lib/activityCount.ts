@@ -5,6 +5,7 @@
 // same endpoint. It runs while something is showing it and the window is
 // visible, every five seconds.
 import { useSyncExternalStore } from "react";
+import { wakeFetch } from "./waking.ts";
 
 export interface ActivityCount {
   running: number;
@@ -20,9 +21,11 @@ const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setInterval> | null = null;
 
 function load() {
+  // while a hosted workspace wakes, these wait in the page for it as one
+  // read each, rather than one more every five seconds (src/lib/waking.ts)
   void Promise.all([
-    fetch("/api/activity").then((r) => (r.ok ? r.json() : null)),
-    fetch("/api/skills/proposals").then((r) => (r.ok ? r.json() : null)),
+    wakeFetch("/api/activity").then((r) => (r.ok ? r.json() : null)),
+    wakeFetch("/api/skills/proposals").then((r) => (r.ok ? r.json() : null)),
   ])
     .then(([a, s]) => {
       const next = {

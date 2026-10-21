@@ -955,11 +955,10 @@ async function openJoined(run, ws) {
     // the owner's own network when the membership has no way through Bloks
     // Cloud; the same stand-in on loopback either way
     const start = reachOf(profile) === "lan" ? startLanProxy : startRemoteProxy;
-    run.proxy = await start(profile, {
-      staticDir: serverSource().ui,
-      client: `${system} ${app.getVersion()}`,
-      port: ws.port ?? 0,
-    }).catch(() => start(profile, { staticDir: serverSource().ui, client: `${system} ${app.getVersion()}`, port: 0 }));
+    // your own hosted workspace may be asleep, and the proxy waits for it
+    // to wake rather than telling the window it failed
+    const options = { staticDir: serverSource().ui, client: `${system} ${app.getVersion()}`, hosted: ws.kind === "hosted" };
+    run.proxy = await start(profile, { ...options, port: ws.port ?? 0 }).catch(() => start(profile, { ...options, port: 0 }));
     run.port = run.proxy.port;
     rememberPort(ws, run.port);
     return true;

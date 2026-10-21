@@ -20,6 +20,8 @@ import { request as httpsRequest } from "node:https";
 import { extname, join, normalize } from "node:path";
 import { gunzipSync } from "node:zlib";
 
+import { WAKE_GAVE_UP, createWakeWatch, isWakingAnswer } from "./waking.mjs";
+
 // ── crypto: a mirror of server/relay-crypto.ts ─────────────────────────
 
 const sha256hex = (value) => createHash("sha256").update(value).digest("hex");
@@ -219,6 +221,12 @@ const STREAM_RENEW_MS = 20_000;
 /** Pieces of a stream that arrived before the answer that named it. */
 const EARLY_LIMIT = 2_000_000;
 
+/** Where a page with no event stream yet follows a hosted workspace waking
+ * up (src/lib/waking.ts); a page with one hears it there. Answered here,
+ * never asked of the other computer: whether it is asleep is this proxy's
+ * to know, not the machine's. */
+const WAKE_PATH = "/api/remote/wake";
+
 /** A path into a hosted workspace's virtual desktop, by its ticket
  * (server/hosted.ts). */
 const DESKTOP_PATH = /^\/hosted\/desktop\/([0-9a-f]{48})(?:\/|$)/;
@@ -252,11 +260,37 @@ export function doorOf(value) {
  * door that workspace named when it minted the ticket (server/hosted.ts),
  * so the window frames it from its own origin as it would on the machine
  * itself; the ticket is checked there on every request.
+ *
+ * A hosted workspace that sleeps is woken by the first ask, and an ask
+ * Bloks Cloud answers "waking" is asked again until the machine is up or
+ * two minutes have gone (waking.mjs), so the window's requests take longer
+ * rather than fail. The window hears how the wait stands on its event
+ * stream, or on WAKE_PATH before it has one open. `hosted`
+ * says the workspace is one that may sleep, so Bloks Cloud's "not
+ * connected" means asleep from the first moment; `waking` hands in a
+ * clock, for the tests.
  */
-export async function startRemoteProxy(profile, { staticDir, port = 0, onState = () => {}, client } = {}) {
+export async function startRemoteProxy(profile, { staticDir, port = 0, onState = () => {}, client, hosted = false, waking = {} } = {}) {
   const keys = deviceKeys(profile.deviceToken);
   const streams = new Set();
   let stopped = false;
+  // The wait for a waking workspace goes to the window on its own event
+  // stream, as a frame, rather than on a line of its own: a window has
+  // only a few connections to this proxy, and one held open for nothing
+  // else would be one fewer for the work. WAKE_PATH says the same for a
+  // page that has no event stream open yet.
+  const wakeStreams = new Set();
+  // with the watermark as it stands, as hello carries it: every frame here
+  // says where it falls, and this one is never news, so it moves nothing
+  const wakeFrame = (state) => `data: ${JSON.stringify({ kind: "remote.wake", ...state, _seq: frameSeq })}\n\n`;
+  const watch = createWakeWatch({
+    ...waking,
+    onChange: (state) => {
+      for (const s of wakeStreams) s.write(`data: ${JSON.stringify(state)}\n\n`);
+      const frame = wakeFrame(state);
+      for (const s of streams) s.write(frame);
+    },
+  });
   // the window's followed streams, by the id the other computer gave
   // each, and pieces of any that arrived before the answer naming it
   const followed = new Map();
@@ -287,7 +321,11 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
     return { ...frame, _seq: seq };
   };
 
-  const ask = async (request) => {
+  /** One request through Bloks Cloud, sealed afresh: its own time and
+   * nonce each time it is made, so a write asked again while a machine
+   * wakes is never taken for a replay. `waking` marks Bloks Cloud's
+   * "waking" answer, and `heard` an answer the other computer gave. */
+  const askOnce = async (request) => {
     const payload = seal(keys.seal, profile.deviceId, {
       ...request,
       raw: true,
@@ -303,18 +341,27 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
     });
     const outer = await res.json().catch(() => ({}));
     if (res.status === 401) return { status: 401, type: "application/json", bytes: Buffer.from(JSON.stringify({ error: "this app is no longer paired with that computer" })) };
+    if (isWakingAnswer(res.status, outer)) return { status: 503, type: "application/json", bytes: Buffer.from(JSON.stringify({ error: WAKE_GAVE_UP, waking: true })), waking: true };
     if (res.status !== 200) return { status: res.status, type: "application/json", bytes: Buffer.from(JSON.stringify({ error: outer.error ?? "the other computer did not answer" })) };
     const reply = outer.payload ? open(keys.open, outer.payload) : null;
     // the other computer answered without sealing anything: it no longer
     // knows this device, which is what revoking it from there does
     if (!reply && outer.status === 401) {
       onState({ connected: false, revoked: true });
-      return { status: 401, type: "application/json", bytes: Buffer.from(JSON.stringify({ error: "this app is no longer paired with that computer" })) };
+      return { status: 401, type: "application/json", bytes: Buffer.from(JSON.stringify({ error: "this app is no longer paired with that computer" })), heard: true };
     }
-    if (!reply) return { status: 502, type: "application/json", bytes: Buffer.from(JSON.stringify({ error: "the answer could not be opened" })) };
-    if (typeof reply.z === "string") return { status: reply.status, type: reply.type, bytes: gunzipSync(Buffer.from(reply.z, "base64")) };
-    return { status: reply.status, type: "application/json", bytes: Buffer.from(JSON.stringify(reply.body ?? null)) };
+    if (!reply) return { status: 502, type: "application/json", bytes: Buffer.from(JSON.stringify({ error: "the answer could not be opened" })), heard: true };
+    if (typeof reply.z === "string") return { status: reply.status, type: reply.type, bytes: gunzipSync(Buffer.from(reply.z, "base64")), heard: true };
+    return { status: reply.status, type: "application/json", bytes: Buffer.from(JSON.stringify(reply.body ?? null)), heard: true };
   };
+
+  /** A request through Bloks Cloud, waited through a wake: asked again
+   * while the answer is "waking", for as long as the window's one wait
+   * lasts (waking.mjs). What comes back after the wait ran out says so in
+   * words, with `waking: true` for the window to know it by. A read the
+   * window stopped waiting for (`gone`) stops being asked; a write is
+   * asked until it lands, so words sent before switching away still go. */
+  const ask = (request, { gone } = {}) => watch.run(() => askOnce(request), { gone });
 
   const serveStatic = (req, res) => {
     const url = new URL(req.url, "http://x");
@@ -364,6 +411,9 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
               // dialled every second, forever.
               delay = 1_000;
               onState({ connected: outer.online !== false });
+              // a workspace that sleeps and is not connected is asleep, and
+              // the window's next ask is what wakes it
+              if (hosted) watch.presume(outer.online !== false);
               // what a followed stream sent while the line was down is
               // gone, so each is ended and the window opens it again,
               // which starts it over from what it holds
@@ -418,8 +468,15 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
   /** One event stream the window opened, followed on the other computer. */
   const follow = async (req, res, path) => {
     let answer = null;
+    // a window that stops waiting for a stream while the machine wakes
+    // has no use for it once it is up
+    let left = false;
+    res.on("close", () => (left = true));
     try {
-      answer = await ask({ method: "POST", path: "/api/relay/streams", bodyB64: Buffer.from(JSON.stringify({ path })).toString("base64"), type: "application/json" });
+      answer = await ask(
+        { method: "POST", path: "/api/relay/streams", bodyB64: Buffer.from(JSON.stringify({ path })).toString("base64"), type: "application/json" },
+        { gone: () => left },
+      );
     } catch {
       answer = null;
     }
@@ -462,9 +519,12 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
       write(`data: ${line}\n\n`);
       line = "";
     };
+    // A renewal is not waited through a wake: a machine that has gone to
+    // sleep has let the stream go, and the window opens it again, which
+    // does wait.
     const renew = setInterval(() => {
-      void ask({ method: "POST", path: `/api/relay/streams/${sid}` })
-        .then((a) => a.status === 404 && end())
+      void askOnce({ method: "POST", path: `/api/relay/streams/${sid}` })
+        .then((a) => (a.status === 404 || a.waking) && end())
         .catch(() => {});
     }, STREAM_RENEW_MS);
     const keepalive = setInterval(() => write(": keepalive\n\n"), 25_000);
@@ -476,7 +536,7 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
       take(frame);
     }
     req.on("close", () => {
-      if (!ended) void ask({ method: "DELETE", path: `/api/relay/streams/${sid}` }).catch(() => {});
+      if (!ended) void askOnce({ method: "DELETE", path: `/api/relay/streams/${sid}` }).catch(() => {});
       end();
     });
   };
@@ -538,9 +598,25 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
     if (ticket) return passDesktop(req, res, ticket, url);
     if (!url.pathname.startsWith("/api/")) return serveStatic(req, res);
     if (req.method === "GET" && STREAMABLE.some((route) => route.test(url.pathname))) return follow(req, res, url.pathname);
+    // the wait for a waking workspace, as it is now and as it changes
+    if (url.pathname === WAKE_PATH) {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+      const stream = { write: (t) => { try { res.write(t); } catch {} } };
+      stream.write(`data: ${JSON.stringify(watch.state())}\n\n`);
+      wakeStreams.add(stream);
+      const keepalive = setInterval(() => stream.write(": keepalive\n\n"), 25_000);
+      req.on("close", () => {
+        clearInterval(keepalive);
+        wakeStreams.delete(stream);
+      });
+      return;
+    }
     if (url.pathname === "/api/events") {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
       res.write(`data: ${JSON.stringify({ kind: "hello", resumed: false, _seq: frameSeq })}\n\n`);
+      // how the wait stands, waking or not, so a window that lost its
+      // line meanwhile does not keep showing one that is over
+      res.write(wakeFrame(watch.state()));
       const stream = { write: (t) => { try { res.write(t); } catch {} } };
       streams.add(stream);
       const keepalive = setInterval(() => stream.write(": keepalive\n\n"), 25_000);
@@ -551,12 +627,20 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
       return;
     }
     try {
-      const body = req.method === "GET" || req.method === "HEAD" ? null : await readBody(req);
-      const answer = await ask({
-        method: req.method,
-        path: url.pathname + url.search,
-        ...(body && body.length ? { bodyB64: body.toString("base64"), type: req.headers["content-type"] ?? "application/json" } : {}),
-      });
+      const read = req.method === "GET" || req.method === "HEAD";
+      const body = read ? null : await readBody(req);
+      // a read the window gave up on (it went to another page, say) is not
+      // asked again while the machine wakes; a write is, so it still lands
+      let left = false;
+      res.on("close", () => (left = !res.writableEnded));
+      const answer = await ask(
+        {
+          method: req.method,
+          path: url.pathname + url.search,
+          ...(body && body.length ? { bodyB64: body.toString("base64"), type: req.headers["content-type"] ?? "application/json" } : {}),
+        },
+        { gone: () => read && left },
+      );
       if (req.method === "POST" && url.pathname === "/api/hosted/desktop" && answer.status === 200) noteDoor(answer.bytes);
       const type = answer.type ?? "application/octet-stream";
       res.writeHead(answer.status, {
@@ -633,6 +717,7 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
     port: server.address().port,
     stop: () => {
       stopped = true;
+      watch.stop();
       for (const follow of [...followed.values()]) follow.end();
       server.close();
     },

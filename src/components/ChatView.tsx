@@ -51,6 +51,7 @@ import { Markdownish } from "./Markdown";
 import { LiveBrowser, ScreenFrame, StreamingBubble, WorkingClock, WorkingLine } from "./chat/Live";
 import { EmptyState } from "./chat/EmptyState";
 import { JumpToLatest } from "./chat/JumpToLatest";
+import { HeldSends } from "./chat/HeldSends";
 import { onAsk, peekAsk, takeAsk } from "@/lib/chatAsk";
 import { keysFor, platformOf } from "@/lib/shortcuts";
 import { confirm } from "@/components/ui/confirm";
@@ -984,6 +985,8 @@ export function ChatView({ bot }: { bot: Bot }) {
                 <StreamingBubble text={streaming} />
               ))}
           </GenUiHost>
+          {/* sent while your hosted workspace wakes, faded until it goes */}
+          <HeldSends conversation={`${bot.id}:${bot.activeTaskId ?? bot.threadId}`} said={said} queued={waiting} group={group} />
           <WorkingLine
             threadKey={threadKey}
             working={working}
