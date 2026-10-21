@@ -308,8 +308,16 @@ test("a question the turn ended under stays on screen and says why, and the next
   assert.equal(after.find((m) => m.id === asked.id).card.closed, closed.card.closed);
   assert.equal(after.filter(f.closedNote).length, 1);
 
-  // nothing is left waiting, so plain words are a new turn, not a queue
-  const next = await f.say("carry on without it"); console.error("NEXT", JSON.stringify(next), f.h.logs().split("\n").filter(l => l.includes("LANEWAITS")).slice(-3).join("\n"));
+  // nothing is left waiting, so plain words are a new turn, not a queue.
+  // Idle is not settled: the ended turn's changes card holds the lane for
+  // a moment, and words said in it rightly wait for the card (GitHub 338).
+  const settled = await waitFor(async () => {
+    const { bots } = await f.h.json("/api/bots?messages=0");
+    const lane = bots.find((b: any) => b.id === f.bot.id)?.tasks.find((task: any) => task.id === f.bot.threadId);
+    return lane && !lane.settling ? true : null;
+  });
+  assert.ok(settled, "the ended turn's changes card never settled");
+  const next = await f.say("carry on without it");
   assert.ok(!next.queued && !next.steered, "the message waited behind a turn that had ended");
   assert.ok(await waitFor(async () => (await f.messages()).find((m) => m.kind === "text" && m.text === "Done.")), "the next message never ran");
 });

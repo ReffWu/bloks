@@ -2313,6 +2313,9 @@ function clientBot(bot: BotRecord | null) {
         id: task.id,
         title: task.title,
         state,
+        // The turn has ended but its changes card is still being made, so
+        // words said now wait and go right after the card (GitHub 207).
+        ...(cardsPending.has(task.id) ? { settling: true } : {}),
         ...(task.busy && codexDispatches.has(task.id) ? { codexDispatch: codexDispatches.get(task.id) } : {}),
         unread: Boolean(task.unread),
         // when this lane last had anything in it, for the sidebar's times
