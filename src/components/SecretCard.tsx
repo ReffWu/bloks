@@ -4,12 +4,16 @@
 // Mac and reaches the agent's tools as an environment variable on its
 // next turn. It never lands in the transcript, never echoes back over
 // the API, and the input clears itself the moment the save succeeds.
+//
+// The same card asks for the token of a Telegram bot the agent made for
+// itself. It names the agent and the bot, and the token goes to that
+// agent's Telegram settings instead, where pairing then waits.
 import { useState } from "react";
 import { Check } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
 import { ShieldCheck } from "@/components/icons";
 import { X } from "@/components/icons";
-import { type Message } from "@/state/store";
+import { type Message, useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
 
@@ -21,6 +25,7 @@ async function api(path: string, init?: RequestInit): Promise<any> {
 }
 
 export function SecretCard({ botId, message }: { botId: string; message: Message }) {
+  const { state, dispatch } = useStore();
   const secret = message.secret;
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,6 +33,8 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
 
   if (!secret) return null;
   const { label, status } = secret;
+  const telegram = secret.telegram;
+  const agentName = state.bots.find((bot) => bot.id === botId)?.name ?? "this agent";
 
   const save = () => {
     if (!value.trim() || busy) return;
@@ -52,15 +59,18 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="truncate text-ui font-semibold text-foreground">{label}</div>
-            {secret.hint && (
+            <div className="truncate text-ui font-semibold text-foreground">
+              {telegram ? `Connect @${telegram.username ?? telegram.bot} to ${agentName}` : label}
+            </div>
+            {/* a bot's paste instructions are done with once it is connected */}
+            {secret.hint && (!telegram || status === "needs-value") && (
               <div className="mt-0.5 text-small text-muted-foreground">{secret.hint}</div>
             )}
           </div>
           {status === "saved" ? (
             <span className="flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-small font-semibold text-success">
               <Check size={13} strokeWidth={3} />
-              Saved
+              {telegram ? "Connected" : "Saved"}
             </span>
           ) : (
             status === "needs-value" && (
@@ -87,7 +97,7 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && save()}
-                placeholder={`Paste your ${label}`}
+                placeholder={telegram ? "Paste the token" : `Paste your ${label}`}
                 autoComplete="off"
                 className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2.5 text-body text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring/60"
               />
@@ -96,7 +106,7 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
                 disabled={busy || !value.trim()}
                 className="shrink-0 rounded-lg bg-primary px-3 text-body font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {busy ? <Loader2 size={13} className="animate-spin" /> : "Save securely"}
+                {busy ? <Loader2 size={13} className="animate-spin" /> : telegram ? "Connect" : "Save securely"}
               </button>
             </div>
             <div className="mt-1.5 flex items-center gap-1 text-caption text-muted-foreground/80">
@@ -105,6 +115,20 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
             </div>
             {error && <div className="mt-1 text-small text-destructive">{error}</div>}
           </>
+        )}
+        {status === "saved" && telegram && (
+          <div className="mt-1.5 text-small text-muted-foreground">
+            Pair with @{telegram.username ?? telegram.bot} from {agentName}'s Telegram settings.{" "}
+            <button
+              onClick={() => {
+                dispatch({ type: "select", id: botId });
+                dispatch({ type: "toggleSettings", open: true });
+              }}
+              className="text-foreground underline-offset-2 transition-colors hover:underline"
+            >
+              Open settings
+            </button>
+          </div>
         )}
         {status === "dismissed" && (
           <div className="mt-1 text-small text-muted-foreground">Dismissed</div>

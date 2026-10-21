@@ -1415,6 +1415,18 @@ is checked with `getMe` and its bot id compared with every other
 agent's. Each bot that is switched on has its own long-polling loop
 (`TelegramRuntime`), so nothing listens on a port.
 
+An agent that made a bot for itself with BotFather asks for it to be
+connected: `request_secret` with `telegram_bot`, or `bloks telegram
+connect @name` (GitHub 329). The secure card names the agent and the bot,
+and the owner's paste is the approval (`connectTelegramBot`): the same
+`getMe` and one-bot-per-agent checks as the settings field, and the token
+must belong to the bot the card named. It goes to that agent's Telegram
+settings, never into its environment or the conversation, and the agent
+never sees it. Only the agent's own conversation with the owner can plant
+one, only while it has no bot, and its credential can neither save the
+card nor ask for another agent's bot. Pairing stays the owner's: the word
+waits in the agent's settings, as after pasting the token there.
+
 Everything hangs on the pairing. The owner is the Telegram account that
 sends the single-use pairing word to the bot in a private chat, kept by
 its user id (`ownerUserId`), since a chat id or a display name says

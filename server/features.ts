@@ -134,4 +134,8 @@ export const FEATURES: readonly string[] = [
   // `workspace.owner` frame to members when it changes, and code
   // "name_required" (409) on sharing a room or inviting anybody without one
   "owner-name",
+  // an agent's own Telegram bot asked for on a secret card: `telegram` on
+  // the card (the bot it names, and the one its token turned out to be
+  // for), and a save that goes to that agent's Telegram settings
+  "telegram-bot-card",
 ];

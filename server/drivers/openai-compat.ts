@@ -356,6 +356,7 @@ function toolSchemas(hasComputer: boolean, hasSandbox: boolean) {
           properties: {
             name: { type: "string", description: "What the secret is, e.g. Transistor API key" },
             hint: { type: "string", description: "Where to find it, one line" },
+            telegram_bot: { type: "string", description: "Only to connect a Telegram bot you made for yourself with BotFather: its @username. The user pastes its token into the card, it is saved to your own Telegram settings rather than your environment, and you never see it." },
           },
           required: ["name"],
         },
@@ -963,7 +964,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
             requestId,
             requestType: "question",
             tool: "request_secret",
-            input: { name: args.name, hint: args.hint },
+            input: { name: args.name, hint: args.hint, telegram_bot: args.telegram_bot },
             summary: "Request a secret",
           });
         });

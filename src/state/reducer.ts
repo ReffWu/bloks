@@ -171,6 +171,9 @@ export interface Message {
     status: "needs-value" | "saved" | "dismissed";
     resumeKey?: string;
     resumed?: boolean;
+    /** A Telegram bot token for this agent's own bot, saved to its
+     * Telegram settings rather than kept as a key. */
+    telegram?: { bot: string; username?: string };
   };
   /** connector messages: an app the agent asked the user to connect */
   connector?: {

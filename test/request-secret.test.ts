@@ -70,6 +70,14 @@ test("on full access the bridge serves the asking tools and never approve", asyn
   assert.equal(asks.length, 1);
   assert.equal(asks[0].kind, "question");
   assert.equal(asks[0].tool, "request_secret");
+
+  // An agent's own Telegram bot is asked for the same way, by its name
+  // (GitHub 329); the server decides where its token goes.
+  const schema = listed.result.tools.find((tool: any) => tool.name === "request_secret").inputSchema;
+  assert.equal(schema.properties.telegram_bot.type, "string");
+  await call(4, "tools/call", { name: "request_secret", arguments: { name: "Telegram bot token", telegram_bot: "@PlanningBot" } });
+  assert.equal(asks.length, 2);
+  assert.equal(asks[1].input.telegram_bot, "@PlanningBot");
 });
 
 test("a full-access Claude agent is told about request_secret, and `bloks secret` plants the same card", async (t) => {

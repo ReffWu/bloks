@@ -29,7 +29,7 @@ import { settingsCatalog } from "./settings-catalog.ts";
 import { inspectionRedactor } from "./settings-redaction.ts";
 import { telegramReply, type TelegramText } from "./telegram-reply.ts";
 import { TurnProgress } from "./telegram-progress.ts";
-import { inboxState, legacyBinding, migrateTelegram, ownerPairing, pairedChats, replaceTelegramToken, telegramStatus, type AgentTelegram, type TelegramConfig } from "./telegram-bots.ts";
+import { inboxState, legacyBinding, migrateTelegram, ownerPairing, pairedChats, replaceTelegramToken, telegramBotName, telegramStatus, type AgentTelegram, type TelegramConfig } from "./telegram-bots.ts";
 import { isPrivateTelegramHuman, knockTelegram, migrateTelegramPeople, telegramNamesakes, telegramPersonHandle, telegramSender, telegramSenderCurrent, TELEGRAM_PEOPLE_UPGRADE, type TelegramPerson, type TelegramSender } from "./telegram-people.ts";
 import { CODEX_PERSON_HOLD, CODEX_PERSON_NEXT, personReplyText, personTurnHold } from "./person-turn.ts";
 import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
@@ -3920,7 +3920,7 @@ bus.subscribe((event: RuntimeEvent) => {
                 bot,
                 roomId,
                 event.requestId,
-                (event.input as { name?: unknown; hint?: unknown } | undefined) ?? {},
+                (event.input as { name?: unknown; hint?: unknown; telegram_bot?: unknown } | undefined) ?? {},
               );
         const instance = asker;
         void instance?.adapter
@@ -13189,8 +13189,9 @@ function plantSecretCard(
   bot: BotRecord,
   threadId: string,
   requestId: string,
-  input: { name?: unknown; hint?: unknown },
+  input: { name?: unknown; hint?: unknown; telegram_bot?: unknown },
 ): string {
+  if (input.telegram_bot !== undefined && input.telegram_bot !== null && input.telegram_bot !== "") return plantTelegramBotCard(bot, threadId, requestId, input.telegram_bot);
   const label = clamp(input.name, 60);
   if (!label) return "The secret needs a name, e.g. \"Transistor API key\". Try again with one.";
   const envName = secretEnvName(label);
@@ -13215,6 +13216,73 @@ function plantSecretCard(
   return laneTelegramPerson.has(threadId)
     ? `A secure field for "${label}" is now in the owner's chat. End this turn; the owner's answer resumes it with the same person's permissions, without standing access to the owner's keys.`
     : `A secure field for "${label}" is now in the chat. Once the user saves it, the value is available to your shell tools as the environment variable ${envName} on your NEXT turn (not this one). End your turn now; the task resumes automatically when it is saved.`;
+}
+
+/**
+ * The same secure field, for the token of a Telegram bot the agent made
+ * for itself (GitHub 329). The card names the agent and the bot; the
+ * owner's paste is the approval, and the token goes to this agent's
+ * Telegram settings (connectTelegramBot), never into its environment or
+ * the conversation. Only in the agent's own conversation with the owner,
+ * and only while it has no bot: changing one stays in Settings.
+ */
+function plantTelegramBotCard(bot: BotRecord, threadId: string, requestId: string, named: unknown): string {
+  if (laneTelegramPerson.has(threadId)) return "Not for someone on Telegram: only the owner connects a bot to you, in a conversation of their own.";
+  if (bloks.get(threadId)) return "Not in a room: the owner connects a bot to you in your own conversation with them.";
+  const name = telegramBotName(named);
+  if (!name) return `${JSON.stringify(String(named).slice(0, 60))} is not a Telegram bot's username. BotFather's bot names end in "bot", like @PlanningBot. Ask again with the one it gave yours.`;
+  const current = telegramBinding(bot.id);
+  if (current?.token) return `You already have a Telegram bot${current.username ? `, @${current.username}` : ""}. Changing it is the owner's to do, in your Telegram settings.`;
+  const message = store.appendMessage(threadId, {
+    role: "bot",
+    kind: "secret",
+    secret: {
+      // never an environment variable
+      envName: "",
+      label: `Telegram token for @${name}`,
+      hint: `Paste the token BotFather gave you for @${name}. It goes to ${bot.name}'s Telegram settings, and ${bot.name} never sees it.`,
+      status: "needs-value",
+      resumeKey: requestId,
+      telegram: { bot: name },
+    },
+  });
+  broadcast({ kind: "message", threadId, message });
+  broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
+  return `A secure field for @${name}'s token is now in the chat. Once the owner pastes it, @${name} is your Telegram bot: the token goes to your Telegram settings and is never shown to you, and pairing stays the owner's, from those settings. End your turn now; the task resumes when it is connected.`;
+}
+
+/** Puts a Telegram bot the owner pasted into a card on that card's agent,
+ * as the token field in its Telegram settings would: checked with getMe,
+ * which must name the bot the card named, never another agent's, and
+ * only while the agent still has none. With nobody paired yet, the
+ * pairing word is made ready in its settings, as that field does. */
+async function connectTelegramBot(botId: string, pasted: string, named: string): Promise<{ username: string } | { status: number; error: string }> {
+  const name = store.bot(botId)?.name ?? "This agent";
+  const taken = () => telegramBinding(botId)?.token ? { status: 409, error: `${name} already has a Telegram bot. Change it in its Telegram settings.` } : null;
+  const token = telegram.cleanToken(pasted);
+  if (!token) return { status: 400, error: "paste the bot token first" };
+  const before = taken();
+  if (before) return before;
+  let me: { id: number; username: string };
+  try { me = await telegram.whoAmI(token); }
+  catch (error) { return { status: 400, error: (error as Error).message }; }
+  if (me.username.toLowerCase() !== named.toLowerCase()) {
+    return { status: 400, error: `That token is for @${me.username}, not @${named}. Paste the token BotFather gave you for @${named}.` };
+  }
+  try { await identifyTelegramBindings(token, me); }
+  catch (error) { return { status: 502, error: (error as Error).message }; }
+  if (!store.bot(botId)) return { status: 404, error: "no such agent" };
+  if (duplicateTelegramBot(botId, me.id)) return { status: 409, error: "This Telegram bot already belongs to another agent. Each agent needs its own bot." };
+  // read again after getMe: the owner may have given it one meanwhile
+  const after = taken();
+  if (after) return after;
+  let next = replaceTelegramToken(telegramBinding(botId), token, me);
+  if (next.ownerUserId === undefined) next = ownerPairing(next);
+  saveTelegramBinding(botId, next);
+  await revokeTelegramPersonTurns(botId, (sender) => !telegramSenderCurrent(telegramBinding(botId), sender), "This agent's Telegram connection changed.");
+  startTelegramBot(botId);
+  broadcast({ kind: "config", ...(await configStatus()) });
+  return { username: me.username };
 }
 
 /** When the last card of a request connects, the task picks itself up. */
@@ -18692,20 +18760,34 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!value || value.length > 4_000) {
         return json(res, 400, { error: "paste the value first" });
       }
-      // a card planted before names were checked is held to the same rule
-      if (reservedEnvName(card.secret.envName)) {
-        return json(res, 400, { error: `${card.secret.envName} is a name the system reads for itself, so it cannot hold a secret` });
+      let note: string;
+      let already = card.secret.resumed;
+      if (card.secret.telegram) {
+        // A bot token is not a key for the agent's tools: it goes to the
+        // agent's Telegram settings, the same as the field there.
+        if (card.secret.status !== "needs-value") return json(res, 409, { error: "This card has already been answered." });
+        const connected = await connectTelegramBot(bot.id, value, card.secret.telegram.bot);
+        if ("error" in connected) return json(res, connected.status, { error: connected.error });
+        // as the card is now, after the wait for Telegram
+        card = store.messagesFor(threadId).find((msg) => msg.id === card!.id) ?? card;
+        already = card.secret!.resumed;
+        patch({ status: "saved", resumed: true, telegram: { ...card.secret!.telegram!, username: connected.username } });
+        note = `The owner connected @${connected.username} to you on Telegram. Its token is in your Telegram settings and is never shown to you, and pairing is the owner's, from those settings. Continue the task you were working on.`;
+      } else {
+        // a card planted before names were checked is held to the same rule
+        if (reservedEnvName(card.secret.envName)) {
+          return json(res, 400, { error: `${card.secret.envName} is a name the system reads for itself, so it cannot hold a secret` });
+        }
+        // straight to the config file; the transcript never sees it
+        Object.assign(cfg, saveConfig({ secrets: { [card.secret.envName]: value } }));
+        // its name, for whatever lists them (Settings, Apps and keys)
+        broadcast({ kind: "secrets" });
+        // No engine reload: the next turn reads secrets fresh (see startTurn).
+        // Reloading tore down every engine, killing any turn in flight,
+        // including the one the previous card had just resumed.
+        patch({ status: "saved", resumed: true });
+        note = card.telegramPerson ? `The owner saved "${card.secret.label}". Continue this person's task with the same owner-only approvals and reply scope. No standing owner keys are supplied to this turn.` : `The user saved "${card.secret.label}". It is available to your shell tools as the environment variable ${card.secret.envName}. Continue the task you were working on.`;
       }
-      // straight to the config file; the transcript never sees it
-      Object.assign(cfg, saveConfig({ secrets: { [card.secret.envName]: value } }));
-      // its name, for whatever lists them (Settings, Apps and keys)
-      broadcast({ kind: "secrets" });
-      // No engine reload: the next turn reads secrets fresh (see startTurn).
-      // Reloading tore down every engine, killing any turn in flight,
-      // including the one the previous card had just resumed.
-      patch({ status: "saved", resumed: true });
-      const already = card.secret.resumed;
-      const note = card.telegramPerson ? `The owner saved "${card.secret.label}". Continue this person's task with the same owner-only approvals and reply scope. No standing owner keys are supplied to this turn.` : `The user saved "${card.secret.label}". It is available to your shell tools as the environment variable ${card.secret.envName}. Continue the task you were working on.`;
       const lane = bot.tasks.find((t) => t.id === threadId);
       if (!already && lane?.busy) {
         // Two cards saved back to back: the first one's resume is still
@@ -21176,6 +21258,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // `bloks secret`: the request_secret tool for an engine that does not
     // have it. The same card in the same place, and the same answer the
     // tool gives, so the agent ends its turn and is resumed on save.
+    // `bloks telegram connect` asks the same way for its own bot's token.
     m = path.match(/^\/api\/bots\/([\w-]+)\/secrets$/);
     if (m && method === "POST") {
       if (!asAgent) return json(res, 403, { error: "this route is for an agent asking from inside its turn" });
@@ -21183,7 +21266,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!bot) return json(res, 404, { error: "no such agent" });
       const body = await readBody(req);
       const roomId = activeRoom.get(asAgent.taskId) ?? asAgent.taskId;
-      return json(res, 200, { result: plantSecretCard(bot, roomId, randomUUID(), { name: body.name, hint: body.hint }) });
+      return json(res, 200, { result: plantSecretCard(bot, roomId, randomUUID(), { name: body.name, hint: body.hint, telegram_bot: body.telegramBot }) });
     }
 
     // An agent's own past, for the command line (server/recall.ts). The

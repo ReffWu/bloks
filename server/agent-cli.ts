@@ -197,7 +197,7 @@ export const RULES: Rule[] = [
   // The same secure field the request_secret tool plants, for an engine
   // that has no such tool. Asking is not a permission: the person still
   // types the value, and the agent never sees it in the chat.
-  { method: "POST", path: "/api/bots/:me/secrets", why: "ask the person for an API key or other secret, through a secure field in the chat" },
+  { method: "POST", path: "/api/bots/:me/secrets", why: "ask the person for an API key or other secret, or for its own Telegram bot's token, through a secure field in the chat" },
   { method: "PUT", path: "/api/bots/:me/memory", why: "write its own memory" },
   { method: "GET", path: "/api/bots/:me/memory/topics/:id", why: "read one of its own memory topic files" },
   { method: "PUT", path: "/api/bots/:me/memory/topics/:id", why: "write one of its own memory topic files" },

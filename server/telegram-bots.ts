@@ -63,6 +63,15 @@ export function legacyBinding(legacy: TelegramState & { upgradeNotices?: Telegra
   };
 }
 
+/** A Telegram bot's username as an agent names it, without the @, or
+ * null. BotFather's rule: 5 to 32 letters, digits and underscores,
+ * starting with a letter and ending in "bot". */
+export function telegramBotName(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const name = input.trim().replace(/^@/, "");
+  return /^[A-Za-z][A-Za-z0-9_]{1,28}[Bb][Oo][Tt]$/.test(name) ? name : null;
+}
+
 export function pairedChats(state: AgentTelegram): number[] {
   return [...new Set([...(state.chatIds ?? []), ...(state.ownerChatId === undefined ? [] : [state.ownerChatId])])];
 }

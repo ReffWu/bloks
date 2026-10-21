@@ -361,6 +361,18 @@ const COMMANDS = {
       });
     },
   },
+  telegram: {
+    use: "telegram connect @<your bot's username>",
+    about:
+      "ask the person to connect a Telegram bot you made for yourself with BotFather: a card in the chat names you and the bot, " +
+      "they paste its token there, and it goes to your own Telegram settings without ever being shown to you. Pairing stays theirs. End your turn after asking",
+    run: async (args) => {
+      const [action, name, ...rest] = args;
+      if (action !== "connect" || !name || rest.length) throw new Error("telegram takes connect and your bot's username, like telegram connect @PlanningBot");
+      const me = await request("GET", "/api/agent/whoami");
+      return request("POST", `/api/bots/${me.botId}/secrets`, { telegramBot: name });
+    },
+  },
   hire: {
     use: 'hire --name <name> --title <role> [--about <description>] [--skills "a,b,c"] [--section <name>] [--pin] [--at <position>]',
     about:

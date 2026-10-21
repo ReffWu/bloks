@@ -127,6 +127,7 @@ const ALL_TOOLS = [
       properties: {
         name: { type: "string", description: "What the secret is, e.g. \"Transistor API key\"" },
         hint: { type: "string", description: "One line on where to find it, shown under the field" },
+        telegram_bot: { type: "string", description: "Only to connect a Telegram bot you made for yourself with BotFather: its @username. The user pastes its token into the card, it is saved to your own Telegram settings rather than your environment, and you never see it." },
       },
       required: ["name"],
     },
@@ -299,7 +300,7 @@ async function dispatch(message: any) {
               t: "ask",
               kind: "question",
               tool: "request_secret",
-              input: { name: args.name, hint: args.hint },
+              input: { name: args.name, hint: args.hint, telegram_bot: args.telegram_bot },
             }
           : isConnection
           ? {

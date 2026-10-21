@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
+import { fileURLToPath } from "node:url";
 import { startHarness } from "./server.ts";
 
 export const CHAT = 10101;
@@ -112,6 +113,7 @@ function fakeCodex(root: string): string {
 import { appendFileSync, existsSync, readFileSync, readdirSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { spawnSync } from "node:child_process";
 if (process.argv[2] === "--version") { console.log("codex-cli 0.160.0"); process.exit(0); }
 if (process.argv[2] === "login") { console.log("Logged in using ChatGPT"); process.exit(0); }
 const root = ${JSON.stringify(root)};
@@ -228,6 +230,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
     if (text.includes("REPLY_THEN_NOTICE")) out({ method: "item/completed", params: { threadId: thread, turnId: turn, item: { type: "agentMessage", id: "reply", text: "A real reply." } } });
     out({ method: "error", params: { threadId: thread, error: { message: "synthetic engine refusal" } } });
     return finish(null, "synthetic engine refusal");
+  }
+  // the agent's own command line, run as the agent from inside its turn
+  const connect = text.match(/CONNECT_BOT (\\S+)/);
+  if (connect) {
+    const run = spawnSync(process.execPath, [${JSON.stringify(fileURLToPath(new URL("../../bin/bloks.mjs", import.meta.url)))}, "telegram", "connect", connect[1]], { env: process.env, encoding: "utf8" });
+    writeFileSync(root + "/connect-answer.json", JSON.stringify({ status: run.status, out: run.stdout, err: run.stderr }));
+    return finish("ASKED");
+  }
+  // requests the agent makes with its own credential, and what each got
+  const tries = text.match(/AGENT_TRIES (\\[.*\\])/s);
+  if (tries) {
+    const statuses = [];
+    for (const [method, path, body] of JSON.parse(tries[1])) {
+      const response = await fetch(process.env.BLOKS_URL + path, { method, headers: { Authorization: "Bearer " + process.env.BLOKS_TOKEN, "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+      statuses.push(response.status);
+    }
+    return finish("TRIED " + JSON.stringify(statuses));
   }
   if (text.includes("SETTINGS_GUARD")) {
     const botId = JSON.parse(readFileSync(root + "/.bloks/bots.json", "utf8")).find((bot) => bot.name === "Planning").id;
@@ -353,7 +372,8 @@ process.stdin.once("data", async (input) => {
   return cli;
 }
 
-export async function fixture(t: TestContext, engine: "codex" | "claude" = "codex", clock = false) {
+/** `paired` false leaves the agent with no Telegram bot at all. */
+export async function fixture(t: TestContext, engine: "codex" | "claude" = "codex", clock = false, paired = true) {
   const root = mkdtempSync(join(tmpdir(), "bloks-telegram-native-"));
   mkdirSync(join(root, ".bloks"), { recursive: true });
   writeFileSync(join(root, ".bloks/config.json"), JSON.stringify({ instances: {
@@ -373,10 +393,12 @@ export async function fixture(t: TestContext, engine: "codex" | "claude" = "code
   const { bot } = await post("/api/bots", { name: "Planning" });
   const model = engine === "codex" ? "gpt-6.1-sol" : "claude-sonnet-5";
   await h.json(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: engine, model } }) });
-  const paired = await post("/api/telegram", { token: "12345:TEST_ONLY_TOKEN", enabled: true, botId: bot.id, pair: true });
-  assert.ok(paired.pairing, JSON.stringify(paired));
-  tg.say(paired.pairing);
-  await waitFor(() => tg.calls("sendMessage").some((c) => c.body.text.startsWith("Paired.")), "the stub chat never paired");
+  if (paired) {
+    const pairing = await post("/api/telegram", { token: "12345:TEST_ONLY_TOKEN", enabled: true, botId: bot.id, pair: true });
+    assert.ok(pairing.pairing, JSON.stringify(pairing));
+    tg.say(pairing.pairing);
+    await waitFor(() => tg.calls("sendMessage").some((c) => c.body.text.startsWith("Paired.")), "the stub chat never paired");
+  }
   const replies = (): any[] => existsSync(join(root, "calls.jsonl"))
     ? readFileSync(join(root, "calls.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((c) => c.reply)
     : [];
@@ -393,3 +415,13 @@ export async function cardIn(f: Awaited<ReturnType<typeof fixture>>, title: stri
 
 export const heardContext = (f: Awaited<ReturnType<typeof fixture>>) => existsSync(join(f.root, "calls.jsonl")) ? readFileSync(join(f.root, "calls.jsonl"), "utf8").split("\n").slice(0, -1).filter(Boolean).map(x => JSON.parse(x)).filter(x => x.method) : [];
 export const inputWords = (call: any) => call.params.input.filter((x: any) => x.type === "text").map((x: any) => x.text).join("");
+
+/** Requests the agent makes with its own turn credential, from inside a
+ * turn, and the status each one got. */
+export async function agentTries(f: Awaited<ReturnType<typeof fixture>>, requests: Array<[string, string, unknown?]>): Promise<number[]> {
+  const tried = async () => (await f.messages()).filter((m) => /^TRIED /.test(m.text ?? ""));
+  const before = (await tried()).length;
+  await f.post(`/api/bots/${f.bot.id}/messages`, { text: `AGENT_TRIES ${JSON.stringify(requests)}` });
+  const said = await waitFor(async () => (await tried())[before], "the agent never tried");
+  return JSON.parse(said.text.slice(6));
+}

@@ -333,6 +333,11 @@ export interface Message {
     status: "needs-value" | "saved" | "dismissed";
     resumeKey?: string;
     resumed?: boolean;
+    /** The token of a Telegram bot the agent made for itself (GitHub 329):
+     * saved to that agent's Telegram settings, never as an environment
+     * variable, so envName is empty. `bot` is the username the agent
+     * named, `username` the one the token turned out to be for. */
+    telegram?: { bot: string; username?: string };
   };
   /** connector messages: an app the agent asked the user to connect */
   connector?: {

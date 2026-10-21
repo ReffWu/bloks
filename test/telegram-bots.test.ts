@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { decide, parseUpdates, send, type Incoming } from "../server/telegram.ts";
 import { CardButtons } from "../server/telegram-cards.ts";
-import { inboxState, migrateTelegram, ownerPairing, pairedChats, replaceTelegramToken, telegramStatus } from "../server/telegram-bots.ts";
+import { inboxState, migrateTelegram, ownerPairing, pairedChats, replaceTelegramToken, telegramBotName, telegramStatus } from "../server/telegram-bots.ts";
 
 const agents = [{ id: "sam" }, { id: "lee" }];
 const legacy = { token: "12345:TEST_ONLY_TOKEN", botId: "sam", chatIds: [101, 202], offset: 17, enabled: true, pairing: "old-word" };
@@ -133,4 +133,14 @@ describe("an agent's Telegram bot", () => {
     await assert.rejects(send("TEST", 101, "x".repeat(9_000), false, undefined, () => active), /connection changed/);
     assert.equal(calls, 1);
   });
+});
+
+test("an agent names its own bot as BotFather allows one to be named (GitHub 329)", () => {
+  assert.equal(telegramBotName("@PlanningBot"), "PlanningBot");
+  assert.equal(telegramBotName(" planning_helper_bot "), "planning_helper_bot");
+  assert.equal(telegramBotName("abBot"), "abBot");
+  for (const wrong of ["", "@", "Planning", "1PlanningBot", "Planning Bot", "@@PlanningBot", "Plan-ningBot", "aBot", `a${"b".repeat(29)}bot`, 42, null, undefined]) {
+    assert.equal(telegramBotName(wrong), null, String(wrong));
+  }
+  assert.equal(telegramBotName(`a${"b".repeat(28)}bot`)?.length, 32);
 });
