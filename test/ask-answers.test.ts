@@ -11,7 +11,7 @@
 // take, and a card the engine closed first stays on screen and says why.
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -33,7 +33,7 @@ function claudeHome(): string {
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 const args = process.argv.slice(2);
-if (args[0] === "--version") { console.log("9.9.9 (Claude Code)"); process.exit(0); }
+if (args[0] === "--version") { console.log("2.1.299 (Claude Code)"); process.exit(0); }
 if (args[0] === "auth") { console.log(JSON.stringify({ loggedIn: true })); process.exit(0); }
 const out = (frame) => console.log(JSON.stringify(frame));
 let buf = "";
@@ -309,7 +309,7 @@ test("a question the turn ended under stays on screen and says why, and the next
   assert.equal(after.filter(f.closedNote).length, 1);
 
   // nothing is left waiting, so plain words are a new turn, not a queue
-  const next = await f.say("carry on without it");
+  const next = await f.say("carry on without it"); console.error("NEXT", JSON.stringify(next), f.h.logs().split("\n").filter(l => l.includes("LANEWAITS")).slice(-3).join("\n"));
   assert.ok(!next.queued && !next.steered, "the message waited behind a turn that had ended");
   assert.ok(await waitFor(async () => (await f.messages()).find((m) => m.kind === "text" && m.text === "Done.")), "the next message never ran");
 });
@@ -336,20 +336,30 @@ test("a closed card put aside in another of the agent's conversations stays put 
 });
 
 test("an answer goes to the engine that asked, whatever the agent has been moved to since", async (t) => {
-  // Something a Claude Code turn left running asks after the turn's
-  // result. The lane no longer reads as running on anything by then, so
-  // the answer was sent to the agent's engine of the moment, which had
-  // never heard of the question.
+  // A live request belongs to its original turn even if preferences change.
+  // Finished turns no longer retain a broker or background authority.
   const f = await fixture(t);
-  await f.say("ASK-AFTERWARDS");
-  assert.ok(await f.idle(), "the turn never ended");
+  await f.say("OWN-QUESTION");
   const asked = await f.card();
   await f.h.fetch(`/api/bots/${f.bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: "spare", model: "claude-sonnet-5" } }) });
 
   const sent = await f.respond(asked.card.requestId, { behavior: "answer", message: "Keep" });
   assert.equal(sent.outcome, "delivered");
-  const told = await waitFor(() => (existsSync(join(f.home, "afterwards.txt")) ? readFileSync(join(f.home, "afterwards.txt"), "utf8") : null));
-  assert.equal(told, "Keep");
+  assert.equal(await f.heard(), "Keep");
+  assert.ok(await f.idle(), "the original turn never ended");
+});
+
+test("a finished Claude process cannot leave an answerable background question", async t => {
+  const f = await fixture(t);
+  await f.say("ASK-AFTERWARDS");
+  assert.ok(await f.idle(), "the turn never ended");
+  assert.equal((await f.messages()).some(m => m.card?.requestId && !m.card.answered), false);
+  // It may wait a moment behind the ended turn's change card, but it is
+  // a turn of its own, never words for the process that was stopped.
+  const next = await f.say("carry on without it");
+  assert.notEqual(next.steered, true, "the next message went into a turn that had ended");
+  assert.ok(await waitFor(async () => (await f.messages()).some((m) => m.role === "bot" && m.text === "Done.")), "the next message never ran");
+  assert.ok(await f.idle());
 });
 
 test("a Codex question takes a choice, and takes being put aside", async (t) => {

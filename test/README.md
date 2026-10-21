@@ -78,3 +78,12 @@ of stdin. Before it, the driver sends a bare `initialize` control request
 for command metadata. A fixture can answer that request or ignore it.
 The driver keeps stdin open for follow-ups until the first `result`, so
 a stand-in that waits for the end waits forever.
+
+What the stand-in prints for `--version` picks the protocol it is
+driven on. Below 2.1.300 (most fixtures say `2.1.299`) the first real
+`result` ends the turn. From 2.1.300 each `user` frame carries a `uuid`,
+stdin stays open, and the turn ends only once every input has its own
+`result` and a `command_lifecycle` frame saying it `completed`; a
+stand-in that never says so leaves its turn waiting the fifteen minutes
+`claude-inputs.ts` allows. Either way the turn's process group is
+stopped before the turn is reported over.

@@ -105,7 +105,7 @@ function fakeClaude(home: string, log: string): string {
 import { appendFileSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
 const argv = process.argv.slice(2);
-if (argv[0] === "--version") { console.log("9.9.9 (Claude Code)"); process.exit(0); }
+if (argv[0] === "--version") { console.log("2.1.299 (Claude Code)"); process.exit(0); }
 if (argv[0] === "auth") { console.log(JSON.stringify({ loggedIn: true })); process.exit(0); }
 const note = (line) => appendFileSync(${JSON.stringify(log)}, JSON.stringify(line) + "\\n");
 const cfg = JSON.parse(readFileSync(argv[argv.indexOf("--mcp-config") + 1], "utf8"));

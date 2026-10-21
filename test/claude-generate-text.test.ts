@@ -22,7 +22,7 @@ test("a one-shot prompt goes over stdin, and no API key goes with it", async (t)
     `#!${process.execPath}
 import { writeFileSync } from "node:fs";
 const args = process.argv.slice(2);
-if (args[0] === "--version") { console.log("9.9.9 (Claude Code)"); process.exit(0); }
+if (args[0] === "--version") { console.log("2.1.299 (Claude Code)"); process.exit(0); }
 let input = "";
 process.stdin.on("data", (c) => (input += c));
 process.stdin.on("end", () => {
@@ -67,7 +67,7 @@ async function oneShot(t: TestContext, mode = "text", path: "absolute" | "relati
   writeFileSync(cli, `#!${process.execPath}
 import { existsSync, writeFileSync, renameSync } from "node:fs";
 const args=process.argv.slice(2);
-if(args[0]==="--version"){console.log("9.9.9 (Claude Code)");process.exit(0);}
+if(args[0]==="--version"){console.log("2.1.299 (Claude Code)");process.exit(0);}
 const mode=${JSON.stringify(mode)};
 const cwd=process.cwd();
 const stopping=()=>{const path=${JSON.stringify(join(root, "stopping.json"))};writeFileSync(path+".part",JSON.stringify({cwdExists:existsSync(cwd)}));renameSync(path+".part",path);};
@@ -227,7 +227,7 @@ test("a quick one-shot asks Claude Code to skip thinking, and an ordinary one do
     `#!${process.execPath}
 import { appendFileSync } from "node:fs";
 const args = process.argv.slice(2);
-if (args[0] === "--version") { console.log("9.9.9 (Claude Code)"); process.exit(0); }
+if (args[0] === "--version") { console.log("2.1.299 (Claude Code)"); process.exit(0); }
 process.stdin.on("data", () => {});
 process.stdin.on("end", () => {
   appendFileSync(${JSON.stringify(seen)}, JSON.stringify({ thinking: process.env.MAX_THINKING_TOKENS ?? null }) + "\\n");

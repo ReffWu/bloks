@@ -34,7 +34,7 @@ interface Call {
   sessionId: string;
 }
 
-async function setup(t: TestContext, version = "2.1.300 (Claude Code)") {
+async function setup(t: TestContext, version = "2.1.299 (Claude Code)") {
   const home = mkdtempSync(join(tmpdir(), "bloks-past-"));
   let stop: (() => Promise<void>) | undefined;
   t.after(async () => {
