@@ -163,8 +163,11 @@ export interface AppConfig {
   skills?: { propose?: boolean };
   /** How long a tool call may go without a word from the engine before
    * Bloks stops the turn, in minutes; 0 is never. Unset is the default
-   * in server/drivers/stall.ts. */
-  turns?: { stallMinutes?: number };
+   * in server/drivers/stall.ts. `backgroundWork` is whether a turn waits
+   * for the background work it started or stops it with the reply, for
+   * every agent that has not chosen (server/background-work.ts); unset
+   * waits. */
+  turns?: { stallMinutes?: number; backgroundWork?: "finish" | "stop" };
   /** Whether an agent is reminded, before the person's turn, of what it
    * said elsewhere that matches. Unset is on; each agent can also turn it
    * off for itself (BotRecord.recallBeforeTurn). */

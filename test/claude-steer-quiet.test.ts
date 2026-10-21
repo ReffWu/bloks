@@ -115,15 +115,17 @@ function stoppedFirst(timeline: string[]) {
 const LONG_COMMAND = { type: "assistant", message: { content: [{ type: "tool_use", id: "bash-36s", name: "Bash", input: { command: "./sync-records.sh" } }] } };
 const COMMAND_DONE = { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "bash-36s", content: "synced" }] } };
 
-for (const version of ["2.1.299 (Claude Code)", "2.1.300 (Claude Code)"]) {
-  test(`a steered turn does not end while its command runs, and its process stops before the turn is over (${version})`, async (t) => {
+// The same whichever way the turn ends with background work
+// (server/background-work.ts): this one started none.
+for (const backgroundWork of ["finish", "stop"] as const) for (const version of ["2.1.299 (Claude Code)", "2.1.300 (Claude Code)"]) {
+  test(`a steered turn does not end while its command runs, and its process stops before the turn is over (${version}, ${backgroundWork})`, async (t) => {
     const f = await fixture(t, version);
-    await f.instance.adapter.sendTurn({ threadId: THREAD, text: "Look into the records", stallMs: 0 });
+    await f.instance.adapter.sendTurn({ threadId: THREAD, text: "Look into the records", stallMs: 0, backgroundWork });
     assert.equal(await f.instance.adapter.steerTurn!(THREAD, "[From Ana] the March ones too"), true);
     assert.equal(await f.instance.adapter.steerTurn!(THREAD, "[From Ben] and April"), true);
     const [first, ...steers] = f.inputs().map((frame) => frame.uuid as string | undefined);
     // its own session: what a session has cost so far is kept per process
-    const session = `sess-steered-${version.split(" ")[0]}`;
+    const session = `sess-steered-${version.split(" ")[0]}-${backgroundWork}`;
     const attributed = typeof first === "string";
     const request = (ids: Array<string | undefined>) =>
       attributed && f.send({ type: "system", subtype: "status", status: "requesting", uuid: `request-${ids.join("-")}`, user_message_uuids: ids });
@@ -175,13 +177,13 @@ for (const version of ["2.1.299 (Claude Code)", "2.1.300 (Claude Code)"]) {
   });
 }
 
-test("a steered turn with nothing left running still ends after a quiet spell on a CLI that does not attribute results", async (t) => {
+for (const backgroundWork of ["finish", "stop"] as const) test(`a steered turn with nothing left running still ends after a quiet spell on a CLI that does not attribute results (${backgroundWork})`, async (t) => {
   const f = await fixture(t, "2.1.299 (Claude Code)");
-  await f.instance.adapter.sendTurn({ threadId: THREAD, text: "Start the export", stallMs: 0 });
+  await f.instance.adapter.sendTurn({ threadId: THREAD, text: "Start the export", stallMs: 0, backgroundWork });
   assert.equal(await f.instance.adapter.steerTurn!(THREAD, "and mail it"), true);
-  f.send({ type: "system", subtype: "init", session_id: "sess-quiet", model: "claude-sonnet-5" });
+  f.send({ type: "system", subtype: "init", session_id: `sess-quiet-${backgroundWork}`, model: "claude-sonnet-5" });
   f.send({ type: "assistant", message: { content: [{ type: "text", text: "Export started in the background." }] } });
-  f.send({ type: "result", subtype: "success", is_error: false, num_turns: 1, duration_api_ms: 400, total_cost_usd: 1, session_id: "sess-quiet", result: "Export started in the background." });
+  f.send({ type: "result", subtype: "success", is_error: false, num_turns: 1, duration_api_ms: 400, total_cost_usd: 1, session_id: `sess-quiet-${backgroundWork}`, result: "Export started in the background." });
   await f.flush();
   // a background task keeps the process alive, saying nothing: that is
   // what the quiet spell is for

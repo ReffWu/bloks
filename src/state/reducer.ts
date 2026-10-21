@@ -373,6 +373,9 @@ export interface Bot {
   /** Words sent mid-turn: read them, always go in now, or always wait.
    * Unset follows the workspace's choice. */
   delivery?: "auto" | "interrupt" | "queue" | null;
+  /** Whether its turns wait for the background work they start, or stop
+   * it with the reply. Unset follows the workspace's choice. */
+  backgroundWork?: "finish" | "stop" | null;
   /** The public half of this agent's key, hex. What its signatures in
    * the record are checked against. */
   fingerprint?: string;
@@ -440,8 +443,10 @@ export interface ConfigStatus {
   delivery?: { mode: "auto" | "interrupt" | "queue"; askModel?: boolean };
   /** Count-only cards for overlapping turns with no own files. On by default. */
   changes?: { showShared: boolean };
-  /** How long a silent tool call may hold a turn, in minutes; 0 is never. */
-  turns?: { stallMinutes: number };
+  /** How long a silent tool call may hold a turn, in minutes; 0 is never.
+   * And whether a turn waits for the background work it started, for
+   * agents that have not chosen (server/background-work.ts). */
+  turns?: { stallMinutes: number; backgroundWork?: "finish" | "stop" };
   /** Where a new agent starts, applied before its first turn. Absent on
    * a server that does not know about it, and then Settings says nothing. */
   agentDefaults?: AgentDefaults;

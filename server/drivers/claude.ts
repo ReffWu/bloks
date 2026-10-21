@@ -126,6 +126,12 @@ const ONE_SHOT_MODEL = "claude-haiku-4-5";
  * long as that task runs. */
 const STEER_QUIET_MS = 30_000;
 
+/** How long a turn that waited on background work gives the CLI, once
+ * that work has ended, to start telling the agent about it. The CLI
+ * starts within a fraction of a second; this only covers one that does
+ * not say whether it is busy (session_state_changed). */
+const BACKGROUND_GRACE_MS = 2_000;
+
 export interface ClaudeConfig {
   cli: string;
   permissionMode: "acceptEdits" | "auto" | "bypassPermissions";
@@ -302,6 +308,10 @@ export function turnEnvironment(
   delete env.ANTHROPIC_API_KEY;
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
+  // The CLI's own word on whether it is busy or idle, which is how a turn
+  // that waits on its background work knows the agent has finished
+  // answering what that work found (server/background-work.ts).
+  env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS = "1";
   if (turn.credits) {
     env.ANTHROPIC_BASE_URL = turn.credits.baseUrl;
     env.ANTHROPIC_AUTH_TOKEN = turn.credits.token;
@@ -413,6 +423,25 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       // last said anything at all: what tells a silent call from work
       // (GitHub 146). See stall.ts.
       const openCalls = new Map<string, OpenCall>();
+      // Background work (server/background-work.ts). What the turn started
+      // to run on after its reply, by task id, as the CLI reports it; every
+      // root tool call by id, to name a background task by what it runs;
+      // whether the CLI's set of background tasks has been heard, which is
+      // then the whole truth; whether this turn has had any; and whether
+      // the CLI says it is busy or idle. A person's turn leaves nothing
+      // running after it, whatever the owner chose for their own agents.
+      const letFinish = turn.backgroundWork !== "stop" && !turn.person;
+      const background = new Map<string, OpenCall>();
+      const toolCalls = new Map<string, { name: string; input: unknown }>();
+      const named = new Map<string, { name: string; input: unknown }>();
+      let levelSeen = false;
+      let hadBackground = false;
+      let cliState: string | null = null;
+      // in the order the CLI said them: the last time it said it was idle,
+      // and the last time its background tasks ran out
+      let said = 0;
+      let idleAt = 0;
+      let emptiedAt = 0;
       let asking = 0;
       let lastSign = Date.now();
       /** Set once Stop (or a stalled call) has asked this process to end. */
@@ -702,6 +731,13 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       let resetsAt: number | null = null;
       let watch: ReturnType<typeof setInterval> | null = null;
       let quiet: ReturnType<typeof setInterval> | null = null;
+      /** Set while the reply is done and the turn waits on its background
+       * work: how it ends once that work is. */
+      let waiting: (() => void) | null = null;
+      let waitTimer: ReturnType<typeof setInterval> | null = null;
+      /** A result the CLI gave by itself while the turn waited: the agent
+       * answering what its background work found. The turn ends on it. */
+      let lastWork: any = null;
       const release = () => {
         if (!finished || !owner.confirmed) return;
         if (running.get(threadId)?.turnId === turnId) running.delete(threadId);
@@ -716,6 +752,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         sealed = true;
         if (watch) clearInterval(watch);
         if (quiet) clearInterval(quiet);
+        if (waitTimer) clearInterval(waitTimer);
+        waiting = null;
         if (completionTimer) clearTimeout(completionTimer);
         closingBroker = true;
         try { broker.close(); } finally { closingBroker = false; }
@@ -803,6 +841,91 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
           input: (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0),
           output: usage.output_tokens || 0, ...(ttl ? { cacheTtl: ttl } : {}) });
       };
+      /** Whether background work this turn started is still going: a task
+       * the CLI lists as live; or, once there has been one, the CLI saying
+       * it is busy (telling the agent what a task found), or the last task
+       * having just ended with no word yet that the CLI is idle since, in
+       * the moment before it starts on that. A turn that started nothing
+       * in the background never waits here. */
+      const backgroundBusy = () =>
+        background.size > 0 ||
+        (hadBackground && (cliState === "running" || cliState === "requires_action" ||
+          (!(cliState === "idle" && idleAt > emptiedAt) && Date.now() - lastSign < BACKGROUND_GRACE_MS)));
+      const checkBackground = () => {
+        if (!waiting || sealed) return;
+        if (backgroundBusy() || openCalls.size > 0 || asking > 0) return;
+        const end = waiting;
+        waiting = null;
+        if (waitTimer) clearInterval(waitTimer);
+        waitTimer = null;
+        end();
+      };
+      /** End the turn with `end`: now, or, when it waits for its
+       * background work, once that work is done and the agent has said
+       * what came of it. Meanwhile it is a running turn like any other:
+       * words go into it or wait, and a silent task is a silent call. */
+      const afterBackground = (end: () => void) => {
+        if (!letFinish || !backgroundBusy()) {
+          end();
+          return;
+        }
+        waiting = end;
+        waitTimer ??= setInterval(checkBackground, 250);
+        waitTimer.unref?.();
+      };
+      /** What the CLI says about its background tasks (task_started and
+       * the rest are edges, background_tasks_changed the level). */
+      const noteBackground = (frame: any) => {
+        if (frame.type !== "system") return;
+        const label = (id: string, description: unknown) =>
+          named.get(id) ?? { name: typeof description === "string" && description ? `The background task "${description.slice(0, 80)}"` : "A background task", input: undefined };
+        switch (frame.subtype) {
+          case "session_state_changed":
+            if (typeof frame.state !== "string") break;
+            cliState = frame.state;
+            if (cliState === "idle") idleAt = ++said;
+            break;
+          case "background_tasks_changed": {
+            if (!Array.isArray(frame.tasks)) break;
+            levelSeen = true;
+            const live = new Map<string, OpenCall>();
+            for (const task of frame.tasks) {
+              // housekeeping the CLI runs for itself, and a run some call
+              // of the agent's is already waiting on, are not left behind
+              if (typeof task?.task_id !== "string" || task.ambient === true || task.awaited === true) continue;
+              live.set(task.task_id, background.get(task.task_id) ?? { ...label(task.task_id, task.description), since: Date.now() });
+            }
+            background.clear();
+            for (const [id, task] of live) background.set(id, task);
+            break;
+          }
+          case "task_started": {
+            if (typeof frame.task_id !== "string") break;
+            const call = typeof frame.tool_use_id === "string" ? toolCalls.get(frame.tool_use_id) : undefined;
+            const name = call ? { name: `${call.name} in the background`, input: call.input } : label(frame.task_id, frame.description);
+            named.set(frame.task_id, name);
+            const known = background.get(frame.task_id);
+            if (known) background.set(frame.task_id, { ...known, ...name });
+            else if (!levelSeen && frame.is_backgrounded === true && frame.skip_transcript !== true && frame.awaited !== true) {
+              background.set(frame.task_id, { ...name, since: Date.now() });
+            }
+            break;
+          }
+          case "task_updated":
+            if (levelSeen || typeof frame.task_id !== "string") break;
+            if (frame.patch?.is_backgrounded === true) background.set(frame.task_id, { ...label(frame.task_id, frame.patch?.description), since: Date.now() });
+            if (["completed", "failed", "killed"].includes(frame.patch?.status)) background.delete(frame.task_id);
+            break;
+          case "task_notification":
+            if (!levelSeen && typeof frame.task_id === "string") background.delete(frame.task_id);
+            break;
+          default:
+            return;
+        }
+        if (background.size > 0) hadBackground = true;
+        else if (hadBackground && frame.subtype !== "session_state_changed" && emptiedAt <= idleAt) emptiedAt = ++said;
+        checkBackground();
+      };
       checkCompletion = () => {
         if (!inputs || sealed) return;
         if (completionTimer) clearTimeout(completionTimer);
@@ -832,9 +955,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         }
         // Every accepted input has its own completion, steers included, so
         // there is nothing left to wait out: a quiet spell is only how a
-        // CLI that does not say which input a result answers is read.
+        // CLI that does not say which input a result answers is read. What
+        // is left is background work, when the turn waits for it.
         if (inputs.ready) {
-          settle(inputs.selectedResult);
+          afterBackground(() => settle(lastWork ?? inputs.selectedResult));
           return;
         }
         const wait = inputs.nextWaitMs;
@@ -881,6 +1005,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
           accountChild(frame);
           return;
         }
+        noteBackground(frame);
         if (inputs && frame.type === "command_lifecycle") {
           if (inputs.terminal(frame)) checkCompletion();
           return;
@@ -892,7 +1017,14 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         if (inputs && frame.type === "result") {
           if (inputs.result(frame)) {
             appendNative(threadId, { dir: "in", source: "claude.sdk.message", msg: frame });
+            lastWork = null;
             checkCompletion();
+          } else if (waiting && frame !== lastWork && (typeof frame.uuid !== "string" || frame.uuid !== lastWork?.uuid)) {
+            // the CLI's own turn, telling the agent what its background
+            // work found: no input of ours, but this turn's all the same
+            appendNative(threadId, { dir: "in", source: "claude.sdk.message", msg: frame });
+            lastWork = frame;
+            checkBackground();
           }
           return;
         }
@@ -1002,6 +1134,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
               if (block.type !== "tool_use") continue;
               if (typeof block.id === "string") {
                 openCalls.set(block.id, { name: String(block.name ?? "A tool call"), input: block.input, since: Date.now() });
+                toolCalls.set(block.id, { name: String(block.name ?? "A tool call"), input: block.input });
               }
               const paths = editedPaths(block.name, block.input);
               emit({
@@ -1097,9 +1230,19 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
                 // and ending there left that command, and the process it
                 // ran in, going on beside the next turn (GitHub 330).
                 if (sealed || openCalls.size > 0 || asking > 0 || Date.now() - lastSign < STEER_QUIET_MS) return;
+                if (letFinish && backgroundBusy()) return;
                 if (held) settle(held);
               }, 1_000);
               quiet.unref?.();
+              break;
+            }
+            // Background work still going, when the turn waits for it: the
+            // CLI goes on with it, input closed, tells the agent what each
+            // part found, and exits once all of it is done. Each result on
+            // the way is the latest the turn would end on.
+            if (letFinish && (waiting || backgroundBusy())) {
+              held = frame;
+              if (!waiting) afterBackground(() => { if (held) settle(held); });
               break;
             }
             settle(frame);
@@ -1153,7 +1296,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
           if (result) settle(result, true); else finish(false, "interrupted");
           return;
         }
-        if (inputs?.selectedResult) return settle(inputs.selectedResult);
+        if (inputs?.selectedResult) return settle(lastWork ?? inputs.selectedResult);
         if (stopping) return endStopped();
         // a held result was the whole turn after all
         if (held) return settle(held);
@@ -1192,7 +1335,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       const abort = () => {
         if (sealed || stopping) return;
         stopping = true;
-        const result = inputs?.selectedResult ?? held;
+        const result = (inputs && lastWork) ?? inputs?.selectedResult ?? held;
         if (result) settle(result); else endStopped();
       };
 
@@ -1202,13 +1345,17 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         watch = setInterval(() => {
           if (sealed || stopping) return;
           const now = Date.now();
-          if (!isStalled({ open: openCalls.size, asking, lastSign, now, limitMs })) return;
-          const oldest = [...openCalls.values()].sort((a, b) => a.since - b.since)[0];
+          // Once the reply is done and the turn waits on its background
+          // work, each task is a call of the turn's: one gone silent for
+          // the limit stops it, as a silent call would.
+          const waitingOn = waiting ? [...background.values()] : [];
+          if (!isStalled({ open: openCalls.size + waitingOn.length, asking, lastSign, now, limitMs })) return;
+          const oldest = [...openCalls.values(), ...waitingOn].sort((a, b) => a.since - b.since)[0];
           stalled = describeStall(oldest, now - lastSign);
           sealed = true;
           stopping = true;
           emit({ ...envelope(threadId, turnId), type: "runtime.error", message: stalled });
-          const result = inputs?.selectedResult ?? held;
+          const result = (inputs && lastWork) ?? inputs?.selectedResult ?? held;
           if (result) settle(result, true); else endStopped();
         }, Math.max(250, Math.min(15_000, limitMs / 4)));
         watch.unref?.();
@@ -1241,6 +1388,13 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         const id = inputs ? newId() : null;
         const message = { type: "user", message: { role: "user", content: text }, ...(id ? { uuid: id } : {}) };
         if (id) inputs!.register(id);
+        // Words for a turn waiting on its background work: the turn ends
+        // once these are answered too, and what it waits on is asked again.
+        if (waiting) {
+          waiting = null;
+          if (waitTimer) clearInterval(waitTimer);
+          waitTimer = null;
+        }
         // Reserved-report admission must run immediately before the effect.
         try { onDispatch?.(); } catch (error) {
           if (id) inputs!.forget(id);

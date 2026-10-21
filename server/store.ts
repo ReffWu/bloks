@@ -563,6 +563,10 @@ export interface BotRecord {
    * read them (auto), always go in now (interrupt), or always wait
    * (queue). Unset follows the workspace's `delivery.mode`. */
   delivery?: import("./delivery.ts").DeliveryMode;
+  /** Whether this agent's turns wait for the background work they start
+   * (finish) or stop it with the reply (stop). Unset follows the
+   * workspace's `turns.backgroundWork` (server/background-work.ts). */
+  backgroundWork?: import("./background-work.ts").BackgroundWork;
   /** Components this agent may not answer with. By exclusion rather than
    * by grant: withholding one from one agent should not touch anybody
    * else, and a list of everything permitted goes stale as the gallery

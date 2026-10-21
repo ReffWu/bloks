@@ -227,6 +227,11 @@ export interface SendTurnInput {
   /** How long a tool call may go without a word from the engine before
    * the turn is stopped; 0 is never. Drivers that cannot tell ignore it. */
   stallMs?: number;
+  /** What happens to background work the turn starts once its reply is
+   * written: the turn waits for it, or ends and stops it
+   * (server/background-work.ts). Unset waits. Drivers whose engine runs
+   * nothing in the background ignore it. */
+  backgroundWork?: "finish" | "stop";
   /** Capabilities to hand the agent as tools, decided per turn because
    * they depend on the agent's settings and on what is provisioned. */
   integrations?: {

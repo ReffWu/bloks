@@ -308,6 +308,7 @@ import {
   type DeliveryWhy,
   type Reading as DeliveryReading,
 } from "./delivery.ts";
+import { backgroundWork, resolveBackgroundWork } from "./background-work.ts";
 import {
   ProposalStore,
   fingerprintOf,
@@ -6776,6 +6777,7 @@ async function startClaimedTurn(
         ...(command && instance.driverKind === "codex" ? { compactOnly: true } : {}),
         ...(skillNames.length ? { skillNames } : {}),
         stallMs: stallLimitMs(),
+        backgroundWork: resolveBackgroundWork(bot.backgroundWork, cfg.turns?.backgroundWork),
         model: selection.model,
         effort: bot.effort,
         ...(bot.engineHooks === false ? { noHooks: true } : {}),
@@ -14674,8 +14676,9 @@ function configStatus() {
     // could not read costs a call on the person's own key
     delivery: { mode: resolveMode(undefined, cfg.delivery?.mode), askModel: cfg.delivery?.askModel === true },
     changes: { showShared: cfg.changes?.showShared !== false },
-    // how long a silent tool call may hold a turn, in minutes; 0 is never
-    turns: { stallMinutes: stallLimitMs() / 60_000 },
+    // how long a silent tool call may hold a turn, in minutes, 0 for
+    // never, and whether a turn waits for its background work
+    turns: { stallMinutes: stallLimitMs() / 60_000, backgroundWork: resolveBackgroundWork(undefined, cfg.turns?.backgroundWork) },
     // not a secret: a folder, a mode and a model, for the settings form
     agentDefaults: cfg.agentDefaults ?? {},
     // Bloks credits without the balance, which needs the network and is
@@ -17091,6 +17094,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           return json(res, 400, { error: "delivery is auto, interrupt, queue, or null to follow the workspace" });
         }
         patch.delivery = body.delivery === null ? undefined : deliveryMode(body.delivery);
+      }
+      if (body.backgroundWork !== undefined) {
+        // How long its turns run, and what runs on after its reply, is the
+        // person's to say, like how it is interrupted.
+        if (asAgent) return json(res, 403, { error: "an agent cannot choose what happens to its background work" });
+        if (body.backgroundWork !== null && !backgroundWork(body.backgroundWork)) {
+          return json(res, 400, { error: "backgroundWork is finish, stop, or null to follow the workspace" });
+        }
+        patch.backgroundWork = body.backgroundWork === null ? undefined : backgroundWork(body.backgroundWork);
       }
       if (body.speakReplies !== undefined) {
         if (typeof body.speakReplies !== "boolean") {
@@ -23107,6 +23119,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       )) {
         return json(res, 400, { error: "delivery.mode is auto, interrupt or queue, and delivery.askModel is true or false" });
       }
+      if (isRecord(body.turns) && body.turns.backgroundWork !== undefined && !backgroundWork(body.turns.backgroundWork)) {
+        return json(res, 400, { error: "turns.backgroundWork is finish or stop" });
+      }
       if (body.agents !== undefined && (!isRecord(body.agents) || !validTurnLimit(body.agents.turnLimit))) {
         return json(res, 400, { error: `agents.turnLimit must be a whole number from ${MIN_AGENT_CHAIN_LIMIT} to ${MAX_AGENT_CHAIN_LIMIT}` });
       }
@@ -23187,6 +23202,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             return json(res, 400, { error: `stallMinutes is one of ${STALL_CHOICES.join(", ")} (0 is never)` });
           }
           Object.assign(cfg, saveConfig({ turns: { stallMinutes: minutes as number } }));
+          wroteSomething = true;
+        }
+        const background = backgroundWork((body.turns as Record<string, unknown>).backgroundWork);
+        if (background) {
+          Object.assign(cfg, saveConfig({ turns: { backgroundWork: background } }));
           wroteSomething = true;
         }
       }

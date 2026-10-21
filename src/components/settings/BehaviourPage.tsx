@@ -3,14 +3,17 @@
 //
 // These lived under General once, a dozen switches deep beneath the
 // theme. They are about the agents, not about how Bloks looks, so they
-// have a page of their own in the Agents group, in four short groups that
-// say what each is for: what agents carry between conversations, how a
-// turn behaves while it runs, who handles a failure, and what happens to
-// a conversation that grows long.
+// have a page of their own in the Agents group, in short groups that say
+// what each is for: what agents carry between conversations, how a turn
+// behaves while it runs and what it leaves running after, who handles a
+// failure, and what happens to a conversation that grows long.
 import { useState } from "react";
 import { api, useStore } from "@/state/store";
 import { DEFAULT_TURN_LIMIT, MAX_TURN_LIMIT, MIN_TURN_LIMIT } from "@/lib/turn-limit";
 import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
+import { BACKGROUND_WORK, type BackgroundWork as BackgroundChoice } from "@/lib/backgroundWork";
+import { cn } from "@/lib/cn";
+import { rowKey } from "@/lib/settingsPages";
 import { Segmented } from "@/components/ui/segmented";
 import { Slider, numberStops } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -369,6 +372,77 @@ function MidTurnMessages() {
   );
 }
 
+/**
+ * What happens to the subagents and commands an agent starts in the
+ * background once its reply is done (server/background-work.ts), for
+ * every agent that has not chosen for itself. Let it finish unless
+ * changed. A choice with a line under each, as the workspace's own
+ * notification levels are, since the two do very different things.
+ */
+function BackgroundWork() {
+  const { state, dispatch } = useStore();
+  const chosen = state.config?.turns?.backgroundWork ?? "finish";
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const save = (backgroundWork: BackgroundChoice) => {
+    setSaving(true);
+    setError("");
+    api("/api/config", { method: "PUT", body: JSON.stringify({ turns: { backgroundWork } }) })
+      .then((status) => dispatch({ type: "configStatus", config: status }))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
+      .finally(() => setSaving(false));
+  };
+  return (
+    <SettingsGroup
+      title="Background work an agent starts"
+      footnote={
+        <>
+          For agents on Claude Code. While it waits, what you send goes into that turn or waits for it like any other, and a
+          background task that makes no progress for the time under Stop stuck tool calls is stopped. Each agent can choose for
+          itself in its own settings.
+          {error && <span className="mt-1 block text-destructive">{error}</span>}
+        </>
+      }
+    >
+      <div
+        role="radiogroup"
+        aria-label="Background work an agent starts"
+        data-setting-row={rowKey("Background work an agent starts")}
+        className="flex flex-col divide-y transition-colors duration-700"
+      >
+        {BACKGROUND_WORK.map((choice) => {
+          const on = chosen === choice.value;
+          return (
+            <button
+              key={choice.value}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={saving}
+              onClick={() => !on && save(choice.value)}
+              className="flex items-center gap-4 px-5 py-4 text-left outline-none transition-colors duration-150 hover:bg-accent/50 focus-visible:bg-accent/60 disabled:opacity-60"
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "flex size-[18px] shrink-0 items-center justify-center rounded-full border transition-colors duration-150",
+                  on ? "border-brand-ink bg-brand-ink" : "border-input",
+                )}
+              >
+                {on && <span className="size-1.5 rounded-full bg-brand-foreground" />}
+              </span>
+              <span className="flex min-w-0 flex-col">
+                <span className="text-ui font-medium text-foreground">{choice.label}</span>
+                <span className="text-pretty text-body text-muted-foreground">{choice.says}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </SettingsGroup>
+  );
+}
+
 const TURN_LIMIT_STOPS = numberStops(MIN_TURN_LIMIT, MAX_TURN_LIMIT, (n) => `${n} ${n === 1 ? "reply" : "replies"}`);
 
 /**
@@ -443,6 +517,7 @@ export function BehaviourPage() {
         <SilentCallLimit />
         <SharedChanges />
       </SettingsGroup>
+      <BackgroundWork />
       <SettingsGroup title="When something fails">
         <IncidentDesk />
       </SettingsGroup>

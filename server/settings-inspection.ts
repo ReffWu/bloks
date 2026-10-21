@@ -1,5 +1,6 @@
 // Safe observations over already-loaded settings. No stores, providers or IO.
 import { resolveMode } from "./delivery.ts";
+import { resolveBackgroundWork } from "./background-work.ts";
 import { agentTurnLimit } from "./agent-chain.ts";
 
 export type InspectionScalar = string | number | boolean | null;
@@ -86,6 +87,7 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   add("compaction", "beforeTurn", general, input.resolved.beforeTurn);
   add("compaction", "beforeTurnAt", "config.json > compaction.beforeTurnAt", input.resolved.beforeTurnAt);
   add("turns", "stallMinutes", general, input.resolved.stallMinutes);
+  add("turns", "backgroundWork", general, resolveBackgroundWork(undefined, value("turns", "backgroundWork")));
   add("recall", "beforeTurn", general, value("recall", "beforeTurn") !== false);
   add("memory", "tidy", general, value("memory", "tidy") !== false);
   add("agents", "turnLimit", general, agentTurnLimit(value("agents", "turnLimit")));

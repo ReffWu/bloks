@@ -52,7 +52,7 @@ import { toast } from "@/components/ui/toast";
 import { VoiceCard } from "./Voice";
 import { TelegramSection } from "./TelegramSection";
 import { RoutinesSection } from "./RoutinesSection";
-import { SettingRow } from "./SettingsLayout";
+import { SettingRow, SettingsSelect } from "./SettingsLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
@@ -69,6 +69,7 @@ import { useEscape } from "@/lib/useEscape";
 import { EngineSuggestionCard, useEngineReport } from "./EngineReport";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, RULES_AND_MODES, type ApprovalMode } from "./ApprovalsChooser";
 import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
+import { BACKGROUND_WORK, backgroundWords, type BackgroundWork } from "@/lib/backgroundWork";
 
 type Patch = Partial<
   Pick<
@@ -91,6 +92,7 @@ type Patch = Partial<
     | "engineAccess"
     | "recallBeforeTurn"
     | "delivery"
+    | "backgroundWork"
   >
 >;
 
@@ -456,6 +458,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
               <ApprovalsCard bot={bot} />
               <Group>
                 <DeliveryRow bot={bot} patch={patch} />
+                <BackgroundWorkRow bot={bot} patch={patch} />
               </Group>
               <WorkingFolderCard bot={bot} />
               <AnswersCard bot={bot} patch={patch} />
@@ -958,6 +961,40 @@ function DeliveryRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
         />
       </div>
     </SettingRow>
+  );
+}
+
+/**
+ * What happens to the subagents and commands this agent starts in the
+ * background once its reply is done (server/background-work.ts). Its own
+ * choice, or the workspace's, which Settings, Behaviour sets for every
+ * agent that has not chosen.
+ */
+function BackgroundWorkRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
+  const { state } = useStore();
+  const workspace = backgroundWords(state.config?.turns?.backgroundWork);
+  const own = bot.backgroundWork ?? null;
+  const shown = backgroundWords(own ?? workspace.value);
+  return (
+    <SettingRow
+      label="Background work it starts"
+      description={own ? shown.says : `Same as your other agents: ${workspace.label}. ${workspace.says}`}
+      control={
+        <SettingsSelect
+          aria-label="Background work it starts"
+          value={own ?? "default"}
+          onChange={(e) => patch({ backgroundWork: e.target.value === "default" ? null : (e.target.value as BackgroundWork) })}
+          className="w-[240px]"
+        >
+          <option value="default">Use the workspace setting</option>
+          {BACKGROUND_WORK.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </SettingsSelect>
+      }
+    />
   );
 }
 

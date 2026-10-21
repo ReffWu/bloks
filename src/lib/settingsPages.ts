@@ -123,7 +123,7 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     group: "agents",
     description: "How agents remember, take turns and recover, for every agent here.",
     keywords:
-      "behavior working with agents skills suggest recall remember memory other conversations tidy nightly archive turn limit consecutive chain replies stuck silent tool call incident incidents desk failure lead retry interrupt queue messages while working steer correction files changes compaction compact summarise summarize idle cache long tokens",
+      "behavior working with agents skills suggest recall remember memory other conversations tidy nightly archive turn limit consecutive chain replies stuck silent tool call background subagents tasks finish stop incident incidents desk failure lead retry interrupt queue messages while working steer correction files changes compaction compact summarise summarize idle cache long tokens",
     rows: [
       "Suggest skills",
       "Bring up other conversations",
@@ -132,6 +132,7 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
       "Agent-to-agent limit",
       "Stop stuck tool calls",
       "Show other changed files",
+      "Background work an agent starts",
       "Incident desk",
       "Who leads incidents",
       "Compact long chats",
