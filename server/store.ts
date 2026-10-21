@@ -644,6 +644,16 @@ function writeWhole(file: string, text: string) {
 }
 const messagesFile = (threadId: string) => join(DATA_DIR, `messages-${threadId}.json`);
 
+/** How long a streamed call row may wait to be written (Store.save). */
+export const ROW_WAIT_MS = 250;
+
+/** Stores with transcripts still waiting to be written (Store.save), which
+ * a process on its way out writes first, however it was asked to stop. */
+const unwritten = new Set<Store>();
+process.on("exit", () => {
+  for (const store of unwritten) store.writeWaiting();
+});
+
 const COLORS: BlokColor[] = [
   "green",
   "blue",
@@ -753,11 +763,67 @@ export class Store {
     return list!;
   }
 
-  appendMessage(threadId: string, message: Omit<Message, "id" | "at"> & { at?: number }): Message {
+  /** Transcripts changed by a row that could wait (save, `soon`). */
+  private waiting = new Set<string>();
+  private waitingWrite: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Writes a transcript whole, which costs the whole conversation in
+   * JSON.stringify every time. Two of those for every tool call (the row,
+   * then its result) were most of the server's time with a few agents at
+   * work, and grew with the length of the conversation.
+   *
+   * `soon` is for those rows: they wait up to ROW_WAIT_MS and go with
+   * whatever else changed meanwhile, in that transcript and every other,
+   * as one write each. The most a crash can lose is that quarter second
+   * of call rows, and the turn's end writes what waits (setTaskBusy).
+   *
+   * Everything else is written before this returns, as it always was:
+   * some callers count on the write having happened or having failed (a
+   * take-back reports a failed one, a Telegram reply is marked sending
+   * before it goes).
+   */
+  private save(threadId: string, list: Message[], soon = false) {
+    if (soon) {
+      this.waiting.add(threadId);
+      unwritten.add(this);
+      if (!this.waitingWrite) {
+        this.waitingWrite = setTimeout(() => this.writeWaiting(), ROW_WAIT_MS);
+        this.waitingWrite.unref?.();
+      }
+      return;
+    }
+    writeWhole(messagesFile(threadId), JSON.stringify(list, null, 2));
+    // written whole, so whatever was waiting in it is written too
+    this.waiting.delete(threadId);
+  }
+
+  /** Writes every transcript with a row still waiting. One that cannot
+   * be written stays waiting, for its next change to try again. */
+  writeWaiting() {
+    if (this.waitingWrite) clearTimeout(this.waitingWrite);
+    this.waitingWrite = null;
+    for (const threadId of [...this.waiting]) {
+      const list = this.messages.get(threadId);
+      try {
+        if (list) writeWhole(messagesFile(threadId), JSON.stringify(list, null, 2));
+        this.waiting.delete(threadId);
+      } catch (error) {
+        console.error("[bloks] a conversation could not be saved:", error instanceof Error ? error.message : String(error));
+      }
+    }
+    if (!this.waiting.size) unwritten.delete(this);
+  }
+
+  appendMessage(
+    threadId: string,
+    message: Omit<Message, "id" | "at"> & { at?: number },
+    { soon = false }: { soon?: boolean } = {},
+  ): Message {
     const full: Message = { id: newId(), at: Date.now(), ...message };
     const list = this.messagesFor(threadId);
     list.push(full);
-    writeWhole(messagesFile(threadId), JSON.stringify(list, null, 2));
+    this.save(threadId, list, soon);
     this.onAppend?.(threadId, full);
     return full;
   }
@@ -793,7 +859,7 @@ export class Store {
     return patched ? { message: patched, added: !had } : null;
   }
 
-  patchMessage(threadId: string, messageId: string, patch: Partial<Message>): Message | null {
+  patchMessage(threadId: string, messageId: string, patch: Partial<Message>, { soon = false }: { soon?: boolean } = {}): Message | null {
     const list = this.messagesFor(threadId);
     const idx = list.findIndex((m) => m.id === messageId);
     if (idx === -1) return null;
@@ -804,7 +870,7 @@ export class Store {
     // two apart, so it kept the card on every deletion.
     const card = "card" in patch ? patch.card : list[idx].card;
     list[idx] = { ...list[idx], ...patch, card };
-    writeWhole(messagesFile(threadId), JSON.stringify(list, null, 2));
+    this.save(threadId, list, soon);
     this.onRewrite?.(threadId, [list[idx]]);
     return list[idx];
   }
@@ -828,7 +894,7 @@ export class Store {
     }
     if (!moved.length) return [];
     list.push(...moved);
-    writeWhole(messagesFile(threadId), JSON.stringify(list, null, 2));
+    this.save(threadId, list);
     this.onRewrite?.(threadId, moved);
     return moved;
   }
@@ -844,7 +910,7 @@ export class Store {
       changed.push(list[i]);
     }
     if (changed.length) {
-      writeWhole(messagesFile(threadId), JSON.stringify(list, null, 2));
+      this.save(threadId, list);
       this.onRewrite?.(threadId, changed);
     }
     return changed;
@@ -1066,7 +1132,7 @@ export class Store {
     };
     const list: Message[] = input.messages.map((message) => ({ ...message, id: newId() }));
     this.messages.set(task.id, list);
-    writeWhole(messagesFile(task.id), JSON.stringify(list, null, 2));
+    this.save(task.id, list);
     bot.tasks.push(task);
     if (input.activate) {
       bot.activeTaskId = task.id;
@@ -1201,6 +1267,7 @@ export class Store {
 
   private dropTranscript(taskId: string) {
     this.messages.delete(taskId);
+    this.waiting.delete(taskId);
     try {
       unlinkSync(messagesFile(taskId));
     } catch {}
@@ -1454,6 +1521,8 @@ export class Store {
     found.task.busy = busy;
     found.bot.busy = found.bot.tasks.some((t) => t.busy);
     this.saveBots();
+    // a turn that is over has nothing left waiting to be written
+    if (!busy) this.writeWaiting();
     this.onBusy?.(threadId, busy);
     return found.bot;
   }

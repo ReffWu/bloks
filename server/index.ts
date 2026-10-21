@@ -3662,8 +3662,9 @@ bus.subscribe((event: RuntimeEvent) => {
       store.taskByThread(event.threadId)?.task.goal?.status === "active");
   }
 
-  const pushMessage = (m: Omit<Message, "id" | "at">) => {
-    const message = store.appendMessage(roomId, inRoom ? { ...m, from: bot.id } : m);
+  // `soon` for the rows that stream (see Store.save)
+  const pushMessage = (m: Omit<Message, "id" | "at">, soon = false) => {
+    const message = store.appendMessage(roomId, inRoom ? { ...m, from: bot.id } : m, { soon });
     // What a check-in says is news only once it has ended and was not
     // quiet, so the app holds its speech until then (src/lib/notify.ts);
     // its banner is the reply.settled its end sends, if it has one.
@@ -3758,7 +3759,7 @@ bus.subscribe((event: RuntimeEvent) => {
           const tool = store.messagesFor(roomId).find((m) => m.id === messageId)?.tool;
           const patched = store.patchMessage(roomId, messageId, {
             tool: { ...tool, name: tool?.name ?? "tool", ok: event.ok },
-          });
+          }, { soon: true });
           if (patched) broadcast({ kind: "message.patch", threadId: roomId, message: patched });
           toolMessageByItem.delete(event.itemId);
         }
@@ -3782,7 +3783,7 @@ bus.subscribe((event: RuntimeEvent) => {
           kind: "activity",
           tool: { name: event.title ?? "tool", ...(event.command ? { command: event.command } : {}) },
           ...(mark ? { repeated: mark.count } : {}),
-        });
+        }, true);
         if (event.itemId) toolMessageByItem.set(event.itemId, message.id);
         if (mark) {
           repeats.chipAt(event.threadId, { threadId: roomId, messageId: message.id }, mark.count);
