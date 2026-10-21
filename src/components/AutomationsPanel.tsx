@@ -49,6 +49,8 @@ import { Eye } from "@/components/icons";
 import { thisComputer } from "@/lib/thisComputer";
 import { gridHours } from "@/lib/dayGrid";
 import { checkInBand, foldQuietRuns, intervalShort } from "@/lib/checkIns";
+import { AUTOMATIONS_LIST, AUTOMATIONS_LIST_SIZE, useColumnFolded } from "@/lib/sideColumn";
+import { ShowColumn, SideColumn } from "./SideColumn";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -1141,6 +1143,7 @@ function WebhooksTab({
   const bots = state.bots.filter((b) => !b.hidden);
   const selected = hooks?.find((h) => h.id === selectedId) ?? null;
   const target = selected ? targetOf(selected.botId ?? selected.blokId ?? "") : null;
+  const folded = useColumnFolded(AUTOMATIONS_LIST, AUTOMATIONS_LIST_SIZE);
   const hookUrl = selected ? `${location.origin}/hook/${selected.token}` : "";
   const curl = selected
     ? `curl -sS '${hookUrl}' --json '{"text":"A build failed on main. Summarize the log and suggest a fix."}'`
@@ -1163,7 +1166,7 @@ function WebhooksTab({
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       {/* list */}
-      <div className="flex max-h-[180px] w-full shrink-0 flex-col border-b md:max-h-none md:w-[260px] md:border-b-0 md:border-r">
+      <SideColumn id={AUTOMATIONS_LIST} size={AUTOMATIONS_LIST_SIZE} label="Webhooks" className="max-h-[180px] w-full border-b md:max-h-none md:border-b-0">
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
           <span className="text-small font-medium text-muted-foreground">
             Your webhooks
@@ -1232,10 +1235,16 @@ function WebhooksTab({
             </div>
           )}
         </div>
-      </div>
+      </SideColumn>
 
       {/* detail */}
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* the list folded away: the way back to it, named for what it lists */}
+        {folded && (
+          <div className="px-3 pt-3">
+            <ShowColumn id={AUTOMATIONS_LIST} text="Your webhooks" label="Show the list" />
+          </div>
+        )}
         {error && <div className="px-6 pt-4 text-body text-destructive">{error}</div>}
         {selected ? (
           <div className="mx-auto max-w-[620px] px-6 py-5">

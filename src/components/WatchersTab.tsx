@@ -30,6 +30,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import { intervalLabel, intervalPhrase } from "@/lib/checkIns";
+import { AUTOMATIONS_LIST, AUTOMATIONS_LIST_SIZE, useColumnFolded } from "@/lib/sideColumn";
+import { ShowColumn, SideColumn } from "./SideColumn";
 
 type Kind = "folder" | "page" | "feed" | "check" | "place";
 
@@ -589,10 +591,11 @@ export function WatchersTab() {
   useEffect(load, [load, state.ticks.watchers]);
   const current = rows?.find((w) => w.id === selected) ?? null;
   const showing = selected === "new" || (!current && rows?.length === 0) ? "new" : (current ?? rows?.[0] ?? null);
+  const folded = useColumnFolded(AUTOMATIONS_LIST, AUTOMATIONS_LIST_SIZE);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <div className="flex max-h-[200px] w-full shrink-0 flex-col border-b md:max-h-none md:w-[260px] md:border-b-0 md:border-r">
+      <SideColumn id={AUTOMATIONS_LIST} size={AUTOMATIONS_LIST_SIZE} label="Watchers" className="max-h-[200px] w-full border-b md:max-h-none md:border-b-0">
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
           <span className="text-small font-medium text-muted-foreground">Watching</span>
           <button onClick={() => setSelected("new")} className="rounded-lg px-1.5 py-1 text-small text-muted-foreground hover:bg-accent hover:text-foreground">
@@ -625,8 +628,10 @@ export function WatchersTab() {
             );
           })}
         </div>
-      </div>
+      </SideColumn>
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        {/* the list folded away: the way back to it, named for what it lists */}
+        {folded && <ShowColumn id={AUTOMATIONS_LIST} text="Watching" label="Show the list" className="-ml-2 -mt-2 mb-3" />}
         {rows === null ? null : showing === "new" ? (
           <Draft
             onMade={(id) => {

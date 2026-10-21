@@ -2,6 +2,9 @@
 // a place of its own off the main rail. A sidebar of its own lists the two
 // pages and the apps already connected; each page is a catalogue laid out
 // to read, two to a row, with the one action each item needs beside it.
+// The sidebar is a page column (SideColumn.tsx), sized by its edge and
+// folded with ⌘B, and folded the two pages are a switch at the right of
+// each page's title.
 //
 // Plugins are the connected apps (Composio Connect) and the interfaces MCP
 // servers draw; Skills are the instructions agents pick up, the ones on
@@ -41,6 +44,8 @@ import { confirm } from "@/components/ui/confirm";
 import { Skeleton, SkeletonAvatar, SkeletonGroup } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
+import { FoldedSwitchSlot, SideColumn, SideSwitch, TitleTools } from "./SideColumn";
 
 /** An app's mark: its own artwork, then its site's icon, then a letter,
  * because one broken image in a grid of logos looks worse than a letter. */
@@ -121,7 +126,7 @@ function PageHeader({
         <h1 className="text-balance text-display font-semibold text-foreground">{title}</h1>
         <p className="mt-1.5 text-pretty text-ui text-muted-foreground">{says}</p>
       </div>
-      <div className="flex items-center gap-1.5">
+      <TitleTools>
         <label className="flex h-9 w-[240px] items-center gap-2 rounded-full border bg-card px-3.5 transition-colors duration-150 focus-within:border-ring/50 lg:w-[280px]">
           <Search size={15} className="shrink-0 text-muted-foreground" />
           <input
@@ -151,7 +156,7 @@ function PageHeader({
           <Settings size={16} />
         </button>
         {add}
-      </div>
+      </TitleTools>
     </header>
   );
 }
@@ -791,7 +796,7 @@ function CustomizeSidebar({
   onSearch: () => void;
 }) {
   return (
-    <aside aria-label="Customize" className="hidden h-full w-[264px] shrink-0 flex-col border-r bg-sidebar md:flex">
+    <SideColumn id="plugins" size={CUSTOMIZE_COLUMN} label="Customize" className="hidden h-full bg-sidebar md:flex">
       <div className="titlebar-drag flex h-[52px] shrink-0 items-center justify-between pl-4 pr-2.5">
         <span className="text-lead font-semibold text-foreground">Customize</span>
         <button
@@ -817,15 +822,21 @@ function CustomizeSidebar({
           ))
         )}
       </div>
-    </aside>
+    </SideColumn>
   );
 }
+
+/** The sidebar's sizes: at its narrowest, an app's name still reads. */
+const CUSTOMIZE_COLUMN: SideColumnSize = { min: 200, max: 400, initial: 264, foldBelow: 150 };
 
 /** The whole Customize place: its sidebar and the page it has open. */
 export function CustomizeView() {
   const { state, dispatch } = useStore();
   const tab = state.customize;
   const setTab = (next: CustomizeTab) => dispatch({ type: "openCustomize", tab: next });
+  // Folded, the sidebar's two pages are a switch on each page's title row
+  // (TitleTools); the apps it lists are the Plugins page's own already.
+  const folded = useColumnFolded("plugins", CUSTOMIZE_COLUMN);
   const connectors = useConnectors();
   const [pluginSearch, setPluginSearch] = useState("");
   const [skillSearch, setSkillSearch] = useState("");
@@ -864,13 +875,30 @@ export function CustomizeView() {
                 ]}
               />
             </div>
-            {tab === "plugins" && state.customizeApp ? (
-              <AppDetailsPage slug={state.customizeApp} connectors={connectors} />
-            ) : tab === "plugins" ? (
-              <PluginsPage connectors={connectors} search={pluginSearch} setSearch={setPluginSearch} searchRef={searchRef} />
-            ) : (
-              <SkillsPage search={skillSearch} setSearch={setSkillSearch} searchRef={searchRef} />
-            )}
+            <FoldedSwitchSlot
+              value={
+                folded ? (
+                  <SideSwitch
+                    column="plugins"
+                    label="Customize"
+                    current={tab}
+                    onPick={(id) => setTab(id as CustomizeTab)}
+                    items={[
+                      { id: "plugins", label: "Plugins", icon: <Puzzle size={14} /> },
+                      { id: "skills", label: "Skills", icon: <Sparkles size={14} /> },
+                    ]}
+                  />
+                ) : null
+              }
+            >
+              {tab === "plugins" && state.customizeApp ? (
+                <AppDetailsPage slug={state.customizeApp} connectors={connectors} />
+              ) : tab === "plugins" ? (
+                <PluginsPage connectors={connectors} search={pluginSearch} setSearch={setPluginSearch} searchRef={searchRef} />
+              ) : (
+                <SkillsPage search={skillSearch} setSearch={setSkillSearch} searchRef={searchRef} />
+              )}
+            </FoldedSwitchSlot>
           </div>
         </div>
       </main>

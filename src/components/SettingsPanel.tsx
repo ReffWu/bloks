@@ -4,6 +4,9 @@
 // thinks with, how much it asks, what it can touch, what it remembers,
 // how it reaches you, when it runs, and the doors out), with a list of
 // those groups on the left that follows the scroll and jumps on a click.
+// That list is a page column (SideColumn.tsx), sized by its edge and
+// folded with ⌘B, and folded it is a strip of tabs along the top that
+// follows the scroll the same way.
 //
 // One scroll rather than a page per group because an agent is one thing:
 // seeing its engine a flick below its instructions is part of knowing it,
@@ -70,6 +73,8 @@ import { EngineSuggestionCard, useEngineReport } from "./EngineReport";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, RULES_AND_MODES, type ApprovalMode } from "./ApprovalsChooser";
 import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
 import { BACKGROUND_WORK, backgroundWords, type BackgroundWork } from "@/lib/backgroundWork";
+import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
+import { SideColumn, SideTabs } from "./SideColumn";
 
 type Patch = Partial<
   Pick<
@@ -122,6 +127,9 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: typeof User }> = [
 ];
 
 const anchor = (id: SectionId) => `agent-settings-${id}`;
+
+/** The list of groups beside the page, one size for every agent's. */
+const AGENT_SETTINGS_COLUMN: SideColumnSize = { min: 200, max: 360, initial: 248, foldBelow: 150 };
 
 // ---------------------------------------------------------------------------
 // The page's own pieces: a section, a group of rows inside it.
@@ -249,12 +257,16 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
   const mode = bot.approvals ?? "ask";
   const seniority = bot.seniority ?? 1;
   const skillCount = (bot.skills?.length ?? 0) + (bot.skillIds?.length ?? 0);
+  const folded = useColumnFolded("agent-settings", AGENT_SETTINGS_COLUMN);
 
   return (
     <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background md:flex-row">
-      <nav
-        aria-label={`${bot.name}'s settings`}
-        className="flex shrink-0 flex-col border-b bg-sidebar/60 md:w-[248px] md:border-b-0 md:border-r"
+      <SideColumn
+        id="agent-settings"
+        size={AGENT_SETTINGS_COLUMN}
+        as="nav"
+        label={`${bot.name}'s settings`}
+        className="border-b bg-sidebar/60 md:border-b-0"
       >
         {/* No back button of its own, as in Settings: the title bar's Back
             and Esc go back to the chat, and so does the chat button by the
@@ -303,228 +315,240 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
             );
           })}
         </div>
-      </nav>
+      </SideColumn>
 
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[760px] px-5 pb-24 pt-8 md:px-10 md:pt-10">
-          <Hero
-            bot={bot}
-            patch={patch}
-            facts={[
-              { label: modelName, to: "engine" },
-              { label: APPROVAL_MODES.find((m) => m.id === mode)?.label ?? "Ask first", to: "behaviour" },
-              { label: seniority >= 4 ? "Lead" : seniority === 3 ? "Mid" : "Junior", to: "identity" },
-              ...(skillCount ? [{ label: plural(skillCount, "skill"), to: "tools" as const }] : []),
-            ]}
-            onJump={jump}
-            onChat={close}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {folded && (
+          <SideTabs
+            column="agent-settings"
+            label={`${bot.name}'s settings`}
+            currentKind="location"
+            groups={[{ id: "sections", name: "Groups", tabs: SECTIONS.map((s) => ({ id: s.id, label: s.label, tone: s.id === "danger" ? "danger" : "default" })) }]}
+            current={active}
+            onPick={(id) => jump(id as SectionId)}
           />
+        )}
+        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[760px] px-5 pb-24 pt-8 md:px-10 md:pt-10">
+            <Hero
+              bot={bot}
+              patch={patch}
+              facts={[
+                { label: modelName, to: "engine" },
+                { label: APPROVAL_MODES.find((m) => m.id === mode)?.label ?? "Ask first", to: "behaviour" },
+                { label: seniority >= 4 ? "Lead" : seniority === 3 ? "Mid" : "Junior", to: "identity" },
+                ...(skillCount ? [{ label: plural(skillCount, "skill"), to: "tools" as const }] : []),
+              ]}
+              onJump={jump}
+              onChat={close}
+            />
 
-          <div className="mt-12">
-            <Section id="identity" title="Identity">
-              <LookCard bot={bot} patch={patch} />
-              <Group>
-                <SettingRow
-                  label="Instructions"
-                  htmlFor="agent-instructions"
-                  description="It reads these before every reply."
-                >
-                  <Textarea
-                    id="agent-instructions"
-                    className="mt-3 min-h-[132px] resize-y text-ui leading-relaxed"
-                    placeholder="What this agent is for, how it should behave"
-                    value={bot.description}
-                    onChange={(e) => patch({ description: e.target.value })}
-                  />
-                </SettingRow>
-                <SettingRow
-                  label="Seniority"
-                  description="In a room, the most senior agent leads, unless the room crowns another."
-                >
-                  <Segmented
-                    aria-label="Seniority"
-                    className="mt-3 max-w-[360px]"
-                    value={seniority >= 4 ? "5" : seniority === 3 ? "3" : "1"}
-                    onChange={(level) => patch({ seniority: Number(level) })}
-                    options={[
-                      { value: "1", label: "Junior" },
-                      { value: "3", label: "Mid" },
-                      { value: "5", label: "Lead" },
-                    ]}
-                  />
-                </SettingRow>
-              </Group>
-            </Section>
-
-            <Section id="engine" title="Engine">
-              <Group>
-                <SettingRow
-                  label="Model"
-                  description="Changes apply from the next message."
-                  control={
-                    <div className="rounded-lg border bg-background">
-                      <ModelPicker bot={bot} />
-                    </div>
-                  }
-                >
-                  <TeamSignInNotice bot={bot} className="mt-3" />
-                </SettingRow>
-                <SettingRow label="Reasoning effort" description="How hard it thinks, where the model supports it.">
-                  <Segmented
-                    aria-label="Reasoning effort"
-                    className="mt-3 max-w-[420px]"
-                    value={bot.effort}
-                    onChange={(effort) => patch({ effort })}
-                    options={[
-                      { value: undefined, label: "Default" },
-                      { value: "low", label: "Low" },
-                      { value: "medium", label: "Medium" },
-                      { value: "high", label: "High" },
-                    ]}
-                  />
-                </SettingRow>
-                <SettingRow
-                  label="Backup engine"
-                  description="Takes over if the main model hits a limit or fails, then hands back when it can."
-                  control={
-                    <div className="rounded-lg border bg-background">
-                      <ModelPicker
-                        bot={bot}
-                        value={bot.backupSelection ?? null}
-                        onPick={(selection) => patch({ backupSelection: selection })}
-                        noneLabel="No backup"
-                        exclude={bot.modelSelection}
-                      />
-                    </div>
-                  }
-                >
-                  {/* every model on an engine is out when the engine is, so a
-                      backup on the same one cannot cover that, and the server
-                      will not try it (backupFor) */}
-                  {sameEngineBackup(bot.modelSelection, bot.backupSelection) && (
-                    <Note>
-                      Same engine as the main model, so it cannot cover usage limits, credit or sign-in problems. Pick
-                      another engine for that.
-                    </Note>
-                  )}
-                </SettingRow>
-                {instance?.driverKind === "claudeAgent" && (
-                  // Claude Code runs the hooks your plugins and settings install,
-                  // and a plugin's session-start text lands in the agent's own
-                  // context. Some agents are better off without any of it.
+            <div className="mt-12">
+              <Section id="identity" title="Identity">
+                <LookCard bot={bot} patch={patch} />
+                <Group>
                   <SettingRow
-                    label="Plugin hooks"
-                    description="Let Claude Code run your plugin and settings hooks for this agent."
-                    control={
-                      <Switch
-                        checked={bot.engineHooks !== false}
-                        onCheckedChange={(on: boolean) => patch({ engineHooks: on })}
-                        aria-label="Plugin hooks"
-                      />
-                    }
-                  />
-                )}
-                {instance?.driverKind === "claudeAgent" && (state.config?.credits?.offered || bot.engineAccess === "credits") && (
-                  // Bloks AI is offered while Cloud is active. An agent
-                  // already on it keeps the choice in sight even when it
-                  // is not, so it can be moved back.
+                    label="Instructions"
+                    htmlFor="agent-instructions"
+                    description="It reads these before every reply."
+                  >
+                    <Textarea
+                      id="agent-instructions"
+                      className="mt-3 min-h-[132px] resize-y text-ui leading-relaxed"
+                      placeholder="What this agent is for, how it should behave"
+                      value={bot.description}
+                      onChange={(e) => patch({ description: e.target.value })}
+                    />
+                  </SettingRow>
                   <SettingRow
-                    label="Access"
-                    description={
-                      bot.engineAccess === "credits"
-                        ? "Runs on Bloks AI, with no sign-in of its own."
-                        : "Runs on Claude Code's own sign-in on this computer."
-                    }
+                    label="Seniority"
+                    description="In a room, the most senior agent leads, unless the room crowns another."
                   >
                     <Segmented
-                      aria-label="How Claude Code is paid for"
+                      aria-label="Seniority"
                       className="mt-3 max-w-[360px]"
-                      value={bot.engineAccess === "credits" ? "credits" : "own"}
-                      onChange={(access) => patch({ engineAccess: access === "credits" ? "credits" : null })}
+                      value={seniority >= 4 ? "5" : seniority === 3 ? "3" : "1"}
+                      onChange={(level) => patch({ seniority: Number(level) })}
                       options={[
-                        { value: "own", label: "Own sign-in" },
-                        { value: "credits", label: "Bloks AI" },
+                        { value: "1", label: "Junior" },
+                        { value: "3", label: "Mid" },
+                        { value: "5", label: "Lead" },
                       ]}
                     />
                   </SettingRow>
-                )}
-              </Group>
-              <CodexSpeedControl bot={bot} />
-              {suggestion && <EngineSuggestionCard s={suggestion} compact />}
-            </Section>
+                </Group>
+              </Section>
 
-            <Section id="behaviour" title="Behaviour and approvals">
-              <AgentAccessCard botId={bot.id} />
-              <ApprovalsCard bot={bot} />
-              <Group>
-                <DeliveryRow bot={bot} patch={patch} />
-                <BackgroundWorkRow bot={bot} patch={patch} />
-              </Group>
-              <WorkingFolderCard bot={bot} />
-              <AnswersCard bot={bot} patch={patch} />
-            </Section>
-
-            <Section id="tools" title="Tools">
-              <Group>
-                <ConnectedAppsRow bot={bot} patch={patch} />
-                <BrowserRow bot={bot} patch={patch} />
-                <ComputerRow bot={bot} patch={patch} />
-              </Group>
-              <McpAttachCard bot={bot} />
-              <SkillsCard bot={bot} />
-            </Section>
-
-            <Section id="memory" title="Memory">
-              <MemorySummary bot={bot} />
-              <Group>
-                <RecallRow bot={bot} patch={patch} />
-              </Group>
-            </Section>
-
-            <Section id="reach" title="Voice and Telegram">
-              <VoiceCard bot={bot} />
-              <TelegramSection key={bot.id} botId={bot.id} />
-            </Section>
-
-            <Section id="notifications" title="Notifications">
-              <Group>
-                <SettingRow
-                  label="Notify me when it replies"
-                  control={
-                    <Switch
-                      checked={bot.notifications}
-                      onCheckedChange={(notifications) => patch({ notifications })}
-                      aria-label="Notifications"
+              <Section id="engine" title="Engine">
+                <Group>
+                  <SettingRow
+                    label="Model"
+                    description="Changes apply from the next message."
+                    control={
+                      <div className="rounded-lg border bg-background">
+                        <ModelPicker bot={bot} />
+                      </div>
+                    }
+                  >
+                    <TeamSignInNotice bot={bot} className="mt-3" />
+                  </SettingRow>
+                  <SettingRow label="Reasoning effort" description="How hard it thinks, where the model supports it.">
+                    <Segmented
+                      aria-label="Reasoning effort"
+                      className="mt-3 max-w-[420px]"
+                      value={bot.effort}
+                      onChange={(effort) => patch({ effort })}
+                      options={[
+                        { value: undefined, label: "Default" },
+                        { value: "low", label: "Low" },
+                        { value: "medium", label: "Medium" },
+                        { value: "high", label: "High" },
+                      ]}
                     />
-                  }
-                >
-                  {/* The rule, stated. A person deciding whether to leave this
-                      on deserves to know what it does and does not cover,
-                      rather than discovering the shape of it over a week. */}
-                  <Note>
-                    Approvals always notify you. In a room, agents only notify you when they name you. Nothing
-                    notifies you about the chat on your screen.
-                  </Note>
-                </SettingRow>
-              </Group>
-            </Section>
+                  </SettingRow>
+                  <SettingRow
+                    label="Backup engine"
+                    description="Takes over if the main model hits a limit or fails, then hands back when it can."
+                    control={
+                      <div className="rounded-lg border bg-background">
+                        <ModelPicker
+                          bot={bot}
+                          value={bot.backupSelection ?? null}
+                          onPick={(selection) => patch({ backupSelection: selection })}
+                          noneLabel="No backup"
+                          exclude={bot.modelSelection}
+                        />
+                      </div>
+                    }
+                  >
+                    {/* every model on an engine is out when the engine is, so a
+                        backup on the same one cannot cover that, and the server
+                        will not try it (backupFor) */}
+                    {sameEngineBackup(bot.modelSelection, bot.backupSelection) && (
+                      <Note>
+                        Same engine as the main model, so it cannot cover usage limits, credit or sign-in problems. Pick
+                        another engine for that.
+                      </Note>
+                    )}
+                  </SettingRow>
+                  {instance?.driverKind === "claudeAgent" && (
+                    // Claude Code runs the hooks your plugins and settings install,
+                    // and a plugin's session-start text lands in the agent's own
+                    // context. Some agents are better off without any of it.
+                    <SettingRow
+                      label="Plugin hooks"
+                      description="Let Claude Code run your plugin and settings hooks for this agent."
+                      control={
+                        <Switch
+                          checked={bot.engineHooks !== false}
+                          onCheckedChange={(on: boolean) => patch({ engineHooks: on })}
+                          aria-label="Plugin hooks"
+                        />
+                      }
+                    />
+                  )}
+                  {instance?.driverKind === "claudeAgent" && (state.config?.credits?.offered || bot.engineAccess === "credits") && (
+                    // Bloks AI is offered while Cloud is active. An agent
+                    // already on it keeps the choice in sight even when it
+                    // is not, so it can be moved back.
+                    <SettingRow
+                      label="Access"
+                      description={
+                        bot.engineAccess === "credits"
+                          ? "Runs on Bloks AI, with no sign-in of its own."
+                          : "Runs on Claude Code's own sign-in on this computer."
+                      }
+                    >
+                      <Segmented
+                        aria-label="How Claude Code is paid for"
+                        className="mt-3 max-w-[360px]"
+                        value={bot.engineAccess === "credits" ? "credits" : "own"}
+                        onChange={(access) => patch({ engineAccess: access === "credits" ? "credits" : null })}
+                        options={[
+                          { value: "own", label: "Own sign-in" },
+                          { value: "credits", label: "Bloks AI" },
+                        ]}
+                      />
+                    </SettingRow>
+                  )}
+                </Group>
+                <CodexSpeedControl bot={bot} />
+                {suggestion && <EngineSuggestionCard s={suggestion} compact />}
+              </Section>
 
-            <Section id="schedules" title="Schedules">
-              <RoutinesSection targetId={bot.id} targetKind="agent" targetName={bot.name} bare />
-            </Section>
+              <Section id="behaviour" title="Behaviour and approvals">
+                <AgentAccessCard botId={bot.id} />
+                <ApprovalsCard bot={bot} />
+                <Group>
+                  <DeliveryRow bot={bot} patch={patch} />
+                  <BackgroundWorkRow bot={bot} patch={patch} />
+                </Group>
+                <WorkingFolderCard bot={bot} />
+                <AnswersCard bot={bot} patch={patch} />
+              </Section>
 
-            <Section id="export" title="Signature and export">
-              <Group>
-                <SignatureRow bot={bot} />
-                <ExportRow bot={bot} />
-              </Group>
-            </Section>
+              <Section id="tools" title="Tools">
+                <Group>
+                  <ConnectedAppsRow bot={bot} patch={patch} />
+                  <BrowserRow bot={bot} patch={patch} />
+                  <ComputerRow bot={bot} patch={patch} />
+                </Group>
+                <McpAttachCard bot={bot} />
+                <SkillsCard bot={bot} />
+              </Section>
 
-            {/* members' private conversations, only while the owner may read them */}
-            <PrivateReader botId={bot.id} botName={bot.name} />
-            <Section id="danger" title="Danger zone">
-              <DangerZone bot={bot} />
-            </Section>
+              <Section id="memory" title="Memory">
+                <MemorySummary bot={bot} />
+                <Group>
+                  <RecallRow bot={bot} patch={patch} />
+                </Group>
+              </Section>
+
+              <Section id="reach" title="Voice and Telegram">
+                <VoiceCard bot={bot} />
+                <TelegramSection key={bot.id} botId={bot.id} />
+              </Section>
+
+              <Section id="notifications" title="Notifications">
+                <Group>
+                  <SettingRow
+                    label="Notify me when it replies"
+                    control={
+                      <Switch
+                        checked={bot.notifications}
+                        onCheckedChange={(notifications) => patch({ notifications })}
+                        aria-label="Notifications"
+                      />
+                    }
+                  >
+                    {/* The rule, stated. A person deciding whether to leave this
+                        on deserves to know what it does and does not cover,
+                        rather than discovering the shape of it over a week. */}
+                    <Note>
+                      Approvals always notify you. In a room, agents only notify you when they name you. Nothing
+                      notifies you about the chat on your screen.
+                    </Note>
+                  </SettingRow>
+                </Group>
+              </Section>
+
+              <Section id="schedules" title="Schedules">
+                <RoutinesSection targetId={bot.id} targetKind="agent" targetName={bot.name} bare />
+              </Section>
+
+              <Section id="export" title="Signature and export">
+                <Group>
+                  <SignatureRow bot={bot} />
+                  <ExportRow bot={bot} />
+                </Group>
+              </Section>
+
+              {/* members' private conversations, only while the owner may read them */}
+              <PrivateReader botId={bot.id} botName={bot.name} />
+              <Section id="danger" title="Danger zone">
+                <DangerZone bot={bot} />
+              </Section>
+            </div>
           </div>
         </div>
       </div>

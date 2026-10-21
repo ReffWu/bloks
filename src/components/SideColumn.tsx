@@ -199,7 +199,7 @@ export function ShowColumn({ id, label = "Show sidebar", text, className }: { id
           <button
             type="button"
             onClick={() => setColumnOpen(id, true)}
-            aria-label={text ? undefined : label}
+            aria-label={text ? `${label}: ${text}` : label}
             aria-expanded={false}
             className={cn(quietButton, text ? "px-2 text-body" : "w-8", className)}
           >
@@ -251,6 +251,7 @@ export function SideTabs({
   label,
   groups,
   current,
+  currentKind = "page",
   onPick,
   tools,
 }: {
@@ -259,6 +260,9 @@ export function SideTabs({
   label: string;
   groups: SideTabGroup[];
   current: string | null;
+  /** "location" when the tabs are places on one page, as an agent's
+   * settings groups are, rather than pages of their own. */
+  currentKind?: "page" | "location";
   onPick: (id: string) => void;
   /** Buttons after the one that brings the column back, such as search. */
   tools?: React.ReactNode;
@@ -291,7 +295,7 @@ export function SideTabs({
   const placed = useRef(false);
   useLayoutEffect(() => {
     const el = row.current;
-    const tab = el?.querySelector<HTMLElement>('[aria-current="page"]');
+    const tab = el?.querySelector<HTMLElement>("[data-side-tab][aria-current]");
     if (!el || !tab) return;
     const pad = 40;
     const left = tab.offsetLeft;
@@ -349,7 +353,7 @@ export function SideTabs({
                     type="button"
                     data-side-tab
                     tabIndex={on || (!hasCurrent && gi === 0 && ti === 0) ? 0 : -1}
-                    aria-current={on ? "page" : undefined}
+                    aria-current={on ? currentKind : undefined}
                     onClick={() => onPick(tab.id)}
                     className={cn(
                       "relative flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-body outline-none transition-[background-color,color] duration-150",
@@ -411,7 +415,6 @@ export function SideSwitch({
   current: string;
   onPick: (id: string) => void;
 }) {
-  const uid = useId();
   const group = useRef<HTMLDivElement>(null);
   const walk = (e: React.KeyboardEvent) => {
     const segments = [...(group.current?.querySelectorAll<HTMLButtonElement>("[data-side-tab]") ?? [])];
@@ -425,16 +428,19 @@ export function SideSwitch({
       "relative flex h-7 min-w-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-body font-medium outline-none transition-colors duration-150",
       on ? "text-foreground" : "text-muted-foreground hover:text-foreground data-[state=open]:text-foreground",
     );
+  // Keyed by the column, not the instance: each page draws its own heading
+  // and so its own switch, and the pill slides from the old one's place
+  // to the new one's rather than starting over on every pick.
   const lit = (
     <motion.span
-      layoutId={`side-switch-${uid}`}
+      layoutId={`side-switch-${column}`}
       transition={{ type: "spring", duration: 0.25, bounce: 0 }}
       className="absolute inset-0 rounded-lg bg-background shadow-[0_1px_2px_rgba(0,0,0,0.06),0_0_0_0.5px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.08)]"
     />
   );
 
   return (
-    <div className="flex shrink-0 animate-fade-in items-center gap-1">
+    <div className="flex shrink-0 items-center gap-1">
       <ShowColumn id={column} />
       <div ref={group} role="group" aria-label={label} onKeyDown={walk} className="flex min-w-0 gap-0.5 rounded-[10px] bg-muted p-0.5">
         {items.map((item) => {

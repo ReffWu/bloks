@@ -1,7 +1,9 @@
 // Memory: what your agents keep between conversations, as a place of its
 // own off the main rail. A sidebar of its own lists the shared memory,
 // what agents know about you, and every agent; the page beside it is the
-// one picked, laid out to read and to correct.
+// one picked, laid out to read and to correct. The sidebar is a page
+// column (SideColumn.tsx), sized by its edge and folded with ⌘B; folded,
+// its three kinds of memory are a switch on the page's title row.
 //
 // An agent's memory is plain Markdown in its workspace: MEMORY.md, loaded
 // into every turn up to a budget, and topic files it reads when a topic
@@ -37,6 +39,8 @@ import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
+import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
+import { FoldedSwitchSlot, SideColumn, SideSwitch, TitleTools } from "./SideColumn";
 
 // ── what the server answers ────────────────────────────────────────────
 
@@ -202,7 +206,7 @@ function PageHead({
           <p className="mt-1.5 text-pretty text-ui leading-relaxed text-muted-foreground">{says}</p>
         </div>
       </div>
-      {children && <div className="flex items-center gap-1.5">{children}</div>}
+      <TitleTools>{children}</TitleTools>
     </header>
   );
 }
@@ -1605,7 +1609,7 @@ function MemorySidebar({
     setQ("");
   };
   return (
-    <aside aria-label="Memory" className="hidden h-full w-[280px] shrink-0 flex-col border-r bg-sidebar md:flex">
+    <SideColumn id="memory" size={MEMORY_COLUMN} label="Memory" className="hidden h-full bg-sidebar md:flex">
       <div className="titlebar-drag flex h-[52px] shrink-0 items-center justify-between pl-4 pr-2.5">
         <span className="text-lead font-semibold text-foreground">Memory</span>
         <button
@@ -1685,9 +1689,12 @@ function MemorySidebar({
           </>
         )}
       </div>
-    </aside>
+    </SideColumn>
   );
 }
+
+/** The sidebar's sizes: at its narrowest, a face, a name and its line. */
+const MEMORY_COLUMN: SideColumnSize = { min: 220, max: 420, initial: 280, foldBelow: 160 };
 
 /** On a phone the sidebar does not fit: the same entries, as a row of chips. */
 function PhonePicker({ target, agents, waiting, onPick }: { target: string; agents: Bot[]; waiting: number; onPick: (target: string) => void }) {
@@ -1740,6 +1747,43 @@ export function MemoryPlace() {
     scroller.current?.scrollTo({ top: 0 });
   }, [target]);
 
+  // Folded, the sidebar's three kinds of memory are a switch on the
+  // page's title row: the shared memory, what agents know about you, and
+  // the agents, picked from a menu since there can be any number of them.
+  const folded = useColumnFolded("memory", MEMORY_COLUMN);
+  const switcher = folded ? (
+    <SideSwitch
+      column="memory"
+      label="Memory"
+      current={target}
+      onPick={(next) => pick(next)}
+      items={[
+        { id: "shared", label: "Shared", icon: <Users size={14} /> },
+        {
+          id: "you",
+          label: "About you",
+          icon: <UserRound size={14} />,
+          badge:
+            waiting > 0 ? (
+              <span aria-label={`${plural(waiting, "suggestion")} waiting`} className="rounded-full bg-warning/15 px-1.5 text-caption font-semibold tabular-nums text-warning">
+                {waiting}
+              </span>
+            ) : undefined,
+        },
+        ...(agents.length
+          ? [
+              {
+                id: "agents",
+                label: bot ? bot.name : "Agents",
+                icon: bot ? <AgentAvatar bot={bot} size={16} /> : <Brain size={14} />,
+                menu: agents.map((agent) => ({ id: agent.id, label: agent.name, icon: <AgentAvatar bot={agent} size={18} /> })),
+              },
+            ]
+          : []),
+      ]}
+    />
+  ) : null;
+
   return (
     <>
       <MemorySidebar target={target} agents={agents} waiting={waiting} onPick={pick} />
@@ -1748,20 +1792,23 @@ export function MemoryPlace() {
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1080px] px-6 pb-20 pt-7 max-md:pt-16 lg:px-12">
             <PhonePicker target={target} agents={agents} waiting={waiting} onPick={pick} />
-            {target === "you" ? (
-              <AboutYouPage />
-            ) : target === "shared" ? (
-              <SharedPage focus={focus} />
-            ) : bot ? (
-              <AgentPage key={bot.id} bot={bot} focus={focus} onFocus={(file) => setFocus({ file, nonce: Date.now() })} />
-            ) : (
-              <div className="flex flex-col items-center gap-3 py-24 text-center">
-                <Brain size={28} className="text-muted-foreground" />
-                <p className="max-w-[320px] text-ui leading-relaxed text-muted-foreground">
-                  Make an agent and its memory shows up here.
-                </p>
-              </div>
-            )}
+            <FoldedSwitchSlot value={switcher}>
+              {target === "you" ? (
+                <AboutYouPage />
+              ) : target === "shared" ? (
+                <SharedPage focus={focus} />
+              ) : bot ? (
+                <AgentPage key={bot.id} bot={bot} focus={focus} onFocus={(file) => setFocus({ file, nonce: Date.now() })} />
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-24 text-center">
+                  {switcher && <div className="self-end">{switcher}</div>}
+                  <Brain size={28} className="text-muted-foreground" />
+                  <p className="max-w-[320px] text-ui leading-relaxed text-muted-foreground">
+                    Make an agent and its memory shows up here.
+                  </p>
+                </div>
+              )}
+            </FoldedSwitchSlot>
           </div>
         </div>
       </main>

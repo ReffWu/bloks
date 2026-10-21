@@ -27,6 +27,12 @@ export const SIDE_COLUMN: SideColumnSize = { min: 200, max: 400, initial: 260, f
 export const CHAT_COLUMN = "chat";
 export const CHAT_SIZE: SideColumnSize = { min: 232, max: 440, initial: 288, foldBelow: 180 };
 
+/** Automations' lists (watchers, intents, webhooks) are one column: the
+ * tabs swap what it lists, not where it stands, so switching tabs never
+ * moves the page beside it. */
+export const AUTOMATIONS_LIST = "automations-list";
+export const AUTOMATIONS_LIST_SIZE: SideColumnSize = { min: 200, max: 400, initial: 260, foldBelow: 150 };
+
 /** How far an arrow key moves an edge that has focus. */
 export const EDGE_STEP = 16;
 

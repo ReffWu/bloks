@@ -16,6 +16,7 @@ import type { Connectors, ToolkitCard } from "@/lib/useConnectors";
 import { detailsFor } from "@/lib/appDetails";
 import { agentForApps, tryPrompt } from "@/lib/tryPrompt";
 import { ServiceIcon } from "./Customize";
+import { useFoldedSwitch } from "./SideColumn";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/cn";
 import { useState } from "react";
@@ -152,11 +153,21 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
 }
 
 function BackToPlugins({ onBack }: { onBack: () => void }) {
-  return (
+  // With Customize's list folded, its switch sits at the right of this
+  // row, the page's first, as it sits on the title row of the others.
+  const folded = useFoldedSwitch();
+  const back = (
     <button onClick={onBack} className="flex items-center gap-1.5 text-ui text-muted-foreground transition-colors hover:text-foreground">
       <ArrowLeft size={16} />
       Plugins
     </button>
+  );
+  if (!folded) return back;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4">
+      {back}
+      {folded}
+    </div>
   );
 }
 
