@@ -139,16 +139,14 @@ export function MarkPicker({
               tabIndex={on ? 0 : -1}
               disabled={disabled || worn}
               onClick={() => pick(mark, colorRow, i)}
-              className={cn(
-                "group/swatch flex size-[31px] items-center justify-center rounded-full outline-none",
-                worn && "cursor-not-allowed",
-              )}
+              // the app's own focus ring, on the button; the choice is
+              // drawn on the swatch inside it, so the two never fight
+              className={cn("group/swatch flex size-[31px] items-center justify-center rounded-full", worn && "cursor-not-allowed")}
             >
               <span
                 aria-hidden
                 className={cn(
                   "size-[22px] rounded-full transition-[scale,box-shadow] duration-150 ease-out",
-                  "group-focus-visible/swatch:ring-2 group-focus-visible/swatch:ring-ring group-focus-visible/swatch:ring-offset-2 group-focus-visible/swatch:ring-offset-background",
                   on ? "ring-2 ring-foreground/75 ring-offset-2 ring-offset-background" : "group-hover/swatch:scale-110 group-active/swatch:scale-95",
                   worn && "opacity-25 group-hover/swatch:scale-100",
                 )}
@@ -184,10 +182,11 @@ export function MarkPicker({
               tabIndex={on ? 0 : -1}
               disabled={disabled || worn}
               onClick={() => pick(mark, shapeRow, i)}
+              // chosen is a border, not a shadow: the focus ring is a
+              // shadow, and the chosen tile is the one that has the focus
               className={cn(
-                "flex size-[31px] items-center justify-center rounded-[9px] outline-none transition-[background-color,scale] duration-150 ease-out",
-                "focus-visible:ring-2 focus-visible:ring-ring",
-                on ? "bg-background shadow-sm ring-1 ring-foreground/20" : "hover:bg-accent active:scale-95",
+                "flex size-[31px] items-center justify-center rounded-[9px] border transition-[background-color,border-color,scale] duration-150 ease-out",
+                on ? "border-foreground/25 bg-background" : "border-transparent hover:bg-accent active:scale-95",
                 worn && "cursor-not-allowed opacity-25 hover:bg-transparent",
               )}
             >
