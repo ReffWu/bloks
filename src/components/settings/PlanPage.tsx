@@ -19,7 +19,7 @@
 // Going to bloks.dev arms a look on return (src/lib/planClient.ts): back
 // in the window, the plan is asked fresh, every gate follows it, and a
 // plan that went up gets its small moment here.
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
@@ -460,6 +460,9 @@ function KeyField({
 function KeyFooter({ snapshot, onChanged }: { snapshot: PlanSnapshot; onChanged: () => void }) {
   const [replacing, setReplacing] = useState(false);
   const [removing, setRemoving] = useState(false);
+  /** Replace was picked: the closing menu hands focus to the field rather
+   * than back to its button. */
+  const toField = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const ws = currentWorkspace(useWorkspaces());
   const canCopy = Boolean(window.bloks?.licenceCopy) && snapshot.licence.kept;
@@ -508,14 +511,28 @@ function KeyFooter({ snapshot, onChanged }: { snapshot: PlanSnapshot; onChanged:
               {removing ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={16} />}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="whitespace-nowrap">
+          <DropdownMenuContent
+            align="end"
+            className="whitespace-nowrap"
+            onCloseAutoFocus={(e) => {
+              if (!toField.current) return;
+              toField.current = false;
+              e.preventDefault();
+              requestAnimationFrame(() => document.getElementById("plan-key")?.focus());
+            }}
+          >
             {canCopy && (
               <DropdownMenuItem onSelect={() => void copy()}>
                 <Copy />
                 Copy key
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onSelect={() => setReplacing(true)}>
+            <DropdownMenuItem
+              onSelect={() => {
+                toField.current = true;
+                setReplacing(true);
+              }}
+            >
               <Repeat />
               Replace key
             </DropdownMenuItem>
