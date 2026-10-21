@@ -118,10 +118,12 @@ const MODELS: ModelCatalog = {
  * two-line output. */
 const ONE_SHOT_MODEL = "claude-haiku-4-5";
 
-/** How long a steered turn's process may say nothing after a result
- * before that result is taken as the end. Usually the process exits
- * first; one kept alive by a background task it started would otherwise
- * hold the lane busy for as long as that task runs. */
+/** How long a steered turn's process may say nothing after a result,
+ * with no call of its own still open, before that result is taken as
+ * the end. Only a CLI that does not say which input a result answers
+ * needs it. Usually the process exits first; one kept alive by a
+ * background task it started would otherwise hold the lane busy for as
+ * long as that task runs. */
 const STEER_QUIET_MS = 30_000;
 
 export interface ClaudeConfig {
@@ -1090,7 +1092,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
             if (steered) {
               held = frame;
               quiet ??= setInterval(() => {
-                if (sealed || Date.now() - lastSign < STEER_QUIET_MS) return;
+                // A call still running, or a question still open, is not
+                // quiet: the model says nothing while a long command runs,
+                // and ending there left that command, and the process it
+                // ran in, going on beside the next turn (GitHub 330).
+                if (sealed || openCalls.size > 0 || asking > 0 || Date.now() - lastSign < STEER_QUIET_MS) return;
                 if (held) settle(held);
               }, 1_000);
               quiet.unref?.();
