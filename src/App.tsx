@@ -4,6 +4,8 @@ import { Loader2 } from "@/components/icons";
 import { StoreProvider, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Onboarding } from "@/components/Onboarding";
+import { WorkspaceWelcome } from "@/components/WorkspaceWelcome";
+import { welcomeKind } from "@/lib/workspaceWelcome";
 import { INTRO_KEY, Intro, introPending } from "@/components/Intro";
 import { initAnalytics, setupDone, workspaceSetupDone } from "@/lib/analytics";
 import { unreadCount } from "@/lib/unread";
@@ -312,7 +314,15 @@ function OwnerApp() {
     <MotionConfig reducedMotion="user">
       <StoreProvider>
         <Shell />
-        {setupOpen && !introOpen && <Onboarding onDone={() => setSetupOpen(false)} />}
+        {/* a workspace made beside Personal gets a welcome about what was
+            chosen for it, not the whole first run again */}
+        {setupOpen &&
+          !introOpen &&
+          (welcomeKind(window.bloks?.workspace) === "workspace" ? (
+            <WorkspaceWelcome onDone={() => setSetupOpen(false)} />
+          ) : (
+            <Onboarding onDone={() => setSetupOpen(false)} />
+          ))}
         {introOpen && <Intro onDone={() => setIntroOpen(false)} />}
         {/* over everything, the welcome included: a question, or a word
             about what just happened, is never behind what it is about */}

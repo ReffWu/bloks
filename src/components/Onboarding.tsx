@@ -128,11 +128,90 @@ const ENGINES: Array<{
 /** Someone to stand in for "your agent" before there is one. */
 const STAND_IN: { name: string; color: BlokColor; shape: BlokShape } = { name: "Your agent", color: "blue", shape: "star" };
 
+/**
+ * The engines on this machine as the workspace sees them, asked again on
+ * demand: what each one's state is, and whether any can reply at all.
+ * Shared with a new workspace's welcome (src/components/WorkspaceWelcome),
+ * which asks only when none can.
+ */
+export function useEngines() {
+  const [instances, setInstances] = useState<InstanceRow[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const checkEngines = useCallback(() => {
+    setChecking(true);
+    return fetch("/api/instances")
+      .then((r) => r.json())
+      .then((d) => setInstances(d.instances ?? []))
+      .catch(() => setInstances([]))
+      .finally(() => setChecking(false));
+  }, []);
+  // signed out is not ready: it installs green and then fails the first
+  // message, which is the setup problem this screen exists to catch
+  const readiness = (kind: string): Readiness => {
+    if (!instances) return "checking";
+    const found = instances.find((i) => i.driverKind === kind);
+    if (found?.snapshot.state !== "available") return "missing";
+    return found.snapshot.authenticated === false ? "signed-out" : "ready";
+  };
+  // CLIs report themselves in their own words ("codex-cli 0.145.0",
+  // "Grok CLI grok 1.0.4"), so only the number is taken from what they say
+  const versionOf = (kind: string) => {
+    const said = instances?.find((i) => i.driverKind === kind && i.snapshot.state === "available")?.snapshot.version;
+    return said?.match(/\d+(?:\.\d+)+/)?.[0] ?? null;
+  };
+  const ready = instances?.some((i) => i.snapshot.state === "available" && i.snapshot.authenticated !== false) ?? false;
+  const readyEngine = ENGINES.find((e) => readiness(e.kind) === "ready");
+  return { instances, checking, checkEngines, readiness, versionOf, ready, readyEngine };
+}
+
+/**
+ * Adding recommended agents, each with its role already written. Two
+ * pressed in quick succession can come back in either order; they are
+ * kept in the order they were pressed, which is the order they were
+ * wanted.
+ */
+export function useAgentHiring() {
+  const [hiring, setHiring] = useState<string[]>([]);
+  /** Who was added here, in the order they were, by template and by the
+   * agent the server made. */
+  const [hired, setHired] = useState<Array<{ template: string; bot: string }>>([]);
+  const [hireNote, setHireNote] = useState<string | null>(null);
+  const pressed = useRef<string[]>([]);
+  const hire = (template: AgentTemplate) => {
+    setHireNote(null);
+    pressed.current = [...pressed.current.filter((id) => id !== template.id), template.id];
+    setHiring((current) => [...current, template.id]);
+    void api("/api/bots", {
+      method: "POST",
+      body: JSON.stringify({
+        name: template.name,
+        title: template.title,
+        description: template.description,
+        skills: template.skills,
+        color: template.color,
+        shape: template.shape,
+        greeting: template.greeting,
+        setup: template.setup,
+      }),
+    })
+      .then(({ bot }: { bot: Bot }) =>
+        setHired((current) =>
+          [...current, { template: template.id, bot: bot.id }].sort(
+            (a, b) => pressed.current.indexOf(a.template) - pressed.current.indexOf(b.template),
+          ),
+        ),
+      )
+      .catch(() => setHireNote(`Couldn't add ${template.name}. Try again.`))
+      .finally(() => setHiring((current) => current.filter((id) => id !== template.id)));
+  };
+  return { hiring, hired, hireNote, hire };
+}
+
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const { state, dispatch } = useStore();
   const [stage, setStage] = useState<StepId | "team">("engines");
-  const [instances, setInstances] = useState<InstanceRow[] | null>(null);
-  const [checking, setChecking] = useState(false);
+  const { instances, checking, checkEngines, readiness, versionOf, ready, readyEngine } = useEngines();
+  const { hiring, hired, hireNote, hire } = useAgentHiring();
   const [perms, setPerms] = useState<{ mic: string; screen: string } | null>(null);
   /** What was already here before this run, if anything. Null until the
    * workspace answers; a fresh install answers with zeroes. */
@@ -145,11 +224,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [resetting, setResetting] = useState(false);
   /** What kind of work they said they do, and who that suggests. */
   const [work, setWork] = useState<string[]>([]);
-  const [hiring, setHiring] = useState<string[]>([]);
-  /** Who was added here, in the order they were, by template and by the
-   * agent the server made. */
-  const [hired, setHired] = useState<Array<{ template: string; bot: string }>>([]);
-  const [hireNote, setHireNote] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<ApprovalMode>("ask");
   const [approvalsNote, setApprovalsNote] = useState<string | null>(null);
   const [savingApprovals, setSavingApprovals] = useState(false);
@@ -319,15 +393,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setResetNote("Your old workspace is moved aside. Restart Bloks to open the fresh one.");
   };
 
-  const checkEngines = useCallback(() => {
-    setChecking(true);
-    return fetch("/api/instances")
-      .then((r) => r.json())
-      .then((d) => setInstances(d.instances ?? []))
-      .catch(() => setInstances([]))
-      .finally(() => setChecking(false));
-  }, []);
-
   // a new beat starts at its top
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -348,39 +413,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       return () => clearInterval(timer);
     }
   }, [stage, checkEngines]);
-
-  /** Creates one recommended agent, with the role already written. Two
-   * pressed in quick succession can come back in either order; they are
-   * kept in the order they were pressed, which is the order they were
-   * wanted. */
-  const pressed = useRef<string[]>([]);
-  const hire = (template: AgentTemplate) => {
-    setHireNote(null);
-    pressed.current = [...pressed.current.filter((id) => id !== template.id), template.id];
-    setHiring((current) => [...current, template.id]);
-    void api("/api/bots", {
-      method: "POST",
-      body: JSON.stringify({
-        name: template.name,
-        title: template.title,
-        description: template.description,
-        skills: template.skills,
-        color: template.color,
-        shape: template.shape,
-        greeting: template.greeting,
-        setup: template.setup,
-      }),
-    })
-      .then(({ bot }: { bot: Bot }) =>
-        setHired((current) =>
-          [...current, { template: template.id, bot: bot.id }].sort(
-            (a, b) => pressed.current.indexOf(a.template) - pressed.current.indexOf(b.template),
-          ),
-        ),
-      )
-      .catch(() => setHireNote(`Couldn't add ${template.name}. Try again.`))
-      .finally(() => setHiring((current) => current.filter((id) => id !== template.id)));
-  };
 
   /**
    * Out of setup, by one of three doors: into the chat of someone just
@@ -403,24 +435,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     if (then === "picker") dispatch({ type: "toggleNewAgent", open: true, firstRun: true });
     else if (typeof then === "object") dispatch({ type: "select", id: then.select });
   };
-
-  // signed out is not ready: it installs green and then fails the first
-  // message, which is the setup problem this screen exists to catch
-  const readiness = (kind: string): Readiness => {
-    if (!instances) return "checking";
-    const found = instances.find((i) => i.driverKind === kind);
-    if (found?.snapshot.state !== "available") return "missing";
-    return found.snapshot.authenticated === false ? "signed-out" : "ready";
-  };
-  // CLIs report themselves in their own words ("codex-cli 0.145.0",
-  // "Grok CLI grok 1.0.4"), so only the number is taken from what they say
-  const versionOf = (kind: string) => {
-    const said = instances?.find((i) => i.driverKind === kind && i.snapshot.state === "available")?.snapshot.version;
-    return said?.match(/\d+(?:\.\d+)+/)?.[0] ?? null;
-  };
-  const ready =
-    instances?.some((i) => i.snapshot.state === "available" && i.snapshot.authenticated !== false) ?? false;
-  const readyEngine = ENGINES.find((e) => readiness(e.kind) === "ready");
 
   // The agents someone has, as the last beat shows them: the ones made
   // here first, in the order they were, then anyone already waiting.
@@ -728,19 +742,19 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 // ---------------------------------------------------------------------------
 
 /** "A", "A and B", "A, B and C". */
-function namesOf(names: string[]): string {
+export function namesOf(names: string[]): string {
   if (names.length <= 1) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 /** A single column, for the beats that have nothing to show beside them. */
-function Column({ children }: { children: React.ReactNode }) {
+export function Column({ children }: { children: React.ReactNode }) {
   return <div className="mx-auto w-full max-w-[720px] px-5 pb-12 pt-4 sm:px-8 lg:pt-10">{children}</div>;
 }
 
 /** The small light that says where an engine stands. It lands, rather
  * than blinks, when the poll finds something has changed. */
-function ReadyDot({ state }: { state: Readiness }) {
+export function ReadyDot({ state }: { state: Readiness }) {
   return (
     <span className="relative flex size-2 shrink-0">
       <AnimatePresence initial={false} mode="popLayout">
@@ -812,7 +826,7 @@ function WelcomeBack({
 // lights up as the poll finds it, so installing one in another window
 // and coming back shows it arriving.
 
-function EnginesBeat({
+export function EnginesBeat({
   readiness,
   versionOf,
   ready,
@@ -990,18 +1004,23 @@ function StatusPill({ state, large }: { state: Readiness; large?: boolean }) {
 // question and its answer sit on one page, and the answer changes as the
 // question does.
 
-function AgentsBeat({
+export function AgentsBeat({
   work,
   setWork,
   hired,
   hiring,
   onHire,
+  title = "What do you spend your time on?",
+  says = "Pick any that fit. Agents for that work appear below.",
 }: {
   work: string[];
   setWork: (update: (current: string[]) => string[]) => void;
   hired: Array<{ template: string; bot: string }>;
   hiring: string[];
   onHire: (template: AgentTemplate) => void;
+  /** A new workspace asks about the work done there, not about you. */
+  title?: string;
+  says?: string;
 }) {
   const suggested = recommendedFor(work, 3)
     .map((id) => AGENT_TEMPLATES.find((t) => t.id === id))
@@ -1009,7 +1028,7 @@ function AgentsBeat({
   return (
     <div className="mx-auto w-full max-w-[1080px] px-5 pb-12 pt-4 sm:px-8 lg:pt-10">
       <div className="max-w-[720px]">
-        <BeatHeading title="What do you spend your time on?" says="Pick any that fit. Agents for that work appear below." />
+        <BeatHeading title={title} says={says} />
       </div>
       <div role="group" aria-label="Kinds of work" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {WORK_TYPES.map((option) => {
