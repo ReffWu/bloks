@@ -217,6 +217,9 @@ declare global {
       pendingMenuCommand?(): Promise<"settings" | "shortcuts" | null>;
       /** Puts a number on the Dock icon; 0 clears it. */
       badgeSet(count: number): Promise<void>;
+      /** A line for the app's own log, in the app's logs folder; an
+       * older app has no such bridge. */
+      appLog?(text: string): Promise<void>;
       /** The disk path behind a dropped or picked File, or "" when the
        * file has none (a drag out of a browser, for instance). */
       filePath(file: File): string;

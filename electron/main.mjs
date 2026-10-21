@@ -16,6 +16,7 @@ import {
   autoUpdater as nativeUpdater,
   BrowserWindow,
   clipboard,
+  crashReporter,
   desktopCapturer,
   dialog,
   globalShortcut,
@@ -62,6 +63,8 @@ import { startCua, stopCua, registerCuaIpc } from "./cua.mjs";
 import { nativeHelper } from "./native-helper.mjs";
 import { anyFreePort, failurePage, parseLsof, portFree, portOrder } from "./ports.mjs";
 import { keepServerUp, stopServer } from "./server-life.mjs";
+import { createAppLog, lineBudget } from "./app-log.mjs";
+import { stoppedPage, watchRenderer } from "./renderer-watch.mjs";
 import {
   PERSONAL_ID,
   accentOf,
@@ -139,6 +142,23 @@ async function adoptLoginShellPath() {
 /** Set once Bloks starts quitting: the servers going away is expected
  * from then on, and none is brought back. */
 let quitting = false;
+
+// A native crash in any of Bloks' processes leaves a minidump in this
+// computer's crash folder (app.getPath("crashDumps")), and nothing else:
+// no upload, no server to send one to. macOS still writes its own report.
+crashReporter.start({ uploadToServer: false });
+
+/** The app's own log, in its logs folder (electron/app-log.mjs). Made on
+ * first use, once the logs folder has been settled. */
+let appLogFile = null;
+const appLog = (text) => (appLogFile ??= createAppLog(app.getPath("logs"))).write(text);
+
+// A helper process that went away (the GPU process, a workspace's
+// server, the network service) says so in the log, with why.
+app.on("child-process-gone", (_event, details) => {
+  if (quitting && details.reason === "clean-exit") return;
+  appLog(`process gone: ${details.type}${details.name ? ` (${details.name})` : ""}, ${details.reason}, exit code ${details.exitCode}`);
+});
 
 // One Bloks per user. A second launch would fork a second harness onto a
 // fallback port and quietly split the workspace in two, so the loser
@@ -1917,11 +1937,27 @@ function createWindow() {
   // those open in the real browser, and everything else is dropped. The
   // app frame itself never navigates anywhere but its own origin.
   guardNavigation(win);
+  // a page that died is loaded again, and one that keeps dying stops at a
+  // plain page (electron/renderer-watch.mjs)
+  watchRenderer(win, {
+    log: appLog,
+    reopen: () => void showIn(win, windowWorkspace.get(win) ?? shownId),
+    stopped: () => stoppedPage({ backdrop: nativeTheme.shouldUseDarkColors ? DARK_BACKDROP : LIGHT_BACKDROP, dark: nativeTheme.shouldUseDarkColors }),
+    quitting: () => quitting,
+  });
 
   void showIn(win, shownId, welcomeQuery);
   welcomeQuery = "";
   return win;
 }
+
+// What the page itself has to say for the app log, such as an error the
+// interface caught and could not draw past. Budgeted, so a page failing
+// in a loop cannot fill the disk.
+const pageLogBudget = lineBudget();
+handle("app:log", (_event, text) => {
+  if (typeof text === "string" && pageLogBudget()) appLog(`page: ${text}`);
+});
 
 // ── permissions the web layer cannot ask for ───────────────────────────
 

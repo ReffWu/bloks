@@ -86,6 +86,7 @@ contextBridge.exposeInMainWorld("bloks", {
 
   notifyShow: (notice) => ipcRenderer.invoke("notify:show", notice),
   badgeSet: (count) => ipcRenderer.invoke("badge:set", count),
+  appLog: (text) => ipcRenderer.invoke("app:log", String(text)),
   // Where a dropped or picked File actually lives. Chromium stopped
   // putting the path on the File object; this is the sanctioned bridge.
   filePath: (file) => webUtils.getPathForFile(file),
