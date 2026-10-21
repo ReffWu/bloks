@@ -111,8 +111,13 @@ process.on('message',(m:any)=>{
   await until(()=>pids().every(pid=>!alive(pid)),'recorded fake child remained after isolated host teardown');
   t.diagnostic('All '+pids().length+' recorded explicit fake child PIDs absent after teardown.');
   rmSync(host,{force:true});
-  // a store write already in flight can land as the folder goes; give it time
-  rmSync(home,{recursive:true,force:true,maxRetries:10,retryDelay:100});
+  // a store write already in flight can land as the folder goes; give it time,
+  // and a temp folder that still will not go is the system's to clear, not a
+  // failed test (it was the one flake in a quiet full run)
+  for(let tries=0;;tries++){
+   try{rmSync(home,{recursive:true,force:true,maxRetries:10,retryDelay:100});break}
+   catch(error){if(tries>=2){t.diagnostic('left '+home+': '+(error as Error).message);break}await new Promise(r=>setTimeout(r,1000))}
+  }
  });
  const ready=async()=>{if(child.exitCode!==null||child.signalCode!==null)throw new Error(logs.slice(-1200));if(!logs.includes('bloks server on '+url))return false;try{return (await fetch(url+'/api/health')).ok}catch{return false}};
  for(let attempt=0;;attempt++){
