@@ -58,8 +58,9 @@ export function peopleLabel(ws: Pick<WorkspaceInfo, "team" | "members" | "kind">
 }
 
 /** The plain line a joined workspace reached only on its owner's own
- * network carries, or null. */
+ * network carries, or your hosted one, or null. */
 export function reachLine(ws: Pick<WorkspaceInfo, "kind" | "host"> & { lanOnly?: boolean }): string | null {
+  if (ws.kind === "hosted") return "Runs on your hosted machine, reached through Bloks Cloud. It keeps working when this computer is off.";
   if (ws.kind !== "joined" || !ws.lanOnly) return null;
   return `Reached only on ${ws.host ? `${ws.host}'s` : "its owner's"} network. Away from it, this workspace waits until you are back.`;
 }
@@ -67,6 +68,7 @@ export function reachLine(ws: Pick<WorkspaceInfo, "kind" | "host"> & { lanOnly?:
 /** What the kind is called on its own line, under a name. */
 export function kindLabel(ws: Pick<WorkspaceInfo, "kind" | "team">): string {
   if (ws.kind === "joined") return "Joined workspace";
+  if (ws.kind === "hosted") return "Hosted workspace";
   return ws.team ? "Team workspace" : "Just me";
 }
 

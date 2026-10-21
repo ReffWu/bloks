@@ -13,6 +13,7 @@
 // in the window, the plan is asked fresh, every gate follows it, and a
 // plan that went up gets its small moment here.
 import { useCallback, useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowRight,
@@ -24,6 +25,7 @@ import {
   Lock,
   RefreshCw,
   Server,
+  Smartphone,
   Sparkles,
   Trash2,
   TriangleAlert,
@@ -54,6 +56,7 @@ import { BloksAiRow, BloksAiSettings, useBloksAi } from "../CreditsSection";
 import { BlockBurst } from "../members/BlockBurst";
 import { SettingRow, SettingsEmpty, SettingsGroup } from "../SettingsLayout";
 import { YourName } from "./YourName";
+import { goToWorkspace } from "../WorkspaceSwitcher";
 
 const CLOUD_KEY = /^blok_live_[0-9a-f]{32}$/;
 const easeOut = [0.23, 1, 0.32, 1] as const;
@@ -426,8 +429,191 @@ function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: R
           />
         )
       )}
-      {hosting && <SettingRow label={hosting.name} description={hosting.line} control={<HealthLine tone={hosting.tone} label={hosting.label} />} />}
+      {hosting && <HostingRow hosting={hosting} state={account?.hosting?.state ?? null} />}
     </SettingsGroup>
+  );
+}
+
+// ── the way into a hosted workspace ────────────────────────────────────
+
+/** How long a sleeping hosted workspace may take to wake before asking
+ * again stops: most wakes are seconds, one that has to rebuild about two
+ * minutes. */
+const WAKE_PATIENCE_MS = 3 * 60_000;
+
+/**
+ * A pairing link to the hosted workspace, asked of bloks.dev by this
+ * computer's server with the key and sealed for it alone
+ * (server/plan-account.ts). A workspace that is waking up is asked again
+ * every few seconds, with `onWaking` told so the row can say what is
+ * happening, rather than failing on the first try.
+ */
+async function hostedLink(onWaking: () => void): Promise<{ link: string; expiresAt: number }> {
+  const until = Date.now() + WAKE_PATIENCE_MS;
+  for (;;) {
+    const res = await fetch("/api/plan/hosting/link", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && typeof body.link === "string") return { link: body.link, expiresAt: Number(body.expiresAt) || Date.now() + 15 * 60_000 };
+    if (body.waking === true && Date.now() < until) {
+      onWaking();
+      await new Promise((r) => setTimeout(r, 5_000));
+      continue;
+    }
+    throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+  }
+}
+
+/** Minutes and seconds left, as the pairing screens count them. */
+function countdown(until: number, now: number): string {
+  const left = Math.max(0, Math.round((until - now) / 1000));
+  return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Hosting's row: the tier, the machine's state, and once it is running,
+ * the way in. "Open" pairs this computer with the hosted workspace as one
+ * of your own devices and lists it beside your other workspaces; "Pair
+ * your iPhone" shows the same pairing link and code the app uses
+ * everywhere else, for the phone to scan. Nothing here needs a terminal
+ * on the machine, which nobody has.
+ */
+function HostingRow({ hosting, state }: { hosting: NonNullable<ReturnType<typeof hostingWords>>; state: string | null }) {
+  const workspaces = useWorkspaces();
+  const listed = workspaces.available ? workspaces.workspaces.find((w) => w.kind === "hosted") : undefined;
+  const canList = Boolean(window.bloks?.workspaceHosted);
+  const running = state === "active" || state === "grace";
+  const [busy, setBusy] = useState<"open" | "phone" | null>(null);
+  const [waking, setWaking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [phone, setPhone] = useState<{ link: string; qr: string | null; expiresAt: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!phone) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [phone]);
+  useEffect(() => {
+    if (phone && now >= phone.expiresAt) setPhone(null);
+  }, [phone, now]);
+
+  const work = async (what: "open" | "phone", job: () => Promise<void>) => {
+    setBusy(what);
+    setError(null);
+    setWaking(false);
+    try {
+      await job();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+      setWaking(false);
+    }
+  };
+
+  const pairHere = () =>
+    work("open", async () => {
+      const { link } = await hostedLink(() => setWaking(true));
+      const said = await window.bloks?.workspaceHosted?.({ link, open: true });
+      if (said?.error) throw new Error(said.error);
+    });
+
+  const pairPhone = () =>
+    work("phone", async () => {
+      const { link, expiresAt } = await hostedLink(() => setWaking(true));
+      // the QR always sits on white; a themed QR is an unscannable QR
+      const qr = await QRCode.toDataURL(link, { errorCorrectionLevel: "M", margin: 1, width: 168, color: { dark: "#111111", light: "#ffffff" } }).catch(
+        () => null,
+      );
+      setNow(Date.now());
+      setPhone({ link, qr, expiresAt });
+    });
+
+  const copy = async () => {
+    if (!phone) return;
+    try {
+      await navigator.clipboard.writeText(phone.link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setError("Couldn't copy the link just now.");
+    }
+  };
+
+  return (
+    <SettingRow label={hosting.name} description={hosting.line} control={<HealthLine tone={hosting.tone} label={hosting.label} />}>
+      {running && (
+        <div className="mt-3 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {listed ? (
+              <Button size="sm" className="gap-1.5" onClick={() => void goToWorkspace(listed.id)}>
+                <Server size={14} />
+                Open your hosted workspace
+              </Button>
+            ) : (
+              canList && (
+                <Button size="sm" className="gap-1.5" disabled={busy !== null} onClick={() => void pairHere()}>
+                  {busy === "open" ? <Loader2 size={14} className="animate-spin" /> : <Server size={14} />}
+                  Open your hosted workspace
+                </Button>
+              )
+            )}
+            <Button size="sm" variant="secondary" className="gap-1.5" disabled={busy !== null} onClick={() => void pairPhone()}>
+              {busy === "phone" ? <Loader2 size={14} className="animate-spin" /> : <Smartphone size={14} />}
+              Pair your iPhone
+            </Button>
+            {/* a pairing revoked on the machine, or a new Mac: pair this
+                one again in place, keeping the workspace's place here */}
+            {listed && canList && (
+              <button
+                type="button"
+                className="text-small text-muted-foreground underline underline-offset-2 transition-colors duration-150 hover:text-foreground disabled:opacity-50"
+                disabled={busy !== null}
+                onClick={() => void pairHere()}
+              >
+                Pair this computer again
+              </button>
+            )}
+          </div>
+          {waking && busy && (
+            <p role="status" className="text-pretty text-small text-muted-foreground">
+              Your hosted workspace is waking up. This takes a few seconds, sometimes a minute or two.
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="text-pretty text-small text-destructive">
+              {error}
+            </p>
+          )}
+          {phone && (
+            <div className="flex flex-wrap items-start gap-4 rounded-xl bg-muted/60 p-3">
+              <div className="shrink-0 rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5" aria-label="Pairing QR code">
+                {phone.qr ? (
+                  <img src={phone.qr} alt="Scan with the Bloks app on your iPhone" className="size-[152px]" />
+                ) : (
+                  <div className="flex size-[152px] items-center justify-center text-caption text-neutral-500">QR unavailable</div>
+                )}
+              </div>
+              <div className="min-w-[180px] flex-1 text-small leading-relaxed text-muted-foreground">
+                <p className="text-pretty text-foreground">Scan this with your iPhone's camera, or open the link in the Bloks app.</p>
+                <p className="mt-1 text-pretty">Anyone who opens it in time becomes one of your devices, so keep it to yourself.</p>
+                <p className="mt-1 tabular-nums">Works once. Expires in {countdown(phone.expiresAt, now)}.</p>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => void copy()}>
+                    {copied ? <Check size={13} /> : <Copy size={13} />}
+                    {copied ? "Copied" : "Copy the link"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setPhone(null)}>
+                    Done
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </SettingRow>
   );
 }
 

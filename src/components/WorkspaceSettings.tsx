@@ -115,13 +115,15 @@ function KindRows({ ws, all }: { ws: WorkspaceInfo; all: WorkspaceInfo[] }) {
             ? "Personal is the workspace Bloks has always had. It keeps its kind and its mark."
             : ws.kind === "business"
               ? "Business wears the same mark on every computer."
-              : "A workspace with a name and a mark of its own."
+              : ws.kind === "hosted"
+                ? "Your workspace on a machine run for you. It keeps working when this computer is off."
+                : "A workspace with a name and a mark of its own."
         }
         control={
-          ws.kind === "personal" || ws.kind === "joined" || (ws.kind === "custom" && businessElsewhere) ? (
+          ws.kind === "personal" || ws.kind === "joined" || ws.kind === "hosted" || (ws.kind === "custom" && businessElsewhere) ? (
             // one option is not a choice, so it is said rather than offered
             <span className="text-body text-muted-foreground">
-              {ws.kind === "personal" ? "Personal" : ws.kind === "joined" ? "Joined" : "Its own name"}
+              {ws.kind === "personal" ? "Personal" : ws.kind === "joined" ? "Joined" : ws.kind === "hosted" ? "Hosted" : "Its own name"}
             </span>
           ) : (
             <Segmented<"business" | "custom">
@@ -136,7 +138,7 @@ function KindRows({ ws, all }: { ws: WorkspaceInfo; all: WorkspaceInfo[] }) {
           )
         }
       />
-      {ws.kind !== "joined" && (
+      {ws.kind !== "joined" && ws.kind !== "hosted" && (
         <SettingRow
           label="Who uses it"
           description={ws.team ? "You and the people you invite. Each has their own conversations with its agents." : "Only you."}

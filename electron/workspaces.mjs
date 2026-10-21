@@ -22,7 +22,13 @@ import { fixedMark, generateMark, isCustomMark, sameMark } from "./workspace-mar
 export const REGISTRY_VERSION = 1;
 export const PERSONAL_ID = "personal";
 
-export const KINDS = Object.freeze(["personal", "business", "custom", "joined"]);
+export const KINDS = Object.freeze(["personal", "business", "custom", "joined", "hosted"]);
+
+/** Kinds whose server is on another machine, reached through the remote
+ * proxy (electron/remote.mjs) rather than started here: a workspace
+ * somebody else owns and let you into, and your own hosted one. */
+export const REMOTE_KINDS = Object.freeze(["joined", "hosted"]);
+export const isRemoteKind = (kind) => REMOTE_KINDS.includes(kind);
 export const NOTIFY_LEVELS = Object.freeze(["all", "needs-me", "nothing"]);
 
 const MINUTE = 60_000;
@@ -79,7 +85,7 @@ export function normalizeEntry(raw, index = 0) {
     ? { color: raw.mark.color, pattern: raw.mark.pattern }
     : null);
   const dataDir = typeof raw.dataDir === "string" && raw.dataDir ? raw.dataDir : null;
-  if (kind !== "joined" && !dataDir) return null;
+  if (!isRemoteKind(kind) && !dataDir) return null;
   const mute =
     raw.mute === "forever" ? "forever" : Number.isFinite(raw.mute) && raw.mute > 0 ? Number(raw.mute) : null;
   const entry = {
@@ -112,6 +118,18 @@ export function normalizeEntry(raw, index = 0) {
     };
     // what you are there, as its server last said: Member or Admin
     entry.role = raw.role === "admin" ? "admin" : "member";
+  }
+  // Your own workspace on a machine run for you, reached through Bloks
+  // Cloud with a device of yours paired there. Yours, so named and marked
+  // like any of your own; its credentials live in the keychain like a
+  // joined one's.
+  if (kind === "hosted") {
+    const host = raw.host && typeof raw.host === "object" ? raw.host : {};
+    entry.host = {
+      name: typeof host.name === "string" ? host.name.slice(0, 60) : "",
+      relayUrl: typeof host.relayUrl === "string" ? host.relayUrl : "",
+      lan: "",
+    };
   }
   return entry;
 }
@@ -301,6 +319,32 @@ export function addWorkspace(registry, input, { workspacesDir, now = Date.now(),
   return { registry: { ...registry, workspaces: [...registry.workspaces, entry] }, entry };
 }
 
+/**
+ * Lists your hosted workspace, or points the one listed at a fresh pairing:
+ * there is one per licence, so opening it again (a new Mac, a pairing that
+ * was revoked there) keeps its place, name and mark rather than adding a
+ * second. Its credentials are the caller's to keep, in the keychain.
+ */
+export function addHosted(registry, { host = "", relayUrl = "" } = {}, { now = Date.now(), random = Math.random, id = newId() } = {}) {
+  const hostInfo = { name: typeof host === "string" ? host.slice(0, 60) : "", relayUrl: typeof relayUrl === "string" ? relayUrl : "", lan: "" };
+  const was = registry.workspaces.find((w) => w.kind === "hosted");
+  if (was) {
+    const entry = { ...was, host: hostInfo };
+    return { registry: { ...registry, workspaces: registry.workspaces.map((w) => (w.id === was.id ? entry : w)) }, entry, replaced: true };
+  }
+  const entry = normalizeEntry({
+    id,
+    kind: "hosted",
+    name: "Hosted",
+    mark: generateMark(marksInUse(registry), { random }),
+    notify: "all",
+    order: registry.workspaces.length,
+    createdAt: now,
+    host: hostInfo,
+  });
+  return { registry: { ...registry, workspaces: [...registry.workspaces, entry] }, entry, replaced: false };
+}
+
 /** Changes what may change about a workspace. Personal stays Personal and
  * keeps its mark; a Business keeps its mark; becoming Business takes its
  * mark, and leaving Business draws a named one. */
@@ -311,7 +355,7 @@ export function updateWorkspace(registry, id, patch, { random = Math.random } = 
   const next = { ...was };
 
   if (patch.name !== undefined || patch.kind !== undefined) {
-    const kind = was.kind === "personal" || was.kind === "joined" ? was.kind : (patch.kind ?? was.kind);
+    const kind = was.kind === "personal" || isRemoteKind(was.kind) ? was.kind : (patch.kind ?? was.kind);
     const name = patch.name !== undefined ? patch.name : was.name;
     if (kind === "business" || kind === "custom") {
       const why = refusal(registry, { kind, name }, id);
@@ -535,6 +579,8 @@ export function snapshot(registry, live = {}, now = Date.now()) {
               lanOnly: !w.host?.relayUrl && Boolean(w.host?.lan),
             }
           : {}),
+        // your own, on a machine run for you
+        ...(w.kind === "hosted" ? { remote: true } : {}),
       };
     }),
   };

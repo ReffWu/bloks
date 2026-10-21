@@ -156,10 +156,10 @@ export function WorkspaceSwitcher({
   const waitingElsewhere = s.workspaces.some((w) => hasWaiting(w, s.current));
   const muted = muteLabel(current.mute);
   const reach = reachLine(current);
-  // Joining runs on a server of this computer's own, which a joined
-  // workspace's window does not have: it is done from Personal.
-  const joinHere = current.kind !== "joined";
-  const home = s.workspaces.find((w) => w.kind === "personal") ?? s.workspaces.find((w) => w.kind !== "joined");
+  // Joining runs on a server of this computer's own, which a joined or a
+  // hosted workspace's window does not have: it is done from Personal.
+  const joinHere = current.kind !== "joined" && current.kind !== "hosted";
+  const home = s.workspaces.find((w) => w.kind === "personal") ?? s.workspaces.find((w) => w.kind !== "joined" && w.kind !== "hosted");
 
   const mute = async (choice: string) => {
     const error = await act(window.bloks?.workspaceMute?.(current.id, choice));

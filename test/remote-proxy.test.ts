@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
-import { startRemoteProxy } from "../electron/remote.mjs";
+import { doorOf, startRemoteProxy } from "../electron/remote.mjs";
 
 const ui = mkdtempSync(join(tmpdir(), "bloks-remote-ui-"));
 writeFileSync(join(ui, "index.html"), "<!doctype html><title>Bloks</title>");
@@ -141,5 +141,37 @@ test("a line the relay ends cleanly is reported gone, not left showing connected
   } finally {
     proxy.stop();
     r.close();
+  }
+});
+
+// A hosted workspace's desktop is passed to the door its answer named, so
+// the door has to be somewhere this app is willing to send a desktop.
+test("a desktop's door is an https origin, or loopback for a test, and nothing else", () => {
+  assert.equal(doorOf("https://machine-1.example.app"), "https://machine-1.example.app");
+  assert.equal(doorOf("https://machine-1.example.app/some/path"), "https://machine-1.example.app");
+  assert.equal(doorOf("http://127.0.0.1:4100"), "http://127.0.0.1:4100");
+  for (const bad of ["http://machine-1.example.app", "https://user:pw@example.app", "file:///etc/passwd", "javascript:alert(1)", "", null, 42]) {
+    assert.equal(doorOf(bad), null, String(bad));
+  }
+});
+
+test("a desktop path with no ticket this window was given goes nowhere, and neither does its socket", async () => {
+  const proxy = await startRemoteProxy(profile, { staticDir: ui });
+  try {
+    const page = await fetch(`http://127.0.0.1:${proxy.port}/hosted/desktop/${"b".repeat(48)}/vnc.html`);
+    assert.equal(page.status, 404);
+    const { connect } = await import("node:net");
+    const answer = await new Promise<string>((resolve) => {
+      const socket = connect(proxy.port, "127.0.0.1", () => {
+        socket.write(`GET /hosted/desktop/${"b".repeat(48)}/websockify HTTP/1.1\r\nHost: 127.0.0.1:${proxy.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`);
+      });
+      let got = "";
+      socket.on("data", (chunk) => (got += chunk));
+      socket.on("close", () => resolve(got));
+      socket.on("error", () => resolve(got));
+    });
+    assert.match(answer, /^HTTP\/1\.1 404/);
+  } finally {
+    proxy.stop();
   }
 });

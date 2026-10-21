@@ -73,6 +73,8 @@ import {
   muteFor,
   nextMuteEnd,
   readRegistry,
+  addHosted,
+  isRemoteKind,
   removeWorkspace,
   reorder,
   rerollMark,
@@ -507,8 +509,8 @@ function launch(id) {
   run.problem = null;
   setStatus(run, "starting");
   const ws = entryOf(id);
-  run.ready = (ws?.kind === "joined" ? openJoined(run, ws) : startServer(run)).then((up) => {
-    if (up && run.child && ws?.kind !== "joined") run.keeper.watch(run.child);
+  run.ready = (isRemoteKind(ws?.kind) ? openJoined(run, ws) : startServer(run)).then((up) => {
+    if (up && run.child && !isRemoteKind(ws?.kind)) run.keeper.watch(run.child);
     if (up) handLicence(run);
     if (up) handName(run);
     setStatus(run, up ? "running" : "failed");
@@ -628,7 +630,7 @@ function handName(run) {
   const name = registry?.prefs.ownerName;
   if (!name || !run?.child) return;
   const ws = entryOf(run.id);
-  if (!ws || ws.kind === "joined") return;
+  if (!ws || isRemoteKind(ws.kind)) return;
   try {
     run.child.postMessage({ kind: "name", name });
   } catch {
@@ -722,7 +724,7 @@ async function openWorkspaces() {
   shownId = registry.current;
   if (await launch(shownId)) return;
   for (const ws of registry.workspaces) {
-    if (ws.id === shownId || ws.kind === "joined") continue;
+    if (ws.id === shownId || isRemoteKind(ws.kind)) continue;
     if (await launch(ws.id)) {
       shownId = ws.id;
       return;
@@ -734,7 +736,7 @@ async function openWorkspaces() {
  * the last of five wait half a minute for its routines, and all at once
  * would make the first minute of a launch a crowd. */
 async function launchTheRest() {
-  const waiting = registry.workspaces.filter((ws) => ws.kind !== "joined" && !servers.has(ws.id)).map((ws) => ws.id);
+  const waiting = registry.workspaces.filter((ws) => !isRemoteKind(ws.kind) && !servers.has(ws.id)).map((ws) => ws.id);
   const lane = async () => {
     while (waiting.length && !quitting) await launch(waiting.shift());
   };
@@ -856,6 +858,8 @@ function insideWorkspacesDir(dir) {
 // (electron/remote.mjs) with those credentials, so the window loads it
 // like any other workspace.
 
+/** The credentials of a workspace reached through the remote proxy: one
+ * you joined, or your own hosted one. Encrypted by the keychain. */
 const joinedFile = (id) => path.join(app.getPath("userData"), `joined-${id}.bin`);
 
 function readJoinedProfile(id) {
@@ -909,6 +913,34 @@ handle("workspaces:joined", (_event, input) =>
     );
     if (input?.open) await switchWorkspace(entry.id);
     return { ok: true, id: entry.id };
+  }),
+);
+
+// Your own hosted workspace, opened from the Plan page. The pairing link
+// it was asked for there (server/plan-account.ts, hostedLink, sealed for
+// that one request) is spent here, as a device of yours, and the workspace
+// is listed, or the one listed is pointed at the new pairing: there is one
+// per licence. From then on it opens like a joined one, through the
+// remote proxy, except that the device is the owner's, so the window is
+// the owner's app.
+handle("workspaces:hosted", (_event, input) =>
+  answer(async () => {
+    needsList();
+    if (!safeStorage.isEncryptionAvailable()) throw new Error("This computer cannot keep the pairing safely, so it was not saved.");
+    const profile = await claimPairLink(String(input?.link ?? ""), `${os.hostname().replace(/\.local$/, "")} (desktop)`);
+    const added = addHosted(registry, { host: profile.host, relayUrl: profile.relayUrl });
+    const shown = shownId === added.entry.id;
+    if (added.replaced) {
+      // out of it while its proxy is swapped for one with the new pairing
+      if (shown) await switchWorkspace(PERSONAL_ID);
+      await halt(added.entry.id);
+    }
+    fs.writeFileSync(joinedFile(added.entry.id), safeStorage.encryptString(JSON.stringify(profile)), { mode: 0o600 });
+    registry = settle(added.registry, { personalDataDir: personalDataDir() });
+    saveRegistry();
+    tellWorkspaces();
+    if (input?.open !== false || shown) await switchWorkspace(added.entry.id);
+    return { ok: true, id: added.entry.id };
   }),
 );
 
@@ -1114,7 +1146,7 @@ handle("workspaces:delete", (_event, id) =>
         if (fs.existsSync(dir)) await shell.trashItem(dir).catch(() => fs.rmSync(dir, { recursive: true, force: true }));
       }
     }
-    if (ws.kind === "joined") fs.rmSync(joinedFile(ws.id), { force: true });
+    if (isRemoteKind(ws.kind)) fs.rmSync(joinedFile(ws.id), { force: true });
     if (ws.logo) fs.rmSync(ws.logo, { force: true });
     tellWorkspaces();
     applyBadge();

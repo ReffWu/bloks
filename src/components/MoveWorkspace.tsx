@@ -25,12 +25,127 @@ interface MoveStatus {
   hosted: boolean;
   /** Writing one out answers only the computer the workspace is on. */
   canWrite?: boolean;
+  /** Set when the file may go in parts of this many bytes, which is how
+   * it reaches a workspace through Bloks Cloud. An older server takes it
+   * whole, in one request. */
+  partSize?: number;
 }
 
 interface Written {
   name: string;
   toEnter: string[];
 }
+
+/** Parts in flight at once: enough to keep the line busy, few enough
+ * that a slow one is not a crowd behind it. */
+const LANES = 3;
+/** Tries per part before the send stops and says so. */
+const TRIES = 6;
+
+/** Where a send in parts got to, kept in this window's storage so a send
+ * that stopped (a closed window, a lost line, a machine that slept)
+ * carries on rather than starting over. Never the file itself, which a
+ * page cannot keep: the person picks it again, and it is known by its
+ * name, size and date. */
+const SENDING_KEY = "bloks.moveSending";
+interface Sending {
+  id: string;
+  name: string;
+  size: number;
+  modified: number;
+}
+
+function readSending(): Sending | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SENDING_KEY) ?? "null");
+    return raw && typeof raw.id === "string" && typeof raw.size === "number" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function keepSending(sending: Sending | null) {
+  try {
+    if (sending) localStorage.setItem(SENDING_KEY, JSON.stringify(sending));
+    else localStorage.removeItem(SENDING_KEY);
+  } catch {
+    /* only the resuming is lost */
+  }
+}
+
+async function asked<T>(path: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: T & { error?: string; needsPassphrase?: boolean } }> {
+  const res = await fetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, body };
+}
+
+/**
+ * Sends a workspace file in numbered parts (server/move-upload.ts), a few
+ * at once, each tried again on its own when it fails, and answers the
+ * upload's id once every part is there. The same file picked again after
+ * a send stopped carries on with the parts still to come.
+ */
+async function sendInParts(file: File, onProgress: (sent: number) => void): Promise<string> {
+  let upload: { id: string; partSize: number; parts: number; missing: number[] } | null = null;
+  const kept = readSending();
+  if (kept && kept.name === file.name && kept.size === file.size && kept.modified === file.lastModified) {
+    const was = await asked<{ id: string; size: number; partSize: number; parts: number; missing: number[] }>(`/api/workspace/move/upload/${kept.id}`);
+    if (was.ok && was.body.size === file.size && Array.isArray(was.body.missing)) upload = was.body;
+  }
+  if (!upload) {
+    const started = await asked<{ id: string; partSize: number; parts: number }>("/api/workspace/move/upload", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ size: file.size }),
+    });
+    if (!started.ok) throw new Error(started.body.error ?? `${started.status}`);
+    upload = { ...started.body, missing: Array.from({ length: started.body.parts }, (_, i) => i) };
+    keepSending({ id: upload.id, name: file.name, size: file.size, modified: file.lastModified });
+  }
+  const { id, partSize, parts } = upload;
+  const sizeOf = (index: number) => (index === parts - 1 ? file.size - index * partSize : partSize);
+  const queue = [...upload.missing];
+  let sent = file.size - queue.reduce((n, index) => n + sizeOf(index), 0);
+  onProgress(sent);
+
+  const one = async (index: number) => {
+    for (let attempt = 1; ; attempt++) {
+      let failed: string;
+      try {
+        const res = await fetch(`/api/workspace/move/upload/${id}/${index}`, {
+          method: "PUT",
+          headers: { "content-type": "application/octet-stream" },
+          body: file.slice(index * partSize, index * partSize + sizeOf(index)),
+        });
+        if (res.ok) return;
+        const body = await res.json().catch(() => ({}));
+        failed = body.error ?? `${res.status} ${res.statusText}`;
+        // gone, or refused for what it is: sending it again changes nothing
+        if (res.status === 404 || res.status === 400 || res.status === 409 || res.status === 413) {
+          if (res.status === 404) keepSending(null);
+          throw Object.assign(new Error(failed), { final: true });
+        }
+      } catch (e) {
+        if ((e as { final?: boolean }).final) throw e;
+        failed = e instanceof Error ? e.message : String(e);
+      }
+      if (attempt >= TRIES) throw new Error(`A part did not get through (${failed}). Choose the same file again to carry on.`);
+      await new Promise((r) => setTimeout(r, Math.min(1_000 * 2 ** attempt, 20_000)));
+    }
+  };
+  const lane = async () => {
+    while (queue.length) {
+      const index = queue.shift()!;
+      await one(index);
+      sent += sizeOf(index);
+      onProgress(sent);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(LANES, Math.max(1, queue.length)) }, lane));
+  return id;
+}
+
+const megabytes = (bytes: number) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(0.1, bytes / 1e6).toFixed(bytes >= 1e8 ? 0 : 1)} MB`);
 
 /** The pid of the server answering now, to tell a restarted one apart. */
 const serverPid = () =>
@@ -46,7 +161,9 @@ export function MoveWorkspace() {
   const [writeRefused, setWriteRefused] = useState(false);
   const [arriving, setArriving] = useState<{ toEnter: string[]; pid: number | null } | null>(null);
   const [sending, setSending] = useState(false);
+  const [progress, setProgress] = useState<{ sent: number; size: number } | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [resumable] = useState(() => readSending());
   const picker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -62,7 +179,9 @@ export function MoveWorkspace() {
     let done = false;
     void (async () => {
       await new Promise((r) => setTimeout(r, 2_000));
-      if (window.bloks?.relaunch) {
+      // the app relaunches for a workspace it runs itself; a hosted one is
+      // on its own machine, which comes back by itself, and is waited for
+      if (window.bloks?.relaunch && !status?.hosted) {
         await window.bloks.relaunch();
         return;
       }
@@ -110,18 +229,31 @@ export function MoveWorkspace() {
     setSending(true);
     const pid = await serverPid();
     try {
-      const res = await fetch("/api/workspace/move/import", {
-        method: "POST",
-        headers: { "content-type": "application/octet-stream" },
-        body: file,
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+      let body: { toEnter?: unknown; error?: string };
+      if (status.partSize) {
+        // in parts, which is how it reaches a workspace through Bloks
+        // Cloud, and how a send that stops carries on
+        setProgress({ sent: 0, size: file.size });
+        const id = await sendInParts(file, (sent) => setProgress({ sent, size: file.size }));
+        const done = await asked<{ toEnter?: unknown }>(`/api/workspace/move/upload/${id}/finish`, { method: "POST" });
+        if (!done.ok) throw new Error(done.body.error ?? `${done.status}`);
+        keepSending(null);
+        body = done.body;
+      } else {
+        const res = await fetch("/api/workspace/move/import", {
+          method: "POST",
+          headers: { "content-type": "application/octet-stream" },
+          body: file,
+        });
+        body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+      }
       setArriving({ toEnter: Array.isArray(body.toEnter) ? body.toEnter : [], pid });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setSending(false);
+      setProgress(null);
     }
   };
 
@@ -192,6 +324,32 @@ export function MoveWorkspace() {
             </>
           }
         >
+          {progress && (
+            <div role="status" className="mt-3 rounded-xl bg-muted/60 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
+              <div className="flex items-center justify-between gap-3 font-medium text-foreground">
+                <span>Sending the workspace</span>
+                <span className="tabular-nums">{Math.floor((progress.sent / Math.max(1, progress.size)) * 100)}%</span>
+              </div>
+              <div
+                role="progressbar"
+                aria-label="Sending the workspace"
+                aria-valuemin={0}
+                aria-valuemax={progress.size}
+                aria-valuenow={progress.sent}
+                className="mt-2 h-1.5 overflow-hidden rounded-full bg-background"
+              >
+                <div className="h-full origin-left bg-brand-ink transition-transform duration-300 ease-out" style={{ transform: `scaleX(${progress.sent / Math.max(1, progress.size)})` }} />
+              </div>
+              <div className="mt-1.5 text-pretty tabular-nums">
+                {megabytes(progress.sent)} of {megabytes(progress.size)}. If this stops, choose the same file again and it carries on from here.
+              </div>
+            </div>
+          )}
+          {!progress && !arriving && resumable && status.partSize && (
+            <p className="mt-2 text-pretty text-small text-muted-foreground">
+              A send of {resumable.name} stopped part way. Choose the same file to carry on from where it was.
+            </p>
+          )}
           {arriving && (
             <div role="status" className="mt-3 rounded-xl bg-muted/60 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
               <div className="flex items-center gap-2 font-medium text-foreground">

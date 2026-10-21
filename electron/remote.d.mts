@@ -22,6 +22,21 @@ export interface JoinedProfile {
   lan?: string | null;
 }
 
+/** The two keys a paired device seals and opens with, from its token. */
+export function deviceKeys(deviceToken: string): { seal: Buffer; open: Buffer };
+
+/** Spends a pairing link on this app; answers the profile to keep. */
+export function claimPairLink(link: string, name: string): Promise<RemoteProfile & { host: string }>;
+
+/** The most a request's body may be through Bloks Cloud. */
+export const MAX_REQUEST_BYTES: number;
+
+/** Where a hosted workspace's desktop answers from outside, or null. */
+export function doorOf(value: unknown): string | null;
+
+/** A pairing link's fragment, or null when it is not one. */
+export function parsePairLink(link: string): { relayUrl: string; relayToken: string; linkId: string; secret: string; host: string } | null;
+
 export function reachOf(profile: Partial<JoinedProfile> | null | undefined): "relay" | "lan" | null;
 
 export function startLanProxy(

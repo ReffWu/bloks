@@ -15,7 +15,8 @@
 // tested outside the app.
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, existsSync, statSync } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { extname, join, normalize } from "node:path";
 import { gunzipSync } from "node:zlib";
 
@@ -187,14 +188,19 @@ export function fromThisComputer(req) {
   }
 }
 
+/** The most a request's body may be. Sealed for one device and wrapped
+ * for the trip, a body grows about two and a half times on its way, and
+ * the relay carries 2 MB a request. A workspace file goes in parts well
+ * under this (server/move-upload.ts). */
+export const MAX_REQUEST_BYTES = 800_000;
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
     req.on("data", (c) => {
       size += c.length;
-      // the relay carries 2 MB a request, base64 and all
-      if (size > 1_400_000) {
+      if (size > MAX_REQUEST_BYTES) {
         reject(Object.assign(new Error("too large to send through Bloks Cloud"), { status: 413 }));
         req.destroy();
       } else chunks.push(c);
@@ -204,15 +210,60 @@ function readBody(req) {
   });
 }
 
+/** Event streams the window may follow through Bloks Cloud: an agent's
+ * terminals, whose output is a live stream rather than an answer. The
+ * other computer keeps the same list (server/relay-link.ts, STREAMABLE). */
+const STREAMABLE = [/^\/api\/bots\/[\w-]+\/terminals\/stream$/, /^\/api\/bots\/[\w-]+\/terminal\/stream$/];
+/** Renewing a followed stream well inside the minute it lapses after. */
+const STREAM_RENEW_MS = 20_000;
+/** Pieces of a stream that arrived before the answer that named it. */
+const EARLY_LIMIT = 2_000_000;
+
+/** A path into a hosted workspace's virtual desktop, by its ticket
+ * (server/hosted.ts). */
+const DESKTOP_PATH = /^\/hosted\/desktop\/([0-9a-f]{48})(?:\/|$)/;
+const HOP_HEADERS = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
+
+/** Where a hosted workspace's desktop answers from outside, as its answer
+ * named it: an https origin, or http on loopback for a test. Null for
+ * anything else, which this proxy will not send anybody's desktop to. */
+export function doorOf(value) {
+  try {
+    const url = new URL(String(value));
+    if (url.username || url.password) return null;
+    if (url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname))) return url.origin;
+  } catch {
+    /* not an address */
+  }
+  return null;
+}
+
 /**
  * Serves the UI from `staticDir` and forwards the API to the remote
  * workspace. Resolves with the port and a stop function. `onState` hears
  * whether the other computer is reachable.
+ *
+ * Two things the relay cannot carry as a request and its answer are done
+ * here instead. An event stream the window opens (an agent's terminal) is
+ * asked of the other computer as a followed stream, whose events come back
+ * on the same sealed line as every frame, for this device alone, and are
+ * written to the window as the stream it opened. And a hosted workspace's
+ * desktop, which is a page and a live socket, is passed straight to the
+ * door that workspace named when it minted the ticket (server/hosted.ts),
+ * so the window frames it from its own origin as it would on the machine
+ * itself; the ticket is checked there on every request.
  */
 export async function startRemoteProxy(profile, { staticDir, port = 0, onState = () => {}, client } = {}) {
   const keys = deviceKeys(profile.deviceToken);
   const streams = new Set();
   let stopped = false;
+  // the window's followed streams, by the id the other computer gave
+  // each, and pieces of any that arrived before the answer naming it
+  const followed = new Map();
+  const early = new Map();
+  let earlyBytes = 0;
+  // desktop tickets this window was given, and where each one answers
+  const doors = new Map();
   // The relay has no resume sequence. Give this proxy's live stream its
   // own watermark, including hello, rather than disabling renderer freshness.
   // Keep notification identities across relay and renderer reconnects: a
@@ -313,6 +364,10 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
               // dialled every second, forever.
               delay = 1_000;
               onState({ connected: outer.online !== false });
+              // what a followed stream sent while the line was down is
+              // gone, so each is ended and the window opens it again,
+              // which starts it over from what it holds
+              for (const follow of [...followed.values()]) follow.end();
               // the window starts over rather than resuming: frames the
               // relay did not carry cannot be replayed from here
               for (const s of streams) s.write(`data: ${JSON.stringify({ kind: "hello", resumed: false, _seq: frameSeq })}\n\n`);
@@ -322,6 +377,12 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
             if (peek(outer.payload)?.d !== profile.deviceId) continue;
             const frame = open(keys.open, outer.payload);
             if (!frame) continue;
+            if (frame.kind === "stream" && typeof frame.stream === "string") {
+              const follow = followed.get(frame.stream);
+              if (follow) follow.take(frame);
+              else holdEarly(frame);
+              continue;
+            }
             const text = `data: ${JSON.stringify(sequenced(frame))}\n\n`;
             for (const s of streams) s.write(text);
           }
@@ -339,6 +400,133 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
     }
   };
 
+  const holdEarly = (frame) => {
+    const size = typeof frame.data === "string" ? frame.data.length : 0;
+    if (earlyBytes + size > EARLY_LIMIT) return;
+    const held = early.get(frame.stream) ?? { frames: [], at: Date.now() };
+    held.frames.push(frame);
+    early.set(frame.stream, held);
+    earlyBytes += size;
+    // nothing waits long for an answer that is not coming
+    for (const [sid, kept] of early) {
+      if (Date.now() - kept.at < 30_000) continue;
+      for (const f of kept.frames) earlyBytes -= typeof f.data === "string" ? f.data.length : 0;
+      early.delete(sid);
+    }
+  };
+
+  /** One event stream the window opened, followed on the other computer. */
+  const follow = async (req, res, path) => {
+    let answer = null;
+    try {
+      answer = await ask({ method: "POST", path: "/api/relay/streams", bodyB64: Buffer.from(JSON.stringify({ path })).toString("base64"), type: "application/json" });
+    } catch {
+      answer = null;
+    }
+    let said = null;
+    try {
+      said = JSON.parse(answer?.bytes?.toString("utf8") ?? "");
+    } catch {
+      said = null;
+    }
+    if (!answer || answer.status !== 200 || typeof said?.stream !== "string" || stopped) {
+      res.writeHead(answer && answer.status !== 200 ? answer.status : 502, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: said?.error ?? "that could not be followed through Bloks Cloud" }));
+      return;
+    }
+    const sid = said.stream;
+    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+    let line = "";
+    let ended = false;
+    const write = (text) => {
+      try {
+        res.write(text);
+      } catch {}
+    };
+    const end = () => {
+      if (ended) return;
+      ended = true;
+      clearInterval(renew);
+      clearInterval(keepalive);
+      if (followed.get(sid)?.end === end) followed.delete(sid);
+      try {
+        res.end();
+      } catch {}
+    };
+    const take = (frame) => {
+      if (frame.end) return end();
+      if (typeof frame.data !== "string") return;
+      // a long line comes in pieces and goes to the window whole
+      line += frame.data;
+      if (frame.more === true) return;
+      write(`data: ${line}\n\n`);
+      line = "";
+    };
+    const renew = setInterval(() => {
+      void ask({ method: "POST", path: `/api/relay/streams/${sid}` })
+        .then((a) => a.status === 404 && end())
+        .catch(() => {});
+    }, STREAM_RENEW_MS);
+    const keepalive = setInterval(() => write(": keepalive\n\n"), 25_000);
+    followed.set(sid, { take, end });
+    const held = early.get(sid);
+    early.delete(sid);
+    for (const frame of held?.frames ?? []) {
+      earlyBytes -= typeof frame.data === "string" ? frame.data.length : 0;
+      take(frame);
+    }
+    req.on("close", () => {
+      if (!ended) void ask({ method: "DELETE", path: `/api/relay/streams/${sid}` }).catch(() => {});
+      end();
+    });
+  };
+
+  /** The minted ticket's door, from the answer that minted it. */
+  const noteDoor = (bytes) => {
+    try {
+      const said = JSON.parse(bytes.toString("utf8"));
+      const ticket = typeof said?.url === "string" ? DESKTOP_PATH.exec(said.url)?.[1] : null;
+      const door = doorOf(said?.door);
+      if (!ticket || !door) return;
+      doors.set(ticket, door);
+      // each open panel holds one; old ones lapse there anyway
+      while (doors.size > 32) doors.delete(doors.keys().next().value);
+    } catch {
+      /* no door named: the desktop is not reachable from here */
+    }
+  };
+
+  /** A page or a file of the desktop's viewer, from its door. */
+  const passDesktop = (req, res, ticket, url) => {
+    const door = doors.get(ticket);
+    if (!door || (req.method !== "GET" && req.method !== "HEAD")) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+    const target = new URL(url.pathname + url.search, door);
+    const headers = {};
+    for (const name of ["accept", "accept-language", "user-agent", "if-none-match", "if-modified-since"]) {
+      if (typeof req.headers[name] === "string") headers[name] = req.headers[name];
+    }
+    const upstream = (target.protocol === "https:" ? httpsRequest : httpRequest)(target, { method: req.method, headers }, (answer) => {
+      const back = {};
+      for (const [name, value] of Object.entries(answer.headers)) {
+        if (value !== undefined && !HOP_HEADERS.has(name) && name !== "set-cookie") back[name] = value;
+      }
+      res.writeHead(answer.statusCode ?? 502, { ...back, "referrer-policy": "no-referrer", "cache-control": "no-store" });
+      answer.pipe(res);
+    });
+    upstream.setTimeout(30_000, () => upstream.destroy());
+    upstream.on("error", () => {
+      if (!res.headersSent) {
+        res.writeHead(502, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "The desktop is not answering." }));
+      } else res.end();
+    });
+    upstream.end();
+  };
+
   const server = createServer(async (req, res) => {
     if (!fromThisComputer(req)) {
       res.writeHead(403, { "content-type": "application/json" });
@@ -346,7 +534,10 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
       return;
     }
     const url = new URL(req.url, "http://x");
+    const ticket = DESKTOP_PATH.exec(url.pathname)?.[1];
+    if (ticket) return passDesktop(req, res, ticket, url);
     if (!url.pathname.startsWith("/api/")) return serveStatic(req, res);
+    if (req.method === "GET" && STREAMABLE.some((route) => route.test(url.pathname))) return follow(req, res, url.pathname);
     if (url.pathname === "/api/events") {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
       res.write(`data: ${JSON.stringify({ kind: "hello", resumed: false, _seq: frameSeq })}\n\n`);
@@ -366,6 +557,7 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
         path: url.pathname + url.search,
         ...(body && body.length ? { bodyB64: body.toString("base64"), type: req.headers["content-type"] ?? "application/json" } : {}),
       });
+      if (req.method === "POST" && url.pathname === "/api/hosted/desktop" && answer.status === 200) noteDoor(answer.bytes);
       const type = answer.type ?? "application/octet-stream";
       res.writeHead(answer.status, {
         "content-type": type,
@@ -383,6 +575,51 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
       res.end(JSON.stringify({ error: status === 413 ? e.message : "the other computer could not be reached" }));
     }
   });
+  // The desktop viewer's socket, passed to the door its ticket names.
+  // Anything else asking to upgrade is closed.
+  server.on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url ?? "/", "http://x");
+    const ticket = DESKTOP_PATH.exec(url.pathname)?.[1];
+    const door = ticket ? doors.get(ticket) : null;
+    if (!fromThisComputer(req) || !door) {
+      socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n");
+      return;
+    }
+    const target = new URL(url.pathname + url.search, door);
+    const headers = { connection: "Upgrade", upgrade: String(req.headers.upgrade ?? "websocket") };
+    for (const name of ["sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions", "user-agent"]) {
+      if (typeof req.headers[name] === "string") headers[name] = req.headers[name];
+    }
+    const upstream = (target.protocol === "https:" ? httpsRequest : httpRequest)(target, { method: "GET", headers });
+    const fail = () => socket.destroy();
+    upstream.on("upgrade", (answer, upSocket, upHead) => {
+      const lines = [`HTTP/1.1 ${answer.statusCode ?? 101} ${answer.statusMessage ?? "Switching Protocols"}`];
+      for (const [name, value] of Object.entries(answer.headers)) {
+        for (const one of Array.isArray(value) ? value : [value]) if (one !== undefined) lines.push(`${name}: ${one}`);
+      }
+      socket.write(`${lines.join("\r\n")}\r\n\r\n`);
+      if (upHead?.length) socket.write(upHead);
+      if (head?.length) upSocket.write(head);
+      upSocket.pipe(socket);
+      socket.pipe(upSocket);
+      const close = () => {
+        socket.destroy();
+        upSocket.destroy();
+      };
+      upSocket.on("error", close);
+      socket.on("error", close);
+      upSocket.on("close", close);
+      socket.on("close", close);
+    });
+    upstream.on("response", (answer) => {
+      answer.resume();
+      socket.end(`HTTP/1.1 ${answer.statusCode ?? 502} Refused\r\nconnection: close\r\n\r\n`);
+    });
+    upstream.on("error", fail);
+    socket.on("error", () => upstream.destroy());
+    upstream.end();
+  });
+
   // a port that is taken says so, rather than leaving this waiting forever
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -396,6 +633,7 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
     port: server.address().port,
     stop: () => {
       stopped = true;
+      for (const follow of [...followed.values()]) follow.end();
       server.close();
     },
   };

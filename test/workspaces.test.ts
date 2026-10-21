@@ -11,8 +11,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  addHosted,
   addWorkspace,
   allowsNotice,
+  isRemoteKind,
   badgeTotal,
   cleanName,
   configuredPort,
@@ -297,6 +299,33 @@ test("a joined workspace follows its owner's name; an owned one has no owner but
   // nothing is no name, and Personal has no host to rename
   assert.equal(updateWorkspace(reg, "ws_j", { hostName: "  " }).workspaces[1].host?.name, "Hamed");
   assert.equal(updateWorkspace(reg, "personal", { hostName: "Somebody" }).workspaces[0].host, undefined);
+});
+
+test("your hosted workspace is listed once, yours to name, and opened again in its place", () => {
+  const reg = fresh();
+  const first = addHosted(reg, { host: "Sam", relayUrl: "https://relay.test" }, { now: NOW, random: seeded(7), id: "ws_hosted" });
+  assert.equal(first.replaced, false);
+  assert.equal(first.entry.kind, "hosted");
+  assert.equal(first.entry.name, "Hosted");
+  assert.equal(first.entry.dataDir, null, "its data is on its own machine");
+  assert.ok(isCustomMark(first.entry.mark) && !sameMark(first.entry.mark!, PERSONAL_MARK), "a mark of its own");
+  assert.ok(isRemoteKind("hosted") && isRemoteKind("joined") && !isRemoteKind("personal"));
+
+  // a fresh pairing, from a new Mac or after a revoke, keeps its place
+  const renamed = updateWorkspace(first.registry, "ws_hosted", { name: "Bakery" });
+  const again = addHosted(renamed, { host: "Sam", relayUrl: "https://relay.test" }, { now: NOW, id: "ws_other" });
+  assert.equal(again.replaced, true);
+  assert.equal(again.entry.id, "ws_hosted");
+  assert.equal(again.registry.workspaces.filter((w) => w.kind === "hosted").length, 1);
+  assert.equal(again.entry.name, "Bakery", "the name it was given stays");
+
+  // it survives the trip through the file, and the window is told it is remote
+  const back = parseRegistry(JSON.stringify(again.registry));
+  assert.equal(back.workspaces.find((w) => w.id === "ws_hosted")?.kind, "hosted");
+  const shown = snapshot(back).workspaces.find((w) => w.id === "ws_hosted") as { remote?: boolean; host?: string };
+  assert.equal(shown.remote, true);
+  // its kind is not one it can be changed out of
+  assert.equal(updateWorkspace(back, "ws_hosted", { kind: "business" }).workspaces.find((w) => w.id === "ws_hosted")?.kind, "hosted");
 });
 
 test("a workspace's own config.json may choose its port", () => {

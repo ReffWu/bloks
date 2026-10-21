@@ -74,6 +74,8 @@ contextBridge.exposeInMainWorld("bloks", {
   workspaceMembers: (count) => ipcRenderer.invoke("workspaces:members", count),
   // a workspace joined from this Mac (src/components/members/JoinWorkspaceDialog)
   workspaceJoined: (input) => ipcRenderer.invoke("workspaces:joined", input),
+  // your own hosted workspace, from a pairing link the Plan page asked for
+  workspaceHosted: (input) => ipcRenderer.invoke("workspaces:hosted", input),
   prefsTheme: (theme) => ipcRenderer.invoke("prefs:theme", theme),
   prefsAccent: (accent) => ipcRenderer.invoke("prefs:accent", accent),
   prefsSameAccent: (on, showing) => ipcRenderer.invoke("prefs:same-accent", on, showing),

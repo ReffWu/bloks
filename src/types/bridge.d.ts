@@ -35,7 +35,7 @@ export interface WorkspaceMarkValue {
   pattern: string;
 }
 
-export type WorkspaceKind = "personal" | "business" | "custom" | "joined";
+export type WorkspaceKind = "personal" | "business" | "custom" | "joined" | "hosted";
 export type WorkspaceNotify = "all" | "needs-me" | "nothing";
 
 /** One workspace as the main process tells the window about it
@@ -64,6 +64,9 @@ export interface WorkspaceInfo {
   role?: "member" | "admin";
   /** For a joined workspace reached only on its owner's own network. */
   lanOnly?: boolean;
+  /** Your own hosted workspace: on a machine run for you, reached through
+   * Bloks Cloud. */
+  remote?: boolean;
 }
 
 export type WorkspacesState =
@@ -147,6 +150,10 @@ declare global {
         host?: string;
         open: boolean;
       }): Promise<WorkspaceAnswer>;
+      /** Spends a pairing link to your own hosted workspace (asked for on
+       * the Plan page) as a device of yours, and lists it, or points the
+       * one listed at it; with `open`, switches to it. */
+      workspaceHosted?(input: { link: string; open?: boolean }): Promise<WorkspaceAnswer>;
       /** The theme is the person's, kept across every workspace. */
       prefsTheme?(theme: "light" | "dark" | "system"): Promise<void>;
       /** The accent is this workspace's own. */

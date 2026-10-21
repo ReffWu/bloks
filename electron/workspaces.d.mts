@@ -2,7 +2,7 @@
 // the same shapes the main process uses.
 import type { Mark } from "./workspace-marks.mjs";
 
-export type WorkspaceKind = "personal" | "business" | "custom" | "joined";
+export type WorkspaceKind = "personal" | "business" | "custom" | "joined" | "hosted";
 export type NotifyLevel = "all" | "needs-me" | "nothing";
 
 export interface WorkspaceEntry {
@@ -35,6 +35,8 @@ export interface Registry {
 export const REGISTRY_VERSION: number;
 export const PERSONAL_ID: string;
 export const KINDS: readonly WorkspaceKind[];
+export const REMOTE_KINDS: readonly WorkspaceKind[];
+export function isRemoteKind(kind: unknown): boolean;
 export const NOTIFY_LEVELS: readonly NotifyLevel[];
 export const MUTE_CHOICES: ReadonlyArray<{ id: string; label: string; ms: number | null }>;
 export const NAME_MAX: number;
@@ -56,6 +58,11 @@ export function addWorkspace(
   input: { kind: string; name: string; team?: boolean; mark?: Mark | null },
   options: { workspacesDir: string; now?: number; random?: () => number; id?: string },
 ): { registry: Registry; entry: WorkspaceEntry };
+export function addHosted(
+  registry: Registry,
+  host?: { host?: string; relayUrl?: string },
+  options?: { now?: number; random?: () => number; id?: string },
+): { registry: Registry; entry: WorkspaceEntry; replaced: boolean };
 export function updateWorkspace(
   registry: Registry,
   id: string,
