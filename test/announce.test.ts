@@ -12,6 +12,7 @@ import {
   mayAnnounce,
   stopAnnouncing,
   syncAnnouncement,
+  workspaceTag,
   type Announcer,
 } from "../server/announce.ts";
 
@@ -50,6 +51,22 @@ test("the name is the computer, with the workspace when it is not Personal, in 6
   assert.ok(Buffer.byteLength(long, "utf8") <= 63);
 });
 
+test("a workspace's tag is a hash of its own key, the same each time, and never its id", () => {
+  const dir = mkdtempSync(join(tmpdir(), "bk-tag-"));
+  const other = mkdtempSync(join(tmpdir(), "bk-tag-"));
+  try {
+    const tag = workspaceTag(dir);
+    assert.match(tag, /^[0-9a-f]{16}$/);
+    assert.equal(workspaceTag(dir), tag);
+    assert.notEqual(workspaceTag(other), tag, "each workspace its own");
+    assert.equal(workspaceTag(dir), tag, "and back again, from its folder");
+    assert.doesNotMatch(readFileSync(join(dir, "announce-key"), "utf8"), new RegExp(tag), "the key is not the tag");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(other, { recursive: true, force: true });
+  }
+});
+
 test("on announces once, a new port replaces the old, and off stops it", () => {
   const { spawned, spawner } = recorder();
   try {
@@ -58,7 +75,8 @@ test("on announces once, a new port replaces the old, and off stops it", () => {
     const [command, args] = announceCommand({ name: "Mac", port: 8811 }, 4242);
     assert.equal(spawned[0].command, command);
     assert.deepEqual(spawned[0].args, args);
-    assert.deepEqual(args.slice(3), ["Mac", "8811", "4242"]);
+    assert.deepEqual(args.slice(3), ["Mac", "8811", "4242", ""]);
+    assert.match(args[1], /"ws=\$4"/, "the workspace's tag rides in the TXT record");
 
     syncAnnouncement(true, { name: "Mac", port: 8811 }, spawner, 4242);
     assert.equal(spawned.length, 1, "saying it again changes nothing");

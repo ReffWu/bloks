@@ -18,7 +18,7 @@
 //   The code never touches disk and the token never comes back off it.
 //   Only a SHA-256 of each token is stored, so a stolen config file
 //   cannot be replayed as a paired device.
-import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { hostname, networkInterfaces } from "node:os";
@@ -261,6 +261,23 @@ export function claimPairing(
   onSaved?.(saved);
   const { hash: _hash, ...safe } = device;
   return { token, device: safe };
+}
+
+/**
+ * A paired phone checking that the Bloks at a new address is the one it
+ * paired with, before its token goes there (it moved port, or the router
+ * gave it a new address). The phone names itself by a hint, the first 16
+ * hex of a SHA-256 of its token's digest, and sends a nonce; this answers
+ * with an HMAC of the nonce keyed by that digest, which only a Bloks that
+ * holds the pairing can make. The token itself never travels, and a Bloks
+ * that announces itself under someone else's tag cannot answer.
+ */
+export function proveDevice(hint: unknown, nonce: unknown, config?: AppConfig): string | null {
+  if (typeof hint !== "string" || !/^[0-9a-f]{16}$/.test(hint)) return null;
+  if (typeof nonce !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(nonce)) return null;
+  const device = devices(config).find((d) => sha256(d.hash).startsWith(hint));
+  if (!device) return null;
+  return createHmac("sha256", device.hash).update(`bloks-prove:${nonce}`).digest("hex");
 }
 
 /** The device a token belongs to, or null. Compares digests, not tokens,

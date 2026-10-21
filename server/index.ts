@@ -100,7 +100,7 @@ import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView, type Standing as PersonStanding } from "./member-access.ts";
 import * as access from "./access.ts";
 import { asWho, createMembers, workspaceIdentity } from "./members.ts";
-import { instanceName, mayAnnounce, stopAnnouncing, syncAnnouncement } from "./announce.ts";
+import { instanceName, mayAnnounce, stopAnnouncing, syncAnnouncement, workspaceTag } from "./announce.ts";
 import { PLAN_LIMITS, ROOM_SHARING_WORDS, membersActive, pausedWords, roomSharingAllowed, workspaceMemberLimit } from "./plan-limits.ts";
 import { OwnerPlan } from "./owner-plan.ts";
 import { PlanAccount, planRoute, type PlanRouteDeps } from "./plan-account.ts";
@@ -152,6 +152,7 @@ import {
   revokeAll,
   revokeDevice,
   noteClient,
+  proveDevice,
   remoteEnabled,
   setRemoteEnabled,
   startPairing,
@@ -16817,6 +16818,9 @@ function healthBody() {
     version: APP_VERSION,
     features: FEATURES,
     hosted: HOSTED,
+    // which workspace this is, as it is announced on the network, for a
+    // phone to find it again after it moves (server/announce.ts)
+    tag: workspaceTag(),
   };
 }
 
@@ -17154,11 +17158,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if ((method === "GET" && path === "/api/join/key") || (method === "POST" && path === "/api/join/ask")) {
       if (await workspacePeople.lanRoute(req, res, method, path, req.socket.remoteAddress ?? "unknown")) return;
     }
-    // Two things a device does before it holds a token: confirm it found
-    // Bloks at all, and trade its code in. Nothing else.
+    // Three things a device does without a token: confirm it found Bloks
+    // at all, trade its code in, and, paired already, check this is the
+    // Bloks it paired with before its token goes here. Nothing else.
     const open =
       (method === "GET" && path === "/api/health") ||
-      (method === "POST" && path === "/api/pair/claim");
+      (method === "POST" && path === "/api/pair/claim") ||
+      (method === "POST" && path === "/api/pair/prove");
     if (!open && !deviceForToken(bearerToken(req))) {
       return json(res, 401, { error: "pair this device first" });
     }
@@ -23858,6 +23864,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // The one route a device may call before it is anybody. A wrong code
     // burns one of five tries and the fifth closes the window, so this
     // cannot be ground down.
+    // A paired phone that found this Bloks at a new address, asking it to
+    // prove it holds the phone's pairing (server/pairing.ts, proveDevice).
+    if (method === "POST" && path === "/api/pair/prove") {
+      const body = await readBody(req);
+      const proof = proveDevice(body.hint, body.nonce);
+      if (!proof) return json(res, 404, { error: "no such pairing here" });
+      return json(res, 200, { proof });
+    }
     if (method === "POST" && path === "/api/pair/claim") {
       const body = await readBody(req);
       // `credential` is the QR token or the code; `code` is the old name
@@ -24502,7 +24516,7 @@ const announceHere = () => {
     return;
   }
   const { id, name } = workspaceIdentity();
-  syncAnnouncement(true, { name: instanceName(computerName(), id === "personal" ? undefined : name), port: PORT });
+  syncAnnouncement(true, { name: instanceName(computerName(), id === "personal" ? undefined : name), port: PORT, tag: workspaceTag() });
 };
 // A port someone else holds is the one startup failure a person can fix
 // on their own, so it is said plainly instead of as a stack trace. The

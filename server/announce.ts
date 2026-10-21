@@ -19,6 +19,11 @@
 // cleanup of its own. An announcement outliving its server would point
 // phones at a port that is no longer Bloks.
 import { spawn as nodeSpawn } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { DATA_DIR } from "./config.ts";
 
 export const SERVICE_TYPE = "_bloks._tcp";
 const DNS_SD = "/usr/bin/dns-sd";
@@ -29,6 +34,42 @@ export interface Announcement {
   /** The instance name a phone shows, from instanceName(). */
   name: string;
   port: number;
+  /** This workspace, as workspaceTag() says it, so a phone that moved
+   * with it can tell it from the other workspaces on the same Mac. */
+  tag?: string;
+}
+
+/**
+ * This workspace, as a phone can recognise it on the network: a hash of a
+ * random key kept in the workspace's own folder, made the first time it is
+ * asked for. Not the workspace's id, which is "personal" on every Mac, and
+ * nothing a reader could learn anything from. Public by design: it says
+ * which Bloks this is, never that a phone may trust it. A phone checks
+ * that with a proof before its token goes anywhere (server/pairing.ts,
+ * proveDevice).
+ */
+let tagMemo: { dir: string; tag: string } | null = null;
+export function workspaceTag(dir: string = DATA_DIR): string {
+  if (tagMemo?.dir === dir) return tagMemo.tag;
+  const file = join(dir, "announce-key");
+  let key = "";
+  try {
+    key = readFileSync(file, "utf8").trim();
+  } catch {
+    // not made yet
+  }
+  if (!/^[0-9a-f]{64}$/.test(key)) {
+    key = randomBytes(32).toString("hex");
+    try {
+      writeFileSync(file, key, { mode: 0o600 });
+    } catch {
+      // held for this run; a new one next time only renames the workspace
+      // to phones, which find it again by their proof
+    }
+  }
+  const tag = createHash("sha256").update(`bloks-announce:${key}`).digest("hex").slice(0, 16);
+  tagMemo = { dir, tag };
+  return tag;
 }
 
 export interface Announcer {
@@ -38,9 +79,10 @@ export interface Announcer {
 
 export type Spawner = (command: string, args: string[]) => Announcer;
 
-/** Announces, and ends the announcement once `$3`, this server, is gone. */
+/** Announces, and ends the announcement once `$3`, this server, is gone.
+ * `$4` is the workspace's tag, in the TXT record as ws=. */
 const WATCH = [
-  `"$0" -R "$1" ${SERVICE_TYPE} local "$2" v=1 >/dev/null 2>&1 &`,
+  `"$0" -R "$1" ${SERVICE_TYPE} local "$2" v=1 "ws=$4" >/dev/null 2>&1 &`,
   "d=$!",
   `trap 'kill "$d" 2>/dev/null; exit 0' TERM INT HUP`,
   // a sleep waited on, not run in front, so a stop is heard at once
@@ -77,7 +119,7 @@ export function instanceName(computer: string, workspace?: string): string {
 
 /** The command that announces `a` for as long as `parentPid` lives. */
 export function announceCommand(a: Announcement, parentPid: number, dnsSd: string = DNS_SD): [string, string[]] {
-  return ["/bin/sh", ["-c", WATCH, dnsSd, a.name, String(a.port), String(parentPid)]];
+  return ["/bin/sh", ["-c", WATCH, dnsSd, a.name, String(a.port), String(parentPid), a.tag ?? ""]];
 }
 
 /**
@@ -108,7 +150,7 @@ export function syncAnnouncement(
   parentPid: number = process.pid,
   dnsSd?: string,
 ): boolean {
-  const key = `${a.name}\n${a.port}`;
+  const key = `${a.name}\n${a.port}\n${a.tag ?? ""}`;
   if (on && current?.key === key) return true;
   stopAnnouncing();
   if (!on || !a.name || !Number.isInteger(a.port) || a.port < 1 || a.port > 65535) return false;
