@@ -828,14 +828,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
           }
           return;
         }
+        // Every accepted input has its own completion, steers included, so
+        // there is nothing left to wait out: a quiet spell is only how a
+        // CLI that does not say which input a result answers is read.
         if (inputs.ready) {
-          held = inputs.selectedResult;
-          if (!steered) { settle(held); return; }
-          quiet ??= setInterval(() => {
-            if (sealed || !inputs.ready || Date.now() - lastSign < STEER_QUIET_MS) return;
-            settle(inputs.selectedResult);
-          }, 1_000);
-          quiet.unref?.();
+          settle(inputs.selectedResult);
+          return;
         }
         const wait = inputs.nextWaitMs;
         if (wait !== null) {

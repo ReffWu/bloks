@@ -162,21 +162,23 @@ test("a genuinely unanswered B stops once while A's delivered answer is retained
   assert.equal(f.ends()[0].cost, 1);
 });
 
-test("discarded partial, child and foreign frames cannot prolong accepted-steer quiet or reach native partial logging", async t => {
+test("a steered turn ends as soon as every accepted input has completed, and partial, child and foreign frames reach neither chat nor native logging", async t => {
   const f = await fixture(t);
   const a = await f.start(), b = await f.steer();
-  f.result(a, { result: "A" }); f.complete(a);
-  f.result(b, { result: "B" }); f.complete(b);
-  t.mock.timers.tick(29_000);
   for (const frame of [
     { type: "stream_event", event: { type: "content_block_delta", delta: { text: "partial" } } },
     { type: "assistant", parent_tool_use_id: "child", message: { content: [{ type: "text", text: "child prose" }] } },
     { type: "system", subtype: "status", status: "requesting", uuid: "foreign", user_message_uuids: ["other"] },
     { type: "noise" },
   ]) f.send(frame);
-  t.mock.timers.tick(2_000);
+  f.result(a, { result: "A" }); f.complete(a);
   await f.flush();
+  assert.equal(f.ends().length, 0, "the steer had not completed");
+  f.result(b, { result: "B" }); f.complete(b);
+  await f.flush();
+  // no quiet spell to wait out: each input said it was done
   assert.equal(f.ends().length, 1);
+  assert.equal(f.ends()[0].ok, true);
   assert.equal(f.events.filter(e => e.type === "content.delta").length, 0);
   assert.equal(f.native.some(v => v.msg.type === "stream_event"), false);
 });
