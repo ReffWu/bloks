@@ -486,12 +486,26 @@ export class AgentTokens {
   }
 }
 
+/**
+ * How an agent with a POSIX shell runs the CLI: through BLOKS_CLI, which
+ * every turn sets (server/index.ts says why not a path). Spelled so that
+ * a shell without it stops with a sentence saying so. `node ""` runs
+ * nothing and exits 0, so a shell whose engine had kept the variable from
+ * it answered every command with a silence that read as success
+ * (GitHub 336).
+ */
+export const CLI_FROM_ENV = 'node "${BLOKS_CLI:?not set in this shell}"';
+
 /** What the agent is told, once, when it has a credential. Short on
  * purpose: a paragraph of instructions in every prompt is a paragraph
  * competing with the actual request. */
 /** The opening of a turn whose session last ran the CLI some other way.
  * `before` is the command it was told then, when that was recorded. */
 export function cliMovedNote(command: string, before?: string): string {
+  // the same variable, spelled to stop loudly: nothing has moved
+  if (before?.includes("BLOKS_CLI")) {
+    return `(Run the bloks command as \`${command}\` from now on. When this shell does not have BLOKS_CLI it stops with an error saying so, where \`${before}\` quietly did nothing.)`;
+  }
   return before
     ? `(Bloks has moved since your earlier turns. Run its command as \`${command}\` from now on. Earlier commands in this conversation that run \`${before}\` reach the copy that used to be there, so do not reuse them.)`
     : `(Run the bloks command as \`${command}\` from now on. Earlier commands in this conversation that run bloks.mjs from a written-out path may reach an older copy of Bloks that has since moved, so do not reuse them.)`;

@@ -21,6 +21,11 @@ interface Call {
 }
 
 const OLD = 'node "/old/place/bloks-server/bin/bloks.mjs"';
+/** How agents are told to run it now: a shell without BLOKS_CLI stops
+ * with a sentence instead of running nothing (GitHub 336). */
+const COMMAND = 'node "${BLOKS_CLI:?not set in this shell}"';
+/** How they were told before that, through the same variable. */
+const UNGUARDED = 'node "$BLOKS_CLI"';
 
 test("agents run the CLI through BLOKS_CLI, and a session told otherwise hears it once", { skip: process.platform === "win32" }, async (t) => {
   const home = mkdtempSync(join(tmpdir(), "bloks-cli-moved-"));
@@ -87,7 +92,7 @@ process.stdin.on("data", (chunk) => (input += chunk));
 
   // told the variable, never the path, and the variable is there to use
   const first = await turn("Start.");
-  assert.match(first.persona, /node "\$BLOKS_CLI" help/);
+  assert.ok(first.persona.includes(`${COMMAND} help`), first.persona);
   assert.doesNotMatch(first.persona, /bin\/bloks\.mjs/, "the install path is not written into the instructions");
   assert.ok(first.cli && first.cli.endsWith("bloks.mjs") && existsSync(first.cli), `BLOKS_CLI is ${first.cli}`);
   assert.equal(first.text, "Start.", "a new session needs no note");
@@ -102,7 +107,7 @@ process.stdin.on("data", (chunk) => (input += chunk));
   const botsFile = join(home, ".bloks", "bots.json");
   const saved = JSON.parse(readFileSync(botsFile, "utf8"));
   const lane = saved.find((b: any) => b.id === bot.id).tasks[0];
-  assert.equal(lane.briefedCli, 'node "$BLOKS_CLI"', "the lane remembers how it was told");
+  assert.equal(lane.briefedCli, COMMAND, "the lane remembers how it was told");
   lane.briefedCli = OLD;
   writeFileSync(botsFile, JSON.stringify(saved));
   h = await startHarness({ HOME: home });
@@ -111,7 +116,7 @@ process.stdin.on("data", (chunk) => (input += chunk));
   assert.ok(moved.resumed, "the same session carries on");
   assert.equal(moved.sessionId, first.sessionId);
   assert.ok(moved.text.endsWith("And now?"));
-  assert.match(moved.text, /^\(Bloks has moved since your earlier turns\. Run its command as `node "\$BLOKS_CLI"`/);
+  assert.ok(moved.text.startsWith(`(Bloks has moved since your earlier turns. Run its command as \`${COMMAND}\``), moved.text);
   assert.ok(moved.text.includes(OLD), "the note names the old command, so the agent can recognise it");
 
   const after = await turn("Once more.");
@@ -124,6 +129,21 @@ process.stdin.on("data", (chunk) => (input += chunk));
   writeFileSync(botsFile, JSON.stringify(again));
   h = await startHarness({ HOME: home });
   const unknown = await turn("Still there?");
-  assert.match(unknown.text, /^\(Run the bloks command as `node "\$BLOKS_CLI"` from now on\./);
+  assert.ok(unknown.text.startsWith(`(Run the bloks command as \`${COMMAND}\` from now on. Earlier commands`), unknown.text);
   assert.ok(unknown.text.endsWith("Still there?"));
+
+  // a lane told the same variable without the guard: nothing has moved,
+  // and it hears that the command now stops loudly, once
+  await h.stop();
+  const unguarded = JSON.parse(readFileSync(botsFile, "utf8"));
+  unguarded.find((b: any) => b.id === bot.id).tasks[0].briefedCli = UNGUARDED;
+  writeFileSync(botsFile, JSON.stringify(unguarded));
+  h = await startHarness({ HOME: home });
+  const guarded = await turn("And again?");
+  assert.ok(guarded.text.startsWith(`(Run the bloks command as \`${COMMAND}\` from now on. When this shell does not have BLOKS_CLI it stops with an error`), guarded.text);
+  assert.ok(guarded.text.includes(UNGUARDED));
+  assert.doesNotMatch(guarded.text, /has moved/);
+  assert.ok(guarded.text.endsWith("And again?"));
+  const last = await turn("Done?");
+  assert.equal(last.text, "Done?", "said once, not every turn");
 });

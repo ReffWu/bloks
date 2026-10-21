@@ -208,7 +208,7 @@ import {
   updateCount,
   type RegistryEntry,
 } from "./skill-registry.ts";
-import { REPORT_UNCERTAIN, type ReservedReport, type ReportResponse, AgentTokens, allows, capabilities, cliBriefing, cliMovedNote, messageHint, runsAProcess, secretHint, type AgentToken } from "./agent-cli.ts";
+import { REPORT_UNCERTAIN, type ReservedReport, type ReportResponse, AgentTokens, allows, capabilities, CLI_FROM_ENV, cliBriefing, cliMovedNote, messageHint, runsAProcess, secretHint, type AgentToken } from "./agent-cli.ts";
 import {
   CACHE_LIFETIME_MS,
   COMPACT_AT,
@@ -934,9 +934,10 @@ const AGENT_CLI = fileURLToPath(new URL("../bin/bloks.mjs", import.meta.url));
  * has already run, so a written-out path goes on reaching the old copy
  * long after the instructions say otherwise (GitHub 150). BLOKS_CLI is set
  * fresh on every turn, so a command that names it stays right wherever
- * Bloks goes. Not on Windows, where an engine's shell may be PowerShell,
- * which reads "$BLOKS_CLI" as a variable of its own. */
-const CLI_COMMAND = process.platform === "win32" ? `node "${AGENT_CLI}"` : `node "$BLOKS_CLI"`;
+ * Bloks goes, and one that finds it missing says so (CLI_FROM_ENV). Not
+ * on Windows, where an engine's shell may be PowerShell, which reads
+ * "$BLOKS_CLI" as a variable of its own. */
+const CLI_COMMAND = process.platform === "win32" ? `node "${AGENT_CLI}"` : CLI_FROM_ENV;
 /** Bloks as an MCP server for other AI apps (bin/bloks-mcp.mjs). */
 const MCP_CLI = fileURLToPath(new URL("../bin/bloks-mcp.mjs", import.meta.url));
 

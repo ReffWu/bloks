@@ -1,9 +1,15 @@
 // What an agent may do with a credential of its own, and what it may not.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   AgentTokens,
+  CLI_FROM_ENV,
   NEVER,
   RULES,
   TOKEN_TTL_MS,
@@ -11,6 +17,7 @@ import {
   allows,
   capabilities,
   cliBriefing,
+  cliMovedNote,
   matches,
   runsAProcess,
   secretHint,
@@ -376,5 +383,59 @@ describe("what the agent is told", () => {
 
   test("what it can do is the rules, not a second list to keep in step", () => {
     assert.deepEqual(capabilities(), RULES.map((rule) => rule.why));
+  });
+});
+
+// GitHub 336: an engine that kept the turn's environment from its shell
+// left BLOKS_CLI empty, and `node ""` runs nothing and exits 0, so every
+// command an agent ran read as having worked. Run here in a real shell.
+describe("a shell without the CLI's environment says so", { skip: process.platform === "win32" }, () => {
+  const bloksCli = fileURLToPath(new URL("../bin/bloks.mjs", import.meta.url));
+  const shells = ["/bin/sh", "/bin/bash", "/bin/zsh"].filter((shell) => existsSync(shell));
+  // a throwaway data folder, so the CLI never reads a real workspace's port
+  const run = (shell: string, env: Record<string, string>) => {
+    const home = mkdtempSync(join(tmpdir(), "bloks-cli-env-"));
+    try {
+      return spawnSync(shell, ["-c", `${CLI_FROM_ENV} whoami`], {
+        env: { PATH: process.env.PATH ?? "", HOME: home, BLOKS_DATA_DIR: home, BLOKS_URL: "http://127.0.0.1:9", ...env },
+        input: "",
+        encoding: "utf8",
+        timeout: 20_000,
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  };
+
+  test("the command stops with a sentence when BLOKS_CLI is missing or empty", () => {
+    assert.ok(shells.length > 0);
+    for (const shell of shells) {
+      for (const env of [{}, { BLOKS_CLI: "" }] as Record<string, string>[]) {
+        const ran = run(shell, env);
+        assert.notEqual(ran.status, 0, `${shell} ${JSON.stringify(env)} exited ${ran.status}`);
+        assert.match(ran.stderr, /BLOKS_CLI: not set in this shell/, shell);
+        assert.equal(ran.stdout, "", "nothing that reads as an answer");
+      }
+    }
+  });
+
+  test("the CLI itself names a missing BLOKS_TOKEN, exits non-zero, and prints no value", () => {
+    for (const shell of shells) {
+      const ran = run(shell, { BLOKS_CLI: bloksCli });
+      assert.equal(ran.status, 1, `${shell}: ${ran.stderr}`);
+      const said = JSON.parse(ran.stdout);
+      assert.deepEqual(Object.keys(said), ["error"]);
+      assert.match(said.error, /BLOKS_TOKEN is not set/);
+      assert.doesNotMatch(ran.stdout, /127\.0\.0\.1|bloks\.mjs/, "neither the address nor the path is printed");
+    }
+  });
+
+  test("a lane told the command without the guard is told the guarded one, and that nothing moved", () => {
+    const note = cliMovedNote(CLI_FROM_ENV, 'node "$BLOKS_CLI"');
+    assert.ok(note.includes(`\`${CLI_FROM_ENV}\``), note);
+    assert.doesNotMatch(note, /has moved/);
+    assert.match(note, /stops with an error/);
+    // a written-out path is still a move
+    assert.match(cliMovedNote(CLI_FROM_ENV, 'node "/old/bin/bloks.mjs"'), /^\(Bloks has moved/);
   });
 });

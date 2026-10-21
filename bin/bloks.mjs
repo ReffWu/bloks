@@ -1053,7 +1053,9 @@ try {
     );
     process.exit(2);
   }
-  if (!TOKEN) throw new Error("no credential in this environment, so there is nobody to act as");
+  // named, since the likeliest cause is an engine that kept the turn's
+  // environment from this shell, and that is something a person can fix
+  if (!TOKEN) throw new Error("no credential in this environment (BLOKS_TOKEN is not set), so there is nobody to act as");
   const result = await command.run(args);
   process.stdout.write(`${JSON.stringify(result ?? { ok: true }, null, 2)}\n`);
 } catch (error) {
