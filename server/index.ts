@@ -14646,6 +14646,11 @@ async function sendUserMessage(
   // waiting behind a turn or not, it was said to this agent now
   const yours = Boolean(options.yours && !options.from);
   if (yours) withYou({ bot });
+  // A workflow watching this agent hears what was said when it was said,
+  // whether it starts a turn, goes into one or waits behind one. Only
+  // the turn that started used to be heard, so a message that met a busy
+  // agent never set anything off, then or later.
+  const heard = () => triggersFired({ kind: "message", targetId: bot.id, text, fromUser: true });
   // A goal blocked on the person is waiting for exactly this: their
   // answer. It goes on once the turn that hears it ends, judged as any
   // turn is. One they paused stays paused; that was their decision.
@@ -14674,6 +14679,7 @@ async function sendUserMessage(
         // A turn stopped on a question or an approval reads nothing until
         // that is answered, and the step it is on is the person's own.
         const asked = [...askThreadByRequest.values()].includes(lane.id);
+        heard();
         return {
           ok: true,
           steered: true,
@@ -14712,7 +14718,10 @@ async function sendUserMessage(
       askedEngine = !why;
       const joined = `${bot.name} is in the middle of a turn and reads this after the step it is on.`;
       const steered = why ? null : await steerLane(bot, lane, text, { replyTo: options.replyTo, from: options.from, personal: false, admission: noting(joined) });
-      if (steered) return { ok: true, steered: true, taskId: lane.id, lane: lane.title, note: joined };
+      if (steered) {
+        heard();
+        return { ok: true, steered: true, taskId: lane.id, lane: lane.title, note: joined };
+      }
       notJoined = ` It did not join that turn: ${why ?? `${bot.name}'s turn could not take words mid-turn just then`}.`;
     }
     // Said to the sender too: an agent that thought its "stop" landed would
@@ -14739,10 +14748,11 @@ async function sendUserMessage(
     // Asking the engine took a moment, and the turn may have ended in it,
     // with nothing coming along after to take what now waits.
     if ((yours && options.steer) || askedEngine) drainSteer(lane.id);
+    heard();
     return { ok: true, queued: true, taskId: lane.id, lane: lane.title, note, delivery };
   }
   await startTurn(bot.id, text, { taskId: lane.id, replyTo: options.replyTo, from: options.from, byYou: yours, personal: options.personal, chain: options.chain?.depth, chainTask: options.chain?.task, admission });
-  triggersFired({ kind: "message", targetId: bot.id, text, fromUser: true });
+  heard();
   // which conversation it went to, so a caller outside the app (the MCP
   // connector) reads the answer from there and not from whichever lane
   // happens to be open
