@@ -112,6 +112,27 @@ export function workspaceForKey(s: WorkspacesState, digit: number): WorkspaceInf
   return s.workspaces[digit - 1] ?? null;
 }
 
+// ── reordering the list ────────────────────────────────────────────────
+// The order is the list's own (electron/workspaces.mjs reorder), kept by
+// the app and used wherever workspaces are listed: the switcher, ⌘1 to
+// ⌘9, the command palette, and the list a paired phone is given.
+
+/** Where a row being dragged would land: past every other row whose
+ * middle its own middle has crossed. `centers` are the rows' middles as
+ * they stood when it was lifted; `y` is the lifted row's middle now. */
+export function dropIndex(centers: readonly number[], from: number, y: number): number {
+  return centers.filter((c, i) => i !== from && c < y).length;
+}
+
+/** The ids with one of them moved to `to`, counted in the new order. */
+export function moveId(ids: readonly string[], from: number, to: number): string[] {
+  if (from < 0 || from >= ids.length) return [...ids];
+  const next = [...ids];
+  const [id] = next.splice(from, 1);
+  next.splice(Math.max(0, Math.min(to, next.length)), 0, id!);
+  return next;
+}
+
 /** Whether anything is worth a dot beside a workspace in the switcher:
  * something waiting there, while you are somewhere else. */
 export function hasWaiting(ws: WorkspaceInfo, current: string): boolean {
