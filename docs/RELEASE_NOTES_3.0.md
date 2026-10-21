@@ -1,6 +1,6 @@
 **Workspaces, the people you work with inside them, and a clear view of what your agents spend.**
 
-The desktop app is out today. The iPhone and Apple Watch update follows tomorrow, as soon as the App Store has it, and the Android app ships tomorrow too.
+The desktop app is out now. The iPhone and Apple Watch update follows as soon as the App Store has it.
 
 The biggest release Bloks has had. Every part of your life with agents can now be a workspace of its own, each a whole Bloks with its own agents, memory, keys and rooms. A workspace can take people: send an invite, read the same four words, and they talk to your agents beside you, on your computer, within limits you set. A Usage page shows what every agent spent and puts a monthly line on your own API keys. And the app has a new shape, with answers drawn as cards, tables and charts instead of walls of text.
 
@@ -54,8 +54,10 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 
 ### Answers drawn as interface
 
-- **Pages that look finished.** Every agent can read a built-in Page design skill before it makes a page, report, comparison or deck: the answer first, depth that follows what is at stake, and readable on a phone and in dark mode. Most answers need no file, and an agent's reply to one it made is a sentence or two, not a copy of the page.
+- **Pages that look finished.** Every agent can read a built-in Page design skill before it makes a page, report, dashboard or deck someone will open as a file: the answer first, depth that follows what is at stake, and readable on a phone and in dark mode. Every engine is told its short form too. Most answers need no file, and an agent's reply to one it made is a sentence or two, not a copy of the page.
 - **Answers, not walls of text.** Agents can answer with cards, tables, charts, metrics, steps, tabs, forms and buttons, drawn as the reply streams. A click can answer the agent, open a page or change the answer itself, and nothing in an answer fetches anything. Switch it off for an agent with Interactive answers in its settings.
+- **Comparisons in the chat.** With Interactive answers on, a comparison, prices or options to choose between are answered in the chat as interface, not as a file or a list in prose, even where earlier replies in the conversation did it another way. A file is made when you ask for a page, a report or something to keep.
+- **Reply rules, read last.** The last thing every agent reads before it answers is a short How to reply: the answer in the first sentence, nothing extra nobody asked for, and a sentence or two when it made a file, since the card under the reply already shows it.
 
 ### A terminal that goes where you want
 
@@ -67,7 +69,7 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 ### A new shape for the app
 
 - **The main rail.** Chat, Overview, Automations, Memory, Plugins, Usage and Settings sit on a slim rail, beside the chat's own sidebar, which you can resize or fold away. Conversation tabs move up into the title bar.
-- **Every side list sizes and folds.** Settings, Plugins, Memory, an agent's settings and Automations' lists resize and fold like the chat's, edged with a faint line in the colours of the mark. Folded, Settings becomes tabs along the top, and Plugins and Memory a small switch beside the title.
+- **Every side list sizes and folds.** Settings, Plugins, Memory, an agent's settings and Automations' lists resize and fold like the chat's, edged with a faint line in the colours of the mark. Folded, Settings becomes tabs along the top, and Plugins and Memory a small switch at the top left of the page, where their list was.
 - **Overview reads as one page.** The morning brief as a short column with what waits on you first and a slim player for Listen, then Activity, Projects and Rehearsals.
 - **The composer.** One slim row at rest, with the approval mode, the model and effort, Codex speed and a ring for context and today's spend underneath. Notices share one tray above it, and Send becomes Stop.
 - **Replies read as prose.** Real paragraphs, lists and headings, and code coloured by language. Message actions sit in a quiet row that shows on hover.
@@ -115,11 +117,11 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 
 ### iPhone and Apple Watch
 
-- With the iPhone app's own 3.0: workspaces in the sidebar, joining by link, QR or code with the same four words, a member's view of a workspace you joined, bubbles and Seen by, answers drawn as cards, tables and charts, Usage as a place of its own, and the usage notice in the composer.
+- With the iPhone app's own 3.0: workspaces in the sidebar, joining by link, QR or code with the same four words, a member's view of a workspace you joined, bubbles and Seen by, answers drawn natively as cards, tables and charts, Usage as a place of its own, and the usage notice in the composer.
 - **Location, if you turn it on.** Your iPhone can tell your own computer where you are, as a place in words, and as an exact position only if you choose that too. Your own agents hear it while it is recent, and a watcher can act when you arrive at or leave a place. Members, shared rooms, Telegram people and strangers' mail never get it. Pause keeps it from agents and watchers, Off or Forget drops it, and only the last reading is kept: never a history, and never in a backup. Thanks @rpavlovs (#322)
-- **Pairing that starts where you are.** Phone and devices walks you through your first phone, and a pairing code exists only once you ask for one. A paired phone finds your computer again on its own when its address or port changes.
+- **Pairing that starts where you are.** Phone and devices walks you through your first phone, and a pairing code exists only once you ask for one. A paired phone finds your Mac again on its own when its address or port changes.
 - **Your other workspaces in a tap.** A phone paired with one workspace lists your others on that computer and adds one in a tap, where phone access is already on there. The computer tells you each time.
-- **Watch an agent work.** The phone shows an agent's browser or cloud computer live while it works, and you can take over with taps and typing.
+- **Watch an agent work.** The phone shows an agent's browser or cloud computer live while it works, and you can take over with taps and typing. While an agent drives your Mac itself, the phone shows the Mac's screen, once Bloks has Screen Recording; that picture is yours alone, never an agent's or a member's.
 - Notifications arrive from the agent with its face, Live Activities wear its colour, new widgets show who wants what, and Apple Watch answers approvals from your wrist.
 
 ## Fixes

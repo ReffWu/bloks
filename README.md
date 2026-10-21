@@ -49,9 +49,8 @@ Screen or your wrist.
 
 ## 📣 Bloks 3 is out
 
-**Bloks 3 for Mac, Windows and Linux is out today.** The iPhone and Apple
-Watch update follows tomorrow, as soon as the App Store has it, and the
-Android app ships tomorrow too.
+**Bloks 3 for Mac, Windows and Linux is out.** The iPhone and Apple Watch
+update follows as soon as the App Store has it.
 
 Thank you to everyone who reported a bug, tested a build or sent code for
 this release. A lot of what is in it started as one of your issues, and
@@ -60,19 +59,27 @@ it is a better app for every one of them.
 ## New in 3.0
 
 **Workspaces.** Personal, Business, or one with a name of its own, each a
-whole Bloks with its own agents, memory, keys and rooms, and a switcher at
-the top of the window to move between them.
+whole Bloks with its own agents, memory, keys and rooms, a mark you
+choose, and a switcher at the top of the window to move between them.
+One plan and one Bloks key cover them all.
 
-**People.** Invite someone into a workspace with a code, a QR or a link,
-read the same four words, and they talk to your agents beside you, with
-the access and the spending limits you choose.
+**People.** On Bloks Team, invite someone into a workspace with a code, a
+QR or a link, read the same four words, and they talk to your agents
+beside you, with the access and the spending limits you choose.
 
 **Usage.** See what every agent spent, by agent and by engine, and put a
 monthly limit on any engine that runs on your own API key.
 
+**Your phone.** Pairing starts when you ask for a code, and with the
+iPhone and Apple Watch update the phone finds your Mac again when its
+address or port changes, adds your other workspaces in a tap, draws answers
+natively, and shows an agent's browser or cloud computer live, for you to
+watch or take over.
+
 Plus answers drawn as cards, tables and charts, a terminal that goes
-anywhere in the window, a Plan page, Settings rebuilt around one search,
-and a new shape for the whole app. Everything is in the
+anywhere in the window, side lists that resize and fold, a window that
+comes back on its own if it fails, a Plan page, Settings rebuilt around
+one search, and a new shape for the whole app. Everything is in the
 [3.0 release notes](docs/RELEASE_NOTES_3.0.md).
 
 ## A tour
@@ -83,14 +90,17 @@ A workspace is a whole Bloks of its own: its own agents, memory, keys,
 rooms, routines and settings, in its own folder. Nothing moves between
 them, so the agents that run your company never read your family's
 notes. Personal is the Bloks you already had. Add a Business workspace,
-or one with a name of its own, and each wears a mark: Personal and
-Business have fixed ones, every other workspace gets a mark nobody else
-on your computer wears, or your logo.
+or one with a name of its own, and it opens on a short welcome shaped by
+what you picked. Each wears a mark that nobody else on your computer
+wears: choose a colour and a pattern for any of yours, from the computer
+or the phone, or upload your logo. On a workspace you joined, the mark
+you pick is yours alone.
 
-The switcher at the top of the window lists them, with a dot where
-something is waiting; Cmd+1 to Cmd+9 jump straight to one. Every
-workspace keeps running while you look at another, so routines and
-watchers carry on, and an approval in the background still reaches you.
+The switcher at the top of the window lists them in the order you drag
+them into, with a dot where something is waiting; Cmd+1 to Cmd+9 jump
+straight to one. Every workspace keeps running while you look at
+another, so routines and watchers carry on, and an approval in the
+background still reaches you.
 Each can be muted for a while, and each says how much it may interrupt
 you: everything, only what needs you, or nothing.
 
@@ -185,9 +195,11 @@ getting close, and on what day it resets.
 An agent can answer with cards, tables, charts, metrics, steps, tabs,
 forms and buttons instead of paragraphs, drawn as the reply streams. A
 click can answer the agent, open a page or change the answer itself.
-What a model writes is parsed against a closed set of shapes before it
-reaches a screen, and nothing in an answer fetches anything.
-[docs/GENERATIVE_UI.md](docs/GENERATIVE_UI.md) is the contract.
+A comparison, prices or options to choose between come back this way, in
+the chat, rather than as a file. What a model writes is parsed against a
+closed set of shapes before it reaches a screen, and nothing in an answer
+fetches anything. With its update, the iPhone draws the same answers
+natively. [docs/GENERATIVE_UI.md](docs/GENERATIVE_UI.md) is the contract.
 
 <p align="center">
   <img alt="An answer drawn as a card: three headline numbers, a bar chart of signups by channel, a table, and two follow-up questions to click" src="docs/screenshots/answer.png" width="560">
@@ -289,6 +301,10 @@ conversations, and says exactly what it was given.
   or your own wifi: approvals behind Face ID, Live Activities, widgets,
   Siri and the share sheet, and Apple Watch. Turn on Location there and
   your own agents know roughly where you are, kept on your computer only.
+  With the iPhone and Apple Watch update, watch an agent's browser or
+  cloud computer live and take over with taps and typing, or see your
+  Mac's own screen while an agent drives it, once Bloks has Screen
+  Recording.
 - **Any browser.** With Bloks Cloud, the same app opens at
   [bloks.dev/web](https://bloks.dev/web), every request sealed in the
   browser for your computer alone.
@@ -300,7 +316,8 @@ conversations, and says exactly what it was given.
   but never approve, delete or change settings.
 - **Always on.** `bloks-server` runs a workspace on a machine that stays
   on, and the desktop app, the phone and the browser reach it the same
-  way.
+  way. Managed hosting, a private machine of your own that stays on, is
+  coming soon.
 
 ### Bring what you have
 
@@ -406,43 +423,48 @@ minute, with both on the same wifi, and works the same from a Mac, a
 Windows PC or Linux; the app calls it "your Mac" either way.
 
 **On your computer**, in the workspace you want on the phone, open
-Settings, **Phone and devices**. Under **Pair a phone**:
+Settings, **Phone and devices**. Until a phone is paired, it walks you
+through the first one:
 
-1. **Turn on phone access**, then press **Restart now**. Bloks only starts
-   listening on your network when it starts, so this is needed once. If
-   your computer asks whether Bloks may accept incoming connections,
-   allow it.
-2. **Show a code.** Bloks shows a QR code and a six digit code. The code
-   lasts a few minutes and works once.
-3. **Tap Pair on your phone.** The step ticks when the phone is in.
+1. **Press Pair a phone.** It turns phone access on. The first time,
+   press **Restart now**, then Pair a phone again: Bloks only starts
+   listening on your network when it starts. If your computer asks
+   whether Bloks may accept incoming connections, allow it.
+2. **A code appears**: a QR code, the same thing as six digits, and the
+   address to dial. No code exists until you ask for one. It works once,
+   renews itself while you look at it, and closes when you close it.
+3. **Scan it with your phone.** The card shows the phone the moment it is
+   in.
 
-**On your iPhone:**
-
-- **The quick way:** point the Camera at the QR code and tap the Bloks
-  banner. Bloks opens and asks to pair; tap **Pair this device**.
-- **By hand:** open the sidebar, then Settings, then **Mac connection**.
-  Enter the address and port your computer shows and the six digit code,
-  and tap **Pair this device**. **Scan the QR on your Mac** there scans
-  from inside the app.
+**On your iPhone**, point the Camera at the QR code and tap the Bloks
+banner; Bloks asks before it pairs. With the iPhone and Apple Watch
+update, a phone that has never been paired opens on the same three
+steps, and **Scan the code** there reads it from inside the app. To pair
+by hand, enter the six digit code and the address your computer shows
+under **Mac connection** in the app's Settings.
 
 That is it: your agents are on the phone, and the computer lists it under
-Paired, where it can be removed at any time. With
+Phone and devices, where it can be removed at any time. With
 [Bloks Cloud](https://bloks.dev) the phone reaches your computer from
-anywhere, not only at home.
+anywhere, not only at home. With the iPhone and Apple Watch update, a
+phone paired with one workspace lists your others on that computer and
+adds one in a tap, where phone access is on there, and the computer tells
+you each time.
 
 **If it does not connect:**
 
-- **The code was refused.** Codes last a few minutes, work once, and a few
-  wrong guesses close the window. Show a new code.
+- **The code was refused.** A code works once, and a few wrong tries
+  close it. Press **New code**.
 - **The phone cannot reach the computer.** Both need the same wifi, not a
   guest network, and no VPN on either side. Check you restarted Bloks
   after turning phone access on.
 - **Firewall.** If you declined the incoming connections prompt, allow
   Bloks in your firewall settings (on a Mac, System Settings, Network,
   Firewall).
-- **It worked yesterday.** The computer's address can change when it
-  rejoins the network. Enter the new one under Mac connection and tap
-  Apply and reconnect.
+- **It worked yesterday.** The computer's address or port can change.
+  With the iPhone and Apple Watch update, a phone finds a Mac again on its
+  own. Otherwise enter the new address under Mac connection and tap Apply
+  and reconnect.
 
 ## Where your data lives
 
@@ -490,7 +512,14 @@ your conversations:
   fetched from OpenRouter at most once a day, to estimate costs, with
   nothing about you in the request;
 - with a Bloks key, bloks.dev is asked about your plan, for the Plan page
-  and for whether people may join your workspaces.
+  and for whether people may join your workspaces;
+- with phone access on, a Mac says on your own network where Bloks is
+  listening, so a paired phone finds it again: the computer's name, the
+  workspace's name unless it is Personal, the port and a random tag for
+  the workspace.
+
+If the app crashes, its report stays on your computer; Bloks sends it
+nowhere.
 
 Bloks Cloud, when you turn it on, carries traffic between your devices
 and your computer sealed end to end: the relay in the middle cannot read
@@ -534,6 +563,8 @@ yet. The short version:
   protocols that can carry a permission request for exactly that reason.
 - Everything a member's device may call is named in one file, and
   anything unnamed is refused.
+- A pairing code exists only once you ask for one at the computer, works
+  once, and lasts five minutes.
 - Keys sit in a `0600` file, not the Keychain. That is the top open item.
 - There is no analytics token in this repository.
 - Released macOS builds are signed and notarized. One you build yourself
@@ -544,8 +575,9 @@ yet. The short version:
 The app is free, with your own engines and keys, and it never stops
 working without a plan. Bloks Cloud, Bloks Team and Bloks AI add reach
 from anywhere, people in your workspaces, and agents with no keys at
-all. They are described at [bloks.dev](https://bloks.dev), and Settings,
-Plan shows what yours includes.
+all. One plan covers every workspace on your computer. They are described
+at [bloks.dev](https://bloks.dev), and Settings, Plan shows what yours
+includes.
 
 <p align="center">
   <img alt="Settings, Plan: Bloks Team, active and billed yearly, then your name and what the plan includes, workspaces online and members" src="docs/screenshots/plan.png">
