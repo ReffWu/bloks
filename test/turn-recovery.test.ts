@@ -345,6 +345,10 @@ tick();
     assert.ok(waiting, "the wait was not said");
     assert.equal(waiting.busy, true, "the conversation is free while it waits");
     assert.match(waiting.messages.find((m: any) => /Trying again/.test(m.text ?? "")).text, /Connection reset by peer/);
+    // and what is running says since when, with no turn of its own yet
+    const row = (await h.json("/api/activity")).running.find((r: any) => r.botId === botId);
+    assert.ok(row, "a conversation waiting to ask again is not listed as running");
+    assert.ok(typeof row.since === "number" && row.since > 0, "no start time while it waits to ask again");
     // said meanwhile, it waits its turn like any message behind a turn
     await say(botId, "[t3] also the dates");
     const mid = await me(botId);

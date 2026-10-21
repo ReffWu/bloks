@@ -23573,7 +23573,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             botName: bot.name,
             laneTitle: task.title,
             busy: Boolean(task.busy),
-            since: turnStarted.get(task.id),
+            // A lane waiting to ask again after a failed turn is still at
+            // that work, and has been since the attempt that failed; it
+            // has no turn of its own to time until the retry starts.
+            since: turnStarted.get(task.id) ?? recoveries.get(task.id)?.tried.at(-1)?.at,
             context: fill,
             blocked: blockedOn(store.messagesFor(task.id), live, { includingPutAside: true }),
           });
