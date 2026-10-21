@@ -155,3 +155,34 @@ test("withholding the gallery's charts takes chart shapes out of what is taught"
   assert.doesNotMatch(persona, /BarChart|LineChart|PieChart/);
   assert.match(persona, /Table\(columns: Col\[\]\)/);
 });
+
+test("every agent that makes files is pointed at the design skill, and can read it", async (t) => {
+  const { h, turn } = await setup(t);
+  // nothing attached: the skill rides along on its own, as one line
+  const { persona } = await turn("Compare two consoles", "Here.");
+  assert.match(persona, /^- page-design: Page design\. Read before making any page/m);
+  assert.match(persona, /read the page-design skill and follow it/);
+  // and the chat side of a file is a sentence, not a recap
+  assert.match(persona, /Never repeat the file in the chat as a list/);
+  // the body stays out of the prompt until it is asked for
+  assert.doesNotMatch(persona, /prefers-color-scheme/);
+
+  const { skill } = await h.json("/api/skills/page-design");
+  assert.equal(skill.source, "builtin");
+  assert.match(skill.body, /prefers-color-scheme/);
+  assert.match(skill.body, /^Not for: /m);
+  assert.doesNotMatch(skill.body, /[\u2014\u2013]/);
+});
+
+test("a person's own skill under the design skill's id is the one an agent is pointed at", async (t) => {
+  const { h, turn } = await setup(t);
+  const res = await h.fetch("/api/skills", {
+    method: "POST",
+    body: JSON.stringify({ id: "page-design", name: "Our pages", description: "Use our brand colors", body: "Use this for pages.\n\nNot for: chat.\nReturn: a page.\nApproval: none." }),
+  });
+  assert.equal(res.status, 201);
+  const { persona } = await turn("Make a page", "Here.");
+  // short enough to be sent whole, and the bundled one is not sent beside it
+  assert.match(persona, /^## Our pages\nUse this for pages\./m);
+  assert.doesNotMatch(persona, /Page design\. Read before making any page/);
+});

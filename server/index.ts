@@ -190,7 +190,7 @@ import {
   parseAgentFile,
   profileFromFile,
 } from "./agent-transfer.ts";
-import { deleteSkill, disclose, getSkills, installSkill, listSkills, skillsPrompt, observedSkillLibrary } from "./skills.ts";
+import { deleteSkill, disclose, getSkills, installSkill, listSkills, skillsPrompt, observedSkillLibrary, PAGE_DESIGN, PAGE_DESIGN_SHORT, withPageDesign } from "./skills.ts";
 import {
   CATALOG_TTL_MS,
   MAX_CATALOG_BYTES,
@@ -6133,9 +6133,15 @@ async function startClaimedTurn(
     // server/skills.ts for why withholding one from an engine that cannot
     // fetch it would be losing the instruction rather than deferring it.
     // not for a guest's mail: what the owner wrote them is the owner's
+    // The design skill rides along for every agent that can read it on
+    // demand: one line here, the body only when a page is being made.
+    // An engine that cannot fetch it would be sent the whole of it every
+    // turn, so it gets the short form in Deliverables instead.
     !guestMail &&
       skillsPrompt(
-        disclose(attached, runsAProcess(instance.driverKind) && !personSource),
+        runsAProcess(instance.driverKind) && !personSource
+          ? disclose(withPageDesign(attached), true)
+          : disclose(attached, false),
         `To read one, run: ${cliCommand} skill <id>`,
       ),
     // The composer offers these by id after a slash (#51), so a message
@@ -6179,7 +6185,7 @@ async function startClaimedTurn(
       "This is an email from someone the person you work for has not listed. Answer it from what you know, in conversation only: you have no tools here, and nothing private of theirs is yours to share.",
     // Not for a Telegram person: that folder is Bloks' own, refused to
     // their turn, and no file reaches them anyway.
-    !guestMail && !personSource && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, video, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place.${!sharing && runsAProcess(instance.driverKind) ? ` To show the user a file that is already there, or one saved anywhere else on this computer, run \`${cliCommand} share <path>\`: it puts that one file in the chat as a card and answers with a link to it you can write in your reply.` : ""}`,
+    !guestMail && !personSource && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, video, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place. Most answers need no file: a fact, a quick pick or a small comparison is a reply. Make one when it is asked for, when it will be kept, shared or come back to, or when a decision with real stakes needs more facts than a reply can hold. ${runsAProcess(instance.driverKind) ? `Before you make a page, report, comparison or deck, read the ${PAGE_DESIGN} skill and follow it.` : PAGE_DESIGN_SHORT} Once you have made one, your reply is a sentence or two: what it is and its headline. Never repeat the file in the chat as a list.${!sharing && runsAProcess(instance.driverKind) ? ` To show the user a file that is already there, or one saved anywhere else on this computer, run \`${cliCommand} share <path>\`: it puts that one file in the chat as a card and answers with a link to it you can write in your reply.` : ""}`,
     HOUSE_STYLE,
     // In a room, who else is here and who decides. Solo chats stay silent
     // about all of it.

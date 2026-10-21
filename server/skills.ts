@@ -335,7 +335,120 @@ Not for: one receipt somebody asked you to read. Read it and say what it is.
 Return: counts by category, the flags, and the list of missing receipts.
 Approval: required before categorizing anything as personal or writing to an accounting system.`,
   },
+  {
+    id: "page-design",
+    name: "Page design",
+    description: "Read before making any page, report, comparison, dashboard or deck someone will open. How to make it clear at a glance and finished on a phone and a Mac, light and dark",
+    body: `Use this before you make a file a person will look at: a web page, a report, a comparison, a dashboard, a one pager, a slide deck. It opens in Bloks on a Mac and on an iPhone, so it has to read at 390 pixels wide and in dark mode, and it is judged in the first two seconds.
+
+Not for: a reply in the chat. A short answer, or one with some structure, belongs in the chat, drawn as interface when you can.
+
+## First, does this need a file at all
+Most answers do not. A fact, an opinion, a quick pick, a comparison of two or three things on a few points: answer in the chat. Make a file when the person asked for one, or when they will keep it, share it, print it or come back to it, or when the decision has real stakes and more facts than a chat card can hold.
+
+## How much to put in
+Depth follows the stakes, not a template. Ask what a careful person would want to know before they act, and give exactly that.
+- A cheap choice that is easy to undo: the pick, one line of why, nothing more.
+- A purchase or a commitment that costs real money or is hard to undo (a console, a laptop, a plan, a contract): the pick first, then everything that would change it. The real total cost (what is included, what you have to buy as well, the subscription), how each option fits the person's own situation, the trade offs in practice rather than in specs, timing (sales, new models), the risks (warranty, returns, what goes wrong), and where the facts came from. Leaving one of those out makes the person go and look it up, and then the page has failed.
+- A report or an analysis: the finding first, then the evidence for it in order of weight, then what is uncertain.
+More detail never means more words per fact. It means more facts, each said once, short, and grouped by the question it answers, with the answer always on the first screen.
+
+## How people read a page
+They do not read it. They scan it, and decide in about two seconds whether it answers them.
+- The eye lands on the biggest thing first, then runs down the left edge, stopping at numbers, bold words and the first two or three words of each line. Put the meaning exactly there.
+- Attention is spent, not given. Every extra word, box, color and icon costs some of it, and what is left goes to the answer. Clean is not a style here; it is how the answer gets through.
+- People hold three to five things at once. More groups than that and they stop comparing and start skimming.
+- A number with its meaning beside it ("$100 less", "2.5 times the graphics power") is read in a glance. A number alone makes the reader do the math, and most will not.
+- Sameness is what lets someone compare. Two options described in two different shapes cannot be compared without reading both in full.
+
+## Write it before you style it
+1. The headline is the answer, not the topic. "The Series S, unless you want 4K" beats "PS5 vs Xbox Series S: a complete comparison". A subtitle under it says the scope and the date the facts are from.
+2. Do the math for them. Differences, totals, per month, per use, the gap between the two: work them out and show the result, with the raw figures beside it in smaller type.
+3. Cut. Every sentence that would not change their decision goes; every fact that would change it stays. Labels are one to three words. Lines in cards stay under about twelve words. No paragraph runs past three lines. No intro, no "in this comparison we will", no closing summary of what they just read.
+4. Say each fact once, in the place it does the most work. If the price is in the verdict, the table does not need a sentence about the price as well.
+5. Replace pros and cons with decision rules: "Choose the PS5 if you want 4K or PlayStation exclusives. Choose the Series S if you want Game Pass and the lower price." People decide on their own situation, not on a list of features.
+6. Plain words. No hype, no marketing adjectives ("ultimate", "comprehensive", "powerhouse"), no exclamation marks, no emoji.
+
+## The shape
+- Choose the form from the content. A comparison is a table with the better value marked in each row. Numbers over time are one chart. A choice is two or three cards with the same rows in the same order, one marked as the pick. Steps are a numbered list. Not everything needs a chart, and nothing needs all of them.
+- The order: headline and scope, the verdict (the pick and the rule for when the other wins), the key numbers, the detail, what would change the answer (a price drop, a date, a missing fact), sources.
+- The first screen of a phone holds the headline, the verdict and the key numbers. Someone who reads nothing else has the answer.
+- Group by the question each part answers ("What does it really cost", "Which fits how you play"), not by where you found the facts. Three to five sections on a short page, and on a long one keep each section to three to five things.
+- Reference detail someone may want but few will read (full spec lists, method notes) goes in a details element they can open. Nothing that would change the decision is hidden.
+
+## The look: quiet, so the content is loud
+- Hierarchy by size and weight, not by boxes and colors. Three levels and no more: the big thing (headline, key numbers), the label, the detail in muted type.
+- Space is the separator. Use space before a line, a line before a box, and a box only when the content inside is one unit.
+- Background plain: #ffffff or #fafafa in light, #0b0b0c or #111113 in dark. Never a gradient behind the page, never a photo behind text.
+- Cards, when you need them: one step off the background (#f4f4f5 light, #1a1a1d dark), a hairline border (the text color at 8 to 12 percent), radius 12 to 16px, at most a 0 1px 2px shadow. Cards never sit inside cards.
+- One accent color, for the one thing that matters on each screen: the pick, the key number, links. If the subject has no color of its own, a calm blue (#2563eb light, #60a5fa dark), or an indigo (#4f46e5 light, #818cf8 dark) when a brand on the page is already blue. Brand colors appear only as small marks: a dot, a thin bar, a label. Never whole cards, headings or the page.
+- Type: font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif. Body 16px, line-height 1.5. A short scale: 13, 15, 17, 22, 28, 40. Headings 600 to 700 with letter-spacing -0.01em, -0.02em from 28px up. Key numbers large and tabular: font-variant-numeric: tabular-nums.
+- One left edge. Text, numbers and headings line up on it, and repeated items keep their parts in the same place so the eye can run down a column.
+- Running text at most about 68 characters wide (max-width: 680px). Spacing on a 4px grid: 8, 12, 16, 24, 32, 48, generous between sections and tight within them.
+- Contrast: body text at least 4.5 to 1, muted text included. Muted text #5f6672 in light (it holds on white and on a card), #a1a1aa in dark.
+- Leave out: text-shadow, emoji as icons or bullets, all caps sentences, centered paragraphs, borders on every side of everything, decorative images, a second accent. When an icon carries meaning, a small inline SVG with a 1.5 to 2px stroke in currentColor.
+
+## Light and dark
+Every color is a CSS variable on :root, redefined inside @media (prefers-color-scheme: dark). Set background and color on body explicitly. Borders, charts and badges use the variables too, so nothing is left white on white or black on black.
+
+## Tables
+- First column names the row, one column per option, the same order everywhere on the page.
+- Mark the better value in each row (weight 600 or a small accent dot), not every cell. A row where they are equal says so once ("Same") rather than repeating the value.
+- Numbers right aligned and tabular. Units in the row label, not in every cell. Seven rows or fewer before you split by theme.
+- Hairline row borders, no zebra stripes, no heavy header fill.
+- On a phone a wide table scrolls sideways inside its own wrapper (overflow-x: auto) with the first column sticky. The page itself never scrolls sideways.
+
+## Charts
+- Only when the shape of the numbers is the point. Axes labeled with units. Three series or fewer are labeled at the line, not in a legend.
+- Inline SVG, or a library from a pinned version (for example https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js). The key numbers are in the text too, so the page reads if the script never loads.
+- Series colors from the variables, distinct in both themes, and never color alone telling two series apart.
+
+## Interaction, only where it helps
+- A toggle between views, a sort on a table header, a filter. Controls look like controls, show a pointer cursor and a focus ring, and are at least 44px tall.
+- Nothing only on hover: a phone has no hover.
+- One file: CSS in a style element, script in a script element. No CSS frameworks, no hotlinked images. It opens in a sandbox and may be read offline.
+
+## The file
+- <!doctype html>, <meta charset="utf-8">, <meta name="viewport" content="width=device-width, initial-scale=1">, and a <title> of two to five words.
+- Named for what it is: ps5-vs-xbox-series-s.html, not comparison.html or output.html.
+- Under about 200 KB. Images only when they carry information.
+
+## Decks and printed reports
+- A deck: one idea per slide, its title a full sentence that states the point, at most three short lines or one chart, the same palette and type as above. The HTML version shows one slide per screen and moves with the arrow keys and a swipe.
+- A report for print: @media print with black on white, no card fills, a page break before each section.
+
+## Check before you hand it over
+- The five second test: someone who sees only the first screen on a phone can say the answer.
+- The squint test: blur your eyes and you see three to five clear blocks, one of them clearly first.
+- Read it as the person: every line either helps them decide or goes.
+- Nothing overflows at 390px. Dark mode is readable everywhere. Every number has its unit and its date. The sources are there, small, at the bottom.
+
+## In the chat
+The file speaks for itself. Your reply is one or two sentences: what you made and its headline, for example "The Series S is the better buy at $499 unless you want 4K; the full comparison is in the card." Do not repeat the page in the chat as a list.
+
+Return: one self contained file in your artifacts folder, and a reply of a sentence or two.
+Approval: none needed.`,
+  },
 ];
+
+/** The design skill every agent that makes files has, attached or not:
+ * a page an agent makes is the person's first look at its work, and the
+ * defaults a model reaches for on its own (a gradient, white cards, a
+ * wall of bullet points) look like nobody made them. */
+export const PAGE_DESIGN = "page-design";
+
+/** The same in a few lines, for an engine that cannot read the whole of
+ * it on demand and would otherwise be sent all of it every turn. */
+export const PAGE_DESIGN_SHORT = "Make it look finished: the answer first, a plain background (never a gradient), one accent color, system fonts, readable at phone width and in dark mode, everything in one file.";
+
+/** An agent's attached skills, with the design skill added when it is not
+ * among them. Read through the library, so a skill of the person's own
+ * under the same id is the one that counts. */
+export function withPageDesign(attached: Skill[]): Skill[] {
+  if (attached.some((s) => s.id === PAGE_DESIGN)) return attached;
+  const design = getSkills([PAGE_DESIGN]);
+  return [...attached, ...design];
+}
 
 // ── reading ───────────────────────────────────────────────────────────
 

@@ -7,7 +7,7 @@
 // en dash stays put because that is a number range, not punctuation.
 
 export const HOUSE_STYLE =
-  "Write plainly, the way a capable colleague writes. Never use em dashes or en dashes; use a comma, a colon, parentheses, or a separate sentence instead. Skip preamble and throat-clearing, do not open by restating the question, and cut adjectives that carry no information.";
+  "Write plainly, the way a capable colleague writes. Never use em dashes or en dashes; use a comma, a colon, parentheses, or a separate sentence instead. Skip preamble and throat-clearing, do not open by restating the question, and cut adjectives that carry no information. People scan rather than read: put the answer in your first sentence, keep a reply as short as it can be and still be complete, and never restate what a card or a file already shows.";
 
 export function houseStyle(text: string): string {
   return text
