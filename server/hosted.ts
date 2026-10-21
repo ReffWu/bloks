@@ -194,6 +194,31 @@ export function desktopRequest(path: string): { ticket: string; rest: string } |
   return { ticket, rest };
 }
 
+/**
+ * Where this machine answers from outside, from BLOKS_PUBLIC_URL, when it
+ * has a door of its own: a hosted machine's one public port, which passes
+ * the viewer's ticketed paths (and nothing else) on to this server. An
+ * https origin and nothing more, or http on loopback for a test. The app
+ * reached through Bloks Cloud, which carries requests and their answers
+ * but not a live desktop, opens the viewer there instead, under the same
+ * ticket; without one, the desktop is shown only where this server is
+ * reached directly.
+ */
+export function publicDoor(raw: string | undefined): string | null {
+  const value = (raw ?? "").trim();
+  if (!value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.username || url.password || url.search || url.hash || (url.pathname !== "/" && url.pathname !== "")) return null;
+  const loopback = url.protocol === "http:" && LOOPBACK.has(url.hostname);
+  if (url.protocol !== "https:" && !loopback) return null;
+  return url.origin;
+}
+
 /** The page that opens the viewer through a ticket: noVNC's own page,
  * told to connect at once, scale to the frame, and find its socket under
  * the same ticket. */

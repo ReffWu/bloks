@@ -27,6 +27,7 @@ import { gzipSync } from "node:zlib";
 import type { IncomingMessage } from "node:http";
 
 import { deviceKey, inviteKey, open, peek, seal, type Envelope, type RelayRequest } from "./relay-crypto.ts";
+import { linkAskValid, sealForRequester, type OwnerLink } from "./owner-link.ts";
 import { markSeen, pairedDevices } from "./pairing.ts";
 import type { ActivityPush, PushResult } from "./live-activities.ts";
 
@@ -156,6 +157,26 @@ const WATCHDOG_MS = 60_000;
  * for a slow relay hop and modest clock skew, tight enough that a
  * captured frame is useless minutes later. */
 const REPLAY_WINDOW_MS = 120_000;
+/** The most of the relay's stream held while waiting for the end of a
+ * frame. One ask can be as large as the relay carries (about 2 MB, a part
+ * of a workspace file on its way in, say), so this sits well above that,
+ * with room for the start of the next frame behind it. */
+const MAX_LINE_BUFFER = 5_000_000;
+/** Event streams a paired device may follow through Bloks Cloud (see
+ * serveStream): an agent's terminals, whose output is a live stream and
+ * not a request and its answer. */
+const STREAMABLE = [/^\/api\/bots\/[\w-]+\/terminals\/stream$/, /^\/api\/bots\/[\w-]+\/terminal\/stream$/];
+/** A followed stream ends unless the device says it is still watching
+ * within this long, so a window that closed without saying so does not
+ * leave a stream running here for nobody. */
+const STREAM_LEASE_MS = 60_000;
+const STREAMS_PER_DEVICE = 8;
+/** A line of a followed stream longer than this travels in pieces, so no
+ * one frame outgrows what one push to the relay carries. */
+const STREAM_PIECE = 256 * 1024;
+/** How often the next due time is said again when it has not changed:
+ * the relay forgets it once it has woken the machine for it. */
+const NEXT_DUE_REPEAT_MS = 10 * 60_000;
 
 /**
  * The nonces of mutating requests already served. Each is kept until its
@@ -215,6 +236,14 @@ export class RelayLink {
    * cannot replay a captured "approve" or "send". Bounded and time-swept;
    * the freshness window makes unbounded growth impossible anyway. */
   private seenNonces = new SeenNonces();
+  /** Event streams paired devices are following through Bloks Cloud, by
+   * the id each was given (serveStream). */
+  private streams = new Map<string, { deviceId: string; abort: AbortController; until: number }>();
+  private streamSweep: ReturnType<typeof setInterval> | null = null;
+  /** When the next routine or watcher is due, as last asked to be said,
+   * and what was last said and when (nextDue). */
+  private nextDueWanted: number | null | undefined = undefined;
+  private nextDueSent: { at: number | null; when: number } | null = null;
   state: RelayState = {
     configured: false,
     connected: false,
@@ -255,6 +284,13 @@ export class RelayLink {
    * (server/members.ts): their sealed request in, the sealed answer out,
    * or null for an envelope that does not open. */
   joinAsk: (envelope: Envelope) => Promise<{ status: number; payload: string } | null> = async () => null;
+  /** A pairing link for the owner, when Bloks Cloud asks for one on their
+   * behalf (server/owner-link.ts). Only a workspace with no screen of its
+   * own makes one; anywhere else this is null and the question is refused. */
+  ownerLink: () => OwnerLink | null = () => null;
+  /** The licence this workspace was activated with, which signs those
+   * questions, or null. */
+  licence: () => string | null = () => null;
   /** Called when the relay refuses this Mac's token. Another Bloks on the
    * same ~/.bloks (the app beside a headless server) may have activated
    * Cloud again and saved new tokens this process has not read yet. */
@@ -293,6 +329,7 @@ export class RelayLink {
   stop() {
     this.stopped = true;
     this.generation++;
+    this.endStreams();
     this.controller?.abort();
     this.controller = null;
     if (this.timer) clearTimeout(this.timer);
@@ -312,9 +349,9 @@ export class RelayLink {
    * owner's own devices off members' phones entirely, rather than trusting
    * member-access.ts to drop a kind it has never heard of. `onlyPerson`
    * is the opposite: a frame about one member's own conversation, sealed
-   * for nobody else's devices.
+   * for nobody else's devices. `onlyDevice` narrows it to one device.
    */
-  publish(frame: unknown, wake?: Wake, ownersOnly = false, onlyPerson?: string) {
+  publish(frame: unknown, wake?: Wake, ownersOnly = false, onlyPerson?: string, onlyDevice?: string) {
     if (!this.config || !this.state.connected) return;
     const devices = pairedDevices();
     // No devices still posts an empty batch: /space/agent/events touches
@@ -335,6 +372,8 @@ export class RelayLink {
       // a member's own conversation goes to that member's devices alone,
       // the owner's included among those it does not go to
       if (onlyPerson && d.personId !== onlyPerson) continue;
+      // a stream one device is following is that device's alone
+      if (onlyDevice && d.id !== onlyDevice) continue;
       const shown = d.personId ? this.memberFrame(frame, d.personId) : frame;
       if (shown === null || shown === undefined) continue;
       frames.push(seal(deviceKey(d.hash, "mac-to-phone"), d.id, shown));
@@ -697,8 +736,9 @@ export class RelayLink {
         armWatchdog();
         buffer += decoder.decode(value, { stream: true });
         // Bound the buffer: a peer that streams bytes with no separator
-        // must not grow this without limit.
-        if (buffer.length > 1_000_000) buffer = buffer.slice(-4096);
+        // must not grow this without limit. Never below the largest ask
+        // the relay carries, or that ask is cut in two and lost.
+        if (buffer.length > MAX_LINE_BUFFER) buffer = buffer.slice(-4096);
         let cut: number;
         while ((cut = buffer.indexOf("\n\n")) !== -1) {
           const chunk = buffer.slice(0, cut);
@@ -716,6 +756,8 @@ export class RelayLink {
           if (frame?.kind === "hello") {
             this.retry = RETRY_MIN_MS;
             this.setState({ spaceId: frame.spaceId ?? null });
+            // a fresh line, perhaps after a sleep: say it again
+            void this.sendNextDue(true);
           }
           if (frame?.kind === "ask" && typeof frame.id === "string") {
             void this.serve(frame.id, String(frame.payload ?? ""));
@@ -739,6 +781,7 @@ export class RelayLink {
    */
   private async serve(id: string, payload: string) {
     if (payload.startsWith("hook:")) return void this.serveHook(id, payload.slice(5));
+    if (payload.startsWith("pair-link:")) return void this.serveOwnerLink(id, payload.slice("pair-link:".length));
     const envelope = peek(payload);
     if (envelope?.d.startsWith("inv_")) return void this.serveInvite(id, envelope);
     if (envelope?.d.startsWith("pair_")) return void this.servePairLink(id, envelope);
@@ -783,6 +826,9 @@ export class RelayLink {
     // that only ever came through Bloks Cloud never had a last seen time.
     markSeen(device.id);
 
+    if (request.path === "/api/relay/streams" || request.path.startsWith("/api/relay/streams/")) {
+      return void this.serveStream(id, request, replyKey, device.id);
+    }
     if (request.raw) return void this.serveRaw(id, request, replyKey, device.id);
     try {
       const res = await fetch(`http://127.0.0.1:${this.port}${request.path}`, {
@@ -941,6 +987,193 @@ export class RelayLink {
     this.answer(id, 200, claimed, replyKey, linkId);
   }
 
+  /**
+   * Bloks Cloud asking, for the owner, for a pairing link to this
+   * workspace (server/owner-link.ts). Not sealed, since it comes from the
+   * relay rather than a device; signed with the licence instead, which a
+   * device or a member does not hold, so nobody holding only a relay token
+   * can dress a request up as one. The link goes back sealed for the app
+   * that asked, and each question is answered once.
+   */
+  private serveOwnerLink(id: string, raw: string) {
+    let ask: { key?: unknown; at?: unknown; mac?: unknown };
+    try {
+      ask = JSON.parse(raw);
+    } catch {
+      return this.answer(id, 400, null, null, null);
+    }
+    if (!linkAskValid(this.licence(), ask) || this.seenNonces.has(`link:${ask.mac}`)) return this.answer(id, 401, null, null, null);
+    this.seenNonces.remember(`link:${ask.mac}`, ask.at);
+    const made = this.ownerLink();
+    if (!made) return this.answer(id, 404, null, null, null);
+    let sealed: unknown;
+    try {
+      sealed = sealForRequester(ask.key, made);
+    } catch {
+      return this.answer(id, 400, null, null, null);
+    }
+    if (!this.config) return;
+    void this.deliver(JSON.stringify({ id, status: 200, payload: JSON.stringify(sealed) }), 8_000);
+  }
+
+  /**
+   * An event stream a paired device follows through Bloks Cloud.
+   *
+   * The relay carries a request and its answer, and an event stream never
+   * answers: it is opened and then talks. So the device asks for one
+   * (POST /api/relay/streams with the route it wants), this opens that
+   * route here, as that device, so every check the route makes applies,
+   * and each event it sends goes on to that device alone, sealed, on the
+   * line every frame takes. The device says it is still watching now and
+   * then (POST /api/relay/streams/<id>) and says when it stops (DELETE);
+   * a stream nobody has renewed for a minute is ended here.
+   */
+  private serveStream(id: string, request: RelayRequest, key: Buffer, deviceId: string) {
+    const m = /^\/api\/relay\/streams(?:\/([A-Za-z0-9_-]{12}))?$/.exec(request.path);
+    if (!m) return this.answer(id, 404, { error: "no such route" }, key, deviceId);
+    if (!m[1]) {
+      if (request.method !== "POST") return this.answer(id, 405, { error: "POST a path to follow" }, key, deviceId);
+      const body = requestBody(request) as { path?: unknown } | null;
+      const path = typeof body?.path === "string" ? body.path : "";
+      if (!STREAMABLE.some((route) => route.test(path))) {
+        return this.answer(id, 404, { error: "that cannot be followed through Bloks Cloud" }, key, deviceId);
+      }
+      if ([...this.streams.values()].filter((s) => s.deviceId === deviceId).length >= STREAMS_PER_DEVICE) {
+        return this.answer(id, 429, { error: "too many streams open from this device" }, key, deviceId);
+      }
+      return void this.openStream(id, path, key, deviceId);
+    }
+    const stream = this.streams.get(m[1]);
+    if (!stream || stream.deviceId !== deviceId) return this.answer(id, 404, { error: "no such stream" }, key, deviceId);
+    if (request.method === "DELETE") {
+      stream.abort.abort();
+      this.streams.delete(m[1]);
+      return this.answer(id, 200, { ok: true }, key, deviceId);
+    }
+    stream.until = Date.now() + STREAM_LEASE_MS;
+    return this.answer(id, 200, { ok: true }, key, deviceId);
+  }
+
+  private async openStream(id: string, path: string, key: Buffer, deviceId: string) {
+    const abort = new AbortController();
+    let res: Response;
+    try {
+      res = await fetch(`http://127.0.0.1:${this.port}${path}`, {
+        headers: {
+          accept: "text/event-stream",
+          origin: `http://127.0.0.1:${this.port}`,
+          [RELAY_HEADER]: INTERNAL,
+          [DEVICE_HEADER]: deviceId,
+        },
+        signal: abort.signal,
+      });
+    } catch {
+      return this.answer(id, 502, { error: `${thisMachine()} could not answer that` }, key, deviceId);
+    }
+    if (res.status !== 200 || !res.body) {
+      const text = await res.text().catch(() => "");
+      let body: unknown = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        body = null;
+      }
+      return this.answer(id, res.status === 200 ? 502 : res.status, body ?? { error: "that stream did not open" }, key, deviceId);
+    }
+    const sid = randomBytes(9).toString("base64url");
+    this.streams.set(sid, { deviceId, abort, until: Date.now() + STREAM_LEASE_MS });
+    this.armStreamSweep();
+    this.answer(id, 200, { stream: sid }, key, deviceId);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let cut: number;
+        while ((cut = buffer.indexOf("\n\n")) !== -1) {
+          const event = buffer.slice(0, cut);
+          buffer = buffer.slice(cut + 2);
+          const data = event
+            .split("\n")
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).replace(/^ /, ""))
+            .join("\n");
+          // a keepalive comment carries nothing to pass on
+          if (data) this.streamData(sid, deviceId, data);
+        }
+        if (buffer.length > MAX_LINE_BUFFER) buffer = "";
+      }
+    } catch {
+      /* ended here, or the route went away */
+    } finally {
+      if (this.streams.get(sid)?.abort === abort) this.streams.delete(sid);
+      this.publish({ kind: "stream", stream: sid, end: true }, undefined, false, undefined, deviceId);
+    }
+  }
+
+  private streamData(sid: string, deviceId: string, data: string) {
+    for (let at = 0; at < data.length; at += STREAM_PIECE) {
+      const more = at + STREAM_PIECE < data.length;
+      this.publish({ kind: "stream", stream: sid, data: data.slice(at, at + STREAM_PIECE), ...(more ? { more: true } : {}) }, undefined, false, undefined, deviceId);
+    }
+  }
+
+  private armStreamSweep() {
+    if (this.streamSweep) return;
+    this.streamSweep = setInterval(() => {
+      const now = Date.now();
+      for (const [sid, stream] of this.streams) {
+        if (stream.until > now) continue;
+        stream.abort.abort();
+        this.streams.delete(sid);
+      }
+      if (!this.streams.size && this.streamSweep) {
+        clearInterval(this.streamSweep);
+        this.streamSweep = null;
+      }
+    }, 15_000);
+    this.streamSweep.unref?.();
+  }
+
+  private endStreams() {
+    for (const stream of this.streams.values()) stream.abort.abort();
+    this.streams.clear();
+  }
+
+  /**
+   * When this workspace next has a routine or a watcher due, or null for
+   * none (server/next-due.ts), for Bloks Cloud to wake the machine it runs
+   * on if that machine sleeps. Said when it changes, again every ten
+   * minutes (the relay forgets it once it has acted on it), and again on
+   * every fresh line, since a line that comes back may be a machine that
+   * just woke up.
+   */
+  nextDue(at: number | null) {
+    this.nextDueWanted = at;
+    void this.sendNextDue(false);
+  }
+
+  private async sendNextDue(force: boolean) {
+    if (!this.config || !this.state.connected || this.nextDueWanted === undefined) return;
+    const at = this.nextDueWanted;
+    const now = Date.now();
+    if (!force && this.nextDueSent && this.nextDueSent.at === at && now - this.nextDueSent.when < NEXT_DUE_REPEAT_MS) return;
+    this.nextDueSent = { at, when: now };
+    const ok = await fetch(`${this.config.url}/space/agent/next-due`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ at }),
+      signal: AbortSignal.timeout(10_000),
+    })
+      .then((res) => res.ok)
+      .catch(() => false);
+    // not said after all: the next look tries again
+    if (!ok && this.nextDueSent?.when === now) this.nextDueSent = null;
+  }
+
   /** Somebody asking to join the workspace with an invite's code. The
    * opening, the checks and the sealed answer are server/members.ts's;
    * this only carries them. */
@@ -1038,4 +1271,16 @@ export class RelayLink {
       problem: delivering ? (this.state.problem === NOT_DELIVERING ? null : this.state.problem) : NOT_DELIVERING,
     });
   }
+}
+
+/** A sealed request's body, whether it came as JSON or as raw bytes. */
+function requestBody(request: RelayRequest): unknown {
+  if (typeof request.bodyB64 === "string") {
+    try {
+      return JSON.parse(Buffer.from(request.bodyB64, "base64").toString("utf8"));
+    } catch {
+      return null;
+    }
+  }
+  return request.body ?? null;
 }

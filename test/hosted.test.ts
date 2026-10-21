@@ -16,6 +16,7 @@ import {
   desktopRequest,
   hostedComputer,
   hostedRefusal,
+  publicDoor,
   viewerUrl,
   vncTarget,
 } from "../server/hosted.ts";
@@ -60,6 +61,15 @@ test("the desktop's address is a port or an http address on loopback, and nothin
   assert.deepEqual(vncTarget("http://[::1]:6084/"), { host: "::1", port: 6084, prefix: "/" });
   for (const bad of ["", "0", "70000", "http://10.0.0.5:6080", "http://desktop.example:6080", "https://127.0.0.1:6080", "http://user:pw@127.0.0.1:6080", "file:///tmp/x"]) {
     assert.equal(vncTarget(bad), null, bad);
+  }
+});
+
+test("the door a hosted machine names is an https origin, or loopback for a test, and nothing more", () => {
+  assert.equal(publicDoor("https://machine-1.example.app"), "https://machine-1.example.app");
+  assert.equal(publicDoor("https://machine-1.example.app/"), "https://machine-1.example.app");
+  assert.equal(publicDoor("http://127.0.0.1:18790"), "http://127.0.0.1:18790");
+  for (const bad of ["", undefined, "http://machine-1.example.app", "https://machine-1.example.app/desktop", "https://a:b@example.app", "https://example.app/?x=1", "not a url"]) {
+    assert.equal(publicDoor(bad), null, String(bad));
   }
 });
 

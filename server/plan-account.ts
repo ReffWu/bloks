@@ -22,6 +22,7 @@ import { createHash } from "node:crypto";
 import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
 import { readTime } from "./bloks-ai.ts";
 import { CLOUD_KEY } from "./licence.ts";
+import { readOwnerLink, requesterKey, type OwnerLink } from "./owner-link.ts";
 
 /** bloks.dev, or wherever BLOKS_SITE_URL points a test or a staging box.
  * No trailing slash. */
@@ -381,6 +382,49 @@ export class PlanAccount {
     return said;
   }
 
+  /**
+   * A pairing link to the hosted workspace on this licence (Hosting, on
+   * the Plan page): asked of bloks.dev with the key, carried to the
+   * workspace by Bloks Cloud, and sealed there for a one-time key made
+   * here (server/owner-link.ts), so it is readable on this computer and
+   * nowhere on the way. Asked only when somebody presses for it, never
+   * kept: the link works once, for fifteen minutes.
+   */
+  async hostedLink(licence: string): Promise<OwnerLink | { error: string; status: number; waking?: boolean }> {
+    const asker = requesterKey();
+    let res: Response;
+    try {
+      res = await this.fetch(`${this.site()}/api/hosting/link`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${licence}`, "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ key: asker.key }),
+        // a sleeping workspace is woken first, which bloks.dev waits for
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      return { error: "Couldn't reach bloks.dev. Check the connection and try again.", status: 502 };
+    }
+    const text = await res.text().catch(() => "");
+    let body: unknown = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = null;
+    }
+    if (!res.ok) {
+      const said = isRecord(body) ? words(body.error, 300) : "";
+      const waking = isRecord(body) && body.waking === true;
+      return {
+        error: said || `bloks.dev answered HTTP ${res.status}.`,
+        status: res.status === 503 || res.status === 429 ? res.status : res.status >= 500 ? 502 : 409,
+        ...(waking ? { waking: true } : {}),
+      };
+    }
+    const link = readOwnerLink(asker.open(isRecord(body) ? body.sealed : null));
+    if (!link) return { error: "The link from your hosted workspace could not be opened here. Try again.", status: 502 };
+    return link;
+  }
+
   /** Forget the account kept for a key that is gone. */
   forgetAccount() {
     this.askedAccount = null;
@@ -411,10 +455,11 @@ export interface PlanRouteDeps {
 const ENDED = new Set(["canceled", "cancelled", "incomplete_expired", "unpaid"]);
 
 /**
- * GET /api/plan, POST /api/plan/manage and DELETE /api/plan/licence. The
- * caller has already made sure it is this computer's own window asking,
- * never an agent's credential and never a paired device: the plan, and
- * the way to billing, are the owner's.
+ * GET /api/plan, POST /api/plan/manage, POST /api/plan/hosting/link and
+ * DELETE /api/plan/licence. The caller has already made sure it is this
+ * computer's own window asking, never an agent's credential and never a
+ * paired device: the plan, the way to billing and the way into a hosted
+ * workspace are the owner's.
  */
 export async function planRoute(
   method: string,
@@ -459,6 +504,14 @@ export async function planRoute(
     const said = await plan.manage(licence);
     return "error" in said ? { status: said.status, body: { error: said.error } } : { status: 200, body: said };
   }
+  if (path === "/api/plan/hosting/link" && method === "POST") {
+    const licence = deps.licence();
+    if (!licence) return { status: 409, body: { error: "There is no Bloks key on this computer." } };
+    const said = await plan.hostedLink(licence);
+    return "error" in said
+      ? { status: said.status, body: { error: said.error, ...(said.waking ? { waking: true } : {}) } }
+      : { status: 200, body: said };
+  }
   if (path === "/api/plan/licence" && method === "DELETE") {
     if (!deps.licence()) return { status: 200, body: { removed: false } };
     const problem = await deps.forget();
@@ -466,6 +519,6 @@ export async function planRoute(
     plan.forgetAccount();
     return { status: 200, body: { removed: true } };
   }
-  if (path === "/api/plan" || path.startsWith("/api/plan/")) return { status: 405, body: { error: "GET /api/plan, POST /api/plan/manage or DELETE /api/plan/licence" } };
+  if (path === "/api/plan" || path.startsWith("/api/plan/")) return { status: 405, body: { error: "GET /api/plan, POST /api/plan/manage, POST /api/plan/hosting/link or DELETE /api/plan/licence" } };
   return null;
 }

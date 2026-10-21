@@ -1,14 +1,17 @@
 // bloks.dev's plan routes on loopback, close enough to the real ones for
 // the Plan page's server side to be held to them: the offers for a plan,
 // the account on a key (a bearer, 404 for a key it does not know), the
-// way to billing, and the hosting status a workspace asks when it is not
-// online. It can go down, the way a network does, to show what the app
-// keeps meanwhile.
+// way to billing, the hosting status a workspace asks when it is not
+// online, and a pairing link to the hosted workspace, sealed for the asker
+// the way the hosted workspace seals it. It can go down, the way a network
+// does, to show what the app keeps meanwhile.
 //
 // Prices here are placeholders: the app never knows a real one, it draws
 // whatever words the site sends.
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { sealForRequester } from "../../server/owner-link.ts";
 
 export const SITE_LICENCE = `blok_live_${"5".repeat(32)}`;
 
@@ -84,6 +87,10 @@ export interface FakeSite {
   manageAt(kind: "portal" | "link"): void;
   /** Every request is dropped, the way a dead network drops it. */
   down(on: boolean): void;
+  /** The hosted workspace is waking, for this many more link asks. */
+  wakingFor(asks: number): void;
+  /** The keys the hosted workspace's link was asked for with. */
+  linkKeys: string[];
   close(): Promise<void>;
 }
 
@@ -101,6 +108,8 @@ export async function startFakeSite(): Promise<FakeSite> {
   const bearers: string[] = [];
   let manage: "portal" | "link" = "portal";
   let dead = false;
+  let waking = 0;
+  const linkKeys: string[] = [];
   let base = "";
 
   const server: Server = createServer(async (req, res) => {
@@ -108,7 +117,7 @@ export async function startFakeSite(): Promise<FakeSite> {
       req.socket.destroy();
       return;
     }
-    await read(req);
+    const body = await read(req);
     const url = new URL(req.url ?? "/", "http://x");
     const send = (status: number, body: unknown) => {
       res.writeHead(status, { "content-type": "application/json" });
@@ -135,6 +144,20 @@ export async function startFakeSite(): Promise<FakeSite> {
       if (!accounts.get(bearer)) return send(404, { error: "unknown key" });
       return send(200, manage === "link" ? { url: "https://app.link.com/recurring", manageAt: "link" } : { url: `${base}/portal/session-1`, manageAt: "billing-portal" });
     }
+    if (req.method === "POST" && url.pathname === "/api/hosting/link") {
+      bearers.push(bearer);
+      if (!accounts.get(bearer)) return send(404, { error: "That is not a Bloks licence key we know." });
+      if (waking > 0) {
+        waking -= 1;
+        return send(503, { error: "Your hosted workspace is waking up. Try again in a moment.", waking: true });
+      }
+      const key = String(JSON.parse(body || "{}").key ?? "");
+      linkKeys.push(key);
+      const fragment = Buffer.from(JSON.stringify({ v: 1, k: "pair", r: "https://relay.example", t: "client-token", i: "pair_hosted1", s: "secret", host: "Sam" })).toString("base64url");
+      return send(200, {
+        sealed: sealForRequester(key, { link: `https://bloks.dev/pair#${fragment}`, webLink: `https://bloks.dev/web/#${fragment}`, expiresAt: Date.now() + 15 * 60_000, host: "Sam" }),
+      });
+    }
     if (req.method === "GET" && url.pathname === "/api/hosting/status") {
       const account = accounts.get(bearer);
       if (!account) return send(404, { error: "That is not a Bloks licence key we know." });
@@ -156,6 +179,10 @@ export async function startFakeSite(): Promise<FakeSite> {
     down: (on) => {
       dead = on;
     },
+    wakingFor: (asks) => {
+      waking = asks;
+    },
+    linkKeys,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections?.();

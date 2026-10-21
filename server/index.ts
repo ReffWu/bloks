@@ -10,7 +10,7 @@ import { CLOUD_KEY, licenceFrom, licenceToUse } from "./licence.ts";
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
 import { SaidOnce, desktopNotice, noticeKey, unreadCount as desktopUnreadCount } from "./desktop-notice.ts";
-import { createReadStream, createWriteStream, existsSync, mkdirSync, openAsBlob, readdirSync, readFileSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
+import { closeSync, createReadStream, createWriteStream, existsSync, mkdirSync, openAsBlob, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect as netConnect } from "node:net";
@@ -129,6 +129,7 @@ import {
   computerChoices,
   computerRefusal,
   desktopRequest,
+  publicDoor,
   hostedComputer,
   hostedRefusal,
   isHosted,
@@ -535,6 +536,8 @@ import {
   type CreateOptions,
 } from "./backup.ts";
 import { emptyEnoughForMove } from "./workspace-move.ts";
+import { MoveUploads, PART_BYTES, UploadError } from "./move-upload.ts";
+import { nextDueAt } from "./next-due.ts";
 import { rangeDays, summarize, usageReport, UsageStore, USAGE_RANGES, type UsageRange } from "./usage.ts";
 import { monthBounds, monthKey, monthSpend, providerCreditNotice, readLimit, spendNotices, spendRefusal, spendStatus, MAX_LIMIT_USD, type SpendStatus } from "./spend-limits.ts";
 import { PriceBook, PRICES_URL, readOwnPrice, type OwnPrice } from "./model-prices.ts";
@@ -620,6 +623,10 @@ creditsAccess.use(credits);
 // become hosted while it runs.
 const HOSTED = isHosted();
 const VNC = HOSTED ? vncTarget(process.env.BLOKS_HOSTED_VNC) : null;
+const DOOR = HOSTED ? publicDoor(process.env.BLOKS_PUBLIC_URL) : null;
+/** A next-due time about to be worked out again (nextDueChanged). Up here,
+ * before anything can broadcast, since a broadcast is what sets it. */
+let nextDueSoon: ReturnType<typeof setTimeout> | null = null;
 if (HOSTED && process.env.BLOKS_HOSTED_VNC && !VNC) {
   console.error("[bloks] BLOKS_HOSTED_VNC must be a port, or an http address on this machine's loopback; the desktop is not shown");
 }
@@ -2341,6 +2348,9 @@ setTimeout(() => void checkEngineUpdates(), 20_000).unref?.();
 setInterval(() => void checkEngineUpdates(), 6 * 60 * 60_000).unref?.();
 
 function broadcast(payload: unknown) {
+  // a routine or a watcher changed: a sleeping machine's next wake may too
+  const kind = (payload as { kind?: unknown } | null)?.kind;
+  if (kind === "routines" || kind === "watchers") nextDueChanged();
   // A member's private conversation, or their solo agent: for them, and
   // for the owner only when the workspace says the owner reads those
   // (server/access.ts). Decided once here, for every way out below.
@@ -9235,6 +9245,25 @@ relayLink.pairClaim = (linkId, body) => {
   if (!device) return null;
   return { deviceId: device.id, host: hostName() };
 };
+// A hosted workspace has nobody at it to run `bloks-server pair`, so its
+// owner asks Bloks Cloud for a link instead, signed with the licence
+// (server/owner-link.ts). A Mac never answers that: its owner pairs there.
+relayLink.licence = () => licenceKey();
+relayLink.ownerLink = () => (HOSTED ? makePairLink() : null);
+
+/** A link that pairs a device through Bloks Cloud (server/pairing.ts),
+ * or null while Bloks Cloud is off here. The same link twice: one for a
+ * phone or another computer's app, one that opens straight into Bloks in
+ * a browser at bloks.dev/web. */
+function makePairLink(): { link: string; webLink: string; expiresAt: number; host: string } | null {
+  if (!cfg.relay?.enabled || !cfg.relay.url || !cfg.relay.clientToken) return null;
+  const made = createPairLink();
+  const fragment = Buffer.from(
+    JSON.stringify({ v: 1, k: "pair", r: cfg.relay.url, t: cfg.relay.clientToken, i: made.id, s: made.secret, host: hostName() }),
+  ).toString("base64url");
+  const site = (process.env.BLOKS_SITE_URL || "https://bloks.dev").replace(/\/+$/, "");
+  return { link: `${site}/pair#${fragment}`, webLink: `${site}/web/#${fragment}`, expiresAt: made.expiresAt, host: hostName() };
+}
 relayLink.inviteSecret = (inviteId) => {
   const inv = people.invite(inviteId);
   if (!inv || inv.status === "declined" || inv.status === "cancelled") return null;
@@ -11679,6 +11708,27 @@ async function runDueRoutines() {
 // Every 30s. The schedule has minute resolution, so this is twice as often
 // as it needs to be and cheap enough not to care.
 const routineTimer = setInterval(() => void runDueRoutines().catch(() => {}), 30_000);
+// A hosted machine may be put to sleep while nobody needs it, and Bloks
+// Cloud wakes it for the next routine or watcher look once it knows when
+// that is (server/next-due.ts). Worked out every minute, which is cheap,
+// and a moment after any routine or watcher changes; said only when it
+// changes. A Mac has no use for it and says nothing.
+function sayNextDue() {
+  if (!HOSTED) return;
+  relayLink.nextDue(nextDueAt({ routines: routines.routines, watchers, suspended: suspendedFor, now: Date.now() }));
+}
+function nextDueChanged() {
+  if (!HOSTED || nextDueSoon) return;
+  nextDueSoon = setTimeout(() => {
+    nextDueSoon = null;
+    sayNextDue();
+  }, 1_000);
+  nextDueSoon.unref?.();
+}
+if (HOSTED) {
+  setInterval(sayNextDue, 60_000).unref?.();
+  setTimeout(sayNextDue, 5_000).unref?.();
+}
 // The end of the next pause saved before this start, if there is one.
 armPauseTimer();
 
@@ -15738,11 +15788,123 @@ async function receiveMove(req: IncomingMessage): Promise<{ file: string; name: 
   }
 }
 
+/** A workspace file arriving in parts (server/move-upload.ts), for a
+ * workspace reached through Bloks Cloud. One at a time, beside the
+ * backups; one nobody has added to for a day is cleared away. */
+const moveUploads = new MoveUploads({ dir: () => backupsDirFor(), maxBytes: MOVE_MAX_BYTES });
+setInterval(() => moveUploads.clear(true), 60 * 60_000).unref?.();
+
+/** A request body as bytes, refused past `max`. What is past it is read
+ * and dropped rather than hung up on, so the sender hears why, unless it
+ * goes on far past it. */
+function readBytes(req: IncomingMessage, max: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    const tooBig = () => Object.assign(new Error("That part is bigger than a part can be."), { status: 413 });
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size <= max) chunks.push(chunk);
+      else if (size > max * 4) {
+        req.destroy();
+        reject(tooBig());
+      }
+    });
+    req.on("end", () => (size > max ? reject(tooBig()) : resolve(Buffer.concat(chunks))));
+    req.on("error", reject);
+  });
+}
+
+/** Whether a file starts the way a sealed backup does. */
+function sealedFile(file: string): boolean {
+  const fd = openSync(file, "r");
+  try {
+    const head = Buffer.alloc(8);
+    readSync(fd, head, 0, 8, 0);
+    return head.toString("latin1") === "BLOKSENC";
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Taking a workspace file in a part at a time. Begun with the file's size
+ * (POST .../upload), each part PUT in its place by number, where it stands
+ * asked for (GET .../upload/<id>, which lists the parts still to come, so
+ * a send that stopped carries on), and finished (POST .../finish), which
+ * checks the whole file and then does exactly what the one-request import
+ * does. A wrong or missing passphrase is said at the finish and leaves
+ * every part where it is, so it is asked again without sending anything.
+ */
+async function serveMoveUpload(req: IncomingMessage, res: ServerResponse, method: string, path: string) {
+  try {
+    if (path === "/api/workspace/move/upload") {
+      if (method !== "POST") return json(res, 405, { error: "POST the file's size to begin" });
+      if (backupRunning || restoreUnderWay()) {
+        return json(res, 409, { error: "A backup or a restore is already under way. Try again once it is done." });
+      }
+      if (!workspaceEmpty()) return json(res, 409, { error: MOVE_NOT_EMPTY });
+      const body = await readBody(req);
+      return json(res, 201, moveUploads.start(body.size));
+    }
+    const m = path.match(/^\/api\/workspace\/move\/upload\/(up_[A-Za-z0-9_-]{12})(?:\/(\d{1,6}|finish))?$/);
+    if (!m) return json(res, 404, { error: "not found" });
+    const id = m[1];
+    if (!m[2]) {
+      if (method === "GET") {
+        const status = moveUploads.status(id);
+        return status ? json(res, 200, status) : json(res, 404, { error: "That upload is not here any more. Start the move again." });
+      }
+      if (method === "DELETE") return json(res, 200, { ok: moveUploads.cancel(id) });
+      return json(res, 405, { error: "GET or DELETE" });
+    }
+    if (m[2] !== "finish") {
+      if (method !== "PUT") return json(res, 405, { error: "PUT the part" });
+      const bytes = await readBytes(req, PART_BYTES);
+      return json(res, 200, moveUploads.put(id, Number(m[2]), bytes));
+    }
+    if (method !== "POST") return json(res, 405, { error: "POST to finish" });
+    const status = moveUploads.status(id);
+    const data = moveUploads.file(id);
+    if (!status || !data) return json(res, 404, { error: "That upload is not here any more. Start the move again." });
+    if (status.missing.length) {
+      return json(res, 409, { error: `${status.missing.length} of ${status.parts} parts have not arrived yet.`, missing: status.missing.length });
+    }
+    if (backupRunning || restoreUnderWay()) {
+      return json(res, 409, { error: "A backup or a restore is already under way. Try again once it is done." });
+    }
+    if (!workspaceEmpty()) return json(res, 409, { error: MOVE_NOT_EMPTY });
+    const passphrase = typeof req.headers["x-bloks-passphrase"] === "string" && req.headers["x-bloks-passphrase"] ? String(req.headers["x-bloks-passphrase"]) : undefined;
+    // checked where it lies, so a refusal costs nothing to try again
+    const summary = await checkBackup(data, passphrase);
+    if (summary.kind !== "move") throw new BackupError("That is a backup, not a workspace move file. Restore a backup from Backups.", 400);
+    const name = backupFileName(new Date(), "", "move", sealedFile(data)).replace("-move", "-move-in");
+    const file = join(backupsDirFor(), name);
+    if (existsSync(file)) return json(res, 409, { error: "A workspace file is already arriving. Try again in a moment." });
+    moveUploads.finish(id, file);
+    restoring = { phase: "draining", from: name, startedAt: Date.now() };
+    void runRestore(file, passphrase, 0);
+    return json(res, 202, { restore: restoring, toEnter: summary.toEnter ?? [] });
+  } catch (e) {
+    if (e instanceof UploadError) return json(res, e.status, { error: e.message });
+    if (e instanceof BackupError) {
+      return json(res, e.status, { error: e.message, ...(e.code === "passphrase" ? { needsPassphrase: true } : {}) });
+    }
+    return json(res, (e as { status?: number }).status ?? 500, {
+      error: redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 300),
+    });
+  }
+}
+
 async function serveMove(req: IncomingMessage, res: ServerResponse, method: string, path: string, local: boolean) {
   try {
     if (method === "GET" && path === "/api/workspace/move") {
-      // `canWrite`: writing one out answers only this computer
-      return json(res, 200, { empty: workspaceEmpty(), hosted: HOSTED, canWrite: local, running: backupRunning, restore: restoring });
+      // `canWrite`: writing one out answers only this computer. `partSize`:
+      // a file may come in parts (serveMoveUpload), each this many bytes
+      return json(res, 200, { empty: workspaceEmpty(), hosted: HOSTED, canWrite: local, running: backupRunning, restore: restoring, partSize: PART_BYTES });
+    }
+    if (path === "/api/workspace/move/upload" || path.startsWith("/api/workspace/move/upload/")) {
+      return serveMoveUpload(req, res, method, path);
     }
     // Writing one out is this computer's, like a backup: it is the whole
     // workspace, and it goes where the person carries it.
@@ -16300,7 +16462,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (asAgent) return json(res, 403, { error: "that is the person's" });
       if (!HOSTED) return json(res, 404, { error: "only a hosted workspace has a virtual desktop" });
       if (!VNC) return json(res, 409, { error: "No virtual desktop is set up on this machine." });
-      return json(res, 200, { url: viewerUrl(desktopTickets.mint()) });
+      // `door`: where the same path answers from outside, for an app that
+      // reaches this workspace through Bloks Cloud (server/hosted.ts)
+      return json(res, 200, { url: viewerUrl(desktopTickets.mint()), ...(DOOR ? { door: DOOR } : {}) });
     }
 
     // The join door answers the same on this computer as on the network:
@@ -21084,18 +21248,27 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // relay would be a remote shell on somebody's laptop. Whatever else
     // pairing is for, it is not for that.
     //
+    // A hosted workspace is the exception, and only for its owner. Its
+    // shell is on the machine run for them, which nobody sits at, so the
+    // owner's own paired devices are the only way to it (and signing an
+    // engine in from its terminal is how such a workspace gets Claude Code
+    // or Codex). Never a member's device, and never an agent's credential.
+    // The live output comes back through Bloks Cloud as a followed stream
+    // (server/relay-link.ts, serveStream).
+    //
     // An agent can have several (tabs), each with an id. The routes under
     // /terminals name one by that id; the older /terminal routes below
     // them mean the agent's first, so a client that only knows about one
     // shell keeps working.
+    const shellHere = local || (HOSTED && Boolean(caller) && !asAgent);
     m = path.match(/^\/api\/bots\/([\w-]+)\/terminals$/);
     if (m && method === "GET") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       if (!store.bot(m[1])) return json(res, 404, { error: "no such agent" });
       return json(res, 200, { terminals: terminals.list(m[1]), max: MAX_TERMINALS_PER_AGENT });
     }
     if (m && method === "POST") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       const bot = store.bot(m[1]);
       if (!bot) return json(res, 404, { error: "no such agent" });
       if (bot.archivedAt) return json(res, 409, { error: `${bot.name} is archived` });
@@ -21125,7 +21298,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // change, which is how a second window sees a tab opened in the first.
     m = path.match(/^\/api\/bots\/([\w-]+)\/terminals\/stream$/);
     if (m && method === "GET") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       const botId = m[1];
       if (!store.bot(botId)) return json(res, 404, { error: "no such agent" });
       res.writeHead(200, {
@@ -21183,7 +21356,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
     m = path.match(/^\/api\/bots\/([\w-]+)\/terminals\/([\w-]+)$/);
     if (m && (method === "GET" || method === "PATCH" || method === "DELETE")) {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       const session = terminals.get(m[1], m[2]);
       if (!session) return json(res, 404, { error: "no such terminal" });
       if (method === "GET") return json(res, 200, { terminal: session.info() });
@@ -21199,7 +21372,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
     m = path.match(/^\/api\/bots\/([\w-]+)\/terminals\/([\w-]+)\/(input|busy|restart|clear)$/);
     if (m && ((m[3] === "busy" && method === "GET") || (m[3] !== "busy" && method === "POST"))) {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       const session = terminals.get(m[1], m[2]);
       if (!session) return json(res, 404, { error: "no such terminal" });
       if (m[3] === "busy") return json(res, 200, await session.foreground());
@@ -21227,7 +21400,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // agent's first shell.
     m = path.match(/^\/api\/bots\/([\w-]+)\/terminal$/);
     if (m && method === "POST") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       const bot = store.bot(m[1]);
       if (!bot) return json(res, 404, { error: "no such agent" });
       if (bot.archivedAt) return json(res, 409, { error: `${bot.name} is archived` });
@@ -21247,12 +21420,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
     }
     if (m && method === "GET") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       const session = terminals.get(m[1]);
       return json(res, 200, { terminal: session ? session.info() : null });
     }
     if (m && method === "DELETE") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       // the first shell only: the others are tabs this client never knew about
       const first = terminals.get(m[1]);
       if (first) terminals.close(m[1], first.id);
@@ -21261,7 +21434,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
     m = path.match(/^\/api\/bots\/([\w-]+)\/terminal\/input$/);
     if (m && method === "POST") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       const session = terminals.get(m[1]);
       if (!session) return json(res, 409, { error: "no terminal open" });
       const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
@@ -21273,7 +21446,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // no business in a ring buffer every other client replays.
     m = path.match(/^\/api\/bots\/([\w-]+)\/terminal\/stream$/);
     if (m && method === "GET") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!shellHere) return json(res, 403, { error: "not from here" });
       const session = terminals.get(m[1]);
       if (!session) return json(res, 409, { error: "no terminal open" });
       res.writeHead(200, {
@@ -22725,17 +22898,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // the link is the whole credential, so it is only ever shown here.
     if (method === "POST" && path === "/api/pair/link") {
       if (!local) return json(res, 403, { error: "not from here" });
-      if (!cfg.relay?.enabled || !cfg.relay.url || !cfg.relay.clientToken) {
-        return json(res, 409, { error: "Turn on Bloks Cloud first: pairing from anywhere goes through it." });
-      }
-      const made = createPairLink();
-      const fragment = Buffer.from(
-        JSON.stringify({ v: 1, k: "pair", r: cfg.relay.url, t: cfg.relay.clientToken, i: made.id, s: made.secret, host: hostName() }),
-      ).toString("base64url");
-      // The same link twice: one for a phone or a server's app, one that
-      // opens straight into Bloks in a browser at bloks.dev/web.
-      const site = (process.env.BLOKS_SITE_URL || "https://bloks.dev").replace(/\/+$/, "");
-      return json(res, 200, { link: `${site}/pair#${fragment}`, webLink: `${site}/web/#${fragment}`, expiresAt: made.expiresAt });
+      const made = makePairLink();
+      if (!made) return json(res, 409, { error: "Turn on Bloks Cloud first: pairing from anywhere goes through it." });
+      return json(res, 200, { link: made.link, webLink: made.webLink, expiresAt: made.expiresAt });
     }
     if (method === "POST" && path === "/api/pair/start") {
       if (!local) return json(res, 403, { error: "not from here" });

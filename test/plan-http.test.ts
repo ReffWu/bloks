@@ -205,3 +205,46 @@ test("removing the key forgets it here, takes the plan back to free, and leaves 
   assert.equal(plan.account, null);
   assert.equal((await h.json("/api/plan/licence", { method: "DELETE" })).removed, false, "removing nothing is not an error");
 });
+
+test("the way into a hosted workspace is a link asked with the key, sealed for this computer and opened here", async (t) => {
+  const s = await site(t);
+  s.setAccount(SITE_LICENCE, { plan: "cloud", hosting: { tier: "standard", state: "active" } });
+  const h = await withKey(t, s);
+  const res = await h.fetch("/api/plan/hosting/link", { method: "POST", body: "{}" });
+  assert.equal(res.status, 200);
+  const made = await res.json();
+  assert.match(made.link, /^https:\/\/bloks\.dev\/pair#[A-Za-z0-9_-]+$/);
+  assert.match(made.webLink, /^https:\/\/bloks\.dev\/web\/#/);
+  assert.equal(made.host, "Sam");
+  assert.ok(made.expiresAt > Date.now());
+  assert.deepEqual(s.bearers, [SITE_LICENCE], "asked with the key");
+  assert.match(s.linkKeys[0], /^B[A-Za-z0-9_-]{86}$/, "and a one-time key of this computer's own");
+  // a fresh key each time: an old answer opens nothing new
+  await h.fetch("/api/plan/hosting/link", { method: "POST", body: "{}" });
+  assert.notEqual(s.linkKeys[1], s.linkKeys[0]);
+});
+
+test("a hosted workspace that is waking is said to be waking, for the page to ask again", async (t) => {
+  const s = await site(t);
+  s.setAccount(SITE_LICENCE, { plan: "cloud", hosting: { tier: "lite", state: "active" } });
+  s.wakingFor(1);
+  const h = await withKey(t, s);
+  const res = await h.fetch("/api/plan/hosting/link", { method: "POST", body: "{}" });
+  assert.equal(res.status, 503);
+  const said = await res.json();
+  assert.equal(said.waking, true);
+  assert.match(said.error, /waking up/);
+  assert.equal((await h.fetch("/api/plan/hosting/link", { method: "POST", body: "{}" })).status, 200, "and the next ask finds it awake");
+});
+
+test("only this computer's own window asks for the way in: never a website, the network, or with no key", async (t) => {
+  const s = await site(t);
+  s.setAccount(SITE_LICENCE, { plan: "cloud", hosting: { tier: "standard", state: "active" } });
+  const h = await withKey(t, s);
+  assert.equal((await h.fetchAs("https://evil.example", "/api/plan/hosting/link", { method: "POST", body: "{}" })).status, 403);
+  const remote = await h.fetchRemote("/api/plan/hosting/link", { method: "POST", body: "{}" });
+  assert.ok(remote.status === 401 || remote.status === 403, `the network was answered ${remote.status}`);
+  assert.deepEqual(s.bearers, []);
+  const none = await withKey(t, s, null);
+  assert.equal((await none.fetch("/api/plan/hosting/link", { method: "POST", body: "{}" })).status, 409);
+});

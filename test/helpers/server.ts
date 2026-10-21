@@ -107,6 +107,7 @@ export async function startHarness(extraEnv: Record<string, string> = {}): Promi
         BLOKS_PRICES_URL: "http://127.0.0.1:9/api/v1/models",
         BLOKS_HOSTED: "",
         BLOKS_HOSTED_VNC: "",
+        BLOKS_PUBLIC_URL: "",
         // tests speak as the dev UI (origin :5199), which a server serving
         // its own page does not trust
         BLOKS_STATIC_DIR: "",

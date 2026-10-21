@@ -1,0 +1,46 @@
+// When this workspace next has work of its own to do, for a machine that
+// sleeps while nobody needs it.
+//
+// A hosted workspace may run on a machine that is put to sleep when it is
+// idle and woken by Bloks Cloud when something arrives for it. A message
+// arrives through Bloks Cloud, so it wakes the machine by arriving; a
+// routine or a watcher is due on this machine's own clock, and nothing
+// arrives for it. So the workspace tells Bloks Cloud when the next one is
+// due (server/relay-link.ts, nextDue), and is woken then.
+//
+// Earliest of every routine that will run and every page, feed or check
+// watcher that will look. A folder watcher is left out: a folder on this
+// machine only changes while it is awake.
+import { nextScheduledAfter, type Routine } from "./routines.ts";
+import type { Watcher } from "./watchers.ts";
+
+export interface NextDueInput {
+  routines: readonly Routine[];
+  watchers: readonly Watcher[];
+  /** Whether an agent's own work is held (archived): its routines and
+   * watchers do not run, so they do not wake anything. */
+  suspended: (botId: string) => boolean;
+  now: number;
+}
+
+/** Epoch milliseconds of the next routine or look, or null when nothing
+ * is scheduled. A watcher already overdue is due now. */
+export function nextDueAt({ routines, watchers, suspended, now }: NextDueInput): number | null {
+  let soonest: number | null = null;
+  const consider = (at: number | null | undefined) => {
+    if (typeof at !== "number" || !Number.isFinite(at)) return;
+    if (soonest === null || at < soonest) soonest = at;
+  };
+  for (const routine of routines) {
+    if (!routine.enabled || routine.failing) continue;
+    if (routine.targetKind === "agent" && suspended(routine.targetId)) continue;
+    consider(nextScheduledAfter(routine, new Date(now))?.getTime());
+  }
+  for (const watcher of watchers) {
+    if (!watcher.enabled || watcher.failing || watcher.kind === "folder") continue;
+    if (suspended(watcher.botId)) continue;
+    const every = Math.max(1, Number(watcher.every) || 0) * 60_000;
+    consider(Math.max(now, (watcher.lastCheck ?? 0) + every));
+  }
+  return soonest;
+}
