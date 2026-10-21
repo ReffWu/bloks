@@ -2643,6 +2643,39 @@ handle("dialog:pick-folder", async (event) => {
   return canceled ? null : (filePaths[0] ?? null);
 });
 
+/** The biggest HEIC photo the composer may hand over to be made a JPEG:
+ * several times what a phone takes, and a bound on what the page can make
+ * this process write down. */
+const HEIC_MAX_BYTES = 64 * 1024 * 1024;
+
+/**
+ * A HEIC photo the composer was given, as a JPEG, since no server takes
+ * HEIC as a picture and Chromium cannot read one (GitHub 333). nativeImage
+ * cannot either, short of Quick Look's small square thumbnail, so macOS's
+ * own sips makes it, at full size. Only from bytes the page already holds,
+ * never a path it names, in a folder of this call's own that is gone
+ * after. Null off macOS, and for bytes sips cannot read.
+ */
+handle("image:heic-as-jpeg", async (_event, bytes) => {
+  if (process.platform !== "darwin" || !(bytes instanceof Uint8Array) || !bytes.length || bytes.length > HEIC_MAX_BYTES) return null;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bloks-heic-"));
+  try {
+    const from = path.join(dir, "photo.heic");
+    const to = path.join(dir, "photo.jpg");
+    fs.writeFileSync(from, bytes, { mode: 0o600 });
+    await new Promise((resolve, reject) =>
+      execFile("/usr/bin/sips", ["-s", "format", "jpeg", "-s", "formatOptions", "90", from, "--out", to], { timeout: 30_000 }, (error) =>
+        error ? reject(error) : resolve(),
+      ),
+    );
+    return new Uint8Array(fs.readFileSync(to));
+  } catch {
+    return null;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // The system share sheet, for a workspace invite's link: Messages, Mail,
 // AirDrop, whatever this Mac has. Only an https link to bloks.dev is ever
 // shared from here, so a page cannot dress anything else up as an invite.

@@ -7,18 +7,53 @@
 // the app would: the test plays the relay on one side and the phone's
 // crypto on the other.
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { after, before, describe, test } from "node:test";
+import { gunzipSync } from "node:zlib";
 
 import { deviceKey, open, peek, seal } from "../server/relay-crypto.ts";
-import { SeenNonces } from "../server/relay-link.ts";
+import { FrameReader, MAX_FRAME_CHARS, SeenNonces, type StreamRead } from "../server/relay-link.ts";
 import { startHarness, type Harness } from "./helpers/server.ts";
+
+/** What the relay reads off the line for one sealed request, as it
+ * writes it to the Mac. */
+const askFrame = (id: string, payload: string) => `data: ${JSON.stringify({ kind: "ask", id, payload })}\n\n`;
+
+/** An image upload as the desktop app seals it: the bytes base64 in the
+ * request, the request sealed, the envelope base64 again. */
+function sealedUpload(key: Buffer, device: string, size: number): string {
+  const bytes = Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), randomBytes(size - 8)]);
+  return seal(key, device, {
+    method: "POST",
+    path: "/api/attachments",
+    bodyB64: bytes.toString("base64"),
+    type: "image/png",
+    raw: true,
+    client: "macOS 3.0",
+    ts: Date.now(),
+    nonce: randomUUID(),
+  });
+}
+
+/** Feeds text through a reader in reads of `size`, keeping what came out
+ * and the most the reader held after any read. */
+function readInPieces(reader: FrameReader, text: string, size = 64 * 1024) {
+  const reads: StreamRead[] = [];
+  let mostHeld = 0;
+  for (let at = 0; at < text.length; at += size) {
+    reads.push(...reader.read(text.slice(at, at + size)));
+    mostHeld = Math.max(mostHeld, reader.held);
+  }
+  return { reads, mostHeld };
+}
 
 /** A relay just real enough: it holds the agent stream, hands over asks,
  * and keeps whatever comes back. */
 function stubRelay() {
   let send: ((frame: unknown) => void) | null = null;
+  let stream: ServerResponse | null = null;
   const results = new Map<string, { status: number; payload: string }>();
   /** How the next result posts go wrong, one per post: a status to answer
    * with, or "drop" to cut the socket. Empty means they land. */
@@ -33,6 +68,7 @@ function stubRelay() {
     const path = (req.url ?? "").split("?")[0];
     if (path === "/space/agent/stream") {
       res.writeHead(200, { "content-type": "text/event-stream" });
+      stream = res;
       send = (frame) => res.write(`data: ${JSON.stringify(frame)}\n\n`);
       send({ kind: "hello", spaceId: "space-test" });
       return;
@@ -72,6 +108,11 @@ function stubRelay() {
   return {
     server,
     ask: (id: string, payload: string) => send?.({ kind: "ask", id, payload }),
+    /** The same ask, written to the line a piece at a time. */
+    askInPieces: (id: string, payload: string, size = 64 * 1024) => {
+      const frame = askFrame(id, payload);
+      for (let at = 0; at < frame.length; at += size) stream?.write(frame.slice(at, at + size));
+    },
     results,
     resultFaults,
     resultAttempts,
@@ -252,6 +293,42 @@ describe("the relay link", () => {
     await waitUntil(() => relay.results.get("seen-ok"));
     const seen = await lastSeen();
     assert.ok(seen && seen >= before, "a relayed request did not mark the phone seen");
+  });
+
+  test("an upload longer than the stream's old cut is served, read off the line in pieces (GitHub 333)", async () => {
+    // the reporter's screenshot, and a photo at the size the iPhone sends
+    for (const [id, size] of [["upload-479k", 479_258], ["upload-950k", 950_000]] as const) {
+      const payload = sealedUpload(sealKey, deviceId, size);
+      assert.ok(askFrame(id, payload).length > 1_000_000, "not a frame the old reader cut");
+      relay.askInPieces(id, payload);
+      const got = await waitUntil(() => relay.results.get(id), 30_000);
+      assert.ok(got, `the upload of ${size} bytes was never answered`);
+      const answer = open(openKey, peek(got!.payload)!) as { status: number; z: string };
+      assert.equal(answer.status, 200);
+      const saved = JSON.parse(gunzipSync(Buffer.from(answer.z, "base64")).toString("utf8"));
+      assert.equal(saved.bytes, size);
+      assert.ok(existsSync(saved.path) && statSync(saved.path).size === size, "the image never landed");
+    }
+  });
+
+  test("an ask too long to read is answered with a 413 for its id, and the line goes on", async () => {
+    const payload = sealedUpload(sealKey, deviceId, 1_100_000);
+    assert.ok(askFrame("too-long", payload).length > MAX_FRAME_CHARS);
+    relay.askInPieces("too-long", payload);
+    const got = await waitUntil(() => relay.results.get("too-long"), 30_000);
+    assert.ok(got, "an ask too long to read went unanswered, which the app shows as a timeout");
+    assert.equal(got!.status, 413);
+    assert.deepEqual(open(openKey, peek(got!.payload)!), { status: 413, body: { error: "too large to send through Bloks Cloud" } });
+
+    // one for a device this Mac does not know gets the status, nothing sealed
+    relay.askInPieces("stranger-too-long", sealedUpload(deviceKey("22".repeat(32), "phone-to-mac"), "not-a-device", 1_100_000));
+    const stranger = await waitUntil(() => relay.results.get("stranger-too-long"), 30_000);
+    assert.equal(stranger?.status, 413);
+    assert.equal(stranger?.payload, "");
+
+    relay.ask("after-too-long", seal(sealKey, deviceId, { method: "GET", path: "/api/bots" }));
+    const next = await waitUntil(() => relay.results.get("after-too-long"));
+    assert.equal((open(openKey, peek(next!.payload)!) as { status: number }).status, 200, "the line stopped working after it");
   });
 
   test("an answer lost on the way is sent again until it lands", async () => {
@@ -520,6 +597,63 @@ describe("the relay link", () => {
         body: JSON.stringify({ requestId: (card as any).requestId, behavior: "answer", message: "Yes" }),
       });
     }
+  });
+});
+
+describe("the relay's stream, a frame at a time (GitHub 333)", () => {
+  const key = deviceKey("33".repeat(32), "phone-to-mac");
+
+  test("an upload of the reporter's size comes out whole, read 64 KB at a time", () => {
+    // 479,258 bytes, which the old reader's 1,000,000 character cut lost
+    const payload = sealedUpload(key, "dev-a", 479_258);
+    const frame = askFrame("ask-479k", payload);
+    assert.ok(frame.length > 1_000_000, `${frame.length} characters`);
+    const reader = new FrameReader();
+    const { reads } = readInPieces(reader, frame);
+    assert.deepEqual(reads, [{ frame: { kind: "ask", id: "ask-479k", payload } }]);
+    assert.equal(reader.held, 0);
+  });
+
+  test("a photo at the size the iPhone sends comes out whole too", () => {
+    const payload = sealedUpload(key, "dev-a", 950_000);
+    const frame = askFrame("ask-950k", payload);
+    assert.ok(frame.length > 2_000_000 && frame.length < MAX_FRAME_CHARS, `${frame.length} characters`);
+    const { reads } = readInPieces(new FrameReader(), `${frame}data: {"kind":"hello"}\n\n`);
+    assert.deepEqual(reads, [{ frame: { kind: "ask", id: "ask-950k", payload } }, { frame: { kind: "hello" } }]);
+  });
+
+  test("a frame that ends in the read that takes the stream past the bound is not lost", () => {
+    // the old reader cut the buffer before it looked for the end of a
+    // frame, so a whole frame and the start of the next were cut together
+    const reader = new FrameReader(10_000);
+    const first = `data: ${JSON.stringify({ kind: "ask", id: "a", payload: "x".repeat(9_000) })}\n\n`;
+    const second = `data: ${JSON.stringify({ kind: "ask", id: "b", payload: "y".repeat(5_000) })}\n\n`;
+    assert.deepEqual(reader.read(first.slice(0, 8_000)), []);
+    const reads = reader.read(first.slice(8_000) + second.slice(0, 4_000));
+    assert.deepEqual(reads.map((r) => ("frame" in r ? r.frame.id : null)), ["a"]);
+    assert.deepEqual(reader.read(second.slice(4_000)).map((r) => ("frame" in r ? r.frame.id : null)), ["b"]);
+  });
+
+  test("a frame too long to hold is handed back by its id and device, and none of it is kept", () => {
+    const payload = sealedUpload(key, "dev-a", 1_100_000);
+    const frame = askFrame("ask-too-long", payload);
+    assert.ok(frame.length > MAX_FRAME_CHARS);
+    const reader = new FrameReader();
+    const { reads, mostHeld } = readInPieces(reader, `${frame}data: {"kind":"hello"}\n\n`);
+    assert.deepEqual(reads, [{ tooLarge: { id: "ask-too-long", deviceId: "dev-a" } }, { frame: { kind: "hello" } }]);
+    assert.ok(mostHeld <= MAX_FRAME_CHARS, `held ${mostHeld}`);
+    assert.equal(reader.held, 0);
+  });
+
+  test("a peer that never ends a frame is held to a character", () => {
+    const reader = new FrameReader();
+    const { reads, mostHeld } = readInPieces(reader, "z".repeat(3 * MAX_FRAME_CHARS));
+    assert.deepEqual(reads, [], "bytes that are not an ask have nobody to answer");
+    assert.ok(mostHeld <= MAX_FRAME_CHARS, `held ${mostHeld}`);
+    assert.ok(reader.held <= 1);
+    // a blank line split across two reads still ends it, and the next frame reads
+    assert.deepEqual(reader.read("\n"), []);
+    assert.deepEqual(reader.read('\ndata: {"kind":"hello"}\n\n'), [{ frame: { kind: "hello" } }]);
   });
 });
 

@@ -18,6 +18,11 @@
 // is sent to that server instead, in parts small enough to cross Bloks
 // Cloud, and the prompt carries the path it landed at (GitHub 332). One
 // too big to send is refused here, in words, never passed on as a path.
+//
+// A picture going through Bloks Cloud is made small enough for it first,
+// the way the iPhone app sends one: a JPEG that fits, a screenshot left a
+// PNG when it already does. A HEIC photo always goes as a JPEG, since no
+// server here takes HEIC as a picture (GitHub 333).
 
 export type PasteAttachment = {
   kind: "paste";
@@ -63,11 +68,29 @@ export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
  * the same as a file sent from Telegram (server/attachments.ts). */
 export const FILE_MAX_BYTES = 20 * 1024 * 1024;
 
+/** The most a picture is sent at through Bloks Cloud. An upload is base64
+ * three times on its way (the bytes in the request, the request sealed,
+ * the envelope for the trip), which makes it about 2.37 times its size on
+ * the line, and the relay takes 2,000,000 bytes a request: 843,570 bytes
+ * of picture at the very most. This is what the app's stand-in for a
+ * server elsewhere forwards in one request (electron/remote.mjs,
+ * MAX_REQUEST_BYTES), 1,896,728 on the line, so a picture is one
+ * request's worth even where it has to go whole. */
+export const CLOUD_IMAGE_BYTES = 800_000;
+
+/** A server older than 3.0 takes a picture in one request only, and reads
+ * Bloks Cloud's stream only up to 1,000,000 characters a frame, which an
+ * upload of 421,663 bytes already passes. */
+export const OLDER_SERVER_IMAGE_BYTES = 400_000;
+
 /** Where the conversation's server is, as it says itself
  * (GET /api/attachments/where), and how a file is sent to it. */
 export interface Destination {
   /** A path on this computer is one the server can open. */
   sameComputer: boolean;
+  /** This window reaches the server through Bloks Cloud, so a picture is
+   * made to fit CLOUD_IMAGE_BYTES before it goes. */
+  throughCloud: boolean;
   /** Each part of a file sent in parts, but the last. */
   partBytes: number;
   fileMaxBytes: number;
@@ -77,9 +100,11 @@ export interface Destination {
 /** What to go by when the server cannot say: that a path from here means
  * nothing there, so a file is sent rather than named. Sending one to a
  * server that could have opened it costs a copy; naming one it cannot
- * costs the agent the file. */
+ * costs the agent the file. And that the way there is Bloks Cloud, the
+ * narrower of the two, for the same reason. */
 const ELSEWHERE: Destination = {
   sameComputer: false,
+  throughCloud: true,
   partBytes: 384 * 1024,
   fileMaxBytes: FILE_MAX_BYTES,
   imageMaxBytes: IMAGE_MAX_BYTES,
@@ -97,8 +122,11 @@ export function destination(fetcher?: Fetcher): Promise<Destination> {
     if (!response.ok) throw new Error(String(response.status));
     const said = (await response.json()) as Partial<Destination>;
     const size = (value: unknown, fallback: number) => (typeof value === "number" && value > 0 ? value : fallback);
+    const sameComputer = said.sameComputer === true;
     return {
-      sameComputer: said.sameComputer === true,
+      sameComputer,
+      // a server that does not say is taken to be reached the narrower way
+      throughCloud: !sameComputer && said.throughCloud !== false,
       partBytes: size(said.partBytes, ELSEWHERE.partBytes),
       fileMaxBytes: size(said.fileMaxBytes, ELSEWHERE.fileMaxBytes),
       imageMaxBytes: size(said.imageMaxBytes, ELSEWHERE.imageMaxBytes),
@@ -116,6 +144,15 @@ const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp
 
 export function isImage(file: { type: string }): boolean {
   return IMAGE_MIMES.has(file.type.split(";")[0]!.trim().toLowerCase());
+}
+
+const HEIC_MIMES = new Set(["image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"]);
+
+/** A HEIC photo, what an iPhone takes pictures in. Not one of the kinds a
+ * server keeps as a picture, so it goes as a JPEG made of it. A picked one
+ * often comes with no type at all, so its name counts too. */
+export function isHeic(file: { type: string; name?: string }): boolean {
+  return HEIC_MIMES.has(file.type.split(";")[0]!.trim().toLowerCase()) || /\.hei[cf]$/i.test(file.name ?? "");
 }
 
 const newId = () =>
@@ -177,12 +214,24 @@ export async function intakeFiles<T extends IncomingFile>(
   const said = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
   // One at a time, so the chips keep the order the files were chosen in.
   for (const file of files) {
-    if (isImage(file)) {
+    if (isImage(file) || isHeic(file)) {
       try {
         const uploaded = await handlers.uploadImage(file);
         if (uploaded) attachments.push(uploaded);
       } catch (error) {
-        complaints.push(`${file.name || "image"}: ${said(error, "upload failed")}`);
+        // A HEIC photo this window cannot make a JPEG of still goes by its
+        // path to the server that can open it, as it always has. Anywhere
+        // else it is said, never passed on as a path.
+        let path = "";
+        if ((error as { unconverted?: boolean }).unconverted) {
+          try {
+            path = (await sameComputer()) ? handlers.pathOf(file) : "";
+          } catch {
+            // no disk path to give
+          }
+        }
+        if (path) attachments.push(fileAttachment(file.name, path, file.size));
+        else complaints.push(`${file.name || "image"}: ${said(error, "upload failed")}`);
       }
       continue;
     }
@@ -300,27 +349,197 @@ export async function uploadFileAttachment(file: Sendable, fetcher?: Fetcher): P
   return { kind: "file", id: newId(), path: kept.path, name: file.name || ("name" in kept ? kept.name : "file"), bytes: kept.bytes };
 }
 
+// ── pictures made to fit ───────────────────────────────────────────────
+
+/** What a picture needs before it goes within `budget` bytes: nothing, a
+ * JPEG made of it, or, for a GIF over the budget, to be left as it is,
+ * since a JPEG of a GIF stops it moving. A HEIC photo always needs a JPEG. */
+export function imageNeeds(file: { type: string; name?: string; size: number }, budget: number): "as-is" | "jpeg" | "too-big" {
+  if (isHeic(file)) return "jpeg";
+  if (file.size <= budget) return "as-is";
+  return file.type.split(";")[0]!.trim().toLowerCase() === "image/gif" ? "too-big" : "jpeg";
+}
+
+/** The longest side a picture made smaller goes at: more than an agent
+ * looks at (they scale one down themselves), and enough to read a
+ * screenshot's text by. */
+export const LONG_EDGE = 2560;
+/** Smaller than this on its long side, a picture is not worth sending. */
+const SMALLEST_EDGE = 640;
+
+/** One JPEG to try making. */
+export interface JpegTry {
+  width: number;
+  height: number;
+  quality: number;
+}
+
+/** The first JPEG to try: the picture's own size, no longer than LONG_EDGE. */
+export function firstTry(width: number, height: number): JpegTry {
+  const scale = Math.min(1, LONG_EDGE / Math.max(width, height, 1));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)), quality: 0.85 };
+}
+
+/** The next try after one came out `bytes` long, aimed under `budget`. A
+ * JPEG's size follows its pixel count closely enough to aim by, with a
+ * little held back, and each try is a tenth smaller at least, so this
+ * ends. Null once smaller would not be worth sending. */
+export function nextTry(last: JpegTry, bytes: number, budget: number): JpegTry | null {
+  const scale = Math.min(0.9, Math.sqrt(budget / bytes) * 0.95);
+  const width = Math.round(last.width * scale);
+  const height = Math.round(last.height * scale);
+  if (Math.max(width, height) < SMALLEST_EDGE) return null;
+  return { width, height, quality: Math.max(0.6, Math.round((last.quality - 0.1) * 100) / 100) };
+}
+
+/** A picture opened to be made smaller. */
+export interface OpenedImage {
+  width: number;
+  height: number;
+  jpeg(at: JpegTry): Promise<Blob>;
+  close(): void;
+}
+
+/** What makes a picture smaller: the page's own canvas, which reads every
+ * kind a browser shows, and for a HEIC photo, which only Safari's reads,
+ * the desktop app's converter (electron/main.mjs). Tests bring their own. */
+export interface ImageTools {
+  /** Null for a picture this page cannot read. */
+  open(image: Blob): Promise<OpenedImage | null>;
+  /** Null where there is no converter, or it could not read this one. */
+  heicAsJpeg(image: Blob): Promise<Blob | null>;
+}
+
+export const pageImageTools: ImageTools = {
+  async open(image) {
+    if (typeof createImageBitmap !== "function") return null;
+    let bitmap: ImageBitmap;
+    try {
+      bitmap = await createImageBitmap(image);
+    } catch {
+      return null;
+    }
+    return { width: bitmap.width, height: bitmap.height, jpeg: (at) => drawJpeg(bitmap, at), close: () => bitmap.close() };
+  },
+  async heicAsJpeg(image) {
+    const convert = typeof window === "undefined" ? undefined : window.bloks?.heicAsJpeg;
+    if (!convert) return null;
+    const bytes = await convert(new Uint8Array(await image.arrayBuffer())).catch(() => null);
+    return bytes?.length ? new Blob([new Uint8Array(bytes)], { type: "image/jpeg" }) : null;
+  },
+};
+
+async function drawJpeg(bitmap: ImageBitmap, at: JpegTry): Promise<Blob> {
+  const paint = (context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) => {
+    // a JPEG has no see-through, and a screenshot's clear corners would
+    // otherwise come out black
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, at.width, at.height);
+    context.imageSmoothingQuality = "high";
+    context.drawImage(bitmap, 0, 0, at.width, at.height);
+  };
+  if (typeof OffscreenCanvas === "function") {
+    const canvas = new OffscreenCanvas(at.width, at.height);
+    paint(canvas.getContext("2d")!);
+    return canvas.convertToBlob({ type: "image/jpeg", quality: at.quality });
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = at.width;
+  canvas.height = at.height;
+  paint(canvas.getContext("2d")!);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("the picture could not be made smaller"))), "image/jpeg", at.quality),
+  );
+}
+
+const UNCONVERTED = "it is a HEIC photo, which has to go as a JPEG, and this window cannot make one. Export it as a JPEG and attach that";
+
+/**
+ * A picture as it should travel within `budget` bytes. Itself when it fits
+ * and is a kind a server keeps, so a screenshot that fits stays a PNG;
+ * otherwise a JPEG of it, as large as fits, no longer than LONG_EDGE. Null
+ * for one over the budget that cannot be made smaller here (a GIF, or a
+ * picture this page cannot read), for the caller to send as it is where
+ * that still works, or to refuse in words. A HEIC photo is always a JPEG,
+ * and one this window cannot make a JPEG of throws, marked `unconverted`.
+ */
+export async function fitImage(image: Blob & { name?: string }, budget: number, tools: ImageTools = pageImageTools): Promise<Blob | null> {
+  const need = imageNeeds(image, budget);
+  if (need === "as-is") return image;
+  if (need === "too-big") return null;
+  const opened = await tools.open(image);
+  if (!opened) {
+    if (!isHeic(image)) return null;
+    const jpeg = await tools.heicAsJpeg(image);
+    if (!jpeg) throw Object.assign(new Error(UNCONVERTED), { unconverted: true });
+    return fitImage(jpeg, budget, tools);
+  }
+  try {
+    for (let at: JpegTry | null = firstTry(opened.width, opened.height); at; ) {
+      const jpeg = await opened.jpeg(at);
+      if (jpeg.size <= budget) return jpeg;
+      at = nextTry(at, jpeg.size, budget);
+    }
+    return null;
+  } finally {
+    opened.close();
+  }
+}
+
+/** A picture made from another, as a file named for what it now is. */
+function asSent(image: Blob, original: File): File {
+  if (image === original) return original;
+  const name = (original.name || "pasted image").replace(/\.[^./\\]{1,8}$/, "");
+  return new File([image], `${name}.${image.type === "image/png" ? "png" : "jpg"}`, { type: image.type || "image/jpeg" });
+}
+
+const tooLargeForCloud = (image: Blob) =>
+  new Error(
+    image.type === "image/gif"
+      ? `it is a GIF of ${formatBytes(image.size)}, which goes as it is so that it keeps moving, and that is too large to send through Bloks Cloud`
+      : `it is ${formatBytes(image.size)}, too large to send through Bloks Cloud`,
+  );
+
 /** Persist an image server-side; the prompt will carry the saved path.
  * To a server elsewhere it goes in parts, the way any file does, since
- * one request through Bloks Cloud carries well under 10 MB. */
-export async function uploadImageAttachment(file: File, fetcher?: Fetcher): Promise<ImageAttachment | null> {
-  if (!isImage(file)) return null;
-  if (file.size > IMAGE_MAX_BYTES) throw new Error(`${file.name || "image"} is over 10 MB`);
+ * one request through Bloks Cloud carries well under 10 MB, and through
+ * Bloks Cloud it is made to fit CLOUD_IMAGE_BYTES first. */
+export async function uploadImageAttachment(file: File, fetcher?: Fetcher, tools: ImageTools = pageImageTools): Promise<ImageAttachment | null> {
+  if (!isImage(file) && !isHeic(file)) return null;
   const where = await destination(fetcher);
+  let ready: File;
   if (!where.sameComputer) {
+    // one that cannot be made smaller still goes as it is, in parts, which
+    // carry a picture as big as the server takes
+    ready = asSent((await fitImage(file, where.throughCloud ? CLOUD_IMAGE_BYTES : where.imageMaxBytes, tools)) ?? file, file);
+    if (ready.size > where.imageMaxBytes) {
+      throw new Error(`it is ${formatBytes(ready.size)}, and a picture sent to the computer this workspace runs on can be ${formatBytes(where.imageMaxBytes)} at most`);
+    }
     try {
-      const kept = await sendInParts(file, { fetcher, partBytes: where.partBytes });
+      const kept = await sendInParts(ready, { fetcher, partBytes: where.partBytes });
       if (kept.kind !== "image") throw new Error("it did not arrive as an image");
-      return { kind: "image", id: newId(), path: kept.path, name: file.name || "pasted image", bytes: kept.bytes, mime: kept.mime };
+      return { kind: "image", id: newId(), path: kept.path, name: ready.name || "pasted image", bytes: kept.bytes, mime: kept.mime };
     } catch (error) {
       // a server older than this app still takes an image in one piece
       if (!(error as { older?: boolean }).older) throw error;
     }
+    // in one request, which such a server reads off Bloks Cloud's stream
+    // only up to OLDER_SERVER_IMAGE_BYTES of picture
+    if (ready.size > OLDER_SERVER_IMAGE_BYTES) {
+      const smaller = await fitImage(file, OLDER_SERVER_IMAGE_BYTES, tools);
+      if (!smaller) throw tooLargeForCloud(ready);
+      ready = asSent(smaller, file);
+    }
+  } else {
+    // the app's own server: as it is up to its cap, and made to fit that
+    const fitted = await fitImage(file, IMAGE_MAX_BYTES, tools);
+    if (!fitted) throw new Error(`${file.name || "image"} is over 10 MB`);
+    ready = asSent(fitted, file);
   }
   const response = await (fetcher ?? fetch)("/api/attachments", {
     method: "POST",
-    headers: { "content-type": file.type },
-    body: new Uint8Array(await file.arrayBuffer()),
+    headers: { "content-type": ready.type },
+    body: new Uint8Array(await ready.arrayBuffer()),
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
@@ -331,7 +550,7 @@ export async function uploadImageAttachment(file: File, fetcher?: Fetcher): Prom
     kind: "image",
     id: newId(),
     path: saved.path,
-    name: file.name || "pasted image",
+    name: ready.name || "pasted image",
     bytes: saved.bytes,
     mime: saved.mime,
   };

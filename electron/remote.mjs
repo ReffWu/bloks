@@ -225,10 +225,14 @@ function readBody(req) {
     let size = 0;
     req.on("data", (c) => {
       size += c.length;
-      if (size > MAX_REQUEST_BYTES) {
-        reject(Object.assign(new Error("too large to send through Bloks Cloud"), { status: 413 }));
-        req.destroy();
-      } else chunks.push(c);
+      if (size <= MAX_REQUEST_BYTES) return void chunks.push(c);
+      // Refused at once, and the rest read and dropped rather than hung up
+      // on: a hang-up takes the answer with it, and the window showed a
+      // lost connection instead of why. Only a sender that goes on far past
+      // it is cut off.
+      chunks.length = 0;
+      reject(Object.assign(new Error("too large to send through Bloks Cloud"), { status: 413 }));
+      if (size > MAX_REQUEST_BYTES * 4) req.destroy();
     });
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);

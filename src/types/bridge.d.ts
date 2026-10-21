@@ -309,6 +309,10 @@ declare global {
       /** The disk path behind a dropped or picked File, or "" when the
        * file has none (a drag out of a browser, for instance). */
       filePath(file: File): string;
+      /** A HEIC photo's bytes as a JPEG's, made by macOS, which the page
+       * cannot do itself; null off macOS or for bytes that are not one.
+       * An older app has no such bridge. */
+      heicAsJpeg?(bytes: Uint8Array): Promise<Uint8Array | null>;
       /** The native folder picker; null when the user cancels. */
       pickFolder(): Promise<string | null>;
 

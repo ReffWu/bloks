@@ -24770,10 +24770,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // (GitHub 332). The app attaches a file by its path when it can, and a
     // path on a Mac reaching this server through Bloks Cloud, or from a
     // paired device, names nothing here: that file has to be sent. Said by
-    // the server because it is the one that has to open the path.
+    // the server because it is the one that has to open the path. Whether
+    // the asker came through Bloks Cloud too, which only this side can
+    // tell, so a picture is made small enough for it before it goes
+    // (GitHub 333) and one sent on this network is left as it is.
     if (method === "GET" && path === "/api/attachments/where") {
       return json(res, 200, {
         sameComputer: local,
+        throughCloud: viaRelay !== null,
         partBytes: attachments.UPLOAD_PART_BYTES,
         fileMaxBytes: attachments.FILE_MAX_BYTES,
         imageMaxBytes: attachments.IMAGE_MAX_BYTES,

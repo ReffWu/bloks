@@ -103,6 +103,8 @@ contextBridge.exposeInMainWorld("bloks", {
   // Where a dropped or picked File actually lives. Chromium stopped
   // putting the path on the File object; this is the sanctioned bridge.
   filePath: (file) => webUtils.getPathForFile(file),
+  // a HEIC photo the composer was given, as a JPEG (electron/main.mjs)
+  heicAsJpeg: (bytes) => ipcRenderer.invoke("image:heic-as-jpeg", bytes),
   pickFolder: () => ipcRenderer.invoke("dialog:pick-folder"),
 
   settingsObservation: () => ipcRenderer.invoke("settings:observation"),

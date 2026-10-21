@@ -157,11 +157,20 @@ const WATCHDOG_MS = 60_000;
  * for a slow relay hop and modest clock skew, tight enough that a
  * captured frame is useless minutes later. */
 const REPLAY_WINDOW_MS = 120_000;
-/** The most of the relay's stream held while waiting for the end of a
- * frame. One ask can be as large as the relay carries (about 2 MB, a part
- * of a workspace file on its way in, say), so this sits well above that,
- * with room for the start of the next frame behind it. */
+/** The most of a followed stream (openStream) held while waiting for the
+ * end of one of its events. */
 const MAX_LINE_BUFFER = 5_000_000;
+/** The longest frame the relay's stream is read for (FrameReader). The
+ * relay refuses a request over 2,000,000 bytes before it gets here, and
+ * writes each as one line, `data: {"kind":"ask","id":...,"payload":...}`,
+ * whose payload is base64 that JSON adds nothing to; so the largest ask it
+ * carries is that and about a hundred characters more. A quarter on top
+ * is room for the frame around it to grow, and a frame past this is not
+ * one the relay carries. */
+export const MAX_FRAME_CHARS = 2_500_000;
+/** How much of a frame too long to hold is kept: its id and the device its
+ * envelope names come first, well inside this. */
+const FRAME_HEAD_CHARS = 4096;
 /** Event streams a paired device may follow through Bloks Cloud (see
  * serveStream): an agent's terminals, whose output is a live stream and
  * not a request and its answer. */
@@ -728,29 +737,18 @@ export class RelayLink {
       armWatchdog();
 
       const decoder = new TextDecoder();
-      let buffer = "";
+      const frames = new FrameReader();
       for (;;) {
         const { value, done } = await reader.read();
         if (!alive()) return;
         if (done) break;
         armWatchdog();
-        buffer += decoder.decode(value, { stream: true });
-        // Bound the buffer: a peer that streams bytes with no separator
-        // must not grow this without limit. Never below the largest ask
-        // the relay carries, or that ask is cut in two and lost.
-        if (buffer.length > MAX_LINE_BUFFER) buffer = buffer.slice(-4096);
-        let cut: number;
-        while ((cut = buffer.indexOf("\n\n")) !== -1) {
-          const chunk = buffer.slice(0, cut);
-          buffer = buffer.slice(cut + 2);
-          const line = chunk.split("\n").find((l) => l.startsWith("data:"));
-          if (!line) continue;
-          let frame: any;
-          try {
-            frame = JSON.parse(line.slice(5).trim());
-          } catch {
+        for (const read of frames.read(decoder.decode(value, { stream: true }))) {
+          if ("tooLarge" in read) {
+            this.refuseTooLarge(read.tooLarge.id, read.tooLarge.deviceId);
             continue;
           }
+          const frame = read.frame;
           // the retry clock only resets once the relay has actually said
           // hello, so an accept-then-drop relay cannot cause a tight storm
           if (frame?.kind === "hello") {
@@ -1200,6 +1198,19 @@ export class RelayLink {
     this.answer(id, status, null, null, null);
   }
 
+  /**
+   * An ask too long to have been read (FrameReader), answered rather than
+   * left for the relay's twenty seconds to run out on, which the app shows
+   * as this computer not answering. Sealed for the device its envelope
+   * names when that is one paired here, so the app can say why; bare for
+   * anything else, as an envelope for an unknown device always is.
+   */
+  private refuseTooLarge(id: string, deviceId: string | null) {
+    const device = deviceId ? pairedDevices().find((d) => d.id === deviceId) : undefined;
+    if (!device) return this.answer(id, 413, null, null, null);
+    this.answer(id, 413, { error: "too large to send through Bloks Cloud" }, deviceKey(device.hash, "mac-to-phone"), device.id);
+  }
+
   private answer(id: string, status: number, body: unknown, key: Buffer | null, deviceId: string | null): void {
     if (!this.config) return;
     const payload = key && deviceId ? seal(key, deviceId, { status, body }) : "";
@@ -1271,6 +1282,96 @@ export class RelayLink {
       problem: delivering ? (this.state.problem === NOT_DELIVERING ? null : this.state.problem) : NOT_DELIVERING,
     });
   }
+}
+
+/** One thing read off the relay's stream: a frame, or an ask too long to
+ * hold, by the id the relay gave it and the device its envelope names. */
+export type StreamRead = { frame: any } | { tooLarge: { id: string; deviceId: string | null } };
+
+/**
+ * The relay's stream, cut at its blank lines into frames.
+ *
+ * Only the frame still arriving is held, and the bound is on that frame
+ * alone, counted once every whole frame ahead of it has been taken out.
+ * Cutting the buffer before looking for the end of a frame lost every ask
+ * longer than the cut, and any that only arrived in the same read as the
+ * bytes that tipped it over (GitHub 333): an upload went nowhere, nothing
+ * answered it, and the app said this computer had not answered in time.
+ *
+ * A frame that does outgrow the bound is not dropped in silence. Its start
+ * says whose it is, which is handed back to be answered, and the rest goes
+ * past unkept up to the frame's end. A peer that streams bytes with no
+ * separator at all costs a character held, not the bytes it sent.
+ */
+export class FrameReader {
+  private buffer = "";
+  /** Passing over the rest of a frame too long to hold. */
+  private skipping = false;
+  private readonly limit: number;
+
+  constructor(limit = MAX_FRAME_CHARS) {
+    this.limit = limit;
+  }
+
+  /** How much of the stream is held now, which never stays past the limit. */
+  get held(): number {
+    return this.buffer.length;
+  }
+
+  /** One read's text in; what it finished, in order, out. */
+  read(text: string): StreamRead[] {
+    const out: StreamRead[] = [];
+    // only the new text can end a frame, with the character before it in
+    // case the blank line falls across two reads
+    let from = Math.max(0, this.buffer.length - 1);
+    this.buffer += text;
+    if (this.skipping) {
+      const end = this.buffer.indexOf("\n\n");
+      if (end === -1) {
+        this.buffer = this.buffer.slice(-1);
+        return out;
+      }
+      this.buffer = this.buffer.slice(end + 2);
+      this.skipping = false;
+      from = 0;
+    }
+    let cut: number;
+    while ((cut = this.buffer.indexOf("\n\n", from)) !== -1) {
+      const chunk = this.buffer.slice(0, cut);
+      this.buffer = this.buffer.slice(cut + 2);
+      from = 0;
+      const line = chunk.split("\n").find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      try {
+        out.push({ frame: JSON.parse(line.slice(5).trim()) });
+      } catch {
+        continue;
+      }
+    }
+    if (this.buffer.length > this.limit) {
+      const ask = askOf(this.buffer.slice(0, FRAME_HEAD_CHARS));
+      if (ask) out.push({ tooLarge: ask });
+      this.buffer = this.buffer.slice(-1);
+      this.skipping = true;
+    }
+    return out;
+  }
+}
+
+/** Whose ask a frame is, from its first characters: the relay's id, which
+ * it writes ahead of the payload, and the device the sealed envelope
+ * names in the clear (relay-crypto.ts), which comes first inside it. Null
+ * for a start that does not read as an ask. */
+function askOf(head: string): { id: string; deviceId: string | null } | null {
+  const at = head.indexOf("data:");
+  if (at === -1) return null;
+  const start = head.slice(at + 5);
+  if (!/"kind"\s*:\s*"ask"/.test(start)) return null;
+  const id = /"id"\s*:\s*"([^"\\]{1,200})"/.exec(start)?.[1];
+  if (!id) return null;
+  const b64 = /"payload"\s*:\s*"([A-Za-z0-9+/]*)/.exec(start)?.[1] ?? "";
+  const envelope = Buffer.from(b64.slice(0, b64.length - (b64.length % 4)), "base64").toString("utf8");
+  return { id, deviceId: /^\{"d"\s*:\s*"([^"\\]{1,200})"/.exec(envelope)?.[1] ?? null };
 }
 
 /** A sealed request's body, whether it came as JSON or as raw bytes. */

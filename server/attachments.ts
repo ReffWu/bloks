@@ -109,14 +109,17 @@ export function saveAttachment(req: IncomingMessage, res: ServerResponse): void 
   let size = 0;
   req.on("data", (chunk: Buffer) => {
     size += chunk.length;
-    if (size > IMAGE_MAX_BYTES) {
-      // hanging up beats buffering a stream nobody will keep
-      req.destroy();
+    if (size <= IMAGE_MAX_BYTES) return void chunks.push(chunk);
+    // Said at once, and nothing more kept. The rest is read and dropped
+    // rather than hung up on: hanging up first took the answer with the
+    // connection, so the sender saw a dropped line instead of why. Only a
+    // sender that goes on far past it is cut off.
+    chunks.length = 0;
+    if (!res.headersSent) {
       res.writeHead(413, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "images top out at 10 MB" }));
-      return;
     }
-    chunks.push(chunk);
+    if (size > IMAGE_MAX_BYTES * 4) req.destroy();
   });
   req.on("end", () => {
     if (res.writableEnded) return;

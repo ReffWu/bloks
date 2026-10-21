@@ -15,13 +15,16 @@ import { describe, test } from "node:test";
 import { startRemoteProxy } from "../electron/remote.mjs";
 import { allows } from "../server/agent-cli.ts";
 import {
+  CLOUD_IMAGE_BYTES,
   composeOutgoing,
   destination,
   intakeFiles,
+  isHeic,
   sendInParts,
   uploadFileAttachment,
   uploadImageAttachment,
   type FileAttachment,
+  type ImageTools,
 } from "../src/lib/attachments.ts";
 import { sealedRelay } from "./helpers/sealed-relay.ts";
 import { startHarness } from "./helpers/server.ts";
@@ -102,7 +105,9 @@ test("the server takes a file in parts and keeps it under its own name; the pers
   const h = await startHarness();
   t.after(() => h.stop());
   const fetcher = (path: string, init?: RequestInit) => h.fetch(path, init);
-  assert.equal((await destination(fetcher)).sameComputer, true, "the app's own window is on this computer");
+  const own = await destination(fetcher);
+  assert.equal(own.sameComputer, true, "the app's own window is on this computer");
+  assert.equal(own.throughCloud, false);
 
   // a few parts, the last a short one
   const bytes = randomBytes(1_000_000);
@@ -135,6 +140,12 @@ test("the server takes a file in parts and keeps it under its own name; the pers
   assert.match((await huge.json()).error, /20 MB/);
   assert.equal((await h.fetch("/api/attachments/uploads", { method: "POST", body: JSON.stringify({ name: "a.png", size: 11 * 1024 * 1024, type: "image/png" }) })).status, 413);
   assert.equal((await h.fetch("/api/attachments/uploads", { method: "POST", body: JSON.stringify({ name: "empty", size: 0 }) })).status, 400);
+  // and an image in one piece over the cap is answered in words, where it
+  // used to be hung up on before the answer could go (GitHub 333)
+  const whole = await h.fetch("/api/attachments", { method: "POST", headers: { "content-type": "image/jpeg" }, body: new Uint8Array(11 * 1024 * 1024) });
+  assert.equal(whole.status, 413);
+  assert.deepEqual(await whole.json(), { error: "images top out at 10 MB" });
+  assert.equal((await h.fetch("/api/health")).status, 200, "the server took the next request");
   // a part out of place, a short one, and finishing early
   const started = await h.json("/api/attachments/uploads", { method: "POST", body: JSON.stringify({ name: "b.bin", size: 500_000 }) });
   const put = (n: string, body: Uint8Array<ArrayBuffer>) => h.fetch(`/api/attachments/uploads/${started.id}/${n}`, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body });
@@ -187,6 +198,7 @@ test("the Mac app on a workspace elsewhere, through the relay: a spreadsheet and
 
   const where = await destination(fetcher);
   assert.equal(where.sameComputer, false, "a path on this Mac was taken for one the server can open");
+  assert.equal(where.throughCloud, true, "the server did not say the window came through Bloks Cloud");
 
   // bigger than one request through Bloks Cloud can carry
   const bytes = randomBytes(1_500_000);
@@ -221,4 +233,30 @@ test("the Mac app on a workspace elsewhere, through the relay: a spreadsheet and
   });
   assert.deepEqual(huge.attachments, []);
   assert.match(huge.refused ?? "", /^film\.mov: it is 21\.0 MB, and a file sent to the computer this workspace runs on can be 20\.0 MB at most$/);
+
+  // A screenshot too big for Bloks Cloud goes as a JPEG that fits, and a
+  // HEIC photo as the JPEG made of it (GitHub 333). The page's canvas and
+  // the desktop app's converter are played; the line and the server are real.
+  const jpeg = (size: number) => new Blob([Buffer.concat([Buffer.from("ffd8ffe0", "hex"), randomBytes(size - 4)])], { type: "image/jpeg" });
+  const tools: ImageTools = {
+    open: async (image) => (isHeic(image) ? null : { width: 5120, height: 2880, jpeg: async (at) => jpeg(Math.round(at.width * at.height * 0.2)), close() {} }),
+    heicAsJpeg: async () => jpeg(600_000),
+  };
+  const fitted = await intakeFiles([new File([png(6_000_000)], "Screenshot.png", { type: "image/png" }), new File([randomBytes(1_000_000)], "IMG_0001.HEIC")], {
+    pathOf: (file) => `/Users/someone/Desktop/${file.name}`,
+    uploadImage: (file) => uploadImageAttachment(file, fetcher, tools),
+    uploadFile: async () => assert.fail("a picture was sent as a file"),
+    sameComputer: false,
+  });
+  assert.equal(fitted.refused, null);
+  assert.deepEqual(fitted.attachments.map((a) => [a.kind, a.kind === "image" ? a.name : ""]), [["image", "Screenshot.jpg"], ["image", "IMG_0001.jpg"]]);
+  for (const a of fitted.attachments as Array<{ path: string }>) {
+    assert.match(basename(a.path), /^[0-9a-f-]{36}\.jpg$/);
+    assert.ok(readFileSync(a.path).length <= CLOUD_IMAGE_BYTES);
+  }
+
+  // a request too big for one trip is answered with why, not a dropped line
+  const tooBig = await fetch(`http://127.0.0.1:${app.port}/api/bloks`, { method: "POST", headers: { "content-type": "application/json" }, body: new Uint8Array(900_000) });
+  assert.equal(tooBig.status, 413);
+  assert.deepEqual(await tooBig.json(), { error: "too large to send through Bloks Cloud" });
 });
