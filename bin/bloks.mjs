@@ -671,7 +671,9 @@ const COMMANDS = {
   },
   show: {
     use: "show <kind> <json>",
-    about: "answer with a component instead of prose: chart, table, decision, steps, quote, refused",
+    about:
+      "answer with a component instead of prose: chart, table, decision, steps, quote, refused. " +
+      "Text over a field's limit is refused, not cut, and the refusal names every field to shorten",
     run: async ([kind, ...rest]) => {
       if (!kind) throw new Error("show needs a kind: chart, table, decision, steps, quote or refused");
       const body = rest.join(" ").trim();

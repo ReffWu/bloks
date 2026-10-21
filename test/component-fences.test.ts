@@ -50,6 +50,14 @@ describe("extractComponents", () => {
     assert.equal(out.rejected, 1);
   });
 
+  test("a fence with text past a limit is left visible, not drawn cut short", () => {
+    const passage = "a".repeat(300) + "Z";
+    const out = extractComponents("before\n\n" + fence(JSON.stringify({ kind: "table", columns: ["Passage"], rows: [[passage]] })) + "\n\nafter");
+    assert.equal(out.components.length, 0);
+    assert.equal(out.rejected, 1);
+    assert.ok(out.text.includes(passage), "the whole passage should still be readable");
+  });
+
   test("an ordinary code fence is untouched", () => {
     const text = "```json\n{\"kind\":\"table\"}\n```";
     const out = extractComponents(text);

@@ -3926,6 +3926,38 @@ describe("answering with a component", () => {
     await h.fetch(`/api/bots/${bot.id}?forget=1`, { method: "DELETE" });
   });
 
+  test("text past a limit is refused by field, and nothing shortened reaches the lane", async () => {
+    // GitHub 319: the cell used to lose its last word while show said ok
+    const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Verbose" }) });
+    const res = await h.fetch(`/api/bots/${bot.id}/show`, {
+      method: "POST",
+      body: JSON.stringify({ kind: "table", data: { columns: ["Passage"], rows: [["a".repeat(300) + "Z"]] } }),
+    });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /rows\[0\]\[0\] has 301 characters as shown, over its limit of 300/);
+    const quote = await h.fetch(`/api/bots/${bot.id}/show`, {
+      method: "POST",
+      body: JSON.stringify({ kind: "quote", data: { text: "a".repeat(2000) + "Z" } }),
+    });
+    assert.equal(quote.status, 400);
+    assert.match((await quote.json()).error, /text has 2001 characters, over its limit of 2000/);
+    const { bots } = await h.json("/api/bots");
+    assert.ok(
+      !bots.find((b: any) => b.id === bot.id).messages.some((m: any) => m.kind === "component"),
+      "a refused component reached the lane anyway",
+    );
+    // at the limit it is shown whole
+    const fits = await h.fetch(`/api/bots/${bot.id}/show`, {
+      method: "POST",
+      body: JSON.stringify({ kind: "table", data: { columns: ["Passage"], rows: [["a".repeat(299) + "Z"]] } }),
+    });
+    assert.equal(fits.status, 201);
+    const after = await h.json("/api/bots");
+    const shown = after.bots.find((b: any) => b.id === bot.id).messages.find((m: any) => m.kind === "component");
+    assert.equal(shown.component.rows[0][0], "a".repeat(299) + "Z");
+    await h.fetch(`/api/bots/${bot.id}?forget=1`, { method: "DELETE" });
+  });
+
   test("a kind nobody ships is refused, with the ones there are", async () => {
     const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Inventive" }) });
     const res = await h.fetch(`/api/bots/${bot.id}/show`, {
