@@ -61,6 +61,8 @@
     #5ce1e6 70%, #cb6ce6 83%, #ff5757 91%, #004aad 100%;
   --brand-line: 0.4;
   --brand-line-strong: 0.62;
+  /* a column's edge at rest: there to be found, not seen */
+  --side-line-rest: 0.22;
 
   /* Status colours carry meaning, so they have to be readable at 11px
      and on their own tint, which is where a badge puts them. The lighter
@@ -127,6 +129,7 @@
   --brand-soft: rgba(124, 138, 255, 0.14);
   --brand-line: 0.55;
   --brand-line-strong: 0.78;
+  --side-line-rest: 0.3;
 
   --destructive: #ff6369;
   --destructive-foreground: #1a0d0e;
@@ -676,9 +679,10 @@
 
 /* The edge of a page's column (SideColumn.tsx): the brand gradient as a
  * hairline running down it, gone at the top and the bottom and strongest
- * through the middle, with a glow beside it on the page's side so faint
- * it reads as light more than colour. It is the drag handle's whole look,
- * so it brightens a little under the pointer and while it is dragged.
+ * through the middle, with a glow beside it on the page's side so faint it
+ * reads as light more than colour. At rest it is barely there, there to be
+ * found rather than seen; it is the drag handle's whole look, so the line
+ * and its glow come up under the pointer and while it is dragged.
  *
  * The box is wider than the line so the blur has room inside the mask,
  * which would otherwise cut it off at the line's own edges. The colours
@@ -693,7 +697,7 @@
   width: 36px;
   overflow: hidden;
   pointer-events: none;
-  opacity: var(--brand-line);
+  opacity: var(--side-line-rest);
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent);
   mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent);
   transition: opacity 150ms ease-out;
@@ -714,7 +718,9 @@
   /* the line and the 7px beside it, toward the page, blurred */
   width: 8.5px;
   filter: blur(6px);
-  opacity: 0.45;
+  /* barely there at rest; the glow comes up with the line in hand */
+  opacity: 0.18;
+  transition: opacity 150ms ease-out;
 }
 @media (prefers-reduced-motion: no-preference) {
   .side-divider::before,
@@ -729,6 +735,11 @@
 .side-edge:hover .side-divider,
 .side-edge[data-dragging] .side-divider {
   opacity: var(--brand-line-strong);
+}
+.side-edge:hover .side-divider::after,
+.side-edge[data-dragging] .side-divider::after,
+.side-edge:focus-visible .side-divider::after {
+  opacity: 0.45;
 }
 /* the keyboard's own mark: the line at full strength, since the global
    ring would draw a box the height of the window */
