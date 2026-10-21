@@ -33,7 +33,7 @@ describe("the bridge's socket path", () => {
 
   test("length is counted in bytes, so an accented home that looks short still moves", (t) => {
     const temp = mkdtempSync(join(tmpdir(), "bloks-sock-"));
-    t.after(() => rmSync(temp, { recursive: true, force: true }));
+    t.after(() => rmSync(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     // 90 characters on screen, 150 bytes in the kernel
     const preferred = `/Users/${"é".repeat(60)}/.bloks/perm-abc-1.sock`;
     assert.ok(preferred.length < 104, "the test path should look short in characters");
@@ -48,7 +48,7 @@ describe("the bridge's socket path", () => {
 
   test("the fallback folder is the user's own and closed to everyone else", (t) => {
     const temp = mkdtempSync(join(tmpdir(), "bloks-sock-"));
-    t.after(() => rmSync(temp, { recursive: true, force: true }));
+    t.after(() => rmSync(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     const long = `/x/${"d".repeat(120)}/perm.sock`;
     const first = bridgeSocketPath(long, { tempDir: temp, room: 104, platform: "linux" })!;
     const second = bridgeSocketPath(long, { tempDir: temp, room: 104, platform: "linux" })!;
@@ -61,7 +61,7 @@ describe("the bridge's socket path", () => {
 
   test("a loosened fallback folder is closed again, and a link in its place is refused", (t) => {
     const temp = mkdtempSync(join(tmpdir(), "bloks-sock-"));
-    t.after(() => rmSync(temp, { recursive: true, force: true }));
+    t.after(() => rmSync(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     const long = `/x/${"d".repeat(120)}/perm.sock`;
     const name = `bloks-${process.getuid?.() ?? "user"}`;
     mkdirSync(join(temp, name), { mode: 0o777 });
@@ -70,9 +70,9 @@ describe("the bridge's socket path", () => {
     assert.equal(statSync(join(temp, name)).mode & 0o777, 0o700);
 
     const other = mkdtempSync(join(tmpdir(), "bloks-sock-"));
-    t.after(() => rmSync(other, { recursive: true, force: true }));
+    t.after(() => rmSync(other, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     const elsewhere = mkdtempSync(join(tmpdir(), "bloks-sock-target-"));
-    t.after(() => rmSync(elsewhere, { recursive: true, force: true }));
+    t.after(() => rmSync(elsewhere, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     symlinkSync(elsewhere, join(other, name));
     assert.equal(bridgeSocketPath(long, { tempDir: other, room: 104, platform: "linux" }), null);
   });
@@ -80,13 +80,13 @@ describe("the bridge's socket path", () => {
   test("nothing fits when the temp folder is too deep as well", (t) => {
     const temp = join(mkdtempSync(join(tmpdir(), "bloks-sock-")), "t".repeat(110));
     mkdirSync(temp, { recursive: true });
-    t.after(() => rmSync(join(temp, ".."), { recursive: true, force: true }));
+    t.after(() => rmSync(join(temp, ".."), { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     assert.equal(bridgeSocketPath(`/x/${"d".repeat(120)}/perm.sock`, { tempDir: temp, room: 104, platform: "darwin" }), null);
   });
 
   test("the broker listens on the fallback and removes the socket when it closes", async (t) => {
     const temp = mkdtempSync(join(tmpdir(), "bloks-sock-"));
-    t.after(() => rmSync(temp, { recursive: true, force: true }));
+    t.after(() => rmSync(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     const path = bridgeSocketPath(`/x/${"d".repeat(120)}/perm.sock`, { tempDir: temp, room: 104, platform: "linux" })!;
     const broker = createAskBroker({ socketPath: path, onAsk: () => {}, onResolve: () => {} });
     assert.ok(await waitFor(() => existsSync(path)), "the broker never listened");
@@ -138,7 +138,7 @@ describe("a home too deep for a socket", () => {
     const root = mkdtempSync(join(tmpdir(), "bloks-deep-"));
     const home = join(root, "h".repeat(90));
     mkdirSync(join(home, ".bloks"), { recursive: true });
-    t.after(() => rmSync(root, { recursive: true, force: true }));
+    t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     assert.ok(Buffer.byteLength(join(home, ".bloks", "perm-12345678-123456.sock")) >= 108, "the home is not deep enough to test this");
     const log = join(root, "asks.log");
     const cli = fakeClaude(root, log);
@@ -171,7 +171,7 @@ describe("a home too deep for a socket", () => {
     const temp = join(root, "t".repeat(110));
     mkdirSync(join(home, ".bloks"), { recursive: true });
     mkdirSync(temp, { recursive: true });
-    t.after(() => rmSync(root, { recursive: true, force: true }));
+    t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     const log = join(root, "asks.log");
     const cli = fakeClaude(root, log);
     writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ instances: { claude: { driver: "claudeAgent", config: { cli } } } }));
