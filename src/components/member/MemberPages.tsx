@@ -16,7 +16,9 @@ import { WorkspaceMark } from "@/components/WorkspaceMark";
 import { MembersPage } from "@/components/members/MembersPage";
 import { cn } from "@/lib/cn";
 import { memberApi, soloRoom, type MemberAgent, type MemberNote, type MemberUsage, type MemberWorkspace } from "@/lib/memberMode";
-import { reachLine } from "@/lib/workspaces";
+import { act, reachLine, useWorkspaces } from "@/lib/workspaces";
+import { MarkPicker } from "@/components/MarkPicker";
+import { toast } from "@/components/ui/toast";
 import type { WorkspaceInfo } from "@/types/bridge";
 
 function Page({ children }: { children: React.ReactNode }) {
@@ -202,10 +204,22 @@ export function WorkspacePage({
   const ws = workspace.workspace;
   const owner = workspace.owner.name;
   const reach = entry ? reachLine(entry) : null;
+  const all = useWorkspaces();
+  const taken = all.available ? all.workspaces.filter((w) => w.id !== entry?.id && w.mark).map((w) => w.mark!) : [];
+  const [marking, setMarking] = useState(false);
+  // yours for it when you chose one (the app's list keeps it, and nobody
+  // else sees it), else the one its owner chose
+  const shown = entry?.mark ?? ws.mark;
+  const choose = async (work: Promise<{ error?: string } | undefined> | undefined) => {
+    setMarking(true);
+    const error = await act(work);
+    setMarking(false);
+    if (error) toast.error(error);
+  };
   return (
     <Page>
       <div className="mb-8 flex items-center gap-4">
-        <WorkspaceMark mark={ws.mark} logo={entry?.logo ?? null} size={48} />
+        <WorkspaceMark mark={shown} logo={entry?.logo ?? null} size={48} />
         <div className="min-w-0">
           <h1 className="truncate text-heading font-semibold text-foreground">{ws.name}</h1>
           <p className="text-body text-muted-foreground">
@@ -220,6 +234,19 @@ export function WorkspacePage({
           control={reach ? <Wifi size={16} className="text-muted-foreground" /> : <Cloud size={16} className="text-muted-foreground" />}
         />
         <SettingRow label="Your private conversations" description={workspace.privacy.line} control={<Lock size={15} className="text-muted-foreground" />} />
+        {entry && window.bloks?.workspaceUpdate && (
+          <SettingRow label="Your mark for it" description={`Only you see it. Everyone else sees the one ${owner} chose.`}>
+            <MarkPicker
+              className="mt-4"
+              value={shown}
+              taken={taken}
+              defaultMark={entry.markDefault ?? ws.mark}
+              disabled={marking}
+              onChange={(mark) => void choose(window.bloks?.workspaceUpdate?.(entry.id, { mark }))}
+              onShuffle={() => void choose(window.bloks?.workspaceReroll?.(entry.id))}
+            />
+          </SettingRow>
+        )}
         <SettingRow
           label="Everything else"
           description={`Engines and keys, automations and the rest of the settings are ${owner}'s, on ${owner}'s computer.${workspace.you.role === "admin" ? " As an Admin you can invite and manage people in Members." : ""}`}
