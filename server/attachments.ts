@@ -10,6 +10,13 @@
 // can be played back next to what it was heard as, and so do the videos,
 // audio and documents sent there, for the agent to open by path.
 //
+// And so does any file attached in the app when the conversation lives
+// on a server elsewhere (GitHub 332). A path on the person's Mac means
+// nothing to that server, so the file itself is sent, in parts small
+// enough for Bloks Cloud to carry, and the message names where it landed
+// here. Each lands in a folder of its own under its own name, which the
+// agent reads and the transcript shows; nothing in a folder is served.
+//
 // Names are minted here and only here: a uuid plus an extension. The
 // app's own uploads take theirs from the mime type. A Telegram file may
 // take a short one from its own name (server/telegram.ts), letters and
@@ -17,12 +24,13 @@
 // only the image and voice names (SAFE_NAME), so nothing a sender chose
 // is ever served back, which is what makes that route safe to expose.
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { pipeline } from "node:stream";
 
 import { DATA_DIR } from "./config.ts";
+import { PART_BYTES } from "./move-upload.ts";
 import { openInside, streamHeld } from "./open-inside.ts";
 
 const ATTACHMENTS_DIR = join(DATA_DIR, "attachments");
@@ -32,6 +40,12 @@ export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 /** Telegram will not hand a bot anything bigger, which is about half an
  * hour of voice. */
 export const VOICE_MAX_BYTES = 20 * 1024 * 1024;
+
+/** The most a file attached in the app may be when it has to be sent to
+ * the server rather than named by its path: the same as a file sent from
+ * Telegram. A file already on this computer goes by its path, and has no
+ * limit here. */
+export const FILE_MAX_BYTES = VOICE_MAX_BYTES;
 
 const EXTENSION_FOR: Record<string, string> = {
   "image/png": "png",
@@ -141,4 +155,173 @@ export function serveAttachment(name: string, res: ServerResponse): void {
     "cache-control": "private, max-age=31536000, immutable",
   });
   pipeline(streamHeld(held), res, () => {});
+}
+
+// ── files sent in parts ────────────────────────────────────────────────
+
+/** Each part but the last: the size a workspace move travels in, which a
+ * request through Bloks Cloud carries with room to spare. */
+export const UPLOAD_PART_BYTES = PART_BYTES;
+/** An upload nobody has added to for this long is given up. */
+const UPLOAD_IDLE_MS = 60 * 60_000;
+/** A composer sends one file at a time; this is plenty, and a bound. */
+const MAX_UPLOADS = 16;
+
+const IMAGE_TYPES = new Set(Object.keys(EXTENSION_FOR));
+
+export class AttachmentError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/**
+ * A name a file can keep on this computer: its own, less anything that
+ * would make it a path (a separator, a leading dot, a control character),
+ * and short enough for any disk. Never empty.
+ */
+export function attachmentFileName(raw: unknown): string {
+  const last = String(typeof raw === "string" ? raw : "").split(/[\\/]/).pop() ?? "";
+  // eslint-disable-next-line no-control-regex
+  let name = last.replace(/[\u0000-\u001f\u007f]/g, "").trim().replace(/^\.+/, "").trim();
+  if (Buffer.byteLength(name) > 120) {
+    const dot = name.lastIndexOf(".");
+    const ext = dot > 0 && name.length - dot <= 12 ? name.slice(dot) : "";
+    let stem = name.slice(0, name.length - ext.length);
+    while (Buffer.byteLength(stem + ext) > 120) stem = stem.slice(0, -1);
+    name = stem.trimEnd() + ext;
+  }
+  return name || "file";
+}
+
+interface Upload {
+  id: string;
+  image: boolean;
+  name: string;
+  size: number;
+  parts: number;
+  have: Set<number>;
+  staging: string;
+  touched: number;
+}
+
+/**
+ * Files arriving a part at a time: begun with the name, size and type
+ * (start), each part put in its place by number (put), and finished once
+ * all are here (finish), when the file is moved to where the agent will
+ * read it. A part sent twice lands on the same bytes, so a retry after a
+ * lost answer is harmless. Parts gather in a hidden folder, never in
+ * memory, and an upload left alone for an hour is cleared away.
+ */
+export class AttachmentUploads {
+  private readonly uploads = new Map<string, Upload>();
+  private readonly dir: string;
+  private readonly now: () => number;
+
+  constructor(opts: { dir?: string; now?: () => number } = {}) {
+    this.dir = opts.dir ?? ATTACHMENTS_DIR;
+    this.now = opts.now ?? Date.now;
+  }
+
+  private get incoming() {
+    return join(this.dir, ".incoming");
+  }
+
+  start(input: { name?: unknown; size?: unknown; type?: unknown }): { id: string; partSize: number; parts: number } {
+    this.sweep();
+    const size = input.size;
+    if (typeof size !== "number" || !Number.isInteger(size) || size < 0) throw new AttachmentError("Say how big the file is, in bytes.", 400);
+    if (size === 0) throw new AttachmentError("That file is empty.", 400);
+    const type = String(input.type ?? "").split(";")[0]!.trim().toLowerCase();
+    const image = IMAGE_TYPES.has(type);
+    const max = image ? IMAGE_MAX_BYTES : FILE_MAX_BYTES;
+    if (size > max) {
+      throw new AttachmentError(image ? "images top out at 10 MB" : `files sent here top out at ${max / (1024 * 1024)} MB`, 413);
+    }
+    if (this.uploads.size >= MAX_UPLOADS) throw new AttachmentError("Too many files are on their way at once. Try again when they have arrived.", 429);
+    mkdirSync(this.incoming, { recursive: true, mode: 0o700 });
+    const id = randomUUID();
+    const staging = join(this.incoming, id);
+    const fd = openSync(staging, "wx", 0o600);
+    try {
+      // sparse where the disk allows: each part is written into its place
+      writeSync(fd, Buffer.alloc(1), 0, 1, size - 1);
+    } finally {
+      closeSync(fd);
+    }
+    const parts = Math.ceil(size / UPLOAD_PART_BYTES);
+    this.uploads.set(id, { id, image, name: attachmentFileName(input.name), size, parts, have: new Set(), staging, touched: this.now() });
+    return { id, partSize: UPLOAD_PART_BYTES, parts };
+  }
+
+  put(id: string, index: number, bytes: Buffer): { received: number; parts: number } {
+    const upload = this.uploads.get(id);
+    if (!upload) throw new AttachmentError("That file is not arriving any more. Attach it again.", 404);
+    if (!Number.isInteger(index) || index < 0 || index >= upload.parts) throw new AttachmentError("There is no such part.", 400);
+    const want = index === upload.parts - 1 ? upload.size - index * UPLOAD_PART_BYTES : UPLOAD_PART_BYTES;
+    if (bytes.length !== want) throw new AttachmentError(`Part ${index} should be ${want} bytes and was ${bytes.length}.`, 400);
+    const fd = openSync(upload.staging, "r+");
+    try {
+      writeSync(fd, bytes, 0, bytes.length, index * UPLOAD_PART_BYTES);
+    } finally {
+      closeSync(fd);
+    }
+    upload.have.add(index);
+    upload.touched = this.now();
+    return { received: upload.have.size, parts: upload.parts };
+  }
+
+  /** The file in its place, and where that is: an image the way a pasted
+   * one is kept, anything else in a folder of its own under its name. */
+  finish(id: string): { kind: "image"; path: string; mime: string; bytes: number } | { kind: "file"; path: string; name: string; bytes: number } {
+    const upload = this.uploads.get(id);
+    if (!upload) throw new AttachmentError("That file is not arriving any more. Attach it again.", 404);
+    const missing = upload.parts - upload.have.size;
+    if (missing) throw new AttachmentError(`${missing} of ${upload.parts} parts have not arrived yet.`, 409);
+    this.uploads.delete(id);
+    try {
+      if (upload.image) {
+        const bytes = Buffer.alloc(upload.size);
+        const fd = openSync(upload.staging, "r");
+        try {
+          readSync(fd, bytes, 0, upload.size, 0);
+        } finally {
+          closeSync(fd);
+        }
+        // named by what it is, not by what it was said to be
+        const mime = sniffImage(bytes);
+        const extension = extensionFor(mime ?? undefined);
+        if (!mime || !extension) throw new AttachmentError("only png, jpeg, gif and webp images upload", 415);
+        return { kind: "image", path: saveBytes(bytes, extension), mime, bytes: upload.size };
+      }
+      const folder = join(this.dir, id);
+      mkdirSync(folder, { recursive: true, mode: 0o700 });
+      const path = join(folder, upload.name);
+      renameSync(upload.staging, path);
+      return { kind: "file", path, name: upload.name, bytes: upload.size };
+    } finally {
+      rmSync(upload.staging, { force: true });
+    }
+  }
+
+  cancel(id: string): boolean {
+    const upload = this.uploads.get(id);
+    if (!upload) return false;
+    this.uploads.delete(id);
+    rmSync(upload.staging, { force: true });
+    return true;
+  }
+
+  /** Uploads left alone too long, and parts nothing here remembers (a
+   * restart forgets every upload in flight), cleared away. */
+  sweep(): void {
+    const now = this.now();
+    for (const upload of [...this.uploads.values()]) {
+      if (now - upload.touched > UPLOAD_IDLE_MS) this.cancel(upload.id);
+    }
+    if (this.uploads.size) return;
+    rmSync(this.incoming, { recursive: true, force: true });
+  }
 }

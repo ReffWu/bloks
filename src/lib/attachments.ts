@@ -11,6 +11,13 @@
 // helps nobody. Images are the exception, because a path into a browser
 // drag does not exist; those upload once and the prompt carries the
 // saved path.
+//
+// A path only works where the server can open it. When the conversation
+// lives on a server elsewhere (this app connected to another computer, or
+// a paired device), a path on this Mac names nothing there, so every file
+// is sent to that server instead, in parts small enough to cross Bloks
+// Cloud, and the prompt carries the path it landed at (GitHub 332). One
+// too big to send is refused here, in words, never passed on as a path.
 
 export type PasteAttachment = {
   kind: "paste";
@@ -52,6 +59,59 @@ export function isLongPaste(text: string): boolean {
  * refused before the upload starts rather than partway through it. */
 export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
+/** The server's cap on a file that has to be sent rather than named:
+ * the same as a file sent from Telegram (server/attachments.ts). */
+export const FILE_MAX_BYTES = 20 * 1024 * 1024;
+
+/** Where the conversation's server is, as it says itself
+ * (GET /api/attachments/where), and how a file is sent to it. */
+export interface Destination {
+  /** A path on this computer is one the server can open. */
+  sameComputer: boolean;
+  /** Each part of a file sent in parts, but the last. */
+  partBytes: number;
+  fileMaxBytes: number;
+  imageMaxBytes: number;
+}
+
+/** What to go by when the server cannot say: that a path from here means
+ * nothing there, so a file is sent rather than named. Sending one to a
+ * server that could have opened it costs a copy; naming one it cannot
+ * costs the agent the file. */
+const ELSEWHERE: Destination = {
+  sameComputer: false,
+  partBytes: 384 * 1024,
+  fileMaxBytes: FILE_MAX_BYTES,
+  imageMaxBytes: IMAGE_MAX_BYTES,
+};
+
+type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
+
+let asked: Promise<Destination> | null = null;
+
+/** Where this window's server is. Asked once a page, and again after a
+ * failed ask; a fetcher of a test's own is asked every time. */
+export function destination(fetcher?: Fetcher): Promise<Destination> {
+  const ask = async (): Promise<Destination> => {
+    const response = await (fetcher ?? fetch)("/api/attachments/where");
+    if (!response.ok) throw new Error(String(response.status));
+    const said = (await response.json()) as Partial<Destination>;
+    const size = (value: unknown, fallback: number) => (typeof value === "number" && value > 0 ? value : fallback);
+    return {
+      sameComputer: said.sameComputer === true,
+      partBytes: size(said.partBytes, ELSEWHERE.partBytes),
+      fileMaxBytes: size(said.fileMaxBytes, ELSEWHERE.fileMaxBytes),
+      imageMaxBytes: size(said.imageMaxBytes, ELSEWHERE.imageMaxBytes),
+    };
+  };
+  if (fetcher) return ask().catch(() => ELSEWHERE);
+  asked ??= ask().catch(() => {
+    asked = null;
+    return ELSEWHERE;
+  });
+  return asked;
+}
+
 const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 export function isImage(file: { type: string }): boolean {
@@ -86,19 +146,35 @@ type IncomingFile = Pick<File, "name" | "size" | "type" | "text">;
 /**
  * The one intake for the picker, the drop and the paste, so a picked
  * file and a dropped one can never sort differently. The caller owns
- * the network (uploadImage) and the disk-path bridge (pathOf); this
- * owns the ordering and the sentence the user reads when something is
- * refused. Nothing is dropped in silence.
+ * the network (uploadImage, uploadFile) and the disk-path bridge
+ * (pathOf); this owns the ordering and the sentence the user reads when
+ * something is refused. Nothing is dropped in silence.
+ *
+ * `sameComputer` says whether the server can open a path from here; left
+ * out, it can, which is the app with its own server. When it cannot, a
+ * path from here is never used: the file is sent with uploadFile.
  */
 export async function intakeFiles<T extends IncomingFile>(
   files: readonly T[],
   handlers: {
     pathOf: (file: T) => string;
     uploadImage: (file: T) => Promise<ImageAttachment | null>;
+    uploadFile?: (file: T) => Promise<FileAttachment | null>;
+    sameComputer?: boolean | (() => Promise<boolean>);
+    /** Told as a file starts on its way, for a line while it travels. */
+    onSending?: (file: T) => void;
   },
 ): Promise<{ attachments: Attachment[]; refused: string | null }> {
   const attachments: Attachment[] = [];
   const complaints: string[] = [];
+  let here: boolean | null = null;
+  const sameComputer = async () => {
+    if (here !== null) return here;
+    const said = handlers.sameComputer ?? true;
+    here = typeof said === "boolean" ? said : await said().catch(() => false);
+    return here;
+  };
+  const said = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
   // One at a time, so the chips keep the order the files were chosen in.
   for (const file of files) {
     if (isImage(file)) {
@@ -106,38 +182,142 @@ export async function intakeFiles<T extends IncomingFile>(
         const uploaded = await handlers.uploadImage(file);
         if (uploaded) attachments.push(uploaded);
       } catch (error) {
-        complaints.push(`${file.name || "image"}: ${error instanceof Error ? error.message : "upload failed"}`);
+        complaints.push(`${file.name || "image"}: ${said(error, "upload failed")}`);
       }
       continue;
     }
     let path = "";
+    let pathless = true;
     try {
       path = handlers.pathOf(file);
+      pathless = !path;
     } catch {
       // a plain browser tab has no disk path to give
     }
+    // a path on this computer names nothing on a server elsewhere
+    if (path && !(await sameComputer())) path = "";
     if (path) {
       attachments.push(fileAttachment(file.name, path, file.size));
       continue;
     }
-    if ((file.type.startsWith("text/") || file.type === "application/json") && file.size <= INLINE_TEXT_LIMIT) {
+    // A small text drop with no path anywhere keeps its words inline, as
+    // it always has, for the server this app runs.
+    const inline = (file.type.startsWith("text/") || file.type === "application/json") && file.size <= INLINE_TEXT_LIMIT;
+    if (pathless && inline && (!handlers.uploadFile || (await sameComputer()))) {
       try {
         attachments.push(pasteAttachment(await file.text()));
         continue;
       } catch {
-        // unreadable drag; falls through to the complaint
+        // unreadable drag; sent instead, or said below
       }
+    }
+    if (handlers.uploadFile) {
+      try {
+        handlers.onSending?.(file);
+        const sent = await handlers.uploadFile(file);
+        if (sent) attachments.push(sent);
+      } catch (error) {
+        complaints.push(`${file.name || "That file"}: ${said(error, "it could not be sent")}`);
+      }
+      continue;
     }
     complaints.push(`${file.name || "That file"} can't be attached from here`);
   }
   return { attachments, refused: complaints.length ? complaints.join("; ") : null };
 }
 
-/** Persist an image server-side; the prompt will carry the saved path. */
-export async function uploadImageAttachment(file: File): Promise<ImageAttachment | null> {
+type Sendable = Pick<File, "name" | "size" | "type" | "slice">;
+
+/**
+ * A file sent to the conversation's server a part at a time, each part
+ * its own request, so one of a few megabytes still fits through Bloks
+ * Cloud. A part whose answer was lost is sent again; a send that fails
+ * is called off so nothing half-sent is left behind. Answers with what
+ * the server says it kept.
+ */
+export async function sendInParts(
+  file: Sendable,
+  options: { fetcher?: Fetcher; partBytes: number },
+): Promise<{ kind: "image"; path: string; mime: string; bytes: number } | { kind: "file"; path: string; name: string; bytes: number }> {
+  const fetcher = options.fetcher ?? fetch;
+  const call = async (path: string, init: RequestInit) => {
+    const response = await fetcher(path, init);
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      // a server older than this app has nowhere to put a file
+      const older = body?.code === "unknown_route";
+      const words = older ? "the computer this workspace runs on needs an update before it can take files" : (body?.error ?? "it could not be sent");
+      throw Object.assign(new Error(words), { status: response.status, older });
+    }
+    return body;
+  };
+  const started = await call("/api/attachments/uploads", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: file.name, size: file.size, type: file.type }),
+  });
+  const partSize = typeof started.partSize === "number" && started.partSize > 0 ? started.partSize : options.partBytes;
+  try {
+    let next = 0;
+    // a few at once, as a workspace move does: each is a round trip
+    const lane = async () => {
+      for (let index = next++; index < started.parts; index = next++) {
+        const piece = new Uint8Array(await file.slice(index * partSize, Math.min(file.size, (index + 1) * partSize)).arrayBuffer());
+        for (let tries = 1; ; tries++) {
+          try {
+            await call(`/api/attachments/uploads/${started.id}/${index}`, {
+              method: "PUT",
+              headers: { "content-type": "application/octet-stream" },
+              body: piece,
+            });
+            break;
+          } catch (error) {
+            const status = (error as { status?: number }).status ?? 0;
+            const again = tries < 4 && (status === 0 || status >= 500 || status === 408 || status === 429);
+            if (!again) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 400 * tries));
+          }
+        }
+      }
+    };
+    await Promise.all([lane(), lane(), lane()]);
+    return await call(`/api/attachments/uploads/${started.id}/finish`, { method: "POST" });
+  } catch (error) {
+    void fetcher(`/api/attachments/uploads/${started.id}`, { method: "DELETE" }).catch(() => {});
+    throw error;
+  }
+}
+
+/** A file the server cannot open where it lies, sent to it, with the path
+ * it landed at. Refused in words, before anything is sent, when it is
+ * bigger than the server takes. */
+export async function uploadFileAttachment(file: Sendable, fetcher?: Fetcher): Promise<FileAttachment | null> {
+  const where = await destination(fetcher);
+  if (file.size > where.fileMaxBytes) {
+    throw new Error(`it is ${formatBytes(file.size)}, and a file sent to the computer this workspace runs on can be ${formatBytes(where.fileMaxBytes)} at most`);
+  }
+  const kept = await sendInParts(file, { fetcher, partBytes: where.partBytes });
+  return { kind: "file", id: newId(), path: kept.path, name: file.name || ("name" in kept ? kept.name : "file"), bytes: kept.bytes };
+}
+
+/** Persist an image server-side; the prompt will carry the saved path.
+ * To a server elsewhere it goes in parts, the way any file does, since
+ * one request through Bloks Cloud carries well under 10 MB. */
+export async function uploadImageAttachment(file: File, fetcher?: Fetcher): Promise<ImageAttachment | null> {
   if (!isImage(file)) return null;
   if (file.size > IMAGE_MAX_BYTES) throw new Error(`${file.name || "image"} is over 10 MB`);
-  const response = await fetch("/api/attachments", {
+  const where = await destination(fetcher);
+  if (!where.sameComputer) {
+    try {
+      const kept = await sendInParts(file, { fetcher, partBytes: where.partBytes });
+      if (kept.kind !== "image") throw new Error("it did not arrive as an image");
+      return { kind: "image", id: newId(), path: kept.path, name: file.name || "pasted image", bytes: kept.bytes, mime: kept.mime };
+    } catch (error) {
+      // a server older than this app still takes an image in one piece
+      if (!(error as { older?: boolean }).older) throw error;
+    }
+  }
+  const response = await (fetcher ?? fetch)("/api/attachments", {
     method: "POST",
     headers: { "content-type": file.type },
     body: new Uint8Array(await file.arrayBuffer()),

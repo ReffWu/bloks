@@ -15826,7 +15826,13 @@ async function receiveMove(req: IncomingMessage): Promise<{ file: string; name: 
  * workspace reached through Bloks Cloud. One at a time, beside the
  * backups; one nobody has added to for a day is cleared away. */
 const moveUploads = new MoveUploads({ dir: () => backupsDirFor(), maxBytes: MOVE_MAX_BYTES });
-setInterval(() => moveUploads.clear(true), 60 * 60_000).unref?.();
+/** Files attached in the app on another computer, arriving a part at a
+ * time (server/attachments.ts). */
+const attachmentUploads = new attachments.AttachmentUploads();
+setInterval(() => {
+  moveUploads.clear(true);
+  attachmentUploads.sweep();
+}, 60 * 60_000).unref?.();
 
 /** A request body as bytes, refused past `max`. What is past it is read
  * and dropped rather than hung up on, so the sender hears why, unless it
@@ -23320,6 +23326,45 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (method === "POST" && path === "/api/attachments") {
       attachments.saveAttachment(req, res);
       return;
+    }
+    // Whether a path on the asker's computer is one this server can open
+    // (GitHub 332). The app attaches a file by its path when it can, and a
+    // path on a Mac reaching this server through Bloks Cloud, or from a
+    // paired device, names nothing here: that file has to be sent. Said by
+    // the server because it is the one that has to open the path.
+    if (method === "GET" && path === "/api/attachments/where") {
+      return json(res, 200, {
+        sameComputer: local,
+        partBytes: attachments.UPLOAD_PART_BYTES,
+        fileMaxBytes: attachments.FILE_MAX_BYTES,
+        imageMaxBytes: attachments.IMAGE_MAX_BYTES,
+      });
+    }
+    // A file sent in parts, so one of a few megabytes still crosses Bloks
+    // Cloud: begun with its name, size and type, each part PUT by number,
+    // then finished, which answers with the path the message carries.
+    if (path === "/api/attachments/uploads" || path.startsWith("/api/attachments/uploads/")) {
+      try {
+        if (path === "/api/attachments/uploads") {
+          if (method !== "POST") return json(res, 405, { error: "POST the file's name, size and type to begin" });
+          return json(res, 201, attachmentUploads.start(await readBody(req)));
+        }
+        const up = path.match(/^\/api\/attachments\/uploads\/([0-9a-f-]{36})(?:\/(\d{1,6}|finish))?$/);
+        if (!up) return json(res, 404, { error: "not found" });
+        if (!up[2]) {
+          if (method === "DELETE") return json(res, 200, { ok: attachmentUploads.cancel(up[1]) });
+          return json(res, 405, { error: "DELETE to stop sending it" });
+        }
+        if (up[2] === "finish") {
+          if (method !== "POST") return json(res, 405, { error: "POST to finish" });
+          return json(res, 200, attachmentUploads.finish(up[1]));
+        }
+        if (method !== "PUT") return json(res, 405, { error: "PUT the part" });
+        return json(res, 200, attachmentUploads.put(up[1], Number(up[2]), await readBytes(req, attachments.UPLOAD_PART_BYTES)));
+      } catch (e) {
+        if (e instanceof attachments.AttachmentError) return json(res, e.status, { error: e.message });
+        throw e;
+      }
     }
     m = path.match(/^\/api\/attachments\/([\w.-]+)$/);
     if (m && method === "GET") {

@@ -29,10 +29,12 @@ import { useUnsentNotice } from "@/components/chat/HeldSends";
 import {
   attachmentBasename,
   composeOutgoing,
+  destination,
   formatBytes,
   intakeFiles,
   isLongPaste,
   pasteAttachment,
+  uploadFileAttachment,
   uploadImageAttachment,
   type Attachment,
 } from "@/lib/attachments";
@@ -362,7 +364,11 @@ export function RoomComposer({
     if (!files.length) return;
     void intakeFiles(files, {
       pathOf: (file) => window.bloks?.filePath?.(file) ?? "",
-      uploadImage: uploadImageAttachment,
+      uploadImage: (file) => uploadImageAttachment(file),
+      // a path from here is no use to a server elsewhere: the file goes
+      uploadFile: (file) => uploadFileAttachment(file),
+      sameComputer: async () => (await destination()).sameComputer,
+      onSending: (file) => setAttachNotice(`Sending ${file.name || "the file"}…`),
     }).then(({ attachments: added, refused }) => {
       if (added.length) setAttachments((current) => [...current, ...added]);
       setAttachNotice(refused);
