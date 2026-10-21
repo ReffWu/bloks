@@ -1,0 +1,14 @@
+**Every open issue fixed: pictures through Bloks Cloud, Extra high and Max effort, Codex shells that reach Bloks, and messages between agents that say when they went.**
+
+## What changed
+
+- **Pictures through Bloks Cloud arrive.** A long request through Bloks Cloud was cut while it was still arriving and dropped without an answer, so a photo or a large screenshot never attached and the app said the computer had not answered in time. The computer now reads a request whole up to past what Bloks Cloud carries, and answers one too large with "too large to send through Bloks Cloud" instead of silence. The composer fits a picture before it goes, as the iPhone app does: a JPEG of at most 800 KB, a PNG kept when it already fits, a GIF left as it is. A HEIC photo goes as a JPEG on a Mac. An image over 10 MB sent in one piece is told so in words rather than cut off. Thanks @alexnayko (#333)
+- **Extra high and Max effort, and Claude Code hears it.** Each engine offers the reasoning effort levels it takes, in an agent's settings, in Settings, New agents, and with `bloks hire --effort`: Low, Medium, High, Extra high and Max for Claude Code and Codex. Claude Code agents are now told their effort on every turn; before, the dial did nothing for them. An agent moved to an engine without its level keeps it for when it moves back, runs at the nearest level the engine has, and says so. Thanks @alexnayko (#334)
+- **Codex shells reach Bloks under a narrow shell policy.** Where a project's Codex config limits what its shell commands inherit, the agent's `bloks` commands lost the variables they need and did nothing, while looking like they worked. Codex now hands just those to its shell, for each turn, never written down or shown in a log, and a `bloks` command whose shell is missing them stops with a sentence saying so. Thanks @alexnayko (#336)
+- **A message between agents says when it went.** When one agent wrote to another that was busy, the sender's side said "waiting for its turn" long after the other had read and answered it. It now moves on once: to sent when it is delivered, or to not delivered when it is taken back or never sent. Thanks @alexnayko (#337)
+- **A fresh session is a quiet line.** When an agent starts a fresh session, the conversation now says so in one plain line, "Session reset. You can keep chatting.", instead of a warning, and it no longer changes the conversation's preview or time. Thanks @rpavlovs (#335)
+- **A workflow hears a message that waited.** A workflow set off by a message never ran when that message reached a busy or paused agent and waited its turn. It now runs when the message is said.
+
+## For contributors
+
+- **A closed question's test waits for the turn to settle.** An ended turn holds its conversation for a moment while its changes card is made, and the test now waits for that rather than racing it. Each conversation in `GET /api/bots` says `settling: true` while it lasts. Thanks @ashottonoyan (#338)
