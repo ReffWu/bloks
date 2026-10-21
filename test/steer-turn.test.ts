@@ -176,6 +176,10 @@ test("once the engine has stopped taking words, they wait for the next turn and 
   const { home, h, bot } = await boot(
     t,
     `out({ type: "result", subtype: "success", is_error: false, num_turns: 0, duration_api_ms: 0, total_cost_usd: 0, session_id: "sess-steer", result: "" });
+// Only once the server has read that result does it stop taking words,
+// and it says so by closing stdin. Marked before then, the test's next
+// words could still be steered in on a slow machine.
+if (!process.stdin.readableEnded) await new Promise((r) => process.stdin.once("end", r));
 writeFileSync(home + "/shut-" + n, "1");
 await nap(prompt.includes("LATER") ? 0 : 1500);
 say("Answer to " + (prompt.includes("LATER") ? "LATER" : "FIRST_ASK"));
