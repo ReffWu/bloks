@@ -34,6 +34,7 @@ import { MembersPage } from "./MembersPage";
 import { ensureYourName } from "./YourNameDialog";
 import { WorkspaceMark } from "./WorkspaceMark";
 import { MarkPicker } from "./MarkPicker";
+import { MoveHome } from "./hosting/MoveHome";
 
 export const WORKSPACE_PAGES = [
   { id: "general", label: "General" },
@@ -310,6 +311,8 @@ function GeneralPage({ ws, all, go }: { ws: WorkspaceInfo; all: WorkspaceInfo[];
           }
         />
       </SettingsGroup>
+      {/* your hosted workspace, brought home to this Mac when you choose */}
+      {ws.kind === "hosted" && <div className="mb-9"><MoveHome only={ws.id} /></div>}
       {/* what cannot be undone sits apart, at the end, in its own colour */}
       <SettingsGroup title="Danger zone" tone={ws.kind === "personal" ? "default" : "danger"}>
         <DeleteRow ws={ws} />

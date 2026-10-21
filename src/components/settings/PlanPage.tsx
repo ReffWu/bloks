@@ -73,6 +73,7 @@ import { BlockBurst } from "../members/BlockBurst";
 import { SettingRow, SettingsEmpty, SettingsGroup } from "../SettingsLayout";
 import { goToWorkspace } from "../WorkspaceSwitcher";
 import { MoveToHostingCard } from "./MoveToHosting";
+import { HostingMove } from "../hosting/HostingMove";
 
 const CLOUD_KEY = /^blok_live_[0-9a-f]{32}$/;
 const easeOut = [0.23, 1, 0.32, 1] as const;
@@ -1261,7 +1262,7 @@ export function PlanPage() {
       {hostingCard ? (
         <MoveToHostingCard snapshot={snapshot} appPlan={appPlan} />
       ) : (
-        hosting && <HostingGroup hosting={hosting} state={snapshot.account?.hosting?.state ?? null} />
+        hosting && <HostingGroup hosting={hosting} state={snapshot.account?.hosting?.state ?? null} below={<HostingMove />} />
       )}
       {!free && bloksAiShown(ai, snapshot.account) && <BloksAiSettings ai={ai} />}
       <YourOptions snapshot={snapshot} loading={loading} retryShown={retryShown} hostingCard={hostingCard} />

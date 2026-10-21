@@ -35,6 +35,8 @@ import { MemberApp } from "@/components/member/MemberApp";
 import { detectMode, type AppMode } from "@/lib/memberMode";
 import { openWorkspaceDialog } from "@/lib/workspaces";
 import { WakingStrip } from "@/components/WakingStrip";
+import { HostingMoveToasts } from "@/components/hosting/HostingMoveToasts";
+import { MovedBanner } from "@/components/hosting/MovedBanner";
 
 /**
  * Whatever went wrong, said over every view as an error toast. It used to
@@ -135,6 +137,8 @@ function Shell() {
       <MobileNav />
       {/* your hosted workspace waking up, said once for the whole window */}
       <WakingStrip />
+      {/* this copy's work moved to another machine, and what to do about it */}
+      <MovedBanner />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
       <div className="hidden h-full md:flex">
         <AppRail />
@@ -328,6 +332,7 @@ function OwnerApp() {
             about what just happened, is never behind what it is about */}
         <ConfirmHost />
         <YourNameHost />
+        <HostingMoveToasts />
         <Toaster />
       </StoreProvider>
     </MotionConfig>

@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { autoMoveFrom, countsDiffer as appCountsDiffer, hostingRunning, keepMoveState, newMove, readMoveState } from "../electron/hosting-move.mjs";
 import { markMoved, normalizeEntry } from "../electron/workspaces.mjs";
 import { HOSTED_TARGET, othersFor } from "../electron/server-line.mjs";
+import { MOVE_STEPS, countsWords, headline, keyGroups, sendingWords, stepLabel, stepState } from "../src/lib/hostingMove.ts";
 import { stripSecrets } from "../server/backup.ts";
 import { MoveUploads, PART_BYTES, UploadError, readPart, sha256 } from "../server/move-upload.ts";
 import { cleanMovedMark, clearMovedMark, movedWords, readMovedMark, writeMovedMark } from "../server/moved-mark.ts";
@@ -208,6 +209,33 @@ test("a phone paired with a moved copy is told where its work went, and what to 
   assert.deepEqual(listed.find((w) => w.id === "personal")?.movedTo, { kind: "hosted", name: "Hosted", pair: HOSTED_TARGET });
   assert.equal(listed.find((w) => w.id === "ws_shop")?.movedTo, undefined);
   assert.ok(!listed.some((w) => w.id === "ws_h"), "the hosted one is not listed as one of this Mac's own");
+});
+
+test("the card says each step in a word or two, and how much is across while it sends", () => {
+  const move = { direction: "to-hosted" as const, from: { id: "personal", name: "Personal" }, to: { id: "ws_h", name: "Hosted" }, phase: "running" as const, step: "sending" as const, sent: 12_400_000, size: 340_000_000 };
+  assert.deepEqual(MOVE_STEPS.map((s) => stepState(move, s.step)), ["done", "done", "now", "next", "next", "next"]);
+  assert.equal(stepLabel(move, "sending"), "Sending 12 of 340 MB");
+  assert.equal(stepLabel({ ...move, step: "packing" }, "sending"), "Sending");
+  assert.equal(sendingWords(3_100_000, 5_000_000), "Sending 3.1 of 5.0 MB");
+  assert.equal(sendingWords(1_200_000_000, 3_400_000_000), "Sending 1.2 of 3.4 GB");
+  assert.equal(headline(move), "Moving Personal to your hosted machine");
+  assert.equal(headline({ ...move, phase: "done" }), "Personal is on your hosted machine");
+  assert.equal(headline({ ...move, direction: "to-mac", from: { id: "ws_h", name: "Hosted" }, to: { id: "ws_n", name: "Hosted" } }), "Moving Hosted to Hosted on this Mac");
+  assert.equal(countsWords({ agents: 3, conversations: 1, rooms: 0, routines: 2, watchers: 0, workflows: 0, memoryFiles: 0 }), "3 agents, 1 conversation and 2 routines");
+  const groups = keyGroups(
+    [
+      { label: "OpenRouter key", page: "engines", path: "providers.openrouter.key" },
+      { label: "Slack bot token", page: "chat", path: "chat.slack.botToken" },
+      { label: "Slack app token", page: "chat", path: "chat.slack.appToken" },
+      { label: "Bloks Cloud key, for Bloks AI", page: "plan", path: "credits.licence" },
+    ],
+    true,
+  );
+  assert.deepEqual(groups, [
+    { page: "engines", label: "Engines and keys", items: ["OpenRouter key"] },
+    { page: "chat", label: "Chat and email", items: ["Slack bot token", "Slack app token"] },
+  ]);
+  assert.equal(keyGroups([{ label: "Bloks Cloud key, for Bloks AI", page: "plan", path: "credits.licence" }], false)[0].label, "Plan");
 });
 
 test("a copy whose work moved is marked in the list until it is removed", () => {
