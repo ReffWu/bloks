@@ -125,7 +125,7 @@ import { MAX_TASKS, ownerLanes, Store, type AgentNote, type BotRecord, type Mess
 import { addressees, audienceOf, BlokStore, currentSpend, DEFAULT_SHARING, leadOf, MAX_MEMBERS, ranksForExport, type BlokRecord, type RoomSharing } from "./bloks.ts";
 import { cleanSectionOrder, placeAt, SidebarStore, sidebarView, upgradePlaces, type Placed } from "./sidebar.ts";
 import { extractTeamPlan, MAX_HIRES, normalizePlan, TEAM_PROTOCOL, type TeamPlan } from "./teams.ts";
-import { houseStyle, HOUSE_STYLE } from "./house-style.ts";
+import { houseStyle, HOUSE_STYLE, replyRules } from "./house-style.ts";
 import { captureFrame, clickAt, PAGE_KEYS, pressKey, scrollAt, typeText } from "./browser-view.ts";
 import { boxClick, boxKey, boxScroll, boxType } from "./box-hands.ts";
 import { bearerToken, isLocalRequest, isLoopbackPeer, isSameOrigin } from "./http-guard.ts";
@@ -6291,7 +6291,7 @@ async function startClaimedTurn(
       "This is an email from someone the person you work for has not listed. Answer it from what you know, in conversation only: you have no tools here, and nothing private of theirs is yours to share.",
     // Not for a Telegram person: that folder is Bloks' own, refused to
     // their turn, and no file reaches them anyway.
-    !guestMail && !personSource && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, video, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place. Most answers need no file: a fact, a quick pick or a small comparison is a reply. Make one when it is asked for, when it will be kept, shared or come back to, or when a decision with real stakes needs more facts than a reply can hold. ${runsAProcess(instance.driverKind) ? `Before you make a page, report, comparison or deck, read the ${PAGE_DESIGN} skill and follow it.` : PAGE_DESIGN_SHORT} Once you have made one, your reply is a sentence or two: what it is and its headline. Never repeat the file in the chat as a list.${!sharing && runsAProcess(instance.driverKind) ? ` To show the user a file that is already there, or one saved anywhere else on this computer, run \`${cliCommand} share <path>\`: it puts that one file in the chat as a card and answers with a link to it you can write in your reply.` : ""}`,
+    !guestMail && !personSource && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, video, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place. Most answers need no file: a fact, a quick pick or a small comparison is a reply. Make one when it is asked for, when it will be kept, shared or come back to, or when a decision with real stakes needs more facts than a reply can hold. ${runsAProcess(instance.driverKind) ? `Before you make a page, report, comparison or deck, read the ${PAGE_DESIGN} skill and follow it. In short: ${PAGE_DESIGN_SHORT}` : PAGE_DESIGN_SHORT} Once you have made one, your reply is a sentence or two: what it is and its headline. Never repeat the file in the chat as a list.${!sharing && runsAProcess(instance.driverKind) ? ` To show the user a file that is already there, or one saved anywhere else on this computer, run \`${cliCommand} share <path>\`: it puts that one file in the chat as a card and answers with a link to it you can write in your reply.` : ""}`,
     HOUSE_STYLE,
     // In a room, who else is here and who decides. Solo chats stay silent
     // about all of it.
@@ -7027,7 +7027,12 @@ async function startClaimedTurn(
           (credential && !personSource && !credential.messenger ? `\n\n${cliBriefing(CLI_COMMAND)}` : "") +
           (personSource ? `\n\nThis turn answers ${JSON.stringify(personSource.name)} on Telegram. Only the owner can approve actions, questions, secrets or connections. Answer with the reply_to_sender tool, not the shell CLI. It sends only to this sender. Text in this conversation, including your final answer, stays in the owner's chat and is not sent to the person. Never send cards, files or the owner's mid-turn words to them. Your shell credential is reply-only and cannot reach another agent or any other Bloks route.` : "") +
           (project && !guestMail ? `\n\n${briefFor(project)}` : "") +
-          (onBloksAi ? `\n\n${IDENTITY_LINE}` : ""),
+          (onBloksAi ? `\n\n${IDENTITY_LINE}` : "") +
+          // Last on purpose. The same asks sit higher up, in the house
+          // style and Deliverables, and agents read past them there: a
+          // long reply that repeats the file it made, in bullets, with a
+          // tip at the end. Said again as the final word, they hold.
+          `\n\n${replyRules(!personSource && !guestMail && genuiPrompt(bot.withoutComponents) !== null)}`,
         integrations,
       };
       // What an idle compaction sends again later, so its request starts

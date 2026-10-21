@@ -139,6 +139,9 @@ test("switched off, an agent is told the gallery instead, and the old bloks fenc
   const { persona, after } = await turn("What did the changelog say?", old);
   assert.doesNotMatch(persona, /## Answering with interface/);
   assert.match(persona, /Instead of describing something in prose/);
+  // and the reply rules do not point it at a block it was never taught
+  assert.match(persona, /## How to reply/);
+  assert.doesNotMatch(persona, /answer in the chat with an openui block/);
 
   const component = after.find((m) => m.kind === "component");
   assert.equal(component?.component?.kind, "quote");
@@ -160,10 +163,18 @@ test("every agent that makes files is pointed at the design skill, and can read 
   const { h, turn } = await setup(t);
   // nothing attached: the skill rides along on its own, as one line
   const { persona } = await turn("Compare two consoles", "Here.");
-  assert.match(persona, /^- page-design: Page design\. Read before making any page/m);
+  assert.match(persona, /^- page-design: Page design\. Read before making a page/m);
   assert.match(persona, /read the page-design skill and follow it/);
   // and the chat side of a file is a sentence, not a recap
   assert.match(persona, /Never repeat the file in the chat as a list/);
+  // the design rules in short, even for an agent that could read the skill
+  assert.match(persona, /In short: Make it look finished/);
+  // and the reply rules are the last thing it reads
+  const last = persona.trimEnd().split("\n\n").at(-1) ?? "";
+  assert.match(last, /^## How to reply\n/);
+  assert.match(last, /When you made a file in this turn, your whole reply is one or two sentences/);
+  // a comparison is an answer drawn in the chat, whatever the conversation did before
+  assert.match(last, /A comparison, prices or numbers, or options to choose between: answer in the chat with an openui block/);
   // the body stays out of the prompt until it is asked for
   assert.doesNotMatch(persona, /prefers-color-scheme/);
 
@@ -184,5 +195,5 @@ test("a person's own skill under the design skill's id is the one an agent is po
   const { persona } = await turn("Make a page", "Here.");
   // short enough to be sent whole, and the bundled one is not sent beside it
   assert.match(persona, /^## Our pages\nUse this for pages\./m);
-  assert.doesNotMatch(persona, /Page design\. Read before making any page/);
+  assert.doesNotMatch(persona, /Page design\. Read before making a page/);
 });
