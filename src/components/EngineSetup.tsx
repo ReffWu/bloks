@@ -12,12 +12,47 @@ import { ChevronRight } from "@/components/icons";
 import { Copy } from "@/components/icons";
 import { Download } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
+import { Info } from "@/components/icons";
 import { LogIn } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { isHostedWindow } from "@/lib/waking";
 import { api, useStore } from "@/state/store";
 
 type SetupTable = Record<string, { install: string; signIn?: string }>;
+
+/** Whose plan a sign-in spends, for the engines that sign in with a
+ * person's own subscription. */
+const PLAN_OWNER: Record<string, { plan: string; maker: string; first?: string }> = {
+  claudeAgent: { plan: "Claude", maker: "Anthropic" },
+  // a machine with no browser signs Codex in with a code, which ChatGPT
+  // only accepts once the person has turned it on
+  codex: { plan: "ChatGPT", maker: "OpenAI", first: "Turn on device code sign-in in ChatGPT\u2019s security settings first." },
+  geminiCli: { plan: "Google AI", maker: "Google" },
+};
+
+/**
+ * Said once, under Sign in, on a hosted machine. A person may sign in
+ * there with their own plan: Anthropic allows it on a machine a platform
+ * hosts, and OpenAI documents signing Codex in on a remote one. But a plan
+ * is priced for one person's ordinary use, and agents working around the
+ * clock on it are the person's own arrangement with its maker, not ours.
+ * So it is said plainly, once, with the alternative, and never as a gate.
+ */
+function HostedPlanNote({ kind }: { kind: string }) {
+  const owner = PLAN_OWNER[kind];
+  if (!owner || !isHostedWindow()) return null;
+  return (
+    <div className="flex items-start gap-1.5 text-small leading-relaxed text-muted-foreground">
+      <Info size={13} className="mt-[3px] shrink-0" aria-hidden />
+      <span>
+        This uses your own {owner.plan} plan, at your own risk. Its limits are set for one person&rsquo;s ordinary use,
+        agents working around the clock can reach them sooner, and what the plan allows is between you and {owner.maker}.
+        An API key is billed by use instead.{owner.first ? ` ${owner.first}` : ""}
+      </span>
+    </div>
+  );
+}
 
 let cached: Promise<SetupTable | null> | null = null;
 
@@ -186,6 +221,7 @@ export function EngineSetupActions({
             Sign in to {name}
           </Button>
         </div>
+        <HostedPlanNote kind={kind} />
         {signingIn === "opened" && (
           <div className="text-small leading-relaxed text-muted-foreground">
             Finish in the Terminal window that opened. This updates on its own.
