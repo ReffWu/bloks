@@ -344,8 +344,9 @@ and counts every try, and five checked tries close the code.
 A phone whose saved address went stale finds the Mac again on its own.
 While phone access is on and the server listens on the network, a server
 the desktop app started on a Mac announces itself as `_bloks._tcp`
-through `dns-sd` (`server/announce.ts`), named for the computer and, past
-Personal, the workspace, with `ws=` in its TXT record: `workspaceTag()`, a
+through `dns-sd` (`server/announce.ts`), named for the computer alone (a
+workspace's name can be a client's, and the whole network hears it), with
+`ws=` in its TXT record: `workspaceTag()`, a
 hash of a random `announce-key` in the workspace's folder, which
 `/api/health` also says as `tag`. A small shell watches the server and
 ends the announcement with it, however it went. The phone trusts nothing
