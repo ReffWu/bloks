@@ -32,6 +32,9 @@ const FRESH_MS = 10 * 60_000;
 
 export class OwnerPlan {
   private known: Plan | null;
+  /** Whether anyone ever gave a real answer here: a workspace made a
+   * minute ago has none, and its "no plan" is not news to anybody. */
+  private heard: boolean;
   private askedAt = 0;
   private asking: Promise<Plan | null> | null = null;
 
@@ -52,11 +55,29 @@ export class OwnerPlan {
     this.now = now;
     const saved = readSaved<{ plan?: unknown }>(file, {}, isRecord);
     this.known = saved.plan === "team" || saved.plan === "cloud" ? saved.plan : null;
+    this.heard = "plan" in saved;
   }
 
   /** The last answer, without asking: what a frame filter can afford. */
   current(): Plan | null {
     return this.known;
+  }
+
+  /** Whether `current()` is somebody's answer rather than an empty
+   * folder's: only an answer is worth telling the app. */
+  answered(): boolean {
+    return this.heard;
+  }
+
+  /**
+   * The plan the app keeps for its licence, which is this workspace's
+   * too (the caller checks it is the same licence). The app heard it from
+   * another workspace's server, so it is a real answer: kept, and the
+   * gates move with it, without this server asking anyone.
+   */
+  adopt(plan: unknown) {
+    if (plan !== "team" && plan !== "cloud" && plan !== null) return;
+    this.set(plan);
   }
 
   /** The plan, asked again once the last answer is ten minutes old, or
@@ -93,9 +114,11 @@ export class OwnerPlan {
   /** Keeps a real answer, on disk too, and says when it changed. */
   set(plan: Plan | null) {
     const was = this.known;
+    const first = !this.heard;
     this.known = plan;
+    this.heard = true;
     this.askedAt = this.now();
-    if (plan === was) return;
+    if (plan === was && !first) return;
     try {
       writeFileAtomic(this.file, JSON.stringify({ plan, at: this.now() }), 0o600);
     } catch {

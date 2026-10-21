@@ -84,12 +84,18 @@ export function planName(key: string | null | undefined): string {
 }
 
 /** The plan the site files this account under: its bundle when it has
- * one, its plan otherwise, and "free" with no key at all. */
-export function planKey(snapshot: Pick<PlanSnapshot, "account" | "licence" | "ownerPlan"> | null | undefined): PlanKey {
+ * one, its plan otherwise, and "free" with no key at all. `appPlan` is
+ * the plan the desktop app keeps for every workspace on this computer
+ * (electron/account-plan.mjs), for a workspace too new to know its own. */
+export function planKey(
+  snapshot: Pick<PlanSnapshot, "account" | "licence" | "ownerPlan"> | null | undefined,
+  appPlan?: "cloud" | "team" | null,
+): PlanKey {
   if (!snapshot?.licence.present) return "free";
   if (snapshot.account) return snapshot.account.bundle ?? snapshot.account.plan;
-  // a key the site could not be asked about: what the gates go by
-  return snapshot.ownerPlan ?? "cloud";
+  // a key the site could not be asked about: what the gates go by, else
+  // what the app heard from another workspace; "cloud" only as a last guess
+  return snapshot.ownerPlan ?? appPlan ?? "cloud";
 }
 
 /** Whether something already owned is what this offer sells. */

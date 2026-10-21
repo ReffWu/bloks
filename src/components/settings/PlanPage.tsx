@@ -38,7 +38,7 @@ import { Skeleton, SkeletonLines } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { currentWorkspace, useWorkspaces } from "@/lib/workspaces";
+import { appPlanOf, currentWorkspace, useWorkspaces } from "@/lib/workspaces";
 import {
   hostingWords,
   intervalWords,
@@ -181,7 +181,7 @@ function staleWords(snapshot: PlanSnapshot): string | null {
 }
 
 function PlanCard({ snapshot, onManage, managing, manageError }: { snapshot: PlanSnapshot; onManage: () => void; managing: boolean; manageError: string | null }) {
-  const key = planKey(snapshot);
+  const key = planKey(snapshot, appPlanOf(useWorkspaces()));
   const account = snapshot.account;
   const status = account ? statusOf(account) : null;
   const stale = staleWords(snapshot);
@@ -795,7 +795,7 @@ function OfferCard({ offer, lead }: { offer: Offer; lead: boolean }) {
 }
 
 function YourOptions({ snapshot }: { snapshot: PlanSnapshot }) {
-  const key = planKey(snapshot);
+  const key = planKey(snapshot, appPlanOf(useWorkspaces()));
   const ladder = ladderFor(key, snapshot.offers, snapshot.account);
   if (!snapshot.offers) {
     // the site could not be asked and nothing was kept: one quiet way there

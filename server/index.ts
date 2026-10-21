@@ -9767,11 +9767,18 @@ const ownerPlan = new OwnerPlan(
   },
 );
 
-/** The app keeps the plan for its own screens (a new workspace's Team
- * choice), which may be a member's window with no owner routes to ask. */
+/** The app keeps the plan for every workspace (electron/account-plan.mjs)
+ * and its own screens (a new workspace's Team choice, which may be a
+ * member's window with no owner routes to ask). `shared` says whether
+ * this answer is about the licence the app handed over: one this
+ * workspace kept of its own speaks only for this workspace. */
 function tellDesktopPlan(plan: "cloud" | "team" | null) {
   try {
-    (process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort?.postMessage({ kind: "desktop.plan", plan });
+    (process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort?.postMessage({
+      kind: "desktop.plan",
+      plan,
+      shared: licenceKey() === sharedLicence,
+    });
   } catch {
     /* no app to tell */
   }
@@ -24663,19 +24670,30 @@ type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: u
     sharedLicence = null;
     void ownerPlan.get(true).catch(() => {});
   }
-  // and with it, the plan it carries can be asked
+  // the plan the app keeps for that licence, heard from whichever
+  // workspace asked last: this workspace's plan too, unless it kept a
+  // different key of its own, so a workspace made a minute ago is on
+  // Bloks Team from its first page rather than on an empty folder's guess
+  const said = message?.data as { kind?: unknown; plan?: unknown } | undefined;
+  if ((said?.kind === "licence" || said?.kind === "plan") && said && "plan" in said && sharedLicence && licenceKey() === sharedLicence) {
+    ownerPlan.adopt(said.plan);
+  }
+  // and with it, the plan it carries can be asked, and the answer said to
+  // the app even when it did not change here: the app may never have heard
   if (handed && !licenceHeard) {
     licenceHeard = true;
-    void ownerPlan.get(true).catch(() => {});
+    void ownerPlan.get(true).then((plan) => ownerPlan.answered() && tellDesktopPlan(plan)).catch(() => {});
   }
 });
 // what the plan was when this server last knew, said to the app at once,
-// then asked again once the app has had the moment to hand its licence
-tellDesktopPlan(ownerPlan.current());
+// then asked again once the app has had the moment to hand its licence.
+// A folder that never heard an answer has nothing to say: its "no plan"
+// is only empty, and once overruled the plan every other workspace had.
+if (ownerPlan.answered()) tellDesktopPlan(ownerPlan.current());
 // and kept current while nobody asks, so a plan that lapsed pauses
 // members without waiting for one of them to knock
 setInterval(() => void ownerPlan.get().catch(() => {}), 10 * 60_000).unref?.();
-setTimeout(() => void ownerPlan.get(true).then(tellDesktopPlan).catch(() => {}), 21_000).unref();
+setTimeout(() => void ownerPlan.get(true).then((plan) => ownerPlan.answered() && tellDesktopPlan(plan)).catch(() => {}), 21_000).unref();
 // a licence this workspace already holds is offered to the app once, so
 // the workspaces made after it never ask for it again
 {

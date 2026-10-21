@@ -75,8 +75,9 @@ export type WorkspacesState =
       available: true;
       current: string;
       workspaces: WorkspaceInfo[];
-      /** The licence's plan as the workspaces' servers last said: absent
-       * until one has, null for no licence. */
+      /** The licence's plan, kept by the app for every workspace here
+       * (electron/account-plan.mjs): absent until a server has said,
+       * null for no licence. */
       plan?: "cloud" | "team" | null;
       /** "Same accent in every workspace". */
       sameAccent?: boolean;

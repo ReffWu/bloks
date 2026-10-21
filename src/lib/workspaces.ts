@@ -43,6 +43,13 @@ export function useWorkspaces(): WorkspacesState {
   return useSyncExternalStore(subscribe, read, read);
 }
 
+/** The plan the app keeps for its one licence, the same in every
+ * workspace on this computer; undefined outside the app or before
+ * anyone has said. */
+export function appPlanOf(s: WorkspacesState): "cloud" | "team" | null | undefined {
+  return s.available ? s.plan : undefined;
+}
+
 /** The workspace this window shows, when there are workspaces. */
 export function currentWorkspace(s: WorkspacesState): WorkspaceInfo | null {
   return s.available ? (s.workspaces.find((w) => w.id === s.current) ?? null) : null;

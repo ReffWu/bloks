@@ -31,8 +31,9 @@ test("only a licence message carrying a licence is taken from the app", () => {
 test("the app keeps the licence and hands it to each server over its own line, never in an environment", async () => {
   const { readFileSync } = await import("node:fs");
   const main = readFileSync(new URL("../electron/main.mjs", import.meta.url), "utf8");
-  // handed over the utility process's message line
-  assert.match(main, /run\.child\.postMessage\(\{ kind: "licence", key \}\)/);
+  // handed over the utility process's message line, with the plan the app
+  // keeps for it, so a workspace made today starts on that plan
+  assert.match(main, /run\.child\.postMessage\(\{ kind: "licence", key, \.\.\.\(plan !== undefined \? \{ plan \} : \{\}\) \}\)/);
   // kept with the keychain's protection, and never put in a server's env
   assert.match(main, /safeStorage\.encryptString\(key\)/);
   const env = main.slice(main.indexOf("utilityProcess.fork("), main.indexOf("execArgv: source.execArgv"));

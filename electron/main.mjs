@@ -49,6 +49,7 @@ import { nativeSettingsObservation } from "./settings-observation.mjs";
 import { sameAppOrigin } from "./navigation.mjs";
 import { joinLink, linkInArgv, planLink, teamLink } from "./links.mjs";
 import { licencePrint, withLicence } from "./plan-link.mjs";
+import { keepPlan, planFromReport, readKeptPlan } from "./account-plan.mjs";
 import { terminalQuery } from "./terminal-window.mjs";
 import os from "node:os";
 
@@ -543,24 +544,59 @@ function readLicence() {
   return licence;
 }
 
-/** The licence's plan, as the workspace servers say it (server/owner-plan.ts):
- * "team", "cloud", or null for no licence. Undefined until one has said. */
+/** The licence's plan: "team", "cloud", or null for no licence, kept
+ * here for every workspace (electron/account-plan.mjs) and on disk under
+ * the licence's fingerprint, so a workspace made today is on the plan
+ * from its first frame rather than on whatever its own empty folder
+ * says. Undefined until anyone has said. */
+const planFile = () => path.join(app.getPath("userData"), "account-plan.json");
+const licencePrintNow = () => {
+  const key = readLicence();
+  return key ? licencePrint(key) : null;
+};
 let licencePlan = undefined;
-function notePlan(plan) {
-  const next = plan === "team" || plan === "cloud" ? plan : null;
-  if (next === licencePlan) return;
+let planRead = false;
+function accountPlan() {
+  if (!planRead) {
+    planRead = true;
+    licencePlan ??= readKeptPlan(planFile(), licencePrintNow());
+  }
+  return licencePlan;
+}
+
+/** A server's word on the plan: taken only when it was about the app's
+ * own licence, then kept, and handed to every other server so their
+ * gates and their Plan pages say the same. */
+function notePlan(report) {
+  const next = planFromReport(report, { hasLicence: Boolean(readLicence()) });
+  if (next === undefined || next === accountPlan()) return;
   licencePlan = next;
+  keepPlan(planFile(), licencePrintNow(), next);
+  for (const run of servers.values()) handPlan(run);
   tellWorkspaces();
 }
 
-/** Hands the licence to one workspace's server, when there is one. */
+/** Hands the licence to one workspace's server, when there is one, with
+ * the plan it is on as far as the app knows. */
 function handLicence(run) {
   const key = readLicence();
   if (!key || !run?.child) return;
+  const plan = accountPlan();
   try {
-    run.child.postMessage({ kind: "licence", key });
+    run.child.postMessage({ kind: "licence", key, ...(plan !== undefined ? { plan } : {}) });
   } catch {
     /* a server on its way out hears it again when it is back */
+  }
+}
+
+/** The plan alone, to a server that already holds the licence. */
+function handPlan(run) {
+  const plan = accountPlan();
+  if (plan === undefined || !run?.child || run.proxy) return;
+  try {
+    run.child.postMessage({ kind: "plan", plan });
+  } catch {
+    /* it hears the plan with the licence when it is back */
   }
 }
 
@@ -585,7 +621,11 @@ function keepLicence(key, typed = true) {
   } catch (error) {
     console.error("[licence] could not keep it:", error?.message ?? error);
   }
+  // another licence is another plan, until a server has asked about it
+  licencePlan = readKeptPlan(planFile(), licencePrint(key));
+  planRead = true;
   for (const run of servers.values()) handLicence(run);
+  tellWorkspaces();
 }
 
 const forgottenFile = () => path.join(app.getPath("userData"), "licence-forgotten.json");
@@ -603,6 +643,11 @@ function forgottenPrints() {
 function forgetLicence() {
   const was = readLicence();
   licence = null;
+  // no licence is no plan, said at once rather than when a server asks
+  licencePlan = null;
+  planRead = true;
+  keepPlan(planFile(), null, null);
+  tellWorkspaces();
   try {
     fs.rmSync(licenceFile(), { force: true });
     if (was) fs.writeFileSync(forgottenFile(), JSON.stringify([...forgottenPrints(), licencePrint(was)].slice(-8)), { mode: 0o600 });
@@ -776,7 +821,7 @@ function workspacesState() {
     current: shownId,
     // the licence's plan, as the workspaces' servers last said it, for a
     // new workspace's Team choice; and the one accent, when shared
-    plan: licencePlan,
+    plan: accountPlan(),
     sameAccent: registry.prefs.sameAccent,
   };
 }
@@ -1896,7 +1941,7 @@ function heardFromServer(id, child, said) {
   if (!run || (run.child && run.child !== child)) return;
   if (said?.kind === "desktop.licence") return keepLicence(said.key, said.typed !== false);
   if (said?.kind === "desktop.licence.forget") return forgetLicence();
-  if (said?.kind === "desktop.plan") return notePlan(said.plan);
+  if (said?.kind === "desktop.plan") return notePlan(said);
   if (said?.kind === "desktop.name") return keepName(said.name, { seed: said.seed === true });
   if (said?.kind === "desktop.screen") return void answerScreen(child, said.id);
   if (said?.kind === "desktop.unread" && Number.isInteger(said.count)) {
