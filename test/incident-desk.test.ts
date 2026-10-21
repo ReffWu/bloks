@@ -172,7 +172,10 @@ test("a lead's one retry that fails again goes to the person, and starts nothing
   assert.equal((await listed()).filter((i) => i.where.botName === "Rita").length, 1);
   const card = await waitFor(async () => (await messagesOf(h, rita)).find((m) => m.incident?.kind === "needs-you"));
   assert.match(card.text, /failed again when it was tried once more/);
-  // the person may still try it; the lead has had its one
+  // the person may still try it; the lead has had its one. Once the
+  // conversation has settled: on a slow machine the card can arrive while
+  // the failed turn is still ending, and a busy conversation is refused.
+  await idle(h, rita);
   const again = await h.fetch(`/api/incidents/${incident.id}/retry`, { method: "POST" });
   assert.equal(again.status, 202);
   // failing again brings it back to the person, counted on the same one
