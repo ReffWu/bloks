@@ -45,7 +45,13 @@ export interface WorkspaceInfo {
   kind: WorkspaceKind;
   name: string;
   team: boolean;
+  /** The mark it is drawn with here: for a joined one, yours when you
+   * chose one, else its owner's. */
   mark: WorkspaceMarkValue | null;
+  /** What "Back to default" goes back to: Personal's or Business's own,
+   * or a joined workspace's owner's; null for a drawn one. Absent from an
+   * older app. */
+  markDefault?: WorkspaceMarkValue | null;
   /** An uploaded logo, as a data URL, drawn instead of the mark. */
   logo: string | null;
   /** How many people, once the Members page has said; null until then. */
@@ -128,7 +134,8 @@ declare global {
       }): Promise<WorkspaceAnswer>;
       workspaceUpdate?(
         id: string,
-        patch: Partial<{ name: string; kind: "business" | "custom"; team: boolean; notify: WorkspaceNotify; mark: WorkspaceMarkValue }>,
+        /** `mark: null` goes back to the default, where there is one. */
+        patch: Partial<{ name: string; kind: "business" | "custom"; team: boolean; notify: WorkspaceNotify; mark: WorkspaceMarkValue | null }>,
       ): Promise<WorkspaceAnswer>;
       workspaceReroll?(id: string): Promise<WorkspaceAnswer>;
       /** One of 15m, 1h, 3h, 8h, 24h, forever, or "off". */

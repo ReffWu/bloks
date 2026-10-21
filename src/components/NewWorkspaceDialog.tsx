@@ -193,7 +193,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-lead font-semibold text-foreground">{shownName}</span>
               <span className="text-small text-muted-foreground">
-                {kind === "business" ? "The Business mark is the same everywhere" : "Its own mark, on this computer only"}
+                {kind === "business" ? "Business's own mark. Change it any time in its settings" : "Its own mark, on this computer only"}
               </span>
             </div>
             {kind === "custom" && (

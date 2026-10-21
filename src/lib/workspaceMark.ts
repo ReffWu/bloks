@@ -5,11 +5,15 @@
 // sits, and which accent a new workspace starts with.
 export {
   BUSINESS_MARK,
+  CHOICE_COLORS,
+  CHOICE_PATTERNS,
   CUSTOM_PATTERNS,
   MARK_PALETTE,
   PERSONAL_MARK,
+  defaultMark,
   fixedMark,
   generateMark,
+  isChoosableMark,
   isCustomMark,
   sameMark,
   type Mark,

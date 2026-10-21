@@ -23,6 +23,8 @@ export interface WorkspaceEntry {
   createdAt: number;
   host?: { name: string; relayUrl: string; lan?: string };
   role?: "member" | "admin";
+  /** A joined workspace's mark as you chose it, seen only here. */
+  ownMark?: Mark | null;
 }
 
 export interface Registry {
@@ -52,6 +54,8 @@ export function settle(
   options: { personalDataDir: string; now?: number; random?: () => number },
 ): Registry;
 export function marksInUse(registry: Registry, except?: string | null): Mark[];
+export function shownMark(entry: Pick<WorkspaceEntry, "kind" | "mark" | "ownMark"> | null | undefined): Mark | null;
+export function markDefault(entry: Pick<WorkspaceEntry, "kind" | "mark"> | null | undefined): Mark | null;
 export function refusal(registry: Registry, input: { kind: string; name: string }, self?: string | null): string | null;
 export function addWorkspace(
   registry: Registry,
@@ -73,7 +77,8 @@ export function updateWorkspace(
     notify: string;
     role: "member" | "admin";
     mute: number | "forever" | null;
-    mark: Mark;
+    /** null goes back to the default, where there is one. */
+    mark: Mark | null;
     logo: string | null;
     port: number | null;
     accent: string | null;
@@ -128,6 +133,7 @@ export function snapshot(
     name: string;
     team: boolean;
     mark: Mark | null;
+    markDefault: Mark | null;
     logo: string | null;
     members: number | null;
     status: string;

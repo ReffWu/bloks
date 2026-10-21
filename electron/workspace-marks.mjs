@@ -1,12 +1,16 @@
 // A workspace's mark: a coloured tile with a 3x3 grid of blocks on it.
 //
-// Two are fixed and look the same on every computer, so they are never
-// mistaken for anything else: Personal (amber, a little house of blocks)
-// and Business (indigo, a ring). Every other workspace is given a mark
-// when it is made, from a palette and a set of patterns of its own that
-// never use those two colours or those two patterns, and no two
-// workspaces on one computer share both a colour and a pattern. Owners
-// can reroll it, or upload a logo instead.
+// Two are the defaults of their kind and look the same on every computer
+// until somebody chooses otherwise: Personal (amber, a little house of
+// blocks) and Business (indigo, a ring). Every other workspace is given a
+// mark when it is made, from a palette and a set of patterns of its own
+// that never use those two colours or those two patterns, so a drawn mark
+// is never mistaken for them. Anyone can choose a mark of their own from
+// the picker's colours and shapes instead (CHOICE_COLORS, CHOICE_PATTERNS),
+// for any workspace of theirs, Personal and Business included, or for
+// one they joined, where it is theirs alone. No two workspaces on one
+// computer share both a colour and a pattern, however they got them.
+// Owners can also upload a logo instead.
 //
 // Plain JavaScript with no imports, on purpose: the main process checks
 // a mark before it saves one, the window draws them and offers a reroll,
@@ -70,7 +74,48 @@ export function isCustomMark(mark) {
   );
 }
 
-/** The fixed mark of a fixed kind; null for every other kind. */
+/** The colours the picker offers: the two defaults first, then the
+ * palette, so Personal can always go back to amber by hand. */
+export const CHOICE_COLORS = Object.freeze([PERSONAL_MARK.color, BUSINESS_MARK.color, ...MARK_PALETTE]);
+
+/** The shapes the picker offers, each one easy to tell from the rest at
+ * the switcher's 22 pixels: the two defaults, then ten that read as a
+ * shape rather than as noise. */
+export const CHOICE_PATTERNS = Object.freeze([
+  PERSONAL_MARK.pattern, // house
+  BUSINESS_MARK.pattern, // ring
+  "101010101", // cross
+  "010111010", // plus
+  "010101010", // diamond
+  "111010010", // tee
+  "100100111", // corner
+  "100110111", // steps
+  "101101111", // cup
+  "110010011", // zigzag
+  "111000111", // bars
+  "101000101", // dots
+]);
+
+/** Whether somebody may choose this mark: a picker colour, and a shape
+ * that is either a picker shape or any pattern a drawn mark could have
+ * (so a mark drawn earlier can be kept while only its colour changes). */
+export function isChoosableMark(mark) {
+  return Boolean(
+    mark &&
+      typeof mark.color === "string" &&
+      CHOICE_COLORS.some((c) => sameColor(c, mark.color)) &&
+      typeof mark.pattern === "string" &&
+      (CHOICE_PATTERNS.includes(mark.pattern) || isCustomPattern(mark.pattern)),
+  );
+}
+
+/** The mark a kind wears until somebody chooses another: Personal's and
+ * Business's own; null for a kind whose mark is drawn when it is made. */
+export function defaultMark(kind) {
+  return fixedMark(kind);
+}
+
+/** The default mark of a kind that has one; null for every other kind. */
 export function fixedMark(kind) {
   if (kind === "personal") return { ...PERSONAL_MARK };
   if (kind === "business") return { ...BUSINESS_MARK };

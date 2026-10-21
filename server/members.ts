@@ -83,8 +83,43 @@ export function setIdentity(input: Record<string, unknown>): WorkspaceIdentity |
   const mark = (input.mark ?? null) as { color?: unknown; pattern?: unknown } | null;
   if (!name || !mark || typeof mark.color !== "string" || !COLOR.test(mark.color) || typeof mark.pattern !== "string" || !PATTERN.test(mark.pattern)) return null;
   const kind = people.cleanName(input.kind);
+  // the default the mark would go back to is the app's word, kept as it is
+  const markDefault = savedMarkDefault();
   mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
-  writeFileAtomic(identityFile(), JSON.stringify({ name, mark: { color: mark.color, pattern: mark.pattern }, ...(kind ? { kind } : {}) }, null, 2), 0o600);
+  writeFileAtomic(
+    identityFile(),
+    JSON.stringify({ name, mark: { color: mark.color, pattern: mark.pattern }, ...(kind ? { kind } : {}), ...(markDefault !== undefined ? { markDefault } : {}) }, null, 2),
+    0o600,
+  );
+  return workspaceIdentity();
+}
+
+type MarkValue = WorkspaceIdentity["mark"];
+const isMarkValue = (m: unknown): m is MarkValue =>
+  isRecord(m) && typeof m.color === "string" && COLOR.test(m.color) && typeof m.pattern === "string" && PATTERN.test(m.pattern);
+
+/** The mark "Back to the default" goes back to, as the app last said:
+ * a mark, null for a workspace whose mark was drawn for it, or undefined
+ * when the app never said (a server on its own). */
+export function savedMarkDefault(): MarkValue | null | undefined {
+  const saved = readSaved<Record<string, unknown>>(identityFile(), {}, isRecord);
+  if (!("markDefault" in saved)) return undefined;
+  return isMarkValue(saved.markDefault) ? { color: saved.markDefault.color, pattern: saved.markDefault.pattern } : null;
+}
+
+/**
+ * The workspace's mark alone, from the app or from the owner's phone,
+ * kept with the name and kind already here, so the phone, the invites
+ * and the welcome show it at once. `markDefault` is kept when given.
+ */
+export function setIdentityMark(mark: MarkValue, markDefault?: MarkValue | null): WorkspaceIdentity {
+  // only the mark: a name this file never held stays the app's to say as
+  // the server starts, so a rename is not frozen here by a change of mark
+  const saved = readSaved<Record<string, unknown>>(identityFile(), {}, isRecord);
+  const next: Record<string, unknown> = { ...saved, mark: { color: mark.color, pattern: mark.pattern } };
+  if (markDefault !== undefined) next.markDefault = markDefault ? { color: markDefault.color, pattern: markDefault.pattern } : null;
+  mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+  writeFileAtomic(identityFile(), JSON.stringify(next, null, 2), 0o600);
   return workspaceIdentity();
 }
 

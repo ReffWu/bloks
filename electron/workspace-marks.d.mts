@@ -16,6 +16,10 @@ export const CUSTOM_PATTERNS: readonly string[];
 export function litCount(pattern: string): number;
 export function isCustomPattern(pattern: unknown): boolean;
 export function isCustomMark(mark: unknown): boolean;
+export const CHOICE_COLORS: readonly string[];
+export const CHOICE_PATTERNS: readonly string[];
+export function isChoosableMark(mark: unknown): boolean;
+export function defaultMark(kind: string): Mark | null;
 export function fixedMark(kind: string): Mark | null;
 export function sameMark(a: Mark | null | undefined, b: Mark | null | undefined): boolean;
 export function generateMark(

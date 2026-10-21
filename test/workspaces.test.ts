@@ -144,7 +144,7 @@ test("the mark the dialog showed is kept while it is free, and replaced when it 
   assert.ok(isCustomMark(fourth.entry.mark));
 });
 
-test("rerolling gives a different mark nobody else has; fixed marks do not reroll", () => {
+test("rerolling gives a different mark nobody else has, Personal's too", () => {
   let reg = fresh();
   for (const name of ["A", "B", "C"]) reg = add(reg, { kind: "custom", name }).registry;
   const target = reg.workspaces[2];
@@ -152,8 +152,88 @@ test("rerolling gives a different mark nobody else has; fixed marks do not rerol
   const mark = after.workspaces[2].mark!;
   assert.ok(!sameMark(mark, target.mark));
   for (const other of after.workspaces) if (other.id !== target.id) assert.ok(!sameMark(other.mark, mark));
-  assert.throws(() => rerollMark(reg, reg.workspaces[0].id), /fixed/);
+  // Personal's mark is a default now, not a rule: it shuffles like any
+  const personal = rerollMark(reg, reg.workspaces[0].id, { random: seeded(3) }).workspaces[0];
+  assert.ok(!sameMark(personal.mark, PERSONAL_MARK));
   assert.throws(() => updateWorkspace(reg, reg.workspaces[1].id, { mark: { ...reg.workspaces[2].mark! } }), /Another workspace/);
+});
+
+test("Personal and Business wear a mark somebody chose, and their own until somebody does", () => {
+  let reg = add(fresh(), { kind: "business", name: "Business" }).registry;
+  const businessId = reg.workspaces[1].id;
+  const chosen = { color: "#149E8E", pattern: "010111010" };
+  reg = updateWorkspace(reg, "personal", { mark: chosen });
+  assert.deepEqual(reg.workspaces[0].mark, chosen);
+  // it is kept on disk and read back as chosen, not reset to amber
+  const again = settle(parseRegistry(JSON.stringify(reg)), { personalDataDir: HOME_DATA, now: NOW });
+  assert.deepEqual(again.workspaces[0].mark, chosen);
+  // the picker's own colours go to Business too, amber included
+  reg = updateWorkspace(reg, businessId, { mark: { color: PERSONAL_MARK.color, pattern: "101000101" } });
+  assert.deepEqual(reg.workspaces[1].mark, { color: PERSONAL_MARK.color, pattern: "101000101" });
+  // and back to the default, which nobody else wears
+  reg = updateWorkspace(reg, businessId, { mark: null });
+  assert.deepEqual(reg.workspaces[1].mark, { ...BUSINESS_MARK });
+  reg = updateWorkspace(reg, "personal", { mark: null });
+  assert.deepEqual(reg.workspaces[0].mark, { ...PERSONAL_MARK });
+  // never two of one mark, chosen or not
+  assert.throws(() => updateWorkspace(reg, "personal", { mark: { ...BUSINESS_MARK } }), /Another workspace has that mark/);
+  // nothing outside the picker's rules, whatever the window sends
+  assert.throws(() => updateWorkspace(reg, "personal", { mark: { color: "#000000", pattern: "010111010" } }), /not a mark/);
+  assert.throws(() => updateWorkspace(reg, "personal", { mark: { color: "#149E8E", pattern: "111111111" } }), /not a mark/);
+  // a hand-edited list cannot dress Personal in anything at all
+  const edited = JSON.parse(JSON.stringify(reg));
+  edited.workspaces[0].mark = { color: "#000000", pattern: "000000000" };
+  assert.deepEqual(parseRegistry(JSON.stringify(edited)).workspaces[0].mark, { ...PERSONAL_MARK });
+});
+
+test("a drawn workspace keeps a chosen mark, and has no default to go back to", () => {
+  let reg = add(fresh(), { kind: "custom", name: "Okafor Studio" }).registry;
+  const id = reg.workspaces[1].id;
+  const amber = { color: PERSONAL_MARK.color, pattern: "101010101" };
+  reg = updateWorkspace(reg, id, { mark: amber });
+  // a launch later it is still the one chosen, not drawn again
+  const again = settle(parseRegistry(JSON.stringify(reg)), { personalDataDir: HOME_DATA, now: NOW });
+  assert.deepEqual(again.workspaces[1].mark, amber);
+  assert.throws(() => updateWorkspace(reg, id, { mark: null }), /drawn for it/);
+  const shown = snapshot(reg).workspaces;
+  assert.equal(shown[1].markDefault, null);
+  assert.deepEqual(shown[0].markDefault, { ...PERSONAL_MARK });
+});
+
+test("a new Business offered a mark keeps it, and never wears the ring Personal chose", () => {
+  const chosen = { color: "#D64C7F", pattern: "111000111" };
+  assert.deepEqual(add(fresh(), { kind: "business", name: "Business", mark: chosen }).entry.mark, chosen);
+  const ringed = updateWorkspace(fresh(), "personal", { mark: { ...BUSINESS_MARK } });
+  const business = add(ringed, { kind: "business", name: "Business" }).entry;
+  assert.ok(business.mark && !sameMark(business.mark, BUSINESS_MARK), "the ring is Personal's now");
+});
+
+test("a joined workspace's mark is yours alone: its owner's stays, for going back to", () => {
+  const owners = { color: "#2A86C7", pattern: "100110111" };
+  let reg = parseRegistry(
+    JSON.stringify({
+      workspaces: [
+        { id: "personal", kind: "personal", name: "Personal", dataDir: HOME_DATA },
+        { id: "ws_join", kind: "joined", name: "Sam's Studio", mark: owners, host: { name: "Sam", relayUrl: "https://relay.test" } },
+      ],
+    }),
+  );
+  const mine = { color: "#3F9A5B", pattern: "010101010" };
+  reg = updateWorkspace(reg, "ws_join", { mark: mine });
+  const joined = reg.workspaces.find((w) => w.id === "ws_join")!;
+  assert.deepEqual(joined.ownMark, mine);
+  assert.deepEqual(joined.mark, owners, "what the owner chose is untouched");
+  const shown = snapshot(reg).workspaces.find((w) => w.id === "ws_join")!;
+  assert.deepEqual(shown.mark, mine, "drawn with yours here");
+  assert.deepEqual(shown.markDefault, owners);
+  // shuffling it is yours too
+  const shuffled = rerollMark(reg, "ws_join", { random: seeded(4) }).workspaces.find((w) => w.id === "ws_join")!;
+  assert.deepEqual(shuffled.mark, owners);
+  assert.ok(shuffled.ownMark && !sameMark(shuffled.ownMark, mine));
+  // and back to the owner's
+  const back = updateWorkspace(reg, "ws_join", { mark: null }).workspaces.find((w) => w.id === "ws_join")!;
+  assert.equal(back.ownMark, null);
+  assert.deepEqual(snapshot(updateWorkspace(reg, "ws_join", { mark: null })).workspaces[1].mark, owners);
 });
 
 test("changing kind: to Business takes its mark, away from it draws one; Personal stays Personal", () => {

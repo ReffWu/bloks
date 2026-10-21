@@ -99,11 +99,13 @@ import { type WakePreview, RelayLink, relayDeviceFor, relayInviteFor, type Wake 
 import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView, type Standing as PersonStanding } from "./member-access.ts";
 import * as access from "./access.ts";
-import { asWho, createMembers, workspaceIdentity } from "./members.ts";
+import { asWho, createMembers, savedMarkDefault, setIdentityMark, workspaceIdentity } from "./members.ts";
 import { instanceName, mayAnnounce, stopAnnouncing, syncAnnouncement, workspaceTag } from "./announce.ts";
 import { PLAN_LIMITS, ROOM_SHARING_WORDS, membersActive, pausedWords, roomSharingAllowed, workspaceMemberLimit } from "./plan-limits.ts";
 import { OwnerPlan } from "./owner-plan.ts";
 import { PlanAccount, planRoute, type PlanRouteDeps } from "./plan-account.ts";
+import { DesktopLine } from "./desktop-line.ts";
+import { choosableMark, defaultForKind, markRoute, markView, type MarkRouteDeps } from "./workspace-mark.ts";
 import { Reads, type ReadMark } from "./reads.ts";
 import { JoinClient } from "./join-client.ts";
 import * as invites from "./invites.ts";
@@ -9876,6 +9878,23 @@ setInterval(() => void workspacePeople.sweep().catch(() => {}), 10 * 60_000).unr
 /** This Mac joining somebody else's workspace (server/join-client.ts). */
 const joinClient = new JoinClient(() => relayBase());
 
+/** Questions for the desktop app that started this server, and its
+ * questions for this one (server/desktop-line.ts). No app, no line. */
+const desktopLine = new DesktopLine((process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort);
+
+/** The workspace's mark, for the owner's phone (server/workspace-mark.ts):
+ * the app decides, since it knows every other workspace's mark. */
+const workspaceMarkDeps: MarkRouteDeps = {
+  identity: () => workspaceIdentity(),
+  markDefault: () => {
+    const said = savedMarkDefault();
+    return said === undefined ? defaultForKind(process.env.BLOKS_WORKSPACE_KIND) : said;
+  },
+  save: (mark, markDefault) => void setIdentityMark(mark, markDefault),
+  askApp: (mark) => desktopLine.ask("mark", { mark }),
+  broadcast: (frame) => broadcast(frame),
+};
+
 // A licence's shape (CLOUD_KEY, server/licence.ts) is checked before
 // anything is dialled: a mistyped key is the ordinary case, and it should
 // not cost a round trip or arrive back as whatever the relay called it.
@@ -17268,6 +17287,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           .sort((a, b) => b.lastAt - a.lastAt);
         return json(res, 200, { readable: true, line: "Members are told that you and the admins can read these.", conversations });
       }
+      // the workspace's mark, which the owner's phone changes too
+      // (server/workspace-mark.ts): the owner's alone, a member's own
+      // choice of mark staying on their side
+      const marked = await markRoute(method, path, () => readBody(req), workspaceMarkDeps);
+      if (marked) return json(res, marked.status, marked.body);
       if (await workspacePeople.ownerRoute(req, res, method, path, { kind: "owner" })) return;
     }
     // This Mac asking to join somebody else's workspace (join-client.ts).
@@ -24647,11 +24671,24 @@ if (testParent > 0) {
 // it the same way everywhere. Only Electron gives a process this port.
 type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: unknown; name?: unknown } }) => void): void };
 (process as NodeJS.Process & { parentPort?: ParentPort }).parentPort?.on("message", (message) => {
+  // a question asked or answered over the line (server/desktop-line.ts)
+  if (desktopLine.heard(message?.data)) return;
   if (message?.data?.kind === "stop") shutDown();
   // a picture of the Mac's screen, asked for by macFrame
   if (message?.data?.kind === "screen.frame") {
     const said = message.data as unknown as { id?: unknown; jpeg?: unknown };
     if (typeof said.id === "number") macShotWaiters.get(said.id)?.(said.jpeg);
+  }
+  // the mark as the app keeps it, chosen at the Mac or put to the app from
+  // a phone: kept here too, for the phone, the invites and the welcome
+  if (message?.data?.kind === "mark") {
+    const said = message.data as { mark?: unknown; markDefault?: unknown };
+    const mark = choosableMark(said.mark);
+    if (mark) {
+      setIdentityMark(mark, said.markDefault === null ? null : (choosableMark(said.markDefault) ?? undefined));
+      const view = markView(workspaceMarkDeps);
+      broadcast({ kind: "workspace.mark", mark: view.mark, default: view.default, chosen: view.chosen });
+    }
   }
   // the person's name, as they chose it in another workspace: one person,
   // called the same everywhere. Never an empty one, which only ever

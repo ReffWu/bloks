@@ -70,6 +70,7 @@ import {
   badgeTotal,
   configuredPort,
   keepOwnerName,
+  markDefault,
   mergeDrains,
   muteFor,
   nextMuteEnd,
@@ -83,6 +84,7 @@ import {
   setCurrent,
   setSameAccent,
   settle,
+  shownMark,
   snapshot,
   updateWorkspace,
   writeRegistry,
@@ -473,6 +475,7 @@ function runFor(id) {
     onBack: () => {
       handLicence(run);
       handName(run);
+      handMark(run);
       setStatus(run, "running");
       pointWindows(run.id);
     },
@@ -515,6 +518,7 @@ function launch(id) {
     if (up && run.child && !isRemoteKind(ws?.kind)) run.keeper.watch(run.child);
     if (up) handLicence(run);
     if (up) handName(run);
+    if (up) handMark(run);
     setStatus(run, up ? "running" : "failed");
     return up;
   });
@@ -693,6 +697,59 @@ function keepName(name, { seed = false } = {}) {
   saveRegistry();
   tellWorkspaces();
   for (const run of servers.values()) handName(run);
+}
+
+// ── the mark ───────────────────────────────────────────────────────────
+// The list here is where a workspace's mark lives, and the switcher is
+// drawn from it; the workspace's own server keeps a copy for the owner's
+// phone, its invites and its welcome. Chosen at the Mac, the mark is
+// handed to the server; chosen on the phone, the server asks here first
+// (answerServer, "mark"), because only the list knows what the other
+// workspaces wear. A joined workspace's mark is yours alone and goes
+// nowhere: its owner's server never hears it.
+
+/** Hands a workspace's mark, and what it would go back to, to its server. */
+function handMark(run) {
+  const ws = run ? entryOf(run.id) : null;
+  if (!ws || isRemoteKind(ws.kind) || !ws.mark || !run.child) return;
+  try {
+    run.child.postMessage({ kind: "mark", mark: ws.mark, markDefault: markDefault(ws) });
+  } catch {
+    /* a server on its way out hears it again when it is back */
+  }
+}
+
+/** A mark the owner chose on their phone, put to the list: kept when no
+ * other workspace here wears it, and handed back to that server. */
+function markFromServer(id, mark) {
+  const ws = entryOf(id);
+  if (!ws || isRemoteKind(ws.kind)) throw Object.assign(new Error("There is no such workspace here."), { status: 404 });
+  registry = updateWorkspace(registry, id, { mark: mark ?? null });
+  saveRegistry();
+  tellWorkspaces();
+  handMark(servers.get(id));
+  const now = entryOf(id);
+  return { ok: true, mark: now.mark, markDefault: markDefault(now) };
+}
+
+/**
+ * A question a workspace's server put to the app (server/desktop-line.ts),
+ * answered on the same line. Each one is about the workspace that asked:
+ * a server never speaks for another.
+ */
+async function answerServer(id, child, said) {
+  let reply;
+  try {
+    if (said.what === "mark") reply = markFromServer(id, said.mark);
+    else reply = { error: "The app does not answer that.", status: 404 };
+  } catch (error) {
+    reply = { error: String(error?.message ?? error), status: error?.status ?? 409 };
+  }
+  try {
+    child.postMessage({ ...reply, kind: "answer", ask: said.ask });
+  } catch {
+    /* the server is going; its question goes with it */
+  }
 }
 
 /** Stops one workspace's server for good (it is being deleted). */
@@ -1166,6 +1223,8 @@ handle("workspaces:update", (_event, id, patch) =>
     saveRegistry();
     tellWorkspaces();
     applyBadge();
+    // a new kind wears a new mark too, so either one is handed over
+    if (allowed.mark !== undefined || allowed.kind !== undefined) handMark(servers.get(String(id)));
   }),
 );
 
@@ -1175,6 +1234,7 @@ handle("workspaces:reroll", (_event, id) =>
     registry = rerollMark(registry, String(id));
     saveRegistry();
     tellWorkspaces();
+    handMark(servers.get(String(id)));
   }),
 );
 
@@ -1322,7 +1382,7 @@ ipcMain.on("workspaces:boot", (event) => {
   // returnValue answers the moment it is set, so it is set once
   const ws = fromOurPage(event) && registry ? entryOf(senderWorkspace(event)) : null;
   event.returnValue = ws
-    ? { theme: registry.prefs.theme, accent: accentOf(registry, ws.id), sameAccent: registry.prefs.sameAccent, workspace: { id: ws.id, kind: ws.kind, name: ws.name, mark: ws.mark } }
+    ? { theme: registry.prefs.theme, accent: accentOf(registry, ws.id), sameAccent: registry.prefs.sameAccent, workspace: { id: ws.id, kind: ws.kind, name: ws.name, mark: shownMark(ws) } }
     : null;
 });
 
@@ -1977,6 +2037,7 @@ function heardFromServer(id, child, said) {
   const run = servers.get(id);
   // a server from before a restart, still saying its last words
   if (!run || (run.child && run.child !== child)) return;
+  if (said?.kind === "desktop.ask" && typeof said.ask === "string") return void answerServer(id, child, said);
   if (said?.kind === "desktop.licence") return keepLicence(said.key, said.typed !== false);
   if (said?.kind === "desktop.licence.forget") return forgetLicence();
   if (said?.kind === "desktop.plan") return notePlan(said);

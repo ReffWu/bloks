@@ -11,7 +11,7 @@
 // ever links to pages Settings already has, so their old addresses lead
 // there now (src/lib/settingsPages.ts).
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, BellOff, Loader2, RefreshCw, Trash2, Upload } from "@/components/icons";
+import { ArrowRight, BellOff, Loader2, Trash2, Upload } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
@@ -33,6 +33,7 @@ import { ConnectionError, HealthLine, type Health } from "./ConnectionKit";
 import { MembersPage } from "./MembersPage";
 import { ensureYourName } from "./YourNameDialog";
 import { WorkspaceMark } from "./WorkspaceMark";
+import { MarkPicker } from "./MarkPicker";
 
 export const WORKSPACE_PAGES = [
   { id: "general", label: "General" },
@@ -174,10 +175,19 @@ function KindRows({ ws, all }: { ws: WorkspaceInfo; all: WorkspaceInfo[] }) {
   );
 }
 
-function MarkRow({ ws }: { ws: WorkspaceInfo }) {
-  const [busy, setBusy] = useState<"reroll" | "logo" | null>(null);
-  const fixed = ws.kind === "personal" || ws.kind === "business";
-  const doing = async (what: "reroll" | "logo", work: Promise<{ error?: string } | undefined> | undefined) => {
+/** What the mark row says under its name: who sees the mark, and where
+ * else it can be changed. */
+export function markWords(ws: Pick<WorkspaceInfo, "kind" | "logo">): string {
+  if (ws.logo) return "Your logo, shown wherever this workspace is named.";
+  if (ws.kind === "joined") return "Only you see this mark. Everyone else sees the one its owner chose.";
+  if (ws.kind === "hosted") return "Change it any time. No other workspace here wears it.";
+  return "Change it any time, here or on your phone. No other workspace here wears it.";
+}
+
+function MarkRow({ ws, all }: { ws: WorkspaceInfo; all: WorkspaceInfo[] }) {
+  const [busy, setBusy] = useState<"mark" | "logo" | null>(null);
+  const taken = all.filter((w) => w.id !== ws.id && w.mark).map((w) => w.mark!);
+  const doing = async (what: "mark" | "logo", work: Promise<{ error?: string } | undefined> | undefined) => {
     setBusy(what);
     await run(work);
     setBusy(null);
@@ -185,25 +195,13 @@ function MarkRow({ ws }: { ws: WorkspaceInfo }) {
   return (
     <SettingRow
       label="Mark"
-      description={
-        ws.logo
-          ? "Your logo, shown wherever this workspace is named."
-          : fixed
-            ? `${ws.kind === "personal" ? "Personal" : "Business"}'s mark is fixed, so it is never mistaken for another. A logo can take its place.`
-            : "Drawn for this workspace when it was made. No other workspace here wears it."
-      }
+      description={markWords(ws)}
       control={
         <div className="flex items-center gap-3">
           <span key={ws.logo ?? (ws.mark ? `${ws.mark.color}${ws.mark.pattern}` : "none")} className="flex animate-pop-in">
             <WorkspaceMark mark={ws.mark} logo={ws.logo} size={44} label={`${ws.name}'s mark`} />
           </span>
           <div className="flex flex-col gap-1.5">
-            {!fixed && !ws.logo && ws.kind !== "joined" && (
-              <Button variant="outline" size="sm" className="gap-1.5" disabled={busy !== null} onClick={() => void doing("reroll", window.bloks?.workspaceReroll?.(ws.id))}>
-                {busy === "reroll" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                New mark
-              </Button>
-            )}
             {ws.logo ? (
               <Button variant="ghost" size="sm" className="gap-1.5" disabled={busy !== null} onClick={() => void doing("logo", window.bloks?.workspaceLogoClear?.(ws.id))}>
                 <Trash2 size={13} />
@@ -218,7 +216,21 @@ function MarkRow({ ws }: { ws: WorkspaceInfo }) {
           </div>
         </div>
       }
-    />
+    >
+      {/* a logo stands in for the mark, so there is nothing to choose
+          until it is removed */}
+      {!ws.logo && (
+        <MarkPicker
+          className="mt-4"
+          value={ws.mark}
+          taken={taken}
+          defaultMark={ws.markDefault ?? null}
+          disabled={busy !== null}
+          onChange={(mark) => void doing("mark", window.bloks?.workspaceUpdate?.(ws.id, { mark }))}
+          onShuffle={() => void doing("mark", window.bloks?.workspaceReroll?.(ws.id))}
+        />
+      )}
+    </SettingRow>
   );
 }
 
@@ -284,7 +296,7 @@ function GeneralPage({ ws, all, go }: { ws: WorkspaceInfo; all: WorkspaceInfo[];
       <SettingsGroup title="Workspace">
         <NameRow ws={ws} />
         <KindRows ws={ws} all={all} />
-        <MarkRow ws={ws} />
+        <MarkRow ws={ws} all={all} />
       </SettingsGroup>
       <SettingsGroup title="Notifications">
         <SettingRow

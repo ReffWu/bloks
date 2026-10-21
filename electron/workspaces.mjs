@@ -17,7 +17,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { fixedMark, generateMark, isCustomMark, sameMark } from "./workspace-marks.mjs";
+import { defaultMark, fixedMark, generateMark, isChoosableMark, sameMark } from "./workspace-marks.mjs";
 
 export const REGISTRY_VERSION = 1;
 export const PERSONAL_ID = "personal";
@@ -81,9 +81,13 @@ export function normalizeEntry(raw, index = 0) {
   const kind = KINDS.includes(raw.kind) ? raw.kind : "custom";
   const name = cleanName(raw.name) || kindName(kind) || "Workspace";
   const fixed = fixedMark(kind);
-  const mark = fixed ?? (raw.mark && typeof raw.mark.color === "string" && typeof raw.mark.pattern === "string"
+  const said = raw.mark && typeof raw.mark.color === "string" && typeof raw.mark.pattern === "string"
     ? { color: raw.mark.color, pattern: raw.mark.pattern }
-    : null);
+    : null;
+  // Personal and Business wear the mark somebody chose for them, and their
+  // default until somebody does; a chosen one is held to the picker's
+  // rules, so a hand-edited list cannot dress Personal in anything at all
+  const mark = fixed ? (isChoosableMark(said) ? said : fixed) : said;
   const dataDir = typeof raw.dataDir === "string" && raw.dataDir ? raw.dataDir : null;
   if (!isRemoteKind(kind) && !dataDir) return null;
   const mute =
@@ -118,6 +122,10 @@ export function normalizeEntry(raw, index = 0) {
     };
     // what you are there, as its server last said: Member or Admin
     entry.role = raw.role === "admin" ? "admin" : "member";
+    // The mark you chose for it, over the one its owner chose. Kept here
+    // and nowhere else: its owner and the other members never see it, and
+    // `mark` stays what the owner's server says, for going back to.
+    entry.ownMark = isChoosableMark(raw.ownMark) ? { color: raw.ownMark.color, pattern: raw.ownMark.pattern } : null;
   }
   // Your own workspace on a machine run for you, reached through Bloks
   // Cloud with a device of yours paired there. Yours, so named and marked
@@ -257,10 +265,11 @@ export function settle(registry, { personalDataDir, now = Date.now(), random = M
   const worn = [];
   workspaces = workspaces.map((w) => {
     if (w.kind === "personal" || w.kind === "business" || w.kind === "joined") {
-      if (w.mark) worn.push(w.mark);
+      if (shownMark(w)) worn.push(shownMark(w));
       return w;
     }
-    if (isCustomMark(w.mark) && !worn.some((m) => sameMark(m, w.mark))) {
+    // a drawn mark or a chosen one, as long as nobody before it wears it
+    if (isChoosableMark(w.mark) && !worn.some((m) => sameMark(m, w.mark))) {
       worn.push(w.mark);
       return w;
     }
@@ -273,9 +282,32 @@ export function settle(registry, { personalDataDir, now = Date.now(), random = M
   return { ...registry, current, workspaces };
 }
 
+/** The mark a workspace is drawn with on this computer: for one you
+ * joined, the one you chose for it when you did, else its owner's. */
+export function shownMark(w) {
+  return (w?.kind === "joined" && w.ownMark) || w?.mark || null;
+}
+
+/** What "Back to the default" goes back to: Personal's and Business's
+ * own, or a joined workspace's owner's mark; null for a named workspace,
+ * whose mark was drawn for it and has no other to go back to. */
+export function markDefault(w) {
+  if (w?.kind === "joined") return w.mark ?? null;
+  return defaultMark(w?.kind);
+}
+
 /** Every mark worn on this computer, but `except`'s. */
 export function marksInUse(registry, except = null) {
-  return registry.workspaces.filter((w) => w.id !== except && w.mark).map((w) => w.mark);
+  return registry.workspaces.filter((w) => w.id !== except && shownMark(w)).map((w) => shownMark(w));
+}
+
+/** A kind's default mark when nobody else here wears it, else a drawn
+ * one: Personal may have chosen Business's ring, and a new Business must
+ * not wear it too. */
+function freshMarkFor(kind, worn, random) {
+  const fixed = fixedMark(kind);
+  if (fixed && !worn.some((m) => sameMark(m, fixed))) return fixed;
+  return generateMark(worn, { random });
 }
 
 /** Why a new or renamed workspace cannot have this kind and name, or
@@ -295,16 +327,20 @@ export function refusal(registry, { kind, name }, self = null) {
 /**
  * A new local workspace, added to the end of the list. Its data folder
  * is under the app's own folder, by id, so a rename never moves it. The
- * mark offered (the one the dialog showed) is kept when it is still free,
- * otherwise a fresh one is drawn.
+ * mark offered (the one the dialog showed, drawn or chosen) is kept when
+ * it is still free; otherwise Business wears its own and a named one has
+ * one drawn for it.
  */
 export function addWorkspace(registry, input, { workspacesDir, now = Date.now(), random = Math.random, id = newId() } = {}) {
   const why = refusal(registry, input);
   if (why) throw new Error(why);
   const kind = input.kind;
   const worn = marksInUse(registry);
-  const offered = input.mark && isCustomMark(input.mark) && !worn.some((m) => sameMark(m, input.mark)) ? input.mark : null;
-  const mark = fixedMark(kind) ?? offered ?? generateMark(worn, { random });
+  const offered =
+    input.mark && isChoosableMark(input.mark) && !worn.some((m) => sameMark(m, input.mark))
+      ? { color: input.mark.color, pattern: input.mark.pattern }
+      : null;
+  const mark = offered ?? freshMarkFor(kind, worn, random);
   const entry = normalizeEntry({
     id,
     kind,
@@ -345,9 +381,11 @@ export function addHosted(registry, { host = "", relayUrl = "" } = {}, { now = D
   return { registry: { ...registry, workspaces: [...registry.workspaces, entry] }, entry, replaced: false };
 }
 
-/** Changes what may change about a workspace. Personal stays Personal and
- * keeps its mark; a Business keeps its mark; becoming Business takes its
- * mark, and leaving Business draws a named one. */
+/** Changes what may change about a workspace. Personal stays Personal;
+ * becoming Business takes Business's mark, and leaving Business draws a
+ * named one. A mark may be chosen for any of them, and `mark: null` goes
+ * back to the default, where there is one. For a workspace you joined,
+ * the mark chosen is yours alone (`ownMark`), and its owner's stays. */
 export function updateWorkspace(registry, id, patch, { random = Math.random } = {}) {
   const at = registry.workspaces.findIndex((w) => w.id === id);
   if (at === -1) throw new Error("There is no such workspace.");
@@ -366,7 +404,7 @@ export function updateWorkspace(registry, id, patch, { random = Math.random } = 
     next.name = cleanName(name);
     if (kind !== was.kind) {
       next.kind = kind;
-      next.mark = fixedMark(kind) ?? generateMark(marksInUse(registry, id), { random });
+      next.mark = freshMarkFor(kind, marksInUse(registry, id), random);
     }
   }
   if (patch.team !== undefined) {
@@ -383,10 +421,23 @@ export function updateWorkspace(registry, id, patch, { random = Math.random } = 
   }
   if (patch.mute !== undefined) next.mute = patch.mute;
   if (patch.mark !== undefined) {
-    if (fixedMark(next.kind)) throw new Error(`${next.name}'s mark is fixed. Upload a logo to change how it looks.`);
-    if (!isCustomMark(patch.mark)) throw new Error("That is not a mark a workspace can have.");
-    if (marksInUse(registry, id).some((m) => sameMark(m, patch.mark))) throw new Error("Another workspace has that mark.");
-    next.mark = { color: patch.mark.color, pattern: patch.mark.pattern };
+    const others = marksInUse(registry, id);
+    if (patch.mark === null) {
+      // back to the default: the kind's own, or the owner's for a joined one
+      if (next.kind === "joined") next.ownMark = null;
+      else {
+        const back = defaultMark(next.kind);
+        if (!back) throw new Error(`${next.name}'s mark was drawn for it. Choose another, or shuffle.`);
+        if (others.some((m) => sameMark(m, back))) throw new Error("Another workspace has that mark.");
+        next.mark = back;
+      }
+    } else {
+      if (!isChoosableMark(patch.mark)) throw new Error("That is not a mark a workspace can have.");
+      if (others.some((m) => sameMark(m, patch.mark))) throw new Error("Another workspace has that mark.");
+      const chosen = { color: patch.mark.color, pattern: patch.mark.pattern };
+      if (next.kind === "joined") next.ownMark = sameMark(chosen, next.mark) ? null : chosen;
+      else next.mark = chosen;
+    }
   }
   if (patch.logo !== undefined) next.logo = patch.logo || null;
   if (patch.port !== undefined) next.port = patch.port;
@@ -403,12 +454,12 @@ export function updateWorkspace(registry, id, patch, { random = Math.random } = 
   return { ...registry, workspaces };
 }
 
-/** A new mark for a named workspace, different from the one it has. */
+/** A new drawn mark for a workspace, different from the one it shows and
+ * from every other one here; for one you joined, yours alone. */
 export function rerollMark(registry, id, { random = Math.random } = {}) {
   const was = registry.workspaces.find((w) => w.id === id);
   if (!was) throw new Error("There is no such workspace.");
-  if (fixedMark(was.kind) || was.kind === "joined") throw new Error(`${was.name}'s mark is fixed.`);
-  const mark = generateMark(marksInUse(registry, id), { random, avoid: was.mark });
+  const mark = generateMark(marksInUse(registry, id), { random, avoid: shownMark(was) });
   return updateWorkspace(registry, id, { mark }, { random });
 }
 
@@ -588,7 +639,9 @@ export function snapshot(registry, live = {}, now = Date.now()) {
         kind: w.kind,
         name: w.name,
         team: w.team,
-        mark: w.mark,
+        mark: shownMark(w),
+        // what "Back to the default" would wear, for the picker to offer
+        markDefault: markDefault(w),
         logo: here.logo ?? null,
         members: w.members,
         status: here.status ?? "stopped",
