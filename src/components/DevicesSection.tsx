@@ -16,11 +16,12 @@ import { Globe } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
 import { RotateCw } from "@/components/icons";
 import { Smartphone } from "@/components/icons";
-import { Trash2 } from "@/components/icons";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
+import { confirm } from "@/components/ui/confirm";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
+import { deviceLabels } from "@/lib/deviceLabels";
 import { usePageVisible } from "@/lib/pageVisible";
 import { thisComputer } from "@/lib/thisComputer";
 import {
@@ -46,6 +47,8 @@ interface Device {
   id: string;
   name: string;
   pairedAt: number;
+  /** When it last made a request, since this computer started. */
+  lastSeen?: number;
   /** The app build the device last said it runs, once it has made a
    * request since this Mac started. */
   client?: string;
@@ -145,6 +148,67 @@ function PairLinkRow({
           {copied ? "Copied" : "Copy"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** The phones and browsers that can reach this computer, each with what
+ * tells it apart, and a quiet Remove that asks first: a removed phone has
+ * to pair again from scratch. */
+function PairedList({
+  devices,
+  now,
+  fresh,
+  onRemove,
+}: {
+  devices: Device[];
+  now: number;
+  fresh: string | null;
+  onRemove: (device: Device) => void;
+}) {
+  const labels = deviceLabels(devices, now);
+  return (
+    <div className="mt-4 border-t pt-3">
+      <div className="mb-1 text-small font-medium text-muted-foreground">Paired</div>
+      <ul className="flex flex-col">
+        {devices.map((device) => {
+          const label = labels.get(device.id) ?? { name: device.name, detail: "" };
+          return (
+            <li
+              key={device.id}
+              className={cn(
+                "-mx-1.5 flex items-center gap-3 rounded-lg px-1.5 py-2 transition-colors duration-700",
+                fresh === device.id && "bg-brand-soft",
+              )}
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                {isBrowser(device.name) ? <Globe size={15} /> : <Smartphone size={15} />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-body font-medium text-foreground">{label.name}</div>
+                {label.detail && <div className="truncate text-small tabular-nums text-muted-foreground">{label.detail}</div>}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Remove ${label.name}`}
+                className="hover:bg-destructive/10 hover:text-destructive"
+                onClick={async () => {
+                  const yes = await confirm({
+                    title: `Remove ${label.name}?`,
+                    body: `It can't reach ${thisComputer()} until you pair it again.`,
+                    confirmLabel: "Remove",
+                    destructive: true,
+                  });
+                  if (yes) onRemove(device);
+                }}
+              >
+                Remove
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -381,7 +445,7 @@ function PairingControls() {
     : [];
 
   return (
-    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0" data-setting-row="phones-and-devices">
       <ConnectionHeader
         icon={<Smartphone size={14} className="shrink-0 text-muted-foreground" />}
         title="Phones and devices"
@@ -420,45 +484,16 @@ function PairingControls() {
       {showSteps && !(status?.restartRequired && !status.enabled) && <Checklist label="Pair a phone" steps={steps} />}
 
       {status?.enabled && devices.length > 0 && (
-        <div className="mt-4 border-t pt-3">
-          <div className="mb-1 text-small font-medium text-muted-foreground">Paired</div>
-          <div className="flex flex-col gap-0.5">
-            {devices.map((device) => (
-              <div
-                key={device.id}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 transition-colors duration-700",
-                  fresh === device.id && "bg-brand-soft",
-                )}
-              >
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                  {isBrowser(device.name) ? <Globe size={14} /> : <Smartphone size={14} />}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-body text-foreground">{device.name}</span>
-                {device.client && (
-                  <span className="shrink-0 text-small tabular-nums text-muted-foreground" title="The Bloks version on this device">
-                    {device.client}
-                  </span>
-                )}
-                <span className="shrink-0 text-small text-muted-foreground max-sm:hidden">
-                  {new Date(device.pairedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
-                </span>
-                <button
-                  onClick={() =>
-                    api(`/api/pair/devices/${device.id}`, { method: "DELETE" })
-                      .then(load)
-                      .catch((e: Error) => setError(e.message))
-                  }
-                  title={`Revoke ${device.name}`}
-                  aria-label={`Revoke ${device.name}`}
-                  className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <PairedList
+          devices={devices}
+          now={now}
+          fresh={fresh}
+          onRemove={(device) =>
+            api(`/api/pair/devices/${device.id}`, { method: "DELETE" })
+              .then(load)
+              .catch((e: Error) => setError(e.message))
+          }
+        />
       )}
 
       {listening && !showSteps && !arrived && !live && <div className="mt-3">{startButtons("Pair another phone", true)}</div>}

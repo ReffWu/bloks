@@ -2,11 +2,26 @@
 // never sleeps (bloks-server), reached through Bloks Cloud.
 //
 // Desktop only. In a browser or on a phone there is no "this app" to move.
+//
+// The card says where it runs in a line and keeps the how behind a
+// disclosure: most people read it once, and the field is all they need
+// after that. Switching restarts the app, so it asks before it does.
 import { useEffect, useState } from "react";
+import { ChevronRight } from "@/components/icons";
+import { Loader2 } from "@/components/icons";
+import { Server } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { confirm } from "@/components/ui/confirm";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/cn";
+import { thisComputer } from "@/lib/thisComputer";
+import { ConnectionHeader, HealthLine } from "./ConnectionKit";
 
 type Status = { mode: "local" } | { mode: "remote"; host: string; connected: boolean; revoked?: boolean };
+
+const Code = ({ children }: { children: React.ReactNode }) => (
+  <code className="rounded bg-muted px-1 font-mono text-caption text-foreground">{children}</code>
+);
 
 export function RemoteSection() {
   const bridge = typeof window !== "undefined" ? window.bloks : undefined;
@@ -23,58 +38,103 @@ export function RemoteSection() {
 
   if (!bridge?.remoteStatus || !status) return null;
 
+  const pasted = link.trim();
+
   const connect = async () => {
+    if (busy || !pasted) return;
+    const yes = await confirm({
+      title: "Use that Bloks?",
+      body: `Bloks restarts. Agents on ${thisComputer()} wait here, paused, until you switch back.`,
+      confirmLabel: "Switch",
+    });
+    if (!yes) return;
     setBusy(true);
     setError(null);
-    const result = await bridge.remoteConnect!(link.trim());
+    const result = await bridge.remoteConnect!(pasted);
     // on success the app restarts, so only a failure lands here
     if (result?.error) setError(result.error);
     setBusy(false);
   };
 
+  const leave = async () => {
+    const yes = await confirm({
+      title: `Use ${thisComputer()} instead?`,
+      body: "Bloks restarts. Nothing on either computer is deleted.",
+      confirmLabel: "Switch",
+    });
+    if (yes) bridge.remoteDisconnect?.();
+  };
+
+  const icon = <Server size={14} className="shrink-0 text-muted-foreground" />;
+
   return (
-    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
-      <div className="text-ui font-semibold text-foreground">Where your Bloks runs</div>
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0" data-setting-row="where-your-bloks-runs">
       {status.mode === "remote" ? (
         <>
-          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            Using Bloks on {status.host} through Bloks Cloud. Agents keep working when this computer
-            sleeps.{" "}
-            {status.revoked
-              ? "That computer no longer knows this app. Pair it again."
-              : status.connected
-                ? "Connected."
-                : "That computer can't be reached right now."}
-          </div>
-          <Button size="sm" variant="secondary" className="mt-3" disabled={busy} onClick={() => bridge.remoteDisconnect?.()}>
-            Use this computer instead
+          <ConnectionHeader
+            icon={icon}
+            title="Where your Bloks runs"
+            says={
+              status.revoked
+                ? `On ${status.host}, which no longer knows this app. Pair it again.`
+                : `On ${status.host}, through Bloks Cloud. Agents keep working while ${thisComputer()} sleeps.`
+            }
+            health={
+              <HealthLine
+                tone={status.connected && !status.revoked ? "on" : "issue"}
+                label={status.revoked ? "Pair again" : status.connected ? "Connected" : "Can't reach it"}
+              />
+            }
+          />
+          <Button size="sm" variant="secondary" className="mt-3" disabled={busy} onClick={() => void leave()}>
+            Use {thisComputer()} instead
           </Button>
-          <div className="mt-1.5 text-small text-muted-foreground">Restarts the app. Nothing on either computer is deleted.</div>
         </>
       ) : (
         <>
-          <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            On this computer, so agents stop when it sleeps. To keep them running, install{" "}
-            <code className="rounded bg-muted px-1">bloks-server</code> on an always-on computer, run{" "}
-            <code className="rounded bg-muted px-1">bloks-server pair</code> there and paste the link here.
-          </div>
-          <div className="mt-3 flex gap-1.5">
+          <ConnectionHeader icon={icon} title="Where your Bloks runs" says={`On ${thisComputer()}, so agents pause when it sleeps.`} />
+          <form
+            className="mt-3 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void connect();
+            }}
+          >
             <Input
               value={link}
-              onChange={(e) => setLink(e.target.value)}
-              placeholder="https://bloks.dev/pair#..."
-              className="h-8 font-mono text-body"
+              onChange={(e) => {
+                setLink(e.target.value);
+                setError(null);
+              }}
+              aria-label="Link from bloks-server"
+              placeholder="Paste a link from bloks-server"
+              autoComplete="off"
+              spellCheck={false}
+              className={cn("h-8 min-w-0 flex-1 text-body", link && "font-mono")}
             />
-            <Button variant="brand" size="sm" disabled={busy || !link.trim()} onClick={() => void connect()}>
-              {busy ? "Pairing" : "Use that Bloks"}
+            {/* grey until there is a link to use, then plainly the thing to press */}
+            <Button type="submit" variant={pasted ? "brand" : "secondary"} disabled={busy || !pasted}>
+              {busy && <Loader2 size={13} className="animate-spin" />}
+              Use that Bloks
             </Button>
-          </div>
-          <div className="mt-1.5 text-small text-muted-foreground">
-            Restarts the app. Agents on this computer stay here, paused, until you switch back.
-          </div>
+          </form>
+          <details className="group mt-2.5">
+            <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded text-small text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight size={12} className="transition-transform duration-150 group-open:rotate-90" />
+              How
+            </summary>
+            <p className="mt-1.5 max-w-[60ch] pl-4 text-pretty text-small leading-relaxed text-muted-foreground">
+              Install <Code>bloks-server</Code> on a computer that stays on. Run <Code>bloks-server pair</Code> there and
+              paste the link it prints. Your agents then keep working when {thisComputer()} sleeps.
+            </p>
+          </details>
         </>
       )}
-      {error && <div className="mt-2 text-small text-warning">{error}</div>}
+      {error && (
+        <div role="alert" className="mt-2 text-small text-warning">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
