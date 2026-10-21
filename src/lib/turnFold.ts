@@ -140,6 +140,7 @@ function tucks(m: Message): boolean {
 
 function askerOf(m: Message): Asker | null {
   if (m.telegramPerson) return { by: "telegram", name: m.telegramPerson.name };
+  if (m.telegramDelegate) return { by: "telegram", name: m.telegramDelegate.name };
   if (m.agent?.dir === "in") return { by: "agent", peerId: m.agent.peerId, peerName: m.agent.peerName, message: m };
   if (m.via === "routine") return { by: "routine", ...(m.routine?.name ? { name: m.routine.name } : {}) };
   if (m.via === "watcher") return { by: "watcher" };
@@ -266,7 +267,7 @@ export function foldTurns(messages: readonly Message[], running: boolean, histor
     while (h < b && startsTurn(messages[h])) h++;
     const head = messages.slice(a, h);
     // with the person among them, it is theirs and the line names nobody
-    const first = head.some((m) => personsWords(m) && !m.telegramPerson) ? undefined : head.find((m) => !m.deleted);
+    const first = head.some((m) => personsWords(m) && !m.telegramPerson && !m.telegramDelegate) ? undefined : head.find((m) => !m.deleted);
     const asker = first ? askerOf(first) : null;
     // the result: the last thing the agent said in it
     let reply = -1;

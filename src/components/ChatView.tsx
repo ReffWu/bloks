@@ -113,7 +113,10 @@ const isReply = (m: Message) =>
 
 /** Typed here and sent, rather than said for you by a routine, a goal,
  * a watcher, another agent or someone on Telegram. */
-const sentByYou = (m: Message) => m.role === "user" && !m.via && !m.agent && !m.telegramPerson;
+const sentByYou = (m: Message) => m.role === "user" && !m.via && !m.agent && !m.telegramPerson && !m.telegramDelegate;
+
+/** Somebody on Telegram who is not the owner, let in or given full access. */
+const telegramSpeaker = (m: Message) => m.telegramPerson ?? m.telegramDelegate;
 
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
@@ -204,8 +207,8 @@ export function ChatView({ bot }: { bot: Bot }) {
   const faceOf = (m: Message) =>
     m.role === "bot" ? (
       <AgentAvatar bot={bot} size={28} />
-    ) : m.telegramPerson ? (
-      <PersonAvatar id={m.telegramPerson.personId} name={m.telegramPerson.name} />
+    ) : telegramSpeaker(m) ? (
+      <PersonAvatar id={telegramSpeaker(m)!.personId} name={telegramSpeaker(m)!.name} />
     ) : (
       <PersonAvatar id={m.author ?? "owner"} name={m.author ? personName(m.author) : (roster.owner ?? "You")} />
     );
@@ -695,6 +698,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             {/* in a group the bubble names its sender; with one agent, a
                 line over the words says whose they are */}
             {!group && m.telegramPerson && <div className="mb-1 text-small text-muted-foreground">Message from {m.telegramPerson.name} (Telegram)</div>}
+            {!group && m.telegramDelegate && <div className="mb-1 text-small text-muted-foreground">Message from {m.telegramDelegate.name} (Telegram, full access)</div>}
             {!group && m.role === "user" && m.author && <div className="mb-1 text-small font-medium text-muted-foreground">{personName(m.author)}</div>}
             {m.telegramSent && <div className="mb-1 text-small text-muted-foreground">To {m.telegramSent.name} (Telegram): {m.telegramSent.state === "sent" ? "sent" : m.telegramSent.state === "sending" ? "sending" : m.telegramSent.state === "failed" ? "failed" : "delivery uncertain"}</div>}
             {after && (
@@ -709,7 +713,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               // a folded check-in below says no time of its own
               hideTime={list[offset + 1]?.quiet ? false : timeSaidBelow(m, list[offset + 1])}
               fresh={fresh}
-              author={m.telegramPerson?.name ?? (m.role === "user" ? (m.author ? personName(m.author) : "You") : bot.name)}
+              author={telegramSpeaker(m)?.name ?? (m.role === "user" ? (m.author ? personName(m.author) : "You") : bot.name)}
               onReply={setReplyTo}
               onForward={(message, author) => setForwarding({ message, author })}
               onReact={(messageId, emoji) => reactTo(bot.threadId, messageId, emoji)}
@@ -727,7 +731,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               group={
                 group
                   ? {
-                      mine: m.role === "user" && !m.author && !m.telegramPerson,
+                      mine: m.role === "user" && !m.author && !telegramSpeaker(m),
                       ...(groupRuns.get(m.id) ?? { first: true, last: true }),
                       face: faceOf(m),
                       receipts: receiptsFor(m.id),

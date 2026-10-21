@@ -102,6 +102,9 @@ export interface Message {
    * started: shown in full, with a link to the exchange. Not sent to it. */
   afterAgent?: { peerId: string; peerName: string };
   telegramPerson?: { personId: string; name: string; requester: string };
+  /** Said on Telegram by someone the owner gave full access to this agent:
+   * a turn with the agent's own tools, answered in their own chat. */
+  telegramDelegate?: { personId: string; name: string; requester: string };
   telegramSent?: { personId: string; name: string; state: "sending" | "sent" | "uncertain" | "failed" };
   /** The user's selection on a decision component. */
   decisionChoice?: number;

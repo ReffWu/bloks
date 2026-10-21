@@ -58,6 +58,8 @@ export interface Said {
   from?: string;
   /** Somebody writing from Telegram into the owner's conversation. */
   telegramPerson?: { personId: string };
+  /** The same, with full access the owner gave them. */
+  telegramDelegate?: { personId: string };
   at: number;
 }
 
@@ -66,6 +68,7 @@ export interface Said {
 export function senderOf(m: Said, agentId?: string): string {
   if (m.role === "bot") return `agent:${m.from ?? agentId ?? "agent"}`;
   if (m.telegramPerson) return `telegram:${m.telegramPerson.personId}`;
+  if (m.telegramDelegate) return `telegram:${m.telegramDelegate.personId}`;
   return m.author ?? "owner";
 }
 

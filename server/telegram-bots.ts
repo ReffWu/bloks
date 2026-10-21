@@ -97,6 +97,7 @@ export function telegramStatus(state: AgentTelegram | undefined) {
       id: person.id, name: person.name, state: person.state, userId: person.userId,
       ...(person.username ? { username: person.username } : {}),
       ...(person.state === "pending" && person.first?.text ? { first: person.first.text.slice(0, 280) } : {}),
+      ...(person.state === "allowed" && person.full ? { full: true } : {}),
       ...(telegramNamesakes(state, person).length ? { sameName: true } : {}),
     })),
     upgradeNotices: state?.upgradeNotices?.map(({ state }) => ({ state })) ?? [],

@@ -12,6 +12,7 @@ import { MessageCircle } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { confirm } from "@/components/ui/confirm";
 import { cn } from "@/lib/cn";
 import {
   Checklist,
@@ -41,7 +42,7 @@ interface Status {
   pendingMigration?: boolean;
   bots?: Array<Status & { botId: string }>;
   voiceVendor?: "elevenlabs" | "openai" | null;
-  people?: Array<{ id: string; name: string; state: "pending" | "allowed" | "declined" | "removed"; userId?: number; username?: string; first?: string; sameName?: boolean }>;
+  people?: Array<{ id: string; name: string; state: "pending" | "allowed" | "declined" | "removed"; userId?: number; username?: string; first?: string; sameName?: boolean; full?: boolean }>;
   upgradeNotices?: Array<{ state: string }>;
   admissionFull?: boolean;
 }
@@ -133,6 +134,23 @@ export function TelegramSection({ botId }: { botId?: string }) {
       })
       .catch((e) => setError(e.message))
       .finally(() => setBusy(false));
+  };
+
+  // Full access is the owner's grant to one person on this agent's bot
+  // (GitHub 320). Said plainly before it is given, because the separate
+  // chat makes it look more private than it is.
+  const giveFullAccess = async (person: { id: string; name: string }, agent: string) => {
+    const yes = await confirm({
+      title: `Give ${person.name} full access to ${agent}?`,
+      body: [
+        `Their messages run the way yours do: with ${agent}'s own tools, engine and permissions, without asking you first. The answers and the cards their turns raise go to their chat.`,
+        `They share one conversation and one memory with you. ${agent} can repeat anything from it to them, and its tools reach your files and accounts. Separate chats do not mean separate memory.`,
+        "You can take it back here at any time. That stops their running work; what is already done stays done.",
+      ].join("\n\n"),
+      confirmLabel: "Give full access",
+      destructive: true,
+    });
+    if (yes) post({ personId: person.id, action: "full" });
   };
 
   const openAgent = (id: string) => {
@@ -351,7 +369,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
                         person.state === "allowed" ? "bg-success/10 text-success" : person.state === "pending" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground",
                       )}
                     >
-                      {PERSON_STATE[person.state]}
+                      {person.full ? "Full access" : PERSON_STATE[person.state]}
                     </span>
                   </span>
                   {/* a first name is chosen freely; the id and username are not */}
@@ -362,10 +380,17 @@ export function TelegramSection({ botId }: { botId?: string }) {
                     </span>
                   )}
                   {person.first && <span className="block break-words text-caption text-muted-foreground">They wrote: {person.first}</span>}
+                  {person.full && <span className="block text-caption text-muted-foreground">Uses {agentName} with its own tools, in the conversation you share with it.</span>}
                 </span>
                 <div className="flex shrink-0 gap-1">
                   {person.state !== "allowed" && (
                     <Button size="sm" variant="secondary" disabled={busy} onClick={() => post({ personId: person.id, action: "allow" })}>Let in</Button>
+                  )}
+                  {person.state === "allowed" && !person.full && (
+                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => void giveFullAccess(person, agentName)}>Give full access</Button>
+                  )}
+                  {person.full && (
+                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "restricted" })}>Restrict</Button>
                   )}
                   {person.state === "pending" && (
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "decline" })}>Not now</Button>

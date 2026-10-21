@@ -278,6 +278,10 @@ export interface Message {
    * start a queued request that belonged to its previous connection. */
   telegramBinding?: { botId: string; generation: string };
   telegramPerson?: import("./telegram-people.ts").TelegramSender;
+  /** Server-created. Said on Telegram by a person the owner gave full
+   * access (GitHub 320): their turn runs as the agent's own, and its
+   * answer goes to their chat. Never read from a client body. */
+  telegramDelegate?: import("./telegram-people.ts").TelegramSender;
   /** Explicit reply, kept in the owner's transcript with its send result. */
   telegramSent?: { personId: string; name: string; state: "sending" | "sent" | "uncertain" | "failed" };
   /** Server-only: the Claude instance that accepted this queued text.

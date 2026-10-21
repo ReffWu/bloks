@@ -24,6 +24,11 @@ export interface TelegramPerson {
   cardSend?: "sending" | "sent" | "uncertain";
   telegramCardId?: number;
   holdReported?: string;
+  /** The owner gave this person full access to the agent on Telegram
+   * (GitHub 320): their words run as its ordinary turns, with its own
+   * tools, engine and permissions, and are answered in their own chat.
+   * Only while they are let in, and only ever set by the owner. */
+  full?: boolean;
 }
 
 /** Server-created. It is never read from a message-create or edit body. */
@@ -111,6 +116,19 @@ export function telegramSenderCurrent(state: AgentTelegram | undefined, sender: 
   return Boolean(state?.enabled && state.token && state.generation === sender.bindingGeneration &&
     person?.state === "allowed" && person.id === sender.personId && person.grant === sender.grant &&
     person.chatId === sender.chatId && telegramSender(sender.botId, state, person).requester === sender.requester);
+}
+
+/** A sender who still holds the owner's grant of full access: the same
+ * person, grant, chat and connection, and that grant still full. Every
+ * change to it makes a new grant, so a sender from before is not one. */
+export function telegramDelegateCurrent(state: AgentTelegram | undefined, sender: TelegramSender): boolean {
+  return telegramSenderCurrent(state, sender) && state?.people?.[String(sender.userId)]?.full === true;
+}
+
+/** The same person under the same grant, or both nobody: whose words may
+ * join a turn, and whose turns are kept apart. */
+export function sameTelegramDelegate(a: TelegramSender | undefined, b: TelegramSender | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && a.requester === b.requester);
 }
 
 export function migrateTelegramPeople(before: TelegramConfig): TelegramConfig {

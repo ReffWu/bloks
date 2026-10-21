@@ -1453,6 +1453,27 @@ people and 20 waiting; a full inbox holds new people visibly. Declined and
 removed people do not count toward it, and past 100 of them the longest
 closed is forgotten and may knock again.
 
+Full access (GitHub 320) is a separate grant the owner gives one let-in
+person on one agent's bot, in that agent's Telegram settings (`full` on the
+person; actions `full` and `restricted` on the Telegram route, never with an
+agent's credential). Nothing gives it automatically: letting someone in, or
+back in, is restricted, and the default for everyone else is unchanged.
+Their words carry their sender (`telegramDelegate`) and run as the agent's
+ordinary turns, with its own tools, engine and permissions, Codex included;
+the agent is told they are not the owner, and recall and the summary keep
+them as theirs. The running turn's sender (`laneTelegramDelegate`) keeps it
+theirs: only they add to it, their words join no other turn, and waiting
+words from different senders are separate turns (`queuedSegment`). A retry,
+a backup or a pickup reads the sender back from the conversation. Its
+answer, notes, files and cards go only to their chat (`fullAccessInbox`),
+where only they answer those cards; admission cards stay the owner's, and
+the owner sees, answers and can stop everything in the app. Every change to
+the grant makes a new one, so their waiting words are dropped, their cards
+denied, their turn stopped and its credential revoked, and nothing more of
+it reaches them; what is done stays done. The conversation and memory are
+still one, shared with the owner, which the settings say before the grant
+is given. During a drain they are asked to send again rather than held.
+
 A person turn uses the existing untrusted approval path, including on a
 full-access agent, and runs only on Claude Code. Claude starts a fresh
 default-permission session, with empty setting sources and hooks disabled,
@@ -1527,7 +1548,8 @@ restore without them keeps this computer's own.
 
 A card a Telegram turn raises goes only to the verified owner's private
 chat (`ownerChatId`, `telegramCards`, `server/telegram-cards.ts`), including
-a card raised by an admitted person. That person's next message never
+a card raised by an admitted person, except that a turn a person with full
+access asked for asks them in their own chat instead. That person's next message never
 answers it. For their questions, ordinary owner messages remain the owner's
 messages: a typed answer must reply to that physical card, or the owner can
 answer in the app. Such a card waits in a slot of its own (`personAsks`), so

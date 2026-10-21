@@ -138,4 +138,8 @@ export const FEATURES: readonly string[] = [
   // the card (the bot it names, and the one its token turned out to be
   // for), and a save that goes to that agent's Telegram settings
   "telegram-bot-card",
+  // a person on an agent's Telegram bot the owner gave full access:
+  // actions "full" and "restricted" on the Telegram route, `full` on each
+  // person in its status, and telegramDelegate on the messages they send
+  "telegram-full-access",
 ];
