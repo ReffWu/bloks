@@ -331,13 +331,13 @@ export function SideTabs({
             if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
           }}
           style={fade ? { maskImage: fade, WebkitMaskImage: fade } : undefined}
-          className="relative flex items-center gap-0.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="relative flex items-center gap-0.5 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {groups.map((group, gi) => (
             <div key={group.id} role="group" aria-label={group.name} className="flex shrink-0 items-center gap-0.5">
               {gi > 0 && <span aria-hidden className="mx-2 h-4 w-px shrink-0 bg-border" />}
               {group.label && (
-                <span aria-hidden className="flex shrink-0 items-center gap-1.5 whitespace-nowrap pl-1 pr-1.5 text-small text-muted-foreground">
+                <span aria-hidden className="flex shrink-0 items-center gap-1.5 whitespace-nowrap pl-1 pr-1 text-caption font-medium text-muted-foreground">
                   {group.label}
                 </span>
               )}

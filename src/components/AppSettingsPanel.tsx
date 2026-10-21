@@ -11,6 +11,11 @@
 // under its name and mark, so there is one Settings rather than two that
 // link to each other.
 //
+// The list is a page column (SideColumn.tsx): its edge is dragged to size
+// it, and folded (⌘B, the title bar's toggle, or a drag narrow enough) it
+// becomes a strip of tabs along the top of the page, in the same groups
+// and order, so every page is still a click away.
+//
 // What the pages are, and where an old page id goes now, is data
 // (src/lib/settingsPages.ts); this file is the shell, and each page
 // draws itself from the pieces in SettingsLayout.tsx.
@@ -71,6 +76,8 @@ import { BringYourSetupPage } from "./BringYourSetup";
 import { PastSessionsPage } from "./PastSessions";
 import { AgentDefaults } from "./AgentDefaults";
 import { SettingsPageHeader } from "./SettingsLayout";
+import { SideColumn, SideTabs, type SideTabGroup } from "./SideColumn";
+import { setColumnOpen, useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
 import { WorkspaceMark } from "./WorkspaceMark";
 import { WorkspacePageBody } from "./WorkspaceSettings";
 import { AboutPage, HostedMark } from "./settings/AboutPage";
@@ -188,6 +195,10 @@ function PageBody({ id }: { id: string }) {
 
 /** Pages that draw their own heading, with their own tools in it. */
 const OWN_HEADER = new Set(["plugins", "workspace:members"]);
+
+/** The list of pages beside the page: wide enough at its narrowest for
+ * "Rules and approvals" and "Security checkup" with its count. */
+const SETTINGS_COLUMN: SideColumnSize = { min: 200, max: 380, initial: 252, foldBelow: 150 };
 
 const reducedMotion = () => typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
 
@@ -370,9 +381,48 @@ export function AppSettingsPanel() {
 
   const workspacePage = isWorkspaceSettingsPage(pageId);
 
+  // Folded, the list becomes tabs along the top of the page: every page,
+  // in the list's groups and order, with what the list counts beside it.
+  const folded = useColumnFolded("settings", SETTINGS_COLUMN);
+  const tabGroups: SideTabGroup[] = SETTINGS_GROUPS.map((g) => ({
+    id: g.id,
+    name: g.id === "workspace" && ws ? `${ws.name} workspace` : g.label,
+    // "General" is in two groups, so the workspace's says whose it is
+    label:
+      g.id === "workspace" && ws ? (
+        <>
+          <WorkspaceMark mark={ws.mark} logo={ws.logo} size={12} />
+          <span className="max-w-[140px] truncate">{ws.name}</span>
+        </>
+      ) : (
+        g.label
+      ),
+    tabs: pages
+      .filter((p) => p.group === g.id)
+      .map((p) => ({
+        id: p.id,
+        label: p.label,
+        badge:
+          p.id === "security" && risky > 0 ? (
+            <span aria-label={`${risky} risky`} className="rounded-md bg-destructive/10 px-1.5 py-px text-caption font-medium tabular-nums text-destructive">
+              {risky}
+            </span>
+          ) : p.id === "workspace:members" && waiting > 0 ? (
+            <span aria-label={`${waiting} waiting`} className="text-small font-semibold tabular-nums text-warning">
+              {waiting}
+            </span>
+          ) : undefined,
+      })),
+  })).filter((g) => g.tabs.length);
+  // search lives in the list, so the strip's search opens it there
+  const searchInList = () => {
+    setColumnOpen("settings", true);
+    requestAnimationFrame(() => requestAnimationFrame(() => search.current?.focus()));
+  };
+
   return (
     <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background md:flex-row">
-      <nav aria-label="Settings" className="flex shrink-0 flex-col border-b bg-sidebar/60 md:w-[252px] md:border-b-0 md:border-r">
+      <SideColumn id="settings" size={SETTINGS_COLUMN} as="nav" label="Settings" className="border-b bg-sidebar/60 md:border-b-0">
         {/* No back button of its own: the title bar's Back (or Esc) leaves,
             and on a phone the pill's drawer does; the room on the left
             there is the pill's. */}
@@ -453,26 +503,48 @@ export function AppSettingsPanel() {
             </div>
           )}
         </div>
-      </nav>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-        {/* Plugins draws its own header, with its tools, and lists that
-            want the room of a wider column */}
-        <div className={cn("mx-auto w-full px-5 pb-16 pt-8 md:px-10", pageId === "plugins" ? "max-w-[960px]" : "max-w-[760px]")}>
-          {!OWN_HEADER.has(pageId) && (
-            <SettingsPageHeader
-              title={page.label}
-              description={page.description}
-              eyebrow={
-                workspacePage && ws ? (
-                  <>
-                    <WorkspaceMark mark={ws.mark} logo={ws.logo} size={16} />
-                    <span className="truncate">{ws.name} workspace</span>
-                  </>
-                ) : undefined
-              }
-            />
-          )}
-          <PageBody id={pageId} />
+      </SideColumn>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {folded && (
+          <SideTabs
+            column="settings"
+            label="Settings"
+            groups={tabGroups}
+            current={pageId}
+            onPick={(id) => go(id)}
+            tools={
+              <button
+                type="button"
+                onClick={searchInList}
+                aria-label="Search settings"
+                title="Search settings"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
+              >
+                <SearchIcon size={15} />
+              </button>
+            }
+          />
+        )}
+        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+          {/* Plugins draws its own header, with its tools, and lists that
+              want the room of a wider column */}
+          <div className={cn("mx-auto w-full px-5 pb-16 pt-8 md:px-10", pageId === "plugins" ? "max-w-[960px]" : "max-w-[760px]")}>
+            {!OWN_HEADER.has(pageId) && (
+              <SettingsPageHeader
+                title={page.label}
+                description={page.description}
+                eyebrow={
+                  workspacePage && ws ? (
+                    <>
+                      <WorkspaceMark mark={ws.mark} logo={ws.logo} size={16} />
+                      <span className="truncate">{ws.name} workspace</span>
+                    </>
+                  ) : undefined
+                }
+              />
+            )}
+            <PageBody id={pageId} />
+          </div>
         </div>
       </div>
     </main>
