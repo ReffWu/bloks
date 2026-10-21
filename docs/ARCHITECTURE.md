@@ -129,6 +129,7 @@ Workspaces), written synchronously. No database.
 | `reads.json` | How far each person has read each conversation (see Read positions) |
 | `usage.json`, `model-prices.json` | Daily usage by agent, engine and person; the public price list estimates come from (see Usage and spending limits) |
 | `plan-cache.json` | The Plan page's last good answers from bloks.dev, under a fingerprint of the key |
+| `location.json` | The owner's iPhone's last reading and whether each phone shares, never a trail; left out of backups and moves (see Location) |
 | `messages-<id>.json` | One transcript per agent or room, same key space |
 | `config.json` | Connected providers and keys, `0600` |
 | `skills/*.md` | Installed skills |
@@ -1731,6 +1732,76 @@ agent's first conversation or the one the watcher names (see Lanes), or a
 rehearsal (`openRehearsals`), with the message marked `via: "watcher"`.
 A look is skipped while the agent is busy, so its own edits are not news
 to it, and `mayFire` caps a watcher at six turns an hour.
+
+A place watcher (`kind: "place"`) waits for the owner to arrive at a
+place or leave it, by a name as the phone gives it ("Toronto", "Paris,
+France": every part has to be one of the reading's names) or by
+coordinates and a radius (100 m to 50 km, 500 unless said). It has no
+schedule: it is asked as a reading arrives (`lookAtPlaces`), and on the
+minute tick only while a crossing waits, so a reading that changes
+nothing writes nothing. Its `seen` is the side it last saw and since when,
+by the phone's clock (`placeStep` in `server/location.ts`). The first
+side is a baseline, taken only from a reading under six hours old. A
+crossing fires only if the reading is under thirty minutes old and the
+side it left had held ten minutes, or was the baseline; one that does not
+fire still moves the side, so a late or wobbling crossing is never acted
+on afterwards. A point needs a reading with coordinates accurate enough
+to tell (better than twice the radius, or a kilometre), and counts as
+gone only past the radius and a margin of half of it (at least 150 m);
+while readings carry no coordinates the watcher says so as its last
+error. `once` finishes it after one turn and `until` at a time, both as
+`done` with the watcher switched off; switching it on again clears that.
+Sharing turned off, Forget, or the last phone unpaired clears every
+place watcher's side. Only the owner's own agents may keep one, it speaks
+only in the owner's own lanes, and it is not counted for a hosted
+machine's next wake.
+
+## Location
+
+`server/location.ts`. The owner's iPhone says where it is, once the owner
+turns Location on in the app there: `POST /api/location` with whether it
+is sharing (`on`, `paused` or `off`), whether it shares with the app
+closed, and when on, one reading: when the phone took it, the place in
+words from the phone's own geocoder (city, region, country, time zone,
+and the neighbourhood only with a full accuracy fix), and coordinates
+with their accuracy only when the owner also turned on Exact position.
+Only a paired owner device reaches the route: the guard names the
+device, a member's device is answered by `serveMember` and never gets
+there, an agent's credential is refused (`NEVER`), and a loopback window
+has no phone to speak for. A hosted workspace refuses it
+(`hostedRefusal`): a place goes only to a computer of the person's own.
+Each field is checked; a reading from more than five minutes ahead of
+this clock, or more than a week old, is refused, and a phone may report
+120 times an hour.
+
+The server keeps the newest reading and each phone's choice in
+`location.json`, `0600`, never a history, and leaves it out of backups
+and moves. An older reading than the one kept changes nothing. Off
+forgets that phone's reading; paused keeps it for the owner's own
+Settings but no agent hears it and no watcher acts on it. Revoking the
+phone, or switching pairing off, forgets it all. `GET` and `DELETE` are
+the owner's: the desktop's Location card under Phone and devices shows
+the last place, its age, which phone and how exact, and Forget.
+
+An owner's turn is told one line ahead of its text while sharing is on
+and the reading is under six hours old: "Sam is in Queen West,
+Toronto, Canada, approximately, as of 10 minutes ago, from their
+iPhone." Only the owner's own turns in the owner's own lanes: never a
+member's turn or solo agent, a Telegram person's, a stranger's mail, a
+team lane, a member's lane or a shared room. `bloks location` (`GET
+/api/agent/location`, under the same refusal) answers the reading with
+its age in minutes, `current` up to fifteen minutes, `recent` up to six
+hours and `old` after, how exact it is, and a note on what it is good
+for. `--fresh` puts one private `location-request` frame with a one-time
+id on the owner's own streams and, sealed, to owner devices through the
+relay (as Device settings asks), and waits up to fifteen seconds for a
+reading taken after the ask. A phone answers only while the app is open
+and sharing; otherwise the answer says no reading came and why, and the
+old one is never relabelled as new. Asks within ten seconds share one.
+A report starts no turn and posts nothing; only a place watcher's
+crossing does (see Watchers).
+
+A phone gates all of it on `location` in `/api/health`.
 
 ## Standing intents
 

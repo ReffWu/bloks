@@ -901,6 +901,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "profile":
         case "brief":
+        case "location":
         case "watchers":
         case "intents":
         case "meetings":

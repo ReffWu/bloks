@@ -60,6 +60,11 @@ export const FEATURES: readonly string[] = [
   // or a paired phone's own settings, also sent as it connects and when
   // one of them changes
   "device-settings",
+  // POST /api/location: a paired phone's own place, and whether it is
+  // sharing, on, paused or off, with whether it shares with the app closed;
+  // GET and DELETE for the owner; the private location-request frame an
+  // agent's --fresh puts on the owner's streams; and place watchers
+  "location",
   // GET, POST and DELETE /api/engine-pauses: engines and models paused
   // for a while, and `waitsFor: "pause"` with `waitsUntil` on a message
   // held for one

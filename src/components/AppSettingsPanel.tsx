@@ -62,6 +62,7 @@ import { BackupsSection } from "./BackupsSection";
 import { PluginSettings } from "./PluginSettings";
 import { EnginesPanel } from "./EnginesPanel";
 import { DevicesSection } from "./DevicesSection";
+import { LocationSection } from "./LocationSection";
 import { TelegramSection } from "./TelegramSection";
 import { ChatSection } from "./ChatSection";
 import { RemoteSection } from "./RemoteSection";
@@ -158,6 +159,7 @@ function PageBody({ id }: { id: string }) {
         <>
           <RemoteSection />
           <DevicesSection />
+          <LocationSection />
         </>
       );
     case "chat":

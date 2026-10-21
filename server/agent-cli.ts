@@ -131,6 +131,11 @@ export const RULES: Rule[] = [
   // command on the person's computer, so setting one is theirs alone,
   // and no rule here reaches the routes that do.
   { method: "GET", path: "/api/agent/goal", why: "read the goal the person set for this conversation, if there is one" },
+  // Where the person is, as their own iPhone last said, with how long ago
+  // and how exactly (server/location.ts). Reading only, and only in the
+  // owner's own conversations: the route refuses the rest. The report
+  // itself, and forgetting it, are the person's (NEVER below).
+  { method: "GET", path: "/api/agent/location", why: "read where the person's iPhone last placed them, how long ago and how exactly, or ask it for a fresh reading" },
 
   // Who is here, so an agent can address someone by name rather than
   // guessing. Names, roles and skills only: the roster route already
@@ -160,7 +165,7 @@ export const RULES: Rule[] = [
   { method: "PATCH", path: "/api/routines/:id", why: "change a routine" },
   { method: "DELETE", path: "/api/routines/:id", why: "drop a routine" },
   { method: "GET", path: "/api/watchers", why: "see its own watchers" },
-  { method: "POST", path: "/api/watchers", why: "watch a folder, a web page or a feed, or run a cheap check, and act when it finds something" },
+  { method: "POST", path: "/api/watchers", why: "watch a folder, a web page or a feed, run a cheap check, or wait for the person to arrive at or leave a place, and act when it finds something" },
   { method: "PATCH", path: "/api/watchers/:id", why: "change one of its own watchers without replacing it" },
   { method: "DELETE", path: "/api/watchers/:id", why: "stop one of its own watchers" },
   // Standing intents (server/intents.ts): an agent proposes, the person
@@ -262,6 +267,9 @@ export const NEVER = [
   // the secrets saved for agents, by name, and forgetting one: the
   // person's to keep or drop, never a turn's
   "/api/secrets",
+  // where the person is, as their phone says it: an agent reads it through
+  // /api/agent/location and never says it, changes it or forgets it
+  "/api/location",
 ];
 
 const PATH_PART = /^[\w.-]+$/;

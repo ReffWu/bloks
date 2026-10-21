@@ -1,5 +1,5 @@
-// Watchers (server/watchers.ts): a folder, a page, a feed or a check, and
-// what an agent should do when it changes.
+// Watchers (server/watchers.ts): a folder, a page, a feed, a check or a
+// place, and what an agent should do when it changes.
 //
 // A check runs a command unattended, so one an agent filed shows the
 // command and waits for an Approve here before it ever runs.
@@ -16,6 +16,7 @@ import { FlaskConical } from "@/components/icons";
 import { Folder } from "@/components/icons";
 import { Globe } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
+import { MapPin } from "@/components/icons";
 import { Rss } from "@/components/icons";
 import { ShieldCheck } from "@/components/icons";
 import { SquareTerminal } from "@/components/icons";
@@ -30,7 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import { intervalLabel, intervalPhrase } from "@/lib/checkIns";
 
-type Kind = "folder" | "page" | "feed" | "check";
+type Kind = "folder" | "page" | "feed" | "check" | "place";
 
 interface WatcherRow {
   id: string;
@@ -57,6 +58,14 @@ interface WatcherRow {
   /** Stopped looking on its own after failing again and again. Any
    * change, or a look by hand that works, starts it again. */
   failing?: { at: number; error: string };
+  /** Places: arriving or leaving, how near a point counts, act once, and
+   * when to stop. */
+  when?: "arrive" | "leave";
+  radius?: number;
+  once?: boolean;
+  until?: number;
+  /** Finished on its own: acted once, or its time ran out. */
+  done?: { at: number; why: "once" | "until" };
 }
 
 const KIND: Record<
@@ -95,6 +104,14 @@ const KIND: Record<
     placeholder: "python3 scripts/supplier_replied.py",
     instruction: "A supplier replied: read it and decide the next step.",
   },
+  place: {
+    icon: MapPin,
+    label: "Place",
+    example: "You arrive or leave",
+    field: "Which place",
+    placeholder: "Toronto, or 43.6777,-79.6248",
+    instruction: "When I land, send me the hotel address and the check-in time.",
+  },
 };
 
 /** How often a page, a feed or a check is looked at: the steps the
@@ -115,7 +132,7 @@ function shortTarget(kind: Kind, target: string): string {
   const t = target.trim();
   if (!t) return "";
   if (kind === "folder") return t.split(/[\\/]/).filter(Boolean).pop() ?? t;
-  if (kind === "check") return t.length > 40 ? `${t.slice(0, 39)}…` : t;
+  if (kind === "check" || kind === "place") return t.length > 40 ? `${t.slice(0, 39)}…` : t;
   const bare = t.replace(/^https?:\/\//i, "").replace(/\/$/, "");
   return bare.length > 40 ? `${bare.slice(0, 39)}…` : bare;
 }
@@ -139,6 +156,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
   const bots = state.bots.filter((b) => !b.hidden && !b.archivedAt);
   const [botId, setBotId] = useState(bots[0]?.id ?? "");
   const [kind, setKind] = useState<Kind>("page");
+  const [when, setWhen] = useState<"arrive" | "leave">("arrive");
   const [target, setTarget] = useState("");
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
@@ -155,7 +173,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
     setBusy(true);
     setError(null);
     // a folder is watched as it changes, so how often means nothing to it
-    const body = { botId, kind, target, instruction, ...(kind === "folder" ? {} : { every }) };
+    const body = { botId, kind, target, instruction, ...(kind === "folder" || kind === "place" ? {} : { every }), ...(kind === "place" ? { when } : {}) };
     api("/api/watchers", { method: "POST", body: JSON.stringify(body) })
       .then((r) => onMade(r.watcher.id))
       .catch((e: Error) => setError(e.message))
@@ -173,7 +191,9 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
         ? `${who} will look at ${what || "the page"} ${often} and act when it changes.`
         : kind === "feed"
           ? `${who} will read ${what || "the feed"} ${often} and act on each new post.`
-          : `${who} will run ${what ? `“${what}”` : "the command"} ${often} and act when it exits 0.`;
+          : kind === "place"
+            ? `${who} will act when your iPhone says you ${when === "leave" ? "left" : "arrived in"} ${what || "the place"}.`
+            : `${who} will run ${what ? `“${what}”` : "the command"} ${often} and act when it exits 0.`;
 
   return (
     <div
@@ -188,7 +208,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
       <h2 className="text-heading font-semibold text-foreground">New watcher</h2>
       <p className="mt-1 text-body text-muted-foreground">An agent keeps an eye on something and acts when it changes.</p>
 
-      <div role="radiogroup" aria-label="What to watch" className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div role="radiogroup" aria-label="What to watch" className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-5">
         {(Object.keys(KIND) as Kind[]).map((k, i) => {
           const Icon = KIND[k].icon;
           const on = kind === k;
@@ -296,11 +316,40 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
         className="min-h-[90px] rounded-xl text-body"
       />
 
-      <div className="mt-6 mb-2 text-body font-medium text-foreground">How often it looks</div>
-      {kind === "folder" ? (
-        <div className="text-body text-muted-foreground">As it changes. Folders are watched within seconds.</div>
+      {kind === "place" ? (
+        <>
+          <div className="mt-6 mb-2 text-body font-medium text-foreground">When</div>
+          <div role="radiogroup" aria-label="When" className="flex flex-wrap gap-1.5">
+            {(["arrive", "leave"] as const).map((w) => (
+              <button
+                key={w}
+                type="button"
+                role="radio"
+                aria-checked={when === w}
+                onClick={() => setWhen(w)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-body outline-none transition-[border-color,background-color,scale] duration-150 ease-out active:scale-[0.97]",
+                  when === w ? "border-brand bg-brand-soft font-medium text-foreground" : "bg-card text-foreground/90 hover:border-foreground/20",
+                )}
+              >
+                {w === "arrive" ? "When I arrive" : "When I leave"}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 text-small leading-relaxed text-muted-foreground">
+            A place as your iPhone names it (a city or a neighbourhood), or latitude,longitude for a spot. It acts when your iPhone next says where
+            you are, so Location has to be on in the Bloks app there, and a spot needs Exact position.
+          </div>
+        </>
       ) : (
-        <Slider aria-label="How often it looks" stops={lookStops(every)} value={every} onChange={setEvery} onCommit={setEvery} />
+        <>
+          <div className="mt-6 mb-2 text-body font-medium text-foreground">How often it looks</div>
+          {kind === "folder" ? (
+            <div className="text-body text-muted-foreground">As it changes. Folders are watched within seconds.</div>
+          ) : (
+            <Slider aria-label="How often it looks" stops={lookStops(every)} value={every} onChange={setEvery} onCommit={setEvery} />
+          )}
+        </>
       )}
 
       <div className="mt-6 flex items-start gap-3 rounded-xl bg-muted/60 px-3.5 py-3">
@@ -309,7 +358,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
           <motion.p
             // a new kind, agent or pace swaps the sentence; typing the
             // address only rewrites it, so it never flickers per key
-            key={`${kind}-${every}-${botId}`}
+            key={`${kind}-${every}-${botId}-${when}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -427,7 +476,22 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           Leave blank for the main chat. A new name starts a new one.
         </span>
       </label>
-      {w.kind !== "folder" && (
+      {w.kind === "place" && (
+        <div className="flex flex-col gap-1 text-body text-muted-foreground">
+          <span>
+            {w.when === "leave" ? "When you leave" : "When you arrive"}
+            {w.radius ? `, within ${w.radius >= 1000 ? `${Math.round(w.radius / 100) / 10} km` : `${w.radius} m`}` : ""}
+            {w.once ? ", once" : ""}
+            {w.until ? `, until ${new Date(w.until).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}.
+          </span>
+          {w.done && (
+            <span className="text-foreground">
+              Done {ago(w.done.at)}: {w.done.why === "once" ? "it acted once, as asked." : "its time ran out."} Switch it on to watch again.
+            </span>
+          )}
+        </div>
+      )}
+      {w.kind !== "folder" && w.kind !== "place" && (
         <div className="max-w-[460px]">
           <div className="mb-1.5 text-body text-muted-foreground">How often it looks</div>
           {/* saved where the finger lets go, not at every stop on the way */}
@@ -554,7 +618,7 @@ export function WatchersTab() {
                     <span className="truncate">{w.name}</span>
                   </span>
                   <span className={cn("block truncate text-caption", waiting || w.lastError || w.failing ? "text-warning" : w.enabled ? "text-muted-foreground" : "text-muted-foreground/70")}>
-                    {!w.enabled ? "Paused" : w.suspended === "archived" ? "Paused while archived" : w.failing ? "Stopped for failing" : waiting ? "Needs your approval" : w.lastError ? "Needs a look" : w.fires[0] ? `Triggered ${ago(w.fires[0].at)}` : `Checked ${ago(w.lastCheck)}`}
+                    {w.done ? "Done" : !w.enabled ? "Paused" : w.suspended === "archived" ? "Paused while archived" : w.failing ? "Stopped for failing" : waiting ? "Needs your approval" : w.lastError ? "Needs a look" : w.fires[0] ? `Triggered ${ago(w.fires[0].at)}` : `Checked ${ago(w.lastCheck)}`}
                   </span>
                 </span>
               </button>

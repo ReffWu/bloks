@@ -390,6 +390,8 @@ export function leftOutBecause(rel: string, isDir: boolean, undo: boolean): stri
     if (isDir && (name === "cache" || name === "tmp")) return "cache";
     if (isDir && name === "checkpoints" && !undo) return "Undo history, not asked for";
     if (!isDir && (name === "server.lock" || name === "port")) return "belongs to the running server";
+    // where the person's phone last was is for now, and for this computer
+    if (!isDir && name === "location.json") return "where your phone last was, which is not kept";
   }
   // the record of rehearsals stays; the copies they ran in do not
   if (parts[0] === "rehearsals" && parts.length === 2 && name !== "index.json") return "rehearsal copy";

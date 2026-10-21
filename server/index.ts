@@ -23,6 +23,7 @@ import * as attachments from "./attachments.ts";
 import { agentTurnLimit, validTurnLimit, pastAgentLimit, chainName, chainExcerpt, chainLimitText, chainAgentRefusal, MIN_AGENT_CHAIN_LIMIT, MAX_AGENT_CHAIN_LIMIT, agentTaskBudget, validTaskBudget, chainPast, taskFor, taskName, chainHoldText, MIN_TASK_BUDGET, MAX_TASK_BUDGET, type ChainBound, type ChainTask } from "./agent-chain.ts";
 import { takeBackWaiting } from "./take-back.ts";
 import { DeviceSettings, type ReportSource } from "./settings-devices.ts";
+import { CONTEXT_MS, EMPTY_STATE, FRESH_WAIT_MS, Whereabouts, cleanState, crossingWords, hearsWhere, parsePlace, placePending, placeStep, placeWords, precisionWords, readSeen, agoWords, sideOf, DEFAULT_RADIUS, type LocationState, type SharedLocation } from "./location.ts";
 import { SettingsPages, type SettingsCategory } from "./settings-pages.ts";
 import { DEVICE_CATEGORIES, noStore, readReport, serveSettingsRead } from "./settings-read-http.ts";
 import { settingsCatalog } from "./settings-catalog.ts";
@@ -2315,6 +2316,27 @@ function clientBot(bot: BotRecord | null) {
 // ── pushing events to open clients ─────────────────────────────────────
 const sseClients = new Set<ServerResponse>();
 const deviceSettings = new DeviceSettings();
+// Where the owner's iPhone last said they were (server/location.ts): the
+// last reading and who is sharing, never a trail. Its own file, so a
+// backup or a move leaves it behind (server/backup.ts).
+const LOCATION_FILE = join(DATA_DIR, "location.json");
+const whereabouts = new Whereabouts(
+  (() => {
+    try {
+      return readSaved<LocationState>(LOCATION_FILE, EMPTY_STATE, (v) => isRecord(v));
+    } catch {
+      return EMPTY_STATE;
+    }
+  })(),
+  (state) => {
+    try {
+      mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+      writeFileAtomic(LOCATION_FILE, JSON.stringify(cleanState(state)), 0o600);
+    } catch {
+      /* kept in memory; written with the next report */
+    }
+  },
+);
 const settingsPages = new SettingsPages();
 const settingsTimeZone = (() => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; }
@@ -6720,6 +6742,22 @@ async function startClaimedTurn(
       // The session the person brought over, carried on: told once where
       // it is now. It never ran the CLI from anywhere, so nothing moved.
       const carriedOver = !command && task.imported && !task.imported.carried && typeof resumeCursor === "string" && resumeCursor === task.imported.sessionId;
+      // Where the owner is, while their iPhone shares it and the reading is
+      // recent (server/location.ts): a line ahead of the owner's own turns
+      // and nobody else's. Never a member's turn or a member's agent, and
+      // never a team agent's shared conversation, a member's private one,
+      // a shared room or a stranger's mail, where other people read what
+      // the agent says.
+      const ownersOwn = hearsWhere({
+        owner: owners,
+        member: Boolean(turnPerson) || Boolean(bot.solo && bot.solo.by !== "owner"),
+        outsider: guestMail || Boolean(personSource),
+        othersRead: Boolean(sharing) || isSharedLane(task.id),
+      });
+      const whereNow = !command && ownersOwn
+        ? whereabouts.contextLine({ name: cfg.profile?.name, cli: credential && !credential.messenger && !credential.reply ? cliCommand : null })
+        : null;
+      if (whereNow) turnText = `${whereNow}\n\n${turnText}`;
       // what a new session is told instead, if the engine cannot carry it on
       const unprefaced = turnText;
       if (carriedOver) {
@@ -7724,6 +7762,24 @@ async function checkWatcher(id: string, manual = false): Promise<{ fired: boolea
       if (outcome.error) throw new Error(outcome.error);
       next.seen = outcome.seen;
       what = outcome.what;
+    } else if (w.kind === "place") {
+      const now = Date.now();
+      // its time ran out: done, whatever the last reading says
+      if (w.until && now >= w.until) {
+        finishWatcher(w, "until");
+        return { fired: false, note: "Its time ran out, so it stopped watching." };
+      }
+      const place = parsePlace(w.target);
+      if (!place) throw new Error("that place cannot be read; give it by name or as latitude,longitude");
+      const at = whereabouts.usable();
+      const prev = readSeen(w.seen);
+      // A first side only from a reading recent enough to say where they
+      // are now; an old one would make the next reading look like a move.
+      if (at && (prev || now - at.observedAt <= CONTEXT_MS)) {
+        const step = placeStep(prev, sideOf(place, w.radius ?? DEFAULT_RADIUS, at), at.observedAt, now, w.when ?? "arrive");
+        if (step.next) next.seen = JSON.stringify(step.next);
+        if (step.fire) what = placeNews(w, at, now);
+      }
     } else if (w.kind === "folder") {
       if (!existsSync(w.target)) throw new Error("the folder is not there any more");
       const now = folderSnapshot(w.target);
@@ -7763,6 +7819,8 @@ async function checkWatcher(id: string, manual = false): Promise<{ fired: boolea
         await fireWatcher(w, bot, what);
         fired = true;
         ownEnded = w.kind === "folder" && w.mode !== "rehearse" && !ownTurns.has(w.id);
+        // asked to act once: that was the once
+        if (w.once) finishWatcher(w, "once");
       } else {
         w.lastError = "Held back: it already started six turns in the last hour.";
       }
@@ -7850,14 +7908,143 @@ const sweepRehearsals = () =>
     .catch(() => {});
 sweepRehearsals();
 setInterval(sweepRehearsals, 60 * 60_000).unref?.();
-// Pages and feeds on their own schedules; folders as a fallback.
+// Pages and feeds on their own schedules; folders as a fallback. Places
+// have no schedule: each is asked as a reading arrives, and here only
+// while a crossing still waits to be acted on, or its time has run out.
 setInterval(() => {
   const now = Date.now();
   for (const w of watchers) {
-    if (!w.enabled || w.failing || suspendedFor(w.botId)) continue;
+    if (!w.enabled || w.failing || suspendedFor(w.botId) || w.kind === "place") continue;
     if ((w.lastCheck ?? 0) + w.every * 60_000 <= now) void checkWatcher(w.id);
   }
+  lookAtPlaces();
 }, 60_000).unref?.();
+
+/** What a place watcher says when its agent cannot tell from the readings
+ * it gets, kept as its last error so the person and the agent can see it. */
+const APPROXIMATE_PLACE =
+  "Location is shared approximately, with no exact position, so a place given by coordinates cannot be told. Turn on Exact position in the Bloks app on the iPhone, or give the place by name.";
+
+/**
+ * Every place watcher with something to do now: a reading on the other
+ * side of its place from the last one it saw, or its time run out. The
+ * rest are not looked at, so a reading that changes nothing writes
+ * nothing. One given by coordinates says so while the readings it gets
+ * have none.
+ */
+function lookAtPlaces() {
+  const at = whereabouts.usable();
+  const now = Date.now();
+  let noted = false;
+  for (const w of watchers) {
+    if (w.kind !== "place" || !w.enabled || w.failing || suspendedFor(w.botId)) continue;
+    if (w.until && now >= w.until) {
+      void checkWatcher(w.id);
+      continue;
+    }
+    const vague = Boolean(at && at.latitude === undefined && parsePlace(w.target)?.kind === "point");
+    if (vague && w.lastError !== APPROXIMATE_PLACE) {
+      w.lastError = APPROXIMATE_PLACE;
+      noted = true;
+    } else if (!vague && at && w.lastError === APPROXIMATE_PLACE) {
+      w.lastError = undefined;
+      noted = true;
+    }
+    if (placePending(w.target, w.radius, w.seen, at)) void checkWatcher(w.id);
+  }
+  if (noted) {
+    saveWatchers();
+    broadcast({ kind: "watchers" });
+  }
+}
+
+/** Sharing turned off, or what this computer held forgotten: every place
+ * watcher starts again from the next reading, which is a first side and
+ * acts on nothing. Without this, a reading after sharing comes back on
+ * would be read as a move from wherever the last one was. */
+function placesStartOver() {
+  let changed = false;
+  for (const w of watchers) {
+    if (w.kind !== "place") continue;
+    if (w.seen !== undefined) {
+      delete w.seen;
+      changed = true;
+    }
+    if (w.lastError === APPROXIMATE_PLACE) {
+      w.lastError = undefined;
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveWatchers();
+    broadcast({ kind: "watchers" });
+  }
+}
+
+/** A place watcher that has done what it was for: acted once as asked, or
+ * reached its time. Off, and marked done, so the lists say finished rather
+ * than paused; switching it on again clears both. */
+function finishWatcher(w: Watcher, why: "once" | "until") {
+  w.enabled = false;
+  w.done = { at: Date.now(), why };
+  disarmWatcher(w.id);
+}
+
+/** Why where the owner is may not be told to this agent in this
+ * conversation, or null. Only the owner's own agents, in the owner's own
+ * conversations: never a member's solo agent, and never a team agent's
+ * shared conversation, a member's private one, a shared room's or a
+ * stranger's mail, where other people read what the agent says. */
+function locationRefusal(botId: string, laneId: string | undefined): string | null {
+  const bot = store.bot(botId);
+  if (!bot) return "no such agent";
+  if (bot.solo && bot.solo.by !== "owner") return "The owner's location goes only to the owner's own agents, and this one is a member's.";
+  if (laneId && (isSharedLane(laneId) || store.taskByThread(laneId)?.task.guestMail)) {
+    return "The owner's location is not told in a conversation other people read.";
+  }
+  return null;
+}
+
+/** What an agent filing a place watcher is told, so it can tell the
+ * person what to expect rather than promise an alert that cannot come. */
+function placeWatchNote(w: Watcher): string {
+  const sharing = whereabouts.sharing();
+  const at = whereabouts.usable();
+  const said = [
+    sharing === "off"
+      ? "Location sharing is off on their iPhone, so this waits until they turn it on in the Bloks app (Settings, Location)."
+      : sharing === "paused"
+        ? "Location sharing is paused on their iPhone, so this waits until they resume it."
+        : whereabouts.background() === false
+          ? "Their iPhone shares where they are only while Bloks is open on it, so this acts when they next open Bloks there. For it to act with the phone locked, they turn on Share while Bloks is closed (Settings, Location)."
+          : null,
+    at && at.latitude === undefined && parsePlace(w.target)?.kind === "point" ? APPROXIMATE_PLACE : null,
+    "It acts when the iPhone next says where they are, which it does after moving a fair way or arriving somewhere, so allow a few minutes either side.",
+  ];
+  return said.filter(Boolean).join(" ");
+}
+
+/** Where the owner is, for their own screens: the reading with everything
+ * it carries, which phone said it, and each phone's choice. A phone no
+ * longer paired has been forgotten already (forgetDevice). */
+function locationView() {
+  const state = whereabouts.snapshot();
+  const named = (id: string) => pairedDevices().find((d) => d.id === id && !d.personId)?.name ?? "A phone";
+  return {
+    sharing: whereabouts.sharing(),
+    location: state.latest ? { ...state.latest, place: placeWords(state.latest), device: named(state.latest.deviceId) } : null,
+    devices: Object.entries(state.devices).map(([id, d]) => ({ id, name: named(id), ...d })),
+  };
+}
+
+/** What a place watcher's turn is told happened. */
+function placeNews(w: Watcher, at: SharedLocation, now: number): string {
+  const who = cfg.profile?.name?.trim() || "The person you work for";
+  return [
+    `${who} ${crossingWords(w.target, w.radius, w.when ?? "arrive")}.`,
+    `Their iPhone placed them in ${placeWords(at)} ${agoWords(now - at.observedAt)} (${new Date(at.observedAt).toISOString()}), ${precisionWords(at)}.`,
+  ].join(" ");
+}
 
 /**
  * The same task, on a copy of the first agent's folder, by each of these
@@ -21249,6 +21436,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!checked.ok) return json(res, 400, { error: checked.error });
       const unnamed = threadRefusal(checked.value.botId, checked.value.thread);
       if (unnamed) return json(res, 400, { error: unnamed });
+      // a place follows the owner, so only for the owner's own agents, and
+      // only where a phone can say where the owner is (not a hosted machine)
+      if (checked.value.kind === "place" && HOSTED) return json(res, 409, { error: "This workspace is hosted, and location from the iPhone goes only to a computer of your own, so a place watcher has nothing to go on here." });
+      const placeRefused = checked.value.kind === "place" ? locationRefusal(checked.value.botId, asAgent?.taskId) : null;
+      if (placeRefused) return json(res, 403, { error: placeRefused });
       if (watchers.length >= 50) return json(res, 409, { error: "fifty watchers is the limit" });
       const w: Watcher = {
         id: newId(),
@@ -21272,11 +21464,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       void checkWatcher(w.id);
       broadcast({ kind: "watchers" });
       const waiting = w.kind === "check" && !w.approvedBy;
+      const placeNote = w.kind === "place" ? placeWatchNote(w) : null;
       return json(res, 201, {
         watcher: watcherView(w),
         ...(waiting
           ? { note: `Filed, but its command does not run until ${hostName()} approves it in Watchers. Tell them it is waiting and what it runs.` }
-          : {}),
+          : placeNote
+            ? { note: placeNote }
+            : {}),
       });
     }
     m = path.match(/^\/api\/watchers\/([\w-]+)$/);
@@ -21303,8 +21498,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return json(res, 200, { ok: true });
       }
       const body = await readBody(req);
-      const checked = cleanWatcher({ ...w, ...body, botId: asAgent ? w.botId : (body.botId ?? w.botId) }, (id) => Boolean(store.bot(id)));
+      // A watcher that finished at its time and is switched on again
+      // starts with no time, or it would only finish again. A time already
+      // kept is not checked against now; one given in this change is.
+      const reopened = body.enabled === true && w.done !== undefined;
+      const until = Object.hasOwn(body, "until") ? body.until : reopened && w.done?.why === "until" ? undefined : w.until;
+      const checked = cleanWatcher(
+        { ...w, ...body, until: Object.hasOwn(body, "until") ? until : undefined, botId: asAgent ? w.botId : (body.botId ?? w.botId) },
+        (id) => Boolean(store.bot(id)),
+      );
       if (!checked.ok) return json(res, 400, { error: checked.error });
+      if (checked.value.kind === "place" && !Object.hasOwn(body, "until") && until !== undefined) checked.value.until = until;
+      const placeRefused = checked.value.kind === "place" && w.kind !== "place" ? locationRefusal(checked.value.botId, asAgent?.taskId) : null;
+      if (placeRefused) return json(res, 403, { error: placeRefused });
       const renamed = checked.value.thread !== w.thread || checked.value.botId !== w.botId;
       const unnamed = renamed ? threadRefusal(checked.value.botId, checked.value.thread) : null;
       if (unnamed) return json(res, 400, { error: unnamed });
@@ -21314,6 +21520,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       Object.assign(w, checked.value);
       // an empty filter, or a watcher that is no longer a page, has none
       if (!checked.value.mentions) delete w.mentions;
+      // and what only a place has goes when it is not one, or is not said
+      if (checked.value.radius === undefined) delete w.radius;
+      if (!checked.value.once) delete w.once;
+      if (checked.value.until === undefined) delete w.until;
+      if (checked.value.when === undefined) delete w.when;
+      if (reopened || w.kind !== "place") delete w.done;
       if (moved) {
         delete w.seen;
         delete w.seenItems;
@@ -22129,6 +22341,65 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         : kind === "phone" ? deviceSettings.reportPhone(source, body, client, inspectionRedactor(saved?.value, cfg))
         : false;
       return accepted ? noStore(res, 200, { ok: true }) : noStore(res, 409, { error: "settings report was not accepted" });
+    }
+
+    // ── where the owner is, from their iPhone (server/location.ts) ──
+    // Reported by a paired owner device and by nothing else: a member's
+    // device never gets this far (serveMember above), an agent's credential
+    // is never let near it (NEVER in server/agent-cli.ts), and this
+    // computer's own window has no phone to speak for. Read and forgotten
+    // by the owner, here or on one of their own devices.
+    if (path === "/api/location") {
+      if (asAgent) return noStore(res, 403, { error: "that is the person's" });
+      if (namesMember()) return noStore(res, 403, { error: "the owner's location is the owner's alone" });
+      if (method === "GET") return noStore(res, 200, locationView());
+      if (method === "DELETE") {
+        whereabouts.forget();
+        placesStartOver();
+        broadcast({ kind: "location" });
+        return noStore(res, 200, locationView());
+      }
+      if (method !== "POST") return noStore(res, 405, { error: "GET, POST or DELETE" });
+      const phone = caller && !caller.personId ? caller : null;
+      if (!phone) return noStore(res, 403, { error: "a place is said by a paired iPhone" });
+      let body: unknown;
+      try {
+        body = await readBody(req);
+      } catch {
+        return noStore(res, 400, { error: "invalid location report" });
+      }
+      const was = whereabouts.sharing();
+      const said = whereabouts.report(phone.id, body);
+      if (!said.ok) return noStore(res, said.status, { error: said.error });
+      // off, or the last reading gone with its device: the next one is new
+      if (whereabouts.sharing() === "off" && was !== "off") placesStartOver();
+      if (said.changed) lookAtPlaces();
+      broadcast({ kind: "location" });
+      return noStore(res, 200, { ok: true, sharing: whereabouts.sharing(), ...(said.answered ? { answered: true } : {}) });
+    }
+    // `bloks location`: where the owner is, how long ago and how exactly,
+    // or why it is not known. --fresh asks the owner's phone for a new
+    // reading, on the owner's own streams only, and waits a little.
+    if (method === "GET" && path === "/api/agent/location") {
+      if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });
+      const refused = locationRefusal(asAgent.botId, asAgent.taskId);
+      if (refused) return noStore(res, 403, { error: refused });
+      const who = { name: cfg.profile?.name, cli: CLI_COMMAND };
+      const wantsFresh = ["1", "true", ""].includes(url.searchParams.get("fresh") ?? "-");
+      if (!wantsFresh || whereabouts.sharing() !== "on") return noStore(res, 200, whereabouts.forAgent(who));
+      const ask = whereabouts.ask(askOwnerSurfaces);
+      const answered = await whereabouts.wait(ask, Number(process.env.BLOKS_LOCATION_WAIT_MS) || FRESH_WAIT_MS);
+      return noStore(res, 200, {
+        ...whereabouts.forAgent(who),
+        refresh: answered
+          ? { asked: true, answered: true }
+          : {
+              asked: true,
+              answered: false,
+              note:
+                "No new reading came from their iPhone in time. It answers only while Bloks is open on it; locked or in a pocket, it says where it is by itself only after moving a fair way or arriving somewhere. Use the reading above with its age said, if that is good enough for this, or ask them to open Bloks on their iPhone or to say where they are.",
+            },
+      });
     }
 
     // ── who an agent's credential says it is ──
@@ -23386,7 +23657,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return json(res, 400, { error: "enabled must be true or false" });
       }
       const saved = setRemoteEnabled(body.enabled);
-      if (!body.enabled) deviceSettings.forgetDevices();
+      if (!body.enabled) {
+        deviceSettings.forgetDevices();
+        // no phone reaches this computer now, so none is sharing with it
+        whereabouts.forgetDevices();
+        placesStartOver();
+        broadcast({ kind: "location" });
+      }
       Object.assign(cfg, saved);
       // pairing is the master switch for all remote access, the relay
       // included: turning it off drops the outbound line immediately
@@ -23433,6 +23710,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!local) return json(res, 403, { error: "not from here" });
       const saved = revokeAll();
       deviceSettings.forgetDevices();
+      whereabouts.forgetDevices();
+      placesStartOver();
+      broadcast({ kind: "location" });
       liveActivities.sweep();
       broadcast({ kind: "pairing", ...pairingStatus(saved) });
       return json(res, 200, { ok: true });
@@ -23446,6 +23726,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (ok) deviceSettings.forget(m[1]);
       // its Live Activity tokens go with it
       if (ok) liveActivities.forget(m[1]);
+      // and where it last said it was, with whether it was sharing
+      if (ok) {
+        const had = whereabouts.sharing();
+        whereabouts.forgetDevice(m[1]);
+        if (had !== "off" && whereabouts.sharing() === "off") placesStartOver();
+        broadcast({ kind: "location" });
+      }
       return json(res, ok ? 200 : 404, ok ? { ok: true } : { error: "no such device" });
     }
 

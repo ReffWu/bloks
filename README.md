@@ -249,8 +249,8 @@ conversations, and says exactly what it was given.
 
 - **Routines and check-ins** on a calendar you drag, that answer quietly
   when nothing needs you.
-- **Watchers** on a folder, a web page or a feed: "when an invoice lands
-  here, file it".
+- **Watchers** on a folder, a web page, a feed or a place: "when an
+  invoice lands here, file it", "when I land, send me the hotel address".
 - **Standing intents**: words that come up in a conversation bring an
   agent in or message one.
 - **Workflows** with a trigger, some steps and a person who says yes, kept
@@ -277,7 +277,8 @@ conversations, and says exactly what it was given.
 
 - **Your phone.** The iPhone app reaches your computer over a sealed relay
   or your own wifi: approvals behind Face ID, Live Activities, widgets,
-  Siri and the share sheet, and Apple Watch.
+  Siri and the share sheet, and Apple Watch. Turn on Location there and
+  your own agents know roughly where you are, kept on your computer only.
 - **Any browser.** With Bloks Cloud, the same app opens at
   [bloks.dev/web](https://bloks.dev/web), every request sealed in the
   browser for your computer alone.

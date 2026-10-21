@@ -39,24 +39,45 @@
 //
 // and, as with every watcher, the first look only takes a baseline and
 // the same finding twice in a row is not news.
+//
+// A fifth kind is a place: the person arriving at one, or leaving it, as
+// their own iPhone says where they are (server/location.ts). It does not
+// look on a schedule. It is asked as each reading arrives, and once a
+// minute only while a crossing waits to be acted on (its agent busy, say),
+// and a crossing heard too late, or a fix that wobbles on the line, is
+// not acted on. It can be told to act once and be done, or to stop at a
+// time, since "when I land" is about one flight.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { DEFAULT_RADIUS, MAX_RADIUS, MIN_RADIUS, parsePlace } from "./location.ts";
 
-export type WatchKind = "folder" | "page" | "feed" | "check";
+export type WatchKind = "folder" | "page" | "feed" | "check" | "place";
 
 export interface Watcher {
   id: string;
   botId: string;
   name: string;
   kind: WatchKind;
-  /** A folder path, an http(s) URL, or for a check the command it runs. */
+  /** A folder path, an http(s) URL, for a check the command it runs, and
+   * for a place its name or "latitude,longitude". */
   target: string;
   /** What the agent should do when it changes. */
   instruction: string;
   /** Pages only: fire only when the new text mentions this. */
   mentions?: string;
+  /** Places only: whether arriving or leaving is what it waits for. */
+  when?: "arrive" | "leave";
+  /** Places given by coordinates: how near counts as there, in metres. */
+  radius?: number;
+  /** Places only: act once, then be done. */
+  once?: boolean;
+  /** Places only: stop waiting after this time (epoch milliseconds). */
+  until?: number;
+  /** Finished on its own: it acted once as asked, or its time ran out.
+   * Switched off at the same moment; switching it on again clears this. */
+  done?: { at: number; why: "once" | "until" };
   /** Act in the real folder, or rehearse on a copy first. */
   mode: "act" | "rehearse";
   /** Minutes between looks, for pages and feeds. */
@@ -405,7 +426,19 @@ export function mayFire(w: Pick<Watcher, "fires">, now: number): boolean {
 }
 
 /** What the agent is told. */
-export function watcherTurn(w: Pick<Watcher, "kind" | "target" | "instruction" | "name">, what: string): string {
+export function watcherTurn(w: Pick<Watcher, "kind" | "target" | "instruction" | "name" | "once">, what: string): string {
+  if (w.kind === "place") {
+    return [
+      `Your watcher "${w.name}": ${what}`,
+      "",
+      `What you were asked to do when this happens: ${w.instruction}`,
+      "",
+      w.once ? "It was set to act once, so it is done after this turn." : null,
+      "If this does not call for that, say so in one line and stop.",
+    ]
+      .filter((line) => line !== null)
+      .join("\n");
+  }
   if (w.kind === "check") {
     return [
       `Your watcher "${w.name}" ran its check (\`${w.target}\`) and it found something.`,
@@ -431,11 +464,14 @@ export function watcherTurn(w: Pick<Watcher, "kind" | "target" | "instruction" |
   ].join("\n");
 }
 
-export function cleanWatcher(raw: Record<string, unknown>, botExists: (id: string) => boolean):
-  | { ok: true; value: Pick<Watcher, "botId" | "name" | "kind" | "target" | "instruction" | "mentions" | "mode" | "every" | "enabled" | "thread"> }
+/** The fields only a place watcher has, said again by every change. */
+export type PlaceFields = Pick<Watcher, "when" | "radius" | "once" | "until">;
+
+export function cleanWatcher(raw: Record<string, unknown>, botExists: (id: string) => boolean, now = Date.now()):
+  | { ok: true; value: Pick<Watcher, "botId" | "name" | "kind" | "target" | "instruction" | "mentions" | "mode" | "every" | "enabled" | "thread"> & PlaceFields }
   | { ok: false; error: string } {
   const kind = raw.kind;
-  if (kind !== "folder" && kind !== "page" && kind !== "feed" && kind !== "check") return { ok: false, error: "kind is folder, page, feed or check" };
+  if (kind !== "folder" && kind !== "page" && kind !== "feed" && kind !== "check" && kind !== "place") return { ok: false, error: "kind is folder, page, feed, check or place" };
   const botId = typeof raw.botId === "string" ? raw.botId : "";
   if (!botExists(botId)) return { ok: false, error: "no such agent" };
   const target = String(raw.target ?? "").trim();
@@ -447,8 +483,30 @@ export function cleanWatcher(raw: Record<string, unknown>, botExists: (id: strin
     if (target.length > MAX_CHECK_COMMAND) return { ok: false, error: `a check is at most ${MAX_CHECK_COMMAND} characters` };
   } else if (kind === "folder") {
     if (!target.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(target)) return { ok: false, error: "a folder is a full path" };
+  } else if (kind === "place") {
+    if (!parsePlace(target)) return { ok: false, error: 'a place is a name as the phone would put it ("Toronto", "Shinjuku, Tokyo") or "latitude,longitude"' };
   } else if (!/^https?:\/\/[^\s]+$/i.test(target)) {
     return { ok: false, error: "a page or feed is an http or https address" };
+  }
+  let place: PlaceFields = {};
+  if (kind === "place") {
+    const when = raw.when ?? "arrive";
+    if (when !== "arrive" && when !== "leave") return { ok: false, error: "a place watcher waits to arrive or to leave" };
+    const point = parsePlace(target)?.kind === "point";
+    const asked = raw.radius === undefined || raw.radius === null ? DEFAULT_RADIUS : Number(raw.radius);
+    if (!Number.isFinite(asked)) return { ok: false, error: "a radius is a number of metres" };
+    let until: number | undefined;
+    if (raw.until !== undefined && raw.until !== null && raw.until !== "") {
+      until = typeof raw.until === "number" ? raw.until : Date.parse(String(raw.until));
+      if (!Number.isFinite(until)) return { ok: false, error: "until is a date and time, like 2026-10-24T18:00" };
+      if (until <= now) return { ok: false, error: "until is already past" };
+    }
+    place = {
+      when,
+      ...(point ? { radius: Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, Math.round(asked))) } : {}),
+      ...(raw.once === true ? { once: true } : {}),
+      ...(until !== undefined ? { until: Math.round(until) } : {}),
+    };
   }
   const instruction = String(raw.instruction ?? "").trim();
   if (!instruction) return { ok: false, error: "say what the agent should do when it changes" };
@@ -457,13 +515,15 @@ export function cleanWatcher(raw: Record<string, unknown>, botExists: (id: strin
   const mentions = String(raw.mentions ?? "").trim().slice(0, 120);
   // a lane title or id: one line, as short as any other lane's
   const thread = typeof raw.thread === "string" ? raw.thread.replace(/\s+/g, " ").trim().slice(0, 40) : "";
+  const named = kind === "check" ? target.split(/\s+/).slice(0, 3).join(" ") : kind === "place" ? `${place.when === "leave" ? "Leaving" : "Arriving at"} ${target}` : target.split(/[\\/]/).filter(Boolean).pop();
   return {
     ok: true,
     value: {
+      ...place,
       botId,
       kind,
       target,
-      name: (String(raw.name ?? "").trim() || (kind === "check" ? target.split(/\s+/).slice(0, 3).join(" ") : target.split(/[\\/]/).filter(Boolean).pop()) || kind).slice(0, 60),
+      name: (String(raw.name ?? "").trim() || named || kind).slice(0, 60),
       instruction,
       ...(mentions && kind === "page" ? { mentions } : {}),
       mode: raw.mode === "rehearse" ? "rehearse" : "act",

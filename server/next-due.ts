@@ -10,7 +10,8 @@
 //
 // Earliest of every routine that will run and every page, feed or check
 // watcher that will look. A folder watcher is left out: a folder on this
-// machine only changes while it is awake.
+// machine only changes while it is awake. So is a place watcher, which
+// has no schedule of its own: it is asked as a reading arrives.
 import { nextScheduledAfter, type Routine } from "./routines.ts";
 import type { Watcher } from "./watchers.ts";
 
@@ -37,7 +38,7 @@ export function nextDueAt({ routines, watchers, suspended, now }: NextDueInput):
     consider(nextScheduledAfter(routine, new Date(now))?.getTime());
   }
   for (const watcher of watchers) {
-    if (!watcher.enabled || watcher.failing || watcher.kind === "folder") continue;
+    if (!watcher.enabled || watcher.failing || watcher.kind === "folder" || watcher.kind === "place") continue;
     if (suspended(watcher.botId)) continue;
     const every = Math.max(1, Number(watcher.every) || 0) * 60_000;
     consider(Math.max(now, (watcher.lastCheck ?? 0) + every));

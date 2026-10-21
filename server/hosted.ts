@@ -80,6 +80,12 @@ export function hostedRefusal(method: string, path: string): { status: number; e
   if (method === "POST" && path === "/api/meetings") {
     return { status: 409, error: `Meeting notes listen through your Mac's microphone. ${NEEDS_MAC}` };
   }
+  // Where the person is goes only to a computer of their own, never to a
+  // machine run for them (server/location.ts), so the phone never offers
+  // it here and nothing here takes it or tells it.
+  if (path === "/api/location" || path === "/api/agent/location") {
+    return { status: 409, error: "This workspace is hosted. Location from your iPhone goes only to a computer of your own, so it is not offered here." };
+  }
   return null;
 }
 

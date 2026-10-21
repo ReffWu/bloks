@@ -63,6 +63,18 @@ const COMMANDS = {
     // a goal is read here, never set
     run: () => request("GET", "/api/agent/goal"),
   },
+  location: {
+    use: "location [--fresh]",
+    about:
+      "where the person's iPhone last placed them, how long ago and how exactly (a city, a neighbourhood, or an exact position), " +
+      "or why it is not known: sharing off or paused, or nothing said yet. --fresh asks the phone for a new reading and waits up to 15 seconds; " +
+      "it can answer only while Bloks is open on it, and says plainly when none came. Never treat an old or approximate reading as where they are right now: " +
+      "say its age, or ask",
+    run: (args) => {
+      if (args.some((arg) => arg !== "--fresh")) throw new Error("location takes only --fresh");
+      return request("GET", `/api/agent/location${args.includes("--fresh") ? "?fresh=1" : ""}`);
+    },
+  },
   agents: {
     use: "agents",
     about:
@@ -175,34 +187,48 @@ const COMMANDS = {
     },
   },
   watch: {
-    use: 'watch --folder <path> | --page <url> | --feed <url> | --check "<command>" --do "<what to do when it changes>" [--name <name>] [--every <minutes>] [--mentions <text>] [--thread <conversation>] [--rehearse]',
+    use: 'watch --folder <path> | --page <url> | --feed <url> | --check "<command>" | --arrive <place> | --leave <place> --do "<what to do when it changes>" [--name <name>] [--every <minutes>] [--mentions <text>] [--radius <metres>] [--once] [--until <date and time>] [--thread <conversation>] [--rehearse]',
     about:
-      "act when a folder, a web page or a feed changes, or when a cheap check you wrote finds something: " +
+      "act when a folder, a web page or a feed changes, when a cheap check you wrote finds something, or when the person arrives at or leaves a place: " +
       "--check runs a command every --every minutes without waking you; exit 0 means act (what it prints is passed on), exit 1 means nothing to do. " +
       "Unless you may run commands without asking, the person approves the command before it runs. " +
+      '--arrive and --leave take a place as their iPhone names it ("Toronto", "Shinjuku, Tokyo") or as latitude,longitude with --radius in metres (500 unless said); ' +
+      "it acts when their phone next says where they are, needs location sharing on there, and a place by coordinates needs Exact position on. " +
+      "--once is done after acting once; --until stops it at a time, such as 2026-10-24T18:00, when its purpose runs out. " +
       "The instruction (--do) and folder, page or feed target can each be up to 1,000 characters; a check command can be up to 500. Longer text is refused, not cut. " +
       "Its turns come to your first conversation, where the person talks to you; --thread sends them to another, by its title (made if missing) or its id",
     run: async (args) => {
       const flags = parseFlags(args);
-      const kind = flags.folder ? "folder" : flags.page ? "page" : flags.feed ? "feed" : flags.check ? "check" : null;
-      if (!kind) throw new Error("watch needs --folder, --page, --feed or --check");
+      const kind = flags.folder ? "folder" : flags.page ? "page" : flags.feed ? "feed" : flags.check ? "check" : flags.arrive || flags.leave ? "place" : null;
+      if (!kind) throw new Error("watch needs --folder, --page, --feed, --check, --arrive or --leave");
+      if (flags.arrive && flags.leave) throw new Error("watch takes one of --arrive or --leave");
       if (!flags.do) throw new Error('watch needs --do "what to do when it changes"');
       const asked = flags.every ? Number(flags.every) : undefined;
+      if (kind === "place" && flags.radius !== undefined && !Number.isFinite(Number(flags.radius))) throw new Error("--radius needs a number of metres");
       const filed = await request("POST", "/api/watchers", {
         kind,
-        target: flags[kind],
+        target: kind === "place" ? (flags.arrive ?? flags.leave) : flags[kind],
         instruction: flags.do,
         name: flags.name,
         every: asked,
         mentions: flags.mentions,
+        ...(kind === "place"
+          ? {
+              when: flags.leave ? "leave" : "arrive",
+              ...(flags.radius !== undefined ? { radius: Number(flags.radius) } : {}),
+              ...(flags.once === "true" ? { once: true } : {}),
+              ...(flags.until ? { until: flags.until } : {}),
+            }
+          : {}),
         ...(flags.thread ? { thread: flags.thread } : {}),
         mode: flags.rehearse ? "rehearse" : "act",
       });
       // The workspace keeps --every within its bounds without saying so,
       // and an agent that asked for 2 would otherwise plan on 2 (GitHub
-      // 166). A folder is watched as it changes, so its --every is moot.
+      // 166). A folder is watched as it changes, and a place as the phone
+      // says where it is, so their --every is moot.
       const every = filed.watcher?.every;
-      if (kind === "folder" || !Number.isFinite(asked) || typeof every !== "number" || Math.round(asked) === every) return filed;
+      if (kind === "folder" || kind === "place" || !Number.isFinite(asked) || typeof every !== "number" || Math.round(asked) === every) return filed;
       const clamped = `Checks every ${every} minutes (the ${every > asked ? "minimum" : "maximum"}; you asked for ${asked}).`;
       return { ...filed, note: filed.note ? `${filed.note} ${clamped}` : clamped };
     },
@@ -213,20 +239,22 @@ const COMMANDS = {
     run: async () => (await request("GET", "/api/watchers")).watchers,
   },
   "edit-watch": {
-    use: 'edit-watch <watcher-id> [--do "<what to do>"] [--folder <path> | --page <url> | --feed <url> | --check "<command>"] [--name <name>] [--every <minutes>] [--mentions <text>] [--thread <conversation>]',
+    use: 'edit-watch <watcher-id> [--do "<what to do>"] [--folder <path> | --page <url> | --feed <url> | --check "<command>" | --arrive <place> | --leave <place>] [--name <name>] [--every <minutes>] [--mentions <text>] [--radius <metres>] [--once | --once=false] [--until <date and time>] [--thread <conversation>]',
     about:
       "change supplied fields of one of your watchers, keeping its id and fire history; leave out a flag to keep that field. " +
-      "Use --mentions= or --thread= to clear those fields. The same text limits as watch apply. " +
+      "Use --mentions=, --thread= or --until= to clear those fields. The same text limits as watch apply. " +
       "A changed check command needs approval again unless you already run commands without asking",
     run: async (args) => {
       const [id, ...rest] = args;
       if (!id || id.startsWith("--")) throw new Error("edit-watch needs a watcher id");
-      const fields = { do: "instruction", name: "name", every: "every", mentions: "mentions", thread: "thread" };
-      const kinds = ["folder", "page", "feed", "check"];
+      const fields = { do: "instruction", name: "name", every: "every", mentions: "mentions", thread: "thread", radius: "radius", until: "until" };
+      const kinds = ["folder", "page", "feed", "check", "arrive", "leave"];
       for (let i = 0; i < rest.length; i++) {
         const arg = rest[i];
         const key = arg.split("=")[0].slice(2);
-        if (!arg.startsWith("--") || (!Object.hasOwn(fields, key) && !kinds.includes(key))) throw new Error(`edit-watch does not understand ${arg}`);
+        if (!arg.startsWith("--") || (!Object.hasOwn(fields, key) && !kinds.includes(key) && key !== "once")) throw new Error(`edit-watch does not understand ${arg}`);
+        // --once stands alone; --once=false takes it back
+        if (key === "once") continue;
         if (!arg.includes("=")) {
           if (rest[i + 1] === undefined || rest[i + 1].startsWith("--")) throw new Error(`--${key} needs a value`);
           i++;
@@ -234,14 +262,19 @@ const COMMANDS = {
       }
       const flags = parseFlags(rest);
       const targets = kinds.filter((kind) => Object.hasOwn(flags, kind));
-      if (targets.length > 1) throw new Error("edit-watch takes only one of --folder, --page, --feed or --check");
+      if (targets.length > 1) throw new Error("edit-watch takes only one of --folder, --page, --feed, --check, --arrive or --leave");
       const body = {};
       for (const [flag, field] of Object.entries(fields)) {
-        if (Object.hasOwn(flags, flag)) body[field] = flag === "every" ? Number(flags[flag]) : flags[flag];
+        if (Object.hasOwn(flags, flag)) body[field] = flag === "every" || flag === "radius" ? Number(flags[flag]) : flags[flag];
       }
-      if (targets.length) Object.assign(body, { kind: targets[0], target: flags[targets[0]] });
+      if (Object.hasOwn(flags, "once")) body.once = flags.once !== "false";
+      if (targets.length) {
+        const [target] = targets;
+        Object.assign(body, target === "arrive" || target === "leave" ? { kind: "place", target: flags[target], when: target } : { kind: target, target: flags[target] });
+      }
       if (!Object.keys(body).length) throw new Error("edit-watch needs at least one field to change");
       if (Object.hasOwn(body, "every") && !Number.isFinite(body.every)) throw new Error("--every needs a number of minutes");
+      if (Object.hasOwn(body, "radius") && !Number.isFinite(body.radius)) throw new Error("--radius needs a number of metres");
       const edited = await request("PATCH", `/api/watchers/${encodeURIComponent(id)}`, body);
       const every = edited.watcher?.every;
       if (edited.watcher?.kind === "folder" || !Number.isFinite(body.every) || typeof every !== "number" || Math.round(body.every) === every) return edited;
