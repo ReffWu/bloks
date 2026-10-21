@@ -210,13 +210,14 @@ export function RulesPage() {
 export function AppsPage() {
   return (
     <>
-      <SettingsGroup title="Composio" footnote="Composio links accounts like Slack and Gmail. Keys stay on this computer.">
+      <SettingsGroup title="Composio" footnote="Keys stay on this computer.">
         <ApiKeyRow
           section="composio"
           label="Composio Connect key"
+          description="Links accounts like Slack and Gmail."
           placeholder="ck_…"
           info={{
-            text: "The Connect key starts with ck_ and links accounts like Slack and Gmail. It's checked when you save it.",
+            text: "The Connect key starts with ck_. It's checked when you save it.",
             linkLabel: "Get a Connect key at composio.dev",
             linkHref: "https://composio.dev",
           }}
@@ -224,10 +225,10 @@ export function AppsPage() {
         <ApiKeyRow
           section="composioApi"
           label="Composio API key"
-          description="Optional. Only used to browse the full app catalog."
+          description="Optional. Lets you browse the full app catalog."
           placeholder="ak_…"
           info={{
-            text: "A project API key, starting with ak_. Only used to browse the full app catalog. Connections work without it.",
+            text: "A project API key, starting with ak_. Connections work without it.",
           }}
         />
       </SettingsGroup>

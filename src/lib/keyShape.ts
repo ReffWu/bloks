@@ -9,7 +9,7 @@ export function composioKeyMistake(section: "composio" | "composioApi", value: s
     return "That's a Composio API key (ak_). Paste the Connect key here. It starts with ck_.";
   }
   if (section === "composioApi" && key.startsWith("ck_")) {
-    return "That's a Connect key (ck_). It goes in the field above. This one needs the API key (ak_).";
+    return "That's a Connect key (ck_), which goes with the Connect key. This one needs the API key (ak_).";
   }
   return null;
 }

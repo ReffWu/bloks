@@ -50,13 +50,16 @@ export function SavedSecrets() {
     }
   };
 
+  // Said once: an empty list is one quiet line that says what would be
+  // here, and the small print about how agents get them waits for a list
+  // it can be about.
   return (
     <SettingsGroup
       title="Saved secrets"
-      footnote="Saved when an agent asks for one and you fill in its secure card. Every agent's turns get them as environment variables. Only the names are shown here."
+      footnote={names?.length ? "Every agent's turns get these as environment variables. Only the names are shown." : undefined}
     >
       {names === null ? (
-        <SettingRow label="Saved secrets" description={error ? undefined : "Looking…"} error={error} />
+        <Quiet>{error ? <span role="alert" className="text-destructive">{error}</span> : "Looking…"}</Quiet>
       ) : names.length ? (
         names.map((name, i) => (
           <SettingRow
@@ -78,11 +81,7 @@ export function SavedSecrets() {
           />
         ))
       ) : (
-        <SettingRow
-          rowId="saved-secrets"
-          label="No saved secrets"
-          description="When an agent asks you for a key or a password, what you save in its card is listed here by name."
-        />
+        <Quiet>None yet. When an agent asks for a key or password and you save it, it shows here by name.</Quiet>
       )}
       {names !== null && error && (
         <p role="alert" className="px-5 py-3 text-pretty text-small text-destructive">
@@ -90,5 +89,14 @@ export function SavedSecrets() {
         </p>
       )}
     </SettingsGroup>
+  );
+}
+
+/** One line in the card, where a search for this group lands. */
+function Quiet({ children }: { children: React.ReactNode }) {
+  return (
+    <div data-setting-row="saved-secrets" className="px-5 py-3.5 text-pretty text-body text-muted-foreground transition-colors duration-700">
+      {children}
+    </div>
   );
 }
