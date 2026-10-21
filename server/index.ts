@@ -156,6 +156,7 @@ import {
   pairLinkSecret,
   claimPairLink,
   memberDevices,
+  computerName,
 } from "./pairing.ts";
 import { checkup, filePermissions, tightenPermissions, type SecurityFacts } from "./security.ts";
 import {
@@ -22918,7 +22919,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!remoteEnabled()) return json(res, 409, { error: "turn on pairing first" });
       const started = startPairing();
       broadcast({ kind: "pairing", ...pairingStatus() });
-      return json(res, 200, { ...started, addresses: pairingStatus().addresses, port: PORT });
+      return json(res, 200, { ...started, addresses: pairingStatus().addresses, port: PORT, name: computerName() });
     }
     if (method === "POST" && path === "/api/pair/cancel") {
       if (!local) return json(res, 403, { error: "not from here" });

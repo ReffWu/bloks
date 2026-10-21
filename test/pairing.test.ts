@@ -211,3 +211,19 @@ test("a device name is cleaned up, and a missing one still works", async (t) => 
   assert.equal(nameless.status, 200);
   assert.equal(nameless.body.device.name, "A device");
 });
+
+test("the pairing link names the computer, never the window's loopback address", async (t) => {
+  const h = await startHarness({ BLOKS_COMPUTER_NAME: "Elena's MacBook Air" });
+  t.after(() => h.stop());
+  await h.fetch("/api/pair", { method: "PUT", body: JSON.stringify({ enabled: true }) });
+  const started = await h.json("/api/pair/start", { method: "POST" });
+  assert.equal(started.name, "Elena's MacBook Air");
+});
+
+test("without a name given, the computer goes by its host name, .local dropped", async () => {
+  const { computerName } = await import("../server/pairing.ts");
+  assert.equal(computerName({ BLOKS_COMPUTER_NAME: "  Studio Mac  " }), "Studio Mac");
+  const plain = computerName({}, "linux");
+  assert.ok(plain.length > 0 && plain.length <= 60);
+  assert.doesNotMatch(plain, /\.local$/i);
+});

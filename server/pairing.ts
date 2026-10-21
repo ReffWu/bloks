@@ -20,7 +20,8 @@
 //   cannot be replayed as a paired device.
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { networkInterfaces } from "node:os";
+import { execFileSync } from "node:child_process";
+import { hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
 
 import { DATA_DIR, loadConfig, saveConfig, type AppConfig } from "./config.ts";
@@ -330,6 +331,29 @@ export function lanAddresses(): string[] {
     }
   }
   return out;
+}
+
+/**
+ * What a phone calls this computer when it asks "Pair with ...?": the name
+ * set in System Settings on a Mac, else the host name without ".local".
+ * BLOKS_COMPUTER_NAME stands in for it, so pictures of the app can show a
+ * made-up computer rather than the one they were taken on.
+ */
+let computer: string | null = null;
+export function computerName(env: NodeJS.ProcessEnv = process.env, platform: string = process.platform): string {
+  const given = env.BLOKS_COMPUTER_NAME?.trim();
+  if (given) return given.slice(0, 60);
+  if (computer !== null) return computer;
+  let name = "";
+  if (platform === "darwin") {
+    try {
+      name = execFileSync("/usr/sbin/scutil", ["--get", "ComputerName"], { encoding: "utf8", timeout: 2000 }).trim();
+    } catch {
+      // no name set, or scutil missing: the host name below will do
+    }
+  }
+  computer = (name || hostname().replace(/\.local$/i, "")).slice(0, 60);
+  return computer;
 }
 
 export function pairingStatus(config: AppConfig = loadConfig()): PairingStatus {

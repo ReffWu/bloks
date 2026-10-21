@@ -400,6 +400,8 @@ export async function launchDesktop({ home, workspaces, ports, services, ownerNa
       TZ: tz,
       SHOTS_NODE_OPTIONS: `--import=${pathToFileURL(guard).href}`,
       BLOKS_DEV_WORKSPACES: "1",
+      // the pairing QR names the computer; the pictures name a made-up one
+      BLOKS_COMPUTER_NAME: "Elena's MacBook Pro",
       BLOKS_PORT: String(ports.personal),
       BLOKS_DATA_DIR: join(home, ".bloks"),
       BLOKS_SITE_URL: services.url,

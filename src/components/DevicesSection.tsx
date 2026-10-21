@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { usePageVisible } from "@/lib/pageVisible";
-import { ThisComputer, thisComputer } from "@/lib/thisComputer";
+import { thisComputer } from "@/lib/thisComputer";
 import {
   Checklist,
   ConnectionError,
@@ -65,13 +65,16 @@ interface PairStatus {
 /** The deep link a phone camera understands. Built defensively: any
  * field that fails its shape check kills the link rather than shipping
  * something malformed to a camera. */
-function pairLink(address: string, port: number, token: string, code: string): string | null {
+function pairLink(address: string, port: number, token: string, code: string, computer?: string): string | null {
   if (!/^\d{6}$/.test(code)) return null;
   if (!/^bloks_pair_[A-Za-z0-9_-]{32}$/.test(token)) return null;
   if (!address || !Number.isInteger(port) || port < 1 || port > 65535) return null;
   const host = address.includes(":") && !address.startsWith("[") ? `[${address}]` : address;
-  const name = encodeURIComponent((location.hostname || ThisComputer()).slice(0, 60));
-  return `bloks://pair?address=${encodeURIComponent(`${host}:${port}`)}&token=${token}&code=${code}&name=${name}`;
+  // The computer's own name, as the server reads it: the window's address
+  // is always this machine's loopback and would have the phone ask to pair
+  // with "127.0.0.1". Left out, the phone says "your computer".
+  const name = computer?.trim() ? `&name=${encodeURIComponent(computer.trim().slice(0, 60))}` : "";
+  return `bloks://pair?address=${encodeURIComponent(`${host}:${port}`)}&token=${token}&code=${code}${name}`;
 }
 
 /** A browser rather than a phone, by the name it paired under. */
@@ -236,7 +239,7 @@ function PairingControls() {
           (started.addresses as string[] | undefined)?.find((a: string) => a !== "127.0.0.1") ??
           started.addresses?.[0];
         const link = address
-          ? pairLink(address, started.port, started.token, started.code)
+          ? pairLink(address, started.port, started.token, started.code, typeof started.name === "string" ? started.name : undefined)
           : null;
         const qr = link
           ? await QRCode.toDataURL(link, {
