@@ -3,7 +3,7 @@
 // what agents know about you, and every agent; the page beside it is the
 // one picked, laid out to read and to correct. The sidebar is a page
 // column (SideColumn.tsx), sized by its edge and folded with ⌘B; folded,
-// its three kinds of memory are a switch on the page's title row.
+// its three kinds of memory are a switch at the top left of the page.
 //
 // An agent's memory is plain Markdown in its workspace: MEMORY.md, loaded
 // into every turn up to a budget, and topic files it reads when a topic
@@ -40,7 +40,7 @@ import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
 import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
-import { FoldedSwitchSlot, SideColumn, SideSwitch, TitleTools } from "./SideColumn";
+import { FoldedSwitchBar, FoldedSwitchSlot, SideColumn, SideSwitch, TitleTools } from "./SideColumn";
 
 // ── what the server answers ────────────────────────────────────────────
 
@@ -1747,8 +1747,8 @@ export function MemoryPlace() {
     scroller.current?.scrollTo({ top: 0 });
   }, [target]);
 
-  // Folded, the sidebar's three kinds of memory are a switch on the
-  // page's title row: the shared memory, what agents know about you, and
+  // Folded, the sidebar's three kinds of memory are a switch at the top
+  // left of the page: the shared memory, what agents know about you, and
   // the agents, picked from a menu since there can be any number of them.
   const folded = useColumnFolded("memory", MEMORY_COLUMN);
   const switcher = folded ? (
@@ -1793,6 +1793,7 @@ export function MemoryPlace() {
           <div className="mx-auto w-full max-w-[1080px] px-6 pb-20 pt-7 max-md:pt-16 lg:px-12">
             <PhonePicker target={target} agents={agents} waiting={waiting} onPick={pick} />
             <FoldedSwitchSlot value={switcher}>
+              <FoldedSwitchBar />
               {target === "you" ? (
                 <AboutYouPage />
               ) : target === "shared" ? (
@@ -1801,7 +1802,6 @@ export function MemoryPlace() {
                 <AgentPage key={bot.id} bot={bot} focus={focus} onFocus={(file) => setFocus({ file, nonce: Date.now() })} />
               ) : (
                 <div className="flex flex-col items-center gap-3 py-24 text-center">
-                  {switcher && <div className="self-end">{switcher}</div>}
                   <Brain size={28} className="text-muted-foreground" />
                   <p className="max-w-[320px] text-ui leading-relaxed text-muted-foreground">
                     Make an agent and its memory shows up here.

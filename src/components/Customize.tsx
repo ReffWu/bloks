@@ -3,8 +3,8 @@
 // pages and the apps already connected; each page is a catalogue laid out
 // to read, two to a row, with the one action each item needs beside it.
 // The sidebar is a page column (SideColumn.tsx), sized by its edge and
-// folded with ⌘B, and folded the two pages are a switch at the right of
-// each page's title.
+// folded with ⌘B, and folded the two pages are a switch at the top left
+// of the page.
 //
 // Plugins are the connected apps (Composio Connect) and the interfaces MCP
 // servers draw; Skills are the instructions agents pick up, the ones on
@@ -45,7 +45,7 @@ import { Skeleton, SkeletonAvatar, SkeletonGroup } from "@/components/ui/skeleto
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
-import { FoldedSwitchSlot, SideColumn, SideSwitch, TitleTools } from "./SideColumn";
+import { FoldedSwitchBar, FoldedSwitchSlot, SideColumn, SideSwitch, TitleTools } from "./SideColumn";
 
 /** An app's mark: its own artwork, then its site's icon, then a letter,
  * because one broken image in a grid of logos looks worse than a letter. */
@@ -834,8 +834,8 @@ export function CustomizeView() {
   const { state, dispatch } = useStore();
   const tab = state.customize;
   const setTab = (next: CustomizeTab) => dispatch({ type: "openCustomize", tab: next });
-  // Folded, the sidebar's two pages are a switch on each page's title row
-  // (TitleTools); the apps it lists are the Plugins page's own already.
+  // Folded, the sidebar's two pages are a switch at the top left of the
+  // page (FoldedSwitchBar); the apps it lists are the Plugins page's own.
   const folded = useColumnFolded("plugins", CUSTOMIZE_COLUMN);
   const connectors = useConnectors();
   const [pluginSearch, setPluginSearch] = useState("");
@@ -891,6 +891,7 @@ export function CustomizeView() {
                 ) : null
               }
             >
+              <FoldedSwitchBar />
               {tab === "plugins" && state.customizeApp ? (
                 <AppDetailsPage slug={state.customizeApp} connectors={connectors} />
               ) : tab === "plugins" ? (

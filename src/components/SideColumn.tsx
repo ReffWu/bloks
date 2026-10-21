@@ -19,9 +19,9 @@
 // depends on how many there are:
 //   SideTabs    many, as a strip of tabs along the top of the page, in
 //               the column's own groups and order (Settings)
-//   SideSwitch  three or fewer, as a small switch at the right of the
-//               page's title row (Plugins, Memory), which a page's
-//               header finds through FoldedSwitchSlot and TitleTools
+//   SideSwitch  three or fewer, as a small switch at the top left of
+//               the page (Plugins, Memory), which the page draws
+//               through FoldedSwitchSlot and FoldedSwitchBar
 //   ShowColumn  none, only the way to bring the column back (a list of
 //               things rather than of sections)
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -383,7 +383,7 @@ export function SideTabs({
   );
 }
 
-// ── three or fewer: a switch on the title row ─────────────────────────
+// ── three or fewer: a switch at the top left ─────────────────────────
 
 export interface SideSwitchItem {
   id: string;
@@ -507,16 +507,15 @@ export function useFoldedSwitch(): React.ReactNode {
   return useContext(FoldedSwitch);
 }
 
-/** The right of a page's title row: the folded column's switch on the
- * title's own line when there is one, and the page's tools under it. */
+/** The right of a page's title row: the page's tools. */
 export function TitleTools({ children, className }: { children?: React.ReactNode; className?: string }) {
+  return children ? <div className={cn("flex items-center gap-1.5", className)}>{children}</div> : null;
+}
+
+/** A folded column's switch, at the top left of the page: where the
+ * column it stands for was, and where Settings' folded tabs sit too. */
+export function FoldedSwitchBar() {
   const folded = useFoldedSwitch();
-  const tools = children ? <div className={cn("flex items-center gap-1.5", className)}>{children}</div> : null;
-  if (!folded) return tools;
-  return (
-    <div className="flex flex-col items-end gap-3">
-      {folded}
-      {tools}
-    </div>
-  );
+  if (!folded) return null;
+  return <div className="mb-6 flex">{folded}</div>;
 }
