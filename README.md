@@ -87,6 +87,11 @@ you: everything, only what needs you, or nothing.
 With Bloks Cloud, each workspace can also be **reachable online** on its
 own switch, for your phone and the people you invite.
 
+<p align="center">
+  <img alt="The workspace switcher open at the top of the window: Personal, Brightwater with three members and Maple Street Bakery, then Join a workspace, New workspace, Workspace settings, Plan and Mute" src="docs/screenshots/workspaces.png" width="470">
+  <img alt="New workspace: a name, Just me or Team, and the mark it will wear, with a button to draw another" src="docs/screenshots/new-workspace.png" width="350">
+</p>
+
 ### Bring people in
 
 Invite a partner, a colleague or a client into a workspace. An invite is
@@ -96,6 +101,15 @@ one person, works once and lasts a day. They join from the iPhone app or
 the desktop app, and before they are in, you both read the same four
 words, so somebody who intercepted the link is stopped at the door. A
 join password, checked only on your computer, can sit behind it too.
+
+<p align="center">
+  <img alt="Invite to Brightwater: a QR code with the workspace's mark in the middle, an 8 character code and a link, for one person who joins as a member" src="docs/screenshots/invite.png" width="420">
+  <img alt="Join a workspace: the code typed in, Brightwater found with who sent the invite, and a name to join under" src="docs/screenshots/join.png" width="400">
+</p>
+
+<p align="center">
+  <img alt="Members of Brightwater: Sam Okafor asking to join with four words to compare, and the owner, an admin and a member below" src="docs/screenshots/members.png">
+</p>
 
 What they get is decided by you:
 
@@ -124,6 +138,10 @@ workspace come with [Bloks Team](https://bloks.dev); a single room can
 also be shared on its own, with guests who see that room and nothing
 else.
 
+<p align="center">
+  <img alt="A room in Brightwater: the owner, two members and three agents in bubbles, each with a face and a name, and Seen by Tom and Seen by Priya under the messages they have read" src="docs/screenshots/room-people.png">
+</p>
+
 ### What your agents spend
 
 **Usage**, on the main rail, shows what your agents used over 7, 30 or
@@ -134,11 +152,23 @@ tokens and no price, an estimate from a public list of model prices,
 written as one ("~$4.20"). A model nobody has a price for is never
 guessed at.
 
+<p align="center">
+  <img alt="Usage over the last 30 days: the cost against the month before, tokens and turns, and a chart by day with a line for each engine" src="docs/screenshots/usage.png">
+</p>
+
 Put a **monthly spending limit** on any engine that runs on a key of
 yours. At the line, new turns on it pause, or go to the agent's backup
 engine, until you raise it or the month turns. Before then, the message
 box says when a limit, a Claude or ChatGPT plan window, or Bloks AI is
 getting close, and on what day it resets.
+
+<p align="center">
+  <img alt="Limits: Claude's five hour and weekly windows, Bloks AI's month and day, and a monthly spending limit on a Gemini key, most of it used" src="docs/screenshots/usage-limits.png" width="540">
+</p>
+
+<p align="center">
+  <img alt="The message box with Approaching spending limit above it, how much is used and when it tops up, and a View usage button" src="docs/screenshots/usage-notice.png" width="560">
+</p>
 
 ### Answers you can use
 
@@ -148,6 +178,10 @@ click can answer the agent, open a page or change the answer itself.
 What a model writes is parsed against a closed set of shapes before it
 reaches a screen, and nothing in an answer fetches anything.
 [docs/GENERATIVE_UI.md](docs/GENERATIVE_UI.md) is the contract.
+
+<p align="center">
+  <img alt="An answer drawn as a card: three headline numbers, a bar chart of signups by channel, a table, and two follow-up questions to click" src="docs/screenshots/answer.png" width="560">
+</p>
 
 ### Agents that work together
 
@@ -194,7 +228,7 @@ or bring to you, instead of letting it fail quietly or in a storm.
   append-only log, hash-chained and signed by the agent they are about.
 
 <p align="center">
-  <img alt="A card under an agent's reply listing the three files it changed, with an Undo button" src="docs/screenshots/changes-card.png" width="520">
+  <img alt="A card under an agent's reply listing the three files it changed, with an Undo button" src="docs/screenshots/changes-card.png" width="600">
 </p>
 
 ### Memory you can read, and take back
@@ -206,6 +240,10 @@ and a journal of every change with its diff and an undo. Once a night
 each agent's memory is tidied, and a whole night undoes in one press.
 Before your turn, an agent brings up what is relevant from its other
 conversations, and says exactly what it was given.
+
+<p align="center">
+  <img alt="Memory for the Head of Marketing: its topic files, and Recent changes, where the agent changed MEMORY.md during a conversation and you changed it after, each with an Undo button" src="docs/screenshots/memory.png">
+</p>
 
 ### Work that runs without you
 
@@ -225,6 +263,15 @@ conversations, and says exactly what it was given.
 - **A terminal per agent**, up to eight shells each, docked on any side of
   the chat, side by side with it, filling the window or in a window of
   its own.
+
+<p align="center">
+  <img alt="Overview: the morning brief, line by line for each agent, beside Activity with today's replies and cost by agent" src="docs/screenshots/overview.png">
+</p>
+
+<p align="center">
+  <img alt="An agent's terminal docked under its chat, with a shell open in the agent's folder" src="docs/screenshots/terminal.png" width="49%">
+  <img alt="The same terminal side by side with the chat, with a second shell open" src="docs/screenshots/terminal-split.png" width="49%">
+</p>
 
 ### Everywhere you are
 
@@ -298,6 +345,10 @@ is holding each.
 
 An agent needs an engine to reply. Any of these works, and each agent
 picks its own.
+
+<p align="center">
+  <img alt="Settings as one list in groups, Account, Workspace, Agents and on, open on Engines and keys with Claude Code connected and the other engines one button away" src="docs/screenshots/settings.png">
+</p>
 
 The first-run check, and Settings, Engines and keys, install Claude Code,
 Codex, Gemini CLI, Pi, Antigravity and the Grok CLI with one button. They
@@ -484,6 +535,10 @@ working without a plan. Bloks Cloud, Bloks Team and Bloks AI add reach
 from anywhere, people in your workspaces, and agents with no keys at
 all. They are described at [bloks.dev](https://bloks.dev), and Settings,
 Plan shows what yours includes.
+
+<p align="center">
+  <img alt="Settings, Plan: Bloks Team, active and billed yearly, then your name and what the plan includes, workspaces online and members" src="docs/screenshots/plan.png">
+</p>
 
 ## Licence
 
