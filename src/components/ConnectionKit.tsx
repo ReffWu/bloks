@@ -15,6 +15,7 @@ import { Copy } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
 import { TriangleAlert } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 
@@ -67,12 +68,16 @@ export function HealthLine({ tone, label, title }: { tone: Health; label: string
 export function ConnectionHeader({
   icon,
   title,
+  info,
   says,
   health,
   control,
 }: {
   icon?: ReactNode;
   title: string;
+  /** The longer story behind a ? beside the title, so `says` can stay
+   * one line. */
+  info?: string;
   says: ReactNode;
   health?: ReactNode;
   control?: ReactNode;
@@ -85,6 +90,7 @@ export function ConnectionHeader({
         <div className="flex min-w-0 items-center gap-1.5">
           {icon}
           <span className="truncate text-ui font-semibold text-foreground">{title}</span>
+          {info && <InfoTip text={info} className="shrink-0" />}
         </div>
         {(health || control) && (
           <div className="flex shrink-0 items-center gap-2.5">

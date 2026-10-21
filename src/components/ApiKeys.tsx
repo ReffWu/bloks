@@ -8,12 +8,12 @@
 // Saving rebuilds the engines server-side, which is why a pasted key
 // works on the next message rather than after a restart.
 import { useState } from "react";
-import { Check } from "@/components/icons";
 import { ExternalLink } from "@/components/icons";
 import { HelpCircle } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
 import { api, useStore, type ConfigStatus } from "@/state/store";
 import { Button } from "@/components/ui/button";
+import { confirm } from "@/components/ui/confirm";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { composioKeyMistake } from "@/lib/keyShape";
@@ -92,63 +92,121 @@ export function ApiKeyRow({
 }) {
   const { state, dispatch } = useStore();
   const [value, setValue] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState<"save" | "remove" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const id = `key-${section}`;
 
   const configured = state.config ? SECTIONS[section].flag(state.config) : false;
-  const clearing = !value.trim() && configured;
+  // The field is only there when there is something to type: no key yet,
+  // or one being replaced. A saved key is a fact, not a form.
+  const editing = Boolean(state.config) && (!configured || replacing);
+  const typed = value.trim();
+
+  const stopReplacing = () => {
+    setReplacing(false);
+    setValue("");
+    setError(null);
+  };
 
   const save = () => {
-    if (saving || (!value.trim() && !configured)) return;
+    if (busy || !typed) return;
     const mistake =
       section === "composio" || section === "composioApi" ? composioKeyMistake(section, value) : null;
     if (mistake) return setError(mistake);
-    setSaving(true);
+    setBusy("save");
     setError(null);
     saveApiKey(section, value, dispatch)
       .then((nowConfigured) => {
         setValue("");
+        setReplacing(false);
         onSaved?.(nowConfigured);
       })
       .catch((e) => setError(e.message))
-      .finally(() => setSaving(false));
+      .finally(() => setBusy(null));
   };
 
-  // laid out as a settings row: the name and its state on one line, what
-  // it is for under it, and the field across the row's whole width
+  // Saving nothing is how the server forgets a key. That is one quiet
+  // click away now rather than a field to empty first, so it asks.
+  const remove = async () => {
+    if (busy) return;
+    const yes = await confirm({
+      title: `Remove the ${label}?`,
+      body: "Bloks forgets it on this computer. You can paste it again any time.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!yes) return;
+    setBusy("remove");
+    setError(null);
+    saveApiKey(section, "", dispatch)
+      .then((nowConfigured) => {
+        stopReplacing();
+        onSaved?.(nowConfigured);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setBusy(null));
+  };
+
+  // laid out as a settings row: the name and its line on the left, how it
+  // stands and what can be done on the right, and the field under both
+  // only while there is something to type
   return (
     <div data-setting-row={rowKey(label)} className={cn(!bare && "px-5 py-4", "transition-colors duration-700")}>
-      <div className="flex items-center gap-2">
-        <label htmlFor={id} className="text-ui font-medium text-foreground">
-          {label}
-        </label>
-        {info && (
-          <button
-            type="button"
-            onClick={() => setInfoOpen(!infoOpen)}
-            aria-expanded={infoOpen}
-            className={cn(
-              "rounded-full p-0.5 transition-colors",
-              infoOpen ? "text-foreground" : "text-muted-foreground/60 hover:text-foreground",
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="min-w-0 flex-1 basis-[220px]">
+          <div className="flex items-center gap-1.5">
+            <label htmlFor={editing ? id : undefined} className="text-ui font-medium text-foreground">
+              {label}
+            </label>
+            {info && (
+              <button
+                type="button"
+                onClick={() => setInfoOpen(!infoOpen)}
+                aria-expanded={infoOpen}
+                className={cn(
+                  "rounded-full p-0.5 transition-colors",
+                  infoOpen ? "text-foreground" : "text-muted-foreground/60 hover:text-foreground",
+                )}
+                aria-label={`About ${label}`}
+              >
+                <HelpCircle size={14} />
+              </button>
             )}
-            aria-label={`About ${label}`}
-          >
-            <HelpCircle size={14} />
-          </button>
+          </div>
+          {description && <div className="mt-0.5 text-pretty text-body text-muted-foreground">{description}</div>}
+        </div>
+        {configured && (
+          <div className="-mr-2 flex shrink-0 items-center gap-0.5">
+            <span aria-live="polite" className="mr-2 inline-flex items-center gap-1.5 text-small font-medium text-success">
+              <span aria-hidden className="size-1.5 rounded-full bg-current" />
+              Saved
+            </span>
+            {!replacing && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy !== null}
+                onClick={() => setReplacing(true)}
+                aria-label={`Replace the ${label}`}
+              >
+                Replace
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() => void remove()}
+              aria-label={`Remove the ${label}`}
+              className="hover:bg-destructive/10 hover:text-destructive"
+            >
+              {busy === "remove" ? <Loader2 size={13} className="animate-spin" /> : "Remove"}
+            </Button>
+          </div>
         )}
-        <span
-          className={cn(
-            "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-small font-medium",
-            configured ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
-          )}
-        >
-          <span aria-hidden className={cn("size-1.5 rounded-full", configured ? "bg-current" : "border border-current")} />
-          {configured ? "Saved" : "Not set"}
-        </span>
       </div>
-      {description && <div className="mt-0.5 text-pretty text-body text-muted-foreground">{description}</div>}
       {info && infoOpen && (
         <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
           {info.text}
@@ -165,41 +223,42 @@ export function ApiKeyRow({
           )}
         </div>
       )}
-      <div className="mt-2.5 flex gap-2">
-        <Input
-          id={id}
-          type="password"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setError(null);
-          }}
-          onKeyDown={(e) => e.key === "Enter" && save()}
-          placeholder={configured ? "••••••••  (paste to replace)" : placeholder}
-          autoComplete="off"
-          spellCheck={false}
-          aria-invalid={error ? true : undefined}
-          className="h-8 text-body"
-        />
-        <Button
-          variant={clearing ? "destructive" : "secondary"}
-          onClick={save}
-          disabled={saving || (!value.trim() && !configured)}
-          className="w-[76px]"
-          title={clearing ? "Remove saved key" : "Save"}
-        >
-          {saving ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : clearing ? (
-            "Remove"
-          ) : (
-            <>
-              <Check size={13} />
-              Save
-            </>
+      {editing && (
+        <div className="mt-3 flex gap-2">
+          <Input
+            id={id}
+            type="password"
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") save();
+              // Escape keeps the saved key, and leaves Settings open
+              if (e.key === "Escape" && replacing) {
+                e.preventDefault();
+                stopReplacing();
+              }
+            }}
+            placeholder={replacing ? "Paste the new key" : placeholder}
+            autoFocus={replacing}
+            autoComplete="off"
+            spellCheck={false}
+            aria-invalid={error ? true : undefined}
+            className="h-8 min-w-0 flex-1 text-body"
+          />
+          {/* the one action, and it says so only once there is a key to save */}
+          <Button variant={typed ? "brand" : "secondary"} onClick={save} disabled={busy !== null || !typed}>
+            {busy === "save" ? <Loader2 size={13} className="animate-spin" /> : "Save"}
+          </Button>
+          {replacing && (
+            <Button variant="ghost" onClick={stopReplacing} disabled={busy !== null}>
+              Cancel
+            </Button>
           )}
-        </Button>
-      </div>
+        </div>
+      )}
       {error && (
         <p role="alert" className="mt-2 text-small text-destructive">
           {error}
