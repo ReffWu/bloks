@@ -4660,7 +4660,7 @@ bus.subscribe((event: RuntimeEvent) => {
 type Frame = { png: string; mime: string; source?: "browser" };
 const screenPollers = new Map<
   string,
-  { timer: ReturnType<typeof setInterval>; capture: () => Promise<void>; last: Frame | null }
+  { timer: ReturnType<typeof setInterval>; capture: () => Promise<void>; last: Frame | null; at: number }
 >();
 
 const boxFrame = async (botId: string): Promise<Frame> => {
@@ -4678,6 +4678,7 @@ function startScreenPoller(botId: string, grab: (botId: string) => Promise<Frame
     try {
       const frame = await grab(botId);
       entry.last = frame;
+      entry.at = Date.now();
       broadcast({ kind: "screen", botId, ...frame });
     } catch {
       /* asleep, or busy running something; the next tick can have it */
@@ -4689,6 +4690,7 @@ function startScreenPoller(botId: string, grab: (botId: string) => Promise<Frame
     timer: setInterval(capture, everyMs),
     capture,
     last: null as Frame | null,
+    at: 0,
   };
   screenPollers.set(botId, entry);
 }
@@ -19427,6 +19429,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return json(res, 409, { error: done.failed[0].error, failed: done.failed, run: tidyLog.get(run.id) });
       }
       return json(res, 200, { run: tidyLog.get(run.id), undone: done.undone.length, failed: done.failed });
+    }
+    // The picture of an agent's screen the Mac took last, while a turn is
+    // being watched. Live frames are broadcast, but never through Bloks
+    // Cloud (every frame to every phone, watched or not), so a phone with
+    // its view open asks for the newest one instead. Read only: it never
+    // takes a picture, so asking often costs the agent nothing.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/screen$/);
+    if (m && method === "GET") {
+      if (!store.bot(m[1])) return json(res, 404, { error: "no such agent" });
+      const watched = screenPollers.get(m[1]);
+      if (!watched?.last) return json(res, 200, { live: false });
+      const { png, mime, source } = watched.last;
+      return json(res, 200, { live: true, at: watched.at, mime, png, source: source ?? "computer" });
     }
     m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/stats$/);
     if (m && method === "GET") {
