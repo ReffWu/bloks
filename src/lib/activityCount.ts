@@ -19,8 +19,14 @@ export interface ActivityCount {
 let count: ActivityCount = { running: 0, waiting: 0, suggested: 0, failed: 0 };
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setInterval> | null = null;
+/** How often the counts are asked for while something shows them. */
+export const POLL_MS = 5_000;
+/** When the counts were last asked for, so a listener that leaves and
+ * comes straight back does not ask again before the poll would. */
+let askedAt = -Infinity;
 
 function load() {
+  askedAt = Date.now();
   // while a hosted workspace wakes, these wait in the page for it as one
   // read each, rather than one more every five seconds (src/lib/waking.ts)
   void Promise.all([
@@ -62,8 +68,8 @@ export function failedCount(
 function sync() {
   const want = listeners.size > 0 && document.visibilityState !== "hidden";
   if (want && !timer) {
-    load();
-    timer = setInterval(load, 5_000);
+    if (Date.now() - askedAt >= POLL_MS) load();
+    timer = setInterval(load, POLL_MS);
   } else if (!want && timer) {
     clearInterval(timer);
     timer = null;
@@ -71,16 +77,21 @@ function sync() {
 }
 if (typeof document !== "undefined") document.addEventListener("visibilitychange", sync);
 
+/** One function for every render. React subscribes again whenever it is
+ * handed a different one, and the rail renders on every frame the event
+ * stream brings: written inline, each frame dropped the poll and started
+ * it over, two requests a frame, hundreds a minute while agents worked. */
+export function subscribeActivityCount(listener: () => void): () => void {
+  listeners.add(listener);
+  sync();
+  return () => {
+    listeners.delete(listener);
+    sync();
+  };
+}
+
+const currentCount = () => count;
+
 export function useActivityCount(): ActivityCount {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      sync();
-      return () => {
-        listeners.delete(listener);
-        sync();
-      };
-    },
-    () => count,
-  );
+  return useSyncExternalStore(subscribeActivityCount, currentCount);
 }
