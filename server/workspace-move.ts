@@ -31,6 +31,9 @@ export function moveLeftOut(rel: string, isDir: boolean): string | null {
     return null;
   }
   const machine: Record<string, string> = {
+    // a move's own note: where this copy's work went, which is this
+    // copy's to say and never travels with it (server/moved-mark.ts)
+    "moved.json": "the note that this copy was moved",
     "turns-in-flight.json": "turns running on the computer it left",
     "engine-sessions.json": "engine sessions on the computer it left",
     "engine-turns.json": "engine sessions on the computer it left",
@@ -105,6 +108,29 @@ function providerName(kind: string): string {
   return names[kind] ?? kind;
 }
 
+/** One key or connection a move left behind, to be entered again where
+ * it lands: as a person would name it, the Settings page it is entered
+ * on (src/lib/settingsPages.ts), and where it was in config.json, by
+ * name and never by value. */
+export interface KeyToEnter {
+  label: string;
+  page: string;
+  path: string;
+}
+
+/** The Settings page a key is entered on, by where it sits in
+ * config.json. */
+export function keyPage(path: string): string {
+  if (/^(providers\.|xai\.|custom\[)/.test(path)) return "engines";
+  if (/^(telegram\.|chat\.)/.test(path)) return "chat";
+  if (/^(composio|secrets)\./.test(path) || path === "secrets") return "apps";
+  if (/^speech\./.test(path)) return "voices";
+  if (/^mcpServers\[/.test(path)) return "plugins";
+  if (/^box\./.test(path)) return "computers";
+  if (/^credits\./.test(path)) return "plan";
+  return "engines";
+}
+
 /**
  * config.json for a move, given the copy a backup has already taken the
  * keys out of (`stripped`, with where each was) and the original, which
@@ -116,23 +142,107 @@ export function configForMove(
   stripped: Record<string, unknown>,
   leftOut: string[],
   original: Record<string, unknown>,
-): { config: Record<string, unknown>; toEnter: string[] } {
+): { config: Record<string, unknown>; toEnter: string[]; keys: KeyToEnter[] } {
   const config = structuredClone(stripped);
   for (const key of MACHINE_CONFIG) delete config[key];
   if (isRecord(config.agentDefaults)) delete config.agentDefaults.cwd;
-  const labels = new Set<string>();
+  const keys = keysLeftBehind(leftOut, original);
+  return { config, toEnter: keys.map((key) => key.label), keys };
+}
+
+/** What a move left behind, each named once, with the page it is
+ * entered on again. The relay's tokens and the paired devices stay with
+ * that computer and are nothing to enter: a new space is opened there. */
+export function keysLeftBehind(leftOut: string[], original: Record<string, unknown>): KeyToEnter[] {
+  const keys: KeyToEnter[] = [];
+  const add = (label: string, path: string) => {
+    if (!keys.some((key) => key.label === label)) keys.push({ label, page: keyPage(path), path });
+  };
   for (const path of leftOut) {
-    // the space's tokens and the paired devices stay with that computer
-    // and are nothing to enter again; a new space is opened here
     if (/^(relay|remote)\./.test(path)) continue;
     if (path === "secrets") {
+      // each by its own name, so a machine with saved secrets of its own
+      // is still asked for the ones it does not have
       const names = isRecord(original.secrets) ? Object.keys(original.secrets) : [];
-      for (const name of names) labels.add(`Saved secret ${name}`);
+      for (const name of names) add(`Saved secret ${name}`, `secrets.${name}`);
       continue;
     }
-    labels.add(secretLabel(path, original));
+    add(secretLabel(path, original), path);
   }
-  return { config, toEnter: [...labels] };
+  return keys;
+}
+
+/** A move's keys as a file or an answer said them, each checked, or an
+ * empty list. */
+export function readKeys(raw: unknown): KeyToEnter[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 200).flatMap((item) => {
+    if (!isRecord(item) || typeof item.label !== "string" || typeof item.path !== "string") return [];
+    const path = item.path.slice(0, 200);
+    return [{ label: item.label.slice(0, 200), page: keyPage(path), path }];
+  });
+}
+
+/** The keys still to be entered where a move lands, given the places in
+ * that machine's own config.json that hold one already (heldKeyPaths). A
+ * workspace moved back into the copy it left keeps that copy's keys, so
+ * those are not asked for again. */
+export function stillToEnter(keys: KeyToEnter[], held: string[]): KeyToEnter[] {
+  const here = new Set(held);
+  return keys.filter((key) => !here.has(key.path));
+}
+
+/** Where a config.json holds a key, by path and never by value, with each
+ * saved secret by its own name, as keysLeftBehind names them. `strip` is
+ * backup.ts stripSecrets, passed in so this file stays free of it. */
+export function heldKeyPaths(config: Record<string, unknown>, strip: (config: Record<string, unknown>) => string[]): string[] {
+  const names = isRecord(config.secrets) ? Object.keys(config.secrets).map((name) => `secrets.${name}`) : [];
+  return [...strip(structuredClone(config)).filter((path) => path !== "secrets"), ...names];
+}
+
+/** What a move counts on both sides, to say that all of it arrived. */
+export interface MoveCounts {
+  agents: number;
+  conversations: number;
+  rooms: number;
+  routines: number;
+  watchers: number;
+  workflows: number;
+  memoryFiles: number;
+}
+
+/** Each count, with its word for one and for more. */
+export const COUNTED: ReadonlyArray<readonly [keyof MoveCounts, string, string]> = [
+  ["agents", "agent", "agents"],
+  ["conversations", "conversation", "conversations"],
+  ["rooms", "room", "rooms"],
+  ["routines", "routine", "routines"],
+  ["watchers", "watcher", "watchers"],
+  ["workflows", "workflow", "workflows"],
+  ["memoryFiles", "memory file", "memory files"],
+];
+
+/** Counts as a file or an answer said them, or null for anything that is
+ * not a whole set. */
+export function readCounts(raw: unknown): MoveCounts | null {
+  if (!isRecord(raw)) return null;
+  const out: Partial<MoveCounts> = {};
+  for (const [key] of COUNTED) {
+    const n = raw[key];
+    if (typeof n !== "number" || !Number.isInteger(n) || n < 0) return null;
+    out[key] = n;
+  }
+  return out as MoveCounts;
+}
+
+/** What did not arrive as it left, in words ("2 of 3 agents"), or an
+ * empty list when all of it did. */
+export function countsDiffer(sent: MoveCounts, arrived: MoveCounts): string[] {
+  const out: string[] = [];
+  for (const [key, one, many] of COUNTED) {
+    if (sent[key] !== arrived[key]) out.push(`${arrived[key]} of ${sent[key]} ${sent[key] === 1 ? one : many}`);
+  }
+  return out;
 }
 
 /** bots.json for a move: every agent and lane kept, without the folders
@@ -210,6 +320,6 @@ export function keepThisMachine(current: Record<string, unknown>, restored: Reco
 /** Whether a workspace is empty enough to take a move in: nothing said by
  * the person, no rooms and no standing work. A first start seeds an agent
  * that greets, which is not anybody's work. */
-export function emptyEnoughForMove(counts: { mine: number; rooms: number; routines: number; watchers: number; intents: number }): boolean {
-  return counts.mine === 0 && counts.rooms === 0 && counts.routines === 0 && counts.watchers === 0 && counts.intents === 0;
+export function emptyEnoughForMove(counts: { mine: number; rooms: number; routines: number; watchers: number; intents: number; workflows?: number }): boolean {
+  return counts.mine === 0 && counts.rooms === 0 && counts.routines === 0 && counts.watchers === 0 && counts.intents === 0 && !counts.workflows;
 }

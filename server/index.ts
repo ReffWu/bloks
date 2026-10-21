@@ -10,7 +10,7 @@ import { CLOUD_KEY, licenceFrom, licenceToUse } from "./licence.ts";
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
 import { SaidOnce, desktopNotice, noticeKey, unreadCount as desktopUnreadCount } from "./desktop-notice.ts";
-import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
+import { closeSync, createWriteStream, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect as netConnect } from "node:net";
@@ -103,7 +103,7 @@ import { asWho, createMembers, savedMarkDefault, setIdentityMark, workspaceIdent
 import { instanceName, mayAnnounce, stopAnnouncing, syncAnnouncement, workspaceTag } from "./announce.ts";
 import { PLAN_LIMITS, ROOM_SHARING_WORDS, membersActive, pausedWords, roomSharingAllowed, workspaceMemberLimit } from "./plan-limits.ts";
 import { OwnerPlan } from "./owner-plan.ts";
-import { PlanAccount, planRoute, type PlanRouteDeps } from "./plan-account.ts";
+import { PlanAccount, planRoute, type Account, type PlanRouteDeps } from "./plan-account.ts";
 import { DesktopLine } from "./desktop-line.ts";
 import { MintLimiter, mintPairing, othersRoute, pairCheck } from "./other-workspaces.ts";
 import { choosableMark, defaultForKind, markRoute, markView, type MarkRouteDeps } from "./workspace-mark.ts";
@@ -540,12 +540,14 @@ import {
   revealBackup,
   shownPath,
   stageRestore,
+  stripSecrets,
   verifyBackup,
   type BackupInfo,
   type CreateOptions,
 } from "./backup.ts";
-import { emptyEnoughForMove } from "./workspace-move.ts";
-import { MoveUploads, PART_BYTES, UploadError } from "./move-upload.ts";
+import { countsDiffer, emptyEnoughForMove, heldKeyPaths, readCounts, stillToEnter, type MoveCounts } from "./workspace-move.ts";
+import { MoveUploads, PART_BYTES, UploadError, cleanDigest, readPartAt, sha256OfFile } from "./move-upload.ts";
+import { cleanMovedMark, clearMovedMark, readMovedMark, writeMovedMark, type MovedMark } from "./moved-mark.ts";
 import { nextDueAt } from "./next-due.ts";
 import { rangeDays, summarize, usageReport, UsageStore, USAGE_RANGES, type UsageRange } from "./usage.ts";
 import { monthBounds, monthKey, monthSpend, providerCreditNotice, readLimit, spendNotices, spendRefusal, spendStatus, MAX_LIMIT_USD, type SpendStatus } from "./spend-limits.ts";
@@ -634,6 +636,11 @@ creditsAccess.use(credits);
 const HOSTED = isHosted();
 const VNC = HOSTED ? vncTarget(process.env.BLOKS_HOSTED_VNC) : null;
 const DOOR = HOSTED ? publicDoor(process.env.BLOKS_PUBLIC_URL) : null;
+/** This copy's work moved to another machine (server/moved-mark.ts): its
+ * routines, watchers, workflows and chat bots sit out, so nothing runs in
+ * two places. Up here, before anything that would start one is made. */
+let movedMark: MovedMark | null = readMovedMark(DATA_DIR);
+const movedAway = () => movedMark !== null;
 /** A next-due time about to be worked out again (nextDueChanged). Up here,
  * before anything can broadcast, since a broadcast is what sets it. */
 let nextDueSoon: ReturnType<typeof setTimeout> | null = null;
@@ -7675,7 +7682,7 @@ function disarmWatcher(id: string) {
  * the minute tick is only a fallback for events the filesystem drops. */
 function armWatcher(w: Watcher) {
   disarmWatcher(w.id);
-  if (w.kind !== "folder" || !w.enabled || suspendedFor(w.botId)) return;
+  if (w.kind !== "folder" || !w.enabled || suspendedFor(w.botId) || movedAway()) return;
   try {
     const fw = watch(w.target, { recursive: true }, () => {
       clearTimeout(settleTimers.get(w.id));
@@ -7820,6 +7827,8 @@ async function checkWatcher(id: string, manual = false): Promise<{ fired: boolea
   // Stopped for failing (countLook): only a look by hand, or the person
   // changing it, starts it again.
   if (w.failing && !manual) return { fired: false, note: "It stopped looking after failing again and again. Change it, or look by hand, to start it again." };
+  // the live copy of this workspace is on another machine, which looks
+  if (movedAway()) return { fired: false, note: "This workspace moved, so its watchers look where it runs now, not here." };
   if (checking.has(id)) return { fired: false, note: "already looking" };
   checking.add(id);
   try {
@@ -8032,6 +8041,7 @@ setInterval(sweepRehearsals, 60 * 60_000).unref?.();
 // have no schedule: each is asked as a reading arrives, and here only
 // while a crossing still waits to be acted on, or its time has run out.
 setInterval(() => {
+  if (movedAway()) return;
   const now = Date.now();
   for (const w of watchers) {
     if (!w.enabled || w.failing || suspendedFor(w.botId) || w.kind === "place") continue;
@@ -10001,6 +10011,53 @@ async function takeOffline(): Promise<string | null> {
 // ── the Plan page (server/plan-account.ts) ────────────────────────────
 
 const planAccount = new PlanAccount({ file: join(DATA_DIR, "plan-cache.json") });
+
+/** What the app needs of the account to move a workspace to Hosting on
+ * its own (electron/hosting-move.mjs): whether the machine is running,
+ * and whether the plan includes Bloks AI. Words the site said, never the
+ * key, and only for the licence the app handed over. */
+function accountForDesktop(account: Account | null, state: string) {
+  return {
+    state,
+    shared: licenceKey() === sharedLicence,
+    plan: account?.plan ?? null,
+    // `status` on this line is an answer's HTTP status, so this is named apart
+    accountStatus: account?.status ?? null,
+    hosting: account?.hosting ?? null,
+    bloksAi: Boolean(account?.bloksAi?.active),
+  };
+}
+
+/** The account as a live Plan page answer had it, told to the app. */
+function tellDesktopAccount(body: unknown) {
+  const said = body as { account?: Account | null; accountState?: string } | null;
+  if (!said || said.accountState !== "live") return;
+  try {
+    (process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort?.postMessage({
+      kind: "desktop.account",
+      ...accountForDesktop(said.account ?? null, "live"),
+    });
+  } catch {
+    /* no app to tell */
+  }
+}
+
+// The app asking for the same, on its own schedule (after checkout, and
+// as it starts while a move to Hosting is still to come), and for a
+// pairing link to the hosted workspace, which is what Open asks for too.
+desktopLine.answer("plan.account", async (asked) => {
+  const licence = licenceKey();
+  if (!licence) return { ok: true, ...accountForDesktop(null, "none") };
+  const answer = await planAccount.account(licence, asked.fresh === true);
+  return { ok: true, ...accountForDesktop(answer.account, answer.state) };
+});
+desktopLine.answer("plan.hostedLink", async () => {
+  const licence = licenceKey();
+  if (!licence) return { ok: false, status: 409, error: "There is no Bloks key on this computer." };
+  const said = await planAccount.hostedLink(licence);
+  if ("error" in said) return { ok: false, status: said.status, error: said.error, ...(said.waking ? { waking: true } : {}) };
+  return { ok: true, link: said.link, expiresAt: said.expiresAt };
+});
 
 /**
  * What the Plan page reads: the licence this workspace uses, the plan the
@@ -11975,6 +12032,7 @@ function answerGate(runId: string, approved: boolean, answer: string) {
  * it was written rather than when the clock ran out.
  */
 function settleTimeouts() {
+  if (movedAway()) return;
   for (const run of timedOut(workflows.waiting(), Date.now())) {
     const waiting = run.waiting!;
     endStep(run.id, waiting.stepId, "timed-out", { error: "nobody answered in time" });
@@ -12041,6 +12099,8 @@ function stopRunsOnEdit(workflowId: string) {
 
 /** Start a workflow, if it is one that may start. */
 function fireWorkflow(workflowId: string, trigger: Record<string, string>): WorkflowRun | null {
+  // moved: its workflows run where the workspace runs now
+  if (movedAway()) return null;
   const workflow = workflows.get(workflowId);
   if (!workflow) return null;
   const run = workflows.begin(workflowId, trigger, Date.now());
@@ -12084,6 +12144,7 @@ function triggersFired(event: {
  * run stuck at "running" forever looks exactly like a run still working.
  */
 function resumeStalled() {
+  if (movedAway()) return;
   const inFlight = new Set([...workflowTurns.values()].map((held) => held.runId));
   for (const workflow of workflows.workflows) {
     for (const run of workflow.runs ?? []) {
@@ -12119,7 +12180,8 @@ async function runDueRoutines() {
     broadcast({ kind: "enginePauses" });
     armPauseTimer();
   }
-  if (drain.on) return;
+  // moved: due here as there, and run there only, so nothing runs twice
+  if (drain.on || movedAway()) return;
   const now = new Date();
   for (const routine of routines.due(now)) {
     if (routine.targetKind === "room") {
@@ -12239,7 +12301,9 @@ const routineTimer = setInterval(() => void runDueRoutines().catch(() => {}), 30
 // changes. A Mac has no use for it and says nothing.
 function sayNextDue() {
   if (!HOSTED) return;
-  relayLink.nextDue(nextDueAt({ routines: routines.routines, watchers, suspended: suspendedFor, now: Date.now() }));
+  // a hosted copy whose work moved has nothing coming up to wake it for
+  const away = movedAway();
+  relayLink.nextDue(nextDueAt({ routines: away ? [] : routines.routines, watchers: away ? [] : watchers, suspended: suspendedFor, now: Date.now() }));
 }
 function nextDueChanged() {
   if (!HOSTED || nextDueSoon) return;
@@ -13040,7 +13104,9 @@ function startTelegramBot(botId: string): void {
       if (message.queued && binding?.generation && (!configured?.token || !configured.enabled || binding.generation !== configured.generation)) dropQueuedTelegram(botId, binding.generation);
     }
   }
-  if (previous && currentTelegram(previous)) return;
+  // a workspace that moved polls nothing: the same bot token polled from
+  // two machines hands each one half the messages
+  if (previous && currentTelegram(previous) && !movedAway()) return;
   if (previous) {
     previous.abort.abort();
     dropQueuedTelegram(botId, previous.generation);
@@ -13052,7 +13118,7 @@ function startTelegramBot(botId: string): void {
     telegramRuntimes.delete(botId);
   }
   const state = telegramBinding(botId);
-  if (!state?.token || !state.enabled || !store.bot(botId)) return;
+  if (!state?.token || !state.enabled || !store.bot(botId) || movedAway()) return;
   const runtime = makeTelegramRuntime(botId, state);
   telegramRuntimes.set(botId, runtime);
   void telegramLoop(runtime);
@@ -13387,6 +13453,9 @@ function startChat(platform: ChatPlatform) {
     chatStatus[platform] = { state, ...(detail ? { detail } : {}) };
     broadcast({ kind: "chat.status", platform, ...chatStatus[platform] });
   };
+  // moved: the bot answers from where the workspace runs now, never from
+  // two places at once
+  if (movedAway()) return;
   if (platform === "slack") {
     const c = cfg.chat?.slack;
     if (!c?.enabled || !c.botToken || !c.appToken) return;
@@ -16532,7 +16601,111 @@ function workspaceEmpty(): boolean {
     (n, bot) => n + bot.tasks.reduce((m, task) => m + store.messagesFor(task.id).filter((msg) => msg.role === "user").length, 0),
     0,
   );
-  return emptyEnoughForMove({ mine, rooms: bloks.bloks.length, routines: routines.routines.length, watchers: watchers.length, intents: intents.length });
+  return emptyEnoughForMove({
+    mine,
+    rooms: bloks.bloks.length,
+    routines: routines.routines.length,
+    watchers: watchers.length,
+    intents: intents.length,
+    workflows: workflows.workflows.length,
+  });
+}
+
+/** Whether a move may land here: an empty workspace, or, asked for in so
+ * many words, the copy a workspace was moved out of, which it replaces
+ * whole (the person was told so before it started). */
+function mayTakeMove(replace: boolean): boolean {
+  return workspaceEmpty() || (replace && movedMark !== null && !movedMark.pending);
+}
+
+/**
+ * What a move counts, here and now: written into the file on the way
+ * out, and asked again once it is in place where it lands, so the app can
+ * say all of it arrived. A memory file counts when it says something: the
+ * seed an agent's folder starts with is not anything that moved.
+ */
+function moveCounts(): MoveCounts {
+  const saying = (files: Array<{ read: () => string }>) => files.filter((file) => file.read().trim()).length;
+  let memoryFiles = saying(workspace.sharedMemoryFiles());
+  for (const bot of store.bots) memoryFiles += saying(workspace.memoryFiles(bot.id));
+  return {
+    agents: store.bots.length,
+    conversations: store.bots.reduce((n, bot) => n + bot.tasks.length, 0),
+    rooms: bloks.bloks.length,
+    routines: routines.routines.length,
+    watchers: watchers.length,
+    workflows: workflows.workflows.length,
+    memoryFiles,
+  };
+}
+
+/** Where this machine's own config.json holds a key, by path and never
+ * by value: what a move landing here keeps, so is not asked for again. */
+function keysHeldHere(): string[] {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(join(DATA_DIR, "config.json"), "utf8"));
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? heldKeyPaths(raw as Record<string, unknown>, stripSecrets) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Marks this copy as moved, or takes the mark away, and brings what runs
+ * on its own in line at once: watchers disarmed, Telegram loops and the
+ * Slack and Discord connections closed while it is marked, and started
+ * again when it is not. Routines and workflows read the mark on each
+ * tick. The page hears it, for the banner.
+ */
+function setMoved(mark: MovedMark | null) {
+  if (mark) writeMovedMark(DATA_DIR, mark);
+  else clearMovedMark(DATA_DIR);
+  movedMark = mark;
+  for (const w of watchers) armWatcher(w);
+  for (const bot of store.bots) startTelegramBot(bot.id);
+  for (const platform of CHAT_PLATFORMS) startChat(platform);
+  nextDueChanged();
+  broadcast({ kind: "workspace.moved", moved: mark });
+}
+
+/** A move file in the backups folder, opened as the regular file it is
+ * inside that folder (never through a link), or null for a name that is
+ * not one, or a backup that is not a move. The caller closes it. */
+function heldMoveFile(name: string): ReturnType<typeof openInside> {
+  // a name a backup can have, or the refusal for one that is not
+  backupPath(name);
+  const held = openInside(backupsDirFor(), [name]);
+  if (!held) return null;
+  let kind: BackupInfo["kind"] | null = null;
+  try {
+    kind = readBackupSummaryFrom(held.fd).summary.kind;
+  } catch {}
+  if (kind === "move") return held;
+  closeHeld(held);
+  return null;
+}
+
+/** One move file's parts and their SHA-256s, read once, with the whole
+ * file's: the parts are what the app carries, a part at a time, and the
+ * digests are how each end knows a part arrived as it left. */
+async function moveFileDigests(file: string): Promise<{ size: number; sha256: string; partDigests: string[] }> {
+  const fd = openSync(file, "r");
+  const partDigests: string[] = [];
+  let size = 0;
+  try {
+    size = fstatSync(fd).size;
+    for (let index = 0; index * PART_BYTES < size; index++) {
+      const part = readPartAt(fd, size, index);
+      if (!part) throw new BackupError("The workspace file could not be read back. Try again in a moment.", 409);
+      partDigests.push(part.sha256);
+      // a few hundred megabytes is a few hundred parts: let the rest of
+      // the server answer in between
+      if (index % 16 === 15) await new Promise((r) => setImmediate(r));
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return { size, sha256: await sha256OfFile(file), partDigests };
 }
 
 /** A file arriving in a request body, written beside the backups as it
@@ -16626,16 +16799,18 @@ function sealedFile(file: string): boolean {
  * does. A wrong or missing passphrase is said at the finish and leaves
  * every part where it is, so it is asked again without sending anything.
  */
-async function serveMoveUpload(req: IncomingMessage, res: ServerResponse, method: string, path: string) {
+async function serveMoveUpload(req: IncomingMessage, res: ServerResponse, method: string, path: string, query: URLSearchParams) {
   try {
     if (path === "/api/workspace/move/upload") {
       if (method !== "POST") return json(res, 405, { error: "POST the file's size to begin" });
       if (backupRunning || restoreUnderWay()) {
         return json(res, 409, { error: "A backup or a restore is already under way. Try again once it is done." });
       }
-      if (!workspaceEmpty()) return json(res, 409, { error: MOVE_NOT_EMPTY });
       const body = await readBody(req);
-      return json(res, 201, moveUploads.start(body.size));
+      if (!mayTakeMove(body.replace === true)) return json(res, 409, { error: MOVE_NOT_EMPTY, notEmpty: true });
+      // the whole file's SHA-256, when the sender says it: the finish holds
+      // what arrived to it
+      return json(res, 201, moveUploads.start(body.size, body.sha256));
     }
     const m = path.match(/^\/api\/workspace\/move\/upload\/(up_[A-Za-z0-9_-]{12})(?:\/(\d{1,6}|finish))?$/);
     if (!m) return json(res, 404, { error: "not found" });
@@ -16651,9 +16826,16 @@ async function serveMoveUpload(req: IncomingMessage, res: ServerResponse, method
     if (m[2] !== "finish") {
       if (method !== "PUT") return json(res, 405, { error: "PUT the part" });
       const bytes = await readBytes(req, PART_BYTES);
-      return json(res, 200, moveUploads.put(id, Number(m[2]), bytes));
+      // in the address rather than a header: Bloks Cloud carries a
+      // request's path and body, and none of its own headers
+      const digest = query.get("sha256");
+      if (digest !== null && !cleanDigest(digest)) return json(res, 400, { error: "That is not a SHA-256 of the part." });
+      return json(res, 200, moveUploads.put(id, Number(m[2]), bytes, cleanDigest(digest)));
     }
     if (method !== "POST") return json(res, 405, { error: "POST to finish" });
+    // an older app finishes with no body at all
+    const asked = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+    const replace = asked.replace === true;
     const status = moveUploads.status(id);
     const data = moveUploads.file(id);
     if (!status || !data) return json(res, 404, { error: "That upload is not here any more. Start the move again." });
@@ -16663,18 +16845,33 @@ async function serveMoveUpload(req: IncomingMessage, res: ServerResponse, method
     if (backupRunning || restoreUnderWay()) {
       return json(res, 409, { error: "A backup or a restore is already under way. Try again once it is done." });
     }
-    if (!workspaceEmpty()) return json(res, 409, { error: MOVE_NOT_EMPTY });
+    if (!mayTakeMove(replace)) return json(res, 409, { error: MOVE_NOT_EMPTY, notEmpty: true });
+    const said = cleanDigest(asked.sha256);
+    if (said && status.sha256 && said !== status.sha256) {
+      return json(res, 409, { error: "That upload is of another workspace file. Start the move again." });
+    }
+    // every part arrived as it left, and together they are the file begun
+    await moveUploads.checkWhole(id);
     const passphrase = typeof req.headers["x-bloks-passphrase"] === "string" && req.headers["x-bloks-passphrase"] ? String(req.headers["x-bloks-passphrase"]) : undefined;
     // checked where it lies, so a refusal costs nothing to try again
     const summary = await checkBackup(data, passphrase);
     if (summary.kind !== "move") throw new BackupError("That is a backup, not a workspace move file. Restore a backup from Backups.", 400);
+    // what the sender counted is what this file says it holds: the app
+    // checks the same counts again once the workspace is in place here
+    const expected = readCounts(asked.counts);
+    if (expected && summary.counts && countsDiffer(expected, summary.counts).length) {
+      return json(res, 409, { error: "The workspace file that arrived does not hold what was written out. Start the move again." });
+    }
     const name = backupFileName(new Date(), "", "move", sealedFile(data)).replace("-move", "-move-in");
     const file = join(backupsDirFor(), name);
     if (existsSync(file)) return json(res, 409, { error: "A workspace file is already arriving. Try again in a moment." });
+    // asked before the folder is swapped: a copy moved back into keeps its
+    // own keys, and only the rest are to be entered again
+    const keys = stillToEnter(summary.keys ?? [], keysHeldHere());
     moveUploads.finish(id, file);
     restoring = { phase: "draining", from: name, startedAt: Date.now() };
     void runRestore(file, passphrase, 0);
-    return json(res, 202, { restore: restoring, toEnter: summary.toEnter ?? [] });
+    return json(res, 202, { restore: restoring, toEnter: summary.toEnter ?? [], keys, counts: summary.counts ?? null });
   } catch (e) {
     if (e instanceof UploadError) return json(res, e.status, { error: e.message });
     if (e instanceof BackupError) {
@@ -16686,25 +16883,143 @@ async function serveMoveUpload(req: IncomingMessage, res: ServerResponse, method
   }
 }
 
-async function serveMove(req: IncomingMessage, res: ServerResponse, method: string, path: string, local: boolean) {
+/**
+ * The move's routes. `local` is this computer's own window or app;
+ * `owner` is that, or, on a hosted workspace, one of the owner's own
+ * paired devices, since a hosted workspace has no window of its own and
+ * the owner's Mac is how its work is carried home (electron/hosting-move.mjs).
+ */
+async function serveMove(req: IncomingMessage, res: ServerResponse, method: string, path: string, local: boolean, owner: boolean, query: URLSearchParams) {
   try {
     if (method === "GET" && path === "/api/workspace/move") {
-      // `canWrite`: writing one out answers only this computer. `partSize`:
-      // a file may come in parts (serveMoveUpload), each this many bytes
-      return json(res, 200, { empty: workspaceEmpty(), hosted: HOSTED, canWrite: local, running: backupRunning, restore: restoring, partSize: PART_BYTES });
+      // `canWrite`: writing one out answers only the owner. `partSize`: a
+      // file may come in parts (serveMoveUpload), each this many bytes.
+      // `counts`, `moved` and `lastRestore` are for the app carrying a
+      // move: what is here, whether this copy's work went elsewhere, and
+      // the last workspace put in place here, by its file's name
+      const last = lastRestore();
+      return json(res, 200, {
+        empty: workspaceEmpty(),
+        hosted: HOSTED,
+        canWrite: owner,
+        running: backupRunning,
+        restore: restoring,
+        partSize: PART_BYTES,
+        counts: moveCounts(),
+        moved: movedMark,
+        lastRestore: last ? { from: last.from, at: last.at, safety: Boolean(last.safety) } : null,
+      });
     }
     if (path === "/api/workspace/move/upload" || path.startsWith("/api/workspace/move/upload/")) {
-      return serveMoveUpload(req, res, method, path);
+      return serveMoveUpload(req, res, method, path, query);
     }
-    // Writing one out is this computer's, like a backup: it is the whole
-    // workspace, and it goes where the person carries it.
+    // Writing one out is the owner's, like a backup: it is the whole
+    // workspace, and it goes where the person carries it. The answer says
+    // how it is carried: its size, its SHA-256, and each part's.
     if (method === "POST" && path === "/api/workspace/move") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!owner) return json(res, 403, { error: "not from here" });
+      if (movedMark && !movedMark.pending) {
+        return json(res, 409, { error: `This copy's work already moved to ${movedMark.name}. Move it from there, where it is up to date.` });
+      }
       const body = await readBody(req);
-      const backup = await makeBackup({ kind: "move", passphrase: passphraseIn(body) });
-      return json(res, 200, { backup, toEnter: backup.toEnter ?? [] });
+      const counts = moveCounts();
+      const backup = await makeBackup({ kind: "move", passphrase: passphraseIn(body), counts });
+      const carried = await moveFileDigests(backup.path);
+      return json(res, 200, { backup, toEnter: backup.toEnter ?? [], keys: backup.keys ?? [], counts, partSize: PART_BYTES, ...carried });
+    }
+    // This copy's work moved elsewhere, or is moving (`pending`), or came
+    // back: the mark that stops what would otherwise run in two places.
+    if (path === "/api/workspace/move/moved") {
+      if (!owner) return json(res, 403, { error: "not from here" });
+      if (method === "GET") return json(res, 200, { moved: movedMark });
+      if (method === "DELETE") {
+        if (movedMark) setMoved(null);
+        return json(res, 200, { moved: null });
+      }
+      if (method !== "POST") return json(res, 405, { error: "GET, POST or DELETE" });
+      const mark = cleanMovedMark({ ...(await readBody(req)), at: Date.now() });
+      if (!mark) return json(res, 400, { error: "Say where it moved: to is hosted or mac." });
+      // a copy whose work already went elsewhere is not the one to move:
+      // what is up to date is there
+      if (mark.pending && movedMark && !movedMark.pending) {
+        return json(res, 409, { error: `This copy's work already moved to ${movedMark.name}. Move it from there, where it is up to date.` });
+      }
+      setMoved(mark);
+      return json(res, 200, { moved: mark });
+    }
+    // A workspace whose work moved out, emptied: set aside whole beside
+    // its folder, its settings kept, and started again empty, so nothing
+    // of it runs here and the machine is ready for a move another day.
+    // Only for a copy marked moved, so it cannot empty a live workspace.
+    if (method === "POST" && path === "/api/workspace/move/empty") {
+      if (!owner) return json(res, 403, { error: "not from here" });
+      if (!movedMark || movedMark.pending) return json(res, 409, { error: "Only a workspace whose work has moved out is emptied." });
+      if (backupRunning || restoreUnderWay()) return json(res, 409, { error: "A backup or a restore is already under way. Try again once it is done." });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const archive = `${DATA_DIR}-moved-${stamp}`;
+      const kept = (() => {
+        try {
+          return JSON.parse(readFileSync(join(DATA_DIR, "config.json"), "utf8"));
+        } catch {
+          return null;
+        }
+      })();
+      renameSync(DATA_DIR, archive);
+      mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+      if (kept && typeof kept === "object") {
+        // guests' devices belonged to rooms that are in the copy set aside
+        if (kept.remote) delete kept.remote.memberDevices;
+        writeFileSync(join(DATA_DIR, "config.json"), JSON.stringify(kept, null, 2), { mode: 0o600 });
+      }
+      res.on("finish", () => setTimeout(() => process.exit(0), 50));
+      return json(res, 200, { emptied: true, restarting: true });
+    }
+    // A move that landed here but did not check out, taken back out: the
+    // workspace as it was just before (the backup a restore always takes
+    // first) put back the same way, with a restart.
+    if (method === "POST" && path === "/api/workspace/move/undo") {
+      if (!owner) return json(res, 403, { error: "not from here" });
+      if (backupRunning || restoreUnderWay()) return json(res, 409, { error: "A backup or a restore is already under way. Try again once it is done." });
+      const last = lastRestore();
+      if (!last || !last.from.includes("-move-in") || !last.safety) return json(res, 409, { error: "There is no move here to take back." });
+      const file = backupPath(last.safety);
+      if (!existsSync(file)) return json(res, 409, { error: "The copy from before the move is not here any more, so the move stays." });
+      restoring = { phase: "draining", from: last.safety, startedAt: Date.now() };
+      void runRestore(file, undefined, 0);
+      return json(res, 202, { restore: restoring });
+    }
+    // One part of a move file, by number, for the app carrying it to
+    // another machine through Bloks Cloud, which takes one small request
+    // at a time. Its SHA-256 was in the answer that wrote the file.
+    const part = path.match(/^\/api\/workspace\/move\/([^/]+)\/part\/(\d{1,6})$/);
+    if (part && method === "GET") {
+      if (!owner) return json(res, 403, { error: "not from here" });
+      // opened once, inside the backups folder, and read from that open
+      // file, as a whole download is (GitHub 318)
+      const held = heldMoveFile(decodeURIComponent(part[1]));
+      if (!held) return json(res, 404, { error: "That is not a workspace move file." });
+      let got: { bytes: Buffer } | null;
+      try {
+        got = readPartAt(held.fd, held.stat.size, Number(part[2]));
+      } finally {
+        closeHeld(held);
+      }
+      if (!got) return json(res, 404, { error: "There is no such part." });
+      res.writeHead(200, { "content-type": "application/octet-stream", "content-length": got.bytes.length, "cache-control": "no-store" });
+      res.end(got.bytes);
+      return;
     }
     const m = path.match(/^\/api\/workspace\/move\/([^/]+)$/);
+    // a move file carried where it was going, cleared from here
+    if (m && method === "DELETE" && !["import", "upload", "moved", "empty", "undo"].includes(m[1])) {
+      if (!owner) return json(res, 403, { error: "not from here" });
+      const name = decodeURIComponent(m[1]);
+      const held = heldMoveFile(name);
+      if (!held) return json(res, 404, { error: "That is not a workspace move file." });
+      closeHeld(held);
+      deleteBackup(name);
+      return json(res, 200, { removed: true });
+    }
     if (m && method === "GET" && m[1] !== "import") {
       if (!local) return json(res, 403, { error: "not from here" });
       const name = decodeURIComponent(m[1]);
@@ -17018,6 +17333,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
     const hook = webhooks.byToken(hookMatch[1]);
     if (!hook) return json(res, 404, { error: "no such webhook" });
+    // the live copy is on another machine, with webhook addresses of its
+    // own; a 4xx, so the sender stops rather than retries
+    if (movedAway()) return json(res, 409, { error: "This workspace moved to another machine. Point this webhook at its address there." });
     // An archived target keeps its hook, so restoring brings the same
     // URL back. A 4xx and not a 5xx: senders retry on a 5xx, and this
     // will not start working until somebody restores the agent.
@@ -18630,7 +18948,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (path === "/api/plan" || path.startsWith("/api/plan/")) {
       if (asAgent || !local) return json(res, 403, { error: "your plan is shown on this computer only" });
       const answered = await planRoute(method, path, url.searchParams, planDeps, planAccount);
-      if (answered) return json(res, answered.status, answered.body);
+      if (answered) {
+        // the app starts a move to Hosting once it is running, and the page
+        // is often the first to hear (somebody back from checkout)
+        if (method === "GET" && path === "/api/plan") tellDesktopAccount(answered.body);
+        return json(res, answered.status, answered.body);
+      }
     }
 
     // Bloks AI: what is left, the background switch and a team's member
@@ -23251,10 +23574,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!local || asAgent) return json(res, 403, { error: "not from here" });
       return serveBackups(req, res, method, path);
     }
-    // Moving the whole workspace to another machine. Never an agent's.
+    // Moving the whole workspace to another machine. Never an agent's. On
+    // a hosted workspace the owner's own paired devices write one out and
+    // mark it moved too: it has no window of its own, and the owner's Mac
+    // is how its work comes home. A member never gets this far.
     if (path === "/api/workspace/move" || path.startsWith("/api/workspace/move/")) {
       if (asAgent) return json(res, 403, { error: "not from here" });
-      return serveMove(req, res, method, path, local);
+      return serveMove(req, res, method, path, local, local || (HOSTED && Boolean(caller) && !caller?.personId), url.searchParams);
     }
 
     // ── Slack and Discord, for shared rooms ──

@@ -76,7 +76,16 @@ import { closeHeld, openInsideOr } from "./open-inside.ts";
 import { OWN_GROUP } from "./no-console.ts";
 import { APP_VERSION, DATA_DIR } from "./config.ts";
 import { holderOf } from "./data-lock.ts";
-import { MOVE_REWRITES, configForMove, keepThisMachine, moveLeftOut } from "./workspace-move.ts";
+import {
+  MOVE_REWRITES,
+  configForMove,
+  keepThisMachine,
+  moveLeftOut,
+  readCounts,
+  readKeys,
+  type KeyToEnter,
+  type MoveCounts,
+} from "./workspace-move.ts";
 
 /** Bumped when a reader of this build could not read what it writes. */
 export const BACKUP_FORMAT = 1;
@@ -125,6 +134,12 @@ export interface BackupSummary {
   /** A move: the keys left behind, by name, to be entered again where it
    * lands. */
   toEnter?: string[];
+  /** A move: the same keys, each with the Settings page it is entered on
+   * and where it was in config.json (never its value). */
+  keys?: KeyToEnter[];
+  /** A move: what was in the workspace as it was written out, counted, so
+   * the machine it lands on can say all of it arrived. */
+  counts?: MoveCounts;
 }
 
 export interface ManifestFile {
@@ -862,6 +877,8 @@ function checkSummary(value: unknown): BackupSummary {
   const toEnter = Array.isArray(value.toEnter)
     ? value.toEnter.filter((label): label is string => typeof label === "string").slice(0, 200).map((label) => label.slice(0, 200))
     : null;
+  const keys = kind === "move" && Array.isArray(value.keys) ? readKeys(value.keys) : null;
+  const counts = kind === "move" ? readCounts(value.counts) : null;
   return {
     format: value.format,
     app: "bloks",
@@ -871,6 +888,8 @@ function checkSummary(value: unknown): BackupSummary {
     undo: value.undo === true,
     secrets: value.secrets === true,
     ...(kind === "move" && toEnter ? { toEnter } : {}),
+    ...(keys ? { keys } : {}),
+    ...(counts ? { counts } : {}),
   };
 }
 
@@ -1120,6 +1139,8 @@ export interface CreateOptions {
   dataDir?: string;
   version?: string;
   now?: Date;
+  /** A move: the workspace counted as it is written out. */
+  counts?: MoveCounts;
 }
 
 /** config.json as it goes into a backup: whole when keys go in, without
@@ -1154,7 +1175,7 @@ interface MoveConfig {
   mtime: number;
 }
 
-function configForMoveFile(file: string): { move: MoveConfig; toEnter: string[] } | null {
+function configForMoveFile(file: string): { move: MoveConfig; toEnter: string[]; keys: KeyToEnter[] } | null {
   const plain = configForBackup(file, false);
   if (!plain) return null;
   let original: unknown;
@@ -1165,8 +1186,8 @@ function configForMoveFile(file: string): { move: MoveConfig; toEnter: string[] 
   }
   const stripped = JSON.parse(plain.bytes.toString("utf8"));
   if (!isRecord(stripped) || !isRecord(original)) return null;
-  const { config, toEnter } = configForMove(stripped, plain.leftOut, original);
-  return { move: { bytes: Buffer.from(`${JSON.stringify(config, null, 2)}\n`), leftOut: plain.leftOut, mtime: plain.mtime }, toEnter };
+  const { config, toEnter, keys } = configForMove(stripped, plain.leftOut, original);
+  return { move: { bytes: Buffer.from(`${JSON.stringify(config, null, 2)}\n`), leftOut: plain.leftOut, mtime: plain.mtime }, toEnter, keys };
 }
 
 /** A read by position from a file already open, off the main thread like
@@ -1333,7 +1354,11 @@ export async function createBackup(opts: CreateOptions = {}): Promise<BackupInfo
     secrets,
   };
   const moveConfig = moving ? configForMoveFile(join(dataDir, "config.json")) : null;
-  if (moveConfig) summary.toEnter = moveConfig.toEnter;
+  if (moveConfig) {
+    summary.toEnter = moveConfig.toEnter;
+    summary.keys = moveConfig.keys;
+  }
+  if (moving && opts.counts) summary.counts = opts.counts;
   ensureBackupsDir(backupsDir);
   const name = freeName(backupsDir, backupFileName(at, version, summary.kind, Boolean(passphrase)));
   const file = join(backupsDir, name);
