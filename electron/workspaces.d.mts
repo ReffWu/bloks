@@ -25,6 +25,8 @@ export interface WorkspaceEntry {
   role?: "member" | "admin";
   /** A joined workspace's mark as you chose it, seen only here. */
   ownMark?: Mark | null;
+  /** A copy whose work moved to the workspace `to` (electron/hosting-move.mjs). */
+  moved?: { to: string; at: number } | null;
 }
 
 export interface Registry {
@@ -92,6 +94,7 @@ export function chooseAccent(registry: Registry, id: string | null, accent: unkn
 export function setSameAccent(registry: Registry, id: string | null, on: boolean, showing?: unknown): { registry: Registry; accent: string | null };
 export function rerollMark(registry: Registry, id: string, options?: { random?: () => number }): Registry;
 export function removeWorkspace(registry: Registry, id: string): { registry: Registry; removed: WorkspaceEntry };
+export function markMoved(registry: Registry, id: string, to: string | null, now?: number): Registry;
 export function oneAtATime<A extends unknown[], R>(work: (...args: A) => R | Promise<R>): (...args: A) => Promise<R>;
 export function reorder(registry: Registry, ids: string[]): Registry;
 export function setCurrent(registry: Registry, id: string): Registry;

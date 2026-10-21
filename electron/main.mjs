@@ -51,7 +51,18 @@ import { sameAppOrigin } from "./navigation.mjs";
 import { joinLink, linkInArgv, planLink, teamLink } from "./links.mjs";
 import { licencePrint, withLicence } from "./plan-link.mjs";
 import { keepPlan, planFromReport, readKeptPlan } from "./account-plan.mjs";
-import { OWN_LOCAL_KINDS, ServerAsks, othersFor, pairRefusal } from "./server-line.mjs";
+import {
+  AUTO_DELAY_MS,
+  autoMoveFrom,
+  doneWords,
+  hostingRunning,
+  keepMoveState,
+  newMove,
+  readMoveState,
+  runMove,
+  startingWords,
+} from "./hosting-move.mjs";
+import { HOSTED_TARGET, OWN_LOCAL_KINDS, ServerAsks, othersFor, pairRefusal } from "./server-line.mjs";
 import { terminalQuery } from "./terminal-window.mjs";
 import os from "node:os";
 
@@ -81,6 +92,7 @@ import {
   oneAtATime,
   readRegistry,
   addHosted,
+  markMoved,
   isRemoteKind,
   removeWorkspace,
   reorder,
@@ -649,6 +661,8 @@ function keepLicence(key, typed = true) {
   }
   // another licence is another plan, until a server has asked about it
   licencePlan = readKeptPlan(planFile(), licencePrint(key));
+  // a move's record is kept per licence, so it is read again for this one
+  moveState = null;
   planRead = true;
   for (const run of servers.values()) handLicence(run);
   tellWorkspaces();
@@ -673,6 +687,7 @@ function forgetLicence() {
   licencePlan = null;
   planRead = true;
   keepPlan(planFile(), null, null);
+  moveState = null;
   tellWorkspaces();
   try {
     fs.rmSync(licenceFile(), { force: true });
@@ -801,6 +816,14 @@ async function othersForPhone(id) {
 /** A single-use pairing for `target`, asked by the phone paired with
  * `id`: the target's server makes it, starting first when it has to. */
 async function pairForPhone(id, target, device) {
+  // the hosted workspace a copy here moved to: its link comes from
+  // bloks.dev, as Open's does, and the phone claims it like any other
+  const hosted = hostedEntry();
+  if (target === HOSTED_TARGET && hosted && OWN_LOCAL_KINDS.includes(entryOf(id)?.kind)) {
+    const link = await hostedLinkFrom(id);
+    tellPairingMade(hosted, entryOf(id), typeof device === "string" ? device.slice(0, 60) : "");
+    return { ok: true, via: "relay", link, expiresAt: Date.now() + 15 * 60_000, host: hosted.name, workspace: { id: hosted.id, name: hosted.name, kind: "hosted", mark: hosted.mark } };
+  }
   const refused = pairRefusal(registry, id, String(target));
   if (refused) return { ok: false, ...refused };
   const ws = entryOf(String(target));
@@ -1135,23 +1158,395 @@ handle("workspaces:joined", (_event, input) =>
 handle("workspaces:hosted", (_event, input) =>
   answer(async () => {
     needsList();
-    if (!safeStorage.isEncryptionAvailable()) throw new Error("This computer cannot keep the pairing safely, so it was not saved.");
-    const profile = await claimPairLink(String(input?.link ?? ""), `${os.hostname().replace(/\.local$/, "")} (desktop)`);
-    const added = addHosted(registry, { host: profile.host, relayUrl: profile.relayUrl });
-    const shown = shownId === added.entry.id;
-    if (added.replaced) {
-      // out of it while its proxy is swapped for one with the new pairing
-      if (shown) await switchWorkspace(PERSONAL_ID);
-      await halt(added.entry.id);
-    }
-    fs.writeFileSync(joinedFile(added.entry.id), safeStorage.encryptString(JSON.stringify(profile)), { mode: 0o600 });
-    registry = settle(added.registry, { personalDataDir: personalDataDir() });
-    saveRegistry();
-    tellWorkspaces();
-    if (input?.open !== false || shown) await switchWorkspace(added.entry.id);
-    return { ok: true, id: added.entry.id };
+    const id = await pairHosted(String(input?.link ?? ""), { open: input?.open !== false });
+    return { ok: true, id };
   }),
 );
+
+/** The pairing behind Open, also what a move to Hosting does on its own:
+ * the link spent as a device of yours, and the hosted workspace listed,
+ * or the one listed pointed at the new pairing. Answers its id. */
+async function pairHosted(link, { open = true } = {}) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("This computer cannot keep the pairing safely, so it was not saved.");
+  const profile = await claimPairLink(link, `${os.hostname().replace(/\.local$/, "")} (desktop)`);
+  const added = addHosted(registry, { host: profile.host, relayUrl: profile.relayUrl });
+  const shown = shownId === added.entry.id;
+  if (added.replaced) {
+    // out of it while its proxy is swapped for one with the new pairing
+    if (shown) await switchWorkspace(PERSONAL_ID);
+    await halt(added.entry.id);
+  }
+  fs.writeFileSync(joinedFile(added.entry.id), safeStorage.encryptString(JSON.stringify(profile)), { mode: 0o600 });
+  registry = settle(added.registry, { personalDataDir: personalDataDir() });
+  saveRegistry();
+  tellWorkspaces();
+  if (open || shown) await switchWorkspace(added.entry.id);
+  return added.entry.id;
+}
+
+// ── moving a workspace to the hosted machine, and back ─────────────────
+// The pipeline is electron/hosting-move.mjs; this is where it meets the
+// app. The move's state is kept beside the licence and the plan, under
+// the licence's fingerprint, so a move carries on after a restart. Buying
+// Hosting is the consent for the first move: once the account says the
+// machine is running and this licence has not moved, the workspace whose
+// Plan page sent the person to checkout goes (Personal when that is not
+// known), after a few seconds' toast that offers to change it. Moving
+// back to this Mac is only ever asked for.
+
+const moveFile = () => path.join(app.getPath("userData"), "hosting-move.json");
+let moveState = null;
+/** The move being carried right now, and how to stop it. */
+let moveRun = null;
+let moveTimer = null;
+/** The account as a workspace's server last said it (desktop.account). */
+let lastAccount = null;
+
+function moveStateNow() {
+  moveState ??= readMoveState(moveFile(), licencePrintNow());
+  return moveState;
+}
+
+function keepMove(patch) {
+  moveState = { ...moveStateNow(), ...patch };
+  keepMoveState(moveFile(), moveState);
+  tellMove();
+}
+
+const baseOf = (id) => {
+  const run = servers.get(id);
+  return run?.status === "running" && run.port ? `http://127.0.0.1:${run.port}` : null;
+};
+const hostedEntry = () => registry?.workspaces.find((w) => w.kind === "hosted") ?? null;
+
+/** What the window is told: enough to draw the steps, the keys to enter
+ * and the cards, and nothing it has no use for (never the parts or the
+ * digests). */
+function moveSnapshot() {
+  const state = moveStateNow();
+  const m = state.move;
+  return {
+    available: Boolean(registry),
+    hostingActive: hostingRunning(lastAccount),
+    bloksAi: Boolean(lastAccount?.bloksAi),
+    licenceMoved: Boolean(state.moved),
+    move: m
+      ? {
+          id: m.id,
+          direction: m.direction,
+          auto: m.auto,
+          from: m.from,
+          to: m.to,
+          replace: m.replace,
+          phase: m.phase,
+          step: m.step,
+          startsAt: m.startsAt,
+          sent: m.sent,
+          size: m.size,
+          error: m.error,
+          code: m.code,
+          keys: m.keys ?? m.file?.keys ?? null,
+          doneAt: m.doneAt,
+          announced: m.announced === true,
+          // the toast before one started on its own, and the sentence after
+          starting: startingWords(m),
+          done: m.phase === "done" ? doneWords(m) : null,
+          // past the finish it is being put in place, which nothing stops
+          stoppable: m.phase === "running" && !m.finishing,
+        }
+      : null,
+    hosted: (registry?.workspaces ?? []).filter((w) => w.kind === "hosted").map((w) => ({ id: w.id, name: w.name })),
+    copies: (registry?.workspaces ?? []).filter((w) => w.moved).map((w) => ({ id: w.id, name: w.name, kind: w.kind, to: w.moved.to })),
+  };
+}
+
+function tellMove() {
+  const said = moveSnapshot();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("hosting:move", said);
+  }
+}
+
+/** A pairing link to the hosted workspace, asked of a workspace's server
+ * the way Open asks it; a machine waking up is asked again for a while. */
+async function hostedLinkFrom(id) {
+  const until = Date.now() + 3 * 60_000;
+  for (;;) {
+    if (!(await launch(id))) throw new Error(`${entryOf(id)?.name ?? "That workspace"} would not start, so there is nothing to ask for the link.`);
+    const said = await serverAsks.ask(servers.get(id)?.child, "plan.hostedLink", {}, 45_000);
+    if (said.ok && typeof said.link === "string") return said.link;
+    if (said.waking && Date.now() < until) {
+      await new Promise((r) => setTimeout(r, 5_000));
+      continue;
+    }
+    throw new Error(said.error ?? "No pairing link came from your hosted machine.");
+  }
+}
+
+/** The pairing step: the hosted workspace listed and up (paired on its
+ * own, the same path as Open, when it is not listed yet), and for a move
+ * home, the workspace here made or started. Answers a patch for the move. */
+async function pairForMove(move) {
+  if (move.direction === "to-hosted") {
+    let hosted = hostedEntry();
+    if (!hosted || !readJoinedProfile(hosted.id)) {
+      const link = await hostedLinkFrom(move.from.id);
+      await pairHosted(link, { open: false });
+      hosted = hostedEntry();
+    }
+    if (!hosted || !(await launch(hosted.id))) throw new Error("Your hosted machine could not be reached. Retry in a moment.");
+    if (!(await launch(move.from.id))) throw new Error(`${move.from.name} would not start.`);
+    return { to: { id: hosted.id, name: hosted.name } };
+  }
+  const hosted = entryOf(move.from.id);
+  if (!hosted || !(await launch(hosted.id))) throw new Error("Your hosted machine could not be reached. Retry in a moment.");
+  if (move.to.id && entryOf(move.to.id)) {
+    if (!(await launch(move.to.id))) throw new Error(`${entryOf(move.to.id).name} would not start.`);
+    return null;
+  }
+  // a new workspace here, named after the hosted one
+  const taken = (name) => registry.workspaces.some((w) => w.name.toLowerCase() === name.toLowerCase());
+  const name = [move.to.name, hosted.name, `${hosted.name} on this Mac`].find((n) => n && !taken(n)) ?? `${hosted.name} ${Date.now().toString(36)}`;
+  const made = addWorkspace(registry, { kind: "custom", name }, { workspacesDir: workspacesDir() });
+  fs.mkdirSync(made.entry.dataDir, { recursive: true, mode: 0o700 });
+  registry = made.registry;
+  saveRegistry();
+  tellWorkspaces();
+  if (!(await launch(made.entry.id))) throw new Error(`${name} would not start on this Mac.`);
+  return { to: { id: made.entry.id, name } };
+}
+
+/** Carries the move kept in the state from where it got to. */
+function carryMove() {
+  const move = moveStateNow().move;
+  if (!move || moveRun || move.phase === "done") return;
+  clearTimeout(moveTimer);
+  const controller = new AbortController();
+  // either way, the side it leaves is `from` and the side it lands on `to`;
+  // read fresh each time, since either may come back on another port
+  const run = runMove(move, {
+    source: () => {
+      const m = moveStateNow().move;
+      return m ? baseOf(m.from.id) : null;
+    },
+    target: () => {
+      const m = moveStateNow().move;
+      return m?.to.id ? baseOf(m.to.id) : null;
+    },
+    pair: (m) => pairForMove(m),
+    save: (m) => keepMove({ move: m }),
+    signal: controller.signal,
+    // a workspace here that stopped to put the move in place is brought
+    // back by its keeper; asked to start in case it gave up
+    waitBack: async (m) => {
+      if (m.to.id && entryOf(m.to.id) && !baseOf(m.to.id)) await launch(m.to.id).catch(() => false);
+    },
+  });
+  moveRun = { controller };
+  tellMove();
+  void run
+    .then((ended) => moveEnded(ended))
+    .catch((error) => keepMove({ move: { ...moveStateNow().move, phase: "failed", error: String(error?.message ?? error) } }))
+    .finally(() => {
+      moveRun = null;
+      tellMove();
+    });
+}
+
+async function moveEnded(move) {
+  if (move.phase !== "done") return;
+  if (move.direction === "to-hosted") {
+    registry = markMoved(registry, move.from.id, move.to.id);
+    keepMove({ moved: { at: Date.now(), from: move.from.id, to: move.to.id } });
+  } else {
+    // the copy it was moved out of is the live one again
+    registry = markMoved(registry, move.to.id, null);
+  }
+  saveRegistry();
+  tellWorkspaces();
+  tellMove();
+  await switchWorkspace(move.to.id).catch(() => {});
+}
+
+/** Begins a move: now, or after the few seconds' toast for one started on
+ * its own. */
+function beginMove({ direction, from, to, replace = false, auto = false }) {
+  if (moveRun) throw new Error("A move is under way already.");
+  const was = moveStateNow().move;
+  if (was && was.phase !== "done" && was.phase !== "failed" && was.phase !== "stopped" && was.phase !== "later") throw new Error("A move is under way already.");
+  const move = newMove({ direction, from, to, replace, auto });
+  keepMove({ move });
+  if (auto) {
+    moveTimer = setTimeout(() => {
+      if (moveStateNow().move?.id === move.id && moveStateNow().move.phase === "waiting") carryMove();
+    }, AUTO_DELAY_MS);
+  } else carryMove();
+  return move;
+}
+
+/** Whether the account just heard says to start the first move. */
+function considerAutoMove() {
+  if (!registry || moveRun) return;
+  const from = autoMoveFrom({ account: lastAccount, state: moveStateNow(), registry });
+  if (!from) return;
+  const hosted = hostedEntry();
+  beginMove({ direction: "to-hosted", from, to: { id: hosted?.id ?? null, name: hosted?.name ?? "Hosted" }, auto: true });
+}
+
+function noteAccount(said) {
+  if (!said || said.shared === false) return;
+  lastAccount = said;
+  tellMove();
+  considerAutoMove();
+}
+
+/** Asks a running workspace of this Mac for the account, for the move
+ * that starts once Hosting is running. Often after a checkout, rarely
+ * otherwise, and not at all once this licence has moved. */
+async function askAccount(fresh = false) {
+  if (!registry || !readLicence() || moveStateNow().moved) return;
+  const ws = registry.workspaces.find((w) => !isRemoteKind(w.kind) && servers.get(w.id)?.status === "running");
+  if (!ws) return;
+  const said = await serverAsks.ask(servers.get(ws.id)?.child, "plan.account", { fresh }, 15_000);
+  if (said.ok) noteAccount(said);
+}
+let accountTimer = null;
+function watchAccount() {
+  clearTimeout(accountTimer);
+  const bought = moveStateNow().boughtFrom;
+  // after a checkout the machine comes up in minutes; otherwise now and then
+  const soon = bought && Date.now() - bought.at < 2 * 60 * 60_000;
+  accountTimer = setTimeout(() => {
+    void askAccount(Boolean(soon)).finally(watchAccount);
+  }, soon ? 60_000 : 30 * 60_000);
+  accountTimer.unref?.();
+}
+
+handle("hosting:move-state", () => moveSnapshot());
+
+// From the Plan page or the moved banner: a move asked for in so many
+// words, either way. `from` and `to` are workspace ids on this computer;
+// a move home with no `to` makes a workspace for it.
+handle("hosting:move-start", (_event, input) =>
+  answer(() => {
+    needsList();
+    const direction = input?.direction === "to-mac" ? "to-mac" : "to-hosted";
+    const from = entryOf(String(input?.from ?? ""));
+    if (!from) throw new Error("There is no such workspace to move.");
+    if (direction === "to-hosted" && (isRemoteKind(from.kind) || from.moved)) throw new Error(`${from.name} is not a workspace on this Mac that can move.`);
+    if (direction === "to-mac" && from.kind !== "hosted") throw new Error("Only your hosted workspace moves to this Mac.");
+    const hosted = hostedEntry();
+    const to = direction === "to-hosted"
+      ? { id: hosted?.id ?? null, name: hosted?.name ?? "Hosted" }
+      : input?.to && entryOf(String(input.to))
+        ? { id: String(input.to), name: entryOf(String(input.to)).name }
+        : { id: null, name: typeof input?.name === "string" && input.name.trim() ? input.name.trim().slice(0, 40) : from.name };
+    const target = to.id ? entryOf(to.id) : null;
+    const replace = Boolean(target?.moved) && input?.replace === true;
+    beginMove({ direction, from: { id: from.id, name: from.name }, to, replace });
+    return { ok: true };
+  }),
+);
+
+/** The toast's Change: the move that was about to start, from another
+ * workspace, now. */
+handle("hosting:move-change", (_event, id) =>
+  answer(() => {
+    const move = moveStateNow().move;
+    const from = entryOf(String(id));
+    if (!move || move.phase !== "waiting" || !from || isRemoteKind(from.kind) || from.moved) throw new Error("There is no move about to start.");
+    clearTimeout(moveTimer);
+    keepMove({ move: { ...move, from: { id: from.id, name: from.name }, phase: "running", auto: false, startsAt: null } });
+    carryMove();
+  }),
+);
+
+handle("hosting:move-stop", (_event, how) =>
+  answer(() => {
+    const move = moveStateNow().move;
+    if (!move) return;
+    const later = how === "later";
+    clearTimeout(moveTimer);
+    if (moveRun) moveRun.controller.abort(later ? "later" : "stopped");
+    // not begun yet, or already ended: only the card changes
+    else if (move.phase !== "done") keepMove({ move: { ...move, phase: later ? "later" : "stopped", startsAt: null } });
+  }),
+);
+
+handle("hosting:move-resume", () =>
+  answer(() => {
+    const move = moveStateNow().move;
+    if (!move || move.phase === "done") throw new Error("There is no move to carry on.");
+    carryMove();
+  }),
+);
+
+/** Done with the card: a finished move's keys list, or one put off. */
+handle("hosting:move-dismiss", () =>
+  answer(() => {
+    if (moveRun) throw new Error("A move is under way.");
+    keepMove({ move: null });
+  }),
+);
+
+/** The calm sentence after a move was said, once. */
+handle("hosting:move-announced", () => {
+  const move = moveStateNow().move;
+  if (move?.phase === "done" && !move.announced) keepMove({ move: { ...move, announced: true } });
+});
+
+/** A key's button: the Settings page it is entered on, in the workspace
+ * the move landed in. */
+handle("hosting:move-open-settings", (_event, page) =>
+  answer(async () => {
+    const move = moveStateNow().move;
+    const target = move?.to.id ?? hostedEntry()?.id;
+    if (!target || typeof page !== "string" || !/^[a-z:-]{2,40}$/.test(page)) throw new Error("There is nothing to open.");
+    await switchWorkspace(target, { target: `settings:${page}` });
+  }),
+);
+
+/** The moved banner's Remove from this Mac. A named workspace goes to the
+ * Trash, as Delete does; Personal cannot go, so it starts fresh instead,
+ * its folder set aside whole beside it, the way Start fresh does. */
+handle("hosting:move-remove-copy", (_event, id) =>
+  answer(async () => {
+    const ws = entryOf(String(id));
+    if (!ws?.moved) throw new Error("Only a copy whose work has moved is removed from here.");
+    if (ws.kind !== "personal") return deleteWorkspace(ws.id);
+    const base = baseOf(ws.id);
+    if (!base) throw new Error("Personal is not running right now. Try again in a moment.");
+    const res = await fetch(`${base}/api/workspace/reset`, { method: "POST", signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error("Personal could not start fresh just now.");
+    registry = markMoved(registry, ws.id, null);
+    saveRegistry();
+    tellWorkspaces();
+    tellMove();
+  }),
+);
+
+/** Which workspaces here a move home could land in: each local one, with
+ * whether it is empty and whether it is a copy the work came from. */
+handle("hosting:move-targets", async () => {
+  if (!registry) return { targets: [] };
+  const targets = await Promise.all(
+    registry.workspaces
+      .filter((w) => !isRemoteKind(w.kind))
+      .map(async (w) => {
+        const base = baseOf(w.id);
+        let empty = null;
+        if (base) {
+          try {
+            empty = (await (await fetch(`${base}/api/workspace/move`, { signal: AbortSignal.timeout(5_000) })).json()).empty === true;
+          } catch {
+            empty = null;
+          }
+        }
+        return { id: w.id, name: w.name, kind: w.kind, empty, copy: Boolean(w.moved) };
+      }),
+  );
+  return { targets };
+});
 
 async function openJoined(run, ws) {
   const profile = readJoinedProfile(ws.id);
@@ -1341,32 +1736,32 @@ handle("workspaces:reorder", (_event, ids) =>
   }),
 );
 
-handle("workspaces:delete", (_event, id) =>
-  answer(async () => {
-    needsList();
-    const ws = entryOf(String(id));
-    if (!ws) throw new Error("There is no such workspace.");
-    if (ws.kind === "personal") throw new Error("Personal cannot be deleted.");
-    // out of it first, so nothing is showing a workspace on its way out
-    if (shownId === ws.id) await switchWorkspace(PERSONAL_ID);
-    await halt(ws.id);
-    registry = removeWorkspace(registry, ws.id).registry;
-    saveRegistry();
-    waitingCounts.delete(ws.id);
-    // To the Trash rather than gone: a workspace is months of someone's
-    // work, and a wrong click should cost a trip to the Trash, not that.
-    // Only ever a folder the app made for it, never Personal's.
-    if (insideWorkspacesDir(ws.dataDir)) {
-      for (const dir of [ws.dataDir, `${ws.dataDir}-backups`]) {
-        if (fs.existsSync(dir)) await shell.trashItem(dir).catch(() => fs.rmSync(dir, { recursive: true, force: true }));
-      }
+handle("workspaces:delete", (_event, id) => answer(() => deleteWorkspace(String(id))));
+
+async function deleteWorkspace(id) {
+  needsList();
+  const ws = entryOf(id);
+  if (!ws) throw new Error("There is no such workspace.");
+  if (ws.kind === "personal") throw new Error("Personal cannot be deleted.");
+  // out of it first, so nothing is showing a workspace on its way out
+  if (shownId === ws.id) await switchWorkspace(PERSONAL_ID);
+  await halt(ws.id);
+  registry = removeWorkspace(registry, ws.id).registry;
+  saveRegistry();
+  waitingCounts.delete(ws.id);
+  // To the Trash rather than gone: a workspace is months of someone's
+  // work, and a wrong click should cost a trip to the Trash, not that.
+  // Only ever a folder the app made for it, never Personal's.
+  if (insideWorkspacesDir(ws.dataDir)) {
+    for (const dir of [ws.dataDir, `${ws.dataDir}-backups`]) {
+      if (fs.existsSync(dir)) await shell.trashItem(dir).catch(() => fs.rmSync(dir, { recursive: true, force: true }));
     }
-    if (isRemoteKind(ws.kind)) fs.rmSync(joinedFile(ws.id), { force: true });
-    if (ws.logo) fs.rmSync(ws.logo, { force: true });
-    tellWorkspaces();
-    applyBadge();
-  }),
-);
+  }
+  if (isRemoteKind(ws.kind)) fs.rmSync(joinedFile(ws.id), { force: true });
+  if (ws.logo) fs.rmSync(ws.logo, { force: true });
+  tellWorkspaces();
+  applyBadge();
+}
 
 /** A logo instead of the mark: picked with the system's own picker, cut
  * to a square from its middle, and kept small beside the list. */
@@ -2131,6 +2526,7 @@ function heardFromServer(id, child, said) {
   if (said?.kind === "desktop.licence") return keepLicence(said.key, said.typed !== false);
   if (said?.kind === "desktop.licence.forget") return forgetLicence();
   if (said?.kind === "desktop.plan") return notePlan(said);
+  if (said?.kind === "desktop.account") return noteAccount(said);
   if (said?.kind === "desktop.name") return keepName(said.name, { seed: said.seed === true });
   if (said?.kind === "desktop.screen") return void answerScreen(child, said.id);
   if (said?.kind === "desktop.unread" && Number.isInteger(said.count)) {
@@ -2252,9 +2648,17 @@ handle("share:link", (event, url) => {
 // the key in the fragment, for bloks.dev alone; the key is copied straight
 // to the clipboard, for somebody setting up another computer.
 const planSite = () => (process.env.BLOKS_SITE_URL || "https://bloks.dev").trim().replace(/\/+$/, "");
-handle("plan:open", (_event, url) => {
+handle("plan:open", (event, url) => {
   const target = withLicence(url, readLicence(), planSite());
   if (!target) return false;
+  // the workspace whose Plan page this was is the one a move to Hosting
+  // takes, should this be the checkout for it (electron/hosting-move.mjs)
+  const from = senderWorkspace(event);
+  const ws = from ? entryOf(from) : null;
+  if (ws && !isRemoteKind(ws.kind) && !ws.moved && !moveStateNow().moved) {
+    keepMove({ boughtFrom: { id: ws.id, at: Date.now() } });
+    watchAccount();
+  }
   void shell.openExternal(target);
   return true;
 });
@@ -2602,7 +3006,21 @@ app.whenReady().then(async () => {
   createWindow();
   // the others come up behind the window, one at a time, so the one you
   // are looking at never waits on them
-  if (registry && !remoteProfile) void launchTheRest();
+  if (registry && !remoteProfile) {
+    void launchTheRest().then(() => {
+      // a move the last run was carrying carries on; one about to start
+      // on its own starts; and the account is asked, for the first move
+      const move = moveStateNow().move;
+      if (move?.phase === "running" || move?.phase === "waiting") carryMove();
+      void askAccount();
+      watchAccount();
+    });
+    // back from a checkout in the browser: the account may say Hosting now
+    app.on("browser-window-focus", () => {
+      const bought = moveStateNow().boughtFrom;
+      if (bought && Date.now() - bought.at < 45 * 60_000) void askAccount(true);
+    });
+  }
   // On Windows and Linux a link that opened Bloks is one of its own
   // arguments, and only a second launch's were ever read. It waits for
   // the window to ask, like any link that arrives while the page loads.

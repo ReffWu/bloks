@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import { autoMoveFrom, countsDiffer as appCountsDiffer, hostingRunning, keepMoveState, newMove, readMoveState } from "../electron/hosting-move.mjs";
 import { markMoved, normalizeEntry } from "../electron/workspaces.mjs";
+import { HOSTED_TARGET, othersFor } from "../electron/server-line.mjs";
 import { stripSecrets } from "../server/backup.ts";
 import { MoveUploads, PART_BYTES, UploadError, readPart, sha256 } from "../server/move-upload.ts";
 import { cleanMovedMark, clearMovedMark, movedWords, readMovedMark, writeMovedMark } from "../server/moved-mark.ts";
@@ -190,6 +191,23 @@ test("buying Hosting starts the first move on its own, from the workspace that w
   const later = { ...newMove({ direction: "to-hosted", from: { id: "personal", name: "Personal" }, to: { name: "Hosted" } }), phase: "later" as const };
   assert.equal(autoMoveFrom({ account: running, state: { ...blank, move: later }, registry }), null);
   assert.equal(autoMoveFrom({ account: { ...running, hosting: { state: "provisioning" } }, state: blank, registry }), null);
+});
+
+test("a phone paired with a moved copy is told where its work went, and what to ask a pairing for", () => {
+  const registry = {
+    version: 1,
+    current: "personal",
+    prefs: { theme: null, sameAccent: false, accent: null },
+    workspaces: [
+      normalizeEntry({ id: "personal", kind: "personal", name: "Personal", dataDir: "/x", moved: { to: "ws_h", at: 1 } })!,
+      normalizeEntry({ id: "ws_shop", kind: "custom", name: "Shop", dataDir: "/y" })!,
+      normalizeEntry({ id: "ws_h", kind: "hosted", name: "Hosted" })!,
+    ],
+  };
+  const listed = othersFor(registry, "ws_shop");
+  assert.deepEqual(listed.find((w) => w.id === "personal")?.movedTo, { kind: "hosted", name: "Hosted", pair: HOSTED_TARGET });
+  assert.equal(listed.find((w) => w.id === "ws_shop")?.movedTo, undefined);
+  assert.ok(!listed.some((w) => w.id === "ws_h"), "the hosted one is not listed as one of this Mac's own");
 });
 
 test("a copy whose work moved is marked in the list until it is removed", () => {

@@ -41,6 +41,9 @@ export interface OtherWorkspace {
   pairable: boolean | null;
   /** Why not, in a sentence for the phone to show, when it cannot. */
   why: string | null;
+  /** This copy's work moved to the person's hosted machine: its name, and
+   * what to ask a pairing for (POST .../others/<pair>/pair) to add it. */
+  movedTo?: { kind: "hosted"; name: string; pair: string };
 }
 
 /** How long a pairing made this way lives: long enough to tap through on
@@ -90,6 +93,7 @@ function cleanList(raw: unknown): OtherWorkspace[] {
     if (!r || typeof r.id !== "string" || !ID.test(r.id) || typeof r.name !== "string") return [];
     if (r.kind !== "personal" && r.kind !== "business" && r.kind !== "custom") return [];
     const mark = r.mark && typeof r.mark.color === "string" && typeof r.mark.pattern === "string" ? { color: r.mark.color, pattern: r.mark.pattern } : null;
+    const went = r.movedTo && r.movedTo.kind === "hosted" && typeof r.movedTo.name === "string" && typeof r.movedTo.pair === "string" && ID.test(r.movedTo.pair) ? r.movedTo : null;
     return [
       {
         id: r.id,
@@ -100,6 +104,7 @@ function cleanList(raw: unknown): OtherWorkspace[] {
         here: r.here === true,
         pairable: typeof r.pairable === "boolean" ? r.pairable : null,
         why: typeof r.why === "string" ? r.why.slice(0, 300) : null,
+        ...(went ? { movedTo: { kind: "hosted" as const, name: went.name.slice(0, 60), pair: went.pair } } : {}),
       },
     ];
   });

@@ -76,6 +76,18 @@ contextBridge.exposeInMainWorld("bloks", {
   workspaceJoined: (input) => ipcRenderer.invoke("workspaces:joined", input),
   // your own hosted workspace, from a pairing link the Plan page asked for
   workspaceHosted: (input) => ipcRenderer.invoke("workspaces:hosted", input),
+  // moving a workspace to the hosted machine and back (electron/hosting-move.mjs)
+  hostingMoveState: () => ipcRenderer.invoke("hosting:move-state"),
+  onHostingMove: subscription("hosting:move"),
+  hostingMoveStart: (input) => ipcRenderer.invoke("hosting:move-start", input),
+  hostingMoveChange: (id) => ipcRenderer.invoke("hosting:move-change", id),
+  hostingMoveStop: (how) => ipcRenderer.invoke("hosting:move-stop", how),
+  hostingMoveResume: () => ipcRenderer.invoke("hosting:move-resume"),
+  hostingMoveDismiss: () => ipcRenderer.invoke("hosting:move-dismiss"),
+  hostingMoveAnnounced: () => ipcRenderer.invoke("hosting:move-announced"),
+  hostingMoveOpenSettings: (page) => ipcRenderer.invoke("hosting:move-open-settings", page),
+  hostingMoveRemoveCopy: (id) => ipcRenderer.invoke("hosting:move-remove-copy", id),
+  hostingMoveTargets: () => ipcRenderer.invoke("hosting:move-targets"),
   prefsTheme: (theme) => ipcRenderer.invoke("prefs:theme", theme),
   prefsAccent: (accent) => ipcRenderer.invoke("prefs:accent", accent),
   prefsSameAccent: (on, showing) => ipcRenderer.invoke("prefs:same-accent", on, showing),

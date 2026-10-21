@@ -65,6 +65,9 @@ export function othersFor(registry, askedFrom, checks = {}) {
     .map((w) => {
       const here = w.id === askedFrom;
       const check = checks[w.id];
+      // a copy whose work moved to the hosted machine says so, so the phone
+      // can offer to add that one (a pairing for HOSTED_TARGET)
+      const went = w.moved ? registry.workspaces.find((x) => x.id === w.moved.to && x.kind === "hosted") : null;
       return {
         id: w.id,
         name: w.name,
@@ -75,9 +78,15 @@ export function othersFor(registry, askedFrom, checks = {}) {
         // the one it asked is paired already
         pairable: here ? false : typeof check?.pairable === "boolean" ? check.pairable : null,
         why: here ? null : typeof check?.why === "string" ? check.why : null,
+        ...(went ? { movedTo: { kind: "hosted", name: went.name, pair: HOSTED_TARGET } } : {}),
       };
     });
 }
+
+/** What a phone asks a pairing for to add the person's hosted workspace,
+ * in place of a workspace id: there is one per licence, and the app asks
+ * bloks.dev for its link, the way the Plan page's Open does. */
+export const HOSTED_TARGET = "hosted";
 
 /** Why a phone paired with `askedFrom` may not have a pairing for
  * `target`, or null when it may. */

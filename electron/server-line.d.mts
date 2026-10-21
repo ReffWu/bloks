@@ -22,5 +22,7 @@ export function othersFor(
   here: boolean;
   pairable: boolean | null;
   why: string | null;
+  movedTo?: { kind: "hosted"; name: string; pair: string };
 }>;
+export const HOSTED_TARGET: string;
 export function pairRefusal(registry: Registry, askedFrom: string, target: string): { status: number; error: string } | null;

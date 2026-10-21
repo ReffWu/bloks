@@ -107,6 +107,11 @@ export function normalizeEntry(raw, index = 0) {
     accent: typeof raw.accent === "string" && /^[A-Za-z]{1,20}$/.test(raw.accent) ? raw.accent : null,
     members: Number.isInteger(raw.members) && raw.members >= 0 ? raw.members : null,
     createdAt: Number.isFinite(raw.createdAt) ? Number(raw.createdAt) : 0,
+    // a copy whose work moved to another workspace of yours (the hosted
+    // one, say), kept here until you remove it: electron/hosting-move.mjs
+    moved: raw.moved && typeof raw.moved.to === "string" && /^[a-z0-9_-]{1,40}$/.test(raw.moved.to)
+      ? { to: raw.moved.to, at: Number.isFinite(raw.moved.at) ? Number(raw.moved.at) : 0 }
+      : null,
   };
   // A workspace joined on someone else's computer opens through the
   // remote proxy (electron/remote.mjs). Its member credentials live in
@@ -454,6 +459,16 @@ export function updateWorkspace(registry, id, patch, { random = Math.random } = 
   return { ...registry, workspaces };
 }
 
+/** Marks a workspace as a copy whose work moved to workspace `to`, or,
+ * with `to` null, as the live one again. */
+export function markMoved(registry, id, to, now = Date.now()) {
+  if (!registry.workspaces.some((w) => w.id === id)) return registry;
+  return {
+    ...registry,
+    workspaces: registry.workspaces.map((w) => (w.id === id ? { ...w, moved: to ? { to, at: now } : null } : w)),
+  };
+}
+
 /** A new drawn mark for a workspace, different from the one it shows and
  * from every other one here; for one you joined, yours alone. */
 export function rerollMark(registry, id, { random = Math.random } = {}) {
@@ -660,6 +675,8 @@ export function snapshot(registry, live = {}, now = Date.now()) {
           : {}),
         // your own, on a machine run for you
         ...(w.kind === "hosted" ? { remote: true } : {}),
+        // its work moved to the workspace named, and it is kept, paused
+        ...(w.moved ? { movedTo: w.moved.to } : {}),
       };
     }),
   };

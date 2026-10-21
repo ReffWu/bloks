@@ -73,6 +73,66 @@ export interface WorkspaceInfo {
   /** Your own hosted workspace: on a machine run for you, reached through
    * Bloks Cloud. */
   remote?: boolean;
+  /** A copy whose work moved to the workspace with this id, kept here,
+   * paused, until it is removed (electron/hosting-move.mjs). */
+  movedTo?: string;
+}
+
+export type HostingMoveStep = "pairing" | "packing" | "sending" | "unpacking" | "checking" | "done";
+export type HostingMovePhase = "waiting" | "running" | "stopped" | "later" | "failed" | "done";
+
+/** A key or connection a move left behind, with the Settings page it is
+ * entered on again (server/workspace-move.ts KeyToEnter). */
+export interface HostingMoveKey {
+  label: string;
+  page: string;
+  path: string;
+}
+
+/** One move, as the main process tells the window about it. */
+export interface HostingMove {
+  id: string;
+  direction: "to-hosted" | "to-mac";
+  auto: boolean;
+  from: { id: string; name: string };
+  to: { id: string | null; name: string };
+  replace: boolean;
+  phase: HostingMovePhase;
+  step: HostingMoveStep;
+  startsAt: number | null;
+  sent: number;
+  size: number;
+  error: string | null;
+  code: string | null;
+  keys: HostingMoveKey[] | null;
+  doneAt: number | null;
+  announced: boolean;
+  stoppable: boolean;
+  starting: string;
+  done: string | null;
+}
+
+export interface HostingMoveState {
+  available: boolean;
+  /** The account says the hosted machine is running. */
+  hostingActive: boolean;
+  /** The plan includes Bloks AI. */
+  bloksAi: boolean;
+  /** This licence moved a workspace to Hosting already. */
+  licenceMoved: boolean;
+  move: HostingMove | null;
+  hosted: Array<{ id: string; name: string }>;
+  copies: Array<{ id: string; name: string; kind: WorkspaceKind; to: string }>;
+}
+
+export interface HostingMoveTarget {
+  id: string;
+  name: string;
+  kind: WorkspaceKind;
+  /** Null while its server has not said. */
+  empty: boolean | null;
+  /** A copy a workspace's work was moved out of. */
+  copy: boolean;
 }
 
 export type WorkspacesState =
@@ -162,6 +222,20 @@ declare global {
        * the Plan page) as a device of yours, and lists it, or points the
        * one listed at it; with `open`, switches to it. */
       workspaceHosted?(input: { link: string; open?: boolean }): Promise<WorkspaceAnswer>;
+      /** Moving a workspace to the hosted machine and back. */
+      hostingMoveState?(): Promise<HostingMoveState>;
+      onHostingMove?(handler: (state: HostingMoveState) => void): () => void;
+      /** `to` names a workspace here for a move home, with `replace` when
+       * it is the copy the work came from; none makes a new one. */
+      hostingMoveStart?(input: { direction: "to-hosted" | "to-mac"; from: string; to?: string | null; replace?: boolean; name?: string }): Promise<WorkspaceAnswer>;
+      hostingMoveChange?(id: string): Promise<WorkspaceAnswer>;
+      hostingMoveStop?(how: "stop" | "later"): Promise<WorkspaceAnswer>;
+      hostingMoveResume?(): Promise<WorkspaceAnswer>;
+      hostingMoveDismiss?(): Promise<WorkspaceAnswer>;
+      hostingMoveAnnounced?(): Promise<void>;
+      hostingMoveOpenSettings?(page: string): Promise<WorkspaceAnswer>;
+      hostingMoveRemoveCopy?(id: string): Promise<WorkspaceAnswer>;
+      hostingMoveTargets?(): Promise<{ targets: HostingMoveTarget[] }>;
       /** The theme is the person's, kept across every workspace. */
       prefsTheme?(theme: "light" | "dark" | "system"): Promise<void>;
       /** The accent is this workspace's own. */
