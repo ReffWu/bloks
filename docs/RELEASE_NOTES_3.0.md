@@ -2,6 +2,10 @@
 
 The biggest release Bloks has had. Every part of your life with agents can now be a workspace of its own, each a whole Bloks with its own agents, memory, keys and rooms. A workspace can take people: send an invite, read the same four words, and they talk to your agents beside you, on your computer, within limits you set. A Usage page shows what every agent spent and puts a monthly line on your own API keys. And the app has a new shape, with answers drawn as cards, tables and charts instead of walls of text.
 
+## Security
+
+- **Shared files could be read from outside an agent's folder (GitHub 318).** Serving a file an agent shared checked its name, then opened it again by path. Something able to write in the agent's folder could swap the file, or a folder above it, for a link between the two, and the bytes would come from elsewhere on the computer. Bloks now opens the file once, refusing links on the way, checks that the open file is a regular file inside the folder, and sends its size and bytes from that same open file. Pasted images, skills, agent photos and memory, the app's own page, Move files and backups, and the desktop app's page proxy are read the same way. Reported by @ashottonoyan.
+
 ## Headline features
 
 ### Workspaces
@@ -81,12 +85,17 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 - **Messages while an agent works.** Automatic reads what you send mid-turn: a stop stops, a correction or an answer to its question goes in now, and the rest waits for the turn to end. Or choose Interrupt or Queue, per agent or for the workspace. A quiet line under your message says what happened, and one press goes the other way.
 - **An incident desk.** A turn that fails for good, a stalled call, or a routine, watcher or workflow that fails becomes an incident, handed to the room's lead, your most senior agent or the one you name, to retry once, pass on or tell you. An automation that fails three times running stops until you have a say, and the brief names what stopped.
 - **Rules from your habits.** Approve the same thing five times in two weeks, with no refusal, and Bloks offers it as a narrow rule, in the agent's tray and above your rules. Nothing that deletes, moves money or touches credentials is ever offered.
+- **Background work, your choice.** When an agent starts a subagent or a command in the background and answers before it is done, Let it finish (the default) keeps the turn open until that work is done and the agent has said what came of it; Stop when the reply is done ends the turn with the reply and stops it. Set it for the workspace in Settings, Behaviour, or for one agent in its own settings. A background subagent's notes no longer arrive as a reply after the turn has ended. Thanks @alexnayko (#331) and @rpavlovs (#325)
+- **Separate tasks, counted apart.** The agents' turn limit counts every turn agents start in a row without you. You can now allow a budget across separate tasks in Settings, Behaviour: an agent names the task it hands off, each task's own run counts against the limit, and the whole chain against the budget. Off unless you set it. Thanks @pycckuu (#326)
 - **Standing intents.** Words that come up in a conversation can post a note, bring an agent in or message one. Agents propose them and you approve them, in Automations, Intents.
 
 ### Automations and connections
 
 - **Routines and watchers read as sentences.** Tap a part to change it, see the week ahead, and start from a common one.
 - **The workflow editor is a full sheet**: the flow drawn as a chain, earlier answers as named pills, conditions as a sentence, and Try it lighting each step as it runs.
+- **An agent can ask for its own Telegram bot.** Once it has made one with BotFather, it asks on a card that names it and the bot; you paste the token, which goes straight to its Telegram settings and is never shown to it. Thanks @alexnayko (#329)
+- **Full access for one person on Telegram.** In an agent's Telegram settings you can give someone you let in full access, after a confirmation that the conversation and memory stay shared, and take it back. Their turns stay theirs: only they add to them and only they answer their cards. Thanks @rpavlovs (#320)
+- **Saved secrets from any device.** Settings, Apps and keys, Saved secrets lists the secrets you saved for agents, by name, and forgets one, from the Mac or a paired device. Agents still cannot reach them. Thanks @alexnayko (#327)
 - **Connections as checklists.** Telegram, phones, Slack, Discord, WhatsApp and Bloks Cloud each set up as a short list of steps that tick as they happen.
 
 ### Bring your history
@@ -101,12 +110,20 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 ### iPhone and Apple Watch
 
 - With the iPhone app's own 3.0: workspaces in the sidebar, joining by link, QR or code with the same four words, a member's view of a workspace you joined, bubbles and Seen by, answers drawn as cards and charts, and the usage notice in the composer.
+- **Location, if you turn it on.** Your iPhone can tell your own computer where you are, as a place in words, and as an exact position only if you choose that too. Your own agents hear it while it is recent, and a watcher can act when you arrive at or leave a place. Members, shared rooms, Telegram people and strangers' mail never get it. Pause keeps it from agents and watchers, Off or Forget drops it, and only the last reading is kept: never a history, and never in a backup. Thanks @rpavlovs (#322)
 - Notifications arrive from the agent with its face, Live Activities wear its colour, new widgets show who wants what, and Apple Watch answers approvals from your wrist.
 
 ## Fixes
 
 - **Approvals work wherever a workspace's folder lives.** When a data folder's path was too long for a socket, an engine's permission requests were refused with no card and no notice. They now go through a short private folder, and a turn that still cannot start says why.
 - **Folder watchers no longer wake on their own work.** A watcher whose turn renamed or filed what woke it read that as a new file and started the same work again.
+- **A command longer than thirty seconds no longer ends a steered Claude turn under it,** and the next turn no longer resumes the same session in a second process. Thanks @alexnayko (#330)
+- **An engine switched off in Settings starts no turn.** An agent on it answers on its backup, or says why it cannot. Thanks @pycckuu (#324)
+- **Files attached on the Mac reach a workspace on another computer.** They are uploaded instead of named by their path on the Mac: files up to 20 MB and images up to 10 MB, and a larger one is refused with a sentence before anything is sent. Images over about 800 KB through Bloks Cloud work now too. Thanks @alexnayko (#332)
+- **A changed working folder applies to the agent's existing conversations.** The agent starts a fresh session there, told the conversation so far, and the chat says where it now works. Thanks @alexnayko (#328)
+- **An answer that does not fit is refused by name, not cut.** A table cell, quote, row or step past its limit used to be shortened or dropped while the agent was told it had worked; now the agent is told which field is over and by how much. Thanks @rpavlovs (#319)
+- **A Telegram request's reply stays attached until its turn really ends,** however that turn ends. Thanks @rpavlovs (#321)
+- **Agents are clearer about what to keep in memory** for later work. Thanks @rpavlovs (#323)
 - **The brief keeps sentences whole.** A filename such as post.md, a version or an address no longer cut a sentence in two and lost the first half.
 
 ## Upgrading
