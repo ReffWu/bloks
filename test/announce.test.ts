@@ -41,10 +41,9 @@ test("announces only from the desktop app on a Mac, and never from bloks-server"
   assert.equal(mayAnnounce({}, "win32", true), false);
 });
 
-test("the name is the computer, with the workspace when it is not Personal, in 63 bytes", () => {
+test("the name is the computer alone, never a workspace, in 63 bytes", () => {
   assert.equal(instanceName("Hamed's MacBook"), "Hamed's MacBook");
-  assert.equal(instanceName("Hamed's MacBook", "Personal"), "Hamed's MacBook");
-  assert.equal(instanceName("Hamed's MacBook", "Studio"), "Studio on Hamed's MacBook");
+  // never a workspace's name: everyone on the network hears it
   assert.equal(instanceName("Mac\u0000\n"), "Mac");
   assert.equal(instanceName("  "), "Bloks");
   const long = instanceName("é".repeat(60));

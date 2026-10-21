@@ -104,15 +104,18 @@ const startHidden: Spawner = (command, args) => {
 let current: { key: string; child: Announcer } | null = null;
 
 /**
- * What a phone calls this Bloks in its list: the computer, and the
- * workspace when it is not Personal, since each workspace is its own
- * Bloks on its own port.
+ * What a phone calls this Bloks in its list: the computer's name, and
+ * nothing of the workspace. Everyone on the network hears it, and a
+ * workspace is often named for a client or a business. The computer
+ * announces its own name already (sharing, AirDrop), and each workspace
+ * is told apart by its port, which the phone shows beside it, and by the
+ * tag in its TXT record, which only matches a workspace the phone has
+ * paired with. Two workspaces on one computer share the name; the system
+ * numbers the second.
  */
-export function instanceName(computer: string, workspace?: string): string {
+export function instanceName(computer: string): string {
   const clean = (text: string) => text.replace(/[\u0000-\u001f\u007f]/g, "").trim();
-  const machine = clean(computer) || "Bloks";
-  const space = workspace ? clean(workspace) : "";
-  let name = space && space !== "Personal" ? `${space} on ${machine}` : machine;
+  let name = clean(computer) || "Bloks";
   while (Buffer.byteLength(name, "utf8") > NAME_BYTES) name = name.slice(0, -1);
   return name.trim();
 }

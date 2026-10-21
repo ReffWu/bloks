@@ -24589,8 +24589,7 @@ const announceHere = () => {
     stopAnnouncing();
     return;
   }
-  const { id, name } = workspaceIdentity();
-  syncAnnouncement(true, { name: instanceName(computerName(), id === "personal" ? undefined : name), port: PORT, tag: workspaceTag() });
+  syncAnnouncement(true, { name: instanceName(computerName()), port: PORT, tag: workspaceTag() });
 };
 // A port someone else holds is the one startup failure a person can fix
 // on their own, so it is said plainly instead of as a stack trace. The
