@@ -1263,14 +1263,13 @@ export class Store {
    * spinner would say an agent is working when it is not. `from` limits
    * it to one member's calls in a room. Returns what changed. */
   settleOpenTools(threadId: string, from?: string): Message[] {
-    const changed: Message[] = [];
-    for (const message of this.messagesFor(threadId)) {
-      if (message.kind !== "activity" || !message.tool || message.tool.ok !== undefined || message.tool.stopped) continue;
-      if (from !== undefined && message.from !== from) continue;
-      const patched = this.patchMessage(threadId, message.id, { tool: { ...message.tool, stopped: true } });
-      if (patched) changed.push(patched);
-    }
-    return changed;
+    // All in one write. One patch each rewrote the whole transcript once
+    // per call, and a turn stopped with dozens of calls open held the
+    // server for as many full rewrites.
+    const open = this.messagesFor(threadId).filter(
+      (m) => m.kind === "activity" && m.tool && m.tool.ok === undefined && !m.tool.stopped && (from === undefined || m.from === from),
+    );
+    return this.patchMessages(threadId, open.map((m) => m.id), (m) => ({ tool: { ...m.tool!, stopped: true } }));
   }
 
   /** Questions and approvals in a thread that a stopped engine was
@@ -1279,16 +1278,13 @@ export class Store {
    * way, so an answer to an old card must never reach it as permission.
    * A workflow's card waits on disk rather than on an engine, and stays. */
   settleOpenAsks(threadId: string): Message[] {
-    const changed: Message[] = [];
-    for (const message of this.messagesFor(threadId)) {
-      const card = message.card;
-      if (message.kind !== "options" || !card?.requestId || card.runId || card.answered || card.dismissed) continue;
-      const patched = this.patchMessage(threadId, message.id, {
-        card: { ...card, answered: "Cut off when Bloks stopped", cutOff: true },
-      });
-      if (patched) changed.push(patched);
-    }
-    return changed;
+    // in one write, as settleOpenTools
+    const open = this.messagesFor(threadId).filter(
+      (m) => m.kind === "options" && m.card?.requestId && !m.card.runId && !m.card.answered && !m.card.dismissed,
+    );
+    return this.patchMessages(threadId, open.map((m) => m.id), (m) => ({
+      card: { ...m.card!, answered: "Cut off when Bloks stopped", cutOff: true },
+    }));
   }
 
   /** A lane starts a new engine session on its next turn, replaying
