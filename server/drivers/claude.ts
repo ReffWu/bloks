@@ -870,31 +870,32 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         if (turn.credits) frame = scrubFrame(frame);
         // Partial frames are deliberately unused, even for activity clocks.
         if (frame.type === "stream_event") return;
+        // Anything else is the process at work, a subagent's frames too: a
+        // foreground subagent is the parent's open call making progress,
+        // not a call gone silent (GitHub 146).
+        lastSign = Date.now();
         // Native child text/errors/tools cannot impersonate the parent.
-        // Keep usage, without changing the parent's context or activity.
+        // Keep usage, without changing the parent's context reading.
         if (frame.parent_tool_use_id != null) {
           appendNative(threadId, { dir: "in", source: "claude.sdk.message", msg: frame });
           accountChild(frame);
           return;
         }
         if (inputs && frame.type === "command_lifecycle") {
-          if (inputs.terminal(frame)) { lastSign = Date.now(); checkCompletion(); }
+          if (inputs.terminal(frame)) checkCompletion();
           return;
         }
         if (inputs && frame.type === "system" && frame.subtype === "status" && frame.status === "requesting") {
-          if (inputs.requesting(frame)) { lastSign = Date.now(); checkCompletion(); }
+          if (inputs.requesting(frame)) checkCompletion();
           return;
         }
         if (inputs && frame.type === "result") {
           if (inputs.result(frame)) {
             appendNative(threadId, { dir: "in", source: "claude.sdk.message", msg: frame });
-            lastSign = Date.now();
             checkCompletion();
           }
           return;
         }
-        if (["assistant", "user", "result"].includes(frame.type) ||
-            (frame.type === "system" && ["init", "thinking_tokens", "compact_boundary", "task_notification"].includes(frame.subtype))) lastSign = Date.now();
         // initialize also returns account, models, pid and session state.
         // None of those belong in Bloks' logs, transcript or event stream.
         if (frame.type === "control_response") {

@@ -77,6 +77,17 @@ process.stdin.on("data", (c) => (input += c));
     setInterval(() => {}, 1000);
     return;
   }
+  if (input.includes("SUBAGENT")) {
+    // a foreground subagent: the parent's call stays open, and all the
+    // work there is to see is the subagent's own
+    out({ type: "assistant", message: { content: [{ type: "tool_use", id: "task-1", name: "Agent", input: { description: "Read the reports", prompt: "Read every report" } }] } });
+    for (let i = 0; i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      out({ type: "assistant", parent_tool_use_id: "task-1", message: { content: [{ type: "tool_use", id: "read-" + i, name: "Read", input: { file_path: "/reports/" + i + ".md" } }] } });
+      out({ type: "user", parent_tool_use_id: "task-1", message: { content: [{ type: "tool_result", tool_use_id: "read-" + i, content: "ok" }] } });
+    }
+    out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "task-1", content: "Read twelve reports." }] } });
+  }
   if (input.includes("THINK")) await new Promise((r) => setTimeout(r, 5_000));
   out({ type: "assistant", message: { content: [{ type: "text", text: "Done." }] } });
   out({ type: "result", subtype: "success", is_error: false, num_turns: 1, duration_api_ms: 100, result: "Done." });
@@ -115,6 +126,18 @@ async function setup(t: any, stallMinutes: number) {
   const prompts = () => (existsSync(fake.heard) ? readFileSync(fake.heard, "utf8").split("\n----\n").filter(Boolean) : []);
   return { h, bot, busy, say, chat, prompts, fake };
 }
+
+test("a subagent working under its parent's open call is progress, not a call gone silent", async (t) => {
+  const s = await setup(t, 0.05); // three seconds, and the subagent works for six
+  await s.say("SUBAGENT read the reports");
+  assert.ok(await waitFor(() => s.busy()), "the turn never started");
+  assert.ok(
+    await waitFor(async () => !(await s.busy()) && (await s.chat()).some((m) => m.role === "bot" && m.text === "Done."), 20_000),
+    "the turn was cut short while its subagent was working",
+  );
+  const said = (await s.chat()).filter((m) => m.kind === "notice" || m.kind === "activity").map((m) => m.text ?? m.tool?.name ?? "").join("\n");
+  assert.doesNotMatch(said, /made no progress/);
+});
 
 test("a tool call gone silent ends its turn, says which call, and the agent hears why next time", async (t) => {
   const s = await setup(t, 0.05); // three seconds
