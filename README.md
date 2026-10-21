@@ -317,8 +317,9 @@ conversations, and says exactly what it was given.
   but never approve, delete or change settings.
 - **Always on.** `bloks-server` runs a workspace on a machine that stays
   on, and the desktop app, the phone and the browser reach it the same
-  way. Managed hosting, a private machine of your own that stays on, is
-  coming soon.
+  way. Or let Bloks run one for you: managed hosting is a private machine
+  of your own that stays on, and moves your agents over when you sign up
+  at [bloks.dev/pricing](https://bloks.dev/pricing).
 
 ### Bring what you have
 
