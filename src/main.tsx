@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ThemeProvider } from "./lib/theme";
 // the optical-size cut: big type drawn tighter, small type more open
 import "@fontsource-variable/inter/opsz.css";
@@ -21,7 +22,9 @@ startTranscriptWidth();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </ThemeProvider>
   </StrictMode>,
 );
