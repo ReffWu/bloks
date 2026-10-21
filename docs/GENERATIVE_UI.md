@@ -16,6 +16,13 @@ drawing those answers somewhere else, first of all the iPhone app.
 | What a click does | `src/lib/genui/actions.ts` |
 | The renderers | `src/components/genui/` |
 | Where a fence is handed to them | `src/components/Markdown.tsx` |
+| The reply rule that asks for it, last in the briefing | `server/house-style.ts` (`replyRules`) |
+
+The reply rules close every briefing. Where the agent's answers can carry
+interface, they add that a comparison, prices or numbers, or options to
+choose between are answered in the chat with an openui block, not a file
+and not a list in prose, even if earlier replies in the conversation did
+it another way.
 
 The prompt is generated with `@openuidev/lang-core` from the very library
 the chat renders with, so the two cannot drift. Telemetry in lang-core is
@@ -125,6 +132,33 @@ At most 6 fences per reply, 24,000 characters per fence, 300 components,
 12 levels deep, 200 items in a list, 4,000 characters in a string, and
 64,000 bytes of JSON per entry (a larger one is dropped). Over a limit,
 the rest is left out and the entry says `truncated: true`.
+
+## On the iPhone
+
+With the iPhone and Apple Watch update, the iPhone draws each fence
+natively from `message.ui`, in its own type and colours, with no parser
+of its own. The desktop draws from the text as it streams; the tree is the
+same answer, settled. Where there is no tree to draw, the phone falls
+back, and never to the source, which is for the agent and not the person:
+
+- A fence with no tree yet, while the reply is still arriving, is a quiet
+  "Drawing" in its place.
+- A fence whose tree never came, because it did not parse or this build
+  of the phone cannot read its entry, is drawn as its readable words, the
+  strings in its source. One entry it cannot read costs that fence, not
+  the reply.
+- A component type the phone does not know is drawn as its readable
+  words, so a newer Mac never blanks an older phone.
+- An entry with `truncated: true` is drawn with a line saying part of the
+  answer was too long to show.
+- An `Image` is drawn only from inline `data:image` (png, jpeg, gif or
+  webp). One at a web address is offered as a link that opens in Safari,
+  never fetched.
+- In a Markdown file opened on the phone, a fence is an example and is
+  shown as written.
+
+A click does what it does on the desktop (see Actions), and a form's
+answer is written the way `saidBack` writes it.
 
 ## The components
 

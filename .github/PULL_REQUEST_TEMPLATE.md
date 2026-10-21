@@ -20,6 +20,7 @@ answered, rejecting it skipped the tool" beats any description of the
 diff. If you could not verify part of it, say which part. -->
 
 - [ ] `pnpm typecheck` passes
+- [ ] `pnpm test` passes
 - [ ] `pnpm build` passes
 - [ ] Ran the app and used the changed surface
 
@@ -40,3 +41,5 @@ place for it" is welcome and speeds review up. -->
 - [ ] This does not weaken the approval gate, or it does and the body
       above explains why that is correct
 - [ ] Any new field that reaches disk or a system prompt has a length cap
+- [ ] A new route a member's device should reach is named in
+      `server/member-access.ts`, and the body above says why

@@ -97,20 +97,25 @@ argument.
 
 ## Screenshots
 
-The images in the README come from a seeded workspace, not from anyone's
-real install, so they are reproducible and contain nobody's data:
+The images in the README come from made-up workspaces, not from anyone's
+real install, so they are reproducible and contain nobody's data.
+`pnpm screenshots` (`scripts/shoot-screenshots.mjs`) takes the README's
+set the same way every time: it builds the app, writes three made-up
+workspaces into a throwaway home, starts the real desktop app on them in
+an invisible window, plays a few turns through a stand-in engine, and
+photographs each place. `pnpm screenshots --only=hero,usage` takes some of
+them. Edit the workspaces and scenes in that script if a screenshot needs
+to show something new. Nothing in it calls a model; the transcripts are
+written by hand, because a screenshot should not depend on what a
+provider felt like saying that day.
+
+To click around a small seeded workspace yourself:
 
 ```sh
 node scripts/seed-demo.mjs /tmp/bloks-demo
 HOME=/tmp/bloks-demo pnpm dev:server
 pnpm dev
 ```
-
-`pnpm screenshots` (`scripts/shoot-screenshots.mjs`) takes the README's
-set from that seeded workspace the same way every time. Edit
-`scripts/seed-demo.mjs` if a screenshot needs to show something new.
-Nothing in it calls a model; the transcript is written by hand, because a
-screenshot should not depend on what a provider felt like saying that day.
 
 ## Security
 
@@ -144,6 +149,8 @@ Use the issue templates. The single most useful thing you can include is
 what you expected versus what happened, plus which engine the agent was
 running on. Logs live in the workspace's folder (`~/.bloks` for Personal;
 `events/` for the canonical stream, `native/` for raw provider traffic).
+For a window that went blank or froze, the desktop app keeps its own
+`app.log` in its logs folder (on a Mac, `~/Library/Logs/Bloks`).
 Please scrub keys before pasting.
 
 ## Licence

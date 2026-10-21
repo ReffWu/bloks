@@ -29,7 +29,9 @@ cost; and with a Bloks key, bloks.dev is asked, with that key, about your
 plan. Everything else on the wire is the engines (Claude Code, Codex and
 the rest) and whatever connectors you configure, talking to their own
 services, and Bloks Cloud when you turn it on, which carries sealed
-traffic it cannot read.
+traffic it cannot read. On a Mac with phone access on, the desktop app
+also says on the local network where each listening workspace is (see
+Phones and other devices).
 
 **The harness server is loopback-only and origin-checked.** Each
 workspace runs its own, Personal on `127.0.0.1:8799` and the others on
@@ -73,6 +75,67 @@ for your own build, autocapture, session recording and performance
 capture are all disabled and text is masked, so only the named counters
 in `src/lib/analytics.ts` are ever sent. No message content, agent name
 or file path is included in any event.
+
+**What a crash leaves stays here.** A native crash in any of Bloks'
+processes leaves a minidump in this computer's crash folder, and the
+crash reporter runs with uploading off, so there is nowhere it is sent.
+macOS still writes its own report. The desktop app also keeps a small log
+of its window and processes, `app.log` in its logs folder (on a Mac,
+`~/Library/Logs/Bloks`), moved aside at 512 KB, never in a workspace's
+folder and never sent off this computer. What the page writes to it is
+budgeted, so a page failing in a loop cannot fill the disk.
+
+## Phones and other devices
+
+Your phone, a browser at bloks.dev/web or another computer of yours
+reaches a workspace as a paired device, with a bearer token of its own;
+the workspace keeps only its sha256. Pairing is the only way to become
+one, so it is kept narrow. A member's device comes in through an invite
+instead (see People in your workspaces).
+
+- **A code exists only when you ask for one.** Phone access is off until
+  somebody turns it on at the computer, and the workspace listens on the
+  network only after Bloks restarts with it on. A six digit code and its
+  QR are made when somebody presses Pair a phone, and the routes that
+  make or cancel one answer only on this computer. A code works once,
+  lasts five minutes, and five wrong tries close it. It is held in
+  memory, never on disk, and the window closes it when the panel showing
+  it closes. A pairing link, for a device on another network, works once
+  for fifteen minutes and is shown only on the computer too. The one
+  other way a pairing is made is for a phone you already paired, below.
+- **Finding the computer again.** On a Mac, while phone access is on and
+  the workspace listens on the network, the desktop app announces it on
+  the local network as `_bloks._tcp` (`server/announce.ts`): the
+  computer's name, the workspace's name unless it is Personal, the port,
+  and a tag that is a hash of a random key in the workspace's folder.
+  Nothing in it is secret, and nothing in it is trusted. Before a paired
+  phone sends its token to a Bloks it found that way, it asks
+  `POST /api/pair/prove` with a nonce, and only a Bloks that holds that
+  phone's pairing can answer with the right HMAC. The announcement ends
+  with the server.
+- **Another workspace from a paired phone.** A phone you paired with one
+  workspace can ask it which other workspaces of yours are on the
+  computer, and for a pairing to one (`server/other-workspaces.ts`). Only
+  your own paired devices may ask: never a member's device, an agent's
+  credential or the computer's own window. Only your own workspaces are
+  listed, never one you joined, and a pairing is made only for one that
+  is already online with Bloks Cloud or listening for phones, which only
+  the computer can switch on. It is single use, lasts three minutes, and
+  comes back over the channel the phone is already trusted on; a device
+  may have five in ten minutes. The computer shows a notification each
+  time one is made, whatever its notification settings, naming the phone
+  and the workspace it asked from.
+- **Pictures of a screen.** While an agent works, its browser or cloud
+  computer is pictured for the window and your phone, and a person can
+  click, type, scroll and press keys in them from the chat or the phone;
+  an agent's credential cannot. The Mac's own screen shows everything
+  open on it, so it is held tighter. It is pictured only while an agent's
+  turn is driving the Mac and your phone asks, at most about once a
+  second, by the desktop app, which needs Screen Recording already
+  granted and never asks macOS for it. That picture never goes on the
+  event stream, is refused to an agent's credential, and is not a route a
+  member's device can call. A member's stream carries no screenshots at
+  all, and nothing on a phone can click on the Mac.
 
 ## People in your workspaces
 

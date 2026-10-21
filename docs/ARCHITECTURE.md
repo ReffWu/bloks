@@ -23,8 +23,10 @@ Everything below follows from that.
    `/api/bots/:id/messages`.
 3. `startTurn` in `server/index.ts` builds the persona (role, skills,
    your profile, house style, and in a room the roster plus recent
-   transcript), photographs the agent's folder (`server/checkpoints.ts`),
-   then calls the driver's `sendTurn`.
+   transcript), ends the briefing with the reply rules (`replyRules` in
+   `server/house-style.ts`, last on purpose, since agents read past the
+   same asks higher up), photographs the agent's folder
+   (`server/checkpoints.ts`), then calls the driver's `sendTurn`.
 4. The driver translates its provider's native output into the canonical
    events in `server/contracts.ts`.
 5. The bus subscriber folds those events into the transcript, persists
@@ -142,7 +144,13 @@ Workspaces), written synchronously. No database.
 Backups of all of it go beside it, never in it: `~/.bloks-backups`, one
 file each (see Backups and restore).
 
-A store writes its whole file on every change. Where losing that file
+A store writes its whole file on every change, with one exception: a
+turn's tool call rows and their results wait up to a quarter second
+(`ROW_WAIT_MS` in `server/store.ts`) and go out with whatever else
+changed, one write per transcript, because rewriting a long conversation
+twice for every call took most of the server's time. Any other write of
+that transcript takes them along at once, and the turn's end and a
+process on its way out write what is waiting. Where losing that file
 would hurt (agents, transcripts, rooms, config and the like) the write
 goes through `server/atomic-write.ts`: to a file beside it, flushed, then
 renamed over the old one, so a crash leaves the old file or the new one,
@@ -183,11 +191,15 @@ credential and the agent guard does not list it.
 
 Memory is a place on the main rail (`src/components/MemoryPlace.tsx`):
 a sidebar of its own lists Shared, About you and every agent, and the
-page beside it is the one picked. Links open it with `openMemory` and a
-target (an agent's id, `you` or `shared`), which Back and forward
-remember. About you edits the same `profile.about` Settings does. The
-place reads `GET /api/bots/:id/memory/stats` for its meter
-(lines and bytes against the budget, topics with sizes and times),
+page beside it is the one picked. The sidebar is a page column
+(`src/components/SideColumn.tsx`), as Settings', Plugins', an agent's
+settings' and Automations' lists are: sized by its edge and folded with
+Cmd+B. Folded, Settings' pages are tabs along the top, and Memory's and
+Plugins' are a small switch at the top left of the page. Links open it
+with `openMemory` and a target (an agent's id, `you` or `shared`), which
+Back and forward remember. About you edits the same `profile.about`
+Settings does. The place reads `GET /api/bots/:id/memory/stats` for its
+meter (lines and bytes against the budget, topics with sizes and times),
 searches with `GET /api/memory/search` (every listed agent's memory and
 the shared memory, from recall's own indexes), and copies with
 `POST /api/bots/:id/memory/copy` (picked topics, appended to one the
@@ -218,17 +230,30 @@ the safety floor all read it from that one place, and
 The desktop app keeps the list (`electron/workspaces.mjs`, pure and
 tested in `test/workspaces.test.ts`) in `workspaces.json` in its own user
 data folder: each workspace's id, kind (`personal`, `business`, `custom`
-or `joined`), name, whether it is a team's, mark or logo, data folder,
-mute, notification level, order, last port and accent, and the person's
-own preferences (theme, the accent shared by every workspace when that
-is on, and the name they go by). The first launch with workspaces finds
-no list and writes one with the folder Bloks always had as Personal,
-exactly where it is: nothing is moved or rewritten to get there. Other
-workspaces get `<user data>/workspaces/<id>`, so a rename never moves a
-folder. Personal cannot be deleted. Marks are a 3x3 pattern and a colour
-(`electron/workspace-marks.mjs`): Personal's and Business's are fixed,
-and a named workspace draws one that is neither of those and that no
-other workspace on the computer wears.
+or `joined`, and `hosted` for the managed hosting that is coming), name,
+whether it is a team's, mark or logo, data folder, mute, notification
+level, order, last port and accent, and the person's own preferences
+(theme, the accent shared by every workspace when that is on, and the
+name they go by). The order is the person's: holding a workspace in the
+switcher and dragging it, or Option and the arrow keys, rewrites it
+(`reorder`), and every list of workspaces follows it. The first launch
+with workspaces finds no list and writes one with the folder Bloks always
+had as Personal, exactly where it is: nothing is moved or rewritten to
+get there. Other workspaces get `<user data>/workspaces/<id>`, so a
+rename never moves a folder. Personal cannot be deleted. Marks are a 3x3
+pattern and a colour (`electron/workspace-marks.mjs`): Personal and
+Business start on their own, and a named workspace draws one that is
+neither of those and that no other workspace on the computer wears. Any
+of them can wear one the person picks from the picker's colours and
+shapes, at the Mac or from the owner's phone (`server/workspace-mark.ts`,
+which puts the phone's choice to the app), and the app keeps it only when
+no other workspace here wears it. On a joined workspace, the mark picked
+is the member's alone (`ownMark`), kept in their list and never sent to
+the owner, whose own mark stays beside it. A new workspace opens on a
+short welcome shaped by what was chosen for it
+(`src/lib/workspaceWelcome.ts`): a name and logo for a business, the
+agents for its work, inviting people for a team, and nothing about
+members for one person.
 
 `electron/main.mjs` starts one server per local workspace, a few at a
 time behind the window, each a `utilityProcess` with `BLOKS_DATA_DIR`,
@@ -268,10 +293,16 @@ children (`process.parentPort`), never the network:
   relay's words, and `DELETE /api/relay/space` frees this workspace's
   place while keeping the licence, so `POST /api/relay/activate` with
   `again: true` needs nothing typed. A workspace's own licence still wins.
-- **The plan and the name.** A server says the plan it knows
-  (`desktop.plan`), so a new workspace's Team choice can say what it
-  needs, and the owner's name (`desktop.name`), which the app keeps once
-  and hands to every workspace (`{ kind: "name" }`).
+- **The plan and the name.** One plan holds for every workspace. A
+  server says the plan it knows (`desktop.plan`), and the app takes that
+  word only when it is about the app's own licence, keeps it under the
+  licence's fingerprint (`electron/account-plan.mjs`, `account-plan.json`
+  in its user data folder) and hands it to every server with the licence
+  (`{ kind: "licence", key, plan }`, then `{ kind: "plan" }`), so a
+  workspace made today is on the plan from its first frame and a new
+  workspace's Team choice can say what it needs. The owner's name
+  (`desktop.name`) the app keeps once and hands to every workspace
+  (`{ kind: "name" }`).
 - **Stopping.** `{ kind: "stop" }` ends a server cleanly on every
   platform, engines and folder lock included.
 
@@ -292,11 +323,64 @@ key per direction from it (`server/relay-crypto.ts`), every request and
 every event frame is sealed for one device, and the relay in between
 carries ciphertext it cannot open. A browser keeps the two keys as
 non-extractable WebCrypto keys and never the token. Routes that mint new
-pairings answer only on this machine. A member's device, or a desktop
-app that joined the workspace, reaches it the same way with a member
-credential and is held to its own surface (see People in a workspace);
-one that joined on the owner's network alone calls it over plain HTTP on
-that network with its device token as the bearer.
+pairings answer only on this machine, but for the one that lets the
+owner's paired phone pair another workspace of theirs (below). A member's
+device, or a desktop app that joined the workspace, reaches it the same
+way with a member credential and is held to its own surface (see People
+in a workspace); one that joined on the owner's network alone calls it
+over plain HTTP on that network with its device token as the bearer.
+
+Pairing on the same network (`server/pairing.ts`) is off until phone
+access is switched on (`PUT /api/pair`), and the bind follows the switch
+only at the next start. Settings, Phone and devices is a short onboarding
+until a phone is paired, then the list (`src/components/DevicesSection.tsx`).
+No code exists until somebody asks: `POST /api/pair/start` mints a six
+digit code and a QR token, in memory only, one at a time, for five
+minutes; the window asks for the next just before one runs out while the
+panel is open and visible, and `POST /api/pair/cancel` closes it the
+moment the panel closes. `POST /api/pair/claim` takes either credential
+and counts every try, and five checked tries close the code.
+
+A phone whose saved address went stale finds the Mac again on its own.
+While phone access is on and the server listens on the network, a server
+the desktop app started on a Mac announces itself as `_bloks._tcp`
+through `dns-sd` (`server/announce.ts`), named for the computer and, past
+Personal, the workspace, with `ws=` in its TXT record: `workspaceTag()`, a
+hash of a random `announce-key` in the workspace's folder, which
+`/api/health` also says as `tag`. A small shell watches the server and
+ends the announcement with it, however it went. The phone trusts nothing
+it hears: before its token goes to a new address it sends a hint (the
+first 16 hex of a sha256 of its token's digest) and a nonce to
+`POST /api/pair/prove`, and only a Bloks holding its pairing can answer
+with the HMAC of that nonce keyed by the digest.
+
+A phone the owner paired with one workspace can learn the others on the
+computer and pair one in a tap (`server/other-workspaces.ts`):
+`GET /api/workspaces/others` and `POST /api/workspaces/others/:id/pair`,
+for the owner's own paired devices only. The question goes to the app
+over the parent port, since only the list knows the workspaces; it names
+only the person's own (`OWN_LOCAL_KINDS` in `electron/server-line.mjs`),
+starts the one asked for if it has to, and asks its server for a single
+use pairing of three minutes, through Bloks Cloud when it is online, else
+on the network when phone access listens there (`mintPairing`). A device
+gets five in ten minutes (`MintLimiter`), and the app shows a notification
+for every one made, whatever the workspace's notification settings.
+
+A person can watch an agent's browser or cloud computer from the phone and
+work it. Live frames go out on the stream only on this machine and the
+same network; a phone through Bloks Cloud asks `GET /api/bots/:id/screen`
+for the newest one, and `?watch=1` keeps the browser or box pictured for a
+minute after its last look (`watchScreen`), turn or no turn, without
+opening a browser or waking a box to do it. `POST /api/bots/:id/browser/:act`
+and `POST /api/bots/:id/computer/:act` take a click, a scroll, a key or
+typing (`handsFrom`), never from an agent's credential. While an agent's
+turn drives the Mac itself (`drivingMac`), the same screen route answers
+the person with a picture of the Mac's screen: the server asks the app
+(`desktop.screen`), which takes one only if Screen Recording is already
+granted and never asks macOS for it (`answerScreen` in
+`electron/main.mjs`), at most about once a second however many ask. It is
+never broadcast, never answered to an agent's credential, and there is no
+route that clicks on the Mac.
 
 The line to the relay (`server/relay-link.ts`) is two things. The stream
 in, which carries asks, is watched for silence and redialled. What goes
@@ -971,6 +1055,27 @@ workflow gates are left exactly as they are. A drain lives in memory,
 so a restart ends it, and calling it off lets everything held go at once.
 One whose restart never comes ends itself the same way, ten minutes past
 its deadline.
+
+## When the window fails
+
+The servers and every agent keep working whatever happens to the window,
+so the window is what comes back. A page process that dies loads the app
+again (`electron/renderer-watch.mjs`); three deaths inside a minute show
+a plain page with a Reload link instead of a loop. A page that stops
+answering is waited on and written down, never killed. In the page, an
+error boundary under the whole interface (`src/components/ErrorBoundary.tsx`)
+puts a calm panel in its place when any part throws while it draws, with
+Reload and the details to copy, instead of an empty window, and says so
+to the app log.
+
+That log is the app's own (`electron/app-log.mjs`): a few lines about the
+window and its processes, a helper process that went away and why, in
+`app.log` in the app's logs folder beside `updater.log`, moved aside to
+`app.1.log` at 512 KB, never in a workspace's folder and never sent
+anywhere. What the page asks to write is budgeted (`lineBudget`). A native
+crash leaves a minidump in the computer's crash folder: the crash
+reporter starts with `uploadToServer: false`, and there is no server to
+send one to.
 
 ## Backups and restore
 
@@ -2613,10 +2718,12 @@ Settings, Plan reads the membership on the licence this computer keeps
 (`server/plan-account.ts`). `GET /api/plan` asks bloks.dev, with the
 licence as the bearer, for the account and the offers on that plan;
 `POST /api/plan/manage` asks for the billing link only when it is
-pressed; and `DELETE /api/plan/licence` forgets the key here and takes
-the workspace offline. These answer this computer's own window only,
-never an agent or a paired device, since the answer is read with the
-licence itself. The key never comes back to the page, only masked. What
+pressed; `POST /api/plan/hosting/link` asks for a pairing link to the
+hosted workspace on the licence, for the managed hosting that is coming
+(see Hosted mode); and `DELETE /api/plan/licence` forgets the key here
+and takes the workspace offline. These answer this computer's own window
+only, never an agent or a paired device, since the answer is read with
+the licence itself. The key never comes back to the page, only masked. What
 the site sends is read as unknowns and checked one field at a time, with
 strings bounded and stripped of control and direction characters, and a
 price is shown as the site wrote it, never worked out here. The last good
@@ -2747,8 +2854,10 @@ and `bloks-ai`.
 ## Hosted mode
 
 `BLOKS_HOSTED=1` says this workspace runs on a machine somebody runs for
-the person (`server/hosted.ts`). The machine is the agents' computer, so
-the computer choices are this machine or off (`hosted.computers` on
+the person (`server/hosted.ts`). This is the server's side of managed
+hosting, a private machine that stays on, which is coming soon and not
+yet offered. The machine is the agents' computer, so the computer
+choices are this machine or off (`hosted.computers` on
 `/api/config`), a box or a VM chosen on a Mac becomes this machine, and
 the API refuses the cloud box and the Local VM routes with code `hosted`.
 What needs the person's Mac says so: working the Mac itself (the Electron
