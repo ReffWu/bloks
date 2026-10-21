@@ -141,8 +141,18 @@ function KindRows({ ws, all }: { ws: WorkspaceInfo; all: WorkspaceInfo[] }) {
       {ws.kind !== "joined" && ws.kind !== "hosted" && (
         <SettingRow
           label="Who uses it"
-          description={ws.team ? "You and the people you invite. Each has their own conversations with its agents." : "Only you."}
+          description={
+            ws.team
+              ? "You and the people you invite. Each has their own conversations with its agents."
+              : ws.kind === "personal"
+                ? "Only you. For a team, make a Business workspace or one with a name of its own."
+                : "Only you."
+          }
           control={
+            ws.kind === "personal" && !ws.team ? (
+              // Personal is yours alone, so there is nothing to choose
+              <span className="text-body text-muted-foreground">Just you</span>
+            ) : (
             <Segmented<"solo" | "team">
               aria-label="Who uses it"
               value={ws.team ? "team" : "solo"}
@@ -156,6 +166,7 @@ function KindRows({ ws, all }: { ws: WorkspaceInfo; all: WorkspaceInfo[] }) {
                 { value: "team", label: "Team" },
               ]}
             />
+            )
           }
         />
       )}

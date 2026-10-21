@@ -126,7 +126,7 @@ test("plans are named the way Bloks names them", () => {
   assert.equal(planName("cloud"), "Bloks Cloud");
   assert.equal(planName("team"), "Bloks Team");
   assert.equal(planName("team-hosted"), "Bloks Team Hosted");
-  assert.equal(planName(null), "Free");
+  assert.equal(planName(null), "Self-hosted");
   assert.equal(planName("studio-plus"), "Studio Plus", "a plan the app has not heard of is still said readably");
 });
 

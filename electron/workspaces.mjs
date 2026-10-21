@@ -369,7 +369,14 @@ export function updateWorkspace(registry, id, patch, { random = Math.random } = 
       next.mark = fixedMark(kind) ?? generateMark(marksInUse(registry, id), { random });
     }
   }
-  if (patch.team !== undefined) next.team = patch.team === true;
+  if (patch.team !== undefined) {
+    // Personal is the person's own: a team gets a Business workspace or one
+    // with its own name. One made a team before this rule can still go back.
+    if (patch.team === true && was.kind === "personal" && !was.team) {
+      throw new Error("Personal is yours alone. For a team, make a Business workspace or one with a name of its own.");
+    }
+    next.team = patch.team === true;
+  }
   if (patch.notify !== undefined) {
     if (!NOTIFY_LEVELS.includes(patch.notify)) throw new Error("That is not a notification level.");
     next.notify = patch.notify;

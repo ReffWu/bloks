@@ -23,6 +23,7 @@ import {
   Copy,
   Loader2,
   Lock,
+  Monitor,
   RefreshCw,
   Server,
   Smartphone,
@@ -92,7 +93,12 @@ function useRelayPlan(refreshKey: unknown) {
 
 /** The glyph a plan wears on its card. */
 function PlanGlyph({ planKeyOf, className }: { planKeyOf: string; className?: string }) {
-  const Icon = planKeyOf === "team" || planKeyOf === "team-hosted" ? Users : planKeyOf === "hosted" ? Server : planKeyOf === "cloud" ? Cloud : Sparkles;
+  const Icon =
+    planKeyOf === "team" || planKeyOf === "team-hosted" ? Users
+    : planKeyOf === "hosted" ? Server
+    : planKeyOf === "cloud" ? Cloud
+    : planKeyOf === "free" ? Monitor
+    : Sparkles;
   return (
     <span
       className={cn(
@@ -250,7 +256,15 @@ function PlanCard({ snapshot, onManage, managing, manageError }: { snapshot: Pla
   );
 }
 
-/** No key: Bloks is free, and a key already bought goes in here. */
+/** No key: Bloks runs on this computer with the person's own engines and
+ * keys, and a key already bought goes in here. Called Self-hosted rather
+ * than Free: it is a way of running Bloks, not a lesser tier of it. */
+const SELF_HOSTED_POINTS = [
+  "All your agents, rooms and automations",
+  "On the engines and API keys you already have",
+  "Everything stays on this computer",
+];
+
 function FreeCard({ onActivated }: { onActivated: () => void }) {
   const [open, setOpen] = useState(false);
   return (
@@ -260,12 +274,20 @@ function FreeCard({ onActivated }: { onActivated: () => void }) {
           <PlanGlyph planKeyOf="free" />
           <div className="min-w-0">
             <div className="text-small font-medium text-muted-foreground">Your plan</div>
-            <h2 className="text-heading font-semibold text-foreground">Free</h2>
+            <h2 className="text-heading font-semibold text-foreground">Self-hosted</h2>
           </div>
         </div>
         <p className="mt-3 max-w-[56ch] text-pretty text-body text-muted-foreground">
-          Bloks is free with your own keys. Your agents, your keys and everything they make stay on this computer.
+          Bloks runs right here, on your own engines and keys. Add a plan when you want your workspaces online, people in them, or Bloks AI.
         </p>
+        <ul className="mt-4 grid gap-2 sm:grid-cols-3 sm:gap-3">
+          {SELF_HOSTED_POINTS.map((point) => (
+            <li key={point} className="flex items-start gap-2 text-pretty text-small text-foreground">
+              <Check size={14} strokeWidth={2.25} className="mt-[2px] shrink-0 text-brand-ink" />
+              <span className="min-w-0">{point}</span>
+            </li>
+          ))}
+        </ul>
         <AnimatePresence initial={false}>
           {open && (
             <motion.div
@@ -283,9 +305,9 @@ function FreeCard({ onActivated }: { onActivated: () => void }) {
       </div>
       {!open && (
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/30 px-6 py-3 max-sm:px-5">
-          <span className="text-small text-muted-foreground">Already have a key?</span>
+          <span className="text-small text-muted-foreground">Have a Bloks key from bloks.dev?</span>
           <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-            Enter it
+            Enter your key
           </Button>
         </footer>
       )}
@@ -778,15 +800,21 @@ function YourOptions({ snapshot }: { snapshot: PlanSnapshot }) {
   if (!snapshot.offers) {
     // the site could not be asked and nothing was kept: one quiet way there
     return (
-      <SettingsGroup title="Your options">
+      <SettingsGroup title={key === "free" ? "When you want more" : "Your options"}>
         <SettingRow
           label="Plans and add-ons"
-          description="Couldn't load them just now."
+          description="They come from bloks.dev, which could not be reached just now."
           control={
-            <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => openSite(`${snapshot.site}/cloud`)}>
-              See plans at bloks.dev
-              <ArrowUpRight size={13} />
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => void loadPlan(true)}>
+                <RefreshCw size={13} />
+                Try again
+              </Button>
+              <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => openSite(`${snapshot.site}/pricing`)}>
+                See plans
+                <ArrowUpRight size={13} />
+              </Button>
+            </div>
           }
         />
       </SettingsGroup>

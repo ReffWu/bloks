@@ -11,7 +11,7 @@
 // request arriving, a person let in on another device or an invite used
 // all show here without a reload.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, MoreHorizontal, Plus, Search, UserPlus } from "@/components/icons";
+import { Check, Copy, MoreHorizontal, Plus, Search, UserPlus, Users } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/confirm";
 import {
@@ -46,7 +46,7 @@ import { BlockBurst } from "./BlockBurst";
 import { InviteSheet } from "./InviteSheet";
 import { AgentAccessDialog, LimitsDialog, PasswordDialog } from "./MemberDialogs";
 import { RequestCard } from "./RequestCard";
-import { NeedsTeam, UpgradeLink } from "../TeamLock";
+import { NeedsTeam, UpgradeButton, UpgradeLink } from "../TeamLock";
 import { AlertTriangle } from "@/components/icons";
 import { distinctNames } from "@/lib/names";
 
@@ -182,6 +182,11 @@ export function MembersPage({
   // from before that said nothing, and stays as it was
   const teamOn = data?.team !== false;
   const owner = data?.you.role === "owner";
+  // Not on Bloks Team, and nobody else in yet: there is nothing here to
+  // manage, so the page says what Team brings and the one way to it,
+  // rather than offering a greyed button and settings for invites that
+  // cannot be sent. Members already in are the paused case below.
+  const locked = Boolean(data) && !teamOn && !data!.paused && (data!.members.length === 0);
   const members = useMemo(() => {
     const list = data?.members ?? [];
     const q = query.trim().toLowerCase();
@@ -257,7 +262,7 @@ export function MembersPage({
           {/* the same heading every Settings page has, with the one thing
               this page offers beside it */}
           <h1 className="text-balance text-heading font-semibold text-foreground">Members</h1>
-          {manage && (
+          {manage && !locked && (
             <div className="flex shrink-0 flex-col items-end gap-1.5">
               <Button size="lg" onClick={() => setInviting(true)} disabled={!teamOn}>
                 <Plus size={16} />
@@ -273,6 +278,21 @@ export function MembersPage({
           {joining?.approveEach === false ? "The right code lets people straight in." : "Nobody gets in until you say so."}
         </p>
       </div>
+
+      {manage && locked && (
+        <section aria-label="Bloks Team" className="flex items-start gap-4 rounded-2xl border bg-card p-6 max-sm:flex-col max-sm:p-5">
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-ink" aria-hidden>
+            <Users size={20} />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <h2 className="text-pretty text-ui font-semibold text-foreground">Bring people into {ws.name}</h2>
+            <p className="max-w-[52ch] text-pretty text-body leading-relaxed text-muted-foreground">
+              With Bloks Team, invite people to use its agents, rooms and memory beside you. Each has their own conversations, you choose what they can reach and spend, and nobody gets in until you say so.
+            </p>
+          </div>
+          <UpgradeButton />
+        </section>
+      )}
 
       {/* the owner is not on Bloks Team, and people are in: they are
           paused, said once and plainly, with the way back */}
@@ -356,7 +376,7 @@ export function MembersPage({
         {!manage && <p className="px-0.5 text-pretty text-small text-muted-foreground">{data.privacy.line}</p>}
       </Section>
 
-      {manage && joining && (
+      {manage && joining && !locked && (
         <Section title="Joining">
           <Card>
             <div className="flex items-center gap-4 px-[18px] py-4">
@@ -436,7 +456,7 @@ export function MembersPage({
         </Section>
       )}
 
-      {manage && (
+      {manage && !locked && (
         <Section
           title="Invitations"
           aside={<span className="text-body tabular-nums text-muted-foreground">{invites.length ? `${invites.length} waiting` : "None waiting"}</span>}

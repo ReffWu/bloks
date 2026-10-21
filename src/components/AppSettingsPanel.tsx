@@ -238,8 +238,14 @@ export function AppSettingsPanel() {
   // only what is risky earns a number in the list; worth a look waits on the page
   const risky = riskyCount(useSecurityCheckup().report);
 
-  // the workspace's own pages are there where there are workspaces
-  const pages = useMemo(() => SETTINGS_PAGE_LIST.filter((p) => !p.workspace || Boolean(ws)), [ws]);
+  // the workspace's own pages are there where there are workspaces, and
+  // Members only where there can be people: a team, or a workspace joined
+  // or hosted. A Just me workspace, Personal always, has nobody to manage.
+  const soloWorkspace = Boolean(ws) && !ws!.team && (ws!.kind === "personal" || ws!.kind === "business" || ws!.kind === "custom");
+  const pages = useMemo(
+    () => SETTINGS_PAGE_LIST.filter((p) => (!p.workspace || Boolean(ws)) && !(p.id === "workspace:members" && soloWorkspace)),
+    [ws, soloWorkspace],
+  );
   const pageId = settingsPage(state.settingsPage) ? state.settingsPage : "general";
   const page = settingsPage(pageId)!;
   const close = () => dispatch({ type: "toggleAppSettings", open: false });

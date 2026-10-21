@@ -70,7 +70,7 @@ export interface PlanSnapshot {
 }
 
 export const PLAN_NAMES: Record<string, string> = {
-  free: "Free",
+  free: "Self-hosted",
   cloud: "Bloks Cloud",
   team: "Bloks Team",
   ai: "Bloks AI",

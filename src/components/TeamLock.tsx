@@ -5,6 +5,7 @@
 // the upgrade page on bloks.dev the room share panel has always sent
 // people to. Nothing here names a price.
 import { ArrowUpRight, Lock } from "@/components/icons";
+import { Button } from "@/components/ui/button";
 import { useOptionalStore } from "@/state/store";
 import { cn } from "@/lib/cn";
 
@@ -46,5 +47,27 @@ export function UpgradeLink({ className, label = "Upgrade" }: { className?: stri
       {label}
       <ArrowUpRight size={12} strokeWidth={2} aria-hidden />
     </a>
+  );
+}
+
+/** The same way to Bloks Team as a button, for where it is the one thing
+ * a screen offers rather than a note beside a choice. */
+export function UpgradeButton({ label = "Get Bloks Team" }: { label?: string }) {
+  const store = useOptionalStore();
+  if (store) {
+    return (
+      <Button size="sm" className="shrink-0 gap-1.5" onClick={() => store.dispatch({ type: "toggleAppSettings", open: true, page: "plan" })}>
+        {label}
+        <ArrowUpRight size={13} />
+      </Button>
+    );
+  }
+  return (
+    <Button size="sm" className="shrink-0 gap-1.5" asChild>
+      <a href={TEAM_UPGRADE_URL} target="_blank" rel="noreferrer">
+        {label}
+        <ArrowUpRight size={13} />
+      </a>
+    </Button>
   );
 }

@@ -240,7 +240,29 @@
     overflow: hidden;
   }
 
-  button {
+  /* Anything that can be pressed shows the pointing hand, so a row, a
+     chip or a tab reads as clickable before it is tried. Disabled ones
+     keep the arrow. A handle with a cursor of its own (a resize edge, a
+     drag grip) sets it as a utility, which wins over this. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]),
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="radio"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitemradio"]:not([data-disabled]),
+  [role="menuitemcheckbox"]:not([data-disabled]),
+  [role="option"]:not([aria-disabled="true"]):not([data-disabled]),
+  a[href],
+  summary,
+  select,
+  label[for] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
     cursor: default;
   }
 

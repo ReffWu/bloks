@@ -256,7 +256,7 @@ export function WorkspaceSwitcher({
           >
             <Sparkles />
             Plan
-            <span className="ml-auto pl-3 text-small font-normal text-muted-foreground">{s.plan === "team" ? "Bloks Team" : s.plan === "cloud" ? "Bloks Cloud" : s.plan === null ? "Free" : ""}</span>
+            <span className="ml-auto pl-3 text-small font-normal text-muted-foreground">{s.plan === "team" ? "Bloks Team" : s.plan === "cloud" ? "Bloks Cloud" : s.plan === null ? "Self-hosted" : ""}</span>
           </DropdownMenuItem>
         )}
         <DropdownMenuSub>

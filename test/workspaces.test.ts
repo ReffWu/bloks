@@ -352,3 +352,15 @@ test("the list on disk is private to the person", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("Personal is the person's own: it cannot be made a team, and one made a team before can go back", () => {
+  const reg = fresh();
+  assert.throws(() => updateWorkspace(reg, "personal", { team: true }), /Personal is yours alone/);
+  // from before the rule: it may leave team, and stays able to
+  const legacy = { ...reg, workspaces: reg.workspaces.map((w) => (w.id === "personal" ? { ...w, team: true } : w)) };
+  const solo = updateWorkspace(legacy, "personal", { team: false });
+  assert.equal(solo.workspaces.find((w) => w.id === "personal")!.team, false);
+  // any other workspace can still be a team
+  const { registry: withBusiness, entry } = addWorkspace(reg, { kind: "business", name: "Business" }, { workspacesDir: "/tmp/bloks-ws" });
+  assert.equal(updateWorkspace(withBusiness, entry.id, { team: true }).workspaces.find((w) => w.id === entry.id)!.team, true);
+});

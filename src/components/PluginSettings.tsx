@@ -179,10 +179,12 @@ export function PluginSettings() {
     );
   }
 
-  const counts: Record<List, number> = {
-    apps: connectors.installed.length,
-    mcps: servers?.length ?? 0,
-    skills: skills?.length ?? 0,
+  // null while a list is still being asked for: a 0 there read as "none"
+  // for the moment before the real number came
+  const counts: Record<List, number | null> = {
+    apps: connectors.cards === null ? null : connectors.installed.length,
+    mcps: servers === null ? null : servers.length,
+    skills: skills === null ? null : skills.length,
   };
 
   return (
@@ -238,7 +240,11 @@ export function PluginSettings() {
               )}
             >
               {text}
-              <span className="tabular-nums text-muted-foreground">{counts[value]}</span>
+              {counts[value] === null ? (
+                <span className="inline-block h-2.5 w-3 animate-pulse rounded-sm bg-muted-foreground/25" aria-hidden />
+              ) : (
+                <span className="tabular-nums text-muted-foreground">{counts[value]}</span>
+              )}
             </button>
           ))}
         </div>
