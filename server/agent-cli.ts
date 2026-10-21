@@ -259,6 +259,9 @@ export const NEVER = [
   "/api/backups",
   // a map of what reaches the person's keys and screen, and its fixes
   "/api/security",
+  // the secrets saved for agents, by name, and forgetting one: the
+  // person's to keep or drop, never a turn's
+  "/api/secrets",
 ];
 
 const PATH_PART = /^[\w.-]+$/;

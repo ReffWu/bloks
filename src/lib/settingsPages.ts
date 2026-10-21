@@ -174,8 +174,8 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     label: "Apps and keys",
     group: "integrations",
     description: "Accounts and tools shared by every agent, and using Bloks from other apps.",
-    keywords: "composio connect key api key claude desktop cursor mcp other apps",
-    rows: ["Composio Connect key", "Composio API key", "Use Bloks from other AI apps"],
+    keywords: "composio connect key api key claude desktop cursor mcp other apps secrets secret saved token password forget environment variable",
+    rows: ["Composio Connect key", "Composio API key", "Saved secrets", "Use Bloks from other AI apps"],
   },
   {
     id: "devices",

@@ -907,6 +907,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "enginePauses":
         case "routines":
         case "incidents":
+        case "secrets":
           rawDispatch({ type: "tick", key: frame.kind });
           break;
         // a rule changed, or an approval was answered: what is offered as

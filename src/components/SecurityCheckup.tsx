@@ -256,7 +256,8 @@ export function SecurityCheckup() {
         <div className="flex items-center gap-2 px-4 py-6 text-body text-muted-foreground">
           {error ? (
             error === "not from here" ? (
-              "Open the checkup on the computer Bloks runs on."
+              // the one part of it that is the person's from anywhere
+              "Open the checkup on the computer Bloks runs on. Saved secrets are listed, and forgotten, in Apps and keys."
             ) : (
               <>
                 <span className="min-w-0 flex-1">Couldn't run the checkup: {error}</span>

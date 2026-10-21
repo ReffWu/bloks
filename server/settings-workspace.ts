@@ -30,7 +30,7 @@ export function inspectWorkspaceCategory(category:SettingsCategory,input:Workspa
   }else if(category==='workspace.apps'){
     fields.push(...core.filter((f)=>f.id.startsWith('composio.')));
     opaque(['composio','url'],'Settings > Apps and keys');
-    opaque(['secrets'],'Agent secure secret cards');
+    opaque(['secrets'],'Settings > Apps and keys > Saved secrets');
     add(['composio','connectedAccounts'],'Settings > Apps and keys', {status:'unknown',reason:'connection_refresh_not_run'});
   }else if(category==='workspace.computers'){
     fields.push(...core.filter((f)=>f.id.startsWith('box.')));

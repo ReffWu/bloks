@@ -7116,6 +7116,11 @@ function ownerToolsSafe(bot: BotRecord): boolean {
   return registry.get(bot.modelSelection.instanceId)?.driverKind === "claudeAgent";
 }
 
+/** The names of the secrets saved for agents, sorted. Never a value. */
+function savedSecretNames(): string[] {
+  return Object.keys(cfg.secrets ?? {}).sort();
+}
+
 /**
  * The facts the security checkup reads (server/security.ts), gathered
  * from what is already stored. Names and counts only: no key, no secret's
@@ -18641,6 +18646,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       // straight to the config file; the transcript never sees it
       Object.assign(cfg, saveConfig({ secrets: { [card.secret.envName]: value } }));
+      // its name, for whatever lists them (Settings, Apps and keys)
+      broadcast({ kind: "secrets" });
       // No engine reload: the next turn reads secrets fresh (see startTurn).
       // Reloading tore down every engine, killing any turn in flight,
       // including the one the previous card had just resumed.
@@ -19583,7 +19590,35 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         if (!saved) return json(res, 404, { error: "no secret by that name" });
         // the next turn reads secrets fresh (see startTurn), so nothing reloads
         Object.assign(cfg, saved);
+        broadcast({ kind: "secrets" });
         return json(res, 200, await securityReport());
+      }
+      return json(res, 404, { error: "not found" });
+    }
+
+    // The secrets agents asked for and the person saved, by name, and
+    // forgetting one (GitHub 327). The checkup lists them too, but only on
+    // this computer, and a workspace on a server elsewhere has no window of
+    // its own, so its person could not drop a key short of editing
+    // config.json by hand. These are the person's own keys, so the same
+    // list answers this app, the app run against a server elsewhere, and a
+    // paired phone. Names only: a value never leaves config.json. Never an
+    // agent, and never somebody in a shared room, whose requests were
+    // answered above; nor a member's own credential presented on this
+    // machine, which the loopback check alone would take for the person.
+    if (path === "/api/secrets" || path.startsWith("/api/secrets/")) {
+      const member = local && req.headers.authorization !== undefined && Boolean(deviceForToken(bearerToken(req))?.personId);
+      if (asAgent || member) return json(res, 403, { error: "saved secrets are the person's, not an agent's" });
+      if (method === "GET" && path === "/api/secrets") return json(res, 200, { secrets: savedSecretNames() });
+      // a secret's name is an environment variable's, so nothing to decode
+      m = path.match(/^\/api\/secrets\/([A-Za-z_][A-Za-z0-9_]{0,127})$/);
+      if (m && method === "DELETE") {
+        const saved = forgetSecret(m[1]);
+        if (!saved) return json(res, 404, { error: "no secret by that name" });
+        // the next turn reads secrets fresh (see startTurn), so nothing reloads
+        Object.assign(cfg, saved);
+        broadcast({ kind: "secrets" });
+        return json(res, 200, { secrets: savedSecretNames() });
       }
       return json(res, 404, { error: "not found" });
     }

@@ -12,6 +12,7 @@ import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, useWorkspaceApproval
 import { BoxSleep } from "../BoxSleep";
 import { LocalVmSection } from "../LocalVmSection";
 import { RulesPanel } from "../RulesPanel";
+import { SavedSecrets } from "../SavedSecrets";
 import { UseFromOtherApps } from "../UseFromOtherApps";
 import { SavedMark, SettingRow, SettingsGroup } from "../SettingsLayout";
 
@@ -230,6 +231,7 @@ export function AppsPage() {
           }}
         />
       </SettingsGroup>
+      <SavedSecrets />
       {/* MCP servers are managed in Plugins now, beside apps and skills */}
       <UseFromOtherApps />
     </>
