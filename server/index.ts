@@ -1596,14 +1596,29 @@ function preferredEngine(bot: BotRecord, fallback: boolean, laneId?: string): Mo
   if (laneId && stayOf(bot, laneId) && engineUsable(bot.backupSelection)) return bot.backupSelection;
   const backup = bot.backupSelection && bot.backupSelection.instanceId !== own.instanceId ? bot.backupSelection : null;
   const ownRest = cooldowns.of(own.instanceId);
-  const ownMissing = !registry.get(own.instanceId);
+  // switched off counts as missing, as it does for readinessOf
+  const ownMissing = !registry.get(own.instanceId) || registry.get(own.instanceId)?.enabled === false;
   // past its spending limit is out until the month turns, as far as this
   // agent's backup is concerned; with no backup, startTurn says why
   return (ownRest || ownMissing || spendStopped(own.instanceId)) && engineUsable(backup) ? backup : own;
 }
 
-function unavailableEngineMessage(instanceId: string): string {
+function unavailableEngineMessage(instanceId: string, instance?: ProviderInstance): string {
+  if (instance?.enabled === false) {
+    return `${instance.displayName ?? instanceId} is switched off in Settings, so it starts no turns. Switch it back on, or pick another model in settings`;
+  }
   return `provider instance "${instanceId}" is unavailable, pick another model in settings`;
+}
+
+/** The engine a turn is about to start on, as it is now. One switched off
+ * in Settings reads as unavailable to every other agent, so it starts
+ * nothing either, as if it were not there (GitHub 324). */
+function turnEngine(instanceId: string): ProviderInstance {
+  const instance = registry.get(instanceId);
+  if (!instance || instance.enabled === false) {
+    throw Object.assign(new Error(unavailableEngineMessage(instanceId, instance ?? undefined)), { status: 409 });
+  }
+  return instance;
 }
 
 /**
@@ -5714,10 +5729,7 @@ async function startClaimedTurn(
     const name = registry.get(commandInstance!)?.driverKind === "codex" ? "Codex" : "Claude Code";
     throw Object.assign(new Error(`This command was queued for ${name}, but that engine is no longer selected or available. Choose it again and send the command again.`), { status: 409 });
   }
-  const instance = registry.get(selection.instanceId);
-  if (!instance) {
-    throw Object.assign(new Error(unavailableEngineMessage(selection.instanceId)), { status: 409 });
-  }
+  const instance = turnEngine(selection.instanceId);
   // a member's solo agent runs only on the engines the owner allowed them
   if (bot.solo && bot.solo.by !== "owner" && !workspacePeople.limits.engineAllowed(bot.solo.by, selection.instanceId)) {
     throw Object.assign(new Error(`${bot.name} is set to an engine you may not use in this workspace. Pick another in its settings, or ask the owner or an admin.`), { status: 403 });
@@ -6804,8 +6816,7 @@ async function startClaimedTurn(
       // ready (reloadProviders) is the one it goes to: the old one is
       // gone, and nothing would hear the turn end on it.
       await reloading;
-      let engine = registry.get(instanceId);
-      if (!engine) throw new Error(unavailableEngineMessage(instanceId));
+      let engine = turnEngine(instanceId);
       // not for a turn already stopped: it ends at the check below
       if (compactHere && !stoppedGettingReady.has(task.id)) {
         const go = await compactThenSend(bot, task.id, roomId, engine, sending);
@@ -6830,8 +6841,7 @@ async function startClaimedTurn(
         // and the engine as it is now: one rebuilt during the compaction
         // ended it, and the old one is gone
         await reloading;
-        engine = registry.get(instanceId);
-        if (!engine) throw new Error(unavailableEngineMessage(instanceId));
+        engine = turnEngine(instanceId);
       }
       // Asked one last time, with nothing awaited between here and the
       // engine. Getting ready can take a minute (a box waking, a
@@ -10104,7 +10114,8 @@ function compactWhileIdle(bot: BotRecord, task: TaskRecord) {
   const sent = lastSent.get(task.id);
   const instance = sent ? registry.get(sent.instanceId) : undefined;
   const cursor = sent ? task.resumeCursors[sent.instanceId] : undefined;
-  if (!sent || !instance || typeof cursor !== "string") return;
+  // nothing runs on an engine switched off, a compaction nobody asked for least of all
+  if (!sent || !instance || instance.enabled === false || typeof cursor !== "string") return;
   const run = { botId: bot.id };
   idleCompacting.set(task.id, run);
   // whatever happens next, this quiet stretch has had its chance
