@@ -2828,7 +2828,7 @@ function askAgain(bot: BotRecord, laneId: string, recovery: Recovery, delay: num
       const owner = store.bot(bot.id);
       if (owner) settleOwners(owner, laneId, { ok: false, why, unsent: true });
       telegramReturns.finish(laneId, `Could not answer: ${why}`);
-      telegramWorking.get(laneId)?.ended();
+      telegramWorking.get(laneId)?.ended(`Could not answer: ${why}`);
       const failed = store.appendMessage(laneId, {
         role: "bot",
         kind: "notice",
@@ -4289,8 +4289,10 @@ bus.subscribe((event: RuntimeEvent) => {
         void (async () => {
           const folded = await foldContext(bot.id, event.threadId, true).catch(() => false);
           if (folded && said?.text) {
+            // A phone request's wait ends with the retry's turn, or here
+            // when the retry cannot start.
             await startTurn(bot.id, said.text, { taskId: event.threadId, presetMessage: true, retry: true, byYou: turnsForYou.has(event.threadId), routine: said.via === "routine" ? said.routine : undefined, ...(requester ? { requester } : {}) }).catch(
-              () => {},
+              (e) => telegramWorking.get(event.threadId)?.ended(`Could not answer: ${redactSecrets(e instanceof Error ? e.message : String(e))}`),
             );
           } else {
             const notice = store.appendMessage(event.threadId, {
@@ -4299,6 +4301,7 @@ bus.subscribe((event: RuntimeEvent) => {
               text: `This conversation is longer than ${bot.modelSelection.model} will take, and it could not be summarised. Starting a new task keeps this one readable.`,
             });
             broadcast({ kind: "message", threadId: event.threadId, message: notice });
+            telegramWorking.get(event.threadId)?.ended();
           }
         })();
         break;
@@ -4365,6 +4368,9 @@ bus.subscribe((event: RuntimeEvent) => {
       // A turn an engine rebuild cut off is picked up on the new engine.
       const rebuilt = event.stopReason === ENGINE_RELOADED && settleRebuiltLane(event.threadId);
       let pickingUp = Boolean(rebuilt);
+      // A rebuild that does not pick the turn up (it was stopped, or its
+      // engine is gone) ends a phone request's wait here like any end.
+      const rebuiltEnds = rebuilt === "ended" || rebuilt === "gone";
       // A turn the Mac slept through, which failed because of it, is
       // picked up once when it wakes rather than left dead.
       const slept = sleptLanes.get(event.threadId);
@@ -4496,7 +4502,9 @@ bus.subscribe((event: RuntimeEvent) => {
         for (const id of deskNotes) deskTurnEnded(id, event.ok !== false);
       }
       if (!pickingUp && !handedOver) telegramReturns.finish(event.threadId, event.preInputRefusal?.reason);
-      if (!pickingUp && !handedOver && !refolding) telegramWorking.get(event.threadId)?.ended();
+      if ((!pickingUp || rebuiltEnds) && !handedOver && !refolding) {
+        telegramWorking.get(event.threadId)?.ended(event.preInputRefusal?.reason ?? (rebuilt === "gone" ? engineGoneNotice(bot.name) : undefined));
+      }
       const heldPerson = laneTelegramPerson.get(event.threadId);
       if (heldPerson && event.ok === false && !handedOver && event.stopReason !== "interrupted" && !rebuilt) {
         tellTelegramPersonHeld(heldPerson, failedTurnNotice(event.stopReason));
@@ -4871,8 +4879,10 @@ function carryOn(
       // under the notice, where the pickup took them
       .then(() => deliverQueued(turn.laneId, alive.flatMap(({ item }) => (item.messageId ? [item.messageId] : []))))
       .catch((e) => {
-        telegramReturns.finish(turn.laneId, `Could not answer: ${redactSecrets(e instanceof Error ? e.message : String(e))}`,
-          alive.flatMap(({ item }) => item.messageId ? [item.messageId] : []));
+        const why = `Could not answer: ${redactSecrets(e instanceof Error ? e.message : String(e))}`;
+        telegramReturns.finish(turn.laneId, why, alive.flatMap(({ item }) => item.messageId ? [item.messageId] : []));
+        // the phone request whose turn this was picking up is over too
+        telegramWorking.get(turn.laneId)?.ended(why);
         // what waited is still waiting, ahead of anything said since
         if (waiting) {
           const since = steerQueues.get(turn.laneId)?.items ?? [];
@@ -6269,6 +6279,7 @@ async function startClaimedTurn(
     store.setTaskBusy(task.id, false);
     // a Telegram request this turn took is answered with why it did not run
     telegramReturns.finish(task.id, failure);
+    telegramWorking.get(task.id)?.ended(failure);
     turnStarted.delete(task.id);
     repeats.end(task.id);
     cutOff.end(task.id);
@@ -9210,18 +9221,6 @@ function unresume(threadId: string, error: unknown): boolean {
   if (!refused.held && !refused.archived) return false;
   sayTurnedAway(threadId, error);
   return true;
-}
-
-/** Resolves once an agent has nothing running in any lane. */
-function waitForIdle(botId: string, timeoutMs = 120_000, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const tick = () => {
-      if (signal?.aborted || !store.bot(botId)?.busy || Date.now() - started > timeoutMs) return resolve();
-      setTimeout(tick, 250);
-    };
-    setTimeout(tick, 250);
-  });
 }
 
 /** Says in a room that a mention woke nobody (heldMention), marked as a
@@ -12608,7 +12607,7 @@ async function answerOverTelegram(botId: string, text: string, chatId: number, r
   const asked = () => requestId ??= store.messagesFor(laneId).slice(before)
     .find((m) => m.role === "user" && m.kind === "text" && m.fromTelegram)?.id;
   const progress = new TurnProgress(telegramProgress(runtime, chatId),
-    () => store.messagesFor(laneId), asked, () => turnStarted.get(laneId));
+    () => store.messagesFor(laneId), asked, () => turnStarted.get(laneId), () => laneTurns.get(laneId));
   telegramWorking.set(laneId, progress);
   runtime.working.set(laneId, progress);
   const settled = async () => {
@@ -12629,17 +12628,17 @@ async function answerOverTelegram(botId: string, text: string, chatId: number, r
   const lane = bot.tasks.find((t) => t.id === laneId);
   if (lane && (laneWaits(lane) || pauseHolding(bot, laneId)) && !wheel.heldBy(botId) && !bot.archivedAt) {
     try {
+      progress.joining();
       const steered = await steerLane(bot, lane, text, { replyTo, fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } });
       if (!steered && !currentTelegram(runtime)) throw new Error("the Telegram connection changed");
       const sent = steered ?? queueOnLane(botId, laneId, text, { replyTo, fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } });
       requestId = sent.id;
+      progress.joined(Boolean(steered));
       progress.observe();
       // the turn may have ended while its engine was asked
       if (!steered) drainSteer(laneId);
-      await answeredAfter(botId, laneId, sent.id, 20 * 60_000, runtime.abort.signal);
-      const list = store.messagesFor(laneId);
-      const from = list.findIndex((m) => m.id === sent.id);
-      return replyIn(botId, from >= 0 ? list.slice(from + 1) : [], progress.answerSpan());
+      await answeredAfter(botId, laneId, sent.id, progress, runtime.abort.signal);
+      return replyIn(botId, progress);
     } finally {
       await settled();
     }
@@ -12647,13 +12646,14 @@ async function answerOverTelegram(botId: string, text: string, chatId: number, r
   try {
     await startTurn(botId, text, { replyTo, byYou: true, fromTelegram: true, telegramBinding: { botId, generation: runtime.generation } });
     progress.observe();
-    // Longer than an ordinary wait, because a card forwarded to the
-    // phone is answered on the phone's schedule, not the app's.
-    await waitForIdle(botId, 20 * 60_000, runtime.abort.signal);
+    // The request owns its return until its consuming turn settles,
+    // including a card answered on the phone's schedule.
+    const sent = asked();
+    if (sent) await answeredAfter(botId, laneId, sent, progress, runtime.abort.signal);
   } finally {
     await settled();
   }
-  return replyIn(botId, store.messagesFor(laneId).slice(before), progress.answerSpan());
+  return replyIn(botId, progress);
 }
 
 /** A Telegram turn's reply: what the agent said, and what it left. */
@@ -12661,8 +12661,13 @@ interface TelegramAnswer extends TelegramText {
   files: telegram.Deliverable[];
 }
 
-function replyIn(botId: string, messages: readonly Message[], said: readonly Message[]): TelegramAnswer {
-  return { ...telegramReply(said, redactSecrets), files: deliverablesIn(botId, messages) };
+function replyIn(botId: string, progress: TurnProgress): TelegramAnswer {
+  // A turn that could not run says why, as a request held through a
+  // restart is told (telegramReturns), and left nothing to send.
+  const failure = progress.failure;
+  if (failure !== undefined) return { text: redactSecrets(failure), markdown: false, files: [] };
+  const messages = progress.answerSpan();
+  return { ...telegramReply(messages, redactSecrets), files: deliverablesIn(botId, messages) };
 }
 
 /**
@@ -12713,27 +12718,17 @@ async function telegramFiles(runtime: TelegramRuntime, chatId: number, files: te
   if (note) await telegramSay(runtime, chatId, note);
 }
 
-/** Resolves once the turn that took this message has ended: at once
- * for words handed to a running turn, and for words that waited, once
- * they went and the turn they started is over. Watches the lane, since
- * the turn that takes a queued message is started by the drain and
- * nobody hands this its result. Gives up when the message is taken
- * back, and at the deadline. */
-function answeredAfter(botId: string, laneId: string, messageId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
+/** Wait for the saved request's consuming turn, not a deadline or another
+ * lane. TurnProgress captures settlement before the queue can start more
+ * work, including an empty answer and failures before engine dispatch.
+ * A retry or handover keeps ownership until its existing settlement gate.
+ * Retiring the connection or taking back the input still ends the wait. */
+function answeredAfter(botId: string, laneId: string, messageId: string, progress: TurnProgress, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const started = Date.now();
-    let ran = false;
     const tick = () => {
       const lane = store.bot(botId)?.tasks.find((t) => t.id === laneId);
-      const list = store.messagesFor(laneId);
-      const at = list.findIndex((m) => m.id === messageId);
-      const m = list[at];
-      if (signal?.aborted || !lane || !m || m.deleted || m.unsent || Date.now() - started > timeoutMs) return resolve();
-      if (!m.queued && lane.busy) ran = true;
-      // A turn too quick to be seen busy still leaves its words, or a
-      // notice that it could not start, after the message.
-      const answered = list.slice(at + 1).some((later) => later.role === "bot");
-      if (!m.queued && !lane.busy && (ran || answered)) return resolve();
+      const m = store.messagesFor(laneId).find((m) => m.id === messageId);
+      if (signal?.aborted || !lane || !m || m.deleted || m.unsent || progress.completed) return resolve();
       setTimeout(tick, 250);
     };
     tick();
@@ -14088,6 +14083,10 @@ function drainSteer(threadId: string) {
     for (const id of incidentNotes) deskTurnEnded(id, false);
     if (telegramPerson) tellTelegramPersonHeld(telegramPerson, (e as Error).message);
     telegramReturns.finish(threadId, `Could not answer: ${redactSecrets(e instanceof Error ? e.message : String(e))}`, telegramMessages);
+    // Delivered already, so no turn will end for it: a phone request
+    // among these is answered with why, here.
+    const working = telegramWorking.get(threadId);
+    if (working?.request && telegramMessages.includes(working.request)) working.ended(`Could not answer: ${redactSecrets(e instanceof Error ? e.message : String(e))}`);
     const failure = store.appendMessage(threadId, {
       role: "bot",
       kind: "notice",
@@ -14862,8 +14861,9 @@ const ENGINE_RELOADED = "engine_reloaded";
 /** A turn's end, for a turn an engine rebuild cut off: picked up on the
  * engine that replaced the old one, or, when the engine is gone, said
  * so. Never a workflow step or one somebody stopped, as after a restart.
- * True when it was one. */
-function settleRebuiltLane(laneId: string): boolean {
+ * "carried" when it is picked up, "ended" or "gone" (its engine) when
+ * it was one that ends here, false when it was not one. */
+function settleRebuiltLane(laneId: string): "carried" | "ended" | "gone" | false {
   const rebuilt = rebuiltLanes.get(laneId);
   if (!rebuilt) return false;
   rebuiltLanes.delete(laneId);
@@ -14872,7 +14872,7 @@ function settleRebuiltLane(laneId: string): boolean {
   const { turn } = rebuilt;
   if (!turn || turn.stopped || turn.workflow || turn.waiting) {
     telegramReturns.finish(laneId);
-    return true;
+    return "ended";
   }
   if (!registry.get(rebuilt.instanceId)) {
     const threadId = turn.roomId ?? turn.laneId;
@@ -14884,11 +14884,11 @@ function settleRebuiltLane(laneId: string): boolean {
     });
     broadcast({ kind: "message", threadId, message: notice });
     telegramReturns.finish(laneId);
-    return true;
+    return "gone";
   }
   // after the ended turn has settled, so the lane is free again
   carryOn(turn, "reload", 1_500);
-  return true;
+  return "carried";
 }
 
 // ── provider catalog ───────────────────────────────────────────────────

@@ -14,14 +14,14 @@ const row = (id: string, role: "user" | "bot", extra: Partial<Message> = {}): Me
   id, at: Date.now(), role, kind: "text", text: id, ...extra,
 });
 const tool = (id = "call"): Message => row(id, "bot", { kind: "activity", tool: { name: "read synthetic.ts" } });
-function fixture(rows: Message[], requestId = "request", startedAt = Date.now(), after = 30) {
+function fixture(rows: Message[], requestId = "request", startedAt = Date.now(), after = 30, turn?: () => number) {
   const calls: Array<{ method: string; text?: string; at: number }> = [];
   const progress = new Progress({
     post: async (text) => { calls.push({ method: "post", text, at: Date.now() }); return 7; },
     remove: async () => { calls.push({ method: "remove", at: Date.now() }); },
   }, () => false, after, 30);
-  const turn = new TurnProgress(progress, () => rows, () => requestId, () => startedAt);
-  return { calls, turn, answer: () => telegramReply(turn.answerSpan(), (text) => text).text };
+  const watching = new TurnProgress(progress, () => rows, () => requestId, () => startedAt, turn);
+  return { calls, turn: watching, answer: () => telegramReply(watching.answerSpan(), (text) => text).text };
 }
 
 test("waiting behind another turn produces no note, and delivery starts the delay", async () => {
@@ -92,7 +92,9 @@ test("completion cancels pending posts and ignores even a late text with no next
 test("an empty completion is not confused with an adjacent later turn", async () => {
   const rows = [row("request", "user")];
   const f = fixture(rows);
+  assert.equal(f.turn.completed, false);
   f.turn.ended();
+  assert.equal(f.turn.completed, true, "an empty span still proves completion");
   rows.push(row("later", "user"), row("Later reply.", "bot"));
   f.turn.observe();
   assert.equal(f.answer(), "(the agent finished without saying anything)");
@@ -178,4 +180,94 @@ test("a following stored tool confirms the last text, without showing its name",
   await until(() => f.calls.length === 1);
   assert.equal(f.calls[0].text, "Checking.");
   await f.turn.stop();
+});
+
+test("a tentative end before the steer receipt is confirmed once, including empty output", async () => {
+  for (const empty of [false, true]) {
+    const rows = [row("older", "user"), row("older output", "bot")];
+    const f = fixture(rows);
+    f.turn.joining();
+    if (!empty) rows.push(row("rapid final", "bot"));
+    f.turn.ended();
+    assert.equal(f.turn.completed, false, "a pending receipt cannot confirm delivery");
+    rows.push(row("request", "user", { midTurn: true }));
+    // Work after the captured end must never replace it.
+    rows.push(row("later", "user"), row("later output", "bot"));
+    f.turn.joined(true);
+    assert.equal(f.turn.completed, true);
+    assert.equal(f.answer(), empty ? "(the agent finished without saying anything)" : "rapid final");
+    await f.turn.stop();
+  }
+});
+
+test("a refused steer discards its tentative end and waits for the queued consuming turn", async () => {
+  const rows = [row("older", "user")];
+  const f = fixture(rows);
+  f.turn.joining(); rows.push(row("older output", "bot")); f.turn.ended();
+  const request = row("request", "user", { queued: true });
+  rows.push(request); f.turn.joined(false);
+  assert.equal(f.turn.completed, false);
+  f.turn.observe();
+  request.queued = false; request.deliveredAt = Date.now();
+  rows.push(row("our queued final", "bot")); f.turn.observe(); f.turn.ended();
+  assert.equal(f.turn.completed, true);
+  assert.equal(f.answer(), "our queued final");
+  await f.turn.stop();
+});
+
+test("an end seen before the steer receipt is kept only when it was the turn the words joined", async () => {
+  let current = 1;
+  const rows = [row("older", "user"), row("older output", "bot")];
+  const f = fixture(rows, "request", Date.now(), 30, () => current);
+  f.turn.joining();
+  // turn 1 ends and turn 2 starts before the steer is answered
+  rows.push(row("turn one final", "bot"));
+  f.turn.ended();
+  current = 2;
+  rows.push(row("later", "user"), row("request", "user", { midTurn: true }));
+  f.turn.joined(true);
+  assert.equal(f.turn.completed, false, "turn one's end is not the answer to words turn two took");
+  rows.push(row("turn two final", "bot"));
+  f.turn.ended();
+  assert.equal(f.turn.completed, true);
+  assert.equal(f.answer(), "turn two final");
+  await f.turn.stop();
+});
+
+test("the latest end before the steer receipt is the one kept", async () => {
+  let current = 1;
+  const rows = [row("older", "user")];
+  const f = fixture(rows, "request", Date.now(), 30, () => current);
+  f.turn.joining();
+  rows.push(row("turn one final", "bot"));
+  f.turn.ended();
+  current = 2;
+  rows.push(row("request", "user", { midTurn: true }), row("turn two final", "bot"));
+  f.turn.ended();
+  f.turn.joined(true);
+  assert.equal(f.turn.completed, true);
+  assert.equal(f.answer(), "turn two final");
+  await f.turn.stop();
+});
+
+test("a turn that could not run answers with why, and a refused steer forgets it", async () => {
+  const rows = [row("request", "user"), row("A note before it stopped.", "bot")];
+  const f = fixture(rows);
+  assert.equal(f.turn.failure, undefined);
+  f.turn.ended("Could not answer: the engine is gone");
+  assert.equal(f.turn.completed, true);
+  assert.equal(f.turn.failure, "Could not answer: the engine is gone");
+  assert.equal(f.turn.request, "request");
+  await f.turn.stop();
+
+  const others = [row("older", "user")];
+  const g = fixture(others);
+  g.turn.joining();
+  g.turn.ended("Could not answer: an earlier turn's failure");
+  assert.equal(g.turn.failure, undefined, "a tentative end is not yet this request's");
+  others.push(row("request", "user", { queued: true }));
+  g.turn.joined(false);
+  assert.equal(g.turn.failure, undefined);
+  assert.equal(g.turn.completed, false);
+  await g.turn.stop();
 });

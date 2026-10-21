@@ -1565,7 +1565,16 @@ nor notes post, since the agent is waiting then. An uncertain post suppresses
 further notes in that turn because its message may have arrived without an id.
 The tool line is deliberately removed. Normal answers take the last eligible
 text after the request in its consuming turn, with waiting rows excluded;
-completion captures that span before a later turn starts. Drain returns keep
+completion captures that span before a later turn starts. The request keeps
+its chat until that logical turn settles, with no deadline: a card answered
+later on the phone, a retry, a handover to the backup or a fold of the
+conversation keeps it waiting, and a later turn or another lane neither
+delays nor supplies its answer. Files come from the same span. An end seen
+while a steer is still being asked counts only when it was the turn the
+words joined. A turn that ends without running (refused before its engine,
+a pickup or a queued start that could not begin, an engine removed under
+it, a fold that failed) answers with why. Retiring the connection or taking
+the words back ends the wait. Drain returns keep
 their existing `after` span and have no notes messages. With no reply, a plain
 redacted notice is sent; only a turn with neither keeps the empty-answer line.
 
