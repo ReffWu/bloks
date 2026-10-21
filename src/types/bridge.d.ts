@@ -89,6 +89,16 @@ export interface HostingMoveKey {
   path: string;
 }
 
+export interface HostingMoveCounts {
+  agents: number;
+  conversations: number;
+  rooms: number;
+  routines: number;
+  watchers: number;
+  workflows: number;
+  memoryFiles: number;
+}
+
 /** One move, as the main process tells the window about it. */
 export interface HostingMove {
   id: string;
@@ -236,6 +246,8 @@ declare global {
       hostingMoveOpenSettings?(page: string): Promise<WorkspaceAnswer>;
       hostingMoveRemoveCopy?(id: string): Promise<WorkspaceAnswer>;
       hostingMoveTargets?(): Promise<{ targets: HostingMoveTarget[] }>;
+      /** What a move out of that workspace carries and leaves behind. */
+      hostingMovePreview?(id: string): Promise<WorkspaceAnswer & { counts?: HostingMoveCounts | null; keys?: HostingMoveKey[] }>;
       /** The theme is the person's, kept across every workspace. */
       prefsTheme?(theme: "light" | "dark" | "system"): Promise<void>;
       /** The accent is this workspace's own. */

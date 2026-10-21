@@ -88,6 +88,7 @@ contextBridge.exposeInMainWorld("bloks", {
   hostingMoveOpenSettings: (page) => ipcRenderer.invoke("hosting:move-open-settings", page),
   hostingMoveRemoveCopy: (id) => ipcRenderer.invoke("hosting:move-remove-copy", id),
   hostingMoveTargets: () => ipcRenderer.invoke("hosting:move-targets"),
+  hostingMovePreview: (id) => ipcRenderer.invoke("hosting:move-preview", id),
   prefsTheme: (theme) => ipcRenderer.invoke("prefs:theme", theme),
   prefsAccent: (accent) => ipcRenderer.invoke("prefs:accent", accent),
   prefsSameAccent: (on, showing) => ipcRenderer.invoke("prefs:same-accent", on, showing),

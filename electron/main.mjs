@@ -1525,6 +1525,20 @@ handle("hosting:move-remove-copy", (_event, id) =>
   }),
 );
 
+/** What a move out of a workspace would carry and leave behind, for the
+ * one confirm before a move home: its counts and its keys, by name. */
+handle("hosting:move-preview", (_event, id) =>
+  answer(async () => {
+    const ws = entryOf(String(id));
+    if (!ws) throw new Error("There is no such workspace.");
+    if (!(await launch(ws.id))) throw new Error(`${ws.name} could not be reached just now.`);
+    const res = await fetch(`${baseOf(ws.id)}/api/workspace/move`, { signal: AbortSignal.timeout(60_000) });
+    const said = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(said.error ?? `${ws.name} did not say what it holds.`);
+    return { ok: true, counts: said.counts ?? null, keys: Array.isArray(said.keys) ? said.keys : [] };
+  }),
+);
+
 /** Which workspaces here a move home could land in: each local one, with
  * whether it is empty and whether it is a copy the work came from. */
 handle("hosting:move-targets", async () => {

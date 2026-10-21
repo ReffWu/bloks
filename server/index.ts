@@ -545,7 +545,7 @@ import {
   type BackupInfo,
   type CreateOptions,
 } from "./backup.ts";
-import { countsDiffer, emptyEnoughForMove, heldKeyPaths, readCounts, stillToEnter, type MoveCounts } from "./workspace-move.ts";
+import { countsDiffer, emptyEnoughForMove, heldKeyPaths, keysLeftBehind, readCounts, stillToEnter, type KeyToEnter, type MoveCounts } from "./workspace-move.ts";
 import { MoveUploads, PART_BYTES, UploadError, cleanDigest, readPartAt, sha256OfFile } from "./move-upload.ts";
 import { cleanMovedMark, clearMovedMark, readMovedMark, writeMovedMark, type MovedMark } from "./moved-mark.ts";
 import { nextDueAt } from "./next-due.ts";
@@ -16650,6 +16650,19 @@ function keysHeldHere(): string[] {
   }
 }
 
+/** The keys a move out of here would leave behind, by name and page, for
+ * the one question asked before a move starts. Nothing is written. */
+function keysAMoveLeaves(): KeyToEnter[] {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(join(DATA_DIR, "config.json"), "utf8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const original = raw as Record<string, unknown>;
+    return keysLeftBehind(stripSecrets(structuredClone(original)), original);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Marks this copy as moved, or takes the mark away, and brings what runs
  * on its own in line at once: watchers disarmed, Telegram loops and the
@@ -16908,6 +16921,8 @@ async function serveMove(req: IncomingMessage, res: ServerResponse, method: stri
         counts: moveCounts(),
         moved: movedMark,
         lastRestore: last ? { from: last.from, at: last.at, safety: Boolean(last.safety) } : null,
+        // what a move out of here would ask to be entered again, by name
+        keys: owner ? keysAMoveLeaves() : [],
       });
     }
     if (path === "/api/workspace/move/upload" || path.startsWith("/api/workspace/move/upload/")) {
