@@ -50,7 +50,8 @@ Screen or your wrist.
 ## 📣 Bloks 3 is out
 
 **Bloks 3 for Mac, Windows and Linux is out.** The iPhone and Apple Watch
-update follows as soon as the App Store has it.
+update follows as soon as the App Store has it, and an Android app is
+coming soon.
 
 Thank you to everyone who reported a bug, tested a build or sent code for
 this release. A lot of what is in it started as one of your issues, and

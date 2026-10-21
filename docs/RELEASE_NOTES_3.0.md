@@ -1,6 +1,6 @@
 **Workspaces, the people you work with inside them, and a clear view of what your agents spend.**
 
-The desktop app is out now. The iPhone and Apple Watch update follows as soon as the App Store has it.
+The desktop app is out now. The iPhone and Apple Watch update follows as soon as the App Store has it, and an Android app is coming soon.
 
 The biggest release Bloks has had. Every part of your life with agents can now be a workspace of its own, each a whole Bloks with its own agents, memory, keys and rooms. A workspace can take people: send an invite, read the same four words, and they talk to your agents beside you, on your computer, within limits you set. A Usage page shows what every agent spent and puts a monthly line on your own API keys. And the app has a new shape, with answers drawn as cards, tables and charts instead of walls of text.
 
