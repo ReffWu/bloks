@@ -24,7 +24,7 @@ export function BoxSleep() {
   return (
     <SettingRow
       label="Sleep idle cloud computers after"
-      description="It bills while awake."
+      description="It bills while awake. Asleep, it keeps its files and wakes when a turn needs it."
       control={
         <SettingsSelect
           aria-label="Sleep idle cloud computers after"

@@ -262,13 +262,14 @@ export function ComputersPage() {
   return (
     <>
       <LocalVmSection />
-      <SettingsGroup title="Cloud computer" footnote="Boat is paid after its trial. A sleeping computer keeps its files and wakes before the next turn that needs it.">
+      <SettingsGroup title="Cloud computer" footnote="Boat is paid after its trial.">
         <ApiKeyRow
           section="box"
           label="Boat API key"
+          description="A private Linux computer in the cloud."
           placeholder="Paste your Boat API key"
           info={{
-            text: "Gives agents a private Linux computer in the cloud, with a desktop and terminal. Boat (formerly Box) is paid after its trial.",
+            text: "With a desktop and a terminal, for agents that need a computer of their own. Boat was called Box before.",
             linkLabel: "Open the Boat API key guide",
             linkHref: "https://docs.boat.dev/api-keys",
           }}
