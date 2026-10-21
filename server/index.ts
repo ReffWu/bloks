@@ -105,6 +105,7 @@ import { PLAN_LIMITS, ROOM_SHARING_WORDS, membersActive, pausedWords, roomSharin
 import { OwnerPlan } from "./owner-plan.ts";
 import { PlanAccount, planRoute, type PlanRouteDeps } from "./plan-account.ts";
 import { DesktopLine } from "./desktop-line.ts";
+import { MintLimiter, mintPairing, othersRoute, pairCheck } from "./other-workspaces.ts";
 import { choosableMark, defaultForKind, markRoute, markView, type MarkRouteDeps } from "./workspace-mark.ts";
 import { Reads, type ReadMark } from "./reads.ts";
 import { JoinClient } from "./join-client.ts";
@@ -9715,9 +9716,9 @@ relayLink.ownerLink = () => (HOSTED ? makePairLink() : null);
  * a browser at bloks.dev/web. A hosted workspace's link says so
  * (`hosted: true`), so an app can name it before pairing, and recognise a
  * second link to the same workspace as pairing it again. */
-function makePairLink(): { link: string; webLink: string; expiresAt: number; host: string } | null {
+function makePairLink(ttlMs?: number): { link: string; webLink: string; expiresAt: number; host: string } | null {
   if (!cfg.relay?.enabled || !cfg.relay.url || !cfg.relay.clientToken) return null;
-  const made = createPairLink();
+  const made = createPairLink(ttlMs);
   const fragment = Buffer.from(
     JSON.stringify({
       v: 1,
@@ -9894,6 +9895,30 @@ const workspaceMarkDeps: MarkRouteDeps = {
   askApp: (mark) => desktopLine.ask("mark", { mark }),
   broadcast: (frame) => broadcast(frame),
 };
+
+/** Pairings asked for the other workspaces here, counted per device. */
+const pairingMints = new MintLimiter();
+
+/** Whether this workspace answers on its network for a phone right now. */
+function lanDoor(): { addresses: string[]; port: number; name: string } | null {
+  if (!remoteEnabled() || process.env.BLOKS_LOOPBACK_ONLY === "1") return null;
+  const status = pairingStatus();
+  return status.listening === "network" && status.addresses.length ? { addresses: status.addresses, port: PORT, name: computerName() } : null;
+}
+
+// The app asking this workspace for a pairing, for the owner's phone that
+// is paired with another workspace on this computer (server/other-workspaces.ts):
+// whether one can be made, and the pairing itself, single use and short
+desktopLine.answer("pair.check", () => pairCheck(Boolean(cfg.relay?.enabled && cfg.relay.url && cfg.relay.clientToken), Boolean(lanDoor())));
+desktopLine.answer("pair.mint", () => {
+  const made = mintPairing({
+    relayLink: (ttlMs) => makePairLink(ttlMs),
+    lan: lanDoor,
+    lanToken: (ttlMs) => startPairing(ttlMs),
+  });
+  if (made.ok && made.via === "lan") broadcast({ kind: "pairing", ...pairingStatus() });
+  return made;
+});
 
 // A licence's shape (CLOUD_KEY, server/licence.ts) is checked before
 // anything is dialled: a mistyped key is the ordinary case, and it should
@@ -17293,6 +17318,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const marked = await markRoute(method, path, () => readBody(req), workspaceMarkDeps);
       if (marked) return json(res, marked.status, marked.body);
       if (await workspacePeople.ownerRoute(req, res, method, path, { kind: "owner" })) return;
+    }
+    // The other workspaces on this computer, for the owner's phone paired
+    // with this one, and a pairing for one of them (server/other-workspaces.ts):
+    // a paired device of the owner's only, never this window or an agent
+    if (path === "/api/workspaces/others" || path.startsWith("/api/workspaces/others/")) {
+      const answered = await othersRoute(method, path, () => readBody(req), {
+        caller: caller ? { id: caller.id, name: caller.name, ...(caller.personId ? { personId: caller.personId } : {}) } : null,
+        asAgent: Boolean(asAgent),
+        askApp: (what, payload, timeoutMs) => desktopLine.ask(what, payload, timeoutMs),
+        limiter: pairingMints,
+      });
+      if (answered) return json(res, answered.status, answered.body);
     }
     // This Mac asking to join somebody else's workspace (join-client.ts).
     // Only from this computer's own window: the device token it makes is

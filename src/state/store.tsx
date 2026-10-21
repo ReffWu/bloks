@@ -732,6 +732,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const open = (target: string | null | undefined) => {
       if (!target) return;
       if (target === "workspace:members") rawDispatch({ type: "toggleAppSettings", open: true, page: "workspace:members" });
+      // a page of Settings by name: a pairing made from another
+      // workspace's phone opens this one's Phone and devices
+      else if (target.startsWith("settings:")) rawDispatch({ type: "toggleAppSettings", open: true, page: target.slice("settings:".length) });
       else rawDispatch({ type: "select", id: target });
     };
     void bridge.pendingNotifyTarget?.().then(open).catch(() => {});

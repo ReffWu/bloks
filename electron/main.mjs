@@ -50,6 +50,7 @@ import { sameAppOrigin } from "./navigation.mjs";
 import { joinLink, linkInArgv, planLink, teamLink } from "./links.mjs";
 import { licencePrint, withLicence } from "./plan-link.mjs";
 import { keepPlan, planFromReport, readKeptPlan } from "./account-plan.mjs";
+import { OWN_LOCAL_KINDS, ServerAsks, othersFor, pairRefusal } from "./server-line.mjs";
 import { terminalQuery } from "./terminal-window.mjs";
 import os from "node:os";
 
@@ -741,6 +742,8 @@ async function answerServer(id, child, said) {
   let reply;
   try {
     if (said.what === "mark") reply = markFromServer(id, said.mark);
+    else if (said.what === "workspaces") reply = await othersForPhone(id);
+    else if (said.what === "pair") reply = await pairForPhone(id, said.target, said.device);
     else reply = { error: "The app does not answer that.", status: 404 };
   } catch (error) {
     reply = { error: String(error?.message ?? error), status: error?.status ?? 409 };
@@ -750,6 +753,56 @@ async function answerServer(id, child, said) {
   } catch {
     /* the server is going; its question goes with it */
   }
+}
+
+// ── the other workspaces, for the owner's phone ───────────────────────
+// A phone paired with one workspace here asks it about the others
+// (server/other-workspaces.ts has why this is safe), and the question
+// comes here, since only the list knows them. A pairing for one of them
+// is asked of that workspace's own server, which makes it single use and
+// short, and the Mac is told each time one is made.
+
+const serverAsks = new ServerAsks();
+
+/** The person's own workspaces here, for the phone paired with `id`,
+ * each with whether a pairing can be made for it now. */
+async function othersForPhone(id) {
+  const checks = {};
+  await Promise.all(
+    registry.workspaces.map(async (ws) => {
+      const run = servers.get(ws.id);
+      if (ws.id === id || !OWN_LOCAL_KINDS.includes(ws.kind) || run?.status !== "running") return;
+      checks[ws.id] = await serverAsks.ask(run.child, "pair.check", {}, 2_000);
+    }),
+  );
+  return { ok: true, workspaces: othersFor(registry, id, checks) };
+}
+
+/** A single-use pairing for `target`, asked by the phone paired with
+ * `id`: the target's server makes it, starting first when it has to. */
+async function pairForPhone(id, target, device) {
+  const refused = pairRefusal(registry, id, String(target));
+  if (refused) return { ok: false, ...refused };
+  const ws = entryOf(String(target));
+  if (!(await launch(ws.id))) return { ok: false, status: 503, error: `${ws.name} would not start on the Mac.` };
+  const made = await serverAsks.ask(servers.get(ws.id)?.child, "pair.mint", {}, 15_000);
+  if (made.ok === false || made.error) return { ok: false, status: made.status ?? 409, error: made.error ?? "No pairing could be made." };
+  tellPairingMade(ws, entryOf(id), typeof device === "string" ? device.slice(0, 60) : "");
+  return { ...made, ok: true, workspace: { id: ws.id, name: ws.name, kind: ws.kind, mark: ws.mark } };
+}
+
+/** Told at the Mac whatever its notification settings say: a pairing is
+ * a new way into a workspace, and the person at the Mac should know one
+ * was made, and from where, the moment it was. */
+function tellPairingMade(ws, from, device) {
+  if (!Notification.isSupported()) return;
+  const who = device || "Your phone";
+  const shown = new Notification({
+    title: `Pairing with ${ws.name}`,
+    body: `${who} asked from ${from?.name ?? "another workspace"}. If that was not you, remove it in ${ws.name}'s Phone and devices.`,
+  });
+  shown.on("click", () => void switchWorkspace(ws.id, { target: "settings:devices" }).catch(() => {}));
+  shown.show();
 }
 
 /** Stops one workspace's server for good (it is being deleted). */
@@ -2038,6 +2091,7 @@ function heardFromServer(id, child, said) {
   // a server from before a restart, still saying its last words
   if (!run || (run.child && run.child !== child)) return;
   if (said?.kind === "desktop.ask" && typeof said.ask === "string") return void answerServer(id, child, said);
+  if (said?.kind === "desktop.answer") return void serverAsks.heard(said);
   if (said?.kind === "desktop.licence") return keepLicence(said.key, said.typed !== false);
   if (said?.kind === "desktop.licence.forget") return forgetLicence();
   if (said?.kind === "desktop.plan") return notePlan(said);
