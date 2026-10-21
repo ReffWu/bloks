@@ -46,8 +46,8 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     label: "Plan",
     group: "account",
     description: "Your membership, what it includes, and where it can go next.",
-    keywords: "plan billing subscription licence license key cloud team hosting bloks ai upgrade renew renewal cancel invoice card payment membership manage",
-    rows: ["Manage billing", "Your name", "Workspaces online", "Members", "Bloks AI", "Bloks key", "Replace key", "Remove key from this computer", "Let background work use Bloks AI"],
+    keywords: "plan billing subscription licence license key copy replace remove cloud team hosting bloks ai allowance upgrade renew renewal cancel invoice card payment membership manage",
+    rows: ["Manage billing", "Bloks key", "Workspaces online", "Members", "Bloks AI", "Move to managed hosting", "Let background work use Bloks AI"],
   },
   {
     id: "general",

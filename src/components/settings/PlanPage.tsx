@@ -1,6 +1,13 @@
 // Settings, Plan: the membership on the one key this computer keeps, what
-// it includes and how much of it is in use, the key itself, and where the
-// plan can go next.
+// it includes and how much of it is in use, and where the plan can go
+// next.
+//
+// Read top to bottom, it answers in the order people ask. The plan, large,
+// with its status beside it, what it costs when the site says, and the key
+// it rides on. Then what it includes, as a few numbers with meters rather
+// than a list of rows, and the add-on choices that are the person's. Then
+// the offers, as cards. Anything a plan does not include is said quietly
+// where it would be, with one way up for all of it.
 //
 // Everything about the membership is bloks.dev's to say, asked by this
 // computer's server with the key (server/plan-account.ts) and shown as it
@@ -12,10 +19,11 @@
 // Going to bloks.dev arms a look on return (src/lib/planClient.ts): back
 // in the window, the plan is asked fresh, every gate follows it, and a
 // plan that went up gets its small moment here.
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
+  ArrowDown,
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -24,7 +32,9 @@ import {
   Loader2,
   Lock,
   Monitor,
+  MoreHorizontal,
   RefreshCw,
+  Repeat,
   Server,
   Smartphone,
   Sparkles,
@@ -34,18 +44,23 @@ import {
 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/confirm";
-import { Skeleton, SkeletonLines } from "@/components/ui/skeleton";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { TOP_UP_WORDS, meterShare, percentText, topUpsLine } from "@/lib/credits";
 import { appPlanOf, currentWorkspace, useWorkspaces } from "@/lib/workspaces";
 import {
   hostingWords,
   intervalWords,
+  isHostingOffer,
   ladderFor,
   monthYear,
   planKey,
   planName,
+  priceWords,
+  renewalWords,
   shortDate,
   statusOf,
   type Offer,
@@ -53,14 +68,15 @@ import {
 } from "@/lib/plan";
 import { clearPlanNews, loadPlan, openOffer, openSite, usePlan } from "@/lib/planClient";
 import { HealthLine, SecretField, type Health } from "../ConnectionKit";
-import { BloksAiRow, BloksAiSettings, useBloksAi } from "../CreditsSection";
+import { BloksAiSettings, useBloksAi } from "../CreditsSection";
 import { BlockBurst } from "../members/BlockBurst";
 import { SettingRow, SettingsEmpty, SettingsGroup } from "../SettingsLayout";
-import { YourName } from "./YourName";
 import { goToWorkspace } from "../WorkspaceSwitcher";
+import { MoveToHostingCard } from "./MoveToHosting";
 
 const CLOUD_KEY = /^blok_live_[0-9a-f]{32}$/;
 const easeOut = [0.23, 1, 0.32, 1] as const;
+const OPTIONS_ID = "plan-options";
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -91,8 +107,15 @@ function useRelayPlan(refreshKey: unknown) {
   return plan;
 }
 
-/** The glyph a plan wears on its card. */
-function PlanGlyph({ planKeyOf, className }: { planKeyOf: string; className?: string }) {
+const reducedMotion = () => Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+
+/** To the offers, for the one way up from what a plan does not include. */
+function toOptions() {
+  document.getElementById(OPTIONS_ID)?.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
+}
+
+/** The glyph a plan wears beside its name. */
+function PlanGlyph({ planKeyOf }: { planKeyOf: string }) {
   const Icon =
     planKeyOf === "team" || planKeyOf === "team-hosted" ? Users
     : planKeyOf === "hosted" ? Server
@@ -101,40 +124,29 @@ function PlanGlyph({ planKeyOf, className }: { planKeyOf: string; className?: st
     : Sparkles;
   return (
     <span
+      aria-hidden
       className={cn(
-        "flex size-11 shrink-0 items-center justify-center rounded-xl",
+        "flex size-12 shrink-0 items-center justify-center rounded-xl",
         planKeyOf === "free" ? "bg-muted text-muted-foreground" : "bg-brand-soft text-brand-ink",
-        className,
       )}
     >
-      <Icon size={20} />
+      <Icon size={22} />
     </span>
   );
 }
 
-/** A small meter, for "x of y" in what a plan includes. */
-function Meter({ value, of, label }: { value: number; of: number; label: string }) {
-  const share = of > 0 ? Math.max(0, Math.min(1, value / of)) : 0;
+/** "Try again", said small, beside whatever could not be had. */
+function TryAgain({ busy }: { busy: boolean }) {
   return (
-    <div
-      role="meter"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={of}
-      aria-valuenow={value}
-      className="mt-3 h-1.5 max-w-[360px] overflow-hidden rounded-full bg-muted"
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => void loadPlan(true)}
+      className="inline-flex items-center gap-1 rounded font-medium text-foreground underline-offset-2 outline-none hover:underline disabled:opacity-60"
     >
-      <div className={cn("h-full origin-left", share >= 1 ? "bg-warning" : "bg-brand-ink")} style={{ transform: `scaleX(${share})` }} />
-    </div>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-small text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 truncate text-ui font-medium tabular-nums text-foreground">{value}</dd>
-    </div>
+      <RefreshCw size={11} className={cn(busy && "animate-spin")} aria-hidden />
+      {busy ? "Trying" : "Try again"}
+    </button>
   );
 }
 
@@ -169,59 +181,122 @@ function PlanMoment({ words, at }: { words: string; at: number }) {
   );
 }
 
-// ── the plan card ──────────────────────────────────────────────────────
+// ── the plan ───────────────────────────────────────────────────────────
 
+/**
+ * The plan's head, the same with a key and without: the glyph, the name
+ * as the largest words on the page with its status beside it, one line of
+ * facts under it, and one thing to press on the right.
+ */
+function Headline({
+  glyph,
+  name,
+  pill,
+  facts,
+  action,
+}: {
+  glyph: string;
+  name: string;
+  pill?: React.ReactNode;
+  facts?: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-start gap-x-4 gap-y-4">
+      <PlanGlyph planKeyOf={glyph} />
+      <div className="min-w-0 flex-1 basis-[240px]">
+        <div className="text-small font-medium text-muted-foreground">Your plan</div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h2 className="min-w-0 text-balance text-display font-semibold text-foreground">{name}</h2>
+          {pill}
+        </div>
+        {facts && <div className="mt-1 text-pretty text-body tabular-nums text-muted-foreground">{facts}</div>}
+      </div>
+      {action && <div className="flex shrink-0 items-center gap-2 pt-1">{action}</div>}
+    </div>
+  );
+}
+
+/** The facts under a plan's name, in the order they are looked for: what
+ * it costs (only when the site said), when it renews, how it is billed,
+ * and since when. */
+function factsOf(account: NonNullable<PlanSnapshot["account"]>): string[] {
+  const price = priceWords(account.price);
+  const interval = intervalWords(account.interval);
+  return [
+    price,
+    renewalWords(account),
+    // a price already says how often
+    !price && interval ? `Billed ${interval.toLowerCase()}` : null,
+    account.since ? `Member since ${monthYear(account.since)}` : null,
+  ].filter((fact): fact is string => Boolean(fact));
+}
+
+/** When bloks.dev could not be asked: the one quiet line, saying how old
+ * what is shown is, with the way to look again. */
 function staleWords(snapshot: PlanSnapshot): string | null {
   if (snapshot.accountState === "cached" && snapshot.accountAt) {
-    const at = new Date(snapshot.accountAt);
-    return `Offline. Showing what bloks.dev said on ${shortDate(snapshot.accountAt)} at ${at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`;
+    const at = new Date(snapshot.accountAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    return `${snapshot.problem ?? "Couldn't reach bloks.dev just now."} Showing details from ${at}.`;
   }
   if (snapshot.accountState === "unavailable") return "Couldn't reach bloks.dev, so the details are missing for now.";
   return null;
 }
 
-function PlanCard({ snapshot, onManage, managing, manageError }: { snapshot: PlanSnapshot; onManage: () => void; managing: boolean; manageError: string | null }) {
+function PlanCard({
+  snapshot,
+  loading,
+  onManage,
+  managing,
+  manageError,
+  onChanged,
+}: {
+  snapshot: PlanSnapshot;
+  loading: boolean;
+  onManage: () => void;
+  managing: boolean;
+  manageError: string | null;
+  onChanged: () => void;
+}) {
   const key = planKey(snapshot, appPlanOf(useWorkspaces()));
   const account = snapshot.account;
   const status = account ? statusOf(account) : null;
   const stale = staleWords(snapshot);
   const refused = snapshot.accountState === "refused";
   const pill: { tone: Health; label: string } | null = refused ? { tone: "issue", label: "Key not recognised" } : status ? { tone: status.tone, label: status.label } : null;
-  const renewal = account?.cancelsAt
-    ? { label: account.cancelsAt > Date.now() ? "Cancels" : "Ended", value: shortDate(account.cancelsAt) }
-    : account?.renewsAt
-      ? { label: account.renewsAt < Date.now() ? "Was due" : "Renews", value: shortDate(account.renewsAt) }
-      : null;
+  const facts = account ? factsOf(account) : [];
   return (
     <section aria-label="Your plan" className="mb-9 overflow-hidden rounded-2xl border bg-card">
       <div className="p-6 max-sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-          <div className="flex min-w-0 items-center gap-4">
-            <PlanGlyph planKeyOf={key} />
-            <div className="min-w-0">
-              <div className="text-small font-medium text-muted-foreground">Your plan</div>
-              <h2 className="truncate text-heading font-semibold text-foreground">{planName(key)}</h2>
-            </div>
-          </div>
-          {pill && <HealthLine tone={pill.tone} label={pill.label} />}
-        </div>
-        <p className="mt-3 text-pretty text-body text-muted-foreground">
-          {account?.email ? (
-            <>
-              <span className="font-medium text-foreground">{account.email}</span>
-              <span> · one key for every workspace on this computer</span>
-            </>
-          ) : (
-            "One key for every workspace on this computer."
-          )}
-        </p>
-        {(account || refused) && (
-          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t pt-5 sm:grid-cols-3">
-            <Fact label="Billing" value={intervalWords(account?.interval ?? null) ?? "Not said"} />
-            <Fact label={renewal?.label ?? "Renews"} value={renewal?.value ?? "Not said"} />
-            <Fact label="Member since" value={account?.since ? monthYear(account.since) : "Not said"} />
-          </dl>
-        )}
+        <Headline
+          glyph={key}
+          name={planName(key)}
+          pill={pill && <HealthLine tone={pill.tone} label={pill.label} />}
+          facts={
+            facts.length > 0 &&
+            // each fact whole on its line, so a narrow card breaks between them
+            facts.map((fact, i) => (
+              <Fragment key={fact}>
+                <span className="whitespace-nowrap">
+                  {fact}
+                  {i < facts.length - 1 && " ·"}
+                </span>{" "}
+              </Fragment>
+            ))
+          }
+          action={
+            // a card that needs updating asks below, with the same way in
+            !refused &&
+            !status?.needsCard && (
+              <span data-setting-row="manage-billing" className="rounded-lg transition-colors duration-700">
+                <Button size="sm" variant="secondary" disabled={managing} onClick={onManage} className="gap-1.5">
+                  {managing ? <Loader2 size={13} className="animate-spin" /> : <ArrowUpRight size={13} />}
+                  Manage billing
+                </Button>
+              </span>
+            )
+          }
+        />
         {status?.needsCard && (
           <div role="status" className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3">
             <TriangleAlert size={16} className="shrink-0 text-warning" />
@@ -231,27 +306,21 @@ function PlanCard({ snapshot, onManage, managing, manageError }: { snapshot: Pla
             </Button>
           </div>
         )}
-        {status && !status.needsCard && status.line && <p className="mt-4 text-pretty text-small text-muted-foreground">{status.line}</p>}
-        {refused && snapshot.problem && <p className="mt-4 text-pretty text-small text-destructive">{snapshot.problem}</p>}
+        {status && !status.needsCard && status.line && <p className="mt-3 text-pretty text-small text-muted-foreground">{status.line}</p>}
+        {refused && snapshot.problem && <p className="mt-3 text-pretty text-small text-destructive">{snapshot.problem}</p>}
+        {manageError && (
+          <p role="alert" className="mt-3 text-pretty text-small text-destructive">
+            {manageError}
+          </p>
+        )}
+        {stale && (
+          <p role="status" className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-pretty text-small text-muted-foreground">
+            <span>{stale}</span>
+            <TryAgain busy={loading} />
+          </p>
+        )}
       </div>
-      <footer data-setting-row="manage-billing" className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/30 px-6 py-3 transition-colors duration-700 max-sm:px-5">
-        <span className="min-w-0 flex-1 basis-[240px] text-pretty text-small text-muted-foreground">
-          {manageError ? <span className="text-destructive">{manageError}</span> : (stale ?? "Billing is handled on bloks.dev, in your browser.")}
-          {stale && (
-            <button
-              type="button"
-              onClick={() => void loadPlan(true)}
-              className="ml-1.5 inline-flex items-center gap-1 rounded font-medium text-foreground underline-offset-2 hover:underline"
-            >
-              <RefreshCw size={11} /> Try again
-            </button>
-          )}
-        </span>
-        <Button size="sm" variant="secondary" disabled={managing || refused} onClick={onManage} className="gap-1.5">
-          {managing ? <Loader2 size={13} className="animate-spin" /> : <ArrowUpRight size={13} />}
-          Manage billing
-        </Button>
-      </footer>
+      <KeyFooter snapshot={snapshot} onChanged={onChanged} />
     </section>
   );
 }
@@ -270,17 +339,11 @@ function FreeCard({ onActivated }: { onActivated: () => void }) {
   return (
     <section aria-label="Your plan" className="mb-9 overflow-hidden rounded-2xl border bg-card">
       <div className="p-6 max-sm:p-5">
-        <div className="flex items-center gap-4">
-          <PlanGlyph planKeyOf="free" />
-          <div className="min-w-0">
-            <div className="text-small font-medium text-muted-foreground">Your plan</div>
-            <h2 className="text-heading font-semibold text-foreground">Self-hosted</h2>
-          </div>
-        </div>
-        <p className="mt-3 max-w-[56ch] text-pretty text-body text-muted-foreground">
-          Bloks runs right here, on your own engines and keys. Add a plan when you want your workspaces online, people in them, or Bloks AI.
+        <Headline glyph="free" name="Self-hosted" facts="Bloks runs right here, on your own engines and keys." />
+        <p className="mt-4 max-w-[60ch] text-pretty text-body text-muted-foreground">
+          Add a plan when you want your workspaces online, people in them, or Bloks AI.
         </p>
-        <ul className="mt-4 grid gap-2 sm:grid-cols-3 sm:gap-3">
+        <ul className="mt-4 grid gap-2 @xl:grid-cols-3 @xl:gap-4">
           {SELF_HOSTED_POINTS.map((point) => (
             <li key={point} className="flex items-start gap-2 text-pretty text-small text-foreground">
               <Check size={14} strokeWidth={2.25} className="mt-[2px] shrink-0 text-brand-ink" />
@@ -288,36 +351,49 @@ function FreeCard({ onActivated }: { onActivated: () => void }) {
             </li>
           ))}
         </ul>
-        <AnimatePresence initial={false}>
-          {open && (
+      </div>
+      <footer data-setting-row="bloks-key" className="border-t bg-muted/30 px-6 py-3 transition-colors duration-700 max-sm:px-5">
+        <AnimatePresence initial={false} mode="wait">
+          {open ? (
             <motion.div
               key="key"
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, transition: { duration: 0.12 } }}
               transition={{ duration: 0.2, ease: easeOut }}
-              className="mt-5 border-t pt-5"
+              className="py-2"
             >
-              <KeyField action="Activate" hint="It's in your confirmation email." onDone={onActivated} autoFocus />
+              <KeyField action="Activate" hint="It's in your confirmation email." onDone={onActivated} onCancel={() => setOpen(false)} autoFocus />
+            </motion.div>
+          ) : (
+            <motion.div key="ask" className="flex flex-wrap items-center justify-between gap-3" exit={{ opacity: 0, transition: { duration: 0.1 } }}>
+              <span className="text-small text-muted-foreground">Have a Bloks key from bloks.dev?</span>
+              <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+                Enter your key
+              </Button>
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-      {!open && (
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/30 px-6 py-3 max-sm:px-5">
-          <span className="text-small text-muted-foreground">Have a Bloks key from bloks.dev?</span>
-          <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-            Enter your key
-          </Button>
-        </footer>
-      )}
+      </footer>
     </section>
   );
 }
 
 /** A key typed in: activated the way Bloks Cloud always was, which puts
  * this workspace online with it (POST /api/relay/activate). */
-function KeyField({ action, hint, onDone, autoFocus }: { action: string; hint: string; onDone: () => void; autoFocus?: boolean }) {
+function KeyField({
+  action,
+  hint,
+  onDone,
+  onCancel,
+  autoFocus,
+}: {
+  action: string;
+  hint: string;
+  onDone: () => void;
+  onCancel?: () => void;
+  autoFocus?: boolean;
+}) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -360,6 +436,11 @@ function KeyField({ action, hint, onDone, autoFocus }: { action: string; hint: s
         <Button size="sm" variant="brand" className="mt-[22px] h-8" disabled={busy || !looksRight} onClick={activate}>
           {busy ? <Loader2 size={13} className="animate-spin" /> : action}
         </Button>
+        {onCancel && (
+          <Button size="sm" variant="ghost" className="mt-[22px] h-8" disabled={busy} onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
       </div>
       {error ? (
         <p role="alert" className="mt-1 text-pretty text-small text-destructive">
@@ -369,6 +450,113 @@ function KeyField({ action, hint, onDone, autoFocus }: { action: string; hint: s
         <p className="mt-1 text-pretty text-small text-muted-foreground">{ws ? `${ws.name} goes online with it.` : "This workspace goes online with it."}</p>
       )}
     </div>
+  );
+}
+
+// ── the key ────────────────────────────────────────────────────────────
+
+/** The key a plan rides on, at the foot of the plan: masked, with Copy,
+ * Replace and Remove in a small menu, since none is pressed often. */
+function KeyFooter({ snapshot, onChanged }: { snapshot: PlanSnapshot; onChanged: () => void }) {
+  const [replacing, setReplacing] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ws = currentWorkspace(useWorkspaces());
+  const canCopy = Boolean(window.bloks?.licenceCopy) && snapshot.licence.kept;
+
+  const copy = async () => {
+    setError(null);
+    const ok = await window.bloks?.licenceCopy?.().catch(() => false);
+    if (ok) toast.success("Key copied. Keep it to yourself: it is what bloks.dev knows you by.", { id: "plan-key" });
+    else setError("Couldn't copy the key just now.");
+  };
+
+  const remove = async () => {
+    const yes = await confirm({
+      title: "Remove your key from this computer?",
+      body:
+        `Bloks forgets the key here, and ${ws?.name ?? "this workspace"} goes offline. Other workspaces that are online stay online until you turn them off.` +
+        "\n\nYour membership is not cancelled. To cancel, use Manage billing. To use the key again, enter it here.",
+      confirmLabel: "Remove key",
+      destructive: true,
+    });
+    if (!yes) return;
+    setRemoving(true);
+    setError(null);
+    try {
+      await call("/api/plan/licence", { method: "DELETE" });
+      toast("Your key is removed from this computer", { id: "plan-key" });
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  return (
+    <footer data-setting-row="bloks-key" className="border-t bg-muted/30 px-6 py-3 transition-colors duration-700 max-sm:px-5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-small font-medium text-muted-foreground">Bloks key</span>
+        <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-small text-foreground">{snapshot.licence.masked ?? "blok_live_••••"}</code>
+        <span className="min-w-0 flex-1 basis-[200px] truncate text-small text-muted-foreground">
+          {snapshot.account?.email ? `${snapshot.account.email} · one key for every workspace here` : "One key for every workspace here"}
+        </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon-sm" variant="ghost" aria-label="Key options" title="Key options" disabled={removing}>
+              {removing ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={16} />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="whitespace-nowrap">
+            {canCopy && (
+              <DropdownMenuItem onSelect={() => void copy()}>
+                <Copy />
+                Copy key
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onSelect={() => setReplacing(true)}>
+              <Repeat />
+              Replace key
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={() => void remove()}>
+              <Trash2 />
+              Remove from this computer
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1 text-pretty text-small text-destructive">
+          {error}
+        </p>
+      )}
+      <AnimatePresence initial={false}>
+        {replacing && (
+          <motion.div
+            key="replace"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            transition={{ duration: 0.2, ease: easeOut }}
+            className="pb-2 pt-3"
+          >
+            <KeyField
+              action="Use this key"
+              hint="The computer it was on stops reaching your phone."
+              autoFocus
+              onCancel={() => setReplacing(false)}
+              onDone={() => {
+                setReplacing(false);
+                toast.success("Key replaced", { id: "plan-key" });
+                onChanged();
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </footer>
   );
 }
 
@@ -385,74 +573,228 @@ function bloksAiShown(ai: ReturnType<typeof useBloksAi>, account: PlanSnapshot["
   return true;
 }
 
+/** A thin bar for how much of something is in use. Full, or nearly out,
+ * is said in the warning colour; nothing else is. */
+function Meter({ share, label, value, max, warn }: { share: number; label: string; value: number; max: number; warn?: boolean }) {
+  const s = Math.max(0, Math.min(1, share));
+  return (
+    <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={value} className="h-1.5 overflow-hidden rounded-full bg-muted">
+      <div className={cn("h-full origin-left", warn || s >= 1 ? "bg-warning" : "bg-brand-ink")} style={{ transform: `scaleX(${s})` }} />
+    </div>
+  );
+}
+
+/**
+ * One thing the plan includes: its name, how much is in use as the
+ * number to read, a meter where there is a limit, and one short line.
+ * Something the plan does not include is the same tile, quiet, with no
+ * meter and no lock: the one way up is above the tiles, not on each.
+ */
+function Tile({
+  label,
+  value,
+  meter,
+  line,
+  quiet,
+  rowId,
+}: {
+  label: string;
+  value: React.ReactNode;
+  meter?: React.ReactNode;
+  line?: React.ReactNode;
+  quiet?: boolean;
+  rowId: string;
+}) {
+  return (
+    <div data-setting-row={rowId} className="flex min-w-0 flex-col px-5 py-4 transition-colors duration-700">
+      <dt className="text-small font-medium text-muted-foreground">{label}</dt>
+      <dd className="contents">
+        {/* quiet words sit in the same line box as a number, smaller */}
+        <span className={cn("mt-1 block truncate leading-6 tabular-nums", quiet ? "text-ui font-medium text-muted-foreground" : "text-title font-semibold text-foreground")}>
+          {value}
+        </span>
+        {/* the bar's row is kept even without one, so tiles side by side
+            keep their lines on one level */}
+        <span className={cn("mt-2.5 block h-1.5", !meter && "hidden @xl:block")}>{meter}</span>
+        {line && <span className="mt-2 block text-pretty text-small text-muted-foreground">{line}</span>}
+      </dd>
+    </div>
+  );
+}
+
+/** "2 of 3": the count to read, its limit quieter. */
+function OfCount({ n, of, unit }: { n: number; of?: number; unit?: string }) {
+  return (
+    <>
+      {n}
+      {(of !== undefined || unit) && <span className="text-body font-normal text-muted-foreground">{of !== undefined ? ` of ${of}` : ` ${unit}`}</span>}
+    </>
+  );
+}
+
 function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: RelayPlan | null; ai: ReturnType<typeof useBloksAi> }) {
   const { dispatch } = useStore();
   const go = (page: string) => dispatch({ type: "toggleAppSettings", open: true, page });
+  const key = planKey(snapshot, appPlanOf(useWorkspaces()));
   const account = snapshot.account;
   const team = snapshot.ownerPlan === "team" || account?.plan === "team";
   const spaces = relay?.spaces ?? null;
   const members = snapshot.members;
   const aiShown = bloksAiShown(ai, account);
-  const hosting = hostingWords(account?.hosting ?? null);
-  return (
-    <SettingsGroup title="What you have">
-      <SettingRow
+  const ladder = ladderFor(key, snapshot.offers, account);
+  // offers not had yet keep the tile's place, so nothing jumps when they land
+  const aiOffered = snapshot.offers ? ladder.some((o) => o.id === "ai" || o.id === "bloks-ai") : true;
+  const link = "rounded font-medium text-brand-ink underline-offset-2 outline-none hover:underline";
+
+  const tiles: React.ReactNode[] = [];
+
+  // workspaces online, as the relay counts them
+  if (!spaces) {
+    tiles.push(
+      <Tile
+        key="spaces"
+        rowId="workspaces-online"
         label="Workspaces online"
-        description={
-          !spaces
-            ? "Put a workspace online from its Reachable online page."
-            : spaces.limit === null
-              ? "Every workspace can be online at once."
-              : `Your plan keeps ${spaces.limit} online at once. Turning one off frees its place.`
+        quiet
+        value="None yet"
+        line={
+          <button type="button" className={cn(link, "inline-flex items-center gap-0.5")} onClick={() => go("workspace:online")}>
+            Put this one online
+            <ArrowRight size={12} aria-hidden />
+          </button>
         }
-        control={
-          spaces ? (
-            <span className="text-ui font-medium tabular-nums text-foreground">{spaces.limit === null ? `${spaces.online} online` : `${spaces.online} of ${spaces.limit}`}</span>
+      />,
+    );
+  } else if (spaces.limit === null) {
+    tiles.push(<Tile key="spaces" rowId="workspaces-online" label="Workspaces online" value={<OfCount n={spaces.online} unit="online" />} line="No limit on your plan" />);
+  } else {
+    const left = Math.max(0, spaces.limit - spaces.online);
+    tiles.push(
+      <Tile
+        key="spaces"
+        rowId="workspaces-online"
+        label="Workspaces online"
+        value={<OfCount n={spaces.online} of={spaces.limit} />}
+        meter={<Meter label="Workspaces online" share={spaces.online / Math.max(1, spaces.limit)} value={spaces.online} max={spaces.limit} />}
+        line={left > 0 ? `${left} more can go online` : "All in use. Turning one off frees its place."}
+      />,
+    );
+  }
+
+  // members, on Bloks Team
+  if (team) {
+    tiles.push(
+      <Tile
+        key="members"
+        rowId="members"
+        label="Members"
+        value={<OfCount n={members.count} of={members.limit > 0 ? members.limit : undefined} />}
+        meter={members.limit > 0 && <Meter label="Members" share={members.count / members.limit} value={members.count} max={members.limit} />}
+        line="In this workspace, besides you"
+      />,
+    );
+  } else {
+    tiles.push(<Tile key="members" rowId="members" label="Members" quiet value="Not included" line="Comes with Bloks Team" />);
+  }
+
+  // Bloks AI: the allowance as a meter of what is used, and when it resets
+  const status = ai.status;
+  if (aiShown && status) {
+    const reading = status.connected && status.leftPercent !== null;
+    const used = 100 - meterShare(status);
+    const resets = status.renewsAt ?? account?.bloksAi?.renewsAt ?? null;
+    const extra = topUpsLine(status.topUps);
+    const empty = reading && meterShare(status) <= 0;
+    tiles.push(
+      <Tile
+        key="ai"
+        rowId="bloks-ai"
+        label="Bloks AI"
+        quiet={!reading}
+        value={
+          status.needsKey ? (
+            "Not connected"
+          ) : !reading ? (
+            "Can't read it"
+          ) : empty ? (
+            "Used up"
           ) : (
-            <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => go("workspace:online")}>
-              Reachable online
-              <ArrowRight size={13} />
-            </Button>
+            <>
+              {percentText(used)}
+              <span className="text-body font-normal text-muted-foreground"> used</span>
+            </>
           )
         }
-      >
-        {spaces && spaces.limit !== null && <Meter value={spaces.online} of={spaces.limit} label="Workspaces online" />}
-      </SettingRow>
-      {team ? (
-        <SettingRow
-          label="Members"
-          description={members.limit > 0 ? `People besides you in this workspace. Bloks Team has room for ${members.limit}.` : "People besides you in this workspace."}
-          control={<span className="text-ui font-medium tabular-nums text-foreground">{members.limit > 0 ? `${members.count} of ${members.limit}` : members.count}</span>}
-        >
-          {members.limit > 0 && <Meter value={members.count} of={members.limit} label="Members" />}
-        </SettingRow>
-      ) : (
-        <SettingRow
-          label="Members"
-          description="People you let into a whole workspace come with Bloks Team."
-          control={
-            <span className="inline-flex items-center gap-1 text-small text-muted-foreground">
-              <Lock size={12} aria-hidden /> Bloks Team
-            </span>
-          }
-        />
-      )}
+        meter={reading && <Meter label="Bloks AI used this month" share={used / 100} value={Math.round(used)} max={100} warn={empty || status.low} />}
+        line={
+          status.refused ? (
+            <span className="text-warning">{status.refused.message}</span>
+          ) : status.needsKey ? (
+            "Connect it below with your key"
+          ) : (
+            <>
+              {[status.low && !empty ? "Running low" : null, resets ? `Resets ${shortDate(resets)}` : null, extra]
+                .filter(Boolean)
+                .map((part) => `${part} · `)
+                .join("")}
+              {/* the site's own page, so the key rides along in the
+                  fragment and nobody types it again there */}
+              <button type="button" title={TOP_UP_WORDS} className={link} onClick={() => void openOffer(status.checkoutUrl)}>
+                Top up
+              </button>
+            </>
+          )
+        }
+      />,
+    );
+  } else if (account?.bloksAi?.active) {
+    tiles.push(
+      <Tile
+        key="ai"
+        rowId="bloks-ai"
+        label="Bloks AI"
+        value="Included"
+        line={account.bloksAi.renewsAt ? `Resets ${shortDate(account.bloksAi.renewsAt)}` : "Agents can run on it with no sign-in"}
+      />,
+    );
+  } else if (aiOffered) {
+    tiles.push(<Tile key="ai" rowId="bloks-ai" label="Bloks AI" quiet value="Not included" line="An add-on" />);
+  }
+
+  const locked = !team || (!aiShown && !account?.bloksAi?.active && aiOffered);
+  const cols = tiles.length >= 3 ? "@xl:grid-cols-3" : tiles.length === 2 ? "@xl:grid-cols-2" : "";
+  return (
+    <SettingsGroup
+      title="What you have"
+      action={
+        locked &&
+        ladder.some((o) => o.onSale && o.cta) && (
+          <button type="button" className={cn(link, "inline-flex items-center gap-0.5 text-small")} onClick={toOptions}>
+            Upgrade
+            <ArrowDown size={12} aria-hidden />
+          </button>
+        )
+      }
+    >
+      <dl className={cn("grid divide-y @xl:divide-x @xl:divide-y-0", cols)}>{tiles}</dl>
       {account?.sharedRoom === true && account.plan === "cloud" && (
         <SettingRow label="Shared room" description="One room shared with guests of its own, kept from when Bloks Cloud included it." control={<HealthLine tone="on" label="Included" />} />
       )}
-      {aiShown ? (
-        <BloksAiRow ai={ai} />
-      ) : (
-        account?.bloksAi?.active && (
-          <SettingRow
-            label="Bloks AI"
-            description={account.bloksAi.renewsAt ? `Renews ${shortDate(account.bloksAi.renewsAt)}.` : "Agents can run on it with no sign-in of their own."}
-            control={<HealthLine tone="on" label="Active" />}
-          />
-        )
-      )}
-      {hosting && <HostingRow hosting={hosting} state={account?.hosting?.state ?? null} />}
     </SettingsGroup>
+  );
+}
+
+/** Hosting, once the licence has it, in the place the way to it held:
+ * the machine's row, and room under it for what follows the row (moving
+ * the agents onto the machine), handed in as `below`. */
+function HostingGroup({ hosting, state, below }: { hosting: NonNullable<ReturnType<typeof hostingWords>>; state: string | null; below?: React.ReactNode }) {
+  return (
+    <section aria-label="Hosting" className="mb-9 last:mb-0">
+      <SettingsGroup title="Hosting" className={below ? "mb-3" : "mb-0"}>
+        <HostingRow hosting={hosting} state={state} />
+      </SettingsGroup>
+      {below}
+    </section>
   );
 }
 
@@ -639,152 +981,39 @@ function HostingRow({ hosting, state }: { hosting: NonNullable<ReturnType<typeof
   );
 }
 
-// ── the key ────────────────────────────────────────────────────────────
-
-function YourKey({ snapshot, onChanged }: { snapshot: PlanSnapshot; onChanged: () => void }) {
-  const [replacing, setReplacing] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const ws = currentWorkspace(useWorkspaces());
-  const canCopy = Boolean(window.bloks?.licenceCopy) && snapshot.licence.kept;
-
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1800);
-    return () => clearTimeout(t);
-  }, [copied]);
-
-  const copy = async () => {
-    const ok = await window.bloks?.licenceCopy?.().catch(() => false);
-    if (ok) setCopied(true);
-    else setError("Couldn't copy the key just now.");
-  };
-
-  const remove = async () => {
-    const yes = await confirm({
-      title: "Remove your key from this computer?",
-      body:
-        `Bloks forgets the key here, and ${ws?.name ?? "this workspace"} goes offline. Other workspaces that are online stay online until you turn them off.` +
-        "\n\nYour membership is not cancelled. To cancel, use Manage billing. To use the key again, enter it here.",
-      confirmLabel: "Remove key",
-      destructive: true,
-    });
-    if (!yes) return;
-    setRemoving(true);
-    setError(null);
-    try {
-      await call("/api/plan/licence", { method: "DELETE" });
-      toast("Your key is removed from this computer", { id: "plan-key" });
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setRemoving(false);
-    }
-  };
-
-  return (
-    <>
-      <SettingsGroup title="Your key" footnote="Keep it to yourself: it is what bloks.dev knows you by. It never leaves this computer except to bloks.dev.">
-        <SettingRow
-          label="Bloks key"
-          description="One key for every workspace on this computer."
-          error={error}
-          control={
-            <>
-              <code className="rounded-md bg-muted px-2 py-1 font-mono text-small text-foreground">{snapshot.licence.masked ?? "blok_live_••••"}</code>
-              {canCopy && (
-                <Button size="sm" variant="secondary" className="min-w-[78px] gap-1.5" onClick={() => void copy()} aria-label={copied ? "Copied" : "Copy your key"}>
-                  {copied ? <Check size={13} /> : <Copy size={13} />}
-                  {copied ? "Copied" : "Copy"}
-                </Button>
-              )}
-            </>
-          }
-        />
-        <SettingRow
-          label="Replace key"
-          description="Paste a different key to move your plan here."
-          control={
-            !replacing && (
-              <Button size="sm" variant="secondary" onClick={() => setReplacing(true)}>
-                Replace
-              </Button>
-            )
-          }
-        >
-          {replacing && (
-            <div className="mt-3">
-              <KeyField
-                action="Use this key"
-                hint="The computer it was on stops reaching your phone."
-                autoFocus
-                onDone={() => {
-                  setReplacing(false);
-                  toast.success("Key replaced", { id: "plan-key" });
-                  onChanged();
-                }}
-              />
-            </div>
-          )}
-        </SettingRow>
-      </SettingsGroup>
-      <SettingsGroup title="Danger zone" tone="danger">
-        <SettingRow
-          label="Remove key from this computer"
-          description="Bloks forgets it here and this workspace goes offline. Your membership stays as it is."
-          control={
-            <Button size="sm" variant="destructive" className="gap-1.5" disabled={removing} onClick={() => void remove()}>
-              {removing ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-              Remove
-            </Button>
-          }
-        />
-      </SettingsGroup>
-    </>
-  );
-}
 
 // ── where it can go next ───────────────────────────────────────────────
 
-function OfferCard({ offer, lead }: { offer: Offer; lead: boolean }) {
-  const points = offer.points.slice(0, 3);
+/** An offer on sale: what it is, what it adds in a line, its price as
+ * the site wrote it, and one way to it. `wide` lays it along a row, for
+ * the one card left over in a row of two. */
+function OfferCard({ offer, lead, wide }: { offer: Offer; lead: boolean; wide: boolean }) {
+  const price = priceWords(offer.price);
+  const yearly = offer.price?.yearly ? priceWords(offer.price.yearly) : null;
   return (
-    <article className={cn("flex min-w-0 flex-col rounded-2xl border bg-card p-5", lead && offer.onSale && "border-brand-ink/40")}>
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="text-lead font-semibold text-foreground">{offer.name}</h3>
-        {!offer.onSale && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-small font-medium text-muted-foreground">Coming soon</span>}
-      </div>
-      {offer.tagline && <p className="mt-1 text-pretty text-body text-muted-foreground">{offer.tagline}</p>}
-      {offer.price && (
-        <div className="mt-4">
-          <div className="flex flex-wrap items-baseline gap-x-1.5">
-            <span className="text-heading font-semibold tabular-nums text-foreground">{offer.price.amount}</span>
-            {offer.price.per && <span className="text-body text-muted-foreground">{/^(a|an|per|\/)\b/i.test(offer.price.per) ? offer.price.per : `/ ${offer.price.per}`}</span>}
-            {offer.price.note && <span className="ml-1 rounded-full bg-brand-soft px-2 py-0.5 text-small font-medium text-brand-ink">{offer.price.note}</span>}
-          </div>
-          {offer.price.yearly && (
-            <div className="mt-0.5 text-small tabular-nums text-muted-foreground">
-              or {offer.price.yearly.amount} / {offer.price.yearly.per}
-              {offer.price.yearly.note && <span className="ml-1.5 font-medium text-success">{offer.price.yearly.note}</span>}
-            </div>
-          )}
+    <article
+      className={cn(
+        "flex min-w-0 flex-col gap-4 rounded-2xl border bg-card p-5",
+        lead && "border-brand-ink/40",
+        wide && "@xl:col-span-2 @xl:flex-row @xl:items-center @xl:justify-between @xl:gap-6",
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className={cn("flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5", wide && "@xl:justify-start")}>
+          <h3 className="text-lead font-semibold text-foreground">{offer.name}</h3>
+          {price && <span className="text-body font-medium tabular-nums text-foreground">{price}</span>}
         </div>
-      )}
-      {points.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-2">
-          {points.map((point) => (
-            <li key={point} className="flex items-start gap-2 text-pretty text-body text-foreground">
-              <Check size={14} strokeWidth={2.25} className="mt-[3px] shrink-0 text-brand-ink" />
-              <span className="min-w-0">{point}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {offer.onSale && offer.cta && (
-        <div className="mt-auto pt-5">
-          <Button variant={lead ? "brand" : "secondary"} className="w-full gap-1.5" onClick={() => void openOffer(offer.cta!.url)}>
+        {offer.tagline && <p className="mt-1 text-pretty text-body text-muted-foreground">{offer.tagline}</p>}
+        {(yearly || offer.price?.note) && (
+          <p className="mt-1.5 text-pretty text-small tabular-nums text-muted-foreground">
+            {yearly ? `Or ${yearly}` : offer.price?.note}
+            {yearly && offer.price?.yearly?.note && <span className="ml-1.5 font-medium text-success">{offer.price.yearly.note}</span>}
+          </p>
+        )}
+      </div>
+      {offer.cta && (
+        <div className={cn("mt-auto", wide && "@xl:mt-0")}>
+          <Button size="sm" variant={lead ? "brand" : "secondary"} className="gap-1.5" onClick={() => void openOffer(offer.cta!.url)}>
             {offer.cta.label}
             <ArrowUpRight size={13} />
           </Button>
@@ -794,81 +1023,149 @@ function OfferCard({ offer, lead }: { offer: Offer; lead: boolean }) {
   );
 }
 
-function YourOptions({ snapshot }: { snapshot: PlanSnapshot }) {
+/** Something the site shows but does not sell yet: one quiet card across
+ * the row, its name, a line, and the badge. Nothing to press, so nothing
+ * that looks like it could be pressed. */
+function SoonCard({ offer }: { offer: Offer }) {
+  return (
+    <article className="min-w-0 rounded-2xl border bg-muted/30 px-5 py-4 @xl:col-span-2">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <h3 className="text-ui font-semibold text-foreground">{offer.name}</h3>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-small font-medium text-muted-foreground">Coming soon</span>
+      </div>
+      {offer.tagline && <p className="mt-0.5 text-pretty text-body text-muted-foreground">{offer.tagline}</p>}
+    </article>
+  );
+}
+
+function OfferSkeleton() {
+  return (
+    <div className="flex flex-col rounded-2xl border bg-card p-5">
+      <div className="flex items-center justify-between gap-3">
+        <Skeleton className="h-3.5 w-28 rounded-full" />
+        <Skeleton className="h-3 w-16 rounded-full" />
+      </div>
+      <Skeleton className="mt-3 h-2.5 w-4/5 rounded-full" />
+      <Skeleton className="mt-6 h-7 w-28 rounded-md" />
+    </div>
+  );
+}
+
+function YourOptions({ snapshot, loading, retryShown, hostingCard }: { snapshot: PlanSnapshot; loading: boolean; retryShown: boolean; hostingCard: boolean }) {
   const key = planKey(snapshot, appPlanOf(useWorkspaces()));
-  const ladder = ladderFor(key, snapshot.offers, snapshot.account);
+  // the way to Hosting has its own card above, so it is not offered twice
+  const ladder = ladderFor(key, snapshot.offers, snapshot.account).filter((o) => !hostingCard || !isHostingOffer(o));
+  const title = key === "free" ? "When you want more" : "Your options";
+  const onSale = ladder.filter((o) => o.onSale);
+  const soon = ladder.filter((o) => !o.onSale);
+  const lead = onSale.find((o) => o.cta)?.id;
+  const heading = (
+    <div className="mb-2.5 flex min-h-[24px] items-center justify-between gap-3 px-1">
+      <h2 className="text-body font-medium text-muted-foreground">{title}</h2>
+      {snapshot.offersState === "cached" && !retryShown && snapshot.offersAt && (
+        <span className="text-small text-muted-foreground">As of {shortDate(snapshot.offersAt)}</span>
+      )}
+    </div>
+  );
+
   if (!snapshot.offers) {
-    // the site could not be asked and nothing was kept: one quiet way there
     return (
-      <SettingsGroup title={key === "free" ? "When you want more" : "Your options"}>
-        <SettingRow
-          label="Plans and add-ons"
-          description="They come from bloks.dev, which could not be reached just now."
-          control={
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => void loadPlan(true)}>
-                <RefreshCw size={13} />
-                Try again
-              </Button>
-              <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => openSite(`${snapshot.site}/pricing`)}>
-                See plans
-                <ArrowUpRight size={13} />
-              </Button>
-            </div>
-          }
-        />
-      </SettingsGroup>
+      <section id={OPTIONS_ID} aria-label={title} aria-busy={loading || undefined} className="mb-9 scroll-mt-6 last:mb-0">
+        {heading}
+        {loading ? (
+          <div className="grid gap-3 @xl:grid-cols-2">
+            <OfferSkeleton />
+            <OfferSkeleton />
+          </div>
+        ) : (
+          // the site could not be asked and nothing was kept: one quiet way there
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border bg-card px-5 py-4">
+            <p className="min-w-0 flex-1 basis-[240px] text-pretty text-body text-muted-foreground">
+              Plans and add-ons come from bloks.dev, which couldn't be reached just now.
+              {!retryShown && (
+                <>
+                  {" "}
+                  <span className="text-small">
+                    <TryAgain busy={loading} />
+                  </span>
+                </>
+              )}
+            </p>
+            <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => openSite(`${snapshot.site}/pricing`)}>
+              See plans
+              <ArrowUpRight size={13} />
+            </Button>
+          </div>
+        )}
+      </section>
     );
   }
   if (!ladder.length) return null;
   return (
-    <section aria-label="Your options" className="mb-9 last:mb-0">
-      <div className="mb-2.5 flex min-h-[24px] items-center justify-between gap-3 px-1">
-        <h2 className="text-body font-medium text-muted-foreground">{key === "free" ? "When you want more" : "Your options"}</h2>
-        {snapshot.offersState === "cached" && <span className="text-small text-muted-foreground">As of {shortDate(snapshot.offersAt ?? Date.now())}</span>}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {ladder.map((offer) => (
-          <OfferCard key={offer.id} offer={offer} lead={offer.id === ladder.find((o) => o.onSale && o.cta)?.id} />
+    <section id={OPTIONS_ID} aria-label={title} className="mb-9 scroll-mt-6 last:mb-0">
+      {heading}
+      <div className="grid gap-3 @xl:grid-cols-2">
+        {onSale.map((offer, i) => (
+          <OfferCard key={offer.id} offer={offer} lead={offer.id === lead} wide={onSale.length % 2 === 1 && i === onSale.length - 1} />
+        ))}
+        {soon.map((offer) => (
+          <SoonCard key={offer.id} offer={offer} />
         ))}
       </div>
-      <p className="mt-2.5 px-1 text-pretty text-small text-muted-foreground">
-        Each opens bloks.dev in your browser{snapshot.licence.present && window.bloks ? ", with your key, so there is nothing to type" : ""}. Come back here when you are done.
-      </p>
+      {onSale.some((o) => o.cta) && (
+        <p className="mt-2.5 px-1 text-pretty text-small text-muted-foreground">
+          Each opens bloks.dev in your browser{snapshot.licence.present && window.bloks ? ", with your key, so there is nothing to type" : ""}. Come back here when you are done.
+        </p>
+      )}
     </section>
   );
 }
 
 // ── the page ───────────────────────────────────────────────────────────
 
+/** The page's shape while the first answer comes: the plan, what it
+ * includes, and two offers, where each will land. */
 function PlanSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading your plan">
-      <div className="mb-9 rounded-2xl border bg-card p-6">
-        <div className="flex items-center gap-4">
-          <Skeleton className="size-11 rounded-xl" />
-          <div className="flex-1">
-            <Skeleton className="h-3 w-20 rounded-full" />
-            <Skeleton className="mt-2.5 h-5 w-40 rounded-full" />
+    <div aria-busy="true" aria-label="Loading your plan" className="@container">
+      <div className="mb-9 overflow-hidden rounded-2xl border bg-card">
+        <div className="flex items-start gap-4 p-6 max-sm:p-5">
+          <Skeleton className="size-12 rounded-xl" />
+          <div className="min-w-0 flex-1">
+            <Skeleton className="mt-1 h-2.5 w-16 rounded-full" />
+            <Skeleton className="mt-3 h-6 w-44 rounded-full" />
+            <Skeleton className="mt-3 h-2.5 w-full max-w-[340px] rounded-full" />
           </div>
-          <Skeleton className="h-5 w-28 rounded-full" />
+          <Skeleton className="h-7 w-28 rounded-md max-sm:hidden" />
         </div>
-        <SkeletonLines lines={1} className="mt-4 max-w-[360px]" />
-        <div className="mt-5 grid grid-cols-3 gap-6 border-t pt-5">
-          {[0, 1, 2].map((i) => (
-            <div key={i}>
-              <Skeleton className="h-2.5 w-16 rounded-full" />
-              <Skeleton className="mt-2 h-3.5 w-24 rounded-full" />
-            </div>
-          ))}
+        <div className="flex items-center gap-3 border-t bg-muted/30 px-6 py-3.5 max-sm:px-5">
+          <Skeleton className="h-2.5 w-14 rounded-full" />
+          <Skeleton className="h-3.5 w-32 rounded-md" />
         </div>
+      </div>
+      <Skeleton className="mb-3.5 ml-1 h-3 w-24 rounded-full" />
+      <div className="mb-9 grid divide-y overflow-hidden rounded-2xl border bg-card @xl:grid-cols-3 @xl:divide-x @xl:divide-y-0">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="px-5 py-4">
+            <Skeleton className="h-2.5 w-24 rounded-full" />
+            <Skeleton className="mt-3 h-4 w-14 rounded-full" />
+            <Skeleton className="mt-3 h-1.5 w-full rounded-full" />
+            <Skeleton className="mt-3 h-2 w-32 rounded-full" />
+          </div>
+        ))}
+      </div>
+      <Skeleton className="mb-3.5 ml-1 h-3 w-24 rounded-full" />
+      <div className="grid gap-3 @xl:grid-cols-2">
+        <OfferSkeleton />
+        <OfferSkeleton />
       </div>
     </div>
   );
 }
 
 export function PlanPage() {
-  const { snapshot, problem, news } = usePlan();
+  const { snapshot, problem, news, loading } = usePlan();
+  const appPlan = appPlanOf(useWorkspaces());
   const ai = useBloksAi();
   const [managing, setManaging] = useState(false);
   const [manageError, setManageError] = useState<string | null>(null);
@@ -929,18 +1226,28 @@ export function PlanPage() {
   }
 
   const free = !snapshot.licence.present;
+  // one Try again on the page: the plan's, when it is already saying so
+  const retryShown = !free && staleWords(snapshot) !== null;
+  const hosting = hostingWords(snapshot.account?.hosting ?? null);
+  // the way to Hosting, for a licence known to have none (an account that
+  // could not be read at all might have it)
+  const hostingCard = free || (snapshot.account !== null && !hosting);
   return (
-    <>
+    <div className="@container">
       <AnimatePresence>{news?.up && <PlanMoment key={news.at} words={news.words} at={news.at} />}</AnimatePresence>
-      {free ? <FreeCard onActivated={changed} /> : <PlanCard snapshot={snapshot} onManage={() => void manage()} managing={managing} manageError={manageError} />}
-      {/* what everyone you let in sees you as, beside the account it is on */}
-      <SettingsGroup title="You">
-        <YourName />
-      </SettingsGroup>
+      {free ? (
+        <FreeCard onActivated={changed} />
+      ) : (
+        <PlanCard snapshot={snapshot} loading={loading} onManage={() => void manage()} managing={managing} manageError={manageError} onChanged={changed} />
+      )}
       {!free && <WhatYouHave snapshot={snapshot} relay={relay} ai={ai} />}
-      <YourOptions snapshot={snapshot} />
+      {hostingCard ? (
+        <MoveToHostingCard snapshot={snapshot} appPlan={appPlan} />
+      ) : (
+        hosting && <HostingGroup hosting={hosting} state={snapshot.account?.hosting?.state ?? null} />
+      )}
       {!free && bloksAiShown(ai, snapshot.account) && <BloksAiSettings ai={ai} />}
-      {!free && <YourKey snapshot={snapshot} onChanged={changed} />}
-    </>
+      <YourOptions snapshot={snapshot} loading={loading} retryShown={retryShown} hostingCard={hostingCard} />
+    </div>
   );
 }

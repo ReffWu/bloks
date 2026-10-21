@@ -2,13 +2,13 @@
 //
 // A monthly allowance on the licence, with top-ups, that pays for model
 // use, so an agent can run with no sign-in and no API key of its own.
-// The Plan page shows what is left the way the service says it, as a share
-// of the month, in its list of what the plan includes (BloksAiRow); sends
-// the person to bloks.dev in their browser when they want another month's
-// worth (never a purchase in here); and holds the choices that are theirs
-// in a group of their own (BloksAiSettings): whether work nobody asked for
-// this minute may use it, and on a team, how much of it each teammate may
-// use in a day.
+// The Plan page shows how much of the month is used, the way the service
+// says it, beside the rest of what the plan includes, with Top up there
+// sending the person to bloks.dev in their browser (never a purchase in
+// here). This file reads it (useBloksAi) and holds the choices that are
+// theirs in a group of their own (BloksAiSettings): whether work nobody
+// asked for this minute may use it, and on a team, how much of it each
+// teammate may use in a day.
 //
 // The shares are the service's. Nothing here prices them, converts them,
 // or names a model: Bloks AI is the only name it has.
@@ -19,10 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { api, useStore } from "@/state/store";
-import { TOP_UP_WORDS, allowanceNote, meterLine, meterShare, memberRows, parseCap, type BloksAiStatus, type MemberRow } from "@/lib/credits";
-import { openOffer } from "@/lib/planClient";
-import { cn } from "@/lib/cn";
-import { HealthLine, SecretField, type Health } from "./ConnectionKit";
+import { memberRows, parseCap, type BloksAiStatus, type MemberRow } from "@/lib/credits";
+import { SecretField } from "./ConnectionKit";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import { TeamSignInNotice } from "./TeamSignInNotice";
 
@@ -104,75 +102,6 @@ export function useBloksAi() {
 }
 
 export type BloksAi = ReturnType<typeof useBloksAi>;
-
-function healthOf(status: CreditsStatus): { tone: Health; label: string } {
-  const empty = status.leftPercent !== null && status.leftPercent <= 0;
-  return status.needsKey
-    ? { tone: "off", label: "Not connected" }
-    : !status.connected
-      ? { tone: "issue", label: "Can't read it" }
-      : empty || status.refused
-        ? { tone: "issue", label: "Used up" }
-        : status.low
-          ? { tone: "wait", label: "Running low" }
-          : { tone: "on", label: "Ready" };
-}
-
-/** Bloks AI in the list of what a plan includes: what is left this month,
- * when it renews, and Top up, which opens bloks.dev in the browser. */
-export function BloksAiRow({ ai }: { ai: BloksAi }) {
-  const status = ai.status;
-  if (!status?.offered) return null;
-  const health = healthOf(status);
-  const share = meterShare(status);
-  const empty = status.leftPercent !== null && status.leftPercent <= 0;
-  const note = status.connected ? allowanceNote(status) : null;
-  const reading = status.connected && status.leftPercent !== null;
-  return (
-    <SettingRow
-      label="Bloks AI"
-      description={
-        status.needsKey
-          ? "Connect it below with your key, and agents can run with no sign-in of their own."
-          : reading
-            ? meterLine(status)
-            : (status.problem ?? "What is left could not be read just now.")
-      }
-      control={
-        <>
-          <HealthLine tone={health.tone} label={health.label} />
-          {!status.needsKey && (
-            // the site's own page, so the key rides along in the fragment
-            // and nobody types it again there (src/lib/planClient.ts)
-            <Button size="sm" variant="secondary" title={TOP_UP_WORDS} onClick={() => void openOffer(status.checkoutUrl)}>
-              Top up
-            </Button>
-          )}
-        </>
-      }
-    >
-      {reading && (
-        <div className="mt-3 flex flex-col gap-1.5">
-          <div
-            role="meter"
-            aria-label="This month left"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(share)}
-            className="h-1.5 max-w-[360px] overflow-hidden rounded-full bg-muted"
-          >
-            <div
-              className={cn("h-full origin-left", empty || status.low ? "bg-warning" : "bg-brand-ink")}
-              style={{ transform: `scaleX(${share / 100})` }}
-            />
-          </div>
-          {note && <div className="text-small tabular-nums text-muted-foreground">{note}</div>}
-        </div>
-      )}
-      {status.refused && <div className="mt-2 max-w-[60ch] text-pretty text-small leading-relaxed text-warning">{status.refused.message}</div>}
-    </SettingRow>
-  );
-}
 
 /** The choices that are the person's: connecting a key on a machine that
  * activated Cloud before Bloks AI existed, background work, and a team's

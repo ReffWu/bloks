@@ -80,7 +80,10 @@ test("search finds the page and names the row a word lives on", () => {
   assert.deepEqual(compact[0]!.rows, ["Compact while idle"]);
   const name = searchSettings("your name");
   assert.ok(name.some((m) => m.page.id === "general" && m.rows.includes("Your name")));
-  assert.ok(name.some((m) => m.page.id === "plan"), "Plan holds your name too");
+  assert.ok(!name.some((m) => m.page.id === "plan"), "your name lives on General alone, not on Plan as well");
+  // the key's choices are in one small menu on its row, and still found
+  assert.ok(searchSettings("replace key").some((m) => m.page.id === "plan"));
+  assert.deepEqual(searchSettings("bloks key").find((m) => m.page.id === "plan")?.rows, ["Bloks key"]);
   // a label that says the words already needs no row named under it
   assert.deepEqual(searchSettings("voices")[0]!.rows, []);
   // the old words still find where they went
