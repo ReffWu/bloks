@@ -1,0 +1,246 @@
+// GitHub 336: a Codex project with `inherit = "core"` in its
+// shell_environment_policy kept BLOKS_CLI, BLOKS_URL and BLOKS_TOKEN from
+// the agent's shell commands, though the app-server had all three, and
+// the bloks command quietly did nothing. The thread's own config now
+// states them as `set` entries on every start, resume and fork, with this
+// turn's values, over stdin and nowhere else, and the credential is kept
+// out of everything the driver writes down.
+import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PassThrough, Writable } from "node:stream";
+import { setImmediate } from "node:timers/promises";
+import { after, test, type TestContext } from "node:test";
+
+import type { RuntimeEvent } from "../server/contracts.ts";
+
+// The native copy is written for real, into a throwaway data folder, so
+// what it holds is what a person's would.
+const home = mkdtempSync(join(tmpdir(), "bloks-codex-shell-"));
+process.env.HOME = home;
+process.env.BLOKS_DATA_DIR = "";
+mkdirSync(join(home, ".bloks", "native"), { recursive: true });
+const { CodexDriver, SHELL_REFUSED_NOTICE } = await import("../server/drivers/codex.ts");
+after(() => rmSync(home, { recursive: true, force: true }));
+
+const CLI = "/opt/bloks/bin/bloks.mjs";
+const BASE = "http://127.0.0.1:4100";
+/** A credential shaped as Bloks mints them, made up for the test. */
+const credential = () => `blk_${randomBytes(24).toString("base64url")}`;
+const envFor = (token: string) => ({ BLOKS_CLI: CLI, BLOKS_URL: BASE, BLOKS_TOKEN: token });
+const SET = "shell_environment_policy.set.";
+
+interface Fake {
+  /** The person's include_only, as config/read reports it. */
+  includeOnly?: string[];
+  /** An error message for a request this Codex refuses, or null. */
+  refuse?: (frame: any) => string | null;
+  /** Frames to send once turn/start is answered, before it completes. */
+  during?: (frame: any) => any[];
+}
+
+let lanes = 0;
+
+async function setup(t: TestContext, fake: Fake = {}) {
+  const lane = `shell-lane-${++lanes}`;
+  const frames: any[] = [];
+  const argv: string[][] = [];
+  t.mock.method(childProcess, "spawn", (_cli: string, args: string[]) => {
+    argv.push([...args]);
+    const stdout = new PassThrough();
+    return Object.assign(new EventEmitter(), {
+      stdout,
+      stderr: new PassThrough(),
+      kill() {},
+      stdin: new Writable({
+        write(chunk, _encoding, done) {
+          const frame = JSON.parse(String(chunk));
+          frames.push(frame);
+          if (frame.method && frame.id !== undefined) {
+            const refused = fake.refuse?.(frame) ?? null;
+            let reply: Record<string, unknown> = { id: frame.id, result: {} };
+            if (refused) reply = { id: frame.id, error: { code: -32600, message: refused } };
+            else if (frame.method === "config/read") {
+              reply = { id: frame.id, result: fake.includeOnly ? { config: { shell_environment_policy: { inherit: "core", include_only: fake.includeOnly } } } : {} };
+            } else if (frame.method === "thread/start") reply = { id: frame.id, result: { thread: { id: "codex-thread" }, model: "gpt-test" } };
+            else if (frame.method === "thread/resume") reply = { id: frame.id, result: { thread: { id: frame.params.threadId }, model: "gpt-test" } };
+            else if (frame.method === "thread/fork") reply = { id: frame.id, result: { thread: { id: "forked-thread" } } };
+            queueMicrotask(() => {
+              stdout.write(JSON.stringify(reply) + "\n");
+              if (frame.method === "turn/start" && !refused) {
+                for (const extra of fake.during?.(frame) ?? []) stdout.write(JSON.stringify(extra) + "\n");
+                stdout.write(JSON.stringify({ method: "turn/completed", params: { turn: { status: "completed" } } }) + "\n");
+              }
+            });
+          }
+          done();
+        },
+      }),
+    });
+  });
+  syncBuiltinESMExports();
+  const instance = await CodexDriver.create({
+    instanceId: "codex", displayName: "Codex", enabled: true, environment: {},
+    config: { cli: "fake-codex", fullAuto: false },
+  });
+  const events: RuntimeEvent[] = [];
+  instance.adapter.onEvent((event) => events.push(event));
+  t.after(async () => {
+    await instance.dispose();
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  async function turn(extra: Record<string, unknown>) {
+    const before = events.filter((e) => e.type === "turn.completed").length;
+    await instance.adapter.sendTurn({ threadId: lane, text: "hi", cwd: home, ...extra });
+    for (let i = 0; i < 100 && events.filter((e) => e.type === "turn.completed").length === before; i++) await setImmediate();
+  }
+  const sent = (method: string) => frames.filter((f) => f.method === method).map((f) => f.params);
+  const native = () => {
+    try {
+      return readFileSync(join(home, ".bloks", "native", `${lane}.ndjson`), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const notices = () => events.flatMap((e) => (e.type === "runtime.error" ? [e.message] : []));
+  const completed = () => events.flatMap((e) => (e.type === "turn.completed" ? [e] : []));
+  return { frames, argv, events, turn, sent, native, notices, completed };
+}
+
+test("a new thread and a resumed one carry this turn's values for the shell, and nothing more", async (t) => {
+  const h = await setup(t);
+  const first = credential();
+  const second = credential();
+
+  await h.turn({ env: envFor(first) });
+  const [start] = h.sent("thread/start");
+  assert.deepEqual(start.config, { [`${SET}BLOKS_CLI`]: CLI, [`${SET}BLOKS_URL`]: BASE, [`${SET}BLOKS_TOKEN`]: first });
+
+  // the next turn has a credential of its own, and the resumed thread
+  // gets that one, not the one it started with
+  await h.turn({ env: envFor(second), resumeCursor: "codex-thread" });
+  const [resume] = h.sent("thread/resume");
+  assert.equal(resume.threadId, "codex-thread");
+  assert.deepEqual(resume.config, { [`${SET}BLOKS_CLI`]: CLI, [`${SET}BLOKS_URL`]: BASE, [`${SET}BLOKS_TOKEN`]: second });
+  assert.ok(!JSON.stringify(resume).includes(first), "an old turn's credential is never handed on");
+
+  // Dotted keys only: a `set` table of the person's own is added to, not
+  // replaced, and inherit, exclude and the rest of the policy stay theirs
+  for (const params of [start, resume]) {
+    assert.ok(Object.keys(params.config).every((key) => key.startsWith(SET)), Object.keys(params.config).join(", "));
+  }
+  assert.ok(h.completed().every((e) => e.type === "turn.completed" && e.ok));
+
+  // never in argv, where any process listing reads it
+  assert.ok(h.argv.length >= 2);
+  for (const args of h.argv) {
+    const said = args.join(" ");
+    assert.ok(!said.includes(first) && !said.includes(second), said);
+    assert.doesNotMatch(said, /shell_environment_policy/);
+  }
+
+  // and never in the native copy, which keeps every other frame
+  const written = h.native();
+  assert.match(written, /"method":"thread\/start"/);
+  assert.match(written, /"method":"thread\/resume"/);
+  assert.ok(!written.includes(first) && !written.includes(second), "the credential is not written down");
+  assert.match(written, /"shell_environment_policy\.set\.BLOKS_TOKEN":"\[redacted\]"/);
+  // the person's Codex settings are read, and kept out of it too
+  assert.equal(h.sent("config/read").length, 2);
+  assert.deepEqual(h.sent("config/read")[0], { cwd: home });
+  assert.doesNotMatch(written, /config\/read/);
+});
+
+test("an include_only list of the person's own is stated again with the three names added", async (t) => {
+  const h = await setup(t, { includeOnly: ["PATH", "HOME", "BLOKS_URL"] });
+  const token = credential();
+  await h.turn({ env: envFor(token) });
+  const [start] = h.sent("thread/start");
+  // Codex filters by the list after `set`, so without the names the
+  // values would be set and then taken away; nothing else is let in
+  assert.deepEqual(start.config["shell_environment_policy.include_only"], ["PATH", "HOME", "BLOKS_URL", "BLOKS_CLI", "BLOKS_TOKEN"]);
+  assert.equal(start.config[`${SET}BLOKS_TOKEN`], token);
+});
+
+test("without a list of the person's, none is sent", async (t) => {
+  const h = await setup(t);
+  await h.turn({ env: envFor(credential()) });
+  const [start] = h.sent("thread/start");
+  assert.equal("shell_environment_policy.include_only" in start.config, false);
+});
+
+test("a fork carries the config itself, since the resume after it rejoins a running thread", async (t) => {
+  const h = await setup(t);
+  const token = credential();
+  await h.turn({ env: envFor(token), resumeCursor: "from-before", forkFrom: "from-before", handoff: "the story, then: hi" });
+  const [fork] = h.sent("thread/fork");
+  assert.equal(fork.threadId, "from-before");
+  assert.equal(fork.config[`${SET}BLOKS_TOKEN`], token);
+  const [resume] = h.sent("thread/resume");
+  assert.equal(resume.threadId, "forked-thread");
+  assert.equal(resume.config[`${SET}BLOKS_TOKEN`], token);
+});
+
+test("a turn without a credential sends nothing for the shell", async (t) => {
+  const h = await setup(t);
+  await h.turn({});
+  assert.equal(h.sent("config/read").length, 0);
+  assert.equal("config" in h.sent("thread/start")[0], false);
+});
+
+test("a Codex that will not take the config still gets its thread, and the conversation hears it once", async (t) => {
+  // as a real app-server refuses a config: it quotes the value back
+  const h = await setup(t, {
+    refuse: (frame) => {
+      const token = frame.params?.config?.[`${SET}BLOKS_TOKEN`];
+      if (!token || (frame.method !== "thread/start" && frame.method !== "thread/resume")) return null;
+      return `failed to load configuration: invalid type: string "${token}", expected a map\nin \`shell_environment_policy.set\`\n`;
+    },
+  });
+  const first = credential();
+  const second = credential();
+
+  await h.turn({ env: envFor(first) });
+  const starts = h.sent("thread/start");
+  assert.equal(starts.length, 2, "asked again, once, without the config");
+  assert.ok(starts[0].config);
+  assert.equal("config" in starts[1], false);
+  assert.equal(h.sent("turn/start").length, 1, "the words went in");
+  assert.deepEqual(h.notices(), [SHELL_REFUSED_NOTICE]);
+
+  await h.turn({ env: envFor(second), resumeCursor: "codex-thread" });
+  const resumes = h.sent("thread/resume");
+  assert.equal(resumes.length, 2);
+  assert.equal("config" in resumes[1], false);
+  assert.equal(h.sent("thread/start").length, 2, "the thread was kept, not replaced");
+  assert.deepEqual(h.notices(), [SHELL_REFUSED_NOTICE], "said once, not every turn");
+  assert.ok(h.completed().every((e) => e.type === "turn.completed" && e.ok));
+
+  // the refusal quoted the credential; nothing written down does
+  const told = JSON.stringify(h.events);
+  const written = h.native();
+  for (const token of [first, second]) {
+    assert.ok(!told.includes(token), "not in any event");
+    assert.ok(!written.includes(token), "not in the native copy");
+  }
+  assert.match(written, /invalid type: string \\"\[redacted\]\\"/);
+});
+
+test("an error that quotes the credential is said without it", async (t) => {
+  const token = credential();
+  const h = await setup(t, {
+    during: () => [
+      { method: "error", params: { error: { message: `stream failed near ${token}` }, willRetry: false } },
+    ],
+  });
+  await h.turn({ env: envFor(token) });
+  assert.deepEqual(h.notices(), ["stream failed near [redacted]"]);
+  assert.ok(!JSON.stringify(h.events).includes(token));
+  assert.ok(!h.native().includes(token));
+});

@@ -170,6 +170,54 @@ function rememberTotal(thread: string, total: TokenCount) {
   while (threadTotals.size > MAX_THREADS) threadTotals.delete(threadTotals.keys().next().value!);
 }
 
+// ── the bloks command, from the agent's shell ──────────────────────────
+//
+// A turn's credential reaches the app-server in its environment (see
+// server/agent-cli.ts), and Codex hands its shell commands only what the
+// person's shell_environment_policy lets through. Under `inherit = "core"`
+// that was none of the three, and the bloks command quietly did nothing
+// (GitHub 336). So the thread's own config states them too, as `set`
+// entries, which Codex applies after it has inherited and excluded: the
+// rest of the policy stays the person's, and nothing else it keeps out
+// comes back. Dotted keys, so a `set` table of their own is added to, not
+// replaced. Sent with the request over stdin, never in argv or a file,
+// and on every start, resume and fork, so a thread carried on has this
+// turn's credential and not the one it started with.
+
+const SHELL_NAMES = ["BLOKS_CLI", "BLOKS_URL", "BLOKS_TOKEN"] as const;
+
+/**
+ * The thread config that hands the bloks command to the shell, or null
+ * for a turn without a credential. `includeOnly` is the person's own
+ * list, when they keep one: Codex filters by it after `set`, so it is
+ * stated again with the three names added and nothing else.
+ */
+export function shellConfig(env: Record<string, string | undefined> | undefined, includeOnly?: unknown): Record<string, unknown> | null {
+  const config: Record<string, unknown> = {};
+  const named: string[] = [];
+  for (const name of SHELL_NAMES) {
+    const value = env?.[name];
+    if (typeof value !== "string" || !value) continue;
+    config[`shell_environment_policy.set.${name}`] = value;
+    named.push(name);
+  }
+  if (!named.length) return null;
+  if (Array.isArray(includeOnly) && includeOnly.length) {
+    const kept = includeOnly.filter((pattern): pattern is string => typeof pattern === "string");
+    config["shell_environment_policy.include_only"] = [...kept, ...named.filter((name) => !kept.includes(name))];
+  }
+  return config;
+}
+
+/** How an app-server says no to that config: the key it could not load,
+ * or a `config` it does not know at all. */
+const SHELL_REFUSED = /shell_environment_policy|unknown field `?config\b/i;
+
+/** Said once in a conversation whose Codex would not take it. */
+export const SHELL_REFUSED_NOTICE =
+  "This Codex would not take the setting Bloks uses to hand its command line to the agent's shell, so it carried on without it. " +
+  "Where this project's Codex config narrows shell_environment_policy, the agent's commands cannot reach Bloks. Updating Codex should fix it.";
+
 /** Asks the installed CLI what it can run. No thread is started and
  * nothing is spent; the process is killed as soon as the list lands. */
 async function probe<T>(cli: string, cwd: string, read: (rpc: RpcLink) => Promise<T>): Promise<T | null> {
@@ -374,6 +422,9 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       asks: Map<string, Answer>;
     }
     const running = new Map<string, RunningTurn>();
+    /** Conversations already told their Codex would not take the shell's
+     * config (SHELL_REFUSED_NOTICE), so a lane hears it once, not every turn. */
+    const toldShellRefused = new Set<string>();
     /** Every engine process this instance started, ended on dispose (engine-processes.ts). */
     const engines = new EngineProcesses();
     // Busy transitions and several open windows share a short menu
@@ -435,6 +486,12 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       // The CLI holds its own ChatGPT login. An inherited API key would
       // silently move the user onto pay-as-you-go billing.
       delete env.OPENAI_API_KEY;
+      // This turn's credential, kept out of everything written down: the
+      // native copy (appendNative takes it out), and any error that quotes
+      // back the thread config carrying it (shellConfig).
+      const turnToken = typeof turn.env?.BLOKS_TOKEN === "string" && turn.env.BLOKS_TOKEN ? turn.env.BLOKS_TOKEN : null;
+      const hide = <T>(text: T): T =>
+        turnToken && typeof text === "string" && text.includes(turnToken) ? (text.split(turnToken).join("[redacted]") as T) : text;
 
       // The connectors, over the stdio bridge, because this CLI mounts
       // MCP servers as child processes and nothing else. The key rides
@@ -499,7 +556,10 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       let requestedCompaction: string | null = null;
       const compactionStarts = new Map<string, number | null>();
       const compactionDone = new Set<string>();
-      const catalogCalls = new Set<unknown>();
+      // requests whose frames stay out of the native copy: the skills
+      // menu, whose paths stay on the server, and the person's Codex
+      // settings, which can hold keys of their own
+      const quietCalls = new Set<unknown>();
       const skillNamesSent = new Set<string>();
 
       const abort = () => {
@@ -518,10 +578,10 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         stdin: child.stdin,
         stdout: child.stdout,
         onFrame: (msg, dir) => {
-          if (dir === "out" && msg.method === "skills/list") { catalogCalls.add(msg.id); return; }
-          if (dir === "in" && !msg.method && catalogCalls.has(msg.id)) { catalogCalls.delete(msg.id); return; }
+          if (dir === "out" && (msg.method === "skills/list" || msg.method === "config/read")) { quietCalls.add(msg.id); return; }
+          if (dir === "in" && !msg.method && quietCalls.has(msg.id)) { quietCalls.delete(msg.id); return; }
           if (msg.method === "skills/changed") return;
-          appendNative(threadId, { dir, source: NATIVE_SOURCE, msg });
+          appendNative(threadId, { dir, source: NATIVE_SOURCE, msg }, undefined, turnToken);
         },
         onRequest: (msg) => onAgentRequest(msg),
         onNotify: (msg) => onAgentNotification(msg),
@@ -833,7 +893,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
               compacting(ok);
               break;
             }
-            finish(ok, ok ? null : (completed.error?.message ?? completed.status ?? "failed"));
+            finish(ok, ok ? null : hide(completed.error?.message ?? completed.status ?? "failed"));
             break;
           }
 
@@ -843,7 +903,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             // had it at the top. One it is about to retry is not the end
             // of the turn, so only the last one is said. A compaction that
             // fails is not the turn failing: a new thread takes the words.
-            const message = params.error?.message ?? params.message;
+            const message = hide(params.error?.message ?? params.message);
             if (compacting) {
               if (turn.compactOnly && params.willRetry !== true) {
                 compactError = typeof message === "string" ? message : "Codex could not compact this conversation.";
@@ -885,7 +945,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         emit({
           ...envelope(threadId, turnId),
           type: "runtime.error",
-          message: describeEarlyExit(code, stderr, { name: "Codex", signIn: "run `codex login`" }),
+          message: describeEarlyExit(code, hide(stderr), { name: "Codex", signIn: "run `codex login`" }),
         });
         finish(false, "exit_before_result");
       });
@@ -966,6 +1026,40 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             approvalPolicy: full ? "never" : "on-request",
           };
 
+          // The bloks command for the shell (shellConfig above), with the
+          // person's include_only as Codex reads it where the thread runs.
+          // A Codex that cannot say still gets the `set` entries, which are
+          // all that a policy without that list needs.
+          let shell = shellConfig(turn.env);
+          if (shell) {
+            try {
+              const read: any = await within(rpc.request("config/read", { cwd: turn.cwd ?? homedir() }), "reading its settings", "Codex", PROBE_TIMEOUT_MS);
+              shell = shellConfig(turn.env, read?.config?.shell_environment_policy?.include_only);
+            } catch {
+              /* the set entries alone */
+            }
+          }
+          // A Codex that will not take that config still gets its thread,
+          // without it, and the conversation is told once why the bloks
+          // command may not reach the agent's commands, rather than left
+          // to find out from a command that did nothing and said so to
+          // nobody (GitHub 336).
+          const shellOrNot = async <T>(params: Record<string, unknown>, ask: () => Promise<T>): Promise<T> => {
+            try {
+              return await ask();
+            } catch (error) {
+              if (!params.config || !SHELL_REFUSED.test(String((error as Error)?.message ?? ""))) throw error;
+              delete params.config;
+              shell = null;
+              const answer = await ask();
+              if (!toldShellRefused.has(threadId)) {
+                toldShellRefused.add(threadId);
+                emit({ ...envelope(threadId, turnId), type: "runtime.error", message: SHELL_REFUSED_NOTICE });
+              }
+              return answer;
+            }
+          };
+
           // A thread from before Bloks is carried on in a fork of it, so
           // the person's own rollout file is never written. A Codex that
           // cannot fork it gets a new thread told the story instead, the
@@ -973,8 +1067,12 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           let target = cursor;
           if (cursor && turn.forkFrom === cursor && !turn.compactOnly) {
             let forked: any = null;
+            // A fork is running once it answers, and a resume of a running
+            // thread rejoins it as it is, so the fork itself carries the
+            // shell's config: the resume after it could not.
+            const forkParams: Record<string, unknown> = { threadId: cursor, ...(shell ? { config: shell } : {}) };
             try {
-              forked = await within(rpc.request("thread/fork", { threadId: cursor }), "copying the conversation", "Codex");
+              forked = await shellOrNot(forkParams, () => within(rpc.request("thread/fork", forkParams), "copying the conversation", "Codex"));
             } catch {
               forked = null;
             }
@@ -998,7 +1096,9 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             // Standard says nothing about the tier, as before there was a
             // choice; only Fast is asked for, and checked.
             if (fast) resumeParams.serviceTier = FAST_TIER;
-            const resume = () => within(rpc.request("thread/resume", resumeParams), "reopening the conversation", "Codex");
+            // this turn's credential, not the one the thread started with
+            if (shell) resumeParams.config = shell;
+            const resume = () => shellOrNot(resumeParams, () => within(rpc.request("thread/resume", resumeParams), "reopening the conversation", "Codex"));
             try {
               let resumed: any;
               try {
@@ -1105,9 +1205,10 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
               ephemeral: false,
             };
             if (fast) startParams.serviceTier = FAST_TIER;
+            if (shell) startParams.config = shell;
             let started: any;
             try {
-              started = await within(rpc.request("thread/start", startParams), "opening a conversation", "Codex");
+              started = await shellOrNot(startParams, () => within(rpc.request("thread/start", startParams), "opening a conversation", "Codex"));
             } catch (error) {
               throw (fast ? fastRefusal(error) : null) ?? error;
             }
@@ -1157,11 +1258,11 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           if (finished || stopping) return;
           // Fast refused before the words went in: the message is unsent,
           // and recovery treats it as that, not as an engine failing
-          const refusal = error instanceof CodexSpeedUnavailable ? error.refusal : undefined;
+          const refusal = error instanceof CodexSpeedUnavailable ? { ...error.refusal, reason: hide(error.refusal.reason) } : undefined;
           emit({
             ...envelope(threadId, turnId),
             type: "runtime.error",
-            message: (error as Error).message,
+            message: hide((error as Error).message),
             ...(refusal ? { preInputRefusal: refusal } : {}),
           });
           finish(false, "rpc_error", refusal);

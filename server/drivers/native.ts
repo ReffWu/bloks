@@ -17,6 +17,11 @@
 // file at 9.4 GB (GitHub 159). So a lane's file is moved aside once it
 // passes a size, gzipped in the background, and only the newest few of
 // those are kept. The live file is never cut short or rewritten for it.
+//
+// And a turn's own credential is never written down. Codex is handed it
+// in the thread's config (GitHub 336), and an app-server that refuses a
+// config quotes the value back, so a driver can name a value to keep out
+// and every line is written with it taken out, wherever it appears.
 import {
   appendFileSync,
   createReadStream,
@@ -53,10 +58,14 @@ export function appendNative(
   threadId: string,
   entry: { dir: "in" | "out"; source: string; msg: unknown },
   dir: string = NATIVE_DIR,
+  hidden?: string | null,
 ) {
   try {
     const path = join(dir, `${threadId}.ndjson`);
-    const line = JSON.stringify({ at: new Date().toISOString(), ...entry, msg: slimFrame(entry.msg) }) + "\n";
+    let line = JSON.stringify({ at: new Date().toISOString(), ...entry, msg: slimFrame(entry.msg) }) + "\n";
+    // found in the text as written: a credential is base64url, which JSON
+    // never escapes, so no spelling of it is missed
+    if (hidden && line.includes(hidden)) line = line.split(hidden).join("[redacted]");
     let size = sizes.get(path);
     // The count can run high (the slimming pass shrinks files under it),
     // so it is checked against the disk before anything is moved. A file

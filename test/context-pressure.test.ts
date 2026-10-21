@@ -361,8 +361,9 @@ describe("a Codex lane with a long context and two dozen tool calls a turn", () 
     // under the line now: the third turn goes straight in
     const third = log().length;
     await turn(h, bot.id, "BIG: and check it worked.");
+    // the handshake (and the shell settings read with it) aside
     assert.deepEqual(
-      methodsAfter(log(), third).filter((m) => m !== "initialize"),
+      methodsAfter(log(), third).filter((m) => m !== "initialize" && m !== "config/read"),
       ["thread/resume", "turn/start"],
     );
   });
