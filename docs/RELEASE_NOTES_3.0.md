@@ -14,7 +14,9 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 
 - **A workspace for each part of your life.** Personal is the Bloks you already had. Add a Business workspace, or one with a name of its own, and each is a whole Bloks: its own agents, memory, keys, rooms, routines and settings. Nothing moves between them.
 - **The switcher.** The workspace you are in sits at the top of the window with its mark. Its menu lists every workspace, with a dot where something is waiting, then Join a workspace, New workspace, Workspace settings and Mute. Cmd+1 to Cmd+9 and the command palette switch too.
-- **Marks.** Personal and Business wear fixed marks. Every other workspace gets a mark of its own that no other workspace on the computer wears; draw a new one or upload your logo.
+- **Marks.** Choose a colour and pattern for any workspace of yours, from the Mac or the phone, or upload your logo; no two workspaces on the computer wear the same one. On a workspace you joined, the mark you pick is yours alone, and nobody else in it sees the change.
+- **In your order.** Hold a workspace in the switcher and drag it, or use Option and the arrow keys. The order is the same everywhere workspaces are listed.
+- **A start shaped by what you chose.** A new workspace opens on a short welcome that follows what you picked: inviting people for a team, its name and logo for a business, and nothing about members when it is just you.
 - **They keep working while you look elsewhere.** Each workspace runs its own server, so routines and watchers go on in the background, and their approvals and questions still reach you. The Dock badge counts every workspace.
 - **Mute and notifications, per workspace.** Mute one for 15 minutes, an hour, 3, 8 or 24 hours, or until you turn it back on. Choose whether it tells you about all activity, only what needs you, or nothing.
 - **Reachable online, per workspace.** With Bloks Cloud, each workspace has its own space and its own switch, so your phone and the people you invite reach it from anywhere. One Bloks key covers every workspace on the computer.
@@ -52,6 +54,7 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 
 ### Answers drawn as interface
 
+- **Pages that look finished.** Every agent can read a built-in Page design skill before it makes a page, report, comparison or deck: the answer first, depth that follows what is at stake, and readable on a phone and in dark mode. Most answers need no file, and an agent's reply to one it made is a sentence or two, not a copy of the page.
 - **Answers, not walls of text.** Agents can answer with cards, tables, charts, metrics, steps, tabs, forms and buttons, drawn as the reply streams. A click can answer the agent, open a page or change the answer itself, and nothing in an answer fetches anything. Switch it off for an agent with Interactive answers in its settings.
 
 ### A terminal that goes where you want
@@ -64,6 +67,7 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 ### A new shape for the app
 
 - **The main rail.** Chat, Overview, Automations, Memory, Plugins, Usage and Settings sit on a slim rail, beside the chat's own sidebar, which you can resize or fold away. Conversation tabs move up into the title bar.
+- **Every side list sizes and folds.** Settings, Plugins, Memory, an agent's settings and Automations' lists resize and fold like the chat's, edged with a faint line in the colours of the mark. Folded, Settings becomes tabs along the top, and Plugins and Memory a small switch beside the title.
 - **Overview reads as one page.** The morning brief as a short column with what waits on you first and a slim player for Listen, then Activity, Projects and Rehearsals.
 - **The composer.** One slim row at rest, with the approval mode, the model and effort, Codex speed and a ring for context and today's spend underneath. Notices share one tray above it, and Send becomes Stop.
 - **Replies read as prose.** Real paragraphs, lists and headings, and code coloured by language. Message actions sit in a quiet row that shows on hover.
@@ -111,8 +115,11 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 
 ### iPhone and Apple Watch
 
-- With the iPhone app's own 3.0: workspaces in the sidebar, joining by link, QR or code with the same four words, a member's view of a workspace you joined, bubbles and Seen by, answers drawn as cards and charts, and the usage notice in the composer.
+- With the iPhone app's own 3.0: workspaces in the sidebar, joining by link, QR or code with the same four words, a member's view of a workspace you joined, bubbles and Seen by, answers drawn as cards, tables and charts, Usage as a place of its own, and the usage notice in the composer.
 - **Location, if you turn it on.** Your iPhone can tell your own computer where you are, as a place in words, and as an exact position only if you choose that too. Your own agents hear it while it is recent, and a watcher can act when you arrive at or leave a place. Members, shared rooms, Telegram people and strangers' mail never get it. Pause keeps it from agents and watchers, Off or Forget drops it, and only the last reading is kept: never a history, and never in a backup. Thanks @rpavlovs (#322)
+- **Pairing that starts where you are.** Phone and devices walks you through your first phone, and a pairing code exists only once you ask for one. A paired phone finds your computer again on its own when its address or port changes.
+- **Your other workspaces in a tap.** A phone paired with one workspace lists your others on that computer and adds one in a tap, where phone access is already on there. The computer tells you each time.
+- **Watch an agent work.** The phone shows an agent's browser or cloud computer live while it works, and you can take over with taps and typing.
 - Notifications arrive from the agent with its face, Live Activities wear its colour, new widgets show who wants what, and Apple Watch answers approvals from your wrist.
 
 ## Fixes
@@ -126,6 +133,8 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 - **An answer that does not fit is refused by name, not cut.** A table cell, quote, row or step past its limit used to be shortened or dropped while the agent was told it had worked; now the agent is told which field is over and by how much. Thanks @rpavlovs (#319)
 - **A Telegram request's reply stays attached until its turn really ends,** however that turn ends. Thanks @rpavlovs (#321)
 - **Agents are clearer about what to keep in memory** for later work. Thanks @rpavlovs (#323)
+- **The desktop app stays quick in long conversations.** Each tool call used to rewrite the whole conversation on disk, and the window asked the server again on every update; under load that froze the app for a quarter second at a time. Calls are now written together, and the window asks only when it needs to.
+- **A window that fails comes back.** If the app's page stops, it loads again, and after three times in a minute it says so with a Reload button. A part of the window that fails to draw shows a calm panel instead of an empty window. The app keeps a small local log, and crash reports stay on your computer.
 - **The brief keeps sentences whole.** A filename such as post.md, a version or an address no longer cut a sentence in two and lost the first half.
 
 ## Thank you
@@ -140,4 +149,4 @@ This release is better for everyone who took the time to report what went wrong,
 - **Settings moved, and old links still work.** Bloks Cloud is now Plan, the agent switches that sat in General are in Behaviour, and the Boat key is in Computers. A link to an old page opens the new one.
 - **Places moved to the rail.** The brief, Activity, Projects and Rehearsals are on Overview; routines, watchers and workflows are in Automations; memory is Memory; skills and plugins are Plugins.
 - **One key for every workspace.** The Bloks key you entered is kept once for the whole app, so putting another workspace online needs nothing typed.
-- **Your phone stays paired with Personal.** To have another workspace on it, pair it from that workspace's Settings, Phone and devices.
+- **Your phone stays paired with Personal.** To have another workspace on it, add it from the phone's workspace list, under your computer, or pair it from that workspace's Settings, Phone and devices.
