@@ -99,7 +99,8 @@ import { type WakePreview, RelayLink, relayDeviceFor, relayInviteFor, type Wake 
 import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView, type Standing as PersonStanding } from "./member-access.ts";
 import * as access from "./access.ts";
-import { asWho, createMembers } from "./members.ts";
+import { asWho, createMembers, workspaceIdentity } from "./members.ts";
+import { instanceName, mayAnnounce, stopAnnouncing, syncAnnouncement } from "./announce.ts";
 import { PLAN_LIMITS, ROOM_SHARING_WORDS, membersActive, pausedWords, roomSharingAllowed, workspaceMemberLimit } from "./plan-limits.ts";
 import { OwnerPlan } from "./owner-plan.ts";
 import { PlanAccount, planRoute, type PlanRouteDeps } from "./plan-account.ts";
@@ -23668,6 +23669,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // pairing is the master switch for all remote access, the relay
       // included: turning it off drops the outbound line immediately
       syncRelay(saved);
+      // and the network stops hearing where this Bloks is
+      announceHere();
       const status = pairingStatus(saved);
       broadcast({ kind: "pairing", ...status });
       return json(res, 200, status);
@@ -24331,6 +24334,17 @@ function redactSecrets(message: string): string {
 // header of server/pairing.ts for why this is not a live toggle.
 const BIND = bindHost();
 noteBound(BIND);
+/** Tells the local network which port this Bloks is on, while a phone may
+ * reach it here, so a phone with a stale port finds it (server/announce.ts).
+ * Not before listening is on the network: a switch turned on since the
+ * start takes a restart to reach the bind. */
+const announceHere = () => {
+  const { id, name } = workspaceIdentity();
+  syncAnnouncement(BIND !== "127.0.0.1" && remoteEnabled() && mayAnnounce(), {
+    name: instanceName(computerName(), id === "personal" ? undefined : name),
+    port: PORT,
+  });
+};
 // A port someone else holds is the one startup failure a person can fix
 // on their own, so it is said plainly instead of as a stack trace. The
 // code stays in the line: the desktop app and the tests read it to know
@@ -24382,6 +24396,7 @@ server.listen(PORT, BIND, () => {
   if (BIND !== "127.0.0.1") {
     console.log(`[bloks] paired devices may reach this machine on port ${PORT}`);
   }
+  announceHere();
 });
 
 // A provider process can die in ways that surface as an unhandled
@@ -24424,6 +24439,7 @@ const shutDown = () => {
   // shells first: they are children of this process and would otherwise
   // outlive it, still holding the folder open
   terminals.closeAll();
+  stopAnnouncing();
   mcp.closeAll();
   void Promise.allSettled([registry.disposeAll(), closeBrowsers()]).finally(() => process.exit(0));
 };
