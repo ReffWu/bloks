@@ -22,6 +22,17 @@ export function draftName(kind: NewKind, name: string): string {
   return cleanDraftName(name) || (kind === "business" ? "Business" : "");
 }
 
+/** Which field an answer from the main process is about, so its sentence
+ * sits under that field rather than at the foot of the dialog: the name
+ * (taken, empty, a second Business), who uses it (a Team workspace needs
+ * your name first), the mark, or the dialog as a whole. */
+export function errorPlace(error: string, code?: string): "name" | "team" | "mark" | "form" {
+  if (code === "name_required") return "team";
+  if (/\bmark\b/i.test(error)) return "mark";
+  if (/called .+ already|Give it a name|Business workspace already|name of its own/i.test(error)) return "name";
+  return "form";
+}
+
 export interface DraftCheck {
   /** Create can work as it stands. */
   ready: boolean;

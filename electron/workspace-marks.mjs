@@ -136,7 +136,10 @@ export function sameMark(a, b) {
  * Colours nobody has yet go first, so the first ten workspaces are ten
  * colours; after that, the least used. A pattern nobody has goes first
  * too, so even two of one colour differ in shape as much as they can.
- * `random` returns [0, 1), and is a parameter so tests can pin it.
+ * The picker's own shapes come before the hundreds of others, so a mark
+ * drawn or shuffled is one the picker shows and can come back to; the
+ * others are there for the day those run out. `random` returns [0, 1),
+ * and is a parameter so tests can pin it.
  */
 export function generateMark(taken = [], { random = Math.random, avoid = null } = {}) {
   const worn = [...taken, ...(avoid ? [avoid] : [])].filter(Boolean);
@@ -158,11 +161,16 @@ export function generateMark(taken = [], { random = Math.random, avoid = null } 
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   const order = [...shuffled, ...MARK_PALETTE.filter((c) => !colors.includes(c))];
+  const drawable = CHOICE_PATTERNS.filter((p) => isCustomPattern(p));
   for (const color of order) {
     const free = CUSTOM_PATTERNS.filter((p) => !worn.some((m) => sameMark(m, { color, pattern: p })));
     if (!free.length) continue;
-    const unseen = free.filter((p) => !usedPatterns.has(p));
-    return { color, pattern: pick(unseen.length ? unseen : free) };
+    const offered = drawable.filter((p) => free.includes(p));
+    const unseen = offered.filter((p) => !usedPatterns.has(p));
+    if (unseen.length) return { color, pattern: pick(unseen) };
+    if (offered.length) return { color, pattern: pick(offered) };
+    const rest = free.filter((p) => !usedPatterns.has(p));
+    return { color, pattern: pick(rest.length ? rest : free) };
   }
   return null;
 }

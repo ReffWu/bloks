@@ -47,6 +47,10 @@ const PATTERN_NAMES: Record<string, string> = {
 
 export const colorName = (color: string) => COLOR_NAMES[color.toUpperCase()] ?? "Colour";
 
+/** Colours above shapes, cell for cell, so the two rows line up; they
+ * wrap at the same place when the space is narrow. */
+const ROW = "grid grid-cols-[repeat(auto-fill,31px)] gap-y-1";
+
 /** Arrow keys move the choice within a radio group, and choose as they
  * go; `dir` is which way, for stepping over a choice that is taken. */
 function arrows(count: number, at: number, choose: (i: number, dir: 1 | -1) => void) {
@@ -68,6 +72,7 @@ export function MarkPicker({
   onShuffle,
   defaultMark = null,
   disabled = false,
+  actions = "below",
   className,
 }: {
   value: Mark | null;
@@ -75,9 +80,12 @@ export function MarkPicker({
   /** The marks the other workspaces here wear. */
   taken?: readonly Mark[];
   onShuffle?: () => void;
-  /** What "Back to default" goes back to, when there is a default. */
+  /** What "Default" goes back to, when there is a default. */
   defaultMark?: Mark | null;
   disabled?: boolean;
+  /** Where Shuffle and Default go: under the rows, or nowhere because
+   * the caller draws them (MarkActions) beside its own preview. */
+  actions?: "below" | "none";
   className?: string;
 }) {
   const colorRow = useRef<HTMLDivElement>(null);
@@ -104,15 +112,13 @@ export function MarkPicker({
     }
     return start;
   };
-  const showDefault = defaultMark && !sameMark(defaultMark, value);
-
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
+    <div className={cn("flex flex-col gap-2", className)}>
       <div
         ref={colorRow}
         role="radiogroup"
         aria-label="Colour"
-        className="flex flex-wrap gap-1.5"
+        className={ROW}
         onKeyDown={arrows(CHOICE_COLORS.length, colorAt, (i, dir) => {
           const free = freeFrom(CHOICE_COLORS.length, i, dir, (j) => ({ color: CHOICE_COLORS[j]!, pattern }));
           pick({ color: CHOICE_COLORS[free]!, pattern }, colorRow, free);
@@ -134,13 +140,21 @@ export function MarkPicker({
               disabled={disabled || worn}
               onClick={() => pick(mark, colorRow, i)}
               className={cn(
-                "relative size-6 shrink-0 rounded-full outline-none transition-[scale,box-shadow] duration-150 ease-out",
-                "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                on ? "ring-2 ring-foreground/80 ring-offset-2 ring-offset-background" : "hover:scale-110 active:scale-95",
-                worn && "cursor-not-allowed opacity-30 hover:scale-100",
+                "group/swatch flex size-[31px] items-center justify-center rounded-full outline-none",
+                worn && "cursor-not-allowed",
               )}
-              style={{ backgroundColor: c }}
-            />
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "size-[22px] rounded-full transition-[scale,box-shadow] duration-150 ease-out",
+                  "group-focus-visible/swatch:ring-2 group-focus-visible/swatch:ring-ring group-focus-visible/swatch:ring-offset-2 group-focus-visible/swatch:ring-offset-background",
+                  on ? "ring-2 ring-foreground/75 ring-offset-2 ring-offset-background" : "group-hover/swatch:scale-110 group-active/swatch:scale-95",
+                  worn && "opacity-25 group-hover/swatch:scale-100",
+                )}
+                style={{ backgroundColor: c }}
+              />
+            </button>
           );
         })}
       </div>
@@ -148,7 +162,7 @@ export function MarkPicker({
         ref={shapeRow}
         role="radiogroup"
         aria-label="Shape"
-        className="flex flex-wrap gap-1"
+        className={ROW}
         onKeyDown={arrows(patterns.length, patternAt, (i, dir) => {
           const free = freeFrom(patterns.length, i, dir, (j) => ({ color, pattern: patterns[j]! }));
           pick({ color, pattern: patterns[free]! }, shapeRow, free);
@@ -171,32 +185,65 @@ export function MarkPicker({
               disabled={disabled || worn}
               onClick={() => pick(mark, shapeRow, i)}
               className={cn(
-                "flex size-8 shrink-0 items-center justify-center rounded-[9px] outline-none transition-[background-color,scale] duration-150 ease-out",
+                "flex size-[31px] items-center justify-center rounded-[9px] outline-none transition-[background-color,scale] duration-150 ease-out",
                 "focus-visible:ring-2 focus-visible:ring-ring",
-                on ? "bg-accent ring-1 ring-foreground/25" : "hover:bg-accent/70 active:scale-95",
-                worn && "cursor-not-allowed opacity-30 hover:bg-transparent",
+                on ? "bg-background shadow-sm ring-1 ring-foreground/20" : "hover:bg-accent active:scale-95",
+                worn && "cursor-not-allowed opacity-25 hover:bg-transparent",
               )}
             >
-              <WorkspaceMark mark={mark} size={22} />
+              <WorkspaceMark mark={mark} size={21} />
             </button>
           );
         })}
       </div>
-      {(onShuffle || showDefault) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {onShuffle && (
-            <Button type="button" variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground" disabled={disabled} onClick={onShuffle}>
-              <RefreshCw size={13} />
-              Shuffle
-            </Button>
-          )}
-          {showDefault && (
-            <Button type="button" variant="ghost" size="sm" className={cn("gap-1.5 text-muted-foreground", !onShuffle && "-ml-2")} disabled={disabled || isTaken(defaultMark)} onClick={() => onChange(defaultMark)}>
-              <RotateCcw size={13} />
-              Back to default
-            </Button>
-          )}
-        </div>
+      {actions === "below" && (
+        <MarkActions className="-ml-2" value={value} onChange={onChange} onShuffle={onShuffle} defaultMark={defaultMark} taken={taken} disabled={disabled} />
+      )}
+    </div>
+  );
+}
+
+/** Shuffle, and Back to default when there is a default to go back to:
+ * under the picker in Settings, beside the preview in the dialog. */
+export function MarkActions({
+  value,
+  onChange,
+  onShuffle,
+  defaultMark = null,
+  taken = [],
+  disabled = false,
+  className,
+}: {
+  value: Mark | null;
+  onChange: (mark: Mark) => void;
+  onShuffle?: () => void;
+  defaultMark?: Mark | null;
+  taken?: readonly Mark[];
+  disabled?: boolean;
+  className?: string;
+}) {
+  const showDefault = defaultMark && !sameMark(defaultMark, value);
+  if (!onShuffle && !showDefault) return null;
+  return (
+    <div className={cn("flex flex-wrap items-center gap-0.5", className)}>
+      {onShuffle && (
+        <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" disabled={disabled} onClick={onShuffle}>
+          <RefreshCw size={13} />
+          Shuffle
+        </Button>
+      )}
+      {showDefault && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 text-muted-foreground"
+          disabled={disabled || taken.some((m) => sameMark(m, defaultMark))}
+          onClick={() => onChange(defaultMark)}
+        >
+          <RotateCcw size={13} />
+          Default
+        </Button>
       )}
     </div>
   );

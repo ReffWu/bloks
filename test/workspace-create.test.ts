@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { addWorkspace, oneAtATime, parseRegistry, settle } from "../electron/workspaces.mjs";
-import { checkDraft, draftName } from "../src/lib/newWorkspace.ts";
+import { checkDraft, draftName, errorPlace } from "../src/lib/newWorkspace.ts";
 
 const fresh = () => settle(parseRegistry(null), { personalDataDir: "/home/a/.bloks", now: 1, random: () => 0.5 });
 
@@ -64,6 +64,15 @@ test("the dialog does not call the workspace it is making taken, and says a real
     ready: false,
     problem: "There is a Business workspace already.",
   });
+});
+
+test("what the main process refuses is said under the field it is about", () => {
+  assert.equal(errorPlace("There is a workspace called Okafor Studio already."), "name");
+  assert.equal(errorPlace("Give it a name."), "name");
+  assert.equal(errorPlace("There is a Business workspace already."), "name");
+  assert.equal(errorPlace("Say what people should call you first.", "name_required"), "team");
+  assert.equal(errorPlace("Another workspace has that mark."), "mark");
+  assert.equal(errorPlace("Workspaces work in the installed app."), "form");
 });
 
 test("Create answers once the window is on its way, not once the new server has started", () => {

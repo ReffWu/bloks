@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 
 import {
   BUSINESS_MARK,
+  CHOICE_PATTERNS,
+  isChoosableMark,
   CUSTOM_PATTERNS,
   MARK_PALETTE,
   PERSONAL_MARK,
@@ -126,4 +128,19 @@ test("a new workspace's accent is the Bloks colour nearest its mark", () => {
   assert.equal(accentForMark("#E9A83A"), "amber");
   // a grey has no hue to follow, so it keeps the default
   assert.equal(accentForMark("#5B5F6B"), "deepBlue");
+});
+
+test("a drawn mark is one the picker shows, until the picker's own shapes run out", () => {
+  const random = seeded(11);
+  const taken: Mark[] = [{ ...PERSONAL_MARK }, { ...BUSINESS_MARK }];
+  // ten colours times the picker's ten drawable shapes
+  for (let i = 0; i < 100; i++) {
+    const mark = generateMark(taken, { random })!;
+    assert.ok(CHOICE_PATTERNS.includes(mark.pattern), `${mark.pattern} at ${i} is not a picker shape`);
+    assert.ok(isChoosableMark(mark));
+    taken.push(mark);
+  }
+  // and after that, the long tail keeps the promise
+  const more = generateMark(taken, { random })!;
+  assert.ok(isCustomMark(more) && !taken.some((m) => sameMark(m, more)));
 });
