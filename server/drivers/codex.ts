@@ -34,6 +34,7 @@ import type {
   SendTurnInput,
 } from "../contracts.ts";
 import { newEventId, newId } from "../contracts.ts";
+import { knownEfforts, type Effort } from "../effort.ts";
 import { codexPlanUsage } from "../plan-usage.ts";
 import { callSignature } from "../repeats.ts";
 import { appendNative } from "./native.ts";
@@ -63,6 +64,12 @@ const MODELS = {
   ],
 };
 
+/** The effort levels turn/start is given, as Codex 0.145's model/list
+ * spells them. Each model's own list narrows these; until the CLI has
+ * said, a model is offered all of them. Codex also lists "ultra" for some
+ * models, which hands work to helpers of its own and is not offered. */
+const CODEX_EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
+
 const PROBE_TIMEOUT_MS = 20_000;
 
 /** "GPT-6-Luna" as Codex spells it, "GPT-6 Luna" as the picker does. */
@@ -87,6 +94,10 @@ export function catalogFromModelList(pages: any[]): ModelCatalog | null {
         label: codexLabel(m.displayName, id),
         // whether this model offers Fast, where the catalog says at all
         ...(Array.isArray(m.serviceTiers) ? { codexFast: m.serviceTiers.some((tier: any) => tier?.id === FAST_TIER) } : {}),
+        // and which effort levels it takes, which differ by model
+        ...(Array.isArray(m.supportedReasoningEfforts)
+          ? { efforts: knownEfforts(m.supportedReasoningEfforts.map((e: any) => (typeof e === "string" ? e : e?.reasoningEffort))) }
+          : {}),
       });
       if (m.isDefault === true && !defaultId) defaultId = id;
     }
@@ -1308,7 +1319,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
 
       adapter: {
         provider: DRIVER_KIND,
-        capabilities: { sessionModelSwitch: "unsupported", compactsFirst: true },
+        capabilities: { sessionModelSwitch: "unsupported", compactsFirst: true, efforts: CODEX_EFFORTS },
         sendTurn,
 
         steerTurn: async (threadId, text, options) => (await running.get(threadId)?.steer(text, options)) ?? false,

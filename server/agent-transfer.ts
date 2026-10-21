@@ -10,6 +10,7 @@
 // Everything in here is pure: data in, data out, no filesystem. The IO
 // lives in server/index.ts, which is what makes the rules below testable
 // and what keeps a hostile file from reaching disk before it is judged.
+import { isEffort, type Effort } from "./effort.ts";
 import type { BlokColor, BlokExpression, BlokShape } from "./store.ts";
 
 export const AGENT_FILE_KIND = "bloks.agent";
@@ -94,7 +95,9 @@ export interface PortableAgent {
   /** Free-text capabilities, folded into the persona. */
   capabilities?: string[];
   seniority?: number;
-  effort?: "low" | "medium" | "high";
+  /** Kept as it was, whatever engine it lands on: one without this level
+   * runs it at the nearest it has (server/effort.ts). */
+  effort?: Effort;
   mascotExpression?: BlokExpression | null;
   /** A wish, not a binding: the engine may not exist on the machine this
    * lands on, in which case the workspace default is used instead. */
@@ -142,7 +145,7 @@ export interface PackInput {
     shape?: BlokShape;
     skills?: string[];
     seniority?: number;
-    effort?: "low" | "medium" | "high";
+    effort?: Effort;
     mascotExpression?: BlokExpression | null;
     modelSelection?: { instanceId: string; model: string };
     backupSelection?: { instanceId: string; model: string } | null;
@@ -193,9 +196,7 @@ export function packAgent(input: PackInput): AgentFile {
   if (typeof bot.seniority === "number" && Number.isFinite(bot.seniority)) {
     agent.seniority = Math.max(1, Math.min(5, Math.round(bot.seniority)));
   }
-  if (bot.effort === "low" || bot.effort === "medium" || bot.effort === "high") {
-    agent.effort = bot.effort;
-  }
+  if (isEffort(bot.effort)) agent.effort = bot.effort;
   if (bot.mascotExpression && EXPRESSIONS.has(bot.mascotExpression)) {
     agent.mascotExpression = bot.mascotExpression;
   }
@@ -329,9 +330,7 @@ export function parseAgentFile(value: unknown): ParseResult {
   if (typeof raw.seniority === "number" && Number.isFinite(raw.seniority)) {
     agent.seniority = Math.max(1, Math.min(5, Math.round(raw.seniority)));
   }
-  if (raw.effort === "low" || raw.effort === "medium" || raw.effort === "high") {
-    agent.effort = raw.effort;
-  }
+  if (isEffort(raw.effort)) agent.effort = raw.effort;
   if (typeof raw.mascotExpression === "string" && EXPRESSIONS.has(raw.mascotExpression as BlokExpression)) {
     agent.mascotExpression = raw.mascotExpression as BlokExpression;
   }
@@ -552,7 +551,7 @@ export function profileFromFile(file: AgentFile): {
     seniority?: number;
   };
   patch: {
-    effort?: "low" | "medium" | "high";
+    effort?: Effort;
     mascotExpression?: BlokExpression;
     voice?: { provider: "elevenlabs" | "openai"; id: string; name?: string };
   };

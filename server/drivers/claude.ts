@@ -71,6 +71,7 @@ import type {
   SendTurnInput,
 } from "../contracts.ts";
 import { newEventId, newId } from "../contracts.ts";
+import type { Effort } from "../effort.ts";
 import { appendNative } from "./native.ts";
 import { describeEarlyExit, describeSpawnError } from "./spawn-error.ts";
 import { DEFAULT_STALL_MINUTES, STOP_GRACE_MS, describeStall, isStalled, type OpenCall } from "./stall.ts";
@@ -111,6 +112,9 @@ const MODELS: ModelCatalog = {
   note: "Built into this version of Bloks, not fetched: Claude Code cannot list models. The Latest entries always mean the newest model in that family, and you can type any other model id above.",
   acceptsAnyId: true,
 };
+
+/** What `--effort <level>` takes, as `claude --help` lists it. */
+const CLAUDE_EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
 
 /** Model used for the cheap one-shot calls (naming an agent, and similar).
  * Always the smallest one: nobody is reading it, they are reading its
@@ -326,6 +330,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
     // resumed in place, which would write to the person's own file.
     let forkSupported = false;
     let attributedCompletionSupported = false;
+    // --effort takes all five levels from 2.1.252 on, the oldest CLI its
+    // --help was read from; where it began is not known. An older or
+    // unrecognised CLI is sent no effort, as before, rather than a flag
+    // it would refuse along with the turn.
+    let effortSupported = false;
     const readVersion = () => new Promise<string | null>((resolve) => {
       execFile(config.cli, ["--version"], { timeout: 8_000, windowsHide: true }, (error, stdout) => {
         const version = error ? null : stdout.trim();
@@ -334,6 +343,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         snapshotOffSupported = major > 2 || (major === 2 && (minor > 1 || (minor === 1 && patch >= 257)));
         forkSupported = major >= 2;
         attributedCompletionSupported = major > 2 || (major === 2 && (minor > 1 || (minor === 1 && patch >= 300)));
+        effortSupported = major > 2 || (major === 2 && (minor > 1 || (minor === 1 && patch >= 252)));
         resolve(version);
       });
     });
@@ -468,6 +478,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         if (snapshotOffSupported) argv.push("--system-prompt-snapshot", "off");
       } else argv.push("--session-id", newId());
       if (turn.model) argv.push("--model", turn.model);
+      // every turn is a new process, so the effort is said on every one;
+      // left out, the CLI thinks at its own default, whatever was chosen
+      if (turn.effort && effortSupported) argv.push("--effort", turn.effort);
       // this agent's owner switched hooks off: a plugin's session-start
       // text would otherwise land in its context as if it were an order
       if (turn.noHooks || turn.person) argv.push("--settings", JSON.stringify({ disableAllHooks: true }));
@@ -1499,7 +1512,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
 
       adapter: {
         provider: DRIVER_KIND,
-        capabilities: { sessionModelSwitch: "in-session" },
+        capabilities: { sessionModelSwitch: "in-session", efforts: CLAUDE_EFFORTS },
         sendTurn,
 
         steerTurn: async (threadId, text, options) => running.get(threadId)?.steer(text, options?.onDispatch) ?? false,

@@ -215,8 +215,9 @@ export interface SendTurnInput {
   /** Run without the engine's hooks (Claude Code: plugins and settings
    * hooks). Engines without hooks ignore it. */
   noHooks?: boolean;
-  /** Reasoning effort, for engines with the dial. Others ignore it. */
-  effort?: "low" | "medium" | "high";
+  /** Reasoning effort, already one this engine and model take (dispatch
+   * sends the nearest, server/effort.ts). Engines with no dial ignore it. */
+  effort?: import("./effort.ts").Effort;
   /** The provider's own idea of where this conversation was, from the last
    * turn. A session id for the CLIs; unused by drivers that replay. */
   resumeCursor?: unknown;
@@ -364,6 +365,10 @@ export interface ProviderAdapter {
     replaysNatively?: boolean;
     /** Takes `compactFirst` on a turn (see SendTurnInput). */
     compactsFirst?: boolean;
+    /** The reasoning effort levels this driver passes on to its engine,
+     * least first. Absent is an engine with no dial, whose turns are sent
+     * no effort (server/effort.ts). */
+    efforts?: readonly import("./effort.ts").Effort[];
   };
   sendTurn(input: SendTurnInput): Promise<TurnStartResult>;
   /**
@@ -457,8 +462,10 @@ export interface UsageNotice {
 
 export interface ModelCatalog {
   default: string;
-  /** codexFast: whether Codex offers Fast for the model, where it said. */
-  options: Array<{ id: string; label: string; codexFast?: boolean }>;
+  /** codexFast: whether Codex offers Fast for the model, where it said.
+   * efforts: the effort levels the engine listed for the model, where it
+   * said; a model without them has the engine's own (server/effort.ts). */
+  options: Array<{ id: string; label: string; codexFast?: boolean; efforts?: import("./effort.ts").Effort[] }>;
   /** When the engine last reported the list, so an old answer about Fast
    * is not taken as current. */
   checkedAt?: number;

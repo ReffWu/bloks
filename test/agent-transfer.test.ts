@@ -255,6 +255,24 @@ describe("what the preview says before you say yes", () => {
   });
 });
 
+describe("how hard it thinks", () => {
+  test("every level goes out and comes back, the highest two included", () => {
+    for (const effort of ["low", "medium", "high", "xhigh", "max"] as const) {
+      const file = round({ bot: { ...bot, effort }, exportedAt: 1 });
+      assert.equal(file.agent.effort, effort);
+      // and an import gives the arriving agent that level, not a lower one
+      assert.equal(profileFromFile(file).patch.effort, effort);
+    }
+  });
+
+  test("a level Bloks does not know is left behind on the way in", () => {
+    const packed = packAgent({ bot, exportedAt: 1 });
+    const strange = parseAgentFile({ ...packed, agent: { ...packed.agent, effort: "ultra" } });
+    assert.equal(strange.ok, true);
+    assert.equal((strange as { ok: true; file: AgentFile }).file.agent.effort, undefined);
+  });
+});
+
 describe("the engines it ran on", () => {
   test("the backup engine travels with the main one", () => {
     const file = round({ bot: { ...bot, backupSelection: { instanceId: "inst-b", model: "gpt-x" } }, exportedAt: 1 });

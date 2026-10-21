@@ -436,10 +436,12 @@ const COMMANDS = {
     },
   },
   hire: {
-    use: 'hire --name <name> --title <role> [--about <description>] [--skills "a,b,c"] [--section <name>] [--pin] [--at <position>]',
+    use: 'hire --name <name> --title <role> [--about <description>] [--skills "a,b,c"] [--effort <level>] [--section <name>] [--pin] [--at <position>]',
     about:
       "add a teammate to the workspace, optionally filed into a sidebar section, and pinned there " +
-      "(--pin puts it after the pins already there; --at puts it at that place among them, 1 at the top)",
+      "(--pin puts it after the pins already there; --at puts it at that place among them, 1 at the top). " +
+      "--effort is how hard it thinks: low, medium, high, xhigh or max, where the engine it starts on has that level; " +
+      "left out, it starts on the workspace's default",
     run: (args) => {
       const flags = parseFlags(args);
       if (!flags.name) throw new Error("hire needs a --name");
@@ -449,6 +451,8 @@ const COMMANDS = {
         title: flags.title ?? "",
         description: flags.about ?? "",
         skills: flags.skills ? flags.skills.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+        // which levels its engine has is the workspace's to say, and it does
+        ...(flags.effort !== undefined ? { effort: flags.effort } : {}),
         ...(flags.section !== undefined ? { section: flags.section } : {}),
         ...(flags.pin !== undefined || at !== undefined ? { pinned: true } : {}),
         ...(at !== undefined ? { position: at } : {}),

@@ -1321,7 +1321,10 @@ describe("defaults for new agents", () => {
     for (const bad of [
       { cwd: "relative/path" },
       { cwd: join(h.home, "not-here") },
-      { effort: "max" },
+      // a level some engine lists, but not one Bloks offers
+      { effort: "ultra" },
+      // Claude Code has Max; Grok CLI does not (test/effort-api.test.ts)
+      { modelSelection: { instanceId: "grok_cli", model: "grok-4.7" }, effort: "max" },
       { approvals: "always" },
       { modelSelection: { instanceId: "no-such-engine", model: "x" } },
       { modelSelection: { instanceId: "claude", model: "x".repeat(201) } },

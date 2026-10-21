@@ -527,8 +527,9 @@ export interface BotRecord {
    * not in this list still meets the agent in a room they are in. */
   access?: AgentAccess;
   /** How hard the engine should think, where the engine has the dial.
-   * Unset means the engine's own default. */
-  effort?: "low" | "medium" | "high";
+   * Unset means the engine's own default. Kept as chosen on an engine
+   * without that level; its turns are sent the nearest it has. */
+  effort?: import("./effort.ts").Effort;
   codexSpeed?: import("./codex-speed.ts").CodexSpeed | null;
   mascotExpression?: BlokExpression | null;
   /** Set when the user uploaded their own picture for this agent. The

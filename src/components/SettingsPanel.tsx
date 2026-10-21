@@ -74,6 +74,7 @@ import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, RULES_AND_MODES, typ
 import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
 import { BACKGROUND_WORK, backgroundWords, type BackgroundWork } from "@/lib/backgroundWork";
 import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
+import { effortChoice } from "@/lib/effort";
 import { SideColumn, SideTabs } from "./SideColumn";
 
 type Patch = Partial<
@@ -203,6 +204,8 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
   const suggestion = useEngineReport()?.suggestions.find((s) => s.botId === bot.id);
   const patch = (p: Patch) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
   const close = () => dispatch({ type: "toggleSettings", open: false });
+  // the levels this agent's engine and model have, and the one it runs at
+  const effort = effortChoice(state.instances, bot.modelSelection, bot.effort);
 
   // Escape goes back to the chat, unless something open on top takes it
   useEscape(close);
@@ -391,19 +394,18 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                   >
                     <TeamSignInNotice bot={bot} className="mt-3" />
                   </SettingRow>
-                  <SettingRow label="Reasoning effort" description="How hard it thinks, where the model supports it.">
-                    <Segmented
-                      aria-label="Reasoning effort"
-                      className="mt-3 max-w-[420px]"
-                      value={bot.effort}
-                      onChange={(effort) => patch({ effort })}
-                      options={[
-                        { value: undefined, label: "Default" },
-                        { value: "low", label: "Low" },
-                        { value: "medium", label: "Medium" },
-                        { value: "high", label: "High" },
-                      ]}
-                    />
+                  <SettingRow label="Reasoning effort" description={effort.note ?? "How hard it thinks, where the model supports it."}>
+                    {effort.levels.length > 0 && (
+                      <Segmented
+                        aria-label="Reasoning effort"
+                        className="mt-3 max-w-[480px]"
+                        value={effort.value}
+                        // null, not left out: a patch without the key would
+                        // leave the saved level where it was
+                        onChange={(next) => patch({ effort: next ?? null })}
+                        options={effort.options}
+                      />
+                    )}
                   </SettingRow>
                   <SettingRow
                     label="Backup engine"

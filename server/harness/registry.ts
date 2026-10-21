@@ -41,6 +41,9 @@ interface InstanceReport {
   displayName: string;
   snapshot: ProviderSnapshot;
   models: import("../contracts.ts").ModelCatalog;
+  /** The effort levels the engine takes, least first; empty for one
+   * with no dial. A model listed with its own narrows them. */
+  efforts: readonly import("../effort.ts").Effort[];
 }
 
 export class ProviderRegistry {
@@ -177,6 +180,7 @@ async function report(entry: RegistryEntry): Promise<InstanceReport> {
       displayName: entry.shadow.displayName ?? entry.shadow.driverKind,
       snapshot: { state: "unavailable", reason: entry.shadow.reason },
       models: { default: "", options: [] },
+      efforts: [],
     };
   }
 
@@ -194,5 +198,6 @@ async function report(entry: RegistryEntry): Promise<InstanceReport> {
     displayName: instance.displayName ?? instance.driverKind,
     snapshot,
     models: instance.models,
+    efforts: instance.adapter.capabilities.efforts ?? [],
   };
 }

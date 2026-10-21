@@ -35,10 +35,11 @@ import { ProviderMark } from "./ProviderIcons";
 import { EngineUpdateNote } from "./EngineSetup";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
-import { Segmented } from "@/components/ui/segmented";
 import { backupOptions, isOwnRun, offersBackup } from "@/lib/backupChoice";
 import { BLOKS_AI_NAME, CREDITS_ENGINE } from "@/lib/credits";
+import { EFFORT_LABELS, effortChoice, isEffort } from "@/lib/effort";
 import { quietButton, useDismiss } from "./composer/Shell";
+import { SettingsSelect } from "./SettingsLayout";
 
 /** Catalogs this long or shorter are read at a glance, not searched. */
 const SEARCH_ABOVE = 8;
@@ -94,13 +95,6 @@ const usable = (i: InstanceInfo) => i.snapshot.state === "available";
 function effectiveModel(instance: InstanceInfo | undefined, model: string): string {
   return model || (instance?.models.default ?? model);
 }
-
-const EFFORTS: Array<{ value: Bot["effort"]; label: string }> = [
-  { value: undefined, label: "Default" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-];
 
 /** The characters a model id is made of; the server holds to the same. */
 const MODEL_ID = /^[\w.:@/[\]+-]+$/;
@@ -161,8 +155,11 @@ export function ModelPicker({
 
   const custom = onPick !== undefined;
   const composer = variant === "composer";
-  // effort belongs to an agent, so only a picker for one offers it
-  const effort = composer && bot && !custom ? EFFORTS.find((e) => e.value === bot.effort) : undefined;
+  // effort belongs to an agent, so only a picker for one offers it, and
+  // only the levels its engine and model have; beside the name is the
+  // level its turns are sent, which a saved one the engine lacks is not
+  const effort = composer && bot && !custom ? effortChoice(state.instances, bot.modelSelection, bot.effort) : undefined;
+  const effortLabel = effort?.value ? EFFORT_LABELS[effort.value] : undefined;
   const selection: ModelSelection = (custom ? value : bot?.modelSelection) ?? { instanceId: "", model: "" };
   // an engine whose only model is the excluded one has nothing to offer
   const instances = exclude ? state.instances.filter((i) => offersBackup(i, exclude)) : state.instances;
@@ -279,6 +276,8 @@ export function ModelPicker({
   /** Up and down walk the rows, from the search box too. */
   const walk = (e: KeyboardEvent) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    // the effort list at the foot has arrows of its own
+    if (e.target instanceof HTMLSelectElement) return;
     const rows = [...(listRef.current?.querySelectorAll<HTMLElement>(OPTION) ?? [])];
     if (!rows.length) return;
     e.preventDefault();
@@ -308,7 +307,7 @@ export function ModelPicker({
         aria-expanded={open}
         aria-haspopup="dialog"
         title={described}
-        aria-label={`Model: ${described}${effort?.value ? `, ${effort.label} effort` : ""}`}
+        aria-label={`Model: ${described}${effortLabel ? `, ${effortLabel} effort` : ""}`}
         className={
           composer
             ? cn(quietButton, "max-w-full")
@@ -324,7 +323,7 @@ export function ModelPicker({
           </span>
         )}
         <span className={cn("truncate", composer ? "max-w-[150px] sm:max-w-[220px]" : "max-w-[140px]")}>{name}</span>
-        {effort?.value && <span className="shrink-0 text-muted-foreground/70">{effort.label}</span>}
+        {effortLabel && <span className="shrink-0 text-muted-foreground/70">{effortLabel}</span>}
         {!composer && <ChevronDown size={13} className="opacity-60" />}
       </button>
 
@@ -547,17 +546,32 @@ export function ModelPicker({
               );
             })}
           </div>
-          {effort && bot && (
-            <div className="flex shrink-0 items-center gap-2.5 border-t px-3 py-2">
-              <span className="text-small text-muted-foreground">Effort</span>
-              <Segmented
-                size="sm"
-                aria-label="Reasoning effort"
-                className="flex-1"
-                value={bot.effort}
-                onChange={(next) => dispatch({ type: "updateBot", botId: bot.id, patch: { effort: next } })}
-                options={EFFORTS.map((e) => ({ value: e.value, label: e.label }))}
-              />
+          {effort && bot && (effort.levels.length > 0 || effort.note) && (
+            <div className="shrink-0 border-t px-3 py-2">
+              {/* A list rather than a row of segments: five levels and the
+                  default do not fit across a menu this narrow. */}
+              {effort.levels.length > 0 && (
+                <div className="flex items-center gap-2.5">
+                  <label htmlFor={`effort-${bot.id}`} className="text-small text-muted-foreground">
+                    Effort
+                  </label>
+                  <SettingsSelect
+                    id={`effort-${bot.id}`}
+                    aria-label="Reasoning effort"
+                    className="flex-1"
+                    value={effort.value ?? ""}
+                    // null, not left out, so the saved level is cleared
+                    onChange={(e) => dispatch({ type: "updateBot", botId: bot.id, patch: { effort: isEffort(e.target.value) ? e.target.value : null } })}
+                  >
+                    {effort.options.map((option) => (
+                      <option key={option.value ?? "default"} value={option.value ?? ""}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </SettingsSelect>
+                </div>
+              )}
+              {effort.note && <p className={cn("text-small text-muted-foreground", effort.levels.length > 0 && "mt-1.5")}>{effort.note}</p>}
             </div>
           )}
         </div>,

@@ -2601,6 +2601,30 @@ note, so the agent asks for the access instead of reading it as Bloks
 being down (GitHub 251). A workspace that is not running answers
 `nothing is answering at <address>` instead.
 
+## Reasoning effort
+
+An agent's `effort` is `low`, `medium`, `high`, `xhigh` or `max` (Low,
+Medium, High, Extra high and Max on screen), or unset for the engine's
+own. Each driver lists the levels it passes on as
+`capabilities.efforts`, and `GET /api/instances` reports them per engine
+as `efforts`: Claude Code all five, as `--effort <level>` on every turn
+(from 2.1.252, the oldest CLI checked; an older one is sent none);
+Codex all five as `turn/start.effort`, narrowed per model by the
+`supportedReasoningEfforts` in its own `model/list` (reported as each
+model option's `efforts`); Grok CLI `low`, `medium` and `high`, as
+`--reasoning-effort`. The other engines have no dial and are sent none.
+
+A level being chosen (`PATCH /api/bots/:id`, `POST /api/bots`, which is
+`bloks hire --effort <level>`, or New agents with a model picked) has to
+be one the agent's engine and model take; anything else is refused with
+the levels that engine has. A level already saved stays when the agent
+moves to an engine without it, so moving back brings it back, and an
+engine with no dial keeps whatever it is given. Dispatch sends the
+nearest level the engine running the turn has, the lower of two equally
+near, so a saved `max` on Grok CLI runs at `high`, and the pickers show
+that level with a line saying why. `null` on a patch goes back to the
+engine's own. An exported agent carries its level as it was.
+
 ## Security checkup
 
 Settings has a Security checkup page (`src/components/SecurityCheckup.tsx`)

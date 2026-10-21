@@ -24,13 +24,7 @@ import { cn } from "@/lib/cn";
 import { Segmented } from "@/components/ui/segmented";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import { APPROVAL_MODES, useWorkspaceApprovals } from "./ApprovalsChooser";
-
-const EFFORTS = [
-  [undefined, "Default"],
-  ["low", "Low"],
-  ["medium", "Medium"],
-  ["high", "High"],
-] as const;
+import { effortChoice } from "@/lib/effort";
 
 export function AgentDefaults() {
   const { state, dispatch } = useStore();
@@ -70,6 +64,11 @@ export function AgentDefaults() {
 
   const saveFolder = (value: string) => save({ cwd: value.trim() || undefined });
   const anySet = Boolean(saved.cwd || saved.modelSelection || saved.effort);
+  // Offered by the engine new agents start on, when one is chosen. With
+  // the engine default, which engine a hire gets is settled when it is
+  // hired, so every level is offered and each runs at the nearest its
+  // engine has.
+  const effort = effortChoice(state.instances, saved.modelSelection, saved.effort);
 
   return (
     <>
@@ -128,14 +127,17 @@ export function AgentDefaults() {
         />
         <SettingRow
           label="Reasoning effort"
+          description={effort.note ?? undefined}
           control={
-            <Segmented
-              size="sm"
-              aria-label="Reasoning effort"
-              value={saved.effort}
-              onChange={(effort) => save({ effort })}
-              options={EFFORTS.map(([value, label]) => ({ value, label }))}
-            />
+            effort.levels.length > 0 && (
+              <Segmented
+                size="sm"
+                aria-label="Reasoning effort"
+                value={effort.value}
+                onChange={(next) => save({ effort: next })}
+                options={effort.options}
+              />
+            )
           }
         />
       </SettingsGroup>

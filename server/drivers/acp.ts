@@ -37,6 +37,7 @@ import type {
   SendTurnInput,
 } from "../contracts.ts";
 import { newEventId, newId } from "../contracts.ts";
+import type { Effort } from "../effort.ts";
 import { outReason } from "../failover.ts";
 import { attachRpc } from "../harness/jsonrpc-stdio.ts";
 import { killTree, launchSpec, onPath, widenPath } from "../path.ts";
@@ -55,7 +56,10 @@ export interface AcpSpec {
   args: string[];
   /** Extra argv built per turn, for CLIs that take model or permission
    * flags on the command line rather than through the protocol. */
-  turnArgs?: (opts: { fullAuto: boolean; model?: string; effort?: string }) => string[];
+  turnArgs?: (opts: { fullAuto: boolean; model?: string; effort?: Effort }) => string[];
+  /** The effort levels turnArgs passes on. Absent for an agent that is
+   * given none, whose turns then carry none (server/effort.ts). */
+  efforts?: readonly Effort[];
   /** Inherited env vars to strip before spawning. A CLI that owns its own
    * subscription login can silently flip to pay-as-you-go billing if a
    * same-vendor API key leaks through. */
@@ -1066,7 +1070,7 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
         catalogReady,
         adapter: {
           provider: spec.kind,
-          capabilities: { sessionModelSwitch: "in-session", compactsFirst: true },
+          capabilities: { sessionModelSwitch: "in-session", compactsFirst: true, ...(spec.efforts ? { efforts: spec.efforts } : {}) },
           sendTurn,
           interruptTurn: async (threadId) => active.get(threadId)?.interrupt(),
           respondToRequest: async (threadId, requestId, decision) => {
@@ -1131,6 +1135,9 @@ export const ACP_SPECS: readonly AcpSpec[] = [
       "agent",
       "stdio",
     ],
+    // What it has always been given. Its own models differ (some have
+    // xhigh, some stop at high) and the ACP catalog does not say which.
+    efforts: ["low", "medium", "high"],
     install: "curl -fsSL https://x.ai/cli/install.sh | bash",
     signIn: "run `grok login` in a terminal",
     // it binds the grok.com subscription; an inherited API key would move

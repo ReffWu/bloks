@@ -9,6 +9,7 @@
 import type { BlokColor, BlokExpression, BlokShape } from "@/lib/mascot";
 import type { LaneContext } from "@/lib/contextCard";
 import type { CodexSpeed, CodexSpeedStatus } from "@/lib/codexSpeed";
+import type { Effort } from "@/lib/effort";
 import { resolveSettingsPage } from "../lib/settingsPages.ts";
 
 export type { BlokColor, BlokShape } from "@/lib/mascot";
@@ -328,8 +329,10 @@ export interface Bot {
   /** 1 to 5; the most senior member of a room has the final call, unless
    * the room crowned someone else (Blok.leadId). */
   seniority?: number;
-  /** Reasoning effort for engines that have the dial. */
-  effort?: "low" | "medium" | "high";
+  /** Reasoning effort for engines that have the dial. Absent or null is
+   * the engine's own; a level the engine lacks runs at the nearest it
+   * has (src/lib/effort.ts). */
+  effort?: Effort | null;
   /** This agent's own Codex speed; absent or null follows the workspace. */
   codexSpeed?: CodexSpeed | null;
   mascotExpression?: BlokExpression | null;
@@ -491,7 +494,7 @@ export interface AgentDefaults {
   /** Ask when unset. An agent hiring another passes on no more than its own. */
   approvals?: "edits" | "auto" | "full";
   modelSelection?: ModelSelection;
-  effort?: "low" | "medium" | "high";
+  effort?: Effort;
 }
 
 type Lane = { id: string; unread?: boolean; lastAt?: number; createdAt: number; state?: string };
@@ -593,10 +596,14 @@ export interface InstanceInfo {
     authenticated?: boolean;
     version?: string | null;
   };
+  /** The effort levels the engine takes, least first; empty for one with
+   * no dial. Absent from a server from before they were per engine. */
+  efforts?: Effort[];
   models: {
     default: string;
-    /** codexFast: whether Codex offers Fast for the model, where it said. */
-    options: Array<{ id: string; label: string; codexFast?: boolean }>;
+    /** codexFast: whether Codex offers Fast for the model, where it said.
+     * efforts: the levels the engine listed for the model, where it said. */
+    options: Array<{ id: string; label: string; codexFast?: boolean; efforts?: Effort[] }>;
     /** When the engine last reported the list. */
     checkedAt?: number;
     /** Where the list came from, when it is not the engine reporting it live. */

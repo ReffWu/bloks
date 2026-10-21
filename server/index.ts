@@ -272,6 +272,7 @@ import {
   type Verdict,
 } from "./goals.ts";
 import { resolveCodexSpeed, isCodexSpeed, codexSpeedRoute, REMOTE_FAST_REASON, CodexSpeedUnavailable, type CodexSpeedRefusal } from "./codex-speed.ts";
+import { clampEffort, effortLevels, effortRefusal, isEffort, type Effort } from "./effort.ts";
 import { codexSkillNames } from "./codex-skills.ts";
 import { reservedEnvName, usableSecrets } from "./env-names.ts";
 import * as discord from "./discord.ts";
@@ -7020,7 +7021,10 @@ async function startClaimedTurn(
         stallMs: stallLimitMs(),
         backgroundWork: resolveBackgroundWork(bot.backgroundWork, cfg.turns?.backgroundWork),
         model: selection.model,
-        effort: bot.effort,
+        // the nearest level this engine and model have: a saved level the
+        // engine lacks (an agent moved, or a backup answering) must not
+        // cost the turn, and an engine with no dial is sent none
+        effort: clampEffort(bot.effort, effortLevels(instance, selection.model)),
         ...(bot.engineHooks === false ? { noHooks: true } : {}),
         ...(tags ? { tags } : {}),
         resumeCursor,
@@ -17899,9 +17903,20 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const placing = readArrangement({ section: body.section, pinned: body.pinned, position: body.position });
       if (!placing.ok) return json(res, 400, { error: placing.error });
 
+      // How hard it thinks, when whoever hires it says: a level the engine
+      // it starts on takes, checked before anybody is made. Unsaid, it
+      // starts on the default for new agents.
+      const settings = await newAgentSettings(asAgent ? (store.bot(asAgent.botId)?.approvals ?? "ask") : undefined);
+      if (body.effort !== undefined) {
+        const on = settings.modelSelection;
+        const refused = effortRefusal(body.effort, on && registry.get(on.instanceId), on?.model);
+        if (refused) return json(res, 400, { error: refused });
+        settings.effort = body.effort as Effort;
+      }
+
       const bot = store.createBot(profile);
       store.patchBot(bot.id, {
-        ...(await newAgentSettings(asAgent ? (store.bot(asAgent.botId)?.approvals ?? "ask") : undefined)),
+        ...settings,
         ...(asAgent ? { hiredBy: asAgent.botId } : {}),
         // made by the person is time spent with them; hired by an agent
         // is not, and it waits below until the person is
@@ -18169,7 +18184,24 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         }
         patch.engineAccess = undefined;
       }
-      for (const key of ["name", "title", "description", "notifications", "modelSelection", "computer", "color", "shape", "skills", "skillIds", "effort", "mascotExpression", "hidden"] as const) {
+      // A level being chosen has to be one the agent's engine takes: the
+      // engine this patch moves it to, when it moves. One already saved
+      // stays when the agent moves and its turns get the nearest level,
+      // so saying it again is not refused. Null is the engine's own.
+      if (body.effort !== undefined) {
+        const existing = store.bot(m[1]);
+        if (body.effort === null) {
+          patch.effort = undefined;
+        } else {
+          const on = (body.modelSelection as ModelSelection | undefined) ?? existing?.modelSelection;
+          const refused = isEffort(body.effort) && body.effort === existing?.effort
+            ? null
+            : effortRefusal(body.effort, on && registry.get(on.instanceId), on?.model);
+          if (refused) return json(res, 400, { error: refused });
+          patch.effort = body.effort;
+        }
+      }
+      for (const key of ["name", "title", "description", "notifications", "modelSelection", "computer", "color", "shape", "skills", "skillIds", "mascotExpression", "hidden"] as const) {
         if (body[key] !== undefined) patch[key] = body[key];
       }
       if (body.cwd !== undefined) {
@@ -24673,12 +24705,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           }
           next.approvals = asked.approvals as Approvals;
         }
-        if (asked.effort !== undefined) {
-          if (!["low", "medium", "high"].includes(asked.effort as string)) {
-            return json(res, 400, { error: "effort is low, medium or high" });
-          }
-          next.effort = asked.effort as "low" | "medium" | "high";
-        }
         if (asked.modelSelection !== undefined) {
           const pick = asked.modelSelection as { instanceId?: unknown; model?: unknown } | null;
           if (typeof pick?.instanceId !== "string" || typeof pick.model !== "string" || !registry.get(pick.instanceId)) {
@@ -24688,6 +24714,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             return json(res, 400, { error: "modelSelection.model must be a model id" });
           }
           next.modelSelection = { instanceId: pick.instanceId, model: pick.model };
+        }
+        // Judged against the engine chosen here, which new agents start
+        // on. Without one, which engine a hire gets is settled when it is
+        // hired, so any level is kept and each agent runs at the nearest
+        // its engine has. The whole section comes every time, so a level
+        // already saved is not judged again when only the model changes.
+        if (asked.effort !== undefined) {
+          const on = next.modelSelection;
+          const kept = isEffort(asked.effort) && (asked.effort === cfg.agentDefaults?.effort || !on);
+          const refused = kept ? null : effortRefusal(asked.effort, on && registry.get(on.instanceId), on?.model);
+          if (refused) return json(res, 400, { error: refused });
+          next.effort = asked.effort as Effort;
         }
         Object.assign(cfg, saveConfig({ agentDefaults: next }));
         wroteSomething = true;

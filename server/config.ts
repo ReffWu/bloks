@@ -203,7 +203,7 @@ export interface AppConfig {
     cwd?: string;
     approvals?: "ask" | "edits" | "auto" | "full";
     modelSelection?: { instanceId: string; model: string };
-    effort?: "low" | "medium" | "high";
+    effort?: import("./effort.ts").Effort;
   };
   /** The outbound line to a relay, so a phone can reach this Mac from
    * outside the house. The token names one space; the relay never holds
