@@ -524,7 +524,7 @@ function PairingControls() {
         <ConnectionHeader
           icon={<Smartphone size={14} className="shrink-0 text-muted-foreground" />}
           title="Pair your iPhone"
-          says="Reach your agents from anywhere, and approve their work from your Lock Screen."
+          says="Talk to your agents from your phone, and approve their work from your Lock Screen."
           health={health && <HealthLine tone={health.tone} label={health.label} />}
           control={
             <Switch aria-label="Phone access" checked={status.enabled} onCheckedChange={(on) => (on ? pairPhone() : setEnabled(false))} />
