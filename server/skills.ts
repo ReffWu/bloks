@@ -15,15 +15,14 @@
 import {
   chmodSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 
 import { SKILLS_DIR } from "./config.ts";
+import { closeHeld, openInside, readHeld } from "./open-inside.ts";
 
 export interface Skill {
   id: string;
@@ -374,7 +373,14 @@ function readUserSkills(): Skill[] {
     if (!entry.endsWith(".md")) continue;
     const file = join(SKILLS_DIR, entry);
     try {
-      if (statSync(file).size > MAX_SKILL_FILE_BYTES) {
+      // Opened once, as a regular file inside the folder: a skill is read
+      // into every turn and shown to every device, so a link put here
+      // that leads out of the folder is never followed, and the size
+      // checked is the size of the bytes read.
+      const held = openInside(SKILLS_DIR, [entry]);
+      if (!held) throw new Error("not a file in the skills folder");
+      if (held.stat.size > MAX_SKILL_FILE_BYTES) {
+        closeHeld(held);
         skillRead = "partial";
         if (!warnedLong.has(file)) {
           warnedLong.add(file);
@@ -382,7 +388,9 @@ function readUserSkills(): Skill[] {
         }
         continue;
       }
-      const raw = readFileSync(file, "utf8");
+      const bytes = readHeld(held, MAX_SKILL_FILE_BYTES);
+      if (!bytes) throw new Error("unreadable");
+      const raw = bytes.toString("utf8");
       const parsed = parseMarkdown(raw);
       if (!parsed.body.trim()) continue;
       // Edited by hand past the limit. Still loaded, cut at the limit, but

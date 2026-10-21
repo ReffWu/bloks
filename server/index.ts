@@ -10,14 +10,14 @@ import { CLOUD_KEY, licenceFrom, licenceToUse } from "./licence.ts";
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
 import { SaidOnce, desktopNotice, noticeKey, unreadCount as desktopUnreadCount } from "./desktop-notice.ts";
-import { closeSync, createReadStream, createWriteStream, existsSync, mkdirSync, openAsBlob, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
+import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect as netConnect } from "node:net";
-import type { Duplex } from "node:stream";
+import { pipeline, type Duplex } from "node:stream";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { extname, join, resolve, sep } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 
 import * as attachments from "./attachments.ts";
 import { agentTurnLimit, validTurnLimit, pastAgentLimit, chainName, chainExcerpt, chainLimitText, chainAgentRefusal, MIN_AGENT_CHAIN_LIMIT, MAX_AGENT_CHAIN_LIMIT } from "./agent-chain.ts";
@@ -528,7 +528,7 @@ import {
   newestAutomatic,
   pendingRestore,
   pruneAutomatic,
-  readBackupSummary,
+  readBackupSummaryFrom,
   revealBackup,
   shownPath,
   stageRestore,
@@ -545,6 +545,7 @@ import { PriceBook, PRICES_URL, readOwnPrice, type OwnPrice } from "./model-pric
 import { TeamLibrary } from "./team-library.ts";
 import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam } from "./team-file.ts";
 import * as artifacts from "./artifacts.ts";
+import { closeHeld, openInside, readHeld, streamHeld } from "./open-inside.ts";
 import * as workspace from "./workspace.ts";
 import * as speech from "./speech.ts";
 import { speakable } from "./speech-text.ts";
@@ -12638,16 +12639,21 @@ function deliverablesIn(botId: string, messages: readonly Message[]): telegram.D
     if (message.deleted) continue;
     if (message.kind === "artifact" && message.artifact) {
       const { name } = message.artifact;
-      const path = artifacts.artifactPath(botId, name);
-      if (!path) continue;
-      let size: number;
-      try {
-        size = statSync(path).size;
-      } catch {
-        continue;
-      }
-      const mime = artifacts.mimeOf(name);
-      keep({ name, mime, size, blob: () => openAsBlob(path, { type: mime }) });
+      const info = artifacts.artifactInfo(botId, name);
+      if (!info) continue;
+      const { size, mime } = info;
+      // opened again when it goes, and read from that open file, so the
+      // file sent is the one judged shared at that moment
+      keep({
+        name,
+        mime,
+        size,
+        blob: async () => {
+          const bytes = artifacts.openArtifact(botId, name)?.read(telegram.UPLOAD_MAX_BYTES);
+          if (!bytes) throw new Error(`${name} could not be read`);
+          return new Blob([bytes], { type: mime });
+        },
+      });
     } else if (message.kind === "screen" && message.png) {
       const bytes = Buffer.from(message.png, "base64");
       const mime = message.mime || "image/png";
@@ -15941,15 +15947,27 @@ async function serveMove(req: IncomingMessage, res: ServerResponse, method: stri
     if (m && method === "GET" && m[1] !== "import") {
       if (!local) return json(res, 403, { error: "not from here" });
       const name = decodeURIComponent(m[1]);
-      const file = backupPath(name);
-      if (checkBackupKind(file) !== "move") return json(res, 404, { error: "That is not a workspace move file." });
+      // a name a backup can have, or the refusal for one that is not
+      backupPath(name);
+      // then opened once, as a regular file in the backups folder, and
+      // judged, measured and sent from that open file (GitHub 318)
+      const held = openInside(backupsDirFor(), [name]);
+      if (!held) return json(res, 404, { error: "There is no backup by that name." });
+      let kind: BackupInfo["kind"] | null = null;
+      try {
+        kind = readBackupSummaryFrom(held.fd).summary.kind;
+      } catch {}
+      if (kind !== "move") {
+        closeHeld(held);
+        return json(res, 404, { error: "That is not a workspace move file." });
+      }
       res.writeHead(200, {
         "content-type": "application/octet-stream",
-        "content-length": statSync(file).size,
+        "content-length": held.stat.size,
         "content-disposition": `attachment; filename="${name}"`,
         "cache-control": "no-store",
       });
-      createReadStream(file).pipe(res);
+      pipeline(streamHeld(held), res, () => {});
       return;
     }
     // Taking one in: on this computer, or from the person's own paired
@@ -15986,13 +16004,20 @@ async function serveMove(req: IncomingMessage, res: ServerResponse, method: stri
   }
 }
 
-/** The kind a backup file says it is, or null when it is not one. */
-function checkBackupKind(file: string): BackupInfo["kind"] | null {
-  try {
-    return readBackupSummary(file).summary.kind;
-  } catch {
-    return null;
-  }
+/** Bigger than any photo the app or an agent file puts there, which the
+ * body limit keeps far smaller already. */
+const AVATAR_MAX_BYTES = 16 * 1024 * 1024;
+
+/** An agent's photo and what kind of picture it is, each read from the
+ * file opened inside the photos folder, never through a link out of it. */
+function readAvatar(botId: string): { bytes: Buffer; mime: string } | null {
+  const photo = openInside(AVATARS_DIR, [botId]);
+  const bytes = photo && readHeld(photo, AVATAR_MAX_BYTES);
+  if (!bytes) return null;
+  const sidecar = openInside(AVATARS_DIR, [`${botId}.mime`]);
+  // sidecar lost: jpeg is what both clients send by default
+  const said = sidecar && readHeld(sidecar, 200)?.toString("utf8").trim();
+  return { bytes, mime: said && /^image\/(jpeg|png|webp)$/.test(said) ? said : "image/jpeg" };
 }
 
 async function serveBackups(req: IncomingMessage, res: ServerResponse, method: string, path: string) {
@@ -17188,19 +17213,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && method === "GET") {
       const bot = store.bot(m[1]);
       if (!bot?.avatarAt) return json(res, 404, { error: "no photo for this agent" });
-      try {
-        const bytes = readFileSync(join(AVATARS_DIR, bot.id));
-        let mime = "image/jpeg";
-        try {
-          mime = readFileSync(join(AVATARS_DIR, `${bot.id}.mime`), "utf8").trim() || mime;
-        } catch {
-          /* sidecar lost: jpeg is what both clients send by default */
-        }
-        res.writeHead(200, { "content-type": mime, "cache-control": "private, max-age=86400" });
-        return res.end(bytes);
-      } catch {
-        return json(res, 404, { error: "no photo for this agent" });
-      }
+      const photo = readAvatar(bot.id);
+      if (!photo) return json(res, 404, { error: "no photo for this agent" });
+      res.writeHead(200, { "content-type": photo.mime, "cache-control": "private, max-age=86400" });
+      return res.end(photo.bytes);
     }
     if (m && method === "DELETE") {
       const bot = store.bot(m[1]);
@@ -17230,21 +17246,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return text === null ? [] : [{ name: t.name, text }];
       });
       let avatar: { mime: string; data: string } | null = null;
-      if (bot.avatarAt) {
-        try {
-          const data = readFileSync(join(AVATARS_DIR, bot.id)).toString("base64");
-          let mime = "image/jpeg";
-          try {
-            mime = readFileSync(join(AVATARS_DIR, `${bot.id}.mime`), "utf8").trim() || mime;
-          } catch {
-            /* sidecar lost: jpeg is what both clients send by default */
-          }
-          avatar = { mime, data };
-        } catch {
-          /* the record says there is a photo and the file is gone; export
-             the agent anyway rather than failing over a picture */
-        }
-      }
+      // the record may say there is a photo and the file be gone; the
+      // agent is exported anyway rather than failing over a picture
+      const photo = bot.avatarAt ? readAvatar(bot.id) : null;
+      if (photo) avatar = { mime: photo.mime, data: photo.bytes.toString("base64") };
       const file = packAgent({
         bot,
         memory: memory.text,
@@ -19099,19 +19104,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       } catch {
         return json(res, 400, { error: "that is not a file name" });
       }
-      const found = artifacts.artifactInfo(bot.id, name);
-      if (!found) return json(res, 404, { error: "no such file" });
+      // Opened once, before anything is said about it: whether it is
+      // shared, its size, a range read against that size, and the bytes
+      // all come from this one open file, so nothing swapped in after the
+      // check can be sent under its name (GitHub 318).
+      const opened = artifacts.openArtifact(bot.id, name);
+      if (!opened) return json(res, 404, { error: "no such file" });
       // A range, from the header a video player sends to seek, or from
       // the query, which is all that crosses Bloks Cloud: a phone there
       // takes a large file a piece at a time.
       const query = url.searchParams.get("range");
-      const range = artifacts.parseRange(req.headers.range ?? (query ? `bytes=${query}` : undefined), found.size);
+      const range = artifacts.parseRange(req.headers.range ?? (query ? `bytes=${query}` : undefined), opened.size);
       if (range === null) {
-        res.writeHead(416, { "content-range": `bytes */${found.size}` });
+        opened.close();
+        res.writeHead(416, { "content-range": `bytes */${opened.size}` });
         return void res.end();
       }
-      const opened = artifacts.openArtifact(bot.id, found.name, range);
-      if (!opened) return json(res, 404, { error: "no such file" });
       res.writeHead(range ? 206 : 200, {
         "content-type": opened.mime,
         "content-length": range ? range.end - range.start + 1 : opened.size,
@@ -19120,9 +19128,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         // html artifacts render inside a sandboxed iframe; this keeps a
         // hostile file from becoming a same-origin script on the API
         "content-security-policy": "sandbox allow-scripts",
-        ...(url.searchParams.has("download") ? { "content-disposition": artifacts.attachmentHeader(found.name) } : {}),
+        ...(url.searchParams.has("download") ? { "content-disposition": artifacts.attachmentHeader(opened.name) } : {}),
       });
-      opened.stream.pipe(res);
+      // a viewer that hangs up early takes the open file with it
+      pipeline(opened.stream(range), res, () => {});
       return;
     }
 
@@ -23439,22 +23448,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (file !== root && !file.startsWith(root + sep)) {
         return json(res, 403, { error: "forbidden" });
       }
-      try {
-        const data = readFileSync(file);
+      // and then opened as the file it really is, inside the folder, and
+      // read from that open file (server/open-inside.ts)
+      const held = file === root ? null : openInside(root, relative(root, file).split(sep));
+      const data = held && readHeld(held);
+      if (data) {
         res.writeHead(200, {
           "content-type": MIME[extname(file)] ?? "application/octet-stream",
           ...SECURITY_HEADERS,
         });
         return res.end(data);
-      } catch {
-        // SPA fallback
-        try {
-          const data = readFileSync(join(STATIC_DIR, "index.html"));
-          res.writeHead(200, { "content-type": "text/html", ...SECURITY_HEADERS });
-          return res.end(data);
-        } catch {
-          /* fall through to 404 */
-        }
+      }
+      // SPA fallback
+      const page = openInside(root, ["index.html"]);
+      const index = page && readHeld(page);
+      if (index) {
+        res.writeHead(200, { "content-type": "text/html", ...SECURITY_HEADERS });
+        return res.end(index);
       }
     }
 

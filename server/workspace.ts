@@ -10,11 +10,12 @@
 //
 // Permissions are tight (0700 dir, 0600 files): memories carry
 // personal detail and have no business being world-readable.
-import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
 import { DATA_DIR } from "./config.ts";
+import { closeHeld, openInside, readHeld } from "./open-inside.ts";
 
 const WORKSPACES = join(DATA_DIR, "workspaces");
 
@@ -49,18 +50,30 @@ export function ensureWorkspace(botId: string): string {
 }
 
 function readWhole(botId: string): string | null {
-  return readMemoryAt(join(workspaceDir(botId), "MEMORY.md"));
+  return readMemoryIn(workspaceDir(botId));
 }
 
-function readMemoryAt(path: string): string | null {
-  try {
-    const text = readFileSync(path, "utf8");
-    // the untouched seed is instructions, not memory
-    if (!text.trim() || text === SEED) return null;
-    return text;
-  } catch {
-    return null;
-  }
+/**
+ * A memory file's words and when they last changed, read from the file
+ * opened inside `dir`, or null. An agent can make any of these files a
+ * link with its own tools, and reads them back through the server, so one
+ * that leads out of its folder is never read through, whether it was
+ * there all along or swapped in a moment after the name was judged
+ * (server/open-inside.ts).
+ */
+function readTextIn(dir: string, name: string): { text: string; mtimeMs: number } | null {
+  const held = openInside(dir, name.split("/"));
+  if (!held) return null;
+  const { mtimeMs } = held.stat;
+  const bytes = readHeld(held);
+  return bytes ? { text: bytes.toString("utf8"), mtimeMs } : null;
+}
+
+function readMemoryIn(dir: string): string | null {
+  const text = readTextIn(dir, "MEMORY.md")?.text;
+  // the untouched seed is instructions, not memory
+  if (!text?.trim() || text === SEED) return null;
+  return text;
 }
 
 /** The prompt's share of memory: whole file up to the budget. */
@@ -116,22 +129,13 @@ export interface MemoryStats {
 }
 
 function statsAt(dir: string, topics: boolean): MemoryStats {
-  const path = join(dir, "MEMORY.md");
-  const whole = readMemoryAt(path) ?? "";
-  let changed: number | null = null;
-  try {
-    if (whole) changed = Math.floor(statSync(path).mtimeMs);
-  } catch {
-    /* gone between the read and the stat: no time to report */
-  }
+  const read = readTextIn(dir, "MEMORY.md");
+  const whole = read && read.text.trim() && read.text !== SEED ? read.text : "";
+  let changed: number | null = whole && read ? Math.floor(read.mtimeMs) : null;
   const listed = topics
     ? topicsIn(dir).map((topic) => {
-        let text = "";
-        try {
-          text = readFileSync(join(dir, "memory", topic.name), "utf8");
-        } catch {
-          /* unreadable: counted as empty rather than failing the meter */
-        }
+        // unreadable: counted as empty rather than failing the meter
+        const text = readTextIn(dir, `memory/${topic.name}`)?.text ?? "";
         return { ...topic, lines: lineCount(text) };
       })
     : [];
@@ -167,7 +171,7 @@ export function sharedMemoryDir(): string {
 }
 
 export function readSharedMemory(): { text: string; truncated: boolean } {
-  const whole = readMemoryAt(join(sharedMemoryDir(), "MEMORY.md"));
+  const whole = readMemoryIn(sharedMemoryDir());
   if (whole === null) return { text: "", truncated: false };
   return { text: whole, truncated: cutToBudget(whole).truncated };
 }
@@ -186,7 +190,7 @@ export function sharedMemoryStats(): MemoryStats {
 
 /** The shared memory as an agent is told it, or null while it is empty. */
 export function sharedMemoryPrompt(): string | null {
-  const whole = readMemoryAt(join(sharedMemoryDir(), "MEMORY.md"));
+  const whole = readMemoryIn(sharedMemoryDir());
   if (whole === null) return null;
   const { text, truncated } = cutToBudget(whole);
   return `Shared memory, kept by the person you work for for every agent in this workspace. You can read it but not change it; if something in it looks wrong, say so:\n${text}${truncated ? "\n[shared memory truncated]" : ""}`;
@@ -225,12 +229,11 @@ function topicsIn(dir: string): Array<{ name: string; bytes: number; changedAt: 
     return readdirSync(join(dir, "memory"))
       .filter((name) => TOPIC_NAME.test(name))
       .flatMap((name) => {
-        try {
-          const stat = statSync(join(dir, "memory", name));
-          return stat.isFile() ? [{ name, bytes: stat.size, changedAt: Math.floor(stat.mtimeMs) }] : [];
-        } catch {
-          return [];
-        }
+        // listed as reading would find it: a regular file inside, or not at all
+        const held = openInside(dir, ["memory", name]);
+        if (!held) return [];
+        closeHeld(held);
+        return [{ name, bytes: held.stat.size, changedAt: Math.floor(held.stat.mtimeMs) }];
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   } catch {
@@ -241,11 +244,7 @@ function topicsIn(dir: string): Array<{ name: string; bytes: number; changedAt: 
 export function readMemoryTopic(botId: string, name: string): string | null {
   // re-checked here so no future caller can turn this into an open read
   if (!TOPIC_NAME.test(name)) return null;
-  try {
-    return readFileSync(join(workspaceDir(botId), "memory", name), "utf8");
-  } catch {
-    return null;
-  }
+  return readTextIn(workspaceDir(botId), `memory/${name}`)?.text ?? null;
 }
 
 /** How much of one memory file recall reads. Topic files are the agent's
@@ -283,15 +282,18 @@ function filesAt(dir: string, topics: boolean): MemoryFileRead[] {
           stamp: `${stat.mtimeMs}:${stat.size}`,
           mtimeMs: Math.floor(stat.mtimeMs),
           read: () => {
-            const fd = openSync(path, "r");
+            // opened as a regular file inside, so a link swapped in since
+            // the listing above is not read through
+            const held = openInside(dir, name.split("/"));
+            if (!held) return "";
             try {
-              const buffer = Buffer.alloc(Math.min(stat.size, MEMORY_RECALL_BYTES));
-              const got = readSync(fd, buffer, 0, buffer.length, 0);
+              const buffer = Buffer.alloc(Math.min(held.stat.size, MEMORY_RECALL_BYTES));
+              const got = readSync(held.fd, buffer, 0, buffer.length, 0);
               // a character cut in half at the end decodes as U+FFFD; drop it
               const text = buffer.subarray(0, got).toString("utf8").replace(/\uFFFD+$/, "");
               return text === SEED ? "" : text;
             } finally {
-              closeSync(fd);
+              closeHeld(held);
             }
           },
         },

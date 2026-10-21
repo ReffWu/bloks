@@ -14,12 +14,12 @@
 // Plain Node on purpose (no Electron imports), so it can be driven and
 // tested outside the app.
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, randomUUID } from "node:crypto";
-import { readFileSync, existsSync, statSync } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { extname, join, normalize } from "node:path";
+import { extname, normalize } from "node:path";
 import { gunzipSync } from "node:zlib";
 
+import { readInside } from "./open-inside.mjs";
 import { WAKE_GAVE_UP, createWakeWatch, isWakingAnswer } from "./waking.mjs";
 
 // ── crypto: a mirror of server/relay-crypto.ts ─────────────────────────
@@ -164,6 +164,29 @@ const PAGE_HEADERS = {
   "referrer-policy": "no-referrer",
 };
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+/** The window's page and its files, from `staticDir`, and the page for
+ * any address that names nothing there. A name is judged as words (no
+ * climbing out), then opened as the file it really is inside the folder
+ * and sent from that open file, so a link put in the folder, or in place
+ * of a file a moment after it was judged, is never followed out of it. */
+function serveStaticFrom(staticDir, req, res) {
+  const url = new URL(req.url, "http://x");
+  const parts = normalize(decodeURIComponent(url.pathname)).split(/[/\\]+/).filter(Boolean);
+  let file = parts.join("/");
+  let bytes = parts.length && !parts.includes("..") ? readInside(staticDir, parts) : null;
+  if (!bytes) {
+    file = "index.html";
+    bytes = readInside(staticDir, [file]);
+  }
+  if (!bytes) {
+    res.writeHead(404, { "content-type": "text/plain" });
+    res.end("not found");
+    return;
+  }
+  res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", ...PAGE_HEADERS });
+  res.end(bytes);
+}
 
 function hostnameOf(value) {
   try {
@@ -363,14 +386,7 @@ export async function startRemoteProxy(profile, { staticDir, port = 0, onState =
    * asked until it lands, so words sent before switching away still go. */
   const ask = (request, { gone } = {}) => watch.run(() => askOnce(request), { gone });
 
-  const serveStatic = (req, res) => {
-    const url = new URL(req.url, "http://x");
-    let path = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, "");
-    let file = join(staticDir, path);
-    if (!file.startsWith(staticDir) || !existsSync(file) || statSync(file).isDirectory()) file = join(staticDir, "index.html");
-    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", ...PAGE_HEADERS });
-    res.end(readFileSync(file));
-  };
+  const serveStatic = (req, res) => serveStaticFrom(staticDir, req, res);
 
   // One live line to the relay, fanned out to every open event stream in
   // the window. Frames are sealed for this device alone and opened here.
@@ -750,14 +766,7 @@ export async function startLanProxy(profile, { staticDir, port = 0, client, fetc
   const base = `http://${profile.lan}`;
   const auth = { authorization: `Bearer ${profile.deviceToken}`, ...(client ? { "x-bloks-client": client } : {}) };
   const open = new Set();
-  const serveStatic = (req, res) => {
-    const url = new URL(req.url, "http://x");
-    const path = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, "");
-    let file = join(staticDir, path);
-    if (!file.startsWith(staticDir) || !existsSync(file) || statSync(file).isDirectory()) file = join(staticDir, "index.html");
-    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", ...PAGE_HEADERS });
-    res.end(readFileSync(file));
-  };
+  const serveStatic = (req, res) => serveStaticFrom(staticDir, req, res);
   const server = createServer(async (req, res) => {
     if (!fromThisComputer(req)) {
       res.writeHead(403, { "content-type": "application/json" });

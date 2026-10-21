@@ -52,6 +52,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  read,
   readdirSync,
   readFileSync,
   readSync,
@@ -67,9 +68,11 @@ import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { promisify } from "node:util";
 import { constants as zlib, createGunzip, createGzip, gunzipSync } from "node:zlib";
 
 import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
+import { closeHeld, openInsideOr } from "./open-inside.ts";
 import { OWN_GROUP } from "./no-console.ts";
 import { APP_VERSION, DATA_DIR } from "./config.ts";
 import { holderOf } from "./data-lock.ts";
@@ -874,46 +877,52 @@ function checkSummary(value: unknown): BackupSummary {
 export function readBackupSummary(file: string): { summary: BackupSummary; encrypted: boolean } {
   const fd = openSync(file, "r");
   try {
-    for (const want of [8 * 1024, 64 * 1024]) {
-      const buffer = Buffer.alloc(want);
-      const bytes = buffer.subarray(0, readSync(fd, buffer, 0, want, 0));
-      if (bytes.subarray(0, MAGIC.length).equals(MAGIC)) {
-        if (bytes.length < MAGIC.length + 4) throw notABackup();
-        const length = bytes.readUInt32BE(MAGIC.length);
-        if (length > MAX_HEADER) throw notABackup();
-        if (bytes.length < MAGIC.length + 4 + length) {
-          if (bytes.length < want) throw notABackup();
-          continue;
-        }
-        const header = parseSealedHeader(bytes.subarray(MAGIC.length + 4, MAGIC.length + 4 + length));
-        return { summary: checkSummary(header.summary), encrypted: true };
-      }
-      let tar: Buffer;
-      try {
-        // a prefix of the stream, unpacked as far as it goes
-        tar = gunzipSync(bytes, { finishFlush: zlib.Z_SYNC_FLUSH });
-      } catch {
-        throw notABackup();
-      }
-      if (tar.length >= BLOCK) {
-        const entry = parseHeader(tar.subarray(0, BLOCK));
-        if (entry.name !== SUMMARY_ENTRY || entry.size > 64 * 1024) throw notABackup();
-        if (tar.length >= BLOCK + entry.size) {
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(tar.subarray(BLOCK, BLOCK + entry.size).toString("utf8"));
-          } catch {
-            throw notABackup();
-          }
-          return { summary: checkSummary(parsed), encrypted: false };
-        }
-      }
-      if (bytes.length < want) throw notABackup();
-    }
-    throw notABackup();
+    return readBackupSummaryFrom(fd);
   } finally {
     closeSync(fd);
   }
+}
+
+/** The same, from a file already open, read by position so the
+ * descriptor is left where it was for whoever sends the file next. */
+export function readBackupSummaryFrom(fd: number): { summary: BackupSummary; encrypted: boolean } {
+  for (const want of [8 * 1024, 64 * 1024]) {
+    const buffer = Buffer.alloc(want);
+    const bytes = buffer.subarray(0, readSync(fd, buffer, 0, want, 0));
+    if (bytes.subarray(0, MAGIC.length).equals(MAGIC)) {
+      if (bytes.length < MAGIC.length + 4) throw notABackup();
+      const length = bytes.readUInt32BE(MAGIC.length);
+      if (length > MAX_HEADER) throw notABackup();
+      if (bytes.length < MAGIC.length + 4 + length) {
+        if (bytes.length < want) throw notABackup();
+        continue;
+      }
+      const header = parseSealedHeader(bytes.subarray(MAGIC.length + 4, MAGIC.length + 4 + length));
+      return { summary: checkSummary(header.summary), encrypted: true };
+    }
+    let tar: Buffer;
+    try {
+      // a prefix of the stream, unpacked as far as it goes
+      tar = gunzipSync(bytes, { finishFlush: zlib.Z_SYNC_FLUSH });
+    } catch {
+      throw notABackup();
+    }
+    if (tar.length >= BLOCK) {
+      const entry = parseHeader(tar.subarray(0, BLOCK));
+      if (entry.name !== SUMMARY_ENTRY || entry.size > 64 * 1024) throw notABackup();
+      if (tar.length >= BLOCK + entry.size) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(tar.subarray(BLOCK, BLOCK + entry.size).toString("utf8"));
+        } catch {
+          throw notABackup();
+        }
+        return { summary: checkSummary(parsed), encrypted: false };
+      }
+    }
+    if (bytes.length < want) throw notABackup();
+  }
+  throw notABackup();
 }
 
 async function readArchive(
@@ -1158,6 +1167,10 @@ function configForMoveFile(file: string): { move: MoveConfig; toEnter: string[] 
   return { move: { bytes: Buffer.from(`${JSON.stringify(config, null, 2)}\n`), leftOut: plain.leftOut, mtime: plain.mtime }, toEnter };
 }
 
+/** A read by position from a file already open, off the main thread like
+ * any other read here. */
+const readAt = promisify(read);
+
 async function* archive(dataDir: string, plan: Plan, summary: BackupSummary, move?: MoveConfig | null): AsyncGenerator<Buffer> {
   yield* fileEntry(SUMMARY_ENTRY, Buffer.from(`${JSON.stringify(summary, null, 2)}\n`), 0o600, summary.created);
   const files: ManifestFile[] = [];
@@ -1218,20 +1231,23 @@ async function* archive(dataDir: string, plan: Plan, summary: BackupSummary, mov
       bytes += config.bytes.length;
       continue;
     }
-    let handle;
-    try {
-      handle = await open(abs, "r");
-    } catch (error) {
-      // gone since the folder was listed: a temp file, a closed lane
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      throw error;
+    // Opened as a regular file inside the data folder, and read only
+    // through that open file: the folder was listed a while ago, and an
+    // agent can write in parts of it, so a file swapped for a link since
+    // is left out rather than followed to wherever it points, and nothing
+    // outside the workspace is ever carried in a backup or a move.
+    const held = openInsideOr(dataDir, rel.split("/"));
+    // gone since the folder was listed: a temp file, a closed lane
+    if (held === "absent") continue;
+    if (held === "outside") {
+      leftOut.push(`${rel} (it became a link or something other than a file while the backup ran)`);
+      continue;
     }
     try {
       // Sizes come from the open file. A store replaces its file by
       // renaming a new one over it, so what is open stays one whole
       // version; a log being appended to is read up to where it was.
-      const st = await handle.stat();
-      if (!st.isFile()) continue;
+      const st = held.stat;
       const size = st.size;
       const mode = st.mode & 0o777;
       const mtime = Math.floor(st.mtimeMs);
@@ -1241,7 +1257,7 @@ async function* archive(dataDir: string, plan: Plan, summary: BackupSummary, mov
       while (done < size) {
         const want = Math.min(PIECE, size - done);
         const buffer = Buffer.allocUnsafe(want);
-        const { bytesRead } = await handle.read(buffer, 0, want, done);
+        const { bytesRead } = await readAt(held.fd, buffer, 0, want, done);
         if (bytesRead === 0) break;
         const piece = buffer.subarray(0, bytesRead);
         hash.update(piece);
@@ -1260,7 +1276,7 @@ async function* archive(dataDir: string, plan: Plan, summary: BackupSummary, mov
       files.push({ path: rel, size, sha256: hash.digest("hex"), mode, mtime });
       bytes += size;
     } finally {
-      await handle.close();
+      closeHeld(held);
     }
   }
   const manifest: Manifest = { ...summary, files, bytes, secretsLeftOut, leftOut, notes };

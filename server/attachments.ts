@@ -17,11 +17,13 @@
 // only the image and voice names (SAFE_NAME), so nothing a sender chose
 // is ever served back, which is what makes that route safe to expose.
 import { randomUUID } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
+import { pipeline } from "node:stream";
 
 import { DATA_DIR } from "./config.ts";
+import { openInside, streamHeld } from "./open-inside.ts";
 
 const ATTACHMENTS_DIR = join(DATA_DIR, "attachments");
 
@@ -122,24 +124,21 @@ export function saveAttachment(req: IncomingMessage, res: ServerResponse): void 
 }
 
 /** Hands a saved attachment back for the transcript. Only names this
- * module could have minted are even looked for. */
+ * module could have minted are even looked for, and the file is opened
+ * once, as a regular file inside the folder, and sent from that open
+ * file, so a link put in its place is never followed out. */
 export function serveAttachment(name: string, res: ServerResponse): void {
-  if (!SAFE_NAME.test(name)) {
-    res.writeHead(404, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "no such attachment" }));
-    return;
-  }
-  const path = join(ATTACHMENTS_DIR, name);
-  if (!existsSync(path)) {
+  const held = SAFE_NAME.test(name) ? openInside(ATTACHMENTS_DIR, [name]) : null;
+  if (!held) {
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "no such attachment" }));
     return;
   }
   res.writeHead(200, {
     "content-type": MIME_FOR[name.split(".").at(-1)!] ?? "application/octet-stream",
-    "content-length": statSync(path).size,
+    "content-length": held.stat.size,
     // minted names never change contents, so the browser may keep them
     "cache-control": "private, max-age=31536000, immutable",
   });
-  createReadStream(path).pipe(res);
+  pipeline(streamHeld(held), res, () => {});
 }

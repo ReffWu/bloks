@@ -11,12 +11,14 @@
 // a path relative to it, folders included ("reports/q3.pdf"), and every
 // name is judged twice: once as words (no "..", no hidden segments, no
 // backslashes), and once as the file it really is, after links are
-// followed, which has to be inside the directory too. A file anywhere else
-// on the computer reaches a person only by being shared into it (see
-// publish below), never by being named.
+// followed, which has to be inside the directory too. That second
+// judgement is made of the open file, not of the name (server/open-inside.ts),
+// so what is checked, what its size is said to be, and the bytes sent
+// are one file, whatever is swapped in the directory meanwhile. A file
+// anywhere else on the computer reaches a person only by being shared
+// into it (see publish below), never by being named.
 import {
   closeSync,
-  createReadStream,
   existsSync,
   fsyncSync,
   mkdirSync,
@@ -27,12 +29,14 @@ import {
   rmSync,
   statSync,
   writeSync,
+  type ReadStream,
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DATA_DIR } from "./config.ts";
+import { closeHeld, openInside, readHeld, streamHeld, within, type HeldFile } from "./open-inside.ts";
 
 export interface ArtifactInfo {
   name: string;
@@ -126,39 +130,33 @@ function realRoot(botId: string): string {
   }
 }
 
-function inside(root: string, file: string): boolean {
-  const rel = relative(root, file);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel) && !rel.split(sep).includes("..");
-}
-
-/** The file a name stands for, or null when it is not a safe name, is
- * not a file, or is a link that leads outside the directory. */
-export function artifactPath(botId: string, name: string): string | null {
+/** The file a name stands for, open, with the name tidied; or null when
+ * it is not a safe name, is not a regular file, or is anywhere but inside
+ * the directory. Whoever gets one closes it. */
+function holdArtifact(botId: string, name: string): { held: HeldFile; name: string } | null {
   if (!/^[\w-]+$/.test(botId)) return null;
   const clean = safeName(name);
   if (!clean) return null;
-  const file = join(artifactsDir(botId), ...clean.split("/"));
-  if (!existsSync(file)) return null;
-  let real: string;
-  try {
-    real = realpathSync(file);
-  } catch {
-    return null;
-  }
-  if (!inside(realRoot(botId), real)) return null;
-  try {
-    if (!statSync(real).isFile()) return null;
-  } catch {
-    return null;
-  }
-  return real;
+  const held = openInside(artifactsDir(botId), clean.split("/"));
+  return held ? { held, name: clean } : null;
+}
+
+/** Where the file a name stands for is, or null when it is not a safe
+ * name, is not a file, or is a link that leads outside the directory.
+ * An answer about the name, for deciding whether one is shared: reading
+ * the file goes through openArtifact, never through this path. */
+export function artifactPath(botId: string, name: string): string | null {
+  const found = holdArtifact(botId, name);
+  if (!found) return null;
+  closeHeld(found.held);
+  return found.held.path;
 }
 
 export function artifactInfo(botId: string, name: string): ArtifactInfo | null {
-  const file = artifactPath(botId, name);
-  if (!file) return null;
-  const clean = safeName(name)!;
-  return { name: clean, mime: mimeOf(clean), size: statSync(file).size };
+  const found = holdArtifact(botId, name);
+  if (!found) return null;
+  closeHeld(found.held);
+  return { name: found.name, mime: mimeOf(found.name), size: found.held.stat.size };
 }
 
 /** "bytes=0-1023", "bytes=500-", "bytes=-500", read against a size.
@@ -182,14 +180,32 @@ export function parseRange(header: string | null | undefined, size: number): { s
   return { start, end };
 }
 
-export function openArtifact(botId: string, name: string, range?: { start: number; end: number }) {
-  const file = artifactPath(botId, name);
-  if (!file) return null;
-  const stat = statSync(file);
+/** A shared file, open: its size as the open file has it, and its bytes
+ * from that same open file. */
+export interface OpenedArtifact extends ArtifactInfo {
+  /** All of it, or a range read against `size`. Closes the file when it
+   * ends, fails or is destroyed. */
+  stream(range?: { start: number; end: number }): ReadStream;
+  /** All of it at once, up to `max` bytes, then closed. Null when it is
+   * bigger than that or cannot be read. */
+  read(max?: number): Buffer<ArrayBuffer> | null;
+  /** Lets it go unread, for an answer that sends no bytes. */
+  close(): void;
+}
+
+/** The file a name stands for, opened once: the judgement, the size and
+ * the bytes all come from that one open. Null when it is not shared. */
+export function openArtifact(botId: string, name: string): OpenedArtifact | null {
+  const found = holdArtifact(botId, name);
+  if (!found) return null;
+  const { held } = found;
   return {
-    stream: range ? createReadStream(file, { start: range.start, end: range.end }) : createReadStream(file),
-    size: stat.size,
-    mime: mimeOf(name),
+    name: found.name,
+    mime: mimeOf(found.name),
+    size: held.stat.size,
+    stream: (range) => streamHeld(held, range),
+    read: (max) => readHeld(held, max),
+    close: () => closeHeld(held),
   };
 }
 
@@ -331,23 +347,23 @@ export async function publishBytes(
   // before anything is made or written through it: judged at the nearest
   // folder that exists now, and again once the rest is made.
   const root = realRoot(botId);
-  const within = (dir: string) => {
+  const staysInside = (dir: string) => {
     try {
       const real = realpathSync(dir);
-      return real === root || inside(root, real);
+      return real === root || within(root, real);
     } catch {
       return false;
     }
   };
   let existing = folder;
   while (!existsSync(existing) && existing !== dir) existing = dirname(existing);
-  if (!within(existing)) return { ok: false, status: 400, error: "that folder leads outside the agent's files" };
+  if (!staysInside(existing)) return { ok: false, status: 400, error: "that folder leads outside the agent's files" };
   try {
     mkdirSync(folder, { recursive: true, mode: 0o700 });
   } catch {
     return { ok: false, status: 400, error: "that folder could not be made" };
   }
-  if (!within(folder)) return { ok: false, status: 400, error: "that folder leads outside the agent's files" };
+  if (!staysInside(folder)) return { ok: false, status: 400, error: "that folder leads outside the agent's files" };
   const staging = join(folder, `.incoming-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const fd = openSync(staging, "wx", 0o600);
   let size = 0;
@@ -410,9 +426,10 @@ export function snapshot(botId: string): Map<string, string> {
 /** The fingerprint the sweep would take of one file now, so a file shared
  * mid-turn is not announced a second time when the turn ends. */
 export function fingerprint(botId: string, name: string): string | null {
-  const file = artifactPath(botId, name);
-  if (!file) return null;
-  const stat = statSync(file);
+  const found = holdArtifact(botId, name);
+  if (!found) return null;
+  closeHeld(found.held);
+  const { stat } = found.held;
   return `${stat.mtimeMs}:${stat.size}`;
 }
 
