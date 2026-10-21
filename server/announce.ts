@@ -48,8 +48,10 @@ const WATCH = [
   `kill "$d" 2>/dev/null`,
 ].join("\n");
 
-const spawnDetached: Spawner = (command, args) => {
-  const child = nodeSpawn(command, args, { stdio: "ignore" });
+const startHidden: Spawner = (command, args) => {
+  // only ever a Mac (mayAnnounce), but hidden all the same, as everything
+  // this server starts is
+  const child = nodeSpawn(command, args, { stdio: "ignore", windowsHide: true });
   // a dns-sd that cannot start is a phone that has to be told the address,
   // not a reason for this server to fall over
   child.on("error", () => {});
@@ -102,7 +104,7 @@ export function mayAnnounce(
 export function syncAnnouncement(
   on: boolean,
   a: Announcement,
-  spawn: Spawner = spawnDetached,
+  start: Spawner = startHidden,
   parentPid: number = process.pid,
   dnsSd?: string,
 ): boolean {
@@ -111,7 +113,7 @@ export function syncAnnouncement(
   stopAnnouncing();
   if (!on || !a.name || !Number.isInteger(a.port) || a.port < 1 || a.port > 65535) return false;
   const [command, args] = announceCommand(a, parentPid, dnsSd);
-  current = { key, child: spawn(command, args) };
+  current = { key, child: start(command, args) };
   return true;
 }
 

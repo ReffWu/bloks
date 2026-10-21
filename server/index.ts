@@ -24360,11 +24360,12 @@ noteBound(BIND);
  * Not before listening is on the network: a switch turned on since the
  * start takes a restart to reach the bind. */
 const announceHere = () => {
+  if (BIND === "127.0.0.1" || !remoteEnabled() || !mayAnnounce()) {
+    stopAnnouncing();
+    return;
+  }
   const { id, name } = workspaceIdentity();
-  syncAnnouncement(BIND !== "127.0.0.1" && remoteEnabled() && mayAnnounce(), {
-    name: instanceName(computerName(), id === "personal" ? undefined : name),
-    port: PORT,
-  });
+  syncAnnouncement(true, { name: instanceName(computerName(), id === "personal" ? undefined : name), port: PORT });
 };
 // A port someone else holds is the one startup failure a person can fix
 // on their own, so it is said plainly instead of as a stack trace. The
