@@ -1898,6 +1898,7 @@ function heardFromServer(id, child, said) {
   if (said?.kind === "desktop.licence.forget") return forgetLicence();
   if (said?.kind === "desktop.plan") return notePlan(said.plan);
   if (said?.kind === "desktop.name") return keepName(said.name, { seed: said.seed === true });
+  if (said?.kind === "desktop.screen") return void answerScreen(child, said.id);
   if (said?.kind === "desktop.unread" && Number.isInteger(said.count)) {
     waitingCounts.set(id, Math.max(0, said.count));
     applyBadge();
@@ -1910,6 +1911,31 @@ function heardFromServer(id, child, said) {
     // how many people are in a team workspace, from its own server, for
     // the switcher's "3 members" (the members work fills this in)
     noteMembers(id, said.count);
+  }
+}
+
+/**
+ * A picture of this Mac's screen for a workspace's server, which asks only
+ * while one of its agents is driving the Mac and the person's phone is
+ * looking at it (server/index.ts, macFrame). It never asks macOS for the
+ * permission: without Screen Recording already granted there is no
+ * picture, and the phone says to watch on the Mac instead.
+ */
+async function answerScreen(child, id) {
+  let jpeg = null;
+  try {
+    if (process.platform === "darwin" && systemPreferences.getMediaAccessStatus?.("screen") === "granted") {
+      const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1440, height: 900 } });
+      const shot = sources[0]?.thumbnail;
+      if (shot && !shot.isEmpty()) jpeg = shot.toJPEG(70).toString("base64");
+    }
+  } catch {
+    jpeg = null;
+  }
+  try {
+    child.postMessage({ kind: "screen.frame", id, jpeg });
+  } catch {
+    // the server went while the picture was being taken
   }
 }
 

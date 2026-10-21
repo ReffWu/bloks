@@ -61,3 +61,43 @@ export function typeText(port: number, text: string, enter: boolean): Promise<vo
     }
   });
 }
+
+/** The keys a person can press from a phone, by the names the phone sends,
+ * with what the page should see. Text goes through typeText; these are
+ * the ones a phone keyboard has no way to send into someone else's page. */
+export const PAGE_KEYS: Record<string, { key: string; code: string; keyCode: number }> = {
+  Enter: { key: "Enter", code: "Enter", keyCode: 13 },
+  Backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
+  Tab: { key: "Tab", code: "Tab", keyCode: 9 },
+  Escape: { key: "Escape", code: "Escape", keyCode: 27 },
+  ArrowUp: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
+  ArrowDown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+  ArrowLeft: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
+  ArrowRight: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
+  PageUp: { key: "PageUp", code: "PageUp", keyCode: 33 },
+  PageDown: { key: "PageDown", code: "PageDown", keyCode: 34 },
+};
+
+/** One of PAGE_KEYS, pressed and let go. */
+export function pressKey(port: number, name: string): Promise<void> {
+  const def = PAGE_KEYS[name];
+  if (!def) return Promise.reject(new Error("that key cannot be pressed from here"));
+  return withPage(port, async (page) => {
+    const key = { ...def, windowsVirtualKeyCode: def.keyCode };
+    await page.send("Input.dispatchKeyEvent", { type: "keyDown", ...key, ...(name === "Enter" ? { text: "\r" } : {}) });
+    await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...key });
+  });
+}
+
+/** The wheel at a spot on the page, a screenful at a time: up is
+ * negative, as the page counts it. */
+export function scrollAt(port: number, fx: number, fy: number, screens: number): Promise<void> {
+  return withPage(port, async (page) => {
+    const metrics = await page.send("Page.getLayoutMetrics", {}, 5_000);
+    const viewport = metrics.cssVisualViewport ?? metrics.layoutViewport;
+    const x = Math.round(fx * viewport.clientWidth);
+    const y = Math.round(fy * viewport.clientHeight);
+    const deltaY = Math.round(screens * viewport.clientHeight * 0.8);
+    await page.send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY });
+  });
+}

@@ -123,7 +123,8 @@ import { addressees, audienceOf, BlokStore, currentSpend, DEFAULT_SHARING, leadO
 import { cleanSectionOrder, placeAt, SidebarStore, sidebarView, upgradePlaces, type Placed } from "./sidebar.ts";
 import { extractTeamPlan, MAX_HIRES, normalizePlan, TEAM_PROTOCOL, type TeamPlan } from "./teams.ts";
 import { houseStyle, HOUSE_STYLE } from "./house-style.ts";
-import { captureFrame, clickAt, typeText } from "./browser-view.ts";
+import { captureFrame, clickAt, PAGE_KEYS, pressKey, scrollAt, typeText } from "./browser-view.ts";
+import { boxClick, boxKey, boxScroll, boxType } from "./box-hands.ts";
 import { bearerToken, isLocalRequest, isLoopbackPeer, isSameOrigin } from "./http-guard.ts";
 import {
   DesktopTickets,
@@ -4429,6 +4430,7 @@ bus.subscribe((event: RuntimeEvent) => {
       // the conversation
       const frame = stopScreenPoller(bot.id);
       if (frame) pushMessage({ role: "bot", kind: "screen", png: frame.png, mime: frame.mime });
+      drivingMac.delete(bot.id);
       sweepArtifacts(bot.id, event.threadId, pushMessage);
       // what the turn changed in the agent's memory, into its journal
       try {
@@ -4700,6 +4702,103 @@ function startScreenPoller(botId: string, grab: (botId: string) => Promise<Frame
  * picture changed and the moment someone is watching for it. */
 function pokeScreenPoller(botId: string) {
   void screenPollers.get(botId)?.capture();
+}
+
+/** Agents whose screen a person is looking at from a phone, and until
+ * when: a browser or box keeps being photographed for a minute after the
+ * last look, turn or no turn, so the person can see what their tap did
+ * and finish the sign-in the agent stopped at. Never opens a browser or
+ * wakes a box to do it. */
+const watchedByPerson = new Map<string, number>();
+const PERSON_WATCH_MS = 60_000;
+
+function watchScreen(bot: BotRecord) {
+  watchedByPerson.set(bot.id, Date.now() + PERSON_WATCH_MS);
+  if (screenPollers.has(bot.id)) return;
+  if (bot.browser === true) {
+    void profilePort(browserProfile(bot.id)).then((port) => {
+      if (port && !screenPollers.has(bot.id)) {
+        startScreenPoller(bot.id, async () => ({ ...(await captureFrame(await browserPortOf(bot.id))), source: "browser" }), 1500);
+      }
+    });
+  } else if ((bot.computer === "cloud" || bot.computer == null) && box.boxConfigured(cfg)) {
+    startScreenPoller(bot.id);
+  }
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [botId, until] of watchedByPerson) {
+    if (until > now) continue;
+    watchedByPerson.delete(botId);
+    // a turn that is running owns its picture, and ends it itself
+    if (!store.bot(botId)?.tasks.some((t) => t.busy)) stopScreenPoller(botId);
+  }
+}, 10_000).unref();
+
+/** What a person's hands on an agent's screen asked for, checked: a spot
+ * as fractions of the picture, text, or one of the keys both doors take. */
+function handsFrom(
+  act: string,
+  body: Record<string, unknown>,
+):
+  | { act: "click"; x: number; y: number }
+  | { act: "scroll"; x: number; y: number; screens: number }
+  | { act: "key"; key: string }
+  | { act: "type"; text: string; enter: boolean }
+  | { error: string } {
+  if (act === "type") {
+    return { act, text: typeof body.text === "string" ? body.text.slice(0, 2_000) : "", enter: body.enter === true };
+  }
+  if (act === "key") {
+    const key = typeof body.key === "string" ? body.key : "";
+    return key in PAGE_KEYS ? { act, key } : { error: "that key cannot be pressed from here" };
+  }
+  const x = Number(body.x);
+  const y = Number(body.y);
+  if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return { error: "x and y are fractions of the picture" };
+  if (act === "click") return { act, x, y };
+  const screens = Number(body.screens);
+  if (!(Number.isFinite(screens) && screens !== 0 && Math.abs(screens) <= 5)) return { error: "screens is how far to scroll, up to 5 either way" };
+  return { act: "scroll", x, y, screens };
+}
+
+/** Agents whose running turn is driving this Mac's own screen. */
+const drivingMac = new Set<string>();
+
+/** A picture of this Mac's screen, from the desktop app (it holds the
+ * Screen Recording permission, electron/main.mjs answerScreen). Taken only
+ * when a phone asks, at most about once a second however many ask, and
+ * never broadcast: the Mac's screen shows everything open on it. */
+type MacShot = { at: number; png: string; mime: string };
+let macShot: MacShot | null = null;
+let macShotAsking: Promise<MacShot | null> | null = null;
+const macShotWaiters = new Map<number, (jpeg: unknown) => void>();
+let macShotSeq = 0;
+
+function macFrame(): Promise<MacShot | null> {
+  if (!desktop) return Promise.resolve(null);
+  if (macShot && Date.now() - macShot.at < 900) return Promise.resolve(macShot);
+  if (macShotAsking) return macShotAsking;
+  const id = ++macShotSeq;
+  macShotAsking = new Promise<unknown>((resolve) => {
+    const timer = setTimeout(() => {
+      macShotWaiters.delete(id);
+      resolve(null);
+    }, 4_000);
+    macShotWaiters.set(id, (jpeg) => {
+      clearTimeout(timer);
+      macShotWaiters.delete(id);
+      resolve(jpeg);
+    });
+    desktop!.postMessage({ kind: "desktop.screen", id });
+  }).then((jpeg): MacShot | null => {
+    macShotAsking = null;
+    if (typeof jpeg !== "string" || !jpeg || jpeg.length > 6_000_000 || !/^[A-Za-z0-9+/=]+$/.test(jpeg)) return null;
+    macShot = { at: Date.now(), png: jpeg, mime: "image/jpeg" };
+    return macShot;
+  });
+  return macShotAsking;
 }
 
 function stopScreenPoller(botId: string): Frame | null {
@@ -7073,6 +7172,8 @@ async function startClaimedTurn(
       }
       if (standingNext) standing.set(task.id, standingNext);
       if (integrations.computer) startScreenPoller(bot.id);
+      if (integrations.localComputer) drivingMac.add(bot.id);
+      else drivingMac.delete(bot.id);
       // A local command has not heard a pending engine handoff or CLI note.
       if (!command) store.markTaskDispatched(bot.id, task.id, instanceId, credential ? CLI_COMMAND : undefined);
       if (!command && task.imported && !task.imported.carried) store.markImportCarried(task.id);
@@ -19104,28 +19205,51 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // ── reaching into the agent's browser from the chat ──
     // For the moments only a person can get past: a login, a captcha, a
     // cookie wall. Only an agent that has a browser has one to reach into.
-    m = path.match(/^\/api\/bots\/([\w-]+)\/browser\/(click|type)$/);
+    m = path.match(/^\/api\/bots\/([\w-]+)\/browser\/(click|type|scroll|key)$/);
     if (m && method === "POST") {
+      // the person's hands, never another agent's
+      if (asAgent) return json(res, 403, { error: "only a person reaches into an agent's browser" });
       const bot = store.bot(m[1]);
       if (!bot) return json(res, 404, { error: "no such agent" });
       if (bot.browser !== true) return json(res, 409, { error: "this agent has no browser" });
       const body = await readBody(req);
+      const hands = handsFrom(m[2], body);
+      if ("error" in hands) return json(res, 400, { error: hands.error });
       try {
-        if (m[2] === "click") {
-          const fx = Number(body.x);
-          const fy = Number(body.y);
-          if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1)) {
-            return json(res, 400, { error: "x and y are fractions of the page" });
-          }
-          await clickAt(await browserPortOf(bot.id), fx, fy);
-        } else {
-          const text = typeof body.text === "string" ? body.text.slice(0, 2_000) : "";
-          await typeText(await browserPortOf(bot.id), text, body.enter === true);
-        }
+        const port = await browserPortOf(bot.id);
+        if (hands.act === "click") await clickAt(port, hands.x, hands.y);
+        else if (hands.act === "scroll") await scrollAt(port, hands.x, hands.y, hands.screens);
+        else if (hands.act === "key") await pressKey(port, hands.key);
+        else await typeText(port, hands.text, hands.enter);
       } catch (e) {
         return json(res, 409, { error: e instanceof Error ? e.message : String(e) });
       }
       // show the result of what they just did, not what was there before
+      pokeScreenPoller(bot.id);
+      return json(res, 200, { ok: true });
+    }
+
+    // The same four, on the agent's cloud computer (server/box-hands.ts).
+    // Only a box: the Mac's own screen is not this door's to work.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/computer\/(click|type|scroll|key)$/);
+    if (m && method === "POST") {
+      if (asAgent) return json(res, 403, { error: "only a person reaches into an agent's computer" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      if (!(bot.computer === "cloud" || bot.computer == null) || !box.boxConfigured(cfg)) {
+        return json(res, 409, { error: "this agent has no cloud computer" });
+      }
+      const body = await readBody(req);
+      const hands = handsFrom(m[2], body);
+      if ("error" in hands) return json(res, 400, { error: hands.error });
+      try {
+        if (hands.act === "click") await boxClick(cfg, bot.id, hands.x, hands.y);
+        else if (hands.act === "scroll") await boxScroll(cfg, bot.id, hands.x, hands.y, hands.screens);
+        else if (hands.act === "key") await boxKey(cfg, bot.id, hands.key);
+        else await boxType(cfg, bot.id, hands.text, hands.enter);
+      } catch (e) {
+        return json(res, 409, { error: redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 200) });
+      }
       pokeScreenPoller(bot.id);
       return json(res, 200, { ok: true });
     }
@@ -19437,11 +19561,24 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // takes a picture, so asking often costs the agent nothing.
     m = path.match(/^\/api\/bots\/([\w-]+)\/screen$/);
     if (m && method === "GET") {
-      if (!store.bot(m[1])) return json(res, 404, { error: "no such agent" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      // ?watch=1 is a person with the view open: the agent's browser or
+      // box stays in view a while after its turn too (watchScreen)
+      if (url.searchParams.get("watch") === "1" && !asAgent) watchScreen(bot);
       const watched = screenPollers.get(m[1]);
-      if (!watched?.last) return json(res, 200, { live: false });
-      const { png, mime, source } = watched.last;
-      return json(res, 200, { live: true, at: watched.at, mime, png, source: source ?? "computer" });
+      if (watched?.last) {
+        const { png, mime, source } = watched.last;
+        return json(res, 200, { live: true, at: watched.at, mime, png, source: source ?? "computer" });
+      }
+      // The Mac's own screen, only while this agent's turn is driving it
+      // and only for the person: never for an agent, which could read
+      // whatever else is open on the Mac this way.
+      if (!asAgent && drivingMac.has(bot.id)) {
+        const frame = await macFrame();
+        if (frame) return json(res, 200, { live: true, at: frame.at, mime: frame.mime, png: frame.png, source: "mac" });
+      }
+      return json(res, 200, { live: false });
     }
     m = path.match(/^\/api\/bots\/([\w-]+)\/memory\/stats$/);
     if (m && method === "GET") {
@@ -24489,6 +24626,11 @@ if (testParent > 0) {
 type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: unknown; name?: unknown } }) => void): void };
 (process as NodeJS.Process & { parentPort?: ParentPort }).parentPort?.on("message", (message) => {
   if (message?.data?.kind === "stop") shutDown();
+  // a picture of the Mac's screen, asked for by macFrame
+  if (message?.data?.kind === "screen.frame") {
+    const said = message.data as unknown as { id?: unknown; jpeg?: unknown };
+    if (typeof said.id === "number") macShotWaiters.get(said.id)?.(said.jpeg);
+  }
   // the person's name, as they chose it in another workspace: one person,
   // called the same everywhere. Never an empty one, which only ever
   // clears the workspace it was cleared in.
