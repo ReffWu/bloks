@@ -95,29 +95,58 @@ const COMMANDS = {
     },
   },
   say: {
-    use: "say <agent-id|room-id> [--now] <text…>",
+    use: "say <agent-id|room-id> [--now] [--task <name>] <text…>",
     about:
       "say something to another agent, or in a room. A busy agent hears it when its turn ends; " +
       "--now is for a correction to work already under way: it goes into the running turn, read after the step it is on, " +
       "when your message started that turn or you may stop that agent, and otherwise waits as usual. Rooms keep their order. " +
+      "--task names the separate piece of work this hands off (a review, a fix, a correction to one task), in up to 60 characters; " +
+      "without it a message goes on with the task your turn is on. When the person allows a budget across separate tasks, " +
+      "each named task counts its own turns in a row toward the limit, and every task together still counts toward that budget, " +
+      "so name the work truly: a new name for the same work adds nothing. " +
       "When the agent cannot answer right now (its engine is not signed in, out until a time, or unavailable), the answer says so in `engine`",
     run: async (args) => {
-      // --now before the text, or as the last word of it, which is where
-      // somebody who thought of it late puts it
-      const at = [0, 1, args.length - 1].find((i) => i >= 0 && args[i] === "--now");
-      const now = at !== undefined;
-      const [target, ...rest] = now ? args.filter((_, i) => i !== at) : args;
-      const text = rest.join(" ");
+      // --now and --task before the text, either side of who it is to,
+      // and --now as the last word of it too, which is where somebody who
+      // thought of it late puts it. Anything else is the text.
+      const rest = [...args];
+      let now = false;
+      let task;
+      const flags = (at) => {
+        for (;;) {
+          if (rest[at] === "--now") {
+            now = true;
+            rest.splice(at, 1);
+          } else if (rest[at] === "--task") {
+            task = rest[at + 1];
+            if (!task || task.startsWith("--")) throw new Error("--task needs the name of the task this hands off");
+            rest.splice(at, 2);
+          } else return;
+        }
+      };
+      flags(0);
+      flags(1);
+      if (rest.length > 2 && rest.at(-1) === "--now") {
+        now = true;
+        rest.pop();
+      }
+      const [target, ...words] = rest;
+      const text = words.join(" ");
       if (!target || !text) throw new Error("say needs someone to say it to, and something to say");
       // an id is either an agent or a room; try the agent first because
       // that is what most of them are
       try {
-        return await request("POST", `/api/bots/${target}/messages`, { text, ...(now ? { now: true } : {}) });
+        return await request("POST", `/api/bots/${target}/messages`, { text, ...(now ? { now: true } : {}), ...(task ? { task } : {}) });
       } catch (error) {
         if (!/no such agent/i.test(String(error.message))) throw error;
         const said = await request("POST", `/api/bloks/${target}/messages`, { text });
-        // a room's agents speak one at a time, so nothing joins a turn there
-        return now ? { ...said, note: "Rooms keep their order, so --now does nothing there; this was said in the room as usual." } : said;
+        // a room's agents speak one at a time, so nothing joins a turn
+        // there, and a room's count is the room's own
+        const notes = [
+          ...(now ? ["Rooms keep their order, so --now does nothing there"] : []),
+          ...(task ? ["A room counts its own turns, so --task does nothing there"] : []),
+        ];
+        return notes.length ? { ...said, note: `${notes.join(". ")}; this was said in the room as usual.` } : said;
       }
     },
   },

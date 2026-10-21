@@ -1,7 +1,7 @@
 // Safe observations over already-loaded settings. No stores, providers or IO.
 import { resolveMode } from "./delivery.ts";
 import { resolveBackgroundWork } from "./background-work.ts";
-import { agentTurnLimit } from "./agent-chain.ts";
+import { agentTaskBudget, agentTurnLimit } from "./agent-chain.ts";
 
 export type InspectionScalar = string | number | boolean | null;
 export type InspectionValue =
@@ -91,6 +91,8 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   add("recall", "beforeTurn", general, value("recall", "beforeTurn") !== false);
   add("memory", "tidy", general, value("memory", "tidy") !== false);
   add("agents", "turnLimit", general, agentTurnLimit(value("agents", "turnLimit")));
+  // none unless the person allowed one (GitHub 326)
+  add("agents", "taskBudget", general, agentTaskBudget(value("agents", "taskBudget")));
   // the incident desk (server/incidents.ts): on unless turned off, and
   // who leads, which is "auto" unless the person chose
   add("incidents", "enabled", general, value("incidents", "enabled") !== false);

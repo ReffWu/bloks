@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { extname, join, relative, resolve, sep } from "node:path";
 
 import * as attachments from "./attachments.ts";
-import { agentTurnLimit, validTurnLimit, pastAgentLimit, chainName, chainExcerpt, chainLimitText, chainAgentRefusal, MIN_AGENT_CHAIN_LIMIT, MAX_AGENT_CHAIN_LIMIT } from "./agent-chain.ts";
+import { agentTurnLimit, validTurnLimit, pastAgentLimit, chainName, chainExcerpt, chainLimitText, chainAgentRefusal, MIN_AGENT_CHAIN_LIMIT, MAX_AGENT_CHAIN_LIMIT, agentTaskBudget, validTaskBudget, chainPast, taskFor, taskName, chainHoldText, MIN_TASK_BUDGET, MAX_TASK_BUDGET, type ChainBound, type ChainTask } from "./agent-chain.ts";
 import { takeBackWaiting } from "./take-back.ts";
 import { DeviceSettings, type ReportSource } from "./settings-devices.ts";
 import { SettingsPages, type SettingsCategory } from "./settings-pages.ts";
@@ -4890,6 +4890,7 @@ function carryOn(
       // the turn's own place, or further along if an agent's message is
       // in it; the person's words in it start the chain over
       chain: burstChain(turn.laneId, alive.map(({ item }) => item), agentChain.get(turn.laneId)),
+      chainTask: burstTask(turn.laneId, alive.map(({ item }) => item), chainTasks.get(turn.laneId), agentChain.get(turn.laneId)),
     })
       // under the notice, where the pickup took them
       .then(() => deliverQueued(turn.laneId, alive.flatMap(({ item }) => (item.messageId ? [item.messageId] : []))))
@@ -5575,6 +5576,10 @@ async function startClaimedTurn(
      * that goes on with another (a pickup, a backup, a retry), which
      * keeps that turn's place. */
     chain?: number;
+    /** The separate task an agent's message named, that this turn is on
+     * (chainTasks). Unset with `chain` set is no task; unset without it,
+     * on a turn that goes on with another, keeps that turn's. */
+    chainTask?: ChainTask;
     /** The turn answering a mail (drainMail). Any other turn starting in
      * its lane, other than one going on with it, ends that: its words
      * are not the mail's reply (replyByMail). */
@@ -5689,10 +5694,10 @@ async function startClaimedTurn(
       // already in the conversation, or a note from Bloks itself, so it
       // waits as a note: in memory, like every note in the queue
       const entry = steerQueues.get(task.id) ?? { botId: bot.id, items: [] };
-      entry.items.push({ text, ...(opts.chain ? { chain: opts.chain } : {}) });
+      entry.items.push({ text, ...(opts.chain ? { chain: opts.chain } : {}), ...(opts.chainTask ? { chainTask: opts.chainTask } : {}) });
       steerQueues.set(task.id, entry);
     } else {
-      queueOnLane(bot.id, task.id, text, { replyTo: opts.replyTo, from: opts.from, routine: opts.routine, personal: opts.byYou === true && opts.personal !== false, chain: opts.chain, admission: opts.admission });
+      queueOnLane(bot.id, task.id, text, { replyTo: opts.replyTo, from: opts.from, routine: opts.routine, personal: opts.byYou === true && opts.personal !== false, chain: opts.chain, chainTask: opts.chainTask, admission: opts.admission });
     }
     return;
   }
@@ -5710,7 +5715,7 @@ async function startClaimedTurn(
     if (own && !opts.presetMessage && !opts.carriedOn && !opts.fallback && !opts.retry) {
       queueOnLane(bot.id, task.id, text, {
         replyTo: opts.replyTo, from: opts.from, routine: opts.routine, personal: opts.byYou === true && opts.personal !== false,
-        chain: opts.chain, fromTelegram: opts.fromTelegram, telegramBinding: opts.telegramBinding, waitsFor: "pause", waitsUntil: pause.until,
+        chain: opts.chain, chainTask: opts.chainTask, fromTelegram: opts.fromTelegram, telegramBinding: opts.telegramBinding, waitsFor: "pause", waitsUntil: pause.until,
       });
       sayPaused(task.id, pause.id, `${pausedWhy(bot, pause)} What is said to it here waits, and goes on its own then.`);
       return;
@@ -6225,6 +6230,9 @@ async function startClaimedTurn(
   const goesOn = opts.carriedOn || opts.fallback || opts.retry;
   const inRoomChain = opts.roomId && opts.roomId !== task.id ? (roomChain.get(opts.roomId) ?? 0) : 0;
   agentChain.set(task.id, opts.chain ?? (goesOn ? (agentChain.get(task.id) ?? 0) : inRoomChain));
+  const onTask = opts.chain !== undefined ? opts.chainTask : goesOn ? chainTasks.get(task.id) : undefined;
+  if (onTask) chainTasks.set(task.id, onTask);
+  else chainTasks.delete(task.id);
   // and its count of the room being passed along, set here for the same
   // reason: what this turn says in a room is judged by its own count
   turnHops.set(task.id, opts.hops ?? (goesOn ? (turnHops.get(task.id) ?? 0) : 0));
@@ -8925,6 +8933,11 @@ const spokeInTurn = new Set<string>();
  * (MAX_AGENT_HOPS in server/room-hops.ts). */
 function agentLimit(): number { return agentTurnLimit(cfg.agents?.turnLimit); }
 function chainPastLimit(depth: number): boolean { return pastAgentLimit(depth, agentLimit()); }
+/** The turns in a row the person allowed across separate tasks, or null
+ * when they have not, which leaves the whole chain on the limit
+ * (server/agent-chain.ts, GitHub 326). Only the person sets it: an agent
+ * is refused the config route, and naming a task gives it nothing more. */
+function agentBudget(): number | null { return agentTaskBudget(cfg.agents?.taskBudget); }
 /** The place a message, job, routine or watcher from the turn in
  * `laneId` takes: one past that turn's own. */
 function nextAgentChain(laneId: string): number {
@@ -8961,18 +8974,29 @@ const roomChain = new Map<string, number>();
  * afterwards (GitHub 268). */
 const turnHops = new Map<string, number>();
 
+/** The separate task each lane's latest turn is on, when an agent's
+ * message that named one (`bloks say --task`) started it, or it went on
+ * from one that did. Beside agentChain and kept the same way: in memory,
+ * set when a turn starts. A turn on no named task counts the whole chain
+ * against the limit; routines, watchers, jobs and rooms an agent sets
+ * going always do, since they carry only the chain's place. */
+const chainTasks = new Map<string, ChainTask>();
+
 /** A message an agent sent with `bloks say`, to another agent or to
- * itself: who sent it, and the place in the chain the turn it starts
- * would take, one more than the sender's own turn. */
+ * itself: who sent it, the place in the chain the turn it starts would
+ * take, one more than the sender's own turn, and the task it hands off
+ * when one was named or the sender's turn was on one. */
 interface AgentChain {
   depth: number;
   sender: { botId: string; name: string };
+  task?: ChainTask;
 }
 
 /** The place in the chain a message from the agent whose turn runs in
- * `laneId` would take. */
-function chainFrom(sender: { id: string; name: string }, laneId: string): AgentChain {
-  return { depth: nextAgentChain(laneId), sender: { botId: sender.id, name: sender.name } };
+ * `laneId` would take, on the task it names, if any. */
+function chainFrom(sender: { id: string; name: string }, laneId: string, named?: string): AgentChain {
+  const task = taskFor(chainTasks.get(laneId), named, agentChain.get(laneId) ?? 0);
+  return { depth: nextAgentChain(laneId), sender: { botId: sender.id, name: sender.name }, ...(task ? { task } : {}) };
 }
 
 /** The place in the chain for a turn that takes these waiting items,
@@ -8994,6 +9018,20 @@ function burstChain(laneId: string, items: ReadonlyArray<{ messageId?: string; c
   return depth;
 }
 
+/** The task a turn that takes these waiting items is on: the one every
+ * agent's message among them, and the turn it goes on from, carries,
+ * when they agree. When they do not, none, and the whole chain counts:
+ * the stricter reading, which a message naming its task moves on from. */
+function burstTask(laneId: string, items: ReadonlyArray<{ messageId?: string; chain?: number; chainTask?: ChainTask }>, current?: ChainTask, from = 0): ChainTask | undefined {
+  if (!burstChain(laneId, items, from)) return undefined;
+  const carried = [
+    ...(from ? [current] : []),
+    ...items.flatMap((item) => (item.chain ? [item.chainTask] : !item.messageId ? [chainTasks.get(laneId)] : [])),
+  ];
+  const [first] = carried;
+  return first && carried.every((task) => task?.name === first.name && task.from === first.from) ? first : undefined;
+}
+
 /** Why a routine or a watcher an agent filed skipped this run. */
 function chainHeld(subject: string): string {
   return chainLimitText(subject, agentLimit());
@@ -9011,21 +9049,26 @@ function chainNotice(bot: BotRecord, laneId: string, text: string, key?: string)
   broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
 }
 
-/** The refusal an agent gets for a message past MAX_AGENT_CHAIN, and the
- * notice the person finds in the recipient's conversation (chainNotice).
- * Only this undelivered message is described; a refusal does not say
- * whether the underlying task is finished or needs the person. */
-function chainRefusal(bot: BotRecord, laneId: string, chain: AgentChain, words: string) {
+/** The refusal an agent gets for a message past MAX_AGENT_CHAIN, or past
+ * the person's budget across separate tasks, and the notice the person
+ * finds in the recipient's conversation (chainNotice). Only this
+ * undelivered message is described; a refusal does not say whether the
+ * underlying task is finished or needs the person. */
+function chainRefusal(bot: BotRecord, laneId: string, chain: AgentChain, words: string, bound: ChainBound = "limit") {
   const limit = agentLimit();
-  const text = redactSecrets(chainLimitText(
+  const budget = agentBudget();
+  // the task's name is the agent's words, so it is redacted as they are;
+  // it was refused past MAX_TASK_NAME_CHARS, so nothing here shortens it
+  const task = chain.task && bound === "task" ? chainExcerpt(chain.task.name, redactSecrets) : undefined;
+  const text = redactSecrets(chainHoldText(
     `A message from ${chainName(chain.sender.name)} to ${chainName(bot.name)} was not delivered.`,
-    limit, chainExcerpt(words, redactSecrets),
+    { bound, limit, budget, task }, chainExcerpt(words, redactSecrets),
   ));
-  const key = JSON.stringify([chain.sender.botId, bot.id, chain.depth, limit]);
+  const key = JSON.stringify([chain.sender.botId, bot.id, chain.depth, limit, bound, budget]);
   chainNotice(bot, laneId, text, key);
   // the person's notice says where the limit is set; the agent's says to
   // wrap up, and nothing about lifting it
-  return Object.assign(new Error(chainAgentRefusal(bot.name, limit)), { status: 429 });
+  return Object.assign(new Error(chainAgentRefusal(bot.name, limit, bound === "budget" && budget !== null ? budget : undefined)), { status: 429 });
 }
 
 /** Conversations an agent asked to close from inside its own turn there.
@@ -13572,7 +13615,7 @@ function maybeResumeAfterConnect(botId: string, threadId: string, resumeKey: str
 // (agentChain), which a restart forgets along with the rest of memory.
 const steerQueues = new Map<
   string,
-  { botId: string; items: Array<{ messageId?: string; text?: string; source?: "webhook"; chain?: number; requester?: string; telegramPerson?: TelegramSender }> }
+  { botId: string; items: Array<{ messageId?: string; text?: string; source?: "webhook"; chain?: number; chainTask?: ChainTask; requester?: string; telegramPerson?: TelegramSender }> }
 >();
 
 /** What one waiting item says now, or null for a message that no longer
@@ -13702,6 +13745,8 @@ function queueOnLane(
     /** An agent sent it: the place in a chain of agents' messages the
      * turn that takes it would have (agentChain). */
     chain?: number;
+    /** And the separate task it hands off, if any (chainTasks). */
+    chainTask?: ChainTask;
     /** Why the person's words wait, said under them (server/delivery.ts). */
     delivery?: Delivery;
   } = {},
@@ -13737,6 +13782,7 @@ function queueOnLane(
     messageId: message.id,
     ...(options.via === "webhook" ? { source: "webhook" as const } : {}),
     ...(options.chain ? { chain: options.chain } : {}),
+    ...(options.chain && options.chainTask ? { chainTask: options.chainTask } : {}),
   });
   steerQueues.set(laneId, entry);
   return message;
@@ -13871,6 +13917,7 @@ async function steerOne(
   if (!from && !options.telegramPerson && !options.telegramDelegate) {
     turnsForYou.add(lane.id);
     agentChain.delete(lane.id);
+    chainTasks.delete(lane.id);
     turnHops.delete(lane.id);
   }
   return message;
@@ -14154,7 +14201,8 @@ async function sendUserMessage(
   }
   // Refused whether it would start a turn or wait for one: either way it
   // is one more turn nobody but the agents asked for.
-  if (options.chain && chainPastLimit(options.chain.depth)) throw chainRefusal(bot, lane.id, options.chain, text);
+  const past = options.chain ? chainPast(options.chain.depth, options.chain.task, agentLimit(), agentBudget()) : null;
+  if (options.chain && past) throw chainRefusal(bot, lane.id, options.chain, text, past);
   const admission = options.guardedAdmission?.(lane);
   // A kept-back message's receipt is fixed the moment it is admitted, so
   // what the sender is told goes in with the admission rather than after.
@@ -14248,7 +14296,7 @@ async function sendUserMessage(
     const takeBack = options.from ? ` To take back your messages while they wait, use \`bloks take-back ${bot.id}\`.` : "";
     const note = waits + notJoined + stop + takeBack;
     queueOnLane(bot.id, lane.id, text, {
-      replyTo: options.replyTo, from: options.from, personal: options.personal, chain: options.chain?.depth, admission: noting(note),
+      replyTo: options.replyTo, from: options.from, personal: options.personal, chain: options.chain?.depth, chainTask: options.chain?.task, admission: noting(note),
       ...(drain.on && yours ? { waitsFor: "restart" as const } : paused ? { waitsFor: "pause" as const, waitsUntil: paused.until } : {}),
       ...(delivery ? { delivery } : {}),
     });
@@ -14258,7 +14306,7 @@ async function sendUserMessage(
     if ((yours && options.steer) || askedEngine) drainSteer(lane.id);
     return { ok: true, queued: true, taskId: lane.id, lane: lane.title, note, delivery };
   }
-  await startTurn(bot.id, text, { taskId: lane.id, replyTo: options.replyTo, from: options.from, byYou: yours, personal: options.personal, chain: options.chain?.depth, admission });
+  await startTurn(bot.id, text, { taskId: lane.id, replyTo: options.replyTo, from: options.from, byYou: yours, personal: options.personal, chain: options.chain?.depth, chainTask: options.chain?.task, admission });
   triggersFired({ kind: "message", targetId: bot.id, text, fromUser: true });
   // which conversation it went to, so a caller outside the app (the MCP
   // connector) reads the answer from there and not from whichever lane
@@ -14383,12 +14431,13 @@ function drainSteer(threadId: string) {
   const telegramDelegate = telegramPerson ? undefined : said[0]?.telegramDelegate;
   const requester = telegramPerson?.requester ?? alive[0].item.requester;
   const chain = burstChain(threadId, alive.map(({ item }) => item));
+  const chainTask = burstTask(threadId, alive.map(({ item }) => item));
   // The incident desk's notes to a lead (server/incidents.ts): the turn
   // that takes them settles them, and is quiet when it is only them.
   const incidentNotes = said.flatMap((m) => (m?.via === "incident" && m.incident ? [m.incident.id] : []));
   const incidentQuiet = incidentNotes.length > 0 && incidentNotes.length === said.length;
   queueStarts.add(threadId);
-  void startTurn(entry.botId, joined, { taskId: threadId, presetMessage: true, answering, byYou, telegramMessages, telegramBinding, telegramPerson, ...(telegramDelegate ? { telegramDelegate } : {}), requester, personalMessages: telegramMessages, commandInstance: queuedCommand(threadId, alive[0].item), chain, ...(incidentNotes.length ? { incidentNotes, incidentQuiet } : {}) }).catch((e) => {
+  void startTurn(entry.botId, joined, { taskId: threadId, presetMessage: true, answering, byYou, telegramMessages, telegramBinding, telegramPerson, ...(telegramDelegate ? { telegramDelegate } : {}), requester, personalMessages: telegramMessages, commandInstance: queuedCommand(threadId, alive[0].item), chain, chainTask, ...(incidentNotes.length ? { incidentNotes, incidentQuiet } : {}) }).catch((e) => {
     for (const id of incidentNotes) deskTurnEnded(id, false);
     if (telegramPerson) tellTelegramPersonHeld(telegramPerson, (e as Error).message);
     telegramReturns.finish(threadId, `Could not answer: ${redactSecrets(e instanceof Error ? e.message : String(e))}`, telegramMessages);
@@ -14756,7 +14805,7 @@ function queueGoalTurn(botId: string, laneId: string, note: string | ((goal: Goa
   const counted: Goal = { ...goal, turns: goal.turns + 1 };
   putGoal(botId, laneId, counted);
   const chain = agentChain.get(laneId);
-  queueOnLane(botId, laneId, typeof note === "string" ? note : note(counted), { via: "goal", ...(chain ? { chain } : {}) });
+  queueOnLane(botId, laneId, typeof note === "string" ? note : note(counted), { via: "goal", ...(chain ? { chain, chainTask: chainTasks.get(laneId) } : {}) });
   drainSteer(laneId);
 }
 
@@ -14975,7 +15024,8 @@ function configStatus() {
     recall: { beforeTurn: cfg.recall?.beforeTurn !== false },
     // on unless turned off: each agent's memory tidied once a night
     memory: { tidy: cfg.memory?.tidy !== false },
-    agents: { turnLimit: agentLimit() },
+    // the budget across separate tasks is null until the person allows one
+    agents: { turnLimit: agentLimit(), taskBudget: agentBudget() },
     // on unless turned off, and who leads incidents (server/incidents.ts)
     incidents: deskStatus(),
     // what happens to words sent mid-turn, for agents that have not chosen
@@ -17712,6 +17762,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       const text = clamp(body.text, MAX_MESSAGE_CHARS);
       if (!text) return json(res, 400, { error: "text required" });
+      // The separate task an agent's message hands off (`bloks say
+      // --task`), by name only: where its count starts is the server's
+      // to say (chainFrom). The person's words start the chain over, so
+      // a name on them would count nothing.
+      const named = asAgent ? taskName(body.task) : {};
+      if (named.error) return json(res, 400, { error: named.error });
       if (reservedDirect && asAgent) {
         const current = () => agentTokens.identify(bearerToken(req), Date.now(), turnAlive) === asAgent;
         const unauthorized = () => json(res, 401, { error: "this request's credential expired or was revoked" });
@@ -17720,7 +17776,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         const replyTo = replyRef(body.replyTo);
         const now = body.now === true;
         // The omitted selector is stable, even if General or lane state changes.
-        const identity = JSON.stringify([m[1], text, requestedTask ?? null, replyTo ?? null, now]);
+        const identity = JSON.stringify([m[1], text, requestedTask ?? null, replyTo ?? null, now, ...(named.name ? [named.name] : [])]);
         if (asAgent.report) {
           if (asAgent.report.identity !== identity) return json(res, 429, { error: "this turn's direct reporting slot is occupied by another submission" });
           const receipt = asAgent.report.response;
@@ -17767,7 +17823,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         // retries perform none.
         const sending = sendUserMessage(m[1], text, {
           taskId, replyTo, from, personal: false, now,
-          chain: chainFrom(sender, asAgent.taskId),
+          chain: chainFrom(sender, asAgent.taskId, named.name),
           guardedAdmission: (lane) => {
             claim = agentTokens.claimReport(asAgent, identity, Date.now(), turnAlive);
             const held = claim;
@@ -17887,7 +17943,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           // an agent writing, to another or to itself, carries its turn's
           // place in a chain of agents' messages one further; and never as
           // the person's own words, which alone may name a skill or a command
-          ...(sender ? { chain: chainFrom(sender, asAgent!.taskId), personal: false } : {}),
+          ...(sender ? { chain: chainFrom(sender, asAgent!.taskId, named.name), personal: false } : {}),
         });
       } catch (e) {
         noteSent("failed");
@@ -23449,8 +23505,17 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (isRecord(body.turns) && body.turns.backgroundWork !== undefined && !backgroundWork(body.turns.backgroundWork)) {
         return json(res, 400, { error: "turns.backgroundWork is finish or stop" });
       }
-      if (body.agents !== undefined && (!isRecord(body.agents) || !validTurnLimit(body.agents.turnLimit))) {
+      // Either or both of the limit and the budget across separate tasks,
+      // each checked before anything is written.
+      if (body.agents !== undefined && (
+        !isRecord(body.agents) ||
+        (body.agents.turnLimit === undefined && body.agents.taskBudget === undefined) ||
+        (body.agents.turnLimit !== undefined && !validTurnLimit(body.agents.turnLimit))
+      )) {
         return json(res, 400, { error: `agents.turnLimit must be a whole number from ${MIN_AGENT_CHAIN_LIMIT} to ${MAX_AGENT_CHAIN_LIMIT}` });
+      }
+      if (isRecord(body.agents) && body.agents.taskBudget !== undefined && !validTaskBudget(body.agents.taskBudget)) {
+        return json(res, 400, { error: `agents.taskBudget must be a whole number from ${MIN_TASK_BUDGET} to ${MAX_TASK_BUDGET}, or null for none` });
       }
       // The incident desk: a switch, and who leads, which has to be
       // someone who is here or one of the two words.
@@ -23538,7 +23603,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         }
       }
       if (isRecord(body.agents)) {
-        Object.assign(cfg, saveConfig({ agents: { turnLimit: body.agents.turnLimit as number } }));
+        const { turnLimit, taskBudget } = body.agents;
+        Object.assign(cfg, saveConfig({ agents: {
+          ...(turnLimit !== undefined ? { turnLimit: turnLimit as number } : {}),
+          ...(taskBudget !== undefined ? { taskBudget: taskBudget as number | null } : {}),
+        } }));
         wroteSomething = true;
       }
       if (isRecord(body.incidents)) {

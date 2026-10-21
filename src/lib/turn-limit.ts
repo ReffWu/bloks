@@ -12,3 +12,7 @@ export const MIN_TURN_LIMIT = 1;
 export const MAX_TURN_LIMIT = 50;
 /** The same title as CHAIN_LIMIT_TITLE, for the desktop's own alert. */
 export const CHAIN_LIMIT_TITLE = "Agents stopped at the limit";
+/** The same bounds as MIN_TASK_BUDGET and MAX_TASK_BUDGET: the turns in
+ * a row the person may allow across separate tasks. */
+export const MIN_TASK_BUDGET = 2;
+export const MAX_TASK_BUDGET = 100;

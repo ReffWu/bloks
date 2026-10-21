@@ -9,7 +9,7 @@
 // failure, and what happens to a conversation that grows long.
 import { useState } from "react";
 import { api, useStore } from "@/state/store";
-import { DEFAULT_TURN_LIMIT, MAX_TURN_LIMIT, MIN_TURN_LIMIT } from "@/lib/turn-limit";
+import { DEFAULT_TURN_LIMIT, MAX_TASK_BUDGET, MAX_TURN_LIMIT, MIN_TURN_LIMIT } from "@/lib/turn-limit";
 import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
 import { BACKGROUND_WORK, type BackgroundWork as BackgroundChoice } from "@/lib/backgroundWork";
 import { cn } from "@/lib/cn";
@@ -264,6 +264,63 @@ function AgentTurnLimit() {
 }
 
 /**
+ * The turns in a row the person allows across separate tasks (GitHub
+ * 326). Off until they choose a number. Then each task an agent names
+ * when it hands work on gets the limit above to itself, and all of them
+ * together stop here, however the work is named. Only the person sets
+ * it; an agent is refused the settings route.
+ */
+function TaskBudget() {
+  const { state, dispatch } = useStore();
+  const limit = state.config?.agents?.turnLimit ?? DEFAULT_TURN_LIMIT;
+  const stored = state.config?.agents?.taskBudget ?? null;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = (taskBudget: number | null) => {
+    setSaving(true);
+    setError("");
+    api("/api/config", { method: "PUT", body: JSON.stringify({ agents: { taskBudget } }) })
+      .then((status) => dispatch({ type: "configStatus", config: status }))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save the budget."))
+      .finally(() => setSaving(false));
+  };
+  // only numbers past the limit mean anything, and the one chosen stays
+  // listed even after the limit is raised past it
+  const choices = [...new Set([...TASK_BUDGET_CHOICES.filter((n) => n > limit), ...(stored !== null ? [stored] : [])])].sort((a, b) => a - b);
+  const description =
+    stored === null
+      ? "Off. The limit above counts every reply in a row, whatever the task."
+      : stored <= limit
+        ? "No higher than the limit above, so that limit still counts every reply in a row."
+        : `Each task agents name gets ${limit} ${limit === 1 ? "reply" : "replies"} in a row, and all of them together stop at ${stored}.`;
+  return (
+    <SettingRow
+      label="Separate tasks"
+      info="Agents can name the task when they hand work on. With this set, a reviewer moving from one task to the next isn't stopped as if it were one long exchange. Calling the same work by another name doesn't get past the total, and your next message resets both counts."
+      description={description}
+      error={error}
+      control={
+        <SettingsSelect
+          aria-label="Most agent replies in a row across separate tasks"
+          value={stored === null ? "off" : String(stored)}
+          disabled={saving}
+          onChange={(e) => save(e.target.value === "off" ? null : Number(e.target.value))}
+          className="w-[220px]"
+        >
+          <option value="off">Off</option>
+          {choices.map((n) => (
+            <option key={n} value={n}>
+              {n} replies in total
+            </option>
+          ))}
+        </SettingsSelect>
+      }
+    />
+  );
+}
+
+/**
  * The incident desk (server/incidents.ts): whether a failure is handed to
  * whoever leads, and who that is outside a room. On, since what it saves
  * is the person finding out late; a room's own lead always goes first.
@@ -444,6 +501,8 @@ function BackgroundWork() {
 }
 
 const TURN_LIMIT_STOPS = numberStops(MIN_TURN_LIMIT, MAX_TURN_LIMIT, (n) => `${n} ${n === 1 ? "reply" : "replies"}`);
+/** What the budget across separate tasks offers, past whatever the limit is. */
+const TASK_BUDGET_CHOICES = [24, 36, 48, 60, 80, MAX_TASK_BUDGET];
 
 /**
  * Whether agents are reminded of their other conversations before your
@@ -514,6 +573,7 @@ export function BehaviourPage() {
       <SettingsGroup title="While an agent works">
         <MidTurnMessages />
         <AgentTurnLimit />
+        <TaskBudget />
         <SilentCallLimit />
         <SharedChanges />
       </SettingsGroup>

@@ -439,8 +439,9 @@ export interface ConfigStatus {
   recall?: { beforeTurn: boolean };
   /** Each agent's memory tidied once a night; on unless turned off. */
   memory?: { tidy: boolean };
-  /** Agents' turn limit, 1 to 50 (server/agent-chain.ts). */
-  agents?: { turnLimit: number };
+  /** Agents' turn limit, 1 to 50, and the turns in a row the person
+   * allows across separate tasks, or null for none (server/agent-chain.ts). */
+  agents?: { turnLimit: number; taskBudget?: number | null };
   /** The incident desk (server/incidents.ts): on unless turned off, and
    * who leads incidents: "auto", "person" or an agent's id. */
   incidents?: { enabled: boolean; lead: string };

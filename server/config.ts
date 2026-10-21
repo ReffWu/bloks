@@ -176,8 +176,10 @@ export interface AppConfig {
    * hours (server/memory-tidy.ts). Unset is on; Tidy now works either way. */
   memory?: { tidy?: boolean };
   /** Agent-started turns in a row, 1 to 50, default 12. There is no Off;
-   * anything else stored here is read as 12 (agentTurnLimit). */
-  agents?: { turnLimit?: number };
+   * anything else stored here is read as 12 (agentTurnLimit). taskBudget
+   * is the turns in a row the person allows across separate tasks, 2 to
+   * 100, or null or absent for none (agentTaskBudget, GitHub 326). */
+  agents?: { turnLimit?: number; taskBudget?: number | null };
   /** The incident desk (server/incidents.ts): on unless turned off, and
    * who leads incidents: "auto" (a room's lead, else the workspace's most
    * senior agent), "person" (always the person), or an agent's id. */

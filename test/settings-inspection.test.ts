@@ -20,6 +20,17 @@ test("workspace answers effective defaults and the actual turn-limit control", (
   assert.equal(field(rows, "agents.turnLimit").control, "Settings > Behaviour");
 });
 
+test("the budget across separate tasks is none until the person allows one", () => {
+  assert.deepEqual(field(read(), "agents.taskBudget").effective, { status: "value", value: null });
+  assert.deepEqual(field(read(), "agents.taskBudget").saved, { status: "absent" });
+  assert.equal(field(read(), "agents.taskBudget").control, "Settings > Behaviour");
+  assert.deepEqual(field(read({ agents: { taskBudget: 40 } }), "agents.taskBudget").effective, { status: "value", value: 40 });
+  assert.deepEqual(field(read({ agents: { taskBudget: 400 } }), "agents.taskBudget").effective, { status: "value", value: 100 });
+  for (const value of [null, 1, "40", true]) {
+    assert.deepEqual(field(read({ agents: { taskBudget: value } }), "agents.taskBudget").effective, { status: "value", value: null });
+  }
+});
+
 test("saved absent, null, false, zero and empty string stay distinguishable", () => {
   for (const value of [null, false, 0, ""]) {
     const rows = read({ agents: { turnLimit: value } });

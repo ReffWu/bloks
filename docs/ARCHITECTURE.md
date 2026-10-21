@@ -1163,6 +1163,28 @@ with the queue they ride on, rather than on the lane record: a restart
 begins every chain again, which lets a loop that spans one run a stretch
 more at most, and leaves nothing on disk to clear when a lane closes.
 
+Separate tasks are counted apart only when the person allows it
+(GitHub 326). `agents.taskBudget` is off until they set it in Settings,
+Behaviour, to a whole number from 2 to 100; an agent is refused the
+config route like any other setting. An agent can name the task a
+message hands off (`bloks say --task <name>`). The server keeps, beside
+each lane's place, the task its turn is on (`chainTasks`) and where in
+the chain that task's handoffs started, which is always the sending
+turn's own place and never anything the agent says: a message naming a
+task other than its turn's starts that task there, and one naming none
+goes on with its turn's. With a budget, a turn on a named task counts
+its task's own run against `agents.turnLimit` and the whole chain
+against the budget; a turn on no named task counts the whole chain
+against the limit, as without one (`chainPast` in
+`server/agent-chain.ts`). So a reviewer moving from one task to the next
+is not held as one exchange, a loop on one task is still held at the
+limit, and a loop of any number of agents that renames its work every
+time is held at the budget. The notice says which bound held it, the
+task by name or the budget as the person's own. A burst keeps a task
+only when every agent's message in it agrees on one, and routines,
+watchers, jobs and room mentions an agent sets going carry only the
+chain's place, so they count the whole chain against the limit.
+
 A turn's own budget is twelve general changes and one more kept back:
 past the twelve, the only change a turn may still make is one direct
 message to another agent, so an agent that spent its twelve on the work
