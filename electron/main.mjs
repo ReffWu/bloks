@@ -73,6 +73,7 @@ import {
   mergeDrains,
   muteFor,
   nextMuteEnd,
+  oneAtATime,
   readRegistry,
   addHosted,
   isRemoteKind,
@@ -880,6 +881,39 @@ async function switchWorkspace(id, { target = null, welcome = false, query = "" 
   applyBadge();
 }
 
+/**
+ * A workspace just made, on screen at once. Its first server takes a few
+ * seconds to write its folders and answer, and Create used to wait all
+ * of that with the dialog open, long enough for the list to arrive with
+ * the new workspace in it and the dialog to call its own name taken. So
+ * the window goes now, to the page that says it is opening, and on to
+ * its welcome once the server answers, or to why it would not start.
+ * Somebody who moved on to another workspace meanwhile is left there.
+ */
+function openMade(id) {
+  shownId = id;
+  registry = setCurrent(registry, id);
+  saveRegistry();
+  // starting from here, so the window's address is the opening page
+  const up = launch(id);
+  const win = mainWindow();
+  if (!win) {
+    welcomeQuery = "welcome=workspace";
+    createWindow();
+  } else {
+    raise(win);
+    void showIn(win, id);
+  }
+  if (quickWin && !quickWin.isDestroyed()) quickWin.destroy();
+  tellWorkspaces();
+  applyBadge();
+  void up.then((started) => {
+    const shown = mainWindow();
+    if (!shown || shownId !== id || (windowWorkspace.get(shown) ?? shownId) !== id) return;
+    void showIn(shown, id, started ? "welcome=workspace" : "");
+  });
+}
+
 function noteMembers(id, count) {
   if (!entryOf(id)) return;
   registry = updateWorkspace(registry, id, { members: count });
@@ -1095,7 +1129,11 @@ handle("workspaces:role", (event, role) => {
   tellWorkspaces();
 });
 
-handle("workspaces:create", (_event, input) =>
+// One at a time (electron/workspaces.mjs oneAtATime): a second press of
+// Create, or Enter held down, answers the making already under way
+// instead of trying again and being told the name is taken by the very
+// workspace it is making.
+const createOnce = oneAtATime((input) =>
   answer(async () => {
     needsList();
     // A Team workspace is one other people see you in, so it starts with
@@ -1113,11 +1151,11 @@ handle("workspaces:create", (_event, input) =>
     fs.mkdirSync(made.entry.dataDir, { recursive: true, mode: 0o700 });
     registry = made.registry;
     saveRegistry();
-    tellWorkspaces();
-    await switchWorkspace(made.entry.id, { welcome: true });
+    openMade(made.entry.id);
     return { ok: true, id: made.entry.id };
   }),
 );
+handle("workspaces:create", (_event, input) => createOnce(input));
 
 handle("workspaces:update", (_event, id, patch) =>
   answer(() => {

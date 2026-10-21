@@ -423,6 +423,25 @@ export function removeWorkspace(registry, id) {
   return { registry: { ...registry, workspaces, current }, removed: was };
 }
 
+/**
+ * `work` run once at a time: a call while one is under way gets that
+ * one's answer rather than starting another. For making a workspace,
+ * where a second press of Create used to make the first one's name look
+ * taken.
+ */
+export function oneAtATime(work) {
+  let running = null;
+  return (...args) => {
+    if (running) return running;
+    running = Promise.resolve()
+      .then(() => work(...args))
+      .finally(() => {
+        running = null;
+      });
+    return running;
+  };
+}
+
 /** The list in a new order: the ids given first, in that order, then any
  * the caller did not mention, as they were. */
 export function reorder(registry, ids) {

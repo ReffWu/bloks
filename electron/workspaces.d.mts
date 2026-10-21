@@ -87,6 +87,7 @@ export function chooseAccent(registry: Registry, id: string | null, accent: unkn
 export function setSameAccent(registry: Registry, id: string | null, on: boolean, showing?: unknown): { registry: Registry; accent: string | null };
 export function rerollMark(registry: Registry, id: string, options?: { random?: () => number }): Registry;
 export function removeWorkspace(registry: Registry, id: string): { registry: Registry; removed: WorkspaceEntry };
+export function oneAtATime<A extends unknown[], R>(work: (...args: A) => R | Promise<R>): (...args: A) => Promise<R>;
 export function reorder(registry: Registry, ids: string[]): Registry;
 export function setCurrent(registry: Registry, id: string): Registry;
 export function muteFor(choice: string | null, now?: number): number | "forever" | null;

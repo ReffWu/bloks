@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { BUSINESS_MARK, generateMark, type Mark } from "@/lib/workspaceMark";
 import { act, useWorkspaces } from "@/lib/workspaces";
+import { checkDraft, cleanDraftName, draftName } from "@/lib/newWorkspace";
 import { WorkspaceMark } from "./WorkspaceMark";
 import { NeedsTeam } from "./TeamLock";
 import { askYourName, ensureYourName } from "./YourNameDialog";
@@ -36,6 +37,8 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
   const [team, setTeam] = useState(false);
   const [mark, setMark] = useState<Mark | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The name being made, while it is. */
+  const [making, setMaking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const nameField = useRef<HTMLInputElement>(null);
 
@@ -49,39 +52,53 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
     setTeam(false);
     setError(null);
     setBusy(false);
+    setMaking(null);
     setMark(generateMark(taken));
     // only on opening: a list that changes underneath keeps what was typed
   }, [open]);
 
   const shownMark = kind === "business" ? { ...BUSINESS_MARK } : mark;
-  const clean = name.replace(/\s+/g, " ").trim();
+  const clean = cleanDraftName(name);
   const shownName = clean || (kind === "business" ? "Business" : "Untitled");
-  const clash = list.some((w) => w.name.toLowerCase() === (clean || (kind === "business" ? "business" : "")).toLowerCase());
-  const ready = !busy && (kind === "business" || clean.length > 0) && !clash;
+  // while one is being made the list already holds it, and it is not a clash
+  const check = checkDraft({ kind, name }, list, making);
+  const clash = Boolean(check.problem);
+  const ready = check.ready;
 
   const reroll = () => setMark((was) => generateMark(taken, { avoid: was }));
 
+  // Enter held down, or Create pressed twice, is one workspace: the guard
+  // is set before anything is awaited, where a re-render would be too late
+  const submitting = useRef(false);
   const create = async () => {
-    if (!ready) return;
-    const asTeam = team && teamOpen;
-    let ownerName: string | undefined;
-    if (asTeam) {
-      // a window on a workspace you joined has somebody else's server
-      // behind it, so the name is only handed to the app from there
-      const why = `Everyone you invite to ${clean || "Business"} sees it.`;
-      const said = (s.available && s.ownerName) || (window.bloks?.workspace?.kind === "joined" ? await askYourName({ why, save: false }) : await ensureYourName({ why }));
-      if (!said) return;
-      ownerName = said;
-    }
-    setBusy(true);
-    setError(null);
-    const said = await act(
-      window.bloks?.workspaceCreate?.({ kind, name: clean || "Business", team: asTeam, mark: kind === "custom" ? mark : null, ...(ownerName ? { ownerName } : {}) }),
-    );
-    // on success the window is already loading the new workspace
-    if (said) {
-      setError(said);
-      setBusy(false);
+    if (!ready || submitting.current) return;
+    submitting.current = true;
+    try {
+      const asTeam = team && teamOpen;
+      let ownerName: string | undefined;
+      if (asTeam) {
+        // a window on a workspace you joined has somebody else's server
+        // behind it, so the name is only handed to the app from there
+        const why = `Everyone you invite to ${clean || "Business"} sees it.`;
+        const said = (s.available && s.ownerName) || (window.bloks?.workspace?.kind === "joined" ? await askYourName({ why, save: false }) : await ensureYourName({ why }));
+        if (!said) return;
+        ownerName = said;
+      }
+      const named = draftName(kind, name);
+      setMaking(named);
+      setBusy(true);
+      setError(null);
+      const said = await act(
+        window.bloks?.workspaceCreate?.({ kind, name: named, team: asTeam, mark: kind === "custom" ? mark : null, ...(ownerName ? { ownerName } : {}) }),
+      );
+      // on success the window is already on its way to the new workspace
+      if (said) {
+        setError(said);
+        setBusy(false);
+        setMaking(null);
+      }
+    } finally {
+      submitting.current = false;
     }
   };
 
@@ -143,7 +160,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
               aria-invalid={clash || undefined}
               className="h-10 rounded-[10px]"
             />
-            {clash && <span className="text-small text-destructive">There is a workspace called {clean || "Business"} already.</span>}
+            {clash && <span className="text-small text-destructive">{check.problem}</span>}
           </label>
 
           <div className="flex flex-col gap-2">
