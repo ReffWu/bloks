@@ -9254,12 +9254,23 @@ relayLink.ownerLink = () => (HOSTED ? makePairLink() : null);
 /** A link that pairs a device through Bloks Cloud (server/pairing.ts),
  * or null while Bloks Cloud is off here. The same link twice: one for a
  * phone or another computer's app, one that opens straight into Bloks in
- * a browser at bloks.dev/web. */
+ * a browser at bloks.dev/web. A hosted workspace's link says so
+ * (`hosted: true`), so an app can name it before pairing, and recognise a
+ * second link to the same workspace as pairing it again. */
 function makePairLink(): { link: string; webLink: string; expiresAt: number; host: string } | null {
   if (!cfg.relay?.enabled || !cfg.relay.url || !cfg.relay.clientToken) return null;
   const made = createPairLink();
   const fragment = Buffer.from(
-    JSON.stringify({ v: 1, k: "pair", r: cfg.relay.url, t: cfg.relay.clientToken, i: made.id, s: made.secret, host: hostName() }),
+    JSON.stringify({
+      v: 1,
+      k: "pair",
+      r: cfg.relay.url,
+      t: cfg.relay.clientToken,
+      i: made.id,
+      s: made.secret,
+      host: hostName(),
+      ...(HOSTED ? { hosted: true } : {}),
+    }),
   ).toString("base64url");
   const site = (process.env.BLOKS_SITE_URL || "https://bloks.dev").replace(/\/+$/, "");
   return { link: `${site}/pair#${fragment}`, webLink: `${site}/web/#${fragment}`, expiresAt: made.expiresAt, host: hostName() };

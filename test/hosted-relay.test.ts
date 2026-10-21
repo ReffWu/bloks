@@ -252,6 +252,7 @@ describe("a hosted workspace, from its owner's side", () => {
     assert.ok(made, "the app that asked can open it");
     const fragment = JSON.parse(Buffer.from(made!.link.split("#")[1], "base64url").toString("utf8"));
     assert.equal(fragment.k, "pair");
+    assert.equal(fragment.hosted, true, "a hosted workspace's link says so, for the app to name it before pairing");
     assert.equal(fragment.r, relayUrl);
     assert.equal(fragment.t, "client-token");
     assert.ok(made!.expiresAt > Date.now());
@@ -395,6 +396,13 @@ describe("on a Mac", () => {
     await h?.stop();
     relay.server.closeAllConnections();
     relay.server.close();
+  });
+
+  test("a link made at the Mac does not say hosted", async () => {
+    const made = await h.json("/api/pair/link", { method: "POST" });
+    const fragment = JSON.parse(Buffer.from(String(made.link).split("#")[1], "base64url").toString("utf8"));
+    assert.equal(fragment.k, "pair");
+    assert.equal("hosted" in fragment, false);
   });
 
   test("even a question signed with the licence gets no link: a Mac's owner pairs at the Mac", async () => {
