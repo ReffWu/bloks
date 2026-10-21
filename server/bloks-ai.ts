@@ -12,11 +12,14 @@
 // The other half is what never leaves the service. Bloks AI is one model
 // as far as anyone here can tell, called Bloks AI: whatever the service
 // ran underneath, and what it was worth in money, is the service's
-// business. So the engine lists one model, a Claude Code turn on it is
-// told that model's alias for everything it would otherwise name, and
-// every event and frame a Bloks AI turn produces is passed through the
-// scrubs below before it is logged, shown or counted. The balance is a
-// share of the month, never an amount.
+// business. So the engine lists one model, and every event a Bloks AI
+// turn produces is passed through the scrub below before it is logged,
+// shown or counted. The balance is a share of the month, never an amount.
+//
+// Bloks AI is the Bloks engine and nothing else. Claude Code runs on the
+// person's own Claude plan or key, never on Bloks AI; an agent an earlier
+// version had set that way is moved onto the Bloks engine once, at start
+// (claudeOffBloksAi, below).
 //
 // Everything here is pure, so the rules are held by tests rather than by
 // reading a spawn or a request.
@@ -54,8 +57,6 @@ export function originOf(via: unknown): WorkOrigin | null {
 export interface WorkSignals {
   /** What started the turn, if it was standing work. */
   origin?: WorkOrigin | null;
-  /** The engine's driver kind. Claude Code is a coding agent by trade. */
-  engine?: string | null;
   /** The agent's role, as its title and description say it. */
   role?: string | null;
   /** The agent's named skills. */
@@ -80,11 +81,11 @@ export function codingRole(role: string | null | undefined, skills: readonly str
  * Standing work comes first: a routine run by an engineer is still a
  * routine, and the service can serve those on whatever suits work nobody
  * is waiting on. Then coding, when the agent is an engineer by its role or
- * skills or the turn runs Claude Code. Everything else is general.
+ * skills. Everything else is general.
  */
 export function workTag(signals: WorkSignals): WorkTag {
   if (signals.origin) return "automation";
-  if (signals.engine === "claudeAgent" || codingRole(signals.role, signals.skills)) return "coding";
+  if (codingRole(signals.role, signals.skills)) return "coding";
   return "general";
 }
 
@@ -112,64 +113,7 @@ export function tagHeaders(tags: CallTags | null | undefined): Record<string, st
   };
 }
 
-/** The same headers in the shape Claude Code takes them: one
- * "Name: Value" per line in ANTHROPIC_CUSTOM_HEADERS. Lines already there
- * are kept unless they name one of ours. */
-export function customHeaders(tags: CallTags | null | undefined, existing?: string): string {
-  const ours = tagHeaders(tags);
-  const kept = (existing ?? "")
-    .split(/\r?\n/)
-    .filter((line) => line.includes(":") && !(line.slice(0, line.indexOf(":")).trim().toLowerCase() in ours));
-  return [...kept, ...Object.entries(ours).map(([name, value]) => `${name}: ${value}`)].join("\n");
-}
-
-/** What Claude Code is told on Bloks AI, beyond where and with what
- * token: every model it could name is the alias, so it never asks for a
- * real one and never prints one back. */
-export const CLAUDE_MODEL_ENV: Readonly<Record<string, string>> = {
-  ANTHROPIC_MODEL: BLOKS_AI_MODEL,
-  ANTHROPIC_SMALL_FAST_MODEL: BLOKS_AI_MODEL,
-  ANTHROPIC_DEFAULT_HAIKU_MODEL: BLOKS_AI_MODEL,
-  ANTHROPIC_DEFAULT_SONNET_MODEL: BLOKS_AI_MODEL,
-  ANTHROPIC_DEFAULT_OPUS_MODEL: BLOKS_AI_MODEL,
-  CLAUDE_CODE_SUBAGENT_MODEL: BLOKS_AI_MODEL,
-};
-
 // ── what stays with the service ────────────────────────────────────────
-
-/** Keys that carry a price. Dropped wherever they are. */
-const PRICE_KEYS = new Set(["total_cost_usd", "cost_usd", "costUSD", "costUsd", "cost"]);
-
-/**
- * A frame from Claude Code on Bloks AI, with every model it names said as
- * Bloks AI and every price taken out. The per-model usage table keeps its
- * counts (the context window is read from it) under the one name.
- */
-export function scrubFrame<T>(frame: T): T {
-  const walk = (value: unknown, key?: string): unknown => {
-    if (Array.isArray(value)) return value.map((v) => walk(v));
-    if (!value || typeof value !== "object") {
-      if (typeof value === "string" && key && /^(?:model|model_id|modelId)$/.test(key)) return BLOKS_AI_MODEL;
-      return value;
-    }
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (PRICE_KEYS.has(k)) continue;
-      if (k === "modelUsage" && v && typeof v === "object" && !Array.isArray(v)) {
-        const rows = Object.values(v as Record<string, unknown>).map((row) => walk(row)) as Array<Record<string, unknown>>;
-        const widest = rows.reduce<Record<string, unknown> | null>(
-          (best, row) => (!best || Number(row?.contextWindow ?? 0) > Number(best.contextWindow ?? 0) ? row : best),
-          null,
-        );
-        out[k] = widest ? { [BLOKS_AI_MODEL]: widest } : {};
-        continue;
-      }
-      out[k] = walk(v, k);
-    }
-    return out;
-  };
-  return walk(frame) as T;
-}
 
 /** A runtime event from a Bloks AI turn, as it may be logged, shown and
  * counted: its model is Bloks AI, it has no cost, and the engine's own
@@ -357,14 +301,82 @@ export function capValue(value: unknown): number | null | undefined {
 export const TEAM_SIGN_IN_WARNING = "A personal Claude or ChatGPT sign-in is for one person. For a team, use an API key or Bloks AI.";
 
 /** Whether an agent runs on somebody's personal sign-in: Claude Code on
- * its own login rather than Bloks AI, or Codex, which only ever runs on
- * its ChatGPT login here (server/drivers/codex.ts drops any key). */
-export function onPersonalSignIn(driverKind: string | null | undefined, engineAccess: string | null | undefined): boolean {
-  if (driverKind === "claudeAgent") return engineAccess !== "credits";
-  return driverKind === "codex";
+ * its own login, or Codex, which only ever runs on its ChatGPT login here
+ * (server/drivers/codex.ts drops any key). */
+export function onPersonalSignIn(driverKind: string | null | undefined): boolean {
+  return driverKind === "claudeAgent" || driverKind === "codex";
 }
 
 /** The warning a hosted team workspace shows, or null. */
 export function teamSignInWarning(opts: { hosted: boolean; team: boolean | null; personalAgents: number }): string | null {
   return opts.hosted && opts.team === true && opts.personalAgents > 0 ? TEAM_SIGN_IN_WARNING : null;
+}
+
+// ── Claude Code on the person's own plan ───────────────────────────────
+
+/** What the settings route says to anything asking for Claude Code on
+ * Bloks AI, which an older phone still offers. */
+export const CLAUDE_ACCESS_REFUSED =
+  "Claude Code runs on your own Claude plan or key, so it cannot run on Bloks AI. To use Bloks AI, pick Bloks AI as this agent's engine.";
+
+/** Said once, in the conversation of an agent moved off Claude Code. */
+export const CLAUDE_MOVED_NOTICE =
+  "Claude Code runs on your own Claude plan or key. This agent now runs on Bloks AI's own engine; to keep Claude Code, sign it in from Settings, Engines and keys and pick Claude Code for it again.";
+
+/** Said once, for an agent whose backup was Claude Code on Bloks AI. */
+export function claudeBackupNotice(onBloksAi: boolean): string {
+  return onBloksAi
+    ? "Claude Code runs on your own Claude plan or key. This agent's backup now runs on Bloks AI's own engine; to keep Claude Code as its backup, sign it in from Settings, Engines and keys and pick it again."
+    : "Claude Code runs on your own Claude plan or key, so it is no longer this agent's backup; to keep it, sign it in from Settings, Engines and keys and pick it as the backup again.";
+}
+
+interface Selection {
+  instanceId: string;
+  model: string;
+}
+
+/** The parts of a saved agent the move reads. */
+export interface SavedEngines {
+  modelSelection: Selection;
+  backupSelection?: Selection | null;
+  /** "credits" is how an earlier version saved Claude Code on Bloks AI. */
+  engineAccess?: string | null;
+}
+
+export interface ClaudeMove {
+  patch: { modelSelection?: Selection; backupSelection?: Selection | null; engineAccess: undefined };
+  notice: string;
+}
+
+/**
+ * What start does to an agent an earlier version had running Claude Code
+ * on Bloks AI, or null for any other agent, which is left exactly as it
+ * is. `kindOf` says which driver an engine is; `engine` is the Bloks
+ * engine's instance id.
+ *
+ * Such an agent moves onto the Bloks engine's one model, keeping its
+ * name, memory, skills and everything else. Never onto the person's own
+ * Claude sign-in, even when there is one: a plan they did not pick for
+ * this agent is not one to start spending behind their back. A backup on
+ * Claude Code went through Bloks AI too, so it moves as well, or goes
+ * when the agent is on the Bloks engine itself, since a backup on the
+ * same engine covers nothing. The saved access goes with the move, so
+ * nothing matches on the next start and the notice is said once.
+ */
+export function claudeOffBloksAi(
+  agent: SavedEngines,
+  kindOf: (instanceId: string) => string | null | undefined,
+  engine: string,
+): ClaudeMove | null {
+  if (agent.engineAccess !== "credits") return null;
+  const claude = (selection: Selection | null | undefined) => Boolean(selection && kindOf(selection.instanceId) === "claudeAgent");
+  const main = claude(agent.modelSelection);
+  const backup = claude(agent.backupSelection);
+  if (!main && !backup) return null;
+  const onto: Selection = { instanceId: engine, model: BLOKS_AI_MODEL };
+  const patch: ClaudeMove["patch"] = { engineAccess: undefined };
+  if (main) patch.modelSelection = onto;
+  const ownOnBloksAi = main || agent.modelSelection.instanceId === engine;
+  if (backup) patch.backupSelection = ownOnBloksAi ? null : onto;
+  return { patch, notice: main ? CLAUDE_MOVED_NOTICE : claudeBackupNotice(!ownOnBloksAi) };
 }

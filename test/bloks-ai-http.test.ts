@@ -211,8 +211,8 @@ test("a hosted team with an agent on a personal sign-in is warned, and nothing i
   assert.equal(status.team, true);
   assert.equal(status.teamSignInWarning, "A personal Claude or ChatGPT sign-in is for one person. For a team, use an API key or Bloks AI.");
 
-  // on Bloks AI instead, there is nothing to say
-  await h.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ engineAccess: "credits" }) });
+  // on Bloks AI's own engine instead, there is nothing to say
+  await h.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ modelSelection: { instanceId: "bloks", model: "bloks-ai" } }) });
   assert.equal((await h.json("/api/credits")).teamSignInWarning, null);
 });
 

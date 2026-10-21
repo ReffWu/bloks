@@ -12,13 +12,11 @@
 // token is forgotten the moment the licence changes, since a token from
 // an old licence spends somebody else's allowance or nobody's.
 //
-// Two engines spend it. The Bloks engine is the generic OpenAI-compatible
+// One engine spends it: the Bloks engine, the generic OpenAI-compatible
 // driver pointed at the service with the token as its key. Claude Code
-// spends it when an agent's access says so, through the Anthropic
-// Messages API the same base answers, by way of the CLI's own base URL
-// and token variables (server/drivers/claude.ts). Either way the service
-// picks the model, and the app only ever knows it as Bloks AI
-// (server/bloks-ai.ts).
+// never does; it runs on the person's own Claude plan or key, and is
+// never handed this token. The service picks the model, and the app only
+// ever knows it as Bloks AI (server/bloks-ai.ts).
 //
 // Everything about the allowance is the server's to say. This file never
 // decides how much is left or when it is low: it reads the balance as

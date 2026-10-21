@@ -1,19 +1,21 @@
 // The rules of Bloks AI, held one at a time (server/bloks-ai.ts): which
 // work tag a turn carries, what a member tag is made of and never made
-// of, the headers in both the shapes the engines take them, Claude Code's
-// environment on Bloks AI, the scrubs that keep what ran underneath
-// and what it cost with the service, and the usage notice the balance
-// carries, read as warily as the rest of it.
+// of, the headers the engine sends, Claude Code never given anything of
+// Bloks AI's, the move at start that takes an agent off Claude Code on
+// Bloks AI, the scrub that keeps what ran underneath and what it cost with
+// the service, and the usage notice the balance carries, read as warily as
+// the rest of it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  CLAUDE_MODEL_ENV,
+  CLAUDE_MOVED_NOTICE,
   IDENTITY_LINE,
   TEAM_SIGN_IN_WARNING,
   capValue,
+  claudeBackupNotice,
+  claudeOffBloksAi,
   codingRole,
-  customHeaders,
   memberTag,
   onPersonalSignIn,
   originOf,
@@ -21,7 +23,6 @@ import {
   readAiNotice,
   readTeam,
   scrubEvent,
-  scrubFrame,
   tagHeaders,
   teamSignInWarning,
   workTag,
@@ -31,17 +32,17 @@ import type { RuntimeEvent } from "../server/contracts.ts";
 
 test("standing work is automation, whoever does it", () => {
   for (const origin of ["routine", "watcher", "workflow", "intent", "incident", "webhook", "background"] as const) {
-    assert.equal(workTag({ origin, engine: "claudeAgent", role: "Backend engineer" }), "automation", origin);
+    assert.equal(workTag({ origin, role: "Backend engineer" }), "automation", origin);
   }
 });
 
-test("a coding turn is one on Claude Code, or one whose agent's role or skills say engineering", () => {
-  assert.equal(workTag({ engine: "claudeAgent", role: "Travel planner" }), "coding");
-  assert.equal(workTag({ engine: "bloks", role: "Frontend engineer Builds the web app" }), "coding");
-  assert.equal(workTag({ engine: "bloks", role: "Assistant", skills: ["Refactor Python that matches the project"] }), "coding");
-  assert.equal(workTag({ engine: "bloks", role: "Tech lead" }), "coding");
-  assert.equal(workTag({ engine: "bloks", role: "Docs writer", skills: ["Keep the calendar tidy"] }), "general");
-  assert.equal(workTag({ engine: "bloks" }), "general");
+test("a coding turn is one whose agent's role or skills say engineering", () => {
+  assert.equal(workTag({ role: "Frontend engineer Builds the web app" }), "coding");
+  assert.equal(workTag({ role: "Assistant", skills: ["Refactor Python that matches the project"] }), "coding");
+  assert.equal(workTag({ role: "Tech lead" }), "coding");
+  assert.equal(workTag({ role: "Travel planner" }), "general");
+  assert.equal(workTag({ role: "Docs writer", skills: ["Keep the calendar tidy"] }), "general");
+  assert.equal(workTag({}), "general");
 });
 
 test("engineering is read from whole words, so a near miss stays general", () => {
@@ -74,46 +75,76 @@ test("the headers: work always, a member only when well formed", () => {
   assert.deepEqual(tagHeaders(null), {});
 });
 
-test("Claude Code takes them as lines, keeping the person's own and replacing ours", () => {
-  const member = memberTag("p2");
-  assert.equal(customHeaders({ work: "coding", member }), `x-bloks-work: coding\nx-bloks-member: ${member}`);
-  assert.equal(customHeaders({ work: "automation" }, "X-Team: blue\nx-bloks-work: general"), "X-Team: blue\nx-bloks-work: automation");
-});
-
-test("on Bloks AI the CLI is told every model is the alias, and gets the turn's tags", () => {
-  const member = memberTag("p3");
+test("Claude Code is never given a base, a token, a model alias or Bloks AI's headers", () => {
+  // whatever a turn carries, the CLI starts on what this machine and its
+  // own settings say, which is the person's own plan or key
   const env = turnEnvironment(
-    { PATH: "/bin", ANTHROPIC_MODEL: "claude-opus-5.5" },
-    { credits: { baseUrl: "https://ai.example/api/ai", token: "cred_1" }, tags: { work: "general", member } },
+    { PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-person", CLAUDECODE: "1" },
+    { env: { BLOKS_TOKEN: "t" }, credits: { baseUrl: "https://ai.example/api/ai", token: "cred_1" }, tags: { work: "general" } } as never,
   );
-  for (const [name, value] of Object.entries(CLAUDE_MODEL_ENV)) assert.equal(env[name], value, name);
-  assert.equal(env.ANTHROPIC_MODEL, "bloks-ai");
-  assert.equal(env.ANTHROPIC_SMALL_FAST_MODEL, "bloks-ai");
-  assert.equal(env.ANTHROPIC_CUSTOM_HEADERS, `x-bloks-work: general\nx-bloks-member: ${member}`);
-  // without tags it still says what it is: Claude Code is a coding engine
-  const plain = turnEnvironment({ PATH: "/bin" }, { credits: { baseUrl: "https://ai.example/api/ai", token: "cred_1" } });
-  assert.equal(plain.ANTHROPIC_CUSTOM_HEADERS, "x-bloks-work: coding");
-  // and off Bloks AI nothing of it is set, whatever tags a turn carries
-  const own = turnEnvironment({ PATH: "/bin" }, { tags: { work: "coding" } });
-  assert.equal(own.ANTHROPIC_MODEL, undefined);
-  assert.equal(own.ANTHROPIC_CUSTOM_HEADERS, undefined);
+  assert.equal(env.ANTHROPIC_BASE_URL, undefined);
+  assert.equal(env.ANTHROPIC_AUTH_TOKEN, undefined);
+  assert.equal(env.ANTHROPIC_MODEL, undefined);
+  assert.equal(env.ANTHROPIC_SMALL_FAST_MODEL, undefined);
+  assert.equal(env.ANTHROPIC_CUSTOM_HEADERS, undefined);
+  assert.equal("ANTHROPIC_API_KEY" in env, false, "the key is dropped, as it always was");
+  assert.equal(env.CLAUDECODE, undefined);
+  assert.equal(env.BLOKS_TOKEN, "t");
+  assert.ok(!Object.values(env).some((v) => typeof v === "string" && /ai\.example|cred_1|bloks-ai/.test(v)));
 });
 
-test("a Claude Code frame on Bloks AI names no model and no price", () => {
-  const frame = scrubFrame({
-    type: "result",
-    total_cost_usd: 0.42,
-    modelUsage: {
-      "claude-opus-5.5": { inputTokens: 10, costUSD: 0.4, contextWindow: 200000 },
-      "upstream-model-b": { inputTokens: 2, costUSD: 0.02, contextWindow: 100000 },
-    },
-    message: { model: "claude-opus-5.5", content: [{ type: "text", text: "hi" }] },
-  });
-  const said = JSON.stringify(frame);
-  assert.ok(!/claude-|cost|0\.42/i.test(said), said);
-  assert.deepEqual(frame.modelUsage, { "bloks-ai": { inputTokens: 10, contextWindow: 200000 } }, "the window is still read from it");
-  assert.equal(frame.message.model, "bloks-ai");
-  assert.equal(scrubFrame({ type: "system", subtype: "init", model: "claude-sonnet-5" }).model, "bloks-ai");
+// ── Claude Code off Bloks AI ───────────────────────────────────────────
+
+const KINDS: Record<string, string> = { claude: "claudeAgent", claude2: "claudeAgent", codex: "codex", bloks: "bloks" };
+const kindOf = (id: string) => KINDS[id] ?? null;
+const ON_AI = { instanceId: "bloks", model: "bloks-ai" };
+
+test("an agent on Claude Code with Bloks AI paying moves onto the Bloks engine, and is told once", () => {
+  const move = claudeOffBloksAi({ modelSelection: { instanceId: "claude", model: "claude-sonnet-5" }, engineAccess: "credits" }, kindOf, "bloks");
+  assert.deepEqual(move, { patch: { engineAccess: undefined, modelSelection: ON_AI }, notice: CLAUDE_MOVED_NOTICE });
+  assert.equal(
+    CLAUDE_MOVED_NOTICE,
+    "Claude Code runs on your own Claude plan or key. This agent now runs on Bloks AI's own engine; to keep Claude Code, sign it in from Settings, Engines and keys and pick Claude Code for it again.",
+  );
+  // the move drops the access, so the agent as it is afterwards matches nothing
+  assert.equal(claudeOffBloksAi({ modelSelection: ON_AI, engineAccess: undefined }, kindOf, "bloks"), null);
+});
+
+test("a backup on Claude Code moves with it, or goes when the agent is on the Bloks engine itself", () => {
+  // two Claude Code engines: the backup would be the same service the agent now runs on
+  const both = claudeOffBloksAi(
+    { modelSelection: { instanceId: "claude", model: "claude-sonnet-5" }, backupSelection: { instanceId: "claude2", model: "claude-opus-5" }, engineAccess: "credits" },
+    kindOf,
+    "bloks",
+  );
+  assert.deepEqual(both?.patch, { engineAccess: undefined, modelSelection: ON_AI, backupSelection: null });
+  assert.equal(both?.notice, CLAUDE_MOVED_NOTICE);
+  // a backup on Claude Code behind another engine becomes Bloks AI
+  const behindCodex = claudeOffBloksAi(
+    { modelSelection: { instanceId: "codex", model: "gpt-5.5" }, backupSelection: { instanceId: "claude", model: "claude-sonnet-5" }, engineAccess: "credits" },
+    kindOf,
+    "bloks",
+  );
+  assert.deepEqual(behindCodex?.patch, { engineAccess: undefined, backupSelection: ON_AI });
+  assert.equal(behindCodex?.notice, claudeBackupNotice(true));
+  // and behind the Bloks engine it goes, since it would cover nothing
+  const behindAi = claudeOffBloksAi({ modelSelection: ON_AI, backupSelection: { instanceId: "claude", model: "claude-sonnet-5" }, engineAccess: "credits" }, kindOf, "bloks");
+  assert.deepEqual(behindAi?.patch, { engineAccess: undefined, backupSelection: null });
+  assert.equal(behindAi?.notice, claudeBackupNotice(false));
+  for (const notice of [claudeBackupNotice(true), claudeBackupNotice(false)]) assert.match(notice, /^Claude Code runs on your own Claude plan or key/);
+});
+
+test("any other agent is left exactly as it is", () => {
+  // on Bloks AI already, whatever an old access says
+  assert.equal(claudeOffBloksAi({ modelSelection: ON_AI }, kindOf, "bloks"), null);
+  assert.equal(claudeOffBloksAi({ modelSelection: ON_AI, engineAccess: "credits" }, kindOf, "bloks"), null);
+  // Claude Code on its own sign-in
+  assert.equal(claudeOffBloksAi({ modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } }, kindOf, "bloks"), null);
+  assert.equal(claudeOffBloksAi({ modelSelection: { instanceId: "claude", model: "claude-sonnet-5" }, engineAccess: null }, kindOf, "bloks"), null);
+  // an access only Claude Code ever read, on an engine that never did
+  assert.equal(claudeOffBloksAi({ modelSelection: { instanceId: "codex", model: "gpt-5.5" }, engineAccess: "credits" }, kindOf, "bloks"), null);
+  // an engine this workspace no longer has is not guessed at
+  assert.equal(claudeOffBloksAi({ modelSelection: { instanceId: "gone", model: "x" }, engineAccess: "credits" }, kindOf, "bloks"), null);
 });
 
 test("an event from a Bloks AI turn has no cost, no model of its own and no raw frame", () => {
@@ -146,10 +177,10 @@ test("a member's daily cap is a share of the month, or none", () => {
 });
 
 test("the warning: a hosted team with an agent on a personal sign-in, and nothing else", () => {
-  assert.equal(onPersonalSignIn("claudeAgent", null), true);
-  assert.equal(onPersonalSignIn("claudeAgent", "credits"), false);
-  assert.equal(onPersonalSignIn("codex", null), true);
-  assert.equal(onPersonalSignIn("openrouter", null), false);
+  assert.equal(onPersonalSignIn("claudeAgent"), true, "Claude Code is always on the person's own plan or key");
+  assert.equal(onPersonalSignIn("codex"), true);
+  assert.equal(onPersonalSignIn("openrouter"), false);
+  assert.equal(onPersonalSignIn("bloks"), false);
   assert.equal(teamSignInWarning({ hosted: true, team: true, personalAgents: 1 }), TEAM_SIGN_IN_WARNING);
   assert.equal(teamSignInWarning({ hosted: false, team: true, personalAgents: 1 }), null);
   assert.equal(teamSignInWarning({ hosted: true, team: false, personalAgents: 3 }), null);

@@ -121,8 +121,9 @@ export const FEATURES: readonly string[] = [
   "automation-failures",
   // Bloks credits: GET and PATCH /api/credits (the balance as the service
   // says it, the background switch, a refusal still standing, the checkout
-  // address), engineAccess on PATCH /api/bots/:id and on each agent, and
-  // the `credits` frame on the stream
+  // address) and the `credits` frame on the stream. engineAccess is gone
+  // from each agent: Claude Code runs on the person's own plan or key, and
+  // PATCH /api/bots/:id refuses "credits" with a sentence to show
   "credits",
   // Bloks AI, which credits became: GET /api/credits says what is left
   // as shares of the plan (leftPercent, monthlyLeftPercent, topUps,

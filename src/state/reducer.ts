@@ -353,9 +353,6 @@ export interface Bot {
   modelSelection: ModelSelection;
   /** The engine that answers when the agent's own runs out. */
   backupSelection?: ModelSelection | null;
-  /** How its engine is paid for: unset is the engine's own sign-in,
-   * "credits" runs Claude Code on the person's Bloks AI. */
-  engineAccess?: "credits" | null;
   /** Where this agent may act. Left unset it decides for itself: its own
    * box when it has one, otherwise this Mac. */
   computer?: "cloud" | "sandbox" | "local" | "off" | null;

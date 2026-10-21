@@ -288,10 +288,7 @@ export function ModelPicker({
     rows[next].focus();
   };
 
-  // Claude Code on Bloks AI runs whatever the service picks, so it is
-  // said as Bloks AI rather than as the model it would run on its own
-  const onBloksAi = !custom && active?.driverKind === "claudeAgent" && bot?.engineAccess === "credits";
-  const full = onBloksAi ? BLOKS_AI_NAME : active || !custom ? modelLabel(active, effectiveModel(active, selection.model)) : (noneLabel ?? "None");
+  const full = active || !custom ? modelLabel(active, effectiveModel(active, selection.model)) : (noneLabel ?? "None");
   const name = composer ? shortName(active, full) : full;
   const portalled = (panel: ReactNode) => (composer ? panel : createPortal(panel, document.body));
   const described = active ? `${active.displayName}, ${full}` : full;

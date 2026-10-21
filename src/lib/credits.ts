@@ -6,8 +6,9 @@
 // called Bloks AI and has one model of the same name. This file only
 // says those, and says whether an agent's runs are on Bloks AI, which is
 // what decides whether a refusal for a used-up allowance is this agent's
-// business. (The engine id and the routes still say credits, which is
-// what it was called first.)
+// business. Bloks AI is its own engine, and Claude Code runs on the
+// person's own Claude plan or key. (The engine id and the routes still say
+// credits, which is what it was called first.)
 
 export const CREDITS_ENGINE = "bloks";
 export const BLOKS_AI_NAME = "Bloks AI";
@@ -19,17 +20,14 @@ interface EngineLike {
 
 interface AgentLike {
   modelSelection?: { instanceId: string } | null;
-  engineAccess?: "credits" | null;
 }
 
-/** Whether this agent's runs are on Bloks AI: the Bloks engine, or Claude
- * Code with its access set to Bloks AI. */
+/** Whether this agent's runs are on Bloks AI: the Bloks engine, and
+ * nothing else. */
 export function runsOnCredits(bot: AgentLike, instances: EngineLike[]): boolean {
   const id = bot.modelSelection?.instanceId;
   if (!id) return false;
-  if (id === CREDITS_ENGINE) return true;
-  const engine = instances.find((i) => i.instanceId === id);
-  return engine?.driverKind === "claudeAgent" && bot.engineAccess === "credits";
+  return id === CREDITS_ENGINE || instances.find((i) => i.instanceId === id)?.driverKind === CREDITS_ENGINE;
 }
 
 export interface CreditsRefusal {
@@ -168,9 +166,8 @@ export const TEAM_SIGN_IN_WARNING = "A personal Claude or ChatGPT sign-in is for
 /** Whether an agent runs on somebody's personal sign-in: Claude Code on
  * its own login, or Codex on its ChatGPT one (server/bloks-ai.ts). */
 export function onPersonalSignIn(bot: AgentLike, instances: EngineLike[]): boolean {
-  const engine = instances.find((i) => i.instanceId === bot.modelSelection?.instanceId);
-  if (engine?.driverKind === "claudeAgent") return bot.engineAccess !== "credits";
-  return engine?.driverKind === "codex";
+  const kind = instances.find((i) => i.instanceId === bot.modelSelection?.instanceId)?.driverKind;
+  return kind === "claudeAgent" || kind === "codex";
 }
 
 /** The warning on a hosted team workspace, for these agents, or null. */

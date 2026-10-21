@@ -532,9 +532,11 @@ export interface BotRecord {
    * rate limit, no credit, an outage (server/failover.ts). Unset means
    * a turn that hits one of those just fails, as it always did. */
   backupSelection?: ModelSelection | null;
-  /** How its engine is paid for. Unset is the engine's own sign-in;
-   * "credits" runs Claude Code on the person's Bloks credits instead
-   * (server/credits.ts). Engines other than Claude Code ignore it. */
+  /** Read once at start and never written: "credits" is how an earlier
+   * version saved Claude Code running on Bloks AI, and such an agent is
+   * moved onto the Bloks engine, losing this (claudeOffBloksAi in
+   * server/bloks-ai.ts). Claude Code runs on the person's own plan or
+   * key; nothing reads this for a turn. */
   engineAccess?: "credits" | null;
   /** Where each engine thinks this conversation got to. Opaque to us;
    * handed straight back on the next turn. */

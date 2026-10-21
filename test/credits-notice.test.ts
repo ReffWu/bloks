@@ -29,12 +29,10 @@ const instances = [
   { instanceId: "codex", driverKind: "codex" },
 ];
 
-test("an agent spends credits on the Bloks engine, or on Claude Code with its access set to credits", () => {
+test("an agent spends Bloks AI on the Bloks engine, and on nothing else", () => {
   assert.equal(runsOnCredits({ modelSelection: { instanceId: CREDITS_KIND } }, instances), true, "the engine id is the server's");
-  assert.equal(runsOnCredits({ modelSelection: { instanceId: "claude" }, engineAccess: "credits" }, instances), true);
-  assert.equal(runsOnCredits({ modelSelection: { instanceId: "claude" } }, instances), false, "its own sign-in");
-  // access is Claude Code's alone; anything else on credits access is not
-  assert.equal(runsOnCredits({ modelSelection: { instanceId: "codex" }, engineAccess: "credits" }, instances), false);
+  assert.equal(runsOnCredits({ modelSelection: { instanceId: "claude" } }, instances), false, "Claude Code is on its own plan or key");
+  assert.equal(runsOnCredits({ modelSelection: { instanceId: "codex" } }, instances), false);
   assert.equal(runsOnCredits({ modelSelection: null }, instances), false);
 });
 
@@ -84,13 +82,12 @@ test("Settings lists a team's members by name, with their use and an optional da
 
 test("the team warning shows on a hosted team for agents on a personal sign-in, and nowhere else", () => {
   const claudeOwn = { modelSelection: { instanceId: "claude" } };
-  const claudeAi = { modelSelection: { instanceId: "claude" }, engineAccess: "credits" as const };
   const codex = { modelSelection: { instanceId: "codex" } };
   const ai = { modelSelection: { instanceId: "bloks" } };
   const say = (hosted: boolean, team: boolean | null, agents: object[]) => teamSignInWarning({ hosted, team, agents, instances });
   assert.equal(say(true, true, [claudeOwn]), TEAM_SIGN_IN_WARNING);
   assert.equal(say(true, true, [codex, ai]), TEAM_SIGN_IN_WARNING);
-  assert.equal(say(true, true, [claudeAi, ai]), null, "Bloks AI is for a team");
+  assert.equal(say(true, true, [ai]), null, "Bloks AI is for a team");
   assert.equal(say(false, true, [claudeOwn]), null, "a Mac is one person's");
   assert.equal(say(true, false, [claudeOwn]), null);
   assert.equal(say(true, null, [claudeOwn]), null, "not until the server knows");

@@ -46,7 +46,7 @@ export function UsageNotice({ bot }: { bot: Bot }) {
     return () => {
       current = false;
     };
-  }, [laneId, working, visible, tick, bot.modelSelection.instanceId, bot.engineAccess]);
+  }, [laneId, working, visible, tick, bot.modelSelection.instanceId]);
 
   useEffect(() => {
     if (!visible) return;

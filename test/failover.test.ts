@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 
 import { isLimitNotice } from "../server/drivers/claude.ts";
-import { clockTime, Cooldowns, describeRest, outReason, resetAt, restUntil } from "../server/failover.ts";
+import { apiRefusal, clockTime, Cooldowns, describeRest, errorWords, outReason, resetAt, restUntil } from "../server/failover.ts";
 import { startHarness, type Harness } from "./helpers/server.ts";
 
 const MIN = 60_000;
@@ -55,6 +55,43 @@ describe("what counts as out", () => {
     assert.equal(outReason("This conversation is longer than the model will take"), null);
     assert.equal(outReason(""), null);
     assert.equal(outReason(null), null);
+  });
+});
+
+describe("an API's refusal, in its own words", () => {
+  const SAID = "Claude Code runs on your own Claude plan or key. Sign it in on this computer.";
+  const body = JSON.stringify({ type: "error", error: { type: "permission_error", message: SAID }, request_id: "req_1" });
+
+  test("an older CLI's JSON body is read for the service's sentence", () => {
+    assert.deepEqual(apiRefusal(`API Error: 403 ${body}`), { status: 403, words: SAID });
+    assert.equal(errorWords(`API Error: 403 ${body}`), SAID);
+    // what came before and after is the CLI's, not the service's
+    assert.equal(errorWords(`Failed to authenticate. API Error: 403 ${body} · Please run /login`), SAID);
+    // cut short on the way, the message still reads if it got through whole
+    assert.equal(errorWords(`API Error: 403 ${body.slice(0, body.indexOf("request_id") - 3)}`), SAID);
+  });
+
+  test("a newer CLI's sentence after the status is the service's own", () => {
+    const said = `Gateway refused the request · signing in again won't change this · API Error: 403 ${SAID}`;
+    assert.deepEqual(apiRefusal(said), { status: 403, words: SAID });
+    assert.equal(errorWords("API Error (403): Not for this licence."), "Not for this licence.");
+  });
+
+  test("anything else is said as it came, and what is out is still read from the whole text", () => {
+    for (const text of [
+      "API Error: Our safeguards flagged this message. Try rephrasing the request in a new session",
+      "API Error: 500",
+      "npm test failed: 3 failing",
+      "Connection reset by peer while reading the response",
+      "",
+    ]) {
+      assert.equal(apiRefusal(text), null, text);
+      assert.equal(errorWords(text), text, text);
+    }
+    // the words for a person, the code for deciding: a 529 still rests the engine
+    const overloaded = 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}';
+    assert.equal(errorWords(overloaded), "Overloaded");
+    assert.equal(outReason(overloaded), "overloaded");
   });
 });
 

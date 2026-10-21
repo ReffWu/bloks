@@ -113,7 +113,7 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 
 ### Bloks AI
 
-- **Agents with no key and no sign-in.** On a Bloks plan that includes Bloks AI, any agent can run on it, Claude Code included. Settings and Usage show what is left of the month as a meter, with top-ups, and a team can cap each member's share. Work nobody asked for, like the nightly tidy, uses it only when you switch that on.
+- **Agents with no key and no sign-in.** On a Bloks plan that includes Bloks AI, any agent can run on Bloks AI, which is Bloks's own engine. Claude Code uses your own Claude plan or key. Settings and Usage show what is left of the month as a meter, with top-ups, and a team can cap each member's share. Work nobody asked for, like the nightly tidy, uses it only when you switch that on.
 
 ### iPhone and Apple Watch
 

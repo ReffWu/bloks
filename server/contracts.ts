@@ -307,15 +307,10 @@ export interface SendTurnInput {
    * ignores it, which is the honest outcome rather than a missing
    * feature. */
   env?: Record<string, string>;
-  /** Run on the person's Bloks credits instead of the engine's own
-   * sign-in: the service's base URL and a credits token. Only Claude Code
-   * takes it (server/drivers/claude.ts); the harness never sets it for
-   * anything else. Never logged. */
-  credits?: { baseUrl: string; token: string };
   /** What this turn is, and on a shared room member's turn whose it is,
    * for a service that picks the model by it (server/bloks-ai.ts). Only
-   * sent on Bloks AI: the Bloks engine sends it as headers on each call,
-   * Claude Code on credits through its custom headers. Others ignore it. */
+   * sent on Bloks AI, whose engine sends it as headers on each call.
+   * Others ignore it. */
   tags?: import("./bloks-ai.ts").CallTags;
   /**
    * The whole message to send instead of `text` when the session behind

@@ -81,6 +81,54 @@ export function failureOf(text: string | null | undefined): Failure {
   return "other";
 }
 
+// How Claude Code says the API it called turned a request away: "API
+// Error: ", the status, then the body. An older CLI prints the body as the
+// JSON it was sent (`{"type":"error","error":{"type":"permission_error",
+// "message":"..."}}`), a newer one the message alone, often after a line
+// of its own about what to try. The message is the service's sentence,
+// and that is what a person is shown. The whole text is still what is
+// read for "out" above, where a status code says more than any wording.
+const API_ERROR = /\bAPI Error\b[:\s]*\(?(\d{3})\)?[:\s]+(\S[\s\S]*)$/i;
+
+/** A refusal from an API, as its status and the service's own words. */
+export interface ApiRefusal {
+  status: number;
+  words: string;
+}
+
+export function apiRefusal(text: string | null | undefined): ApiRefusal | null {
+  const found = API_ERROR.exec((text ?? "").slice(0, 8000));
+  if (!found) return null;
+  const body = found[2].trim();
+  let words = body;
+  if (body.startsWith("{")) {
+    words = "";
+    try {
+      const parsed = JSON.parse(body.slice(0, body.lastIndexOf("}") + 1)) as Record<string, any>;
+      const error = parsed?.error;
+      if (typeof error === "string") words = error;
+      else if (typeof error?.message === "string") words = error.message;
+      else if (typeof parsed?.message === "string") words = parsed.message;
+    } catch {
+      // cut short on the way here: the message, if it got through whole
+      const message = /"message"\s*:\s*("(?:[^"\\]|\\.)*")/.exec(body)?.[1];
+      try {
+        words = message ? String(JSON.parse(message)) : "";
+      } catch {
+        words = "";
+      }
+    }
+  }
+  words = words.replace(/\s+/g, " ").trim().slice(0, 300);
+  return words ? { status: Number(found[1]), words } : null;
+}
+
+/** A failure as a notice says it: an API's refusal in the service's own
+ * words, anything else as it came. */
+export function errorWords(text: string): string {
+  return apiRefusal(text)?.words ?? text;
+}
+
 /** How long a failed turn waits before it is asked again. The engines
  * already retry a dropped connection or an overloaded API for a while
  * before they give up on a turn, so asking at once would mostly fail

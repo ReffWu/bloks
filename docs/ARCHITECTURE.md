@@ -2769,49 +2769,51 @@ or a model the service once listed), and a saved selection on it reads as
 (`CompatAccess`): a 401 is answered by one renewal and one more try, and a
 402 ends the turn with the service's own words, marked `credits: "empty"`
 on the `runtime.error`. It is offered while Cloud is active
-(`creditsOffered`) or the host came with a token. Claude Code runs on
-Bloks AI when an agent's `engineAccess` is `"credits"`: the turn carries
-`credits` and the driver starts the CLI with `ANTHROPIC_BASE_URL` at the
-service, the token as `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` empty,
-`--model bloks-ai`, and `ANTHROPIC_MODEL`, the small and fast model, each
-family's default and the subagent model all set to `bloks-ai`
-(`turnEnvironment`). A lapsed licence refuses such a turn rather than
-running it on the CLI's own sign-in.
+(`creditsOffered`) or the host came with a token, and a turn on an agent
+saved on it while it is not says Cloud is what it needs.
+
+Bloks AI is the Bloks engine and nothing else. Claude Code always runs on
+the person's own Claude plan or key: its driver is never handed a base URL
+or a token (`turnEnvironment`). An agent an earlier version had running
+Claude Code on Bloks AI (`engineAccess: "credits"` in `bots.json`) is
+moved at start, before anything listens to new messages
+(`claudeOffBloksAi`): its engine becomes the Bloks engine's one model, a
+backup on Claude Code becomes the Bloks engine too (or goes, when the agent
+is on it already), the access is dropped, and one notice in its
+conversation says so. Everything else about the agent stays. It is never
+moved onto the person's own Claude sign-in, even when there is one, and
+since the access goes with the move, nothing matches on the next start.
+An agent on any other engine is left as it is.
 
 Every call says what work it is, in `x-bloks-work`, so the service can
 choose: `automation` for a routine, a workflow step, the incident desk's
 note to a lead, words a watcher, a standing intent, a webhook or a routine
 left in the lane, a quiet compaction, and a one-shot that is Bloks' own
 bookkeeping (a summary, the memory tidy, skill suggestions); `coding` for
-a turn on Claude Code or an agent whose title, description or skills say
-engineering; `general` otherwise, the new agent draft among them
-(`workTag`, `turnOrigin`). A turn a shared room member started also
-carries `x-bloks-member`, a hash of that person's id here (`memberTag`),
-never a name or an address; the owner's turns, and anything the owner set
-up, carry none. The Bloks engine sends both as headers (`SendTurnInput.tags`,
-only on an engine with `CompatAccess`); Claude Code sends them through
-`ANTHROPIC_CUSTOM_HEADERS`, which the CLI adds to every request.
+an agent whose title, description or skills say engineering; `general`
+otherwise, the new agent draft among them (`workTag`, `turnOrigin`). A
+turn a shared room member started also carries `x-bloks-member`, a hash
+of that person's id here (`memberTag`), never a name or an address; the
+owner's turns, and anything the owner set up, carry none. The Bloks
+engine sends both as headers (`SendTurnInput.tags`, only on an engine
+with `CompatAccess`).
 
 What ran underneath, and what it was worth, stays with the service. Every
-frame from Claude Code on Bloks AI has its models said as `bloks-ai` and
-its prices taken out before anything reads it (`scrubFrame`), and every
-event from a Bloks AI lane is passed through `scrubEvent` by the bus
+event from the Bloks engine is passed through `scrubEvent` by the bus
 before it is logged or heard: its model is `bloks-ai`, its cost null, its
-raw frame left behind. Usage counts a Bloks AI turn under `bloks`,
-whatever engine ran it, the engine report records its model as
-`bloks-ai`, and a shared room's spend cap does not book it (the service
-caps a team's members instead). Every agent on Bloks AI has one more line
-in its system prompt (`IDENTITY_LINE`): it runs on Bloks AI, and says so
-rather than guess when asked what powers it.
+raw frame left behind. Usage counts a Bloks AI turn under `bloks`, the
+engine report records its model as `bloks-ai`, and a shared room's spend
+cap does not book it (the service caps a team's members instead). Every
+agent on Bloks AI has one more line in its system prompt (`IDENTITY_LINE`):
+it runs on Bloks AI, and says so rather than guess when asked what powers
+it.
 
 A used-up allowance is workspace wide: the refusal stands (`refused` on
 `GET /api/credits`, on `/api/config` and in a `credits` frame) until a read
 finds something left or a run on Bloks AI answers, and the composer of
 every agent on it says it with Top up, which opens the checkout page in
 the browser. A turn on Bloks AI never rests its engine (`recoverTurn`):
-topping up should be felt at once, and resting Claude Code would idle
-every agent on its own sign-in. A Claude Code turn refused with a 401
-renews the token and is asked again. The token and the licence are in
+topping up should be felt at once. The token and the licence are in
 `SECRET_PATHS`, so backups strip them and `redactSecrets` scrubs them by
 value.
 
@@ -2847,10 +2849,20 @@ For a phone: `GET /api/credits` (`offered`, `background`, `refused`,
 the old `balance`, `currency`, `lowAt` and `autoReload` are gone),
 `PATCH /api/credits` with `{ background }`, `{ memberCaps: { [member]:
 percent or null } }` or both, `team` in the `credits` frame and on
-`/api/config`, and `engineAccess` on each agent and on
-`PATCH /api/bots/:id` (`"credits"` or `"own"`; an agent's own credential
-may go back to its sign-in but never onto Bloks AI). Features `credits`
-and `bloks-ai`.
+`/api/config`. An agent no longer carries `engineAccess`, and
+`PATCH /api/bots/:id` takes `"own"` (or null) as said and refuses
+`"credits"` with a sentence the phone can show. Features `credits` and
+`bloks-ai`.
+
+When an API turns a Claude Code call away, the CLI says so as `API Error:`,
+the status and the body, which an older CLI prints as the JSON it was
+sent. A notice says the service's own sentence instead (`errorWords` in
+`server/failover.ts`), wherever a failed turn is said: the error itself,
+the try again and the backup taking over, and the end of the line. What
+decides whether the engine is out still reads the whole text. A 403 that
+Claude Code marks as a failed sign-in keeps its words too, rather than
+"not signed in": the service turning the person away is not something
+signing in again changes.
 
 ## Hosted mode
 

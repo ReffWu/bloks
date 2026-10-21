@@ -94,7 +94,6 @@ type Patch = Partial<
     | "browser"
     | "backupSelection"
     | "engineHooks"
-    | "engineAccess"
     | "recallBeforeTurn"
     | "delivery"
     | "backgroundWork"
@@ -446,30 +445,6 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                         />
                       }
                     />
-                  )}
-                  {instance?.driverKind === "claudeAgent" && (state.config?.credits?.offered || bot.engineAccess === "credits") && (
-                    // Bloks AI is offered while Cloud is active. An agent
-                    // already on it keeps the choice in sight even when it
-                    // is not, so it can be moved back.
-                    <SettingRow
-                      label="Access"
-                      description={
-                        bot.engineAccess === "credits"
-                          ? "Runs on Bloks AI, with no sign-in of its own."
-                          : "Runs on Claude Code's own sign-in on this computer."
-                      }
-                    >
-                      <Segmented
-                        aria-label="How Claude Code is paid for"
-                        className="mt-3 max-w-[360px]"
-                        value={bot.engineAccess === "credits" ? "credits" : "own"}
-                        onChange={(access) => patch({ engineAccess: access === "credits" ? "credits" : null })}
-                        options={[
-                          { value: "own", label: "Own sign-in" },
-                          { value: "credits", label: "Bloks AI" },
-                        ]}
-                      />
-                    </SettingRow>
                   )}
                 </Group>
                 <CodexSpeedControl bot={bot} />

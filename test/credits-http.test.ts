@@ -168,18 +168,22 @@ test("background work stays off credits until the person turns it on", async (t)
   assert.equal((await h.json("/api/config")).credits.background, true);
 });
 
-test("an agent's access is credits or its own sign-in, and nothing else", async (t) => {
+test("Claude Code is never put on Bloks AI: the settings route refuses it with a sentence", async (t) => {
   const fake = await service(t);
   const h = await harness(t, { BLOKS_CREDITS_URL: fake.base });
   const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Ada" }) });
   const patch = (body: unknown) => h.fetch(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify(body) });
+  const refused = await patch({ engineAccess: "credits" });
+  assert.equal(refused.status, 400);
+  const { error } = (await refused.json()) as { error: string };
+  assert.equal(error, "Claude Code runs on your own Claude plan or key, so it cannot run on Bloks AI. To use Bloks AI, pick Bloks AI as this agent's engine.");
+  // and anything else is refused too
   assert.equal((await patch({ engineAccess: "free" })).status, 400);
-  assert.equal((await patch({ engineAccess: "credits" })).status, 200);
-  const on = (await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id);
-  assert.equal(on.engineAccess, "credits", "the phone reads it on the agent");
+  // its own sign-in is what there is, so an older phone saying so is fine
   assert.equal((await patch({ engineAccess: "own" })).status, 200);
-  const off = (await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id);
-  assert.equal(off.engineAccess ?? null, null);
+  assert.equal((await patch({ engineAccess: null })).status, 200);
+  const agent = (await h.json("/api/bots")).bots.find((b: any) => b.id === bot.id);
+  assert.equal("engineAccess" in agent, false, "no agent carries it");
 });
 
 test("the nightly tidy leaves an agent on credits alone until background work may spend them; Tidy now always may", async (t) => {

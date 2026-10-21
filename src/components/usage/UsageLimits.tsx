@@ -510,7 +510,7 @@ export function UsageLimits({ focusBot }: { focusBot: string | null }) {
   const { state } = useStore();
   const bot = focusBot ? state.bots.find((b) => b.id === focusBot) : undefined;
   const runsOn = bot?.modelSelection.instanceId ?? null;
-  const onCredits = bot && (runsOn === "bloks" || bot.engineAccess === "credits");
+  const onCredits = bot && runsOn === "bloks";
   const badgeFor = (instanceId: string) => (bot && !onCredits && runsOn === instanceId ? `${bot.name}'s engine` : null);
   return (
     <div className="flex flex-col gap-8">

@@ -404,8 +404,8 @@ The engines that work in your folders run commands and read and edit
 files on your computer. The others get a smaller set of tools from Bloks
 itself: asking you a question, their own memory, app connections, and
 commands in a sandbox or a cloud computer when the agent has one. Bloks
-badges the difference everywhere it shows an engine. A Claude Code agent
-can also run on Bloks AI.
+badges the difference everywhere it shows an engine. Bloks AI runs on
+Bloks's own engine; Claude Code always uses your own Claude plan or key.
 
 Give an agent a **backup engine** and a turn that hits a usage limit, a
 rate limit or an outage is picked up by the backup, with the conversation
