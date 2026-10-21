@@ -1,5 +1,7 @@
 **Workspaces, the people you work with inside them, and a clear view of what your agents spend.**
 
+The desktop app is out today. The iPhone and Apple Watch update follows tomorrow, as soon as the App Store has it, and the Android app ships tomorrow too.
+
 The biggest release Bloks has had. Every part of your life with agents can now be a workspace of its own, each a whole Bloks with its own agents, memory, keys and rooms. A workspace can take people: send an invite, read the same four words, and they talk to your agents beside you, on your computer, within limits you set. A Usage page shows what every agent spent and puts a monthly line on your own API keys. And the app has a new shape, with answers drawn as cards, tables and charts instead of walls of text.
 
 ## Security
@@ -125,6 +127,10 @@ The biggest release Bloks has had. Every part of your life with agents can now b
 - **A Telegram request's reply stays attached until its turn really ends,** however that turn ends. Thanks @rpavlovs (#321)
 - **Agents are clearer about what to keep in memory** for later work. Thanks @rpavlovs (#323)
 - **The brief keeps sentences whole.** A filename such as post.md, a version or an address no longer cut a sentence in two and lost the first half.
+
+## Thank you
+
+This release is better for everyone who took the time to report what went wrong, try a build or send code. Thank you to @rpavlovs, whose pull requests and careful reports shaped Telegram, the backup engine, location and much of how agents hand work to each other; to @alexnayko, for the reports behind attachments to remote servers, saved secrets, working folders, background work and the Telegram bot card; to @pycckuu, for the engine switch and the task budget; and to @ashottonoyan, for reporting the shared-file issue privately and giving us time to fix it.
 
 ## Upgrading
 

@@ -47,6 +47,16 @@ pairs with the desktop app. Nothing runs on the phone: it is a window onto
 the agents on your computer, with approvals you answer from the Lock
 Screen or your wrist.
 
+## 📣 Bloks 3 is out
+
+**Bloks 3 for Mac, Windows and Linux is out today.** The iPhone and Apple
+Watch update follows tomorrow, as soon as the App Store has it, and the
+Android app ships tomorrow too.
+
+Thank you to everyone who reported a bug, tested a build or sent code for
+this release. A lot of what is in it started as one of your issues, and
+it is a better app for every one of them.
+
 ## New in 3.0
 
 **Workspaces.** Personal, Business, or one with a name of its own, each a
