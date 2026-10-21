@@ -6,18 +6,18 @@
 // what it scanned and waits for a tap. Codes last minutes, work once,
 // and a handful of wrong guesses closes the window (server/pairing.ts).
 //
-// While phone access is on and this page is in front of someone, a code
-// is simply there: the QR, the six digits and the address, ready for a
-// phone, with nothing to press first. That is only as safe as the page
-// keeps it, so the page is strict about it. A code is asked for only
-// while the page is open and visible, and closed on the server the moment
-// it is not. One that runs out is replaced quietly just before it does.
-// One the server closed early, which is what five wrong guesses do, is
-// not: that waits for a person to ask for another, so nobody can keep a
-// guesser supplied with fresh codes by leaving Settings open.
+// The card is two things. For someone who has never paired a phone it is
+// a short onboarding: what pairing gives them, the three steps, and one
+// button. For someone who has, it is their phones, the switch, and Pair
+// another phone. Either way no code exists until somebody asks for one,
+// and the one they get lives only as long as they are looking at it: it
+// renews itself quietly while the panel is open and visible, and is
+// closed on the server the moment the panel closes, the window hides or
+// the page goes. A code the server closed early, which is what wrong
+// guesses do, is not replaced until somebody asks again.
 //
-// A phone arriving gets a moment of its own before it joins the list, and
-// then the next code takes its place.
+// A phone arriving is the end of the flow, so it gets a moment of its own
+// before it joins the list, and the card becomes the list.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { Check } from "@/components/icons";
@@ -184,53 +184,75 @@ function PairedList({
 }) {
   const labels = deviceLabels(devices, now);
   return (
-    <div className="mt-5 border-t pt-3">
-      <div className="mb-1 text-small font-medium text-muted-foreground">Paired</div>
-      <ul className="flex flex-col">
-        {devices.map((device) => {
-          const label = labels.get(device.id) ?? { name: device.name, detail: "" };
-          return (
-            <li
-              key={device.id}
-              className={cn(
-                "-mx-1.5 flex items-center gap-3 rounded-lg px-1.5 py-2 transition-colors duration-700",
-                fresh === device.id && "bg-brand-soft",
-              )}
+    <ul aria-label="Paired" className="mt-4 flex flex-col border-t pt-2">
+      {devices.map((device) => {
+        const label = labels.get(device.id) ?? { name: device.name, detail: "" };
+        return (
+          <li
+            key={device.id}
+            className={cn(
+              "-mx-1.5 flex items-center gap-3 rounded-lg px-1.5 py-2 transition-colors duration-700",
+              fresh === device.id && "bg-brand-soft",
+            )}
+          >
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              {isBrowser(device.name) ? <Globe size={15} /> : <Smartphone size={15} />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-body font-medium text-foreground">{label.name}</div>
+              {label.detail && <div className="truncate text-small tabular-nums text-muted-foreground">{label.detail}</div>}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Remove ${label.name}`}
+              className="hover:bg-destructive/10 hover:text-destructive"
+              onClick={async () => {
+                const yes = await confirm({
+                  title: `Remove ${label.name}?`,
+                  body: `It can't reach ${thisComputer()} until you pair it again.`,
+                  confirmLabel: "Remove",
+                  destructive: true,
+                });
+                if (yes) onRemove(device);
+              }}
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                {isBrowser(device.name) ? <Globe size={15} /> : <Smartphone size={15} />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-body font-medium text-foreground">{label.name}</div>
-                {label.detail && <div className="truncate text-small tabular-nums text-muted-foreground">{label.detail}</div>}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={`Remove ${label.name}`}
-                className="hover:bg-destructive/10 hover:text-destructive"
-                onClick={async () => {
-                  const yes = await confirm({
-                    title: `Remove ${label.name}?`,
-                    body: `It can't reach ${thisComputer()} until you pair it again.`,
-                    confirmLabel: "Remove",
-                    destructive: true,
-                  });
-                  if (yes) onRemove(device);
-                }}
-              >
-                Remove
-              </Button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+              Remove
+            </Button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** One of the three steps in the onboarding: a number, or a tick once the
+ * server says it is done, and the words. */
+function OnboardingStep({ n, done, children, control }: { n: number; done?: boolean; children: React.ReactNode; control?: React.ReactNode }) {
+  return (
+    <li className="flex min-h-8 items-center gap-3">
+      <span
+        aria-hidden
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-full text-small font-medium tabular-nums",
+          done ? "bg-success/15 text-success" : "border text-muted-foreground",
+        )}
+      >
+        {done ? <Check size={12} strokeWidth={3} /> : n}
+      </span>
+      <span className="min-w-0 flex-1 text-pretty text-body text-foreground">
+        {children}
+        {done && <span className="sr-only"> (done)</span>}
+      </span>
+      {control}
+    </li>
   );
 }
 
 function PairingControls() {
   const [status, setStatus] = useState<PairStatus | null>(null);
+  /** Somebody asked to pair a phone, and the code panel is open. */
+  const [flow, setFlow] = useState(false);
   const [code, setCode] = useState<PairCode | null>(null);
   /** No code on screen, and none asked for until somebody says so: the
    * server closed the last one early, or could not make one. */
@@ -272,8 +294,10 @@ function PairingControls() {
         const newcomer = known.current ? s.devices.find((d) => !known.current!.has(d.id)) : undefined;
         known.current = ids;
         if (newcomer) {
+          // the phone the flow was for has come: the flow is over
           setArrived(newcomer);
           setFresh(newcomer.id);
+          setFlow(false);
         }
         // The window closed on the server while ours still had time on
         // it: used by the phone that just arrived, or closed by wrong
@@ -310,8 +334,8 @@ function PairingControls() {
             }).catch(() => null)
           : null;
         if (!wanted.current) {
-          // the page went away while this was on its way: the door
-          // closes with it rather than staying open for nobody
+          // the panel closed while this was on its way: the door closes
+          // with it rather than staying open for nobody
           void api("/api/pair/cancel", { method: "POST" }).catch(() => {});
           return;
         }
@@ -330,8 +354,8 @@ function PairingControls() {
   }, [hold]);
 
   const visible = usePageVisible();
-  // While a code is out, somebody may be standing there with a phone, so
-  // the answer is looked for twice as often.
+  // While a code is out, somebody is standing there with a phone, so the
+  // answer is looked for twice as often.
   const waiting = Boolean(code);
   useEffect(() => {
     if (!visible) return;
@@ -356,11 +380,11 @@ function PairingControls() {
   }, [fresh]);
 
   const listening = Boolean(status?.enabled && !status.restartRequired);
-  const want = listening && visible && !arrived;
+  const want = flow && listening && visible && !arrived;
 
-  // The code lives exactly as long as this: phone access on, the page open
-  // and in view, and no phone mid-arrival. When any of that stops, the
-  // window on the server is closed too.
+  // The code lives exactly as long as this: the panel open, phone access
+  // on, the page in view, and no phone mid-arrival. When any of that
+  // stops, the window on the server is closed too.
   useEffect(() => {
     wanted.current = want;
     if (!want) return;
@@ -374,8 +398,8 @@ function PairingControls() {
     };
   }, [want, hold]);
 
-  // Ask for one when there is none and nothing says to wait, and for the
-  // next one just before this one runs out.
+  // Ask for one when the panel opens, and for the next one just before
+  // this one runs out, unless the server closed the last one early.
   const msLeft = code ? code.expiresAt - now : 0;
   useEffect(() => {
     if (!want || stopped) return;
@@ -383,14 +407,18 @@ function PairingControls() {
   }, [want, stopped, code, msLeft, mint]);
 
   const setEnabled = (enabled: boolean) => {
+    if (!enabled) setFlow(false);
     api("/api/pair", { method: "PUT", body: JSON.stringify({ enabled }) })
       .then(load)
       .catch((e: Error) => setError(e.message));
   };
 
-  const again = () => {
+  /** Pair a phone: phone access on if it is not, and the panel open. */
+  const pairPhone = () => {
     setError(null);
     setStopped(null);
+    if (!status?.enabled) setEnabled(true);
+    setFlow(true);
   };
 
   // A link for Bloks in a browser: one use, fifteen minutes, through
@@ -408,6 +436,9 @@ function PairingControls() {
   const browserSecondsLeft = browserLink ? Math.max(0, Math.round((browserLink.expiresAt - now) / 1000)) : 0;
 
   const devices = status?.devices ?? [];
+  // Someone who has never paired a phone is shown how; someone who has
+  // is shown their phones.
+  const onboarding = Boolean(status) && devices.length === 0 && !arrived;
 
   const health: { tone: Health; label: string } | null = !status
     ? null
@@ -415,13 +446,21 @@ function PairingControls() {
       ? { tone: "wait", label: "Restart needed" }
       : !status.enabled
         ? { tone: "off", label: "Off" }
-        : devices.length > 0
-          ? { tone: "on", label: `${devices.length} paired` }
-          : { tone: "on", label: "On" };
+        : code
+          ? { tone: "wait", label: "Waiting" }
+          : devices.length > 0
+            ? { tone: "on", label: `${devices.length} paired` }
+            : { tone: "on", label: "On" };
 
-  const restart = (words: string) => (
+  // The switch alone does not open the door: the server decides what it
+  // listens on when it starts. Without saying so, somebody turns this on
+  // and watches their phone fail to connect for no reason they can see,
+  // so the code waits for the restart.
+  const restart = status?.restartRequired ? (
     <ConnectionNote className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span className="min-w-0 flex-1">{words}</span>
+      <span className="min-w-0 flex-1">
+        {status.enabled ? "Restart Bloks to finish turning this on." : "Restart Bloks to stop listening on your network."}
+      </span>
       {window.bloks?.relaunch ? (
         <Button size="sm" variant="secondary" onClick={() => void window.bloks?.relaunch?.()}>
           <RotateCw size={13} />
@@ -431,29 +470,103 @@ function PairingControls() {
         <span>Quit Bloks and open it again.</span>
       )}
     </ConnectionNote>
-  );
+  ) : null;
+
+  const panel =
+    flow && listening && !arrived ? (
+      <>
+        <PairingCode
+          code={code}
+          msLeft={msLeft}
+          stopped={stopped}
+          lead={onboarding ? "Scan this code with your iPhone." : "On your iPhone, open Bloks and tap Scan the code."}
+          onAgain={() => {
+            setError(null);
+            setStopped(null);
+          }}
+          onLink={makeBrowserLink}
+          onClose={() => setFlow(false)}
+        />
+        {browserLink && browserSecondsLeft > 0 && (
+          <div className="mt-3 rounded-xl border bg-muted/30 p-4" data-browser-link>
+            <div className="text-body font-medium text-foreground">Pair with a link</div>
+            <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
+              Works once, for {Math.ceil(browserSecondsLeft / 60)} more minute{browserSecondsLeft > 60 ? "s" : ""}.
+              Anyone who opens a link gets access, so keep it private.
+            </div>
+            <PairLinkRow
+              label="Open in a browser"
+              link={browserLink.web}
+              copied={copied === "web"}
+              onCopy={() => void navigator.clipboard.writeText(browserLink.web).then(() => setCopied("web"))}
+            />
+            <PairLinkRow
+              label="Paste into the Bloks app or another computer"
+              link={browserLink.pair}
+              copied={copied === "pair"}
+              onCopy={() => void navigator.clipboard.writeText(browserLink.pair).then(() => setCopied("pair"))}
+            />
+            <div className="mt-2 flex justify-end">
+              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setBrowserLink(null)}>
+                Done
+              </Button>
+            </div>
+          </div>
+        )}
+      </>
+    ) : null;
+
+  // The words of the onboarding are the iPhone walkthrough's, word for
+  // word, so the two screens read as one set of instructions.
+  if (onboarding && status) {
+    return (
+      <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0" data-setting-row="phone-access">
+        <ConnectionHeader
+          icon={<Smartphone size={14} className="shrink-0 text-muted-foreground" />}
+          title="Pair your iPhone"
+          says="Reach your agents from anywhere, and approve their work from your Lock Screen."
+          health={health && <HealthLine tone={health.tone} label={health.label} />}
+          control={
+            <Switch aria-label="Phone access" checked={status.enabled} onCheckedChange={(on) => (on ? pairPhone() : setEnabled(false))} />
+          }
+        />
+        <ConnectionError>{error}</ConnectionError>
+        <ol aria-label="Pair a phone" className="mt-4 flex flex-col gap-2">
+          <OnboardingStep n={1} done={flow && listening}>
+            Press Pair a phone below.
+          </OnboardingStep>
+          <OnboardingStep n={2}>On your iPhone, open Bloks and tap Scan the code.</OnboardingStep>
+          <OnboardingStep n={3}>Point it at the code. It works once.</OnboardingStep>
+        </ol>
+        {restart}
+        {/* waiting on a restart, the button would only press the same switch again */}
+        {panel ??
+          (!(status.enabled && status.restartRequired) && (
+            <Button variant="brand" className="mt-4" onClick={pairPhone}>
+              <Smartphone size={14} />
+              Pair a phone
+            </Button>
+          ))}
+      </div>
+    );
+  }
 
   return (
-    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0" data-setting-row="phones-and-devices">
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0" data-setting-row="phone-access">
       <ConnectionHeader
         icon={<Smartphone size={14} className="shrink-0 text-muted-foreground" />}
-        title="Phones and devices"
+        title="Phone access"
         says={
           status && !status.enabled
-            ? `Turn on to pair the Bloks app on your phone with ${thisComputer()} over your network.`
-            : `Lets the Bloks app on your phone reach ${thisComputer()} over your network.`
+            ? `Off, so these can't reach ${thisComputer()} until you turn it on.`
+            : `Your paired phones reach ${thisComputer()} over your network.`
         }
         health={health && <HealthLine tone={health.tone} label={health.label} />}
-        control={<Switch aria-label="Phones and devices" checked={status?.enabled ?? false} onCheckedChange={setEnabled} />}
+        control={<Switch aria-label="Phone access" checked={status?.enabled ?? false} onCheckedChange={setEnabled} />}
       />
 
       <ConnectionError>{error}</ConnectionError>
-
-      {/* The switch alone does not open the door: the server decides what
-          it listens on when it starts. Without saying so, somebody turns
-          this on and watches their phone fail to connect for no reason
-          they can see, so the code waits for the restart. */}
-      {status?.restartRequired && restart(status.enabled ? "Restart Bloks to finish turning this on." : "Restart Bloks to stop listening on your network.")}
+      {restart}
 
       <AnimatePresence initial={false}>
         {arrived && (
@@ -466,39 +579,7 @@ function PairingControls() {
         )}
       </AnimatePresence>
 
-      {listening && !arrived && (
-        <PairingCode code={code} msLeft={msLeft} stopped={stopped} onAgain={again} onLink={makeBrowserLink} />
-      )}
-
-      {/* straight under the code, whose button asked for it */}
-      {listening && browserLink && browserSecondsLeft > 0 && (
-        <div className="mt-3 rounded-xl border bg-muted/30 p-4" data-browser-link>
-          <div className="text-body font-medium text-foreground">Pair with a link</div>
-          <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-            Works once, for {Math.ceil(browserSecondsLeft / 60)} more minute{browserSecondsLeft > 60 ? "s" : ""}.
-            Anyone who opens a link gets access, so keep it private.
-          </div>
-          <PairLinkRow
-            label="Open in a browser"
-            link={browserLink.web}
-            copied={copied === "web"}
-            onCopy={() => void navigator.clipboard.writeText(browserLink.web).then(() => setCopied("web"))}
-          />
-          <PairLinkRow
-            label="Paste into the Bloks app or another computer"
-            link={browserLink.pair}
-            copied={copied === "pair"}
-            onCopy={() => void navigator.clipboard.writeText(browserLink.pair).then(() => setCopied("pair"))}
-          />
-          <div className="mt-2 flex justify-end">
-            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setBrowserLink(null)}>
-              Done
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {status?.enabled && devices.length > 0 && (
+      {devices.length > 0 && (
         <PairedList
           devices={devices}
           now={now}
@@ -511,32 +592,52 @@ function PairingControls() {
         />
       )}
 
+      {panel ??
+        (listening && !arrived && (
+          <Button size="sm" variant="secondary" className="mt-3" onClick={pairPhone}>
+            <Smartphone size={13} />
+            Pair another phone
+          </Button>
+        ))}
+
       {status === null && <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" />}
     </div>
   );
 }
 
-/** The code, always ready: the QR, the same thing as six digits for a
- * camera that will not focus, where to dial, and one line on what to do.
- * Its time is a thin bar rather than a ticking clock, because the code
- * renews itself and the seconds are not something to watch. */
+/** The open window: the QR, the same thing as six digits for a camera
+ * that will not focus, where to dial, and how long it has left. It
+ * renews itself while open, so the clock is how long this one has, not
+ * how long the person has. */
 function PairingCode({
   code,
   msLeft,
   stopped,
+  lead,
   onAgain,
   onLink,
+  onClose,
 }: {
   code: PairCode | null;
   msLeft: number;
   stopped: "closed" | "failed" | null;
+  lead: string;
   onAgain: () => void;
   onLink: () => void;
+  onClose: () => void;
 }) {
-  const life = code ? Math.max(1, code.expiresAt - code.mintedAt) : 1;
-  const minutes = code ? Math.max(1, Math.round(life / 60_000)) : 5;
+  const secondsLeft = Math.max(0, Math.ceil(msLeft / 1000));
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border bg-muted/30 p-4">
+    <div className="relative mt-4 flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border bg-muted/30 p-4">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onClose}
+        aria-label="Close pairing"
+        className="absolute right-2 top-2 text-muted-foreground"
+      >
+        Close
+      </Button>
       {stopped ? (
         // the same footprint, empty, so nothing jumps when a code returns
         <div aria-hidden className="flex size-[148px] shrink-0 items-center justify-center rounded-lg border border-dashed text-muted-foreground/60">
@@ -570,10 +671,8 @@ function PairingCode({
           </>
         ) : (
           <>
-            <p className="text-pretty text-body font-medium text-foreground">Open Bloks on your iPhone, tap Pair, and scan.</p>
+            <p className="pr-14 text-pretty text-body font-medium text-foreground">{lead}</p>
             <div className="mt-3 text-small text-muted-foreground">Or type this code</div>
-            {/* not announced as it changes: a new code every few minutes
-                read aloud would be noise, and the page says how it works */}
             <div
               className={cn(
                 "mt-0.5 font-mono text-heading font-semibold tabular-nums tracking-[0.2em] text-foreground transition-opacity duration-200",
@@ -589,22 +688,18 @@ function PairingCode({
                 </>
               )}
             </div>
-            <div aria-hidden className="mt-1.5 h-0.5 w-[9.5rem] overflow-hidden rounded-full bg-foreground/10">
-              <div
-                className="h-full rounded-full bg-foreground/30 transition-[width] duration-1000 ease-linear"
-                style={{ width: `${code ? Math.max(0, Math.min(100, (msLeft / life) * 100)) : 0}%` }}
-              />
-            </div>
             {/* The QR carries the address; a code typed by hand does
                 not, and the phone asks for it. Without this line the
                 by-hand route had no way to find where to dial. */}
             {code?.address && (
-              <div className="mt-2.5 text-small text-muted-foreground">
+              <div className="mt-1.5 text-small text-muted-foreground">
                 Address <span className="ml-1 font-mono text-foreground">{code.address}</span>
               </div>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-small text-muted-foreground">Works once. A new one comes every {minutes} minutes.</span>
+              <span className="text-small tabular-nums text-muted-foreground">
+                {code ? `Works once. New code in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}.` : "Works once."}
+              </span>
               {/* a camera that will not focus, a phone on another network,
                   or a browser: all of them want a link instead */}
               <Button size="sm" variant="ghost" className="-ml-2 sm:ml-auto" onClick={onLink}>

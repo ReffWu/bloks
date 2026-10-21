@@ -184,7 +184,7 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     group: "connections",
     description: "Reach this computer from your phone and other devices.",
     keywords: "iphone pairing remote relay qr phone access location where gps city place",
-    rows: ["Phones and devices", "Location"],
+    rows: ["Phone access", "Where your Bloks runs", "Location"],
   },
   {
     id: "chat",
