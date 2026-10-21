@@ -56,3 +56,7 @@ electron/vendor/
 
 # Not in the Xcode project, so nothing compiles them. Kept for whenever
 # a watch target is real; out of the repo until it is.
+
+# made by scripts/stage-dmg-art.mjs for the disk image
+build/background.tiff
+build/volume.icns

@@ -117,6 +117,33 @@ dmg:
   # of invalidating the ticket, and buys nothing.
   sign: false
   artifactName: Bloks-${version}.dmg
+  # Both made by scripts/stage-dmg-art.mjs (package:prep): the stock
+  # background, and the volume icon from build/icon.png.
+  background: build/background.tiff
+  icon: build/volume.icns
+  # The app and Applications where electron-builder puts them, and the
+  # image's two hidden files below the window. Finder shows hidden files
+  # to someone who has asked for them, and left where they land they sit
+  # over the arrow. Listing a hidden file here places it; the bytes are
+  # the same ones the image already carries.
+  contents:
+    - x: 130
+      y: 220
+      type: file
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+    - x: 130
+      y: 1200
+      type: file
+      path: build/background.tiff
+      name: .background.tiff
+    - x: 410
+      y: 1200
+      type: file
+      path: build/volume.icns
+      name: .VolumeIcon.icns
 
 linux:
   # AppImage runs anywhere without a package manager; the deb covers the
