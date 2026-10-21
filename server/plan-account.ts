@@ -140,6 +140,8 @@ export interface Account {
   plan: PaidPlan;
   bundle: string | null;
   interval: "month" | "year" | null;
+  /** What the plan costs, as the site words it; null when it says nothing. */
+  price: { amount: string; per: string } | null;
   status: string;
   renewsAt: number | null;
   cancelsAt: number | null;
@@ -175,11 +177,13 @@ export function readAccount(text: string): Account | null {
   const hosting = isRecord(raw.hosting)
     ? { tier: words(raw.hosting.tier, 32) || null, state: words(raw.hosting.state, 32) || null }
     : null;
+  const price = isRecord(raw.price) && words(raw.price.amount, 24) ? { amount: words(raw.price.amount, 24), per: words(raw.price.per, 24) } : null;
   const topUps = typeof raw.topUps === "number" && Number.isInteger(raw.topUps) && raw.topUps >= 0 ? Math.min(raw.topUps, 9999) : null;
   return {
     plan,
     bundle,
     interval: interval(raw.interval),
+    price,
     status,
     renewsAt: readTime(raw.renewsAt),
     cancelsAt: readTime(raw.cancelsAt),

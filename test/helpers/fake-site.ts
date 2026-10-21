@@ -27,6 +27,8 @@ export interface FakeAccount {
   bloksAi?: { active: boolean; renewsAt?: string | null } | null;
   hosting?: { tier: string; state: string } | null;
   sharedRoom?: boolean;
+  /** What the plan costs, as words; some answers leave it out. */
+  price?: unknown;
 }
 
 export const OFFERS = [

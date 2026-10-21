@@ -37,6 +37,9 @@ export interface Account {
   plan: PaidPlan;
   bundle: string | null;
   interval: "month" | "year" | null;
+  /** What the plan costs, in the site's own words, when it says. Never
+   * worked out here: no answer means nothing is shown. */
+  price?: { amount: string; per: string } | null;
   status: string;
   renewsAt: number | null;
   cancelsAt: number | null;
@@ -124,6 +127,24 @@ export function ladderFor(key: PlanKey, offers: readonly Offer[] | null | undefi
   return cloud > 0 ? [shown[cloud]!, ...shown.slice(0, cloud), ...shown.slice(cloud + 1)] : shown;
 }
 
+/** Whether an offer is a way onto Hosting: Hosting itself, a tier of it,
+ * or a plan that comes hosted ("team-hosted"). */
+export function isHostingOffer(offer: Pick<Offer, "id">): boolean {
+  const id = offer.id.toLowerCase();
+  return id === "hosting" || id === "hosted" || id.startsWith("hosting-") || id.endsWith("-hosted");
+}
+
+/**
+ * The way onto Hosting for a licence that has none, as the offers say it:
+ * the first Hosting offer on sale with a link, else the first on sale,
+ * else the first at all. Null when the site offered none for this plan,
+ * which says nothing about whether it is on sale.
+ */
+export function hostingOffer(offers: readonly Offer[] | null | undefined): Offer | null {
+  const hosting = (offers ?? []).filter(isHostingOffer);
+  return hosting.find((o) => o.onSale && o.cta) ?? hosting.find((o) => o.onSale) ?? hosting[0] ?? null;
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** "Nov 21", or "Nov 21, 2027" when it is not this year. Read in UTC, as
@@ -144,30 +165,43 @@ export function monthYear(at: number): string {
 export type StatusTone = "on" | "wait" | "issue" | "off";
 
 /**
- * The membership's state, as the calm pill on the plan card says it, and
- * the one line beside it. Past due is the one that asks for something:
- * the card on file needs updating, and the page offers the way.
+ * The membership's state, as the calm pill beside the plan's name says
+ * it, and the one line under it. Payment due is the one that asks for
+ * something: the card on file needs updating, and the page offers the
+ * way. When it renews is said apart (renewalWords), beside the pill.
  */
 export function statusOf(account: Account, now = Date.now()): { tone: StatusTone; label: string; line: string | null; needsCard: boolean } {
   const status = account.status;
   if (status === "past_due" || status === "unpaid" || status === "incomplete") {
-    return { tone: "issue", label: "Past due", line: "The last payment didn't go through. Update your card to keep your plan.", needsCard: true };
+    return { tone: "issue", label: "Payment due", line: "The last payment didn't go through. Update your card to keep your plan.", needsCard: true };
   }
   if (status === "canceled" || status === "cancelled" || status === "incomplete_expired") {
     return { tone: "off", label: "Ended", line: account.cancelsAt ? `Ended on ${shortDate(account.cancelsAt, now)}.` : null, needsCard: false };
   }
   if (account.cancelsAt && account.cancelsAt > now) {
-    return { tone: "wait", label: `Cancels ${shortDate(account.cancelsAt, now)}`, line: "It stays on until then, and won't renew.", needsCard: false };
+    return { tone: "wait", label: `Cancels on ${shortDate(account.cancelsAt, now)}`, line: null, needsCard: false };
   }
   if (status === "paused") return { tone: "off", label: "Paused", line: null, needsCard: false };
-  const trial = status === "trialing";
-  const label = trial ? "Trial" : "Active";
-  return {
-    tone: "on",
-    label: account.renewsAt ? `${label}, renews ${shortDate(account.renewsAt, now)}` : label,
-    line: null,
-    needsCard: false,
-  };
+  return { tone: "on", label: status === "trialing" ? "Trial" : "Active", line: null, needsCard: false };
+}
+
+/** When the plan next renews, for beside its status: "Renews Nov 21",
+ * "Was due Oct 18" for a payment that did not go through, or "Won't
+ * renew" beside a cancel, whose date the status already says. Null for a
+ * plan that has ended or paused, or a date the site did not say. */
+export function renewalWords(account: Account, now = Date.now()): string | null {
+  if (statusOf(account, now).tone === "off") return null;
+  if (account.cancelsAt && account.cancelsAt > now) return "Won't renew";
+  if (!account.renewsAt) return null;
+  return `${account.renewsAt < now ? "Was due" : "Renews"} ${shortDate(account.renewsAt, now)}`;
+}
+
+/** A price as the site wrote it: "<amount> / month", or "<amount> a
+ * month" when its own words already join them. */
+export function priceWords(price: { amount: string; per: string } | null | undefined): string | null {
+  if (!price?.amount) return null;
+  if (!price.per) return price.amount;
+  return /^(a|an|per)\b/i.test(price.per) || price.per.startsWith("/") ? `${price.amount} ${price.per}` : `${price.amount} / ${price.per}`;
 }
 
 export function intervalWords(interval: Account["interval"]): string | null {
