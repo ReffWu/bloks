@@ -43,7 +43,7 @@ export function engineIsFresh(input: FreshnessInput): boolean {
 export function freshTurnText(
   transcript: ReadonlyArray<{ role: "user" | "assistant"; text: string }>,
   turnText: string,
-  opts: { left?: number; why?: "engine" | "session"; from?: string } = {},
+  opts: { left?: number; why?: "engine" | "session" | "folder"; folder?: string; from?: string } = {},
 ): string {
   if (transcript.length === 0) return turnText;
   const history = transcript
@@ -53,7 +53,9 @@ export function freshTurnText(
     ? `You are picking up a conversation the person had in ${opts.from} before Bloks. It was brought over, and you carry it on here.`
     : opts.why === "session"
       ? "You are picking up this conversation in a new session; the earlier one could not be carried on."
-      : "You are picking up this conversation mid-thread; a different engine handled it until now.";
+      : opts.why === "folder"
+        ? `You are picking up this conversation in a new session${opts.folder ? ` in ${opts.folder}` : ""}: the person changed the working folder, and the earlier session belonged to the folder it ran in.`
+        : "You are picking up this conversation mid-thread; a different engine handled it until now.";
   const left = opts.left ?? 0;
   const gap =
     left > 0

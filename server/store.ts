@@ -369,9 +369,11 @@ export interface TaskRecord {
    * you last had open; the agent's own flag is "any of these". */
   unread?: boolean;
   /** The folder this lane's session is pinned to. Engines key their
-   * sessions to a directory, so a lane keeps the folder its first turn
-   * ran in even if the bot's setting changes later. null means "the
-   * default", a cloud run, or the workspace. */
+   * sessions to a directory, so a lane keeps the folder a turn runs in
+   * for as long as its session lasts. When the agent's own folder changes,
+   * the lane moves on its next turn, to a new session there (GitHub 328;
+   * see moveTaskCwd). null means "the default", a cloud run, or the
+   * workspace. */
   cwd?: string | null;
   /** Lifetime spend in this lane, folded in as each turn settles. */
   usage?: { input: number; output: number; turns: number };
@@ -1214,7 +1216,8 @@ export class Store {
     this.saveBots();
   }
 
-  /** A lane's folder is decided once, on its first turn. */
+  /** A lane's folder is decided on its first turn, and kept until the
+   * folder its agent works in changes (moveTaskCwd) or it starts over. */
   pinTaskCwd(threadId: string, cwd: string | null): string | null {
     const found = this.taskByThread(threadId);
     if (!found) return cwd;
@@ -1289,14 +1292,37 @@ export class Store {
     this.saveBots();
   }
 
+  /**
+   * A lane moved to the folder its agent works in now (GitHub 328). An
+   * engine's session belongs to the folder it began in (Claude Code keeps
+   * its sessions by folder), so none is resumed: the next turn starts a
+   * new session there and, marked as served by no engine in particular,
+   * is told the conversation so far, as after an engine switch.
+   */
+  moveTaskCwd(threadId: string, cwd: string | null) {
+    const found = this.taskByThread(threadId);
+    if (!found) return;
+    found.task.cwd = cwd;
+    found.task.resumeCursors = {};
+    found.task.lastInstanceId = "";
+    // a reading measured a session that is not coming back
+    delete found.task.reading;
+    delete found.task.pendingCompaction;
+    this.saveBots();
+  }
+
   /** A new engine session on the lane's next turn, without the old one's
    * context: every cursor goes, but the engine that served it is kept, so
    * the next turn is not treated as an engine that missed the conversation
    * and handed the whole transcript instead (GitHub 139). The transcript
-   * itself stays. */
-  startFreshSession(threadId: string) {
+   * itself stays. With `refolder`, its folder goes too, so the new session
+   * starts in the one its agent works in now (GitHub 328); a lane with a
+   * folder of its own (a rehearsal's copy, a conversation brought over)
+   * is started fresh where it is. */
+  startFreshSession(threadId: string, refolder = false) {
     const found = this.taskByThread(threadId);
     if (!found) return;
+    if (refolder) delete found.task.cwd;
     found.task.resumeCursors = {};
     delete found.task.reading;
     delete found.task.pendingCompaction;

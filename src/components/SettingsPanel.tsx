@@ -873,8 +873,8 @@ function WorkingFolderCard({ bot }: { bot: Bot }) {
       <SettingRow
         label="Working folder"
         htmlFor="agent-folder"
-        info="Pick a project folder, or leave it empty to use its own workspace. Running tasks keep their folder."
-        description="Where new tasks run."
+        info="Pick a project folder, or leave it empty to use its own workspace. A reply already under way finishes where it started. Rehearsals, and conversations brought over from another app, keep their own folder."
+        description="Where its conversations run. A change applies to each one from its next message, in a new session there that is told the conversation so far."
         control={<Saved shown={saved} />}
       >
         <div className="mt-3 flex gap-2">

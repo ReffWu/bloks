@@ -6467,11 +6467,30 @@ async function startClaimedTurn(
           return;
         }
       }
+      // The agent's folder applies to its conversations, not only to new
+      // ones (GitHub 328). "Saved" in its settings has to mean the next
+      // turn works there, and onboarding often sets the folder in the
+      // very conversation that goes on to use it. So a lane pinned to a
+      // folder the agent no longer works in moves, before this turn, and
+      // starts a new session there told the conversation so far (see
+      // moveTaskCwd). A lane with a folder of its own keeps it.
+      const folderWanted = roomDesk ?? bot.cwd ?? projectDesk ?? null;
+      const moved = !sharing && !onCloud && !opts.rehearsal && task.cwd !== undefined && task.cwd !== folderWanted && !laneKeepsFolder(task);
+      if (moved) {
+        store.moveTaskCwd(task.id, folderWanted);
+        const notice = store.appendMessage(roomId, {
+          role: "bot",
+          ...(blok ? { from: bot.id } : {}),
+          kind: "notice",
+          text: `${bot.name} works in ${folderWanted ? shownPath(folderWanted) : "its own workspace"} from here, the folder now in its settings. It starts a new session there, told this conversation so far.`,
+        });
+        broadcast({ kind: "message", threadId: roomId, message: notice });
+      }
       const pinned = sharing
         ? store.pinTaskCwd(task.id, sharedDesk(sharedRoom!.id))
         : onCloud
           ? store.pinTaskCwd(task.id, null)
-          : store.pinTaskCwd(task.id, roomDesk ?? bot.cwd ?? projectDesk ?? null);
+          : store.pinTaskCwd(task.id, folderWanted);
       const turnCwd = sharing
         ? sharedDesk(sharedRoom!.id)
         : onCloud
@@ -6581,7 +6600,13 @@ async function startClaimedTurn(
         const broughtFrom = task.imported && !task.imported.carried ? SESSION_ENGINE_NAMES[task.imported.engine] : undefined;
         turnText = freshTurnText(told.turns, turnText, {
           left: told.left,
-          ...(broughtFrom ? { from: broughtFrom } : task.lastInstanceId === "" ? { why: "session" as const } : {}),
+          ...(broughtFrom
+            ? { from: broughtFrom }
+            : moved
+              ? { why: "folder" as const, folder: turnCwd ? shownPath(turnCwd) : undefined }
+              : task.lastInstanceId === ""
+                ? { why: "session" as const }
+                : {}),
         });
       } else if (replaceSession) {
         const told = await story(true);
@@ -8947,7 +8972,9 @@ function freshIfAsked(laneId: string) {
 function startFresh(laneId: string) {
   const found = store.taskByThread(laneId);
   if (!found) return;
-  store.startFreshSession(laneId);
+  // and in the folder its agent works in now (GitHub 328), unless the
+  // lane has a folder of its own
+  store.startFreshSession(laneId, !laneKeepsFolder(found.task));
   const notice = store.appendMessage(laneId, {
     role: "bot",
     kind: "notice",
@@ -9070,6 +9097,13 @@ function laneBusy(bot: BotRecord, roomId: string): boolean {
 }
 
 /** A lane of a shared room, as opposed to one of an agent's own. */
+/** Whether a lane keeps a folder of its own whatever its agent's folder
+ * is: a shared room's desk, a rehearsal's copy, or a conversation brought
+ * over from another app, which carries on in the folder it came from. */
+function laneKeepsFolder(task: TaskRecord): boolean {
+  return Boolean(task.imported) || Boolean(rehearsals.forTask(task.id)) || bloks.bloks.some((b) => b.lanes && Object.values(b.lanes).includes(task.id));
+}
+
 function isSharedLane(laneId: string): boolean {
   // a team agent's shared conversation and a member's private one are
   // other people's too, and kept out of the owner's background work alike

@@ -285,3 +285,27 @@ test("hiring for a project makes one agent for its folder, on the engine its ses
   assert.equal(hired.threadId, latest);
   assert.equal(hired.tasks.filter((x: any) => x.imported).length, 2);
 });
+
+// An agent's folder, changed, applies to its conversations from their next
+// turn (GitHub 328), but one brought over carries on in the folder it came
+// from: its session, and the person's history, belong there.
+test("a conversation brought over keeps its own folder when the agent's folder changes", async (t) => {
+  const s = await setup(t);
+  const kat = await s.makeAgent("Kat");
+  await s.bring([`claude:${CLAUDE_ID}`], { botId: kat.id });
+  const { bots } = await s.h.json("/api/bots");
+  const brought = bots.find((b: any) => b.id === kat.id).tasks.find((x: any) => x.imported).id;
+  const first = await s.turn(kat.id, brought, "So how do we fix it?");
+  const elsewhere = join(s.home, "elsewhere");
+  mkdirSync(elsewhere);
+  assert.equal((await s.h.fetch(`/api/bots/${kat.id}`, { method: "PATCH", body: JSON.stringify({ cwd: elsewhere }) })).status, 200);
+  const next = await s.turn(kat.id, brought, "Go ahead.");
+  const real = (path: string) => path.replace(/^\/private/, "");
+  assert.equal(real(next.cwd), real(s.project));
+  assert.equal(next.argv[next.argv.indexOf("--resume") + 1], first.sessionId, "the brought-over session was not carried on");
+  assert.doesNotMatch(next.said, /changed the working folder/);
+  // while Kat's own conversation works where Kat now does
+  const own = bots.find((b: any) => b.id === kat.id).tasks.find((x: any) => !x.imported).id;
+  const mine = await s.turn(kat.id, own, "Hello.");
+  assert.equal(real(mine.cwd), real(elsewhere));
+});
