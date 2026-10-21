@@ -4942,7 +4942,12 @@ store.onAppend = (threadId, message) => {
 // A message changed after it was written: the same words (a reaction, a
 // tool's result, a queued message going) keep the index, new words join
 // it, and an edit or a deletion drops it to be built again next search.
+// Words one agent left waiting for another leave the queue through a
+// dozen doors (delivered, taken back, deleted, not sent after a restart),
+// so the sender's record of them follows them from here (settleRecord)
+// rather than from each door.
 store.onRewrite = (threadId, changed) => {
+  for (const message of changed ?? []) settleRecord(message);
   const index = recallIndexes.peek(threadId);
   if (!index) return;
   if (!changed || changed.some((m) => !index.update(m.id, m.at, searchableText(m)))) recallIndexes.drop(threadId);
@@ -5683,6 +5688,9 @@ async function startClaimedTurn(
      * wants the cloud computer regardless of the agent's own setting. */
     computerOverride?: "cloud" | "local" | "off";
     admission?: DirectAdmission;
+    /** Told the words a drain or a pause writes down to wait instead of
+     * starting this turn, as sendUserMessage is told (tieRecord). */
+    onQueued?: (laneId: string, waiting: Message) => void;
     /** The user message is already in the transcript (a drained queue);
      * do not append it again. */
     presetMessage?: boolean;
@@ -5860,7 +5868,7 @@ async function startClaimedTurn(
       entry.items.push({ text, ...(opts.chain ? { chain: opts.chain } : {}), ...(opts.chainTask ? { chainTask: opts.chainTask } : {}) });
       steerQueues.set(task.id, entry);
     } else {
-      queueOnLane(bot.id, task.id, text, { replyTo: opts.replyTo, from: opts.from, routine: opts.routine, personal: opts.byYou === true && opts.personal !== false, chain: opts.chain, chainTask: opts.chainTask, admission: opts.admission });
+      queueOnLane(bot.id, task.id, text, { replyTo: opts.replyTo, from: opts.from, routine: opts.routine, personal: opts.byYou === true && opts.personal !== false, chain: opts.chain, chainTask: opts.chainTask, admission: opts.admission, onQueued: opts.onQueued });
     }
     return;
   }
@@ -5879,6 +5887,7 @@ async function startClaimedTurn(
       queueOnLane(bot.id, task.id, text, {
         replyTo: opts.replyTo, from: opts.from, routine: opts.routine, personal: opts.byYou === true && opts.personal !== false,
         chain: opts.chain, chainTask: opts.chainTask, fromTelegram: opts.fromTelegram, telegramBinding: opts.telegramBinding, waitsFor: "pause", waitsUntil: pause.until,
+        onQueued: opts.onQueued,
       });
       sayPaused(task.id, pause.id, `${pausedWhy(bot, pause)} What is said to it here waits, and goes on its own then.`);
       return;
@@ -14098,6 +14107,59 @@ function deliverQueued(threadId: string, messageIds: readonly string[]) {
   for (const message of moved) broadcast({ kind: "message.patch", threadId, message, moved: true });
 }
 
+// ── the sender's record of words that waited ──
+// An agent writing to a busy one gets a "messaged B" row in its own
+// conversation, saying the words wait for their turn. That row was
+// written once, as they were said, and went on saying so long after B
+// had heard and answered them, so the person and both agents took them
+// as stranded and the sender was asked to take back what had already
+// been heard (GitHub 337). The waiting words now carry where that row
+// is (AgentNote.record), on disk, so a restart that drops them can say
+// so too, and the row follows them once: delivered, or not.
+
+/** What the sender's record should say of words that waited, from where
+ * they are now; undefined for a state no record follows. Delivered comes
+ * first: words the person deletes after their turn took them were heard. */
+function recordStatus(m: Message): "sent" | "queued" | "failed" | undefined {
+  if (m.deliveredAt) return "sent";
+  if (m.deleted || m.unsent) return "failed";
+  return m.queued ? "queued" : undefined;
+}
+
+/** Ties words another agent left waiting to its record of sending them.
+ * The tie is itself a change, so they are settled straight away: their
+ * lane may have taken them while that record was being written. */
+function tieRecord(laneId: string, messageId: string, record: { laneId: string; id: string }) {
+  const waiting = store.messagesFor(laneId).find((m) => m.id === messageId);
+  if (waiting?.agent?.dir !== "in") return;
+  try {
+    store.patchMessage(laneId, messageId, { agent: { ...waiting.agent, record } });
+  } catch { /* an untied record says "waiting", as every record did before */ }
+}
+
+/** The sender's record moves on from "queued" once, when the words it is
+ * about go or will never go. A sender lane or row that has gone since
+ * is left alone, and nothing here may stop the words themselves going:
+ * this runs inside every change to a transcript. */
+function settleRecord(m: Message) {
+  const record = m.agent?.dir === "in" ? m.agent.record : undefined;
+  if (!record) return;
+  const status = recordStatus(m);
+  if (!status || status === "queued") return;
+  try {
+    // asked of the agents first, so a lane that has gone is not read
+    // back from disk as an empty one and kept
+    if (!store.botByThread(record.laneId)) return;
+    const row = store.messagesFor(record.laneId).find((r) => r.id === record.id);
+    if (row?.agent?.dir !== "out" || row.agent.status !== "queued") return;
+    const patched = store.patchMessage(record.laneId, row.id, {
+      ...(row.tool ? { tool: { ...row.tool, ok: status !== "failed" } } : {}),
+      agent: { ...row.agent, status },
+    });
+    if (patched) broadcast({ kind: "message.patch", threadId: record.laneId, message: patched });
+  } catch { /* the record is ancillary; the words went, or did not, either way */ }
+}
+
 // ── rewording a queued message ──
 // While the person has a queued message open in its editor, the lane's
 // whole burst waits for them: the turn that would take it is held until
@@ -14188,6 +14250,9 @@ function queueOnLane(
     chainTask?: ChainTask;
     /** Why the person's words wait, said under them (server/delivery.ts). */
     delivery?: Delivery;
+    /** Told the words as written down, after the admission, so another
+     * agent's record of sending them can follow them (tieRecord). */
+    onQueued?: (laneId: string, waiting: Message) => void;
   } = {},
 ) {
   // A routine's command keeps Claude Code's command path, as it does
@@ -14215,6 +14280,7 @@ function queueOnLane(
     ...(options.delivery ? { delivery: options.delivery } : {}),
   });
   options.admission?.accepted("queued");
+  options.onQueued?.(laneId, message);
   broadcast({ kind: "message", threadId: laneId, message });
   const entry = steerQueues.get(laneId) ?? { botId, items: [] };
   entry.items.push({
@@ -14618,6 +14684,9 @@ async function sendUserMessage(
     /** An agent sent this, to another agent or to itself (chainFrom). */
     chain?: AgentChain;
     guardedAdmission?: (lane: TaskRecord) => DirectAdmission;
+    /** Told the words as written down to wait, behind a turn, a drain or
+     * a pause, so the sender's record of them can follow them (tieRecord). */
+    onQueued?: (laneId: string, waiting: Message) => void;
     /** The person's one tap on how these words meet a running turn, or
      * "answer" for words typed into a card, which are its answer. Unset
      * leaves it to the agent's delivery mode (server/delivery.ts). */
@@ -14747,6 +14816,7 @@ async function sendUserMessage(
       replyTo: options.replyTo, from: options.from, personal: options.personal, chain: options.chain?.depth, chainTask: options.chain?.task, admission: noting(note),
       ...(drain.on && yours ? { waitsFor: "restart" as const } : paused ? { waitsFor: "pause" as const, waitsUntil: paused.until } : {}),
       ...(delivery ? { delivery } : {}),
+      onQueued: options.onQueued,
     });
     if (paused) sayPaused(lane.id, paused.id, `${pausedWhy(bot, paused)} What is said to it here waits, and goes on its own then.`);
     // Asking the engine took a moment, and the turn may have ended in it,
@@ -14755,7 +14825,7 @@ async function sendUserMessage(
     heard();
     return { ok: true, queued: true, taskId: lane.id, lane: lane.title, note, delivery };
   }
-  await startTurn(bot.id, text, { taskId: lane.id, replyTo: options.replyTo, from: options.from, byYou: yours, personal: options.personal, chain: options.chain?.depth, chainTask: options.chain?.task, admission });
+  await startTurn(bot.id, text, { taskId: lane.id, replyTo: options.replyTo, from: options.from, byYou: yours, personal: options.personal, chain: options.chain?.depth, chainTask: options.chain?.task, admission, onQueued: options.onQueued });
   heard();
   // which conversation it went to, so a caller outside the app (the MCP
   // connector) reads the answer from there and not from whichever lane
@@ -18561,6 +18631,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         const sending = sendUserMessage(m[1], text, {
           taskId, replyTo, from, personal: false, now,
           chain: chainFrom(sender, asAgent.taskId, named.name),
+          // told after a queued admission, which has just written the
+          // activity row (accepted, below) for the record to follow them
+          onQueued: (laneId, waiting) => {
+            if (activityId) tieRecord(laneId, waiting.id, { laneId: asAgent.taskId, id: activityId });
+          },
           guardedAdmission: (lane) => {
             claim = agentTokens.claimReport(asAgent, identity, Date.now(), turnAlive);
             const held = claim;
@@ -18657,7 +18732,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           agent: { dir: "out", peerId: recipient.id, peerName: recipient.name, status },
         });
         broadcast({ kind: "message", threadId: asAgent.taskId, message: note });
+        return note;
       };
+      // where the words wait, when they do, for the record to follow them
+      let waiting: { laneId: string; id: string } | undefined;
       // Whether the one written to can answer now, read as it is sent: a
       // sender that will not be answered is told so with the ok, rather
       // than waiting on a reply that is not coming (GitHub 239).
@@ -18681,12 +18759,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           // place in a chain of agents' messages one further; and never as
           // the person's own words, which alone may name a skill or a command
           ...(sender ? { chain: chainFrom(sender, asAgent!.taskId, named.name), personal: false } : {}),
+          ...(from ? { onQueued: (laneId: string, message: Message) => { waiting = { laneId, id: message.id }; } } : {}),
         });
       } catch (e) {
         noteSent("failed");
         throw e;
       }
-      noteSent(result.queued ? "queued" : "sent");
+      // A drain or a pause holds words back without saying queued in the
+      // answer; written down to wait, they wait, whichever door it was.
+      const record = noteSent(result.queued || waiting ? "queued" : "sent");
+      if (record && waiting) tieRecord(waiting.laneId, waiting.id, { laneId: asAgent!.taskId, id: record.id });
       const ready = await reach;
       const warning = ready ? readinessWarning(recipient!.name, ready.engine, ready.readiness) : null;
       return json(res, 202, warning ? { ...result, engine: warning } : result);
@@ -20538,6 +20620,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             if (!note || note.peerId !== other.id || msg.deleted) continue;
             // a send that arrived is listed once, from the side it arrived on
             if (note.dir === "out" && note.status !== "failed") continue;
+            // and one that waited and was never sent, from the sender's
+            // record of it, which says so (settleRecord)
+            if (note.dir === "in" && "record" in note && note.record && msg.unsent) continue;
             const fromSelf = note.dir !== "in";
             entries.push({
               id: msg.id,

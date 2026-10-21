@@ -159,10 +159,15 @@ test('busy chain refusal and later queue take-back preserve the original reserve
  await f.control('depth',{task:f.sender.threadId,depth:100});assert.equal((await f.say()).status,429);
  assert.equal((await f.control('token',{token:f.token})).report,undefined);await f.control('depth',{task:f.sender.threadId,depth:0});
  const receipt=await f.accepted();assert.equal(receipt.body.queued,true);
+ // The reserved say's own row follows its words as any say's does (GitHub 337).
+ // The last one: the chain refusal above wrote a failed row of its own.
+ const row=async()=>(await f.control('messages',{task:f.sender.threadId})).filter((m:any)=>m.agent?.dir==='out'&&m.text==='FINAL').at(-1);
+ assert.equal((await row()).agent.status,'queued');
  // Owner take-back cannot speak as a sender. Use the caller's fresh general
  // credential for the existing take-back route, not its occupied final slot.
  const next=await f.control('mint',{bot:f.sender.id,task:f.sender.threadId});
  const taken=await f.request('POST',`/api/bots/${f.target.id}/take-back`,{},next.token);assert.equal(taken.status,200);
+ assert.equal((await row()).agent.status,'failed');
  assert.deepEqual(await f.say(),receipt);
  assert.equal((await f.messages()).filter(m=>m.text==='FINAL').length,0);
  const removed=taken.body.takenBack.find((m:any)=>m.text==='FINAL');assert.ok(removed);

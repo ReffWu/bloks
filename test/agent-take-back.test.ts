@@ -131,7 +131,9 @@ test("the shipped CLI takes back only its sender's waiting words across lanes, a
   assert.equal(result.body.takenBack.length, 3);
   assert.deepEqual(result.body.takenBack.map((m: any) => m.laneId), [bMain, bMain, bSecond.threadId]);
   assert.ok(result.body.takenBack.every((m: any) => m.text === wrong && typeof m.id === "string"));
-  assert.equal(JSON.stringify([...await f.messages(a.id, aMain), ...await f.messages(a.id, aSecond.threadId)].filter((m) => m.agent?.dir === "out")), prior);
+  // the same send rows, each now saying its words were not delivered (GitHub 337)
+  const notDelivered = JSON.parse(prior).map((m: any) => ({ ...m, tool: { ...m.tool, ok: false }, agent: { ...m.agent, status: "failed" } }));
+  assert.equal(JSON.stringify([...await f.messages(a.id, aMain), ...await f.messages(a.id, aSecond.threadId)].filter((m) => m.agent?.dir === "out")), JSON.stringify(notDelivered));
   const rows = (await f.messages(a.id, aSecond.threadId)).filter((m) => m.takeBack);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].agent, undefined);

@@ -98,8 +98,15 @@ export interface AgentNote {
   dir: "in" | "out" | "reply";
   peerId: string;
   peerName: string;
-  /** "out" only: whether it was taken, queued behind a running turn, or refused. */
+  /** "out" only: whether it was taken, queued behind a running turn, or
+   * refused. A queued one moves on to "sent" when its turn takes it, or
+   * to "failed" when it is taken back or never sent (AgentNote.record). */
   status?: "sent" | "queued" | "failed" | "uncertain";
+  /** "in" only, on words that waited behind a turn: where the sender's
+   * own record of sending them is, so that record can follow them when
+   * they go, are taken back, or are never sent (GitHub 337). Absent on
+   * words that never waited, and on any that waited before it was kept. */
+  record?: { laneId: string; id: string };
 }
 
 /** One note recall added to a turn (Message.recalled). */
@@ -711,7 +718,8 @@ export class Store {
   /** Told when messages already written change or move (`changed`, as
    * they are now), or a whole transcript goes (null), so anything built
    * from the transcripts (the recall index in server/index.ts) can check
-   * what it holds rather than be rebuilt on every write. */
+   * what it holds rather than be rebuilt on every write, and a sender's
+   * record of words that waited can follow what became of them. */
   onRewrite?: (threadId: string, changed: readonly Message[] | null) => void;
   /** Told whenever a lane is marked busy or free. A turn ends through a
    * dozen doors (an answer, Stop, an error, a turn never sent), and the
