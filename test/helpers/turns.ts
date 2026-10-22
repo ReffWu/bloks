@@ -100,11 +100,15 @@ export async function agentOn(h: Harness, port: number, name: string) {
 export const messagesOf = async (h: Harness, bot: { id: string; threadId: string }) =>
   (await h.json(`/api/bots/${bot.id}/messages?thread=${bot.threadId}&limit=500`)).messages as any[];
 
+// Not busy is not yet settled: an ended turn holds its conversation a
+// moment longer while its changes card is made (a lane's `settling`), and
+// words or a retry sent in that moment rightly wait or are refused
+// (GitHub 338, 340). Idle here means both.
 export const idle = (h: Harness, bot: { id: string }) =>
   waitFor(async () => {
     const { bots } = await h.json("/api/bots");
     const found = bots.find((b: any) => b.id === bot.id);
-    return found && !found.busy ? found : null;
+    return found && !found.busy && !found.tasks?.some((task: any) => task.settling) ? found : null;
   });
 
 export const inFlight = (home: string) => {
