@@ -1,5 +1,6 @@
 // Provider brand marks, keyed by driver kind. Monochrome marks use
 // currentColor/fill-foreground so they read in both themes.
+import { useId } from "react";
 import { Monitor } from "@/components/icons";
 import { cn } from "@/lib/cn";
 
@@ -175,15 +176,64 @@ export function PiMark({ size = 16, className }: IconProps) {
   );
 }
 
-/** The Bloks engine, Bloks AI: the brand's own ink carrying
- * its foreground, so the letter reads in either theme. */
+/* The Bloks engine, Bloks AI: the inner ring of the Bloks mark, its four
+ * bars turning as the mark turns them, lit by one sweep of the brand's
+ * colours, round the spark it turns around. Drawn twice, as an icon set
+ * draws its small sizes apart: at 20px and under the gaps open and the
+ * bars and spark grow, or the turn closes up and the ring reads as a box.
+ * The iPhone app and the website draw it with these same numbers. */
+const BLOKS_AI_LARGE = { w: 4.2, gap: 1.2, r: 4.2, round: 0.7 };
+const BLOKS_AI_SMALL = { w: 4.6, gap: 1.8, r: 4.3, round: 0.9 };
+// cool down the left and along the bottom, warm up the right and across
+// the top; the gold end follows the theme so it never fades into white
+const BLOKS_AI_SWEEP = [
+  ["#2f6bff", "#7d6cf3"],
+  ["#7d6cf3", "#cb6ce6", "#ff5757"],
+  ["#ff5757", "#ff751f"],
+  ["#ff751f", "var(--bloks-ai-gold, #ffbd59)"],
+];
+
 function BloksMark({ size = 16, className }: IconProps) {
+  // one id per drawing: two marks on a screen must not share a gradient,
+  // or hiding one takes the other's colour with it
+  const id = useId().replace(/:/g, "");
+  const g = size <= 20 ? BLOKS_AI_SMALL : BLOKS_AI_LARGE;
+  const lo = 4, hi = 20, h = g.w / 2;
+  const near = hi - g.w - g.gap, far = lo + g.w + g.gap;
+  const bars: Array<[[number, number], [number, number]]> = [
+    [[lo, lo], [lo, near]],
+    [[lo, hi], [near, hi]],
+    [[hi, hi], [hi, far]],
+    [[hi, lo], [far, lo]],
+  ];
+  // the spark's own tips are rounded by a stroke of its fill, so its
+  // path is drawn that much smaller
+  const r = g.r - g.round / 2, q = r * 0.2;
+  const spark = `M12 ${12 - r}Q${12 + q} ${12 - q} ${12 + r} 12Q${12 + q} ${12 + q} 12 ${12 + r}Q${12 - q} ${12 + q} ${12 - r} 12Q${12 - q} ${12 - q} 12 ${12 - r}Z`;
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={cn(className)}>
-      <rect width="24" height="24" rx="6" fill="var(--brand-ink)" />
-      <text x="12" y="16.5" textAnchor="middle" fontSize="13" fontWeight="600" fill="var(--brand-foreground)" fontFamily="Inter, system-ui, sans-serif">
-        B
-      </text>
+    <svg width={size} height={size} viewBox="0 0 24 24" className={cn(className)} aria-hidden="true">
+      <defs>
+        {bars.map(([a, b], i) => {
+          const dx = Math.sign(b[0] - a[0]) * h, dy = Math.sign(b[1] - a[1]) * h;
+          const stops = BLOKS_AI_SWEEP[i];
+          return (
+            <linearGradient key={i} id={`${id}b${i}`} gradientUnits="userSpaceOnUse" x1={a[0] - dx} y1={a[1] - dy} x2={b[0] + dx} y2={b[1] + dy}>
+              {stops.map((colour, j) => (
+                <stop key={j} offset={j / (stops.length - 1)} style={{ stopColor: colour }} />
+              ))}
+            </linearGradient>
+          );
+        })}
+        <linearGradient id={`${id}s`} gradientUnits="userSpaceOnUse" x1={12 - g.r} y1={12 + g.r} x2={12 + g.r} y2={12 - g.r}>
+          <stop offset="0" stopColor="#2f6bff" />
+          <stop offset="0.5" stopColor="#cb6ce6" />
+          <stop offset="1" stopColor="#ff751f" />
+        </linearGradient>
+      </defs>
+      {bars.map(([a, b], i) => (
+        <line key={i} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={`url(#${id}b${i})`} strokeWidth={g.w} strokeLinecap="round" />
+      ))}
+      <path d={spark} fill={`url(#${id}s)`} stroke={`url(#${id}s)`} strokeWidth={g.round} strokeLinejoin="round" />
     </svg>
   );
 }

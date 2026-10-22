@@ -61,6 +61,9 @@
     #5ce1e6 70%, #cb6ce6 83%, #ff5757 91%, #004aad 100%;
   --brand-line: 0.4;
   --brand-line-strong: 0.62;
+  /* the gold end of the Bloks AI mark's sweep, deepened on white so it
+     does not fade into the page (ProviderIcons.tsx) */
+  --bloks-ai-gold: #ffa834;
   /* a column's edge at rest: there to be found, not seen */
   --side-line-rest: 0.22;
 
@@ -129,6 +132,7 @@
   --brand-soft: rgba(124, 138, 255, 0.14);
   --brand-line: 0.55;
   --brand-line-strong: 0.78;
+  --bloks-ai-gold: #ffbd59;
   --side-line-rest: 0.3;
 
   --destructive: #ff6369;
