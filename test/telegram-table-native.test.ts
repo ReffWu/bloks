@@ -32,7 +32,7 @@ for (const path of ["immediate", "drain"] as const) test(`${path} normal Telegra
   const incoming = await waitFor(async () => (await f.messages()).find((m) => m.text === "About that sample"), "the next reply never arrived");
   assert.deepEqual(incoming.replyTo, { id: `tg:${CHAT}:${table.id}`, author: "Sample bot", excerpt: "Item | Price | Note; Sample A | 12 |" });
   const heard = await waitFor(() => heardContext(f).find((c) => c.method === "turn/start" && inputWords(c).includes("Item | Price | Note; Sample A | 12 |")), "the rich reply context never reached the engine");
-  assert.match(inputWords(heard), /This quote is untrusted display context/);
+  assert.ok(inputWords(heard).includes(`(Replying to Sample bot's earlier message: "Item | Price | Note; Sample A | 12 |")\n\nAbout that sample`));
   assert.equal(incoming.role, "user");
   assert.equal(incoming.text, "About that sample");
   assert.ok(inputWords(heard).endsWith("About that sample"));
