@@ -22,7 +22,7 @@ test("native tables keep headings, alignment, cell order, styles and complete li
 });
 
 test("encoded destinations and escaped HTML attributes remain complete in cells", () => {
-  const input = '| Source | Value |\n| --- | --- |\n| [Offer](https://example.com/a-%28b%29?q=1&x=2) | _yes_ |';
+  const input = "| Source | Value |\n| --- | --- |\n| [Offer](https://example.com/a-%28b%29?q=1&x=2) | _yes_ |";
   assert.match(rich(input)[0]!, /href="https:\/\/example.com\/a-%28b%29\?q=1&amp;x=2">Offer<\/a>/);
   assert.match(rich(input)[0]!, /<i>yes<\/i>/);
 });
@@ -35,6 +35,17 @@ test("blank headings, empty cells, escaped pipes, code, Unicode and hostile tags
   assert.match(html, /&lt;img src="https:\/\/example.com\/x"&gt;/);
   assert.match(html, /😀<\/td><td align="center">你好<\/td><td align="left"><\/td>/);
   assert.doesNotMatch(html, /<img|<script/);
+});
+
+test("rich-only tags, entities and quotes in a cell or a link stay text", () => {
+  const cells = ['<tg-button type="url" url="https://t.me">Tap</tg-button>', '<details open><summary>S</summary></details>', "&hellip; &#60;b&#62;", '[x](https://example.com/"><b>y</b>)'];
+  const [html] = rich("| A | B | C | D |\n| --- | --- | --- | --- |\n| " + cells.join(" | ") + " |");
+  assert.ok(html);
+  const tags = [...html.matchAll(/<\/?([a-z-]+)/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(tags)].sort(), ["a", "table", "td", "th", "tr"]);
+  assert.match(html, /&lt;tg-button type="url"/);
+  assert.match(html, /&amp;hellip; &amp;#60;b&amp;#62;/);
+  assert.match(html, /<a href="https:\/\/example.com\/&quot;&gt;&lt;b&gt;y&lt;\/b&gt;">x<\/a>/);
 });
 
 test("ordinary and plain replies are exactly the previous formatter result", () => {
@@ -223,32 +234,32 @@ test("rich reply context never reads unknown/media properties or another chat", 
 });
 
 test("escaped pipes in emphasis/code and backslash parity do not shift cells", () => {
-  const html = rich('| A | B |\n| --- | --- |\n| `a\\|b` | *c\\|d* |')[0]!;
+  const html = rich("| A | B |\n| --- | --- |\n| `a\\|b` | *c\\|d* |")[0]!;
   assert.match(html, /<code>a\|b<\/code>/);
   assert.match(html, /<i>c\|d<\/i>/);
   for (const count of [2, 3]) {
-    const input = '| A | B |\n| --- | --- |\n| x' + '\\'.repeat(count) + (count === 3 ? '|z' : '') + ' | y |';
+    const input = "| A | B |\n| --- | --- |\n| x" + "\\".repeat(count) + (count === 3 ? "|z" : "") + " | y |";
     const row = rich(input)[0]!;
     assert.equal((row.match(/<td /g) ?? []).length, 2);
-    assert.ok(row.includes('>x\\' + (count === 3 ? '|z' : '') + '</td>'));
+    assert.ok(row.includes(">x\\" + (count === 3 ? "|z" : "") + "</td>"));
   }
 });
 
-for (const tail of ['## Next heading', '- Next item', '> Next quotation', '---']) test(`a following block ends the table without a blank line (${tail})`, () => {
-  const ds = deliveries(table + '\n' + tail, true);
+for (const tail of ["## Next heading", "- Next item", "> Next quotation", "---"]) test(`a following block ends the table without a blank line (${tail})`, () => {
+  const ds = deliveries(table + "\n" + tail, true);
   assert.equal(ds[0]!.richHtml, rich(table)[0]);
   assert.deepEqual(ds[1]!.chunks, messages(tail, true));
 });
 
-for (const marker of ['.', ')']) {
+for (const marker of [".", ")"]) {
   test(`ordered ${marker} list after a table stays on the legacy route without a blank line`, async (t) => {
     const tail = `1${marker} First\n2${marker} Second`;
-    assert.deepEqual(deliveries(table + '\n' + tail, true), [
+    assert.deepEqual(deliveries(table + "\n" + tail, true), [
       ...deliveries(table, true), { chunks: messages(tail, true) },
     ]);
     const calls = record(t);
-    await send('T', 42, table + '\n' + tail, true);
-    assert.deepEqual(calls.map((call) => call.method), ['sendRichMessage', 'sendMessage']);
+    await send("T", 42, table + "\n" + tail, true);
+    assert.deepEqual(calls.map((call) => call.method), ["sendRichMessage", "sendMessage"]);
     assert.equal(calls[0]!.body.rich_message.html, rich(table)[0]);
     assert.equal(calls[1]!.body.text, messages(tail, true)[0]!.html);
   });
@@ -265,44 +276,44 @@ for (const marker of ['.', ')']) {
   });
 }
 
-for (const tail of ['0. Zero', '123456789) Last', '  2. Indented', '1.\tTab', '1)', '2.']) test(`ordered-list marker bounds end a table (${JSON.stringify(tail)})`, () => {
-  assert.deepEqual(deliveries(table + '\n' + tail, true), [
+for (const tail of ["0. Zero", "123456789) Last", "  2. Indented", "1.\tTab", "1)", "2."]) test(`ordered-list marker bounds end a table (${JSON.stringify(tail)})`, () => {
+  assert.deepEqual(deliveries(table + "\n" + tail, true), [
     ...deliveries(table, true), { chunks: messages(tail, true) },
   ]);
 });
 
-for (const text of ['1.25', '2)text', '1234567890. First']) test(`numeric text without a valid list marker remains a table cell (${text})`, () => {
+for (const text of ["1.25", "2)text", "1234567890. First"]) test(`numeric text without a valid list marker remains a table cell (${text})`, () => {
   const input = `${text} | Value\n--- | ---\n${text} | 12`;
   const html = rich(input)[0]!;
   assert.ok(html.includes(`>${text}</th>`));
   assert.ok(html.includes(`>${text}</td>`));
 });
 
-for (const input of ['```md\n' + table, '~~~\n' + table + '\n```\n' + table, '```\n' + table + '\n~~~\n' + table]) test('unclosed or mixed fences remain exactly on the existing route', () => {
+for (const input of ["```md\n" + table, "~~~\n" + table + "\n```\n" + table, "```\n" + table + "\n~~~\n" + table]) test("unclosed or mixed fences remain exactly on the existing route", () => {
   assert.deepEqual(deliveries(input, true), [{ chunks: messages(input, true) }]);
 });
 
-test('an all-blank header-only table is sent even though its displayed cells are empty', async (t) => {
-  const input = '| | |\n| - | - |';
+test("an all-blank header-only table is sent even though its displayed cells are empty", async (t) => {
+  const input = "| | |\n| - | - |";
   const html = rich(input)[0]!;
   assert.equal((html.match(/<th /g) ?? []).length, 2);
   const calls = record(t);
   let count = 0;
-  await send('T', 42, input, true, () => count++);
-  assert.equal(calls[0]!.method, 'sendRichMessage');
+  await send("T", 42, input, true, () => count++);
+  assert.equal(calls[0]!.method, "sendRichMessage");
   assert.equal(count, 1);
 });
 
-test('twenty columns with many rows, entities, emoji and a long URL stay in generated limits', () => {
-  const headings = Array.from({ length: 20 }, (_, i) => `Header${i}`).join(' | ');
-  const url = 'https://example.com/' + 'p'.repeat(2000);
-  const rows = Array.from({ length: 450 }, (_, i) => Array.from({ length: 20 }, (_, c) => c === 0 ? `Row${i}` : c === 1 ? '<&😀>' : i === 449 && c === 19 ? `[Last](${url})` : '').join(' | '));
-  const input = headings + '\n' + Array(20).fill('---').join(' | ') + '\n' + rows.join('\n');
+test("twenty columns with many rows, entities, emoji and a long URL stay in generated limits", () => {
+  const headings = Array.from({ length: 20 }, (_, i) => `Header${i}`).join(" | ");
+  const url = "https://example.com/" + "p".repeat(2000);
+  const rows = Array.from({ length: 450 }, (_, i) => Array.from({ length: 20 }, (_, c) => c === 0 ? `Row${i}` : c === 1 ? "<&😀>" : i === 449 && c === 19 ? `[Last](${url})` : "").join(" | "));
+  const input = headings + "\n" + Array(20).fill("---").join(" | ") + "\n" + rows.join("\n");
   const ds = deliveries(input, true);
   assert.ok(ds.length > 1 && ds.every((d) => d.richHtml));
   assert.deepEqual(ds.flatMap((d) => [...d.richHtml!.matchAll(/>Row(\d+)</g)].map((m) => Number(m[1]))), Array.from({ length: 450 }, (_, i) => i));
   for (const d of ds) {
-    assert.ok(Buffer.byteLength(d.richHtml!, 'utf8') <= 30_000);
+    assert.ok(Buffer.byteLength(d.richHtml!, "utf8") <= 30_000);
     assert.ok((d.richHtml!.match(/<tr>/g) ?? []).length <= 400);
     assert.equal((d.richHtml!.match(/<th /g) ?? []).length, 20);
     assert.match(d.richHtml!, /&lt;&amp;😀&gt;/);
@@ -310,18 +321,18 @@ test('twenty columns with many rows, entities, emoji and a long URL stay in gene
   assert.ok(ds.at(-1)!.richHtml!.includes(`href="${url}"`));
 });
 
-for (const late of ['| final | value | extra cell |', '| final | ' + 'x'.repeat(35000) + ' |']) test('a malformed/oversized late row selects the whole fallback before transport', async (t) => {
-  const input = '| A | B |\n| --- | --- |\n' + Array.from({ length: 600 }, (_, i) => `| Row${i} | value |`).join('\n') + '\n' + late;
+for (const late of ["| final | value | extra cell |", "| final | " + "x".repeat(35000) + " |"]) test("a malformed/oversized late row selects the whole fallback before transport", async (t) => {
+  const input = "| A | B |\n| --- | --- |\n" + Array.from({ length: 600 }, (_, i) => `| Row${i} | value |`).join("\n") + "\n" + late;
   const ds = deliveries(input, true);
   assert.equal(ds.some((d) => d.richHtml), false);
   assert.deepEqual(ds.flatMap((d) => d.chunks), messages(input, true));
   const calls = record(t);
-  await send('T', 42, input, true);
-  assert.ok(calls.every((c) => c.method === 'sendMessage'));
+  await send("T", 42, input, true);
+  assert.ok(calls.every((c) => c.method === "sendMessage"));
   assert.deepEqual(calls.map((c) => c.body.text), messages(input, true).map((c) => c.html));
 });
 
-const largeTable = () => '| Name | Link |\n| --- | --- |\n' + Array.from({ length: 450 }, (_, i) => `| Row${i} | [Label${i}](https://example.com/${'x'.repeat(120)}/${i}) |`).join('\n');
+const largeTable = () => "| Name | Link |\n| --- | --- |\n" + Array.from({ length: 450 }, (_, i) => `| Row${i} | [Label${i}](https://example.com/${"x".repeat(120)}/${i}) |`).join("\n");
 for (const failed of [false, true]) test(`only rejected rich chunk B owns its multi-message fallback (second fallback fails: ${failed})`, async (t) => {
   const input = largeTable();
   const plan = deliveries(input, true);
@@ -330,91 +341,90 @@ for (const failed of [false, true]) test(`only rejected rich chunk B owns its mu
   let richCalls = 0;
   let fallbackParts = 0;
   const calls = record(t, (method, body) => {
-    if (method === 'sendRichMessage') return ++richCalls === 2 ? new Response('{}', { status: 400 }) : accepted();
-    if (body.parse_mode) return new Response('{}', { status: 400 });
-    return ++fallbackParts === 2 && failed ? new Response('{}', { status: 403 }) : accepted();
+    if (method === "sendRichMessage") return ++richCalls === 2 ? new Response("{}", { status: 400 }) : accepted();
+    if (body.parse_mode) return new Response("{}", { status: 400 });
+    return ++fallbackParts === 2 && failed ? new Response("{}", { status: 403 }) : accepted();
   });
   let count = 0;
-  const sent = send('T', 42, input, true, () => count++);
+  const sent = send("T", 42, input, true, () => count++);
   if (failed) await assert.rejects(sent, /HTTP 403/); else await sent;
-  const richBodies = calls.filter((c) => c.method === 'sendRichMessage');
+  const richBodies = calls.filter((c) => c.method === "sendRichMessage");
   assert.equal(richBodies.length, failed ? 2 : plan.length);
   assert.equal(richBodies[0]!.body.rich_message.html, plan[0]!.richHtml);
   assert.equal(richBodies[1]!.body.rich_message.html, plan[1]!.richHtml);
-  const plain = calls.filter((c) => c.method === 'sendMessage' && !c.body.parse_mode);
+  const plain = calls.filter((c) => c.method === "sendMessage" && !c.body.parse_mode);
   assert.deepEqual(plain.map((c) => c.body.text), plan[1]!.chunks.slice(0, failed ? 2 : undefined).map((c) => c.plain));
   assert.equal(count, failed ? 2 : plan.length - 1 + plan[1]!.chunks.length);
-  assert.ok(plain[0]!.body.text.includes('https://example.com/'), 'fallback lost expanded link destinations');
+  assert.ok(plain[0]!.body.text.includes("https://example.com/"), "fallback lost expanded link destinations");
   if (!failed) {
-    const complete = plan.map((d, i) => i === 1 ? plain.map((c) => c.body.text).join('\n') : d.richHtml!).join('\n');
+    const complete = plan.map((d, i) => i === 1 ? plain.map((c) => c.body.text).join("\n") : d.richHtml!).join("\n");
     assert.deepEqual([...complete.matchAll(/Row(\d+)/g)].map((m) => Number(m[1])), Array.from({ length: 450 }, (_, i) => i));
-    assert.ok(plain[0]!.body.text.startsWith('| Name | Link |'), 'the fallback lost its repeated header');
+    assert.ok(plain[0]!.body.text.startsWith("| Name | Link |"), "the fallback lost its repeated header");
   }
 });
 
 const malformed = [
-  ['ok false', { ok: false, result: { message_id: 81 } }],
-  ['missing ID', { ok: true, result: {} }],
-  ['fractional ID', { ok: true, result: { message_id: 1.5 } }],
-  ['string ID', { ok: true, result: { message_id: '81' } }],
-  ['unsafe ID', { ok: true, result: { message_id: Number.MAX_SAFE_INTEGER + 1 } }],
-  ['zero ID', { ok: true, result: { message_id: 0 } }],
-  ['invalid JSON', undefined],
+  ["ok false", { ok: false, result: { message_id: 81 } }],
+  ["missing ID", { ok: true, result: {} }],
+  ["fractional ID", { ok: true, result: { message_id: 1.5 } }],
+  ["string ID", { ok: true, result: { message_id: "81" } }],
+  ["unsafe ID", { ok: true, result: { message_id: Number.MAX_SAFE_INTEGER + 1 } }],
+  ["zero ID", { ok: true, result: { message_id: 0 } }],
+  ["invalid JSON", undefined],
 ] as const;
-for (const route of ['rich', 'html fallback', 'plain fallback']) for (const [name, value] of malformed) test(`${route} malformed confirmation (${name}) never accounts, falls back or sends later chunks`, async (t) => {
+for (const route of ["rich", "html fallback", "plain fallback"]) for (const [name, value] of malformed) test(`${route} malformed confirmation (${name}) never accounts, falls back or sends later chunks`, async (t) => {
   const calls = record(t, (method, body) => {
-    if (route !== 'rich' && method === 'sendRichMessage') return new Response('{}', { status: 400 });
-    if (route === 'plain fallback' && body.parse_mode) return new Response('{}', { status: 400 });
-    return value === undefined ? new Response('invalid') : Response.json(value);
+    if (route !== "rich" && method === "sendRichMessage") return new Response("{}", { status: 400 });
+    if (route === "plain fallback" && body.parse_mode) return new Response("{}", { status: 400 });
+    return value === undefined ? new Response("invalid") : Response.json(value);
   });
   let count = 0;
-  await assert.rejects(send('T', 42, table + '\n\nLater', true, () => count++));
+  await assert.rejects(send("T", 42, table + "\n\nLater", true, () => count++));
   assert.equal(count, 0);
-  assert.equal(calls.length, route === 'rich' ? 1 : route === 'html fallback' ? 2 : 3);
+  assert.equal(calls.length, route === "rich" ? 1 : route === "html fallback" ? 2 : 3);
 });
 
-test('connection retirement is checked before each ordinary fallback submessage', async (t) => {
+test("connection retirement is checked before each ordinary fallback submessage", async (t) => {
   let allowed = true;
-  const calls = record(t, (method) => method === 'sendRichMessage' ? new Response('{}', { status: 400 }) : accepted());
+  const calls = record(t, (method) => method === "sendRichMessage" ? new Response("{}", { status: 400 }) : accepted());
   let count = 0;
-  await assert.rejects(send('T', 42, largeTable(), true, () => { count++; allowed = false; }, () => allowed), /connection changed/);
+  await assert.rejects(send("T", 42, largeTable(), true, () => { count++; allowed = false; }, () => allowed), /connection changed/);
   assert.equal(count, 1);
   assert.equal(calls.length, 2);
 });
 
-test('retirement during the 429 wait prevents the retry', async (t) => {
+test("retirement during the 429 wait prevents the retry", async (t) => {
   let allowed = true;
   const calls = record(t, () => {
     setTimeout(() => { allowed = false; }, 0);
     return Response.json({ parameters: { retry_after: 0 } }, { status: 429 });
   });
-  await assert.rejects(send('T', 42, table, true, undefined, () => allowed), /connection changed/);
+  await assert.rejects(send("T", 42, table, true, undefined, () => allowed), /connection changed/);
   assert.equal(calls.length, 1);
 });
 
 for (const fallback of [false, true]) test(`a thrown acceptance callback cannot trigger a resend (fallback: ${fallback})`, async (t) => {
-  const calls = record(t, (method) => fallback && method === 'sendRichMessage' ? new Response('{}', { status: 400 }) : accepted());
-  await assert.rejects(send('T', 42, table + '\n\nLater', true, () => { throw new TelegramError(400); }), /HTTP 400/);
+  const calls = record(t, (method) => fallback && method === "sendRichMessage" ? new Response("{}", { status: 400 }) : accepted());
+  await assert.rejects(send("T", 42, table + "\n\nLater", true, () => { throw new TelegramError(400); }), /HTTP 400/);
   assert.equal(calls.length, fallback ? 2 : 1);
 });
 
-test('reply extraction bounds empty nodes and input text, ignores unknown shapes and nested replies', () => {
-  const array = Array(10000).fill(''); array.push('OUTSIDE_NODE_BUDGET');
-  const data = { blocks: [{ type: 'table', cells: [[{ text: array }, { text: { type: 'unknown', text: 'UNKNOWN_FIELD' }, reply_to_message: { text: 'NESTED_REPLY' } }]] }] };
+test("reply extraction bounds empty nodes and input text, ignores unknown shapes and nested replies", () => {
+  const array = Array(10000).fill(""); array.push("OUTSIDE_NODE_BUDGET");
+  const data = { blocks: [{ type: "table", cells: [[{ text: array }, { text: { type: "unknown", text: "UNKNOWN_FIELD" }, reply_to_message: { text: "NESTED_REPLY" } }]] }] };
   const before = Date.now();
   const empty = reply(data)!;
   assert.doesNotMatch(empty.excerpt, /OUTSIDE_NODE_BUDGET|UNKNOWN_FIELD|NESTED_REPLY/);
-  assert.equal(reply({ blocks: [{ type: 'table', cells: [[{ text: ' '.repeat(100000) + 'OUTSIDE_TEXT_BUDGET' }]] }] })!.excerpt, '[Message content unavailable]');
+  assert.equal(reply({ blocks: [{ type: "table", cells: [[{ text: " ".repeat(100000) + "OUTSIDE_TEXT_BUDGET" }]] }] })!.excerpt, "[Message content unavailable]");
   assert.ok(Date.now() - before < 2000);
-  assert.equal(reply(data, { caption: 'Caption takes precedence' })!.excerpt, 'Caption takes precedence');
-  const selected = parseUpdates({ result: [{ update_id: 1, message: { message_id: 9, chat: { id: 42 }, text: 'Current', from: { id: 42, first_name: 'Sam' }, quote: { text: 'Selected text wins' }, reply_to_message: { message_id: 8, text: 'Plain wins before rich', rich_message: data } } }] })[0]!;
-  assert.equal(selected.replyTo!.excerpt, 'Selected text wins');
+  assert.equal(reply(data, { caption: "Caption takes precedence" })!.excerpt, "Caption takes precedence");
+  const selected = parseUpdates({ result: [{ update_id: 1, message: { message_id: 9, chat: { id: 42 }, text: "Current", from: { id: 42, first_name: "Sam" }, quote: { text: "Selected text wins" }, reply_to_message: { message_id: 8, text: "Plain wins before rich", rich_message: data } } }] })[0]!;
+  assert.equal(selected.replyTo!.excerpt, "Selected text wins");
 });
 
-
-test('malformed rich type fields are ignored without coercing their arrays', () => {
-  const type = Array(10000).fill('not a type');
-  Object.defineProperty(type, 'toString', { value: () => { assert.fail('unknown type array was coerced'); } });
-  const data = { blocks: [{ type, text: 'Ignored block text' }, { type: 'table', cells: [[{ text: { type, text: 'Ignored cell text' } }]] }] };
-  assert.equal(reply(data)!.excerpt, '[Message content unavailable]');
+test("malformed rich type fields are ignored without coercing their arrays", () => {
+  const type = Array(10000).fill("not a type");
+  Object.defineProperty(type, "toString", { value: () => { assert.fail("unknown type array was coerced"); } });
+  const data = { blocks: [{ type, text: "Ignored block text" }, { type: "table", cells: [[{ text: { type, text: "Ignored cell text" } }]] }] };
+  assert.equal(reply(data)!.excerpt, "[Message content unavailable]");
 });

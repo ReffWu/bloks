@@ -210,8 +210,10 @@ const RICH_TEXT_WRAPPERS = new Set([
   "cashtag", "bot_command", "anchor_link", "reference", "reference_link",
 ]);
 
-/** Supplied rich messages have no ordinary message.text. Bounds apply to
- * visited nodes, nesting, input text inspected and the final excerpt. */
+/** A rich message has no text, only blocks, so a reply to a table would
+ * quote nothing. This reads the words of its tables and paragraphs, and
+ * the shape is whatever the wire held, so the nodes visited, the depth,
+ * the text looked at and the excerpt each have a limit. */
 function richReplyText(value: unknown): string | undefined {
   const rich = value as { blocks?: unknown } | null;
   if (!rich || !Array.isArray(rich.blocks)) return undefined;
@@ -576,8 +578,9 @@ export async function answerPress(token: string, pressId: string, text?: string)
   await call(token, "answerCallbackQuery", { callback_query_id: pressId, ...(text ? { text: text.slice(0, 190) } : {}) }, 5_000);
 }
 
-/** Rich sends and their fallback must confirm admission before accounting.
- * A malformed success is uncertain, never permission to send it again. */
+/** A table, or the lines sent in its place, counts as sent only when
+ * Telegram says which message it became. Any other answer may still
+ * mean it arrived, so it stops the reply and is never sent again. */
 function confirmReply(value: unknown): void {
   const body = value as { ok?: unknown; result?: { message_id?: unknown } } | null;
   const id = body?.result?.message_id;
@@ -592,10 +595,10 @@ function confirmReply(value: unknown): void {
  * With `markdown`, which is how agents write, it is shown formatted. If
  * Telegram will not take a message's formatting it answers 400, and that
  * message goes again as plain text with its links written out, so a
- * reply is never lost to its markup. Tables use generated rich HTML, with
- * legacy fallback only after a definite 400/404 rejection. Each message
- * follows the one before it, and a failure stops the rest
- * rather than leaving a gap nobody can see.
+ * reply is never lost to its markup. A table goes as a rich message, and
+ * only if Telegram refuses that do its lines go like any others. Each
+ * message is sent only after the one before it, so they arrive in order,
+ * and a failure stops the rest rather than leaving a gap nobody can see.
  */
 export async function send(token: string, chatId: number, text: string, markdown = false, accepted?: () => void, canSend?: () => boolean): Promise<void> {
   for (const delivery of deliveries(text, markdown)) {
@@ -605,8 +608,10 @@ export async function send(token: string, chatId: number, text: string, markdown
       try {
         result = await sendOne(token, { chat_id: chatId, rich_message: { html: delivery.richHtml } }, canSend, "sendRichMessage");
       } catch (error) {
-        // Catch only the request's definite rejection. Neither validation
-        // nor a caller callback can turn confirmation into a resend.
+        // Only a no to the table itself sends its lines instead: 400 for
+        // HTML Telegram would not read, 404 from a Bot API without rich
+        // messages. Any other refusal would meet the lines too, and a
+        // timeout may have delivered the table, so those stop the reply.
         if (!(error instanceof TelegramError) || ![400, 404].includes(error.status)) throw error;
         fallback = true;
       }
@@ -616,8 +621,8 @@ export async function send(token: string, chatId: number, text: string, markdown
         continue;
       }
     }
-    // This is only the rejected rich chunk's fallback, already packed to
-    // ordinary limits. Never rewind an earlier accepted chunk or part.
+    // The words of the reply, or the lines of the one table refused just
+    // now. Never a message Telegram has already taken.
     for (const chunk of delivery.chunks) {
       let result: unknown;
       if (chunk.html === undefined) {

@@ -12,6 +12,12 @@
 // with the same look. Every message closes what it opens, and a link
 // cut in half is two links to the same place, never a label in one
 // message and its target in the next.
+//
+// A table is the one thing that HTML cannot carry: it arrived as rows
+// of pipes. Telegram's rich messages can show one, so a table goes as a
+// rich message of its own, between the messages that carry the words
+// around it, with its lines kept as ordinary messages to send instead
+// when Telegram will not take it.
 
 /** Under Telegram's 4096, which it counts after the markup is read. Every
  * size here is measured on the plain text with links written out, which
@@ -535,25 +541,36 @@ export function messages(text: string, markdown: boolean, limit = MESSAGE_CHARS)
     .filter((chunk) => chunk.plain.trim());
 }
 
-/** Only tables use rich messages. Ordinary replies retain their existing
- * chunking and look; each table has its own complete legacy fallback. */
+/** One step of a reply, in order. Words are `chunks`, sent as they
+ * always were. A table is `richHtml` too, and its `chunks` are its own
+ * lines, sent the ordinary way only when Telegram refuses the table. */
 export interface Delivery {
   chunks: Chunk[];
   richHtml?: string;
 }
 
-// Counting the generated HTML bytes is stricter than Telegram's 32768
-// displayed characters. A table plus at most 400 rows is under 500 blocks.
+// A rich message holds at most 32768 characters of text, and the HTML
+// that writes them is never fewer bytes. It holds at most 500 blocks,
+// the table and each of its rows being one, and 20 columns.
 const RICH_TABLE_BYTES = 30_000;
 const RICH_TABLE_ROWS = 400;
 const TABLE_COLUMNS = 20;
 // A list marker is a block boundary, not a short table row or heading.
 const ORDERED_LIST = /^ {0,3}[0-9]{1,9}[.)](?:[ \t]+|$)/;
+const QUOTE = /^ {0,3}>/;
+const RULE = /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})$/;
+const INDENTED = /^(?: {4}| *\t)/;
+
+/** A line that begins a heading, a list item or a quotation, which no
+ * table row can be. */
+function startsBlock(line: string): boolean {
+  return HEADING.test(line) || BULLET.test(line) || ORDERED_LIST.test(line) || QUOTE.test(line);
+}
 
 /** Split only unescaped pipes, including inside code spans as GFM does.
  * Keep empty cells: dropping one would shift every later cell left. */
 function tableCells(line: string): string[] | null {
-  if (/^(?: {4}| *\t)/.test(line)) return null;
+  if (INDENTED.test(line)) return null;
   const source = line.trim();
   const cells = [""];
   let pipes = 0;
@@ -575,8 +592,9 @@ function tableCells(line: string): string[] | null {
   return cells.map((cell) => cell.trim());
 }
 
-/** A table's raw HTML is never trusted. Cells share the existing inline
- * grammar, so tags, media and arbitrary rich blocks stay literal text. */
+/** A cell is read as the same inline Markdown as any other line and
+ * escaped the same way, so HTML an agent writes in one, an image or a
+ * block of Telegram's own, shows as the text it is and nothing more. */
 function tableRow(cells: string[], columns: number, aligns: string[], heading: boolean): string {
   const tag = heading ? "th" : "td";
   return "<tr>" + Array.from({ length: columns }, (_, i) => {
@@ -585,6 +603,10 @@ function tableRow(cells: string[], columns: number, aligns: string[], heading: b
   }).join("") + "</tr>";
 }
 
+/** A table as rich messages, cut between rows with its heading on each.
+ * One Telegram could not show, too wide, with a row longer than its
+ * heading or a row too big for a message, goes the way tables always
+ * went, whole, rather than losing a cell. */
 function tableDeliveries(lines: string[], cells: string[][], aligns: string[]): Delivery[] {
   const legacy = () => [{ chunks: messages(lines.join("\n"), true) }];
   const columns = aligns.length;
@@ -614,8 +636,9 @@ function tableDeliveries(lines: string[], cells: string[][], aligns: string[]): 
   return out;
 }
 
-/** Top-level pipe tables only. Code and all non-table prose follow exactly
- * the old route. Unsupported/ragged tables keep every word via that route. */
+/** A reply as the steps that carry it, in order. Only a table at the top
+ * level becomes a rich message. One in a list, a quotation or a code
+ * block, and every other line, is sent exactly as it was before. */
 export function deliveries(text: string, markdown: boolean): Delivery[] {
   if (!markdown) return [{ chunks: messages(text, false) }];
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
@@ -631,7 +654,7 @@ export function deliveries(text: string, markdown: boolean): Delivery[] {
     }
     const opened = FENCE.exec(source);
     if (opened) { fence = opened[1]!; continue; }
-    if (/^\s/.test(source) || /^\s/.test(lines[i + 1]!) || HEADING.test(source) || BULLET.test(source) || ORDERED_LIST.test(source) || /^ {0,3}>/.test(source)) continue;
+    if (/^\s/.test(source) || /^\s/.test(lines[i + 1]!) || startsBlock(source)) continue;
     const pipeHeader = tableCells(source);
     const pipeDelimiter = tableCells(lines[i + 1]!);
     // At least one structural pipe distinguishes a one-column table
@@ -645,7 +668,7 @@ export function deliveries(text: string, markdown: boolean): Delivery[] {
     const cells = [header];
     while (end < lines.length) {
       const row = lines[end]!;
-      if (!row.trim() || /^(?: {4}| *\t)/.test(row) || FENCE.test(row) || HEADING.test(row) || BULLET.test(row) || ORDERED_LIST.test(row) || /^ {0,3}>/.test(row) || /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})$/.test(row)) break;
+      if (!row.trim() || INDENTED.test(row) || FENCE.test(row) || startsBlock(row) || RULE.test(row)) break;
       const next = tableCells(row) ?? [row.trim()];
       cells.push(next);
       end++;
