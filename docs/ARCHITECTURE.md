@@ -1610,6 +1610,22 @@ it reaches them; what is done stays done. The conversation and memory are
 still one, shared with the owner, which the settings say before the grant
 is given. During a drain they are asked to send again rather than held.
 
+Groups are off for each agent until the owner turns them on in its
+Telegram settings (`groups` on the bot's record, set only on the owner's
+Telegram route, and only once the owner is paired so their messages can be
+told from anyone else's). Until then every group update, the owner's
+included, only advances the polling offset: no knock, notice, download or
+transcript entry, whoever added the bot to the group. Turning groups off is
+saved first, so every group sender stops passing its check; then waiting
+group words are kept as unsent, an album still being gathered is dropped,
+and a let-in person's group turn stops as if they were taken out. The
+owner's own group turn runs on in the app, but its reply no longer reaches
+the group. Unpairing turns groups off too. Requests from let-in people
+across all of one agent's groups are bounded to 30 an hour
+(`MAX_TELEGRAM_GROUP_REQUESTS_PER_HOUR`); past it a request is dropped before
+any download, each group is told once and the owner once, and the owner's own
+requests are not counted.
+
 Groups accept only an outer mention entity whose whole UTF16 slice matches
 this bot's username (case-insensitive), a text mention of its numeric bot id,
 or a reply to an ordinary message from this bot in the same chat.

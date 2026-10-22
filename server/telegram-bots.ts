@@ -15,6 +15,10 @@ export interface AgentTelegram extends TelegramState {
   upgradeNotices?: TelegramUpgradeNotice[];
   admissionFull?: boolean;
   upgradeAppNotice?: string;
+  /** The owner let this bot answer messages addressed to it in groups.
+   * Off until they turn it on, and only ever set by the owner: until then
+   * a group message, theirs included, is dropped before anything reads it. */
+  groups?: boolean;
 }
 
 /** The old fields are read only for migration. Once migrated, no token or
@@ -90,6 +94,7 @@ export function telegramStatus(state: AgentTelegram | undefined) {
     ownerPaired: state?.ownerUserId !== undefined,
     needsOwnerPairing: Boolean(state?.token && state.ownerUserId === undefined),
     pairing: state?.pairing ?? null, username: state?.username ?? null,
+    groups: state?.groups === true,
     // Who each one is beyond the name they chose: their Telegram id and
     // username, what they first said while they wait, and whether anyone
     // else here goes by the same name.

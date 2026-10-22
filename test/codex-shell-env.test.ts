@@ -305,7 +305,11 @@ test("the real targetless CLI uses both credentials carried by the current Codex
 
 
 test("a refused group listener stops Codex before advertising the native reply tool", { skip: process.platform === "win32" }, async (t) => {
-  const temp = mkdtempSync(join(tmpdir(), "bloks-reply-start-"));
+  // A short name: the reply folder and its socket go inside this one, and
+  // macOS allows a socket path of 104 bytes under a temporary folder that
+  // is already long. Too long, and the path refusal fires before the one
+  // this test is for.
+  const temp = mkdtempSync(join(tmpdir(), "brs-"));
   const previous = process.env.TMPDIR;
   process.env.TMPDIR = temp;
   t.after(() => { if (previous === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = previous; rmSync(temp, { recursive: true, force: true }); });

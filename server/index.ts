@@ -187,6 +187,7 @@ import {
   MAX_SKILL_CHARS,
   MAX_SKILLS,
   MAX_SSE_CLIENTS,
+  MAX_TELEGRAM_GROUP_REQUESTS_PER_HOUR,
   MAX_TITLE_CHARS,
   MAX_URL_CHARS,
 } from "./limits.ts";
@@ -12398,6 +12399,9 @@ interface TelegramRuntime {
   inbox: telegram.Inbox;
   personInboxes: Map<string, telegram.Inbox>;
   groups: TelegramGroupMessages;
+  /** When let-in people's group requests were taken in the last hour,
+   * and who was told about the limit (withinTelegramGroupBudget). */
+  groupBudget: { taken: number[]; told: Map<number, number>; ownerTold?: number };
   /** Chats refused once, remembered for the life of the connection, so
    * somebody who found the bot and keeps typing gets one answer rather
    * than one per message. */
@@ -12667,6 +12671,22 @@ async function revokeTelegramPersonTurns(botId: string, matches: (sender: Telegr
   }
 }
 
+/** Groups turned off, after it is saved: words waiting from any group
+ * stay in the app as unsent, an album still being gathered is dropped,
+ * and a let-in person's group turn stops as if they were taken out. An
+ * owner's own group turn runs on in the app; its reply has nowhere to go. */
+async function closeTelegramGroups(botId: string): Promise<void> {
+  liveTelegram(botId)?.groups.close();
+  for (const lane of store.bot(botId)?.tasks ?? []) {
+    for (const message of store.messagesFor(lane.id)) {
+      if (!message.queued || !(message.telegramGroup || message.telegramPerson?.group)) continue;
+      const patched = store.patchMessage(lane.id, message.id, { queued: false, unsent: true });
+      if (patched) broadcast({ kind: "message.patch", threadId: lane.id, message: patched });
+    }
+  }
+  await revokeTelegramPersonTurns(botId, (sender) => Boolean(sender.group), "Telegram groups were turned off for this agent.");
+}
+
 /**
  * The owner gives a person they let in full access to this agent on
  * Telegram, or takes it back (GitHub 320). Owner-only: the settings route
@@ -12728,7 +12748,9 @@ function deliverTelegramPerson(sender: TelegramReplySender, text: string): void 
 async function takeTelegramIncoming(runtime: TelegramRuntime, message: telegram.Incoming): Promise<void> {
   const state = currentTelegram(runtime);
   if (!state) return;
-  if (message.chatType === "group" || message.chatType === "supergroup") return runtime.groups.take(message);
+  // Off until the owner turns groups on for this agent: a group it was
+  // added to, by anyone, then costs nothing and hears nothing.
+  if (message.chatType === "group" || message.chatType === "supergroup") return state.groups === true ? runtime.groups.take(message) : undefined;
   const decision = telegram.decide(inboxState(state), message);
   if (decision.kind === "pair" || decision.kind === "press" || decision.kind === "deliver") return runtime.inbox.take(message);
   // A tap in the chat of a person with full access, by them, is theirs to
@@ -12835,7 +12857,9 @@ function telegramSenderInbox(runtime: TelegramRuntime, source: TelegramReplySend
 
 async function takeTelegramGroup(runtime: TelegramRuntime, parts: telegram.Incoming[], destination: TelegramDestination): Promise<void> {
   const state = currentTelegram(runtime), message = parts[0];
-  if (!state || !message || !destination.group) return;
+  // asked again: an album waits half a second, and groups may have been
+  // turned off while it did
+  if (!state || state.groups !== true || !message || !destination.group) return;
   let sender: TelegramReplySender;
   if (message.fromId === state.ownerUserId) {
     sender = { ...destination, group: destination.group, owner: true, botId: runtime.botId, bindingGeneration: runtime.generation,
@@ -12846,12 +12870,43 @@ async function takeTelegramGroup(runtime: TelegramRuntime, parts: telegram.Incom
     if (!person) return;
     sender = telegramSender(runtime.botId, telegramBinding(runtime.botId)!, person, destination.messageId, destination);
     if (state.ownerUserId === undefined) return tellTelegramPersonHeld(sender, "The owner needs to pair this bot first.");
+    if (!(await withinTelegramGroupBudget(runtime, destination))) return;
   }
   // A fresh inbox binds media failures and their service notices to this
   // album's anchor. Reusing one would send a later failure to an old post.
   const inbox = telegramSenderInbox(runtime, sender);
   if (parts.some((part) => part.album)) await inbox.takeAlbum(parts);
   else await inbox.take(message);
+}
+
+const TELEGRAM_GROUP_HOUR_MS = 60 * 60_000;
+
+/** Every let-in person's group request can be a turn on the owner's
+ * engine, and a busy group has many of them. Past the hour's share the
+ * rest is dropped before any download, each group is told once, and so
+ * is the owner. The owner's own requests are theirs and not counted. */
+async function withinTelegramGroupBudget(runtime: TelegramRuntime, destination: TelegramDestination): Promise<boolean> {
+  const now = Date.now();
+  const budget = runtime.groupBudget;
+  budget.taken = budget.taken.filter((at) => now - at < TELEGRAM_GROUP_HOUR_MS);
+  if (budget.taken.length < MAX_TELEGRAM_GROUP_REQUESTS_PER_HOUR) {
+    budget.taken.push(now);
+    return true;
+  }
+  for (const [chatId, at] of budget.told) if (now - at >= TELEGRAM_GROUP_HOUR_MS) budget.told.delete(chatId);
+  if (budget.ownerTold === undefined || now - budget.ownerTold >= TELEGRAM_GROUP_HOUR_MS) {
+    budget.ownerTold = now;
+    const bot = store.bot(runtime.botId);
+    if (bot) {
+      const notice = store.appendMessage(bot.threadId, { role: "bot", kind: "notice", text: `Telegram groups asked ${bot.name} more than ${MAX_TELEGRAM_GROUP_REQUESTS_PER_HOUR} times in the last hour. Later group requests are dropped until the hour has passed. Your own are not counted.` });
+      broadcast({ kind: "message", threadId: bot.threadId, message: notice });
+    }
+  }
+  if (!budget.told.has(destination.chatId)) {
+    budget.told.set(destination.chatId, now);
+    await telegramDestinationNotice(runtime, destination, "This agent has taken as many group requests as it can this hour. Please try again later.");
+  }
+  return false;
 }
 
 function saveTelegram(next: TelegramConfig): void {
@@ -12998,6 +13053,7 @@ function makeTelegramRuntime(botId: string, state: AgentTelegram): TelegramRunti
     botId, generation: state.generation, token: state.token!, abort: new AbortController(),
     refused: new Set(), asks: new Map(), personAsks: new Map(), typing: new Map(), turns: new Map(), intake: new Map(), working: new Set(),
     inbox: null as unknown as telegram.Inbox, personInboxes: new Map(), groups: null as unknown as TelegramGroupMessages,
+    groupBudget: { taken: [], told: new Map() },
   };
   const active = () => {
     const current = currentTelegram(runtime);
@@ -23983,6 +24039,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         const changed = await decideTelegramAdmission(botId, body.personId, body.action);
         return json(res, changed ? 200 : 404, changed ? status() : { error: "no such Telegram person" });
       }
+      // Groups are the owner's choice for this agent alone, on its own
+      // request like a person's access, and they never change the
+      // connection: private chats carry on whichever way it goes.
+      if (body.groups !== undefined) {
+        if (typeof body.groups !== "boolean") return json(res, 400, { error: "groups is on or off" });
+        const before = telegramBinding(botId);
+        if (body.groups && !before?.token) return json(res, 400, { error: "Save a bot token first." });
+        if (body.groups && before?.ownerUserId === undefined) return json(res, 400, { error: "Pair yourself with this bot first, so it can tell your messages in a group from anyone else's." });
+        if (before && (before.groups === true) !== body.groups) {
+          saveTelegramBinding(botId, { ...before, groups: body.groups || undefined });
+          if (!body.groups) await closeTelegramGroups(botId);
+          broadcast({ kind: "config", ...(await configStatus()) });
+        }
+        return json(res, 200, status());
+      }
       const pending = cfg.telegram?.pending;
       const movePending = body.migrate === true;
       if (movePending) {
@@ -24036,8 +24107,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         next = ownerPairing(next);
       }
       // Unpairing forgets the owner too, and is a new connection: a turn
-      // or a card from before it has nobody left to answer to.
-      if (body.unpair === true) next = { ...next, chatIds: [], ownerUserId: undefined, ownerChatId: undefined, pairing: null, generation: randomUUID() };
+      // or a card from before it has nobody left to answer to. Groups go
+      // with them, since nobody there could be told from the owner now.
+      if (body.unpair === true) next = { ...next, chatIds: [], ownerUserId: undefined, ownerChatId: undefined, pairing: null, generation: randomUUID(), groups: undefined };
       if (adoptsPending) saveTelegram({ ...cfg.telegram, version: 2, bots: { ...cfg.telegram?.bots, [botId]: next }, migratedBotId: botId, pending: undefined, migrationError: undefined });
       else saveTelegramBinding(botId, next);
       await revokeTelegramPersonTurns(botId, (sender) => !telegramSenderCurrent(telegramBinding(botId), sender), "This agent's Telegram connection changed.");

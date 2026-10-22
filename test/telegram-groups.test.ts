@@ -115,7 +115,7 @@ test("a retired binding drops held albums without any delivery", async () => {
 });
 
 test("a group knock has no learned private chat and keeps its first topic and anchor", () => {
-  const state: AgentTelegram = { generation: "g", token: "synthetic", enabled: true };
+  const state: AgentTelegram = { generation: "g", token: "synthetic", enabled: true, groups: true };
   const m = incoming({ is_topic_message: true, message_thread_id: 9 });
   const destination = telegramGroupDestination(m);
   const person = knockTelegram(state, m, destination).person!;
@@ -124,10 +124,12 @@ test("a group knock has no learned private chat and keeps its first topic and an
   const sender = telegramSender("b", state, state.people[String(person.userId)], undefined, destination);
   assert.equal(telegramSenderCurrent(state, sender), true);
   assert.equal(telegramSenderCurrent({ ...state, generation: "changed" }, sender), false);
+  assert.equal(telegramSenderCurrent({ ...state, groups: undefined }, sender), false, "a group sender outlived groups being turned off");
+  assert.equal(knockTelegram({ ...state, people: {}, groups: undefined }, m, destination).person, undefined, "a group knocked while groups were off");
 });
 
 test("one person has one requester across destinations, with distinct queue audiences", () => {
-  const state: AgentTelegram = { generation: "g", token: "synthetic", enabled: true };
+  const state: AgentTelegram = { generation: "g", token: "synthetic", enabled: true, groups: true };
   const person = knockTelegram(state, incoming(), telegramGroupDestination(incoming())).person!;
   const allowed = { ...person, state: "allowed" as const, chatId: 20202 };
   state.people = { "20202": allowed };
@@ -141,8 +143,8 @@ test("one person has one requester across destinations, with distinct queue audi
   assert.equal(telegramSenderCurrent(state, groupSender), true);
 });
 
-test("old PR2 private requester hashes remain restricted and cannot authorize a group", () => {
-  const state: AgentTelegram = { generation: "g", token: "synthetic", enabled: true };
+test("private requester hashes from before groups remain restricted and cannot authorize a group", () => {
+  const state: AgentTelegram = { generation: "g", token: "synthetic", enabled: true, groups: true };
   const person = { id: "p", userId: 20202, name: "Lee", chatId: 20202, state: "allowed" as const, grant: "grant" };
   state.people = { "20202": person };
   const old = { ...telegramSender("b", state, person, 1), requester: "telegram:" + createHash("sha256").update(JSON.stringify(["b", "g", "p", "grant", 20202])).digest("hex").slice(0, 32) };
@@ -151,10 +153,11 @@ test("old PR2 private requester hashes remain restricted and cannot authorize a 
 });
 
 test("an owner group return rechecks owner identity without inventing an admission", () => {
-  const state: AgentTelegram = { generation: "g", token: "synthetic", enabled: true, ownerUserId: 10101, ownerChatId: 10101 };
+  const state: AgentTelegram = { generation: "g", token: "synthetic", enabled: true, groups: true, ownerUserId: 10101, ownerChatId: 10101 };
   const target = telegramGroupDestination(incoming());
   const source: TelegramOwnerGroup = { ...target, group: target.group!, owner: true, botId: "b", bindingGeneration: "g", userId: 10101, name: "Sam", requester: "owner" };
   assert.equal(telegramOwnerGroupCurrent(state, source), true);
+  assert.equal(telegramOwnerGroupCurrent({ ...state, groups: undefined }, source), false, "the owner's group return outlived groups being turned off");
   assert.equal(state.people, undefined);
   assert.equal(telegramOwnerGroupCurrent({ ...state, ownerUserId: 40404 }, source), false);
   assert.equal(telegramOwnerGroupCurrent(state, { ...source, chatId: 10101 }), false);

@@ -178,6 +178,10 @@ export interface PersonFixtureOptions {
   env?: Record<string, string>;
   seed?: (root: string) => void;
   files?: Record<string, Uint8Array>;
+  /** The owner's opt-in to group messages, turned on once paired. Most
+   * of these fixtures are about what groups do once it is given; a test
+   * of the default passes false. */
+  groups?: boolean;
 }
 
 /** Claude Code is the engine a person's turn runs on; a Codex agent holds it. */
@@ -231,6 +235,7 @@ export async function personFixture(t: TestContext, kind: "codex" | "claude" = "
   const pair = await post(`/api/bots/${bot.id}/telegram`, { token: "12345:TEST_ONLY_TOKEN", pair: true });
   assert.ok(pair.pairing); say(pair.pairing);
   await until(() => calls.some((c) => c.method === "sendMessage" && c.body.text.startsWith("Paired.")), "the owner did not pair");
+  if (options.groups !== false) assert.equal((await post(`/api/bots/${bot.id}/telegram`, { groups: true })).groups, true);
   const messages = async (): Promise<any[]> => (await ownerJson(`/api/bots/${bot.id}/messages?thread=${bot.threadId}&limit=500`)).messages;
   const records = (): any[] => {
     if (!existsSync(join(root, "engine.jsonl"))) return [];

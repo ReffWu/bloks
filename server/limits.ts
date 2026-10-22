@@ -23,6 +23,11 @@ export const MAX_PENDING_TELEGRAM_PEOPLE = 20;
 export const MAX_CLOSED_TELEGRAM_PEOPLE = 100;
 export const MAX_TELEGRAM_REPLY_CHARS = 4096;
 
+/** Requests from let-in people across all of one agent's Telegram groups
+ * in an hour. Each can be a turn on the owner's engine; past this a busy
+ * group is told once and the rest is dropped before any download. */
+export const MAX_TELEGRAM_GROUP_REQUESTS_PER_HOUR = 30;
+
 /** Project instruction text in an isolated person's Claude session. */
 export const MAX_PERSON_PROJECT_BYTES = 100_000;
 

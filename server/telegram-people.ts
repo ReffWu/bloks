@@ -110,7 +110,7 @@ export function isPrivateTelegramHuman(message: Incoming): boolean {
 }
 
 export function knockTelegram(state: AgentTelegram, message: Incoming, group?: TelegramDestination): { person?: TelegramPerson; fresh: boolean; capped: boolean; forget?: string[] } {
-  if (group ? !group.group || !validTelegramDestination(group) || group.chatId !== message.chatId ||
+  if (group ? state.groups !== true || !group.group || !validTelegramDestination(group) || group.chatId !== message.chatId ||
     (message.chatType !== "group" && message.chatType !== "supergroup") || message.fromBot !== false || message.anonymous || message.automaticForward || !Number.isSafeInteger(message.fromId) || message.fromId! <= 0 : !isPrivateTelegramHuman(message)) return { fresh: false, capped: false };
   const known = state.people?.[String(message.fromId)];
   if (known) return { person: known, fresh: false, capped: false };
@@ -151,15 +151,18 @@ export function telegramSenderCurrent(state: AgentTelegram | undefined, sender: 
   const person = state?.people?.[String(sender.userId)];
   return Boolean(state?.enabled && state.token && state.generation === sender.bindingGeneration &&
     person?.state === "allowed" && person.id === sender.personId && person.grant === sender.grant &&
-    validTelegramDestination(sender) && (sender.group || person.chatId === sender.chatId) &&
+    validTelegramDestination(sender) && (sender.group ? state.groups === true : person.chatId === sender.chatId) &&
     (telegramSender(sender.botId, state, person).requester === sender.requester ||
-      // Pending private messages from PR2 remain person turns. Their old
-      // requester included the learned private chat, which groups do not.
+      // Private words saved before groups existed remain person turns.
+      // Their requester included the private chat, which a group's does not.
       (!sender.group && "telegram:" + createHash("sha256").update(JSON.stringify([sender.botId, state.generation, person.id, person.grant, person.chatId])).digest("hex").slice(0, 32) === sender.requester)));
 }
 
+/** Turning groups off ends every group sender at once, the owner's here
+ * and a person's above: waiting words, replies and notices all ask, so
+ * none of them outlives the owner's choice. */
 export function telegramOwnerGroupCurrent(state: AgentTelegram | undefined, sender: TelegramOwnerGroup): boolean {
-  return Boolean(state?.enabled && state.token && state.generation === sender.bindingGeneration &&
+  return Boolean(state?.enabled && state.token && state.groups === true && state.generation === sender.bindingGeneration &&
     sender.owner === true && sender.requester === "owner" && Number.isSafeInteger(sender.userId) && sender.userId > 0 && sender.userId === state.ownerUserId &&
     sender.group && validTelegramDestination(sender));
 }

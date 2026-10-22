@@ -45,6 +45,7 @@ interface Status {
   people?: Array<{ id: string; name: string; state: "pending" | "allowed" | "declined" | "removed"; userId?: number; username?: string; first?: string; sameName?: boolean; full?: boolean }>;
   upgradeNotices?: Array<{ state: string }>;
   admissionFull?: boolean;
+  groups?: boolean;
 }
 
 /** Telegram's documented shape, digits, a colon, then the secret. Only a
@@ -151,6 +152,21 @@ export function TelegramSection({ botId }: { botId?: string }) {
       destructive: true,
     });
     if (yes) post({ personId: person.id, action: "full" });
+  };
+
+  // Groups are off until the owner turns them on. Said before, because a
+  // group reply is public to that group in a way a private chat is not.
+  const answerInGroups = async (agent: string, bot: string) => {
+    const yes = await confirm({
+      title: `Let ${agent} answer in Telegram groups?`,
+      body: [
+        `In any group ${bot} is in, ${agent} answers messages that mention it or reply to it, and ignores everything else. Mentions reach it only with the bot's privacy mode off, or with the bot as an admin.`,
+        `Your own requests there run with your usual context and permissions. Every member of the group sees what ${agent} replies, including people you have not let in.`,
+        "Anyone else is asked to wait until you let them in. People you let in can ask in any group they share with the bot; they stay restricted there even with full access, and what their turns can read without asking can reach the whole group.",
+      ].join("\n\n"),
+      confirmLabel: "Answer in groups",
+    });
+    if (yes) post({ groups: true });
   };
 
   const openAgent = (id: string) => {
@@ -404,9 +420,24 @@ export function TelegramSection({ botId }: { botId?: string }) {
           </div>
         </div>
       )}
-      {status?.configured && <p className="mt-3 text-small text-muted-foreground">
-        In groups, mention this bot or reply to one of its messages. Mentions need privacy mode off or the bot to be an admin. Group replies are visible to every member, including people you have not let in. Other people's group requests stay restricted, even if you granted them full access privately. Your own group requests keep your normal context and permissions.
-      </p>}
+      {status?.configured && status.ownerPaired && (
+        <div className="mt-4 flex items-start justify-between gap-3 border-t pt-3">
+          <span className="min-w-0">
+            <span className="block text-body font-semibold text-foreground">Answer in groups</span>
+            <span className="mt-0.5 block text-small leading-relaxed text-muted-foreground">
+              {status.groups
+                ? "In groups, mention this bot or reply to one of its messages. Mentions need privacy mode off or the bot to be an admin. Group replies are visible to every member, including people you have not let in. Other people's group requests stay restricted, even if you granted them full access privately. Your own group requests keep your normal context and permissions."
+                : `Off. ${handle} ignores every group message, yours included.`}
+            </span>
+          </span>
+          <Switch
+            aria-label="Answer in Telegram groups"
+            checked={status.groups === true}
+            disabled={busy}
+            onCheckedChange={(on) => (on ? void answerInGroups(agentName, handle) : post({ groups: false }))}
+          />
+        </div>
+      )}
       {status?.admissionFull && <p className="mt-2 text-small text-warning">The waiting list is full. Decide on someone waiting, or take someone out, to make room.</p>}
       {status?.upgradeNotices?.some((n) => ["uncertain", "failed"].includes(n.state)) && <p className="mt-2 text-small text-warning">Some old chats may not know their pairing ended. Ask those people to message the bot to be let in again.</p>}
 
