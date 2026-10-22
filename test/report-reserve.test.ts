@@ -70,7 +70,11 @@ test('eleven-spent general/direct race and delayed body parsing never debit twel
 
 test('lost actual HTTP output returns retained receipt without readiness, activity or recipient replay',async t=>{
  const f=await reporting(t);await f.use();await f.control('fault',{mode:'output'});
- await assert.rejects(f.say());const recovered=await f.accepted();const calls=f.calls().length;
+ await assert.rejects(f.say());const recovered=await f.accepted();
+ // the turn the receipt started records its engine call a moment after the
+ // answer, later still on a slow machine: count once that has settled, so
+ // the only thing that could add one is a replay
+ let calls=0;await until(async()=>{const before=f.calls().length;await new Promise(r=>setTimeout(r,400));calls=f.calls().length;return calls===before&&calls>0},'engine calls never settled');
  assert.deepEqual(await f.say(),recovered);assert.equal(f.calls().length,calls);
  assert.equal((await f.messages()).filter(m=>m.text==='FINAL').length,1);
  assert.equal((await f.messages(f.sender)).filter(m=>m.agent?.dir==='out').length,1);
