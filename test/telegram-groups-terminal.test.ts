@@ -118,8 +118,12 @@ test("Claude owner-with-reply asks while active; old connections and callbacks h
   assert.notEqual(replacement.pid, active.pid);
   assert.notEqual(replacement.token, active.token);
   assert.equal(replacement.args[replacement.args.indexOf("--resume") + 1], originalCursor);
-  const replacementCursor = JSON.parse(readFileSync(join(f.root, ".bloks", "bots.json"), "utf8"))
+  // The replacement's own session, once it has said which: read the
+  // moment its process appears, the cursor could still be the old one,
+  // and its own init landing later read as an old callback's doing.
+  const cursorNow = () => JSON.parse(readFileSync(join(f.root, ".bloks", "bots.json"), "utf8"))
     .find((bot: any) => bot.id === f.bot.id).tasks.find((task: any) => task.id === f.bot.threadId).resumeCursors.claude;
+  const replacementCursor = await until(() => cursorNow() === `fixture-${replacement.pid}` && cursorNow(), "the replacement never reported its session");
   await inject("during-replacement");
   assert.equal(alive(replacement.pid), true, "stale cleanup stopped the replacement");
   assert.equal(f.records().filter(row => typeof row.text === "string").length, 2, "a stale callback started an extra process");
@@ -134,9 +138,7 @@ test("Claude owner-with-reply asks while active; old connections and callbacks h
   assert.equal(f.records().find(row => row.text?.endsWith("REPLACEMENT_OWNER FAKE_HOLD"))?.groupOwner, false);
   assert.equal(f.sent(GROUP).filter(call => call.body.text === "Hello Lee").length, 1);
   assert.equal(existsSync(join(f.root, "late-effect")), false);
-  const afterCursor = JSON.parse(readFileSync(join(f.root, ".bloks", "bots.json"), "utf8"))
-    .find((bot: any) => bot.id === f.bot.id).tasks.find((task: any) => task.id === f.bot.threadId).resumeCursors.claude;
-  assert.equal(afterCursor, replacementCursor, "old callbacks changed the replacement session");
+  assert.equal(cursorNow(), replacementCursor, "old callbacks changed the replacement session");
   const attempts = rows(attemptsFile);
   assert.equal(attempts.filter(row => row.kind === "old-connection-write").length, 4, "the injected attempts were not recorded");
   assert.equal(attempts.filter(row => row.kind === "stale-response-callback").length, 2);
