@@ -693,6 +693,19 @@ const SHAPES: BlokShape[] = [
   "invader",
 ];
 
+/** The shape an agent is drawn with. One made before shapes existed has
+ * none saved, and every client hashes its id to the same one
+ * (shapeForBot in src/lib/mascot.ts); a phone's Live Activity started
+ * from here has to name that one too, or it draws a shape the agent
+ * never had (GitHub 362). */
+export function shapeOf(bot: { id: string; name: string; shape?: string }): BlokShape {
+  if (bot.shape && (SHAPES as string[]).includes(bot.shape)) return bot.shape as BlokShape;
+  const key = bot.id ?? bot.name;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return SHAPES[Math.abs(hash) % SHAPES.length];
+}
+
 /** Seed content for a new agent. The client sends role-specific copy from
  * its template library; these are the fallbacks for a blank agent. */
 export interface NewBotProfile {
