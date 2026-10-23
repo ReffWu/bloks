@@ -156,7 +156,7 @@ linux:
       arch: [x64, arm64]
   icon: build/icon.png
   category: Utility
-  maintainer: hamedr@outlook.com
+  maintainer: support@bloks.dev
   synopsis: A local-first desktop workspace for personal AI agents
 
 win:

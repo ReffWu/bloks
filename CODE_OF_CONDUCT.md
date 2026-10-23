@@ -31,7 +31,7 @@ and anywhere someone is representing the project.
 ## Reporting
 
 If something crosses the line, email the maintainer at
-hamedr@outlook.com. Reports stay private. If the report is about the
+support@bloks.dev. Reports stay private. If the report is about the
 maintainer, say so and it will be handled by someone else.
 
 Include what happened, where, and roughly when. You do not need to have
