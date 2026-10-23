@@ -1,3 +1,5 @@
+// before anything loads server/config.ts, so nothing lands in ~/.bloks
+import "./helpers/own-data.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

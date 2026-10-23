@@ -3,6 +3,8 @@
 // model answering through the generic driver with its tags on every call,
 // and a used-up allowance said in the service's own words
 // (server/credits.ts).
+// before anything loads server/config.ts, so nothing lands in ~/.bloks
+import "./helpers/own-data.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

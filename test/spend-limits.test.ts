@@ -2,6 +2,8 @@
 // (server/spend-limits.ts): what it counts, when it speaks, what it
 // says when it stops a turn, and that it stops one. Every completion is
 // served by a loopback fixture, so nothing here reaches a provider.
+// before anything loads server/config.ts, so nothing lands in ~/.bloks
+import "./helpers/own-data.ts";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";

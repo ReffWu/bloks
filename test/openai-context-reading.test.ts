@@ -1,5 +1,7 @@
 // A request's prompt is a reading; a turn's summed usage is accounting.
 // All completions below are served by an isolated loopback fixture.
+// before anything loads server/config.ts, so nothing lands in ~/.bloks
+import "./helpers/own-data.ts";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test, type TestContext } from "node:test";

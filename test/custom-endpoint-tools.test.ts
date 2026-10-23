@@ -3,6 +3,8 @@
 // same tool loop as a catalog engine; a host that will not take the
 // tools ends the turn saying so, never quietly answering without them.
 // Every model here is a loopback fixture, and every key a made-up one.
+// before anything loads server/config.ts, so nothing lands in ~/.bloks
+import "./helpers/own-data.ts";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
