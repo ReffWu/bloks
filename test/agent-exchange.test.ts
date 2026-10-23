@@ -85,6 +85,8 @@ process.stdin.on("data", (c) => (input += c));
   );
   assert.match(told ?? "", /A message from Manager, another agent/);
   assert.match(told ?? "", new RegExp(`bloks say ${manager.id}`));
+  // and that the bare quiet word ends a turn with nothing for the person
+  assert.match(told ?? "", /answer with exactly QUIET and nothing else; the turn then ends without a message/);
 
   // What QA says in its own chat is a full reply for the person, never a
   // message to Manager: it carries the context, not the agent field that

@@ -3757,12 +3757,20 @@ bus.subscribe((event: RuntimeEvent) => {
         // so an API model can answer with a chart like anybody else.
         const { components, text } = extractComponents(afterPlan);
         const answering = inRoom ? undefined : replyingTo.get(event.threadId);
-        if ((answering || inRoom) && text && !isProgressText(event.codexText)) spokeInTurn.add(event.threadId);
+        // Nobody is waiting on what this turn says (unaskedTurn), so the
+        // bare quiet word from it is silence: never written, never news,
+        // and the turn ends as one that said nothing (GitHub 363). A
+        // check-in's QUIET is its own, below.
+        const unasked = !inRoom && !checkInTurns.has(event.threadId) && unaskedTurn(event.threadId);
+        const silent = unasked && isQuietReply(text);
+        if ((answering || inRoom || unasked) && text && !silent && !isProgressText(event.codexText)) spokeInTurn.add(event.threadId);
+        if (silent) quietEnds.set(event.threadId, text);
+        else if (text) quietEnds.delete(event.threadId);
         // A check-in's QUIET is marked the moment it is said, so the frame
         // that carries it already says it is not news, to every client
         // that reads it, before the turn has even ended.
         const quiet = !inRoom && checkInTurns.has(event.threadId) && isQuietReply(text);
-        if (text) {
+        if (text && !silent) {
           const said = houseStyle(text);
           // The reply's interface, settled and checked, for a client
           // that draws it without parsing it (server/genui.ts).
@@ -4415,6 +4423,10 @@ bus.subscribe((event: RuntimeEvent) => {
       // Capture before owner settlement or queue dispatch can replace this lane.
       const endingReply = replyNotifications.take(event.threadId, event.turnId);
       const endingCheckIn = checkInTurns.has(event.threadId);
+      // The bare quiet word this turn ended on, kept out of the chat. What
+      // reads a turn's last words (settleOwners) still reads it.
+      const quietWord = quietEnds.get(event.threadId);
+      quietEnds.delete(event.threadId);
       codexDispatches.delete(event.threadId);
       const command = commandTurns.has(event.threadId);
       // a turn that failed on its length is asked again once it is folded
@@ -4614,7 +4626,7 @@ bus.subscribe((event: RuntimeEvent) => {
       // the failure in its own words, for a routine's or a workflow's
       // incident, where the run itself keeps only the stop reason
       if (!handedOver && event.ok === false) failedWords.set(event.threadId, lastWords(endedErrors, event.stopReason ?? null));
-      if (!handedOver) settleOwners(bot, event.threadId, { ok: event.ok !== false, why: event.preInputRefusal?.reason ?? event.stopReason ?? null, quiet: quietRun, ...(event.preInputRefusal ? { unsent: true } : {}) });
+      if (!handedOver) settleOwners(bot, event.threadId, { ok: event.ok !== false, why: event.preInputRefusal?.reason ?? event.stopReason ?? null, quiet: quietRun, ...(event.preInputRefusal ? { unsent: true } : {}), ...(quietWord !== undefined ? { said: quietWord } : {}) });
       failedWords.delete(event.threadId);
       if (mailQueue.length) setTimeout(() => void drainMail(), 0);
       // whatever the agent was given to act with is spent
@@ -4624,9 +4636,12 @@ bus.subscribe((event: RuntimeEvent) => {
       const codexAgentTurn = event.provider === "codex" && Boolean(origin && origin.turnId === event.turnId && origin.origin === "agent");
       const quietAgentTurn =
         (replyingTo.has(event.threadId) || codexAgentTurn) && (event.ok !== false || (codexAgentTurn && event.stopReason === "interrupted")) && !spokeInTurn.has(event.threadId);
+      // So does one nobody asked for that ended on the bare quiet word
+      // with nothing else said, unless the person has joined it since.
+      const quietEnd = quietWord !== undefined && event.ok !== false && !spokeInTurn.has(event.threadId) && !turnsForYou.has(event.threadId);
       spokeInTurn.delete(event.threadId);
       if (origin?.turnId === event.turnId) codexOrigins.delete(event.threadId);
-      if (quietAgentTurn || quietRun) {
+      if (quietAgentTurn || quietRun || quietEnd) {
         // nothing new here
       } else if (bot.tasks.some((t) => t.id === event.threadId)) store.markLane(bot.id, event.threadId, true);
       else store.patchBot(bot.id, { unread: true });
@@ -6069,6 +6084,8 @@ async function startClaimedTurn(
   const checkIn = (Boolean(opts.routine?.quiet) || Boolean(opts.incidentQuiet)) && !blok && !command;
   if (checkIn) checkInTurns.add(task.id);
   else checkInTurns.delete(task.id);
+  // a quiet word from a turn that never ended is not this one's
+  quietEnds.delete(task.id);
   if (opts.incidentNotes?.length) deskTurns.set(task.id, opts.incidentNotes);
   // what it was asked, rooms included, for an incident's one retry
   lastAsked.set(task.id, {
@@ -7315,11 +7332,13 @@ function unsendable(botId: string): string | null {
  * or `unsent` from a start that failed before reaching its engine, which
  * otherwise left each of them waiting on an end that never came.
  */
-function settleOwners(bot: BotRecord, laneId: string, outcome: { ok: boolean; why: string | null; unsent?: boolean; quiet?: boolean }) {
+function settleOwners(bot: BotRecord, laneId: string, outcome: { ok: boolean; why: string | null; unsent?: boolean; quiet?: boolean; said?: string }) {
   const { ok, why, unsent, quiet } = outcome;
   // what the agent actually said; a turn that never ran said nothing,
-  // and the last reply in its lane belongs to an earlier one
-  const said = unsent ? "" : lastSaid(laneId);
+  // and the last reply in its lane belongs to an earlier one. A turn
+  // that ended on the bare quiet word said that, though the chat never
+  // showed it (quietEnds).
+  const said = unsent ? "" : (outcome.said ?? lastSaid(laneId));
   // A failed turn may still be answered by a backup engine, so its mail
   // waits a little for that (replyByMail). Nothing picks up a turn that
   // never ran, and a sender left waiting would be emailed whatever the
@@ -9301,6 +9320,26 @@ const replyingTo = new Map<string, { peerId: string; peerName: string }>();
  * finished without a word has nothing for the person to read, so it does
  * not mark the conversation unread. */
 const spokeInTurn = new Set<string>();
+/** Lanes whose running turn, one nobody asked for (unaskedTurn), last
+ * said the bare quiet word, which was never written: QUIET in any case,
+ * as isQuietReply reads it. The word itself, for what reads the turn's
+ * last words when it ends. Any later word in the turn takes its place. */
+const quietEnds = new Map<string, string>();
+
+/** Whether nobody is waiting on what a lane's running turn says: another
+ * agent, a job, a watcher, a webhook or a workflow started it, and no
+ * person started it, joined it since, or asked for it from Telegram, a
+ * shared room or an email. A routine is the person's own standing ask,
+ * with its own quiet switch, and a goal's or a rehearsal's turns are the
+ * person's too. Such a turn may end on the bare quiet word, which then
+ * says nothing at all (GitHub 363). */
+function unaskedTurn(laneId: string): boolean {
+  return !turnsForYou.has(laneId) &&
+    (laneRequester.get(laneId) ?? "owner") === "owner" &&
+    !laneTelegramPerson.has(laneId) && !laneTelegramDelegate.has(laneId) && !laneTelegramGroup.has(laneId) &&
+    !mailAnswering.has(laneId) && !openRuns.has(laneId) && !lastAsked.get(laneId)?.routine && !rehearsals.byTask(laneId) &&
+    store.taskByThread(laneId)?.task.goal?.status !== "active";
+}
 
 /** How many turns in a row agents may start in one another, or in
  * themselves, with `bloks say` before the person has a say. Each one is
@@ -14642,10 +14681,12 @@ function recoverQueued(now = Date.now(), joining = new Set<string>()) {
 }
 
 /** What an engine is told about a message another agent sent: who it is
- * from and how to answer. The transcript keeps the words alone, with the
- * sender as data, so the person's chat can say who it was. */
+ * from, how to answer, and that a turn with nothing for the person may
+ * end on the bare quiet word, which then says nothing (unaskedTurn,
+ * GitHub 363). The transcript keeps the words alone, with the sender as
+ * data, so the person's chat can say who it was. */
 function fromAgentPrompt(from: { botId: string; name: string }, text: string) {
-  return `(A message from ${from.name}, another agent. To answer them, use \`bloks say ${from.botId} <text>\`.)\n\n${text}`;
+  return `(A message from ${from.name}, another agent. To answer them, use \`bloks say ${from.botId} <text>\`. If nothing in it needs the person, answer with exactly QUIET and nothing else; the turn then ends without a message.)\n\n${text}`;
 }
 
 /** Name the source without claiming whether the person is here. A quiet

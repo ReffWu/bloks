@@ -48,7 +48,7 @@ async function wait(check:()=>boolean|Promise<boolean>, why:string) {
 const plan=(slot:string, p:unknown[])=>{writeFileSync(join(home,`plan-${slot}.json`),JSON.stringify(p));for(const f of ['ready','release'])rmSync(join(home,`${f}-${slot}`),{force:true});};
 const bot=async(kind:string, backup=false)=>{
  const {bot}=await h.json('/api/bots',{method:'POST',body:JSON.stringify({name:'Neutral helper'})});
- await h.json(`/api/bots/${bot.id}`,{method:'PATCH',body:JSON.stringify({modelSelection:{instanceId:kind,model:kind==='codex'?'gpt-6.1-sol':'claude-sonnet-5'},...(backup?{backupSelection:{instanceId:'spare',model:'gpt-6.1-sol'}}:{})})});
+ await h.json(`/api/bots/${bot.id}`,{method:'PATCH',body:JSON.stringify({modelSelection:{instanceId:kind,model:kind==='claudeAgent'?'claude-sonnet-5':'gpt-6.1-sol'},...(backup?{backupSelection:{instanceId:'spare',model:'gpt-6.1-sol'}}:{})})});
  return (await h.json("/api/bots")).bots.find((x:any)=>x.id===bot.id);
 };
 const send=async(b:any)=>{const r=await h.fetch(`/api/bots/${b.id}/messages`,{method:'POST',body:JSON.stringify({text:'Prepare the neutral summary'})});assert.ok(r.ok,await r.text());};
@@ -193,4 +193,76 @@ test('separate approval steps in one actual workflow each remain news',async()=>
  }
  assert.equal(notices.length,2,'second genuine approval was mistaken for a duplicate');
  assert.ok(notices.every(n=>n.urgent),'workflow approvals keep their existing immediate attention');
+});
+
+// GitHub 363: in a turn nobody asked for, the bare quiet word is silence:
+// not written, not news, not unread. Anything more is something said.
+const lane=async(b:any)=>(await h.json('/api/bots')).bots.find((x:any)=>x.id===b.id).tasks.find((t:any)=>t.id===b.threadId);
+// only what came after the agent was hired: its greeting is not this turn's
+const said=async(b:any)=>(await h.json(`/api/bots/${b.id}/messages?thread=${b.threadId}&limit=500`)).messages.filter((m:any)=>!b.messages.some((g:any)=>g.id===m.id)) as any[];
+const settled=async(b:any)=>{await idle(b);await wait(async()=>!(await lane(b)).settling,'lane never settled');await pause(150);};
+const spoken=(b:any)=>frames.filter(f=>f.kind==='message'&&f.threadId===b.threadId&&f.message?.role==='bot'&&f.message?.kind==='text'&&!b.messages.some((g:any)=>g.id===f.message.id));
+/** Holds a Codex turn open for its credential, so a test can speak as that agent. */
+async function asAgent(go:(token:string)=>Promise<void>){
+ rmSync(join(home,'token-codex'),{force:true});
+ plan('codex',[{items:[],hold:true,capture:true}]);const sender=await bot('codex');await send(sender);
+ await wait(()=>existsSync(join(home,'token-codex'))&&readFileSync(join(home,'token-codex'),'utf8').length>0,'no sender credential');
+ try {await go(readFileSync(join(home,'token-codex'),'utf8'));}
+ finally {writeFileSync(join(home,'release-codex'),'yes');await idle(sender);}
+}
+const sayAs=async(token:string,b:any,text:string)=>{const r=await h.fetch(`/api/bots/${b.id}/messages`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:JSON.stringify({text})});assert.ok(r.ok,await r.text());};
+
+test('a turn another agent started that answers a bare QUIET leaves no message, no unread and no notification',async()=>{
+ await asAgent(async(token)=>{
+  for(const kind of ['claudeAgent','spare']){
+   plan(kind,[{items:[{text:'Quiet.'}]}]);const receiver=await bot(kind);
+   await sayAs(token,receiver,'Save the result locally, then finish without a status message');
+   await wait(()=>existsSync(join(home,'ready-'+kind)),`${kind} never ran`);await settled(receiver);
+   const all=await said(receiver);
+   assert.ok(all.some((m:any)=>m.agent?.dir==='in'),'the message from the other agent is gone');
+   assert.ok(!all.some((m:any)=>m.role==='bot'&&m.kind==='text'),`${kind}: the quiet word was written`);
+   assert.equal(spoken(receiver).length,0,`${kind}: the quiet word went out as a message`);
+   assert.equal(outcomes(receiver).length,0,`${kind}: the quiet word was announced`);
+   assert.ok(!(await lane(receiver)).unread,`${kind}: the quiet word marked the chat unread`);
+  }
+ });
+});
+
+test('a webhook turn that answers a bare QUIET is just as silent',async()=>{
+ plan('claudeAgent',[{items:[{text:'QUIET'}]}]);const b=await bot('claudeAgent');
+ const {webhook}=await h.json('/api/webhooks',{method:'POST',body:JSON.stringify({botId:b.id,name:'Neutral source'})});
+ const r=await h.fetch(`/hook/${webhook.token}`,{method:'POST',body:JSON.stringify({event:'nothing new'})});assert.equal(r.status,202,await r.text());
+ await wait(()=>existsSync(join(home,'ready-claudeAgent')),'the webhook turn never ran');await settled(b);
+ const all=await said(b);
+ assert.ok(all.some((m:any)=>m.via==='webhook'),'the event itself is gone');
+ assert.ok(!all.some((m:any)=>m.role==='bot'&&m.kind==='text'),'the quiet word was written');
+ assert.equal(outcomes(b).length,0,'the quiet word was announced');
+ assert.ok(!(await lane(b)).unread,'the quiet word marked the chat unread');
+});
+
+test('an agent-started turn that talks about QUIET, or says something before it, is still heard',async()=>{
+ await asAgent(async(token)=>{
+  for(const [items,heard] of [
+   [[{text:'QUIET is the word a quiet routine answers with.'}],'QUIET is the word a quiet routine answers with.'],
+   [[{text:'Saved the summary to notes.md.'},{text:'QUIET'}],'Saved the summary to notes.md.'],
+  ] as const){
+   plan('claudeAgent',[{items}]);const receiver=await bot('claudeAgent');
+   await sayAs(token,receiver,'Write the neutral summary');
+   await wait(()=>existsSync(join(home,'ready-claudeAgent')),'the receiver never ran');await settled(receiver);
+   const texts=(await said(receiver)).filter((m:any)=>m.role==='bot'&&m.kind==='text').map((m:any)=>m.text);
+   assert.deepEqual(texts,[heard]);
+   assert.equal(outcomes(receiver).length,1);assert.equal(outcomes(receiver)[0].message.text,heard);
+   assert.equal((await lane(receiver)).unread,true,'a reply with something in it is something to read');
+  }
+ });
+});
+
+test('a turn the person started shows a bare QUIET like any reply',async()=>{
+ plan('claudeAgent',[{items:[{text:'QUIET'}]}]);const b=await bot('claudeAgent');await send(b);
+ await wait(()=>existsSync(join(home,'ready-claudeAgent')),'the turn never ran');await settled(b);
+ const reply=(await said(b)).find((m:any)=>m.role==='bot'&&m.kind==='text');
+ assert.equal(reply?.text,'QUIET');assert.equal(reply?.quiet,undefined);
+ await wait(()=>outcomes(b).length===1,'the person was not told their reply');
+ assert.equal(outcomes(b)[0].message.text,'QUIET');
+ assert.equal((await lane(b)).unread,true);
 });
