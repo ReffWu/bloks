@@ -21751,7 +21751,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && method === "PATCH") {
       const body = await readBody(req);
       const patch: { name?: string; memberIds?: string[]; leadOnly?: boolean; leadId?: string | null; cwd?: string; archived?: boolean } = {};
-      if (typeof body.name === "string") patch.name = body.name;
+      // A name sent is a name kept or a refusal. A blank one used to be
+      // taken and quietly ignored, which read as a rename that worked.
+      if ("name" in body && body.name !== undefined) {
+        const name = clamp(body.name, MAX_NAME_CHARS);
+        if (!name) return json(res, 400, { error: "a room needs a name" });
+        patch.name = name;
+      }
       if (typeof body.leadOnly === "boolean") patch.leadOnly = body.leadOnly;
       if (typeof body.archived === "boolean") patch.archived = body.archived;
       // its section, its pin and its place, by the same reading as an agent's
@@ -21768,10 +21774,34 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         if (!checked.ok) return json(res, 400, { error: checked.error });
         patch.cwd = checked.path ?? undefined;
       }
+      // The roster a new room is held to, held to again when it changes:
+      // two at least, MAX_MEMBERS at most, counted once each. A ninth used
+      // to be cut off without a word, and a roster of one was taken,
+      // which a new room has never been. Whoever is in it already stays
+      // if the edit keeps them, roomMayHold or not: that says who may be
+      // put in a room, and a member's solo agent its maker put there is
+      // not the owner's to drop by adding someone else.
       if (Array.isArray(body.memberIds)) {
-        patch.memberIds = (body.memberIds as unknown[]).filter(
-          (id): id is string => typeof id === "string" && roomMayHold(id),
-        );
+        const room = bloks.get(m[1]);
+        if (!room) return json(res, 404, { error: "no such room" });
+        const memberIds = [
+          ...new Set(
+            (body.memberIds as unknown[]).filter(
+              (id): id is string =>
+                typeof id === "string" && (roomMayHold(id) || (room.memberIds.includes(id) && Boolean(store.bot(id)))),
+            ),
+          ),
+        ];
+        if (memberIds.length < 2) {
+          return json(res, 400, { error: "a room needs at least two agents" });
+        }
+        if (memberIds.length > MAX_MEMBERS) {
+          return json(res, 400, { error: `a room holds at most ${MAX_MEMBERS} agents` });
+        }
+        // A crowned lead the new roster leaves out goes with them, and the
+        // room is back on seniority, the way a room made without a crown
+        // is (BlokStore.patch), unless this request crowns someone else.
+        patch.memberIds = memberIds;
       }
       if ("leadId" in body) {
         const room = bloks.get(m[1]);
