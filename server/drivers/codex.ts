@@ -223,13 +223,154 @@ export function shellConfig(env: Record<string, string | undefined> | undefined,
 }
 
 /** How an app-server says no to that config: the key it could not load,
- * or a `config` it does not know at all. */
-const SHELL_REFUSED = /shell_environment_policy|unknown field `?config\b/i;
+ * or a `config` it does not know at all, which is no to all of it. */
+const SHELL_REFUSED = /shell_environment_policy/i;
+const CONFIG_REFUSED = /unknown field `?config\b/i;
 
 /** Said once in a conversation whose Codex would not take it. */
 export const SHELL_REFUSED_NOTICE =
   "This Codex would not take the setting Bloks uses to hand its command line to the agent's shell, so it carried on without it. " +
   "Where this project's Codex config narrows shell_environment_policy, the agent's commands cannot reach Bloks. Updating Codex should fix it.";
+
+// ── the agent's own MCP servers ────────────────────────────────────────
+//
+// The servers attached to an agent under Settings, Apps and keys were
+// mounted for Claude Code and never for Codex, which went without their
+// tools and said nothing (GitHub 358). They go in the thread's own config
+// now, beside the shell's names: over stdin with the request, on every
+// start, resume and fork. Not as `-c` in argv, where any process listing
+// reads a header or a key, and not in the app-server's environment, which
+// the agent's shell commands inherit. Each server is one key holding
+// its whole table, under the name Claude Code gives it. A name the
+// person's own Codex config already uses is passed over: Codex merges a
+// table into one of the same name, and a stdio table merged into an HTTP
+// one refuses the whole thread.
+
+type AttachedServer = NonNullable<NonNullable<SendTurnInput["integrations"]>["mcpServers"]>[number];
+
+/** Where the agent's servers sit in the thread config. Claude Code's
+ * prefix, so none of them can land on a bloks_ mount. */
+const SERVER_KEY = "mcp_servers.u_";
+
+/** A header name as HTTP allows it. Codex quietly drops any other, which
+ * would leave a server short of the very header that carries its key. */
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/** Shorter than this, a value is no key, and taking it out of everything
+ * written down would take every "1" and "true" with it. */
+const MIN_HIDDEN = 8;
+
+/** How an app-server says no to the servers: the key it could not load. */
+const SERVERS_REFUSED = /mcp_servers/i;
+
+/** Said once in a conversation whose Codex would not take its servers. */
+export const SERVERS_REFUSED_NOTICE =
+  "This Codex would not take the MCP servers attached to this agent, so it carried on without them. Updating Codex should fix it.";
+
+/** Said for the servers Codex cannot be handed as they are, with why. */
+export function leftOutNotice(left: readonly string[]): string {
+  const one = left.length === 1;
+  return `Codex cannot use ${one ? "one" : left.length} of the MCP servers attached to this agent, so ${one ? "it is" : "they are"} left out. ${left.map((why) => `${why}.`).join(" ")}`;
+}
+
+export interface ServerConfig {
+  /** Thread config entries, one per server mounted. */
+  config: Record<string, unknown>;
+  /** Header and environment values, kept out of everything written down. */
+  secrets: string[];
+  /** Each server Codex cannot be handed, by its own name and why. */
+  leftOut: string[];
+}
+
+/**
+ * The thread config that mounts an agent's servers. `approve` is a turn
+ * the owner vouched for: Claude Code pre-allows these same servers, every
+ * tool on them, and so does this. On any other turn Codex asks, and the
+ * question reaches the owner as a card. `taken` is the person's own
+ * server names, as Codex reads them where the thread runs.
+ */
+export function serverConfig(servers: readonly AttachedServer[] | undefined, options: { approve: boolean; taken?: Iterable<string> }): ServerConfig {
+  const config: Record<string, unknown> = {};
+  const secrets = new Set<string>();
+  const leftOut: string[] = [];
+  const used = new Set(options.taken ?? []);
+  // A name with no value is one the person has not filled in yet (a
+  // server brought over from another tool arrives that way). An empty
+  // Authorization header or API key would only turn a clear "missing
+  // key" from the server into a confusing one.
+  const filled = (map?: Record<string, string>) => {
+    const entries = Object.entries(map ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0);
+    return entries.length ? Object.fromEntries(entries) : undefined;
+  };
+  for (const server of servers ?? []) {
+    const name = typeof server.name === "string" ? server.name : "";
+    const label = name.replace(/[\x00-\x1f\x7f]/g, "").trim() || "A server with no name";
+    // unset is stdio, as Claude Code reads it
+    const transport = String(server.transport ?? "stdio");
+    let table: Record<string, unknown>;
+    let values: string[];
+    if (transport === "http") {
+      const url = typeof server.url === "string" ? server.url.trim() : "";
+      if (!/^https?:\/\//i.test(url)) {
+        leftOut.push(`${label}: it has no http or https address`);
+        continue;
+      }
+      const headers = filled(server.headers);
+      const bad = Object.entries(headers ?? {}).find(([header, value]) => !HEADER_NAME.test(header) || /[\r\n\0]/.test(value));
+      if (bad) {
+        leftOut.push(HEADER_NAME.test(bad[0]) ? `${label}: its ${bad[0]} header has a line break in it` : `${label}: "${bad[0]}" is not a header name HTTP allows`);
+        continue;
+      }
+      // streamable HTTP, which is what Bloks and Claude Code speak too
+      table = { url, ...(headers ? { http_headers: headers } : {}) };
+      values = Object.values(headers ?? {});
+    } else if (transport === "stdio") {
+      if (typeof server.command !== "string" || !server.command.trim()) {
+        leftOut.push(`${label}: it has no command to run`);
+        continue;
+      }
+      const env = filled(server.env);
+      const args = Array.isArray(server.args) ? server.args.filter((arg) => typeof arg === "string") : [];
+      table = { command: server.command, args, ...(env ? { env } : {}) };
+      values = Object.values(env ?? {});
+    } else {
+      // Codex has no other transport, SSE included, to hand it to
+      const said = transport.replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 40);
+      leftOut.push(`${label}: Codex speaks stdio and streamable HTTP, not ${said || "an unnamed transport"}`);
+      continue;
+    }
+    if (options.approve) table.default_tools_approval_mode = "approve";
+    // Claude Code's slug, which is all lowercase letters, digits and
+    // underscores: a bare key in TOML and a name Codex accepts. Two that
+    // come out the same, or one the person's Codex has, get a number.
+    const slug = "u_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40);
+    const base = slug === "u_" ? "u_server" : slug;
+    let key = base;
+    for (let n = 2; used.has(key); n++) key = `${base}_${n}`;
+    used.add(key);
+    config[`mcp_servers.${key}`] = table;
+    for (const value of values) if (value.length >= MIN_HIDDEN) secrets.add(value);
+  }
+  return { config, secrets: [...secrets], leftOut };
+}
+
+/** A thread request as the native copy keeps it: the agent's servers by
+ * name and shape, every value in them taken out. An address, a command
+ * line and a header are each somewhere a server's key can live, and a
+ * value short enough to be left in by MIN_HIDDEN can still be one. */
+export function withoutServerValues(msg: any): any {
+  const config = msg?.params?.config;
+  if (!config || typeof config !== "object") return msg;
+  const keys = Object.keys(config).filter((key) => key.startsWith(SERVER_KEY));
+  if (!keys.length) return msg;
+  const shape = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(shape)
+      : value && typeof value === "object"
+        ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, shape(inner)]))
+        : "[redacted]";
+  return { ...msg, params: { ...msg.params, config: { ...config, ...Object.fromEntries(keys.map((key) => [key, shape(config[key])])) } } };
+}
 
 /** Asks the installed CLI what it can run. No thread is started and
  * nothing is spent; the process is killed as soon as the list lands. */
@@ -441,6 +582,11 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     /** Conversations already told their Codex would not take the shell's
      * config (SHELL_REFUSED_NOTICE), so a lane hears it once, not every turn. */
     const toldShellRefused = new Set<string>();
+    /** The same for the agent's MCP servers (SERVERS_REFUSED_NOTICE). */
+    const toldServersRefused = new Set<string>();
+    /** What each conversation was last told Codex could not be handed
+     * (leftOutNotice), so it hears again only when that changes. */
+    const toldLeftOut = new Map<string, string>();
     /** Every engine process this instance started, ended on dispose (engine-processes.ts). */
     const engines = new EngineProcesses();
     // Busy transitions and several open windows share a short menu
@@ -504,7 +650,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       delete env.OPENAI_API_KEY;
       // This turn's credential, kept out of everything written down: the
       // native copy (appendNative takes it out), and any error that quotes
-      // back the thread config carrying it (shellConfig).
+      // back the thread config carrying it (shellConfig). The agent's MCP
+      // servers add their keys once they are read (serverConfig).
       const hiddenTokens = [turn.env?.BLOKS_TOKEN, turn.env?.BLOKS_REPLY_TOKEN].filter((value): value is string => typeof value === "string" && value.length > 0);
       const hide = <T>(text: T): T =>
         (typeof text === "string" ? hiddenTokens.reduce((safe, token) => safe.split(token).join("[redacted]"), text) : text) as T;
@@ -630,7 +777,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           if (dir === "out" && (msg.method === "skills/list" || msg.method === "config/read")) { quietCalls.add(msg.id); return; }
           if (dir === "in" && !msg.method && quietCalls.has(msg.id)) { quietCalls.delete(msg.id); return; }
           if (msg.method === "skills/changed") return;
-          appendNative(threadId, { dir, source: NATIVE_SOURCE, msg }, undefined, hiddenTokens);
+          appendNative(threadId, { dir, source: NATIVE_SOURCE, msg: dir === "out" ? withoutServerValues(msg) : msg }, undefined, hiddenTokens);
         },
         onRequest: (msg) => onAgentRequest(msg),
         onNotify: (msg) => onAgentNotification(msg),
@@ -1124,34 +1271,75 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           // The bloks command for the shell (shellConfig above), with the
           // person's include_only as Codex reads it where the thread runs.
           // A Codex that cannot say still gets the `set` entries, which are
-          // all that a policy without that list needs.
+          // all that a policy without that list needs. The same read names
+          // the person's own MCP servers, which the agent's keep clear of.
           let shell = shellConfig(turn.env);
-          if (shell) {
+          const attached = turn.integrations?.mcpServers ?? [];
+          let theirs: string[] = [];
+          if (shell || attached.length) {
             try {
               const read: any = await within(rpc.request("config/read", { cwd: turn.cwd ?? homedir() }), "reading its settings", "Codex", PROBE_TIMEOUT_MS);
-              shell = shellConfig(turn.env, read?.config?.shell_environment_policy?.include_only);
+              if (shell) shell = shellConfig(turn.env, read?.config?.shell_environment_policy?.include_only);
+              const listed = read?.config?.mcp_servers;
+              if (listed && typeof listed === "object") theirs = Object.keys(listed);
             } catch {
-              /* the set entries alone */
+              /* the set entries alone, and the names as they come */
             }
           }
+          const own = serverConfig(attached, { approve: !turn.untrusted && !turn.shared, taken: theirs });
+          hiddenTokens.push(...own.secrets);
+          let servers: Record<string, unknown> | null = Object.keys(own.config).length ? own.config : null;
+          // A server Codex cannot be handed is said, not dropped without a
+          // word: once in the conversation, and again when what is left
+          // out changes, not on every turn.
+          const leftOut = own.leftOut.join("\n");
+          if (!leftOut) toldLeftOut.delete(threadId);
+          else if (toldLeftOut.get(threadId) !== leftOut) {
+            toldLeftOut.set(threadId, leftOut);
+            emit({ ...envelope(threadId, turnId), type: "runtime.error", message: leftOutNotice(own.leftOut) });
+          }
+          const threadConfig = () => (shell || servers ? { ...shell, ...servers } : null);
+
           // A Codex that will not take that config still gets its thread,
-          // without it, and the conversation is told once why the bloks
-          // command may not reach the agent's commands, rather than left
-          // to find out from a command that did nothing and said so to
-          // nobody (GitHub 336).
-          const shellOrNot = async <T>(params: Record<string, unknown>, ask: () => Promise<T>): Promise<T> => {
-            try {
-              return await ask();
-            } catch (error) {
-              if (!params.config || !SHELL_REFUSED.test(String((error as Error)?.message ?? ""))) throw error;
-              delete params.config;
-              shell = null;
-              const answer = await ask();
-              if (!toldShellRefused.has(threadId)) {
-                toldShellRefused.add(threadId);
-                emit({ ...envelope(threadId, turnId), type: "runtime.error", message: SHELL_REFUSED_NOTICE });
+          // without the part it refused, and the conversation is told once
+          // why: that the bloks command may not reach the agent's commands,
+          // rather than left to find out from a command that did nothing
+          // and said so to nobody (GitHub 336), or that the agent's MCP
+          // servers are not there (GitHub 358). Each part goes at most
+          // once, so this asks three times at the very most.
+          const configOrNot = async <T>(params: Record<string, unknown>, ask: () => Promise<T>): Promise<T> => {
+            let shellDropped = false;
+            let serversDropped = false;
+            for (;;) {
+              try {
+                const answer = await ask();
+                if (shellDropped && !toldShellRefused.has(threadId)) {
+                  toldShellRefused.add(threadId);
+                  emit({ ...envelope(threadId, turnId), type: "runtime.error", message: SHELL_REFUSED_NOTICE });
+                }
+                if (serversDropped && !toldServersRefused.has(threadId)) {
+                  toldServersRefused.add(threadId);
+                  emit({ ...envelope(threadId, turnId), type: "runtime.error", message: SERVERS_REFUSED_NOTICE });
+                }
+                return answer;
+              } catch (error) {
+                const said = String((error as Error)?.message ?? "");
+                const all = CONFIG_REFUSED.test(said);
+                const shellOut = Boolean(shell) && (all || SHELL_REFUSED.test(said));
+                const serversOut = Boolean(servers) && (all || SERVERS_REFUSED.test(said));
+                if (!params.config || (!shellOut && !serversOut)) throw error;
+                if (shellOut) {
+                  shell = null;
+                  shellDropped = true;
+                }
+                if (serversOut) {
+                  servers = null;
+                  serversDropped = true;
+                }
+                const config = threadConfig();
+                if (config) params.config = config;
+                else delete params.config;
               }
-              return answer;
             }
           };
 
@@ -1164,10 +1352,11 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             let forked: any = null;
             // A fork is running once it answers, and a resume of a running
             // thread rejoins it as it is, so the fork itself carries the
-            // shell's config: the resume after it could not.
-            const forkParams: Record<string, unknown> = { threadId: cursor, ...(shell ? { config: shell } : {}) };
+            // shell's config and the servers: the resume after it could not.
+            const forkConfig = threadConfig();
+            const forkParams: Record<string, unknown> = { threadId: cursor, ...(forkConfig ? { config: forkConfig } : {}) };
             try {
-              forked = await shellOrNot(forkParams, () => within(rpc.request("thread/fork", forkParams), "copying the conversation", "Codex"));
+              forked = await configOrNot(forkParams, () => within(rpc.request("thread/fork", forkParams), "copying the conversation", "Codex"));
             } catch {
               forked = null;
             }
@@ -1191,9 +1380,11 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             // Standard says nothing about the tier, as before there was a
             // choice; only Fast is asked for, and checked.
             if (fast) resumeParams.serviceTier = FAST_TIER;
-            // this turn's credential, not the one the thread started with
-            if (shell) resumeParams.config = shell;
-            const resume = () => shellOrNot(resumeParams, () => within(rpc.request("thread/resume", resumeParams), "reopening the conversation", "Codex"));
+            // this turn's credential, not the one the thread started with,
+            // and the servers attached to the agent now
+            const resumeConfig = threadConfig();
+            if (resumeConfig) resumeParams.config = resumeConfig;
+            const resume = () => configOrNot(resumeParams, () => within(rpc.request("thread/resume", resumeParams), "reopening the conversation", "Codex"));
             try {
               let resumed: any;
               try {
@@ -1304,10 +1495,11 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
               ephemeral: false,
             };
             if (fast) startParams.serviceTier = FAST_TIER;
-            if (shell) startParams.config = shell;
+            const startConfig = threadConfig();
+            if (startConfig) startParams.config = startConfig;
             let started: any;
             try {
-              started = await shellOrNot(startParams, () => within(rpc.request("thread/start", startParams), "opening a conversation", "Codex"));
+              started = await configOrNot(startParams, () => within(rpc.request("thread/start", startParams), "opening a conversation", "Codex"));
             } catch (error) {
               throw (fast ? fastRefusal(error) : null) ?? error;
             }
