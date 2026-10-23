@@ -35,6 +35,9 @@ import { PERSON_REPLY_TOOL } from "../person-turn.ts";
 export interface CompatConfig {
   url: string;
   apiKeyEnv: string;
+  /** The owner switched tools on for this instance. Read only for a spec
+   * that leaves them to the owner (ProviderSpec.toolsOptIn). */
+  tools?: boolean;
 }
 
 /** How long a streamed reply may go without a byte before it is treated
@@ -230,6 +233,19 @@ const MAX_TOOL_ROUNDS = 10;
 const ASK_TIMEOUT_MS = 15 * 60_000;
 const UNANSWERED =
   "Nobody answered in time. Use your best judgment and continue.";
+
+/**
+ * Whether a refused round was refused for its tools. A host whose model
+ * cannot call them says so with a 4xx that names them: Ollama's "does
+ * not support tools", vLLM's "auto" tool choice that needs a flag, a
+ * gateway that will not take a `tool` message. A bad key, an empty
+ * balance or a rate limit is another problem and keeps its own words.
+ */
+export function refusedTools(status: number, body: string): boolean {
+  if (status < 400 || status >= 500) return false;
+  if (status === 401 || status === 402 || status === 403 || status === 408 || status === 429) return false;
+  return /tool|function/i.test(body);
+}
 
 
 function toolSchemas(hasComputer: boolean, hasSandbox: boolean) {
@@ -489,6 +505,9 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
     return {
       url: typeof o.url === "string" && o.url ? o.url.replace(/\/+$/, "") : spec.url,
       apiKeyEnv: typeof o.apiKeyEnv === "string" ? o.apiKeyEnv : keyEnv,
+      // only a literal true: a flag that arrived as "yes" or 1 is a
+      // config nobody meant, and the safe reading of it is chat only
+      ...(spec.toolsOptIn && o.tools === true ? { tools: true } : {}),
     };
   };
 
@@ -508,6 +527,12 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         (spec.kind === "grok" ? (input.environment.XAI_API_KEY ?? process.env.XAI_API_KEY) : "") ??
         "";
       const needsKey = spec.auth !== "none";
+      // A provider that reliably calls tools always runs the loop; a host
+      // whose model is somebody's choice runs it once they said it can.
+      const toolLoop = spec.tools === true || config.tools === true;
+      // Said with the name the person gave it: "Custom refused the tools"
+      // is no help to someone with three hosts added.
+      const shownName = input.displayName ?? spec.name;
       const listeners = new Set<RuntimeEventListener>();
       const active = new Map<
         string,
@@ -708,6 +733,18 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         return { text, usage };
       };
 
+      /** The end of a turn whose host would not take the tools it was
+       * sent. Said plainly and with the way back to a working chat: the
+       * switch that turned them on is the person's, and so is turning it
+       * off. Never a quiet retry without them while it still says on. */
+      const toolsRefused = (status: string | null, said: string) => {
+        const detail = [status, said.trim().slice(0, 200)].filter(Boolean).join(": ");
+        return new Error(
+          `${shownName} refused the tools Bloks sent${detail ? ` (${detail})` : ""}. ` +
+            `The model behind this endpoint may not support tool calls. To chat with it without tools, turn off "This model can use tools" for it in Settings, Engines and keys.`,
+        );
+      };
+
       /** One non-streaming completion, returning the whole assistant
        * message so the caller can see tool_calls. */
       const completeRaw = async (
@@ -735,9 +772,20 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         }
         if (!res.ok) {
           const body = await res.text().catch(() => "");
+          // Only an owner's opt-in is read this way. A catalog engine's
+          // tools are this build's promise, and its refusal is a fault.
+          if (config.tools && refusedTools(res.status, body)) throw toolsRefused(`HTTP ${res.status}`, body);
           throw new Error(`${spec.name} HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
         }
         const json: any = await res.json();
+        // Some gateways refuse with a 200 and an error where the choices
+        // go. Read as an answer, that was an empty reply and a turn that
+        // ended saying nothing at all.
+        if (!Array.isArray(json?.choices) && json?.error) {
+          const said = typeof json.error === "string" ? json.error : String(json.error.message ?? JSON.stringify(json.error));
+          if (config.tools && /tool|function/i.test(said)) throw toolsRefused(null, said);
+          throw new Error(`${spec.name}: ${said.slice(0, 200)}`);
+        }
         return { message: json.choices?.[0]?.message ?? {}, usage: readUsage(json.usage, priced) };
       };
 
@@ -1069,7 +1117,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
             : {};
         (async () => {
           try {
-            if (spec.tools) {
+            if (toolLoop) {
               await runWithTools(threadId, turnId, messages, model, turn, abort.signal, spent);
               active.delete(threadId);
               emit({ ...base(threadId, turnId), type: "turn.completed", ok: true, stopReason: null, cost: priceOf(spent), ...unpriced() });
@@ -1157,7 +1205,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         snapshot,
         adapter: {
           provider: spec.kind,
-          capabilities: { sessionModelSwitch: "in-session", replaysNatively: true, replyToSender: Boolean(spec.tools) },
+          capabilities: { sessionModelSwitch: "in-session", replaysNatively: true, replyToSender: toolLoop, toolLoop },
           sendTurn,
           interruptTurn: async (threadId) => active.get(threadId)?.abort.abort(),
           respondToRequest: async (threadId, requestId, decision) => {

@@ -34,6 +34,9 @@ export function inspectEngineSettings(input:unknown,ctx:InspectionContext,loaded
     const url=get(raw,'url'),keyEnv=get(raw,'apiKeyEnv');
     addConfig('url',configured(typeof url==='string' && url?url.replace(/\/+$/,''):spec.url),true);
     addConfig('apiKeyEnv',configured(typeof keyEnv==='string'?keyEnv:'driver default'),true);
+    // the driver's own reading: a spec that promises tools has them, an
+    // opt-in one only on a literal true, anything else is chat only
+    addConfig('tools',{status:'value',value:spec.tools===true||(spec.toolsOptIn===true && get(raw,'tools')===true)});
   }else{
     add('config.coverage',{status:'absent'},{status:'unknown',reason:'driver_projection_unsupported'});
   }
@@ -52,6 +55,7 @@ export function inspectCustomEndpoint(root:unknown,ctx:InspectionContext):Inspec
   add('name',scalar(get(root,'name')??'',ctx.redact));add('url',configured(get(root,'url')));
   const keys=get(root,'keys');add('keys',configured(keys));
   const named=get(root,'activeKeyId');add('activeKeyId',configured(named));
+  add('tools',{status:'value',value:get(root,'tools')===true});
   const entries=Array.isArray(keys)?keys:[];
   const chosen=entries.find((key)=>get(key,'id')===named && get(key,'key'))??entries.find((key)=>Boolean(get(key,'key')));
   out.push({id:'activeCredential',scope:'workspace',control,saved:{status:'absent'},effective:configured(chosen)});

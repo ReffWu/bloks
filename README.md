@@ -406,6 +406,9 @@ itself: asking you a question, their own memory, app connections, and
 commands in a sandbox or a cloud computer when the agent has one. Bloks
 badges the difference everywhere it shows an engine. Bloks AI runs on
 Bloks's own engine; Claude Code always uses your own Claude plan or key.
+A custom endpoint is chat only until you turn on **This model can use
+tools** for it in Settings. Turn it on only when the model behind it
+supports tool calls; if the host refuses them, the turn stops and says so.
 
 Give an agent a **backup engine** and a turn that hits a usage limit, a
 rate limit or an outage is picked up by the backup, with the conversation

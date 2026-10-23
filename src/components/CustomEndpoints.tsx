@@ -4,6 +4,10 @@
 // slot: any /v1 that speaks chat completions, with as many keys as that
 // host issued. Keys never come back out; the list is names, URLs, and
 // whether a key is the one the live instance is using.
+//
+// A host is chat only until the person says its model can use tools.
+// Whether it can depends on what is loaded there, which only they know,
+// so the switch is theirs and the row says plainly which way it is set.
 import { useCallback, useEffect, useState } from "react";
 import { Check } from "@/components/icons";
 import { Plus } from "@/components/icons";
@@ -11,6 +15,7 @@ import { Trash2 } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 
 export interface CustomKeyRow {
@@ -25,7 +30,25 @@ export interface CustomEndpointRow {
   url: string;
   instanceId: string;
   activeKeyId: string | null;
+  /** Off is chat only. */
+  tools: boolean;
   keys: CustomKeyRow[];
+}
+
+function ToolsSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-3 text-body text-foreground">
+      <span className="min-w-0">
+        This model can use tools
+        <span className="block text-small text-muted-foreground">
+          {on
+            ? "Agents can use Bloks tools here. Turn off if it refuses them."
+            : "Chat only. Turn on if the model supports tool calls."}
+        </span>
+      </span>
+      <Switch checked={on} onCheckedChange={onChange} aria-label="This model can use tools" />
+    </label>
+  );
 }
 
 function refreshInstances(dispatch: ReturnType<typeof useStore>["dispatch"]) {
@@ -42,6 +65,7 @@ export function CustomEndpoints() {
   const [url, setUrl] = useState("");
   const [key, setKey] = useState("");
   const [label, setLabel] = useState("");
+  const [newTools, setNewTools] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [keyFor, setKeyFor] = useState<string | null>(null);
@@ -72,6 +96,7 @@ export function CustomEndpoints() {
         url: url.trim(),
         key: key.trim(),
         ...(label.trim() ? { label: label.trim() } : {}),
+        tools: newTools,
       }),
     })
       .then(({ endpoints: rows }) => {
@@ -81,9 +106,23 @@ export function CustomEndpoints() {
         setUrl("");
         setKey("");
         setLabel("");
+        setNewTools(false);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
+  };
+
+  // Moved at once, so the switch answers the hand; put back from the
+  // server if the save fails, so it never shows a state that is not saved.
+  const switchTools = (id: string, on: boolean) => {
+    setError(null);
+    setEndpoints((rows) => rows && rows.map((row) => (row.id === id ? { ...row, tools: on } : row)));
+    api(`/api/custom-endpoints/${id}`, { method: "PATCH", body: JSON.stringify({ tools: on }) })
+      .then(({ endpoints: rows }) => apply(rows))
+      .catch((e: Error) => {
+        setError(e.message);
+        reload();
+      });
   };
 
   const addKey = (id: string) => {
@@ -130,7 +169,10 @@ export function CustomEndpoints() {
         <div key={endpoint.id} className="border-t px-4 py-3">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-ui font-medium text-foreground">{endpoint.name}</div>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-ui font-medium text-foreground">{endpoint.name}</span>
+                {!endpoint.tools && <span className="shrink-0 text-caption text-muted-foreground">Chat only</span>}
+              </div>
               <div className="truncate text-small text-muted-foreground">{endpoint.url}</div>
             </div>
             <Button
@@ -145,6 +187,10 @@ export function CustomEndpoints() {
             >
               Remove
             </Button>
+          </div>
+
+          <div className="mt-2">
+            <ToolsSwitch on={endpoint.tools} onChange={(on) => switchTools(endpoint.id, on)} />
           </div>
 
           <div className="mt-2 flex flex-col gap-1">
@@ -274,12 +320,14 @@ export function CustomEndpoints() {
               placeholder="Key label (optional)"
               className="h-8 text-body"
             />
+            <ToolsSwitch on={newTools} onChange={setNewTools} />
             <div className="flex justify-end gap-2">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setAdding(false);
+                  setNewTools(false);
                   setError(null);
                 }}
               >

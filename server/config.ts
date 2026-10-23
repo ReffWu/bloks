@@ -46,6 +46,10 @@ export interface CustomEndpoint {
   keys: CustomKey[];
   /** Which key the instance uses. Missing means the first key. */
   activeKeyId?: string;
+  /** The person's word that the model behind this host can call tools,
+   * which turns the API tool loop on for it. Missing is chat only: no
+   * one but them knows what is loaded there. */
+  tools?: boolean;
 }
 
 export interface AppConfig {
@@ -483,14 +487,16 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
   }
   // One instance per custom host. Several keys can sit on that host;
   // only the active one is injected, so rotating a key is a settings
-  // change rather than a new engine in the picker.
+  // change rather than a new engine in the picker. Tools ride in the
+  // instance's config, so switching them is a rebuild of that one
+  // instance, like any other config change.
   for (const endpoint of cfg.custom ?? []) {
     const cred = activeCustomKey(endpoint);
     if (!endpoint.url || !cred?.key) continue;
     map[customInstanceId(endpoint.id)] = {
       driver: CUSTOM_SPEC.kind,
       displayName: endpoint.name,
-      config: { url: endpoint.url },
+      config: { url: endpoint.url, ...(endpoint.tools === true ? { tools: true } : {}) },
       environment: { [envVarFor(CUSTOM_SPEC.kind)]: cred.key },
     };
   }

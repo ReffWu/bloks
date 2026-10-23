@@ -73,3 +73,16 @@ test('custom hosts retain the credential-owner fallback policy without exposing 
   assert.deepEqual(field(rows,'activeCredential').effective,{status:'configured',configured:true});
   assert.deepEqual(field(inspectCustomEndpoint({...root,keys:[]},ctx),'activeCredential').effective,{status:'configured',configured:false});
 });
+
+test('tools read as the driver reads them: promised, switched on by the owner, or chat only',()=>{
+  const host={id:'h',name:'Host',url:'https://example.test/v1',keys:[{id:'k',key:secret}]};
+  assert.deepEqual(field(inspectCustomEndpoint(host,ctx),'tools'),{id:'tools',scope:'workspace',control:'Settings > Engines and keys > Your endpoints',saved:{status:'absent'},effective:value(false)});
+  assert.deepEqual(field(inspectCustomEndpoint({...host,tools:true},ctx),'tools').effective,value(true));
+  assert.deepEqual(field(inspectCustomEndpoint({...host,tools:'yes'},ctx),'tools').effective,value(false));
+  const tools=(input:unknown)=>field(inspectEngineSettings(input,ctx,true),'config.tools').effective;
+  assert.deepEqual(tools({driver:'custom',config:{url:'https://example.test/v1'}}),value(false));
+  assert.deepEqual(tools({driver:'custom',config:{url:'https://example.test/v1',tools:true}}),value(true));
+  assert.deepEqual(tools({driver:'openrouter'}),value(true));
+  // no switch on a catalog engine: a stray flag changes nothing
+  assert.deepEqual(tools({driver:'ollama',config:{tools:true}}),value(false));
+});

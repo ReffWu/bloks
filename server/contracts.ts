@@ -367,6 +367,11 @@ export interface ProviderAdapter {
     replaysNatively?: boolean;
     /** An API engine can call the harness's bound sender-reply function. */
     replyToSender?: boolean;
+    /** An API engine runs the harness's tool loop on its turns, so its
+     * prompt can name the tools that live there (ask_user, the memory
+     * tools, request_secret). Per instance, not per driver: a custom host
+     * has it only once its owner switched tools on. */
+    toolLoop?: boolean;
     /** Takes `compactFirst` on a turn (see SendTurnInput). */
     compactsFirst?: boolean;
     /** The reasoning effort levels this driver passes on to its engine,

@@ -6244,11 +6244,15 @@ async function startClaimedTurn(
     !opts.rehearsal &&
     (Boolean(task.team) || roomId !== task.id) &&
     (messageAsker === "owner" || people.person(messageAsker)?.role === "admin");
+  // An API engine that runs Bloks' tool loop on this instance: a catalog
+  // engine that always does, or a custom host its owner switched tools
+  // on for. The driver knows which, so it is asked rather than the spec.
+  const apiTools = instance.adapter.capabilities.toolLoop === true;
   // and how it does that on this engine: a tool where the engine has
   // tools of Bloks', the command line where it has a shell, else not at all
   const messageRoute: "tool" | "cli" | null = !messengerTurn
     ? null
-    : instance.driverKind === "claudeAgent" || specFor(instance.driverKind)?.tools === true
+    : instance.driverKind === "claudeAgent" || apiTools
       ? "tool"
       : runsAProcess(instance.driverKind)
         ? "cli"
@@ -6257,7 +6261,7 @@ async function startClaimedTurn(
   // Code's bridge and in the API tool loop, nowhere else. Every other
   // engine with a credential asks for a key on the command line instead,
   // and the rest are not told about either (GitHub 172).
-  const asksByTool = instance.driverKind === "claudeAgent" || specFor(instance.driverKind)?.tools === true;
+  const asksByTool = instance.driverKind === "claudeAgent" || apiTools;
   const connectorHint = [
     asksByTool && cfg.composio?.key && bot.composio !== false
       ? "When a task needs an app the user has not connected yet (Slack, Gmail, GitHub, and so on), call the request_connection tool with the app slugs. A sign-in card appears in the chat; never paste sign-in or OAuth links into the conversation yourself."
@@ -6280,7 +6284,7 @@ async function startClaimedTurn(
     // An engine with no files of its own keeps memory with the API
     // tools (memory_read, memory_write) instead.
     memory: !guestMail && !personSource && (!sharing || sharing.memoryFor?.includes(bot.id))
-      ? workspace.memoryPrompt(bot.id, !runsAProcess(instance.driverKind) && instance.driverKind !== "claudeAgent" && specFor(instance.driverKind)?.tools === true ? "tools" : "files")
+      ? workspace.memoryPrompt(bot.id, !runsAProcess(instance.driverKind) && instance.driverKind !== "claudeAgent" && apiTools ? "tools" : "files")
       : null,
     // what the person keeps for every agent: private to them, under the
     // same gate as the notes about them
@@ -16003,6 +16007,8 @@ function customCatalog() {
         url: endpoint.url,
         instanceId: customInstanceId(endpoint.id),
         activeKeyId: active?.id ?? null,
+        // false is chat only, which is what a host nobody vouched for is
+        tools: endpoint.tools === true,
         keys: endpoint.keys.map((cred) => ({
           id: cred.id,
           label: cred.label ?? "",
@@ -16028,6 +16034,14 @@ function parseCustomKey(body: Record<string, unknown>): { key?: string; label?: 
   if (!key) return { error: "a key is required" };
   if (key.length > MAX_KEY_CHARS) return { error: "that key is too long" };
   return { key, ...(label ? { label } : {}) };
+}
+
+/** The endpoint with tools on or off. Off is the field gone rather than
+ * a stored false, so a host that was never switched and one switched
+ * back read the same on disk. */
+function withCustomTools(endpoint: CustomEndpoint, on: boolean): CustomEndpoint {
+  const { tools: _was, ...rest } = endpoint;
+  return on ? { ...rest, tools: true } : rest;
 }
 
 // ── request and response helpers ──────────────────────────────────────
@@ -21275,17 +21289,20 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!url) return json(res, 400, { error: "the endpoint must be an http or https URL" });
       if (url.length > MAX_URL_CHARS) return json(res, 413, { error: "that URL is too long" });
       if (parsed.error) return json(res, parsed.error.includes("too long") ? 413 : 400, { error: parsed.error });
+      if (body.tools !== undefined && typeof body.tools !== "boolean") {
+        return json(res, 400, { error: "tools must be true or false" });
+      }
       if ((cfg.custom ?? []).length >= MAX_CUSTOM_ENDPOINTS) {
         return json(res, 507, { error: `at most ${MAX_CUSTOM_ENDPOINTS} custom endpoints` });
       }
       const cred: CustomKey = { id: randomBytes(8).toString("hex"), key: parsed.key!, ...(parsed.label ? { label: parsed.label } : {}) };
-      const entry: CustomEndpoint = {
+      const entry: CustomEndpoint = withCustomTools({
         id: randomBytes(8).toString("hex"),
         name,
         url,
         keys: [cred],
         activeKeyId: cred.id,
-      };
+      }, body.tools === true);
       await persistCustom([...(cfg.custom ?? []), entry]);
       return json(res, 201, customCatalog());
     }
@@ -21293,6 +21310,17 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && method === "DELETE") {
       const next = (cfg.custom ?? []).filter((endpoint) => endpoint.id !== m![1]);
       if (next.length === (cfg.custom ?? []).length) return json(res, 404, { error: "no such endpoint" });
+      await persistCustom(next);
+      return json(res, 200, customCatalog());
+    }
+    // Whether the model behind a host can use tools is the one thing
+    // about it that changes in place. The rest is a new host or a key.
+    if (m && method === "PATCH") {
+      const endpoint = (cfg.custom ?? []).find((entry) => entry.id === m![1]);
+      if (!endpoint) return json(res, 404, { error: "no such endpoint" });
+      const body = await readBody(req);
+      if (typeof body.tools !== "boolean") return json(res, 400, { error: "tools must be true or false" });
+      const next = (cfg.custom ?? []).map((entry) => (entry.id === endpoint.id ? withCustomTools(entry, body.tools === true) : entry));
       await persistCustom(next);
       return json(res, 200, customCatalog());
     }

@@ -70,3 +70,17 @@ test("a custom host becomes one instance that carries the active key", () => {
     "the unused key must not be injected into any instance",
   );
 });
+
+test("a host switched to tools carries the switch into its instance, and only that host", () => {
+  const host = (id: string, tools?: boolean) => ({
+    id,
+    name: id,
+    url: `https://${id}.example.test/v1`,
+    keys: [{ id: "k", key: `sk-${id}` }],
+    ...(tools === undefined ? {} : { tools }),
+  });
+  const map = instanceConfigs({ custom: [host("on", true), host("off", false), host("unsaid")] });
+  assert.deepEqual(map[customInstanceId("on")].config, { url: "https://on.example.test/v1", tools: true });
+  assert.deepEqual(map[customInstanceId("off")].config, { url: "https://off.example.test/v1" });
+  assert.deepEqual(map[customInstanceId("unsaid")].config, { url: "https://unsaid.example.test/v1" });
+});
