@@ -21720,20 +21720,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
     if (method === "POST" && path === "/api/bloks") {
       const body = await readBody(req);
+      // counted once each: the same agent named twice is one agent, and
+      // was a way to open a room of one
       const memberIds = Array.isArray(body.memberIds)
-        ? (body.memberIds as unknown[]).filter(
+        ? [...new Set((body.memberIds as unknown[]).filter(
             (id): id is string => typeof id === "string" && roomMayHold(id),
-          )
+          ))]
         : [];
       if (memberIds.length < 2) {
         return json(res, 400, { error: "a room needs at least two agents" });
       }
-      if (memberIds.length > MAX_MEMBERS) {
-        return json(res, 400, { error: `a room holds at most ${MAX_MEMBERS} agents` });
-      }
       // Whoever opened it is in it. An agent that left itself off the
       // roster would have made a room it cannot speak in.
       if (asAgent && !memberIds.includes(asAgent.botId)) memberIds.unshift(asAgent.botId);
+      // and the limit holds with it in
+      if (memberIds.length > MAX_MEMBERS) {
+        return json(res, 400, { error: `a room holds at most ${MAX_MEMBERS} agents` });
+      }
       const lead = readLeadId(body, memberIds, Boolean(asAgent));
       if (!lead.ok) return json(res, lead.status, { error: lead.error });
       const blok = bloks.create(clamp(body.name, MAX_NAME_CHARS) ?? "", memberIds, asAgent ? 0 : Date.now(), lead.leadId ?? null);

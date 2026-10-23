@@ -83,6 +83,18 @@ test("a roster of one is refused in the words a new room is, counting each agent
   assert.deepEqual((await listed(h, room.id)).memberIds, [ada, bo], "a refused roster changed the room");
 });
 
+test("a new room counts each agent once too, so one named twice is not a pair", async (t) => {
+  const h = await startHarness();
+  t.after(() => h.stop());
+  const ada = await hire(h, "Ada");
+  const bo = await hire(h, "Bo");
+  const refused = await h.fetch("/api/bloks", { method: "POST", body: JSON.stringify({ name: "Echo", memberIds: [ada, ada] }) });
+  assert.equal(refused.status, 400);
+  assert.equal((await refused.json()).error, "a room needs at least two agents");
+  const room = await open(h, "Pair", [ada, bo, ada]);
+  assert.deepEqual(room.memberIds, [ada, bo]);
+});
+
 test("nine agents are refused, not cut to eight without a word", async (t) => {
   const h = await startHarness();
   t.after(() => h.stop());
