@@ -9,6 +9,11 @@
 // Everything it asks for goes through the server, which checks it again.
 // Nothing here is a security boundary on its own; this half exists so the
 // message is a shape rather than a surprise before it goes anywhere.
+//
+// The same card works on the owner's devices other than the computer the
+// workspace runs on (GitHub 356). The frame's terms travel with the
+// document, so nothing here changes for that; only an older server's
+// refusal is put in words a person can act on (src/lib/mcpApps.ts).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppWindow } from "@/components/icons";
 import { ArrowLeft } from "@/components/icons";
@@ -19,6 +24,7 @@ import { useMcpServers, type McpServerRow } from "./McpServers";
 import { useTheme } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { appsTrouble } from "@/lib/mcpApps";
 import { plural } from "@/lib/plural";
 
 interface McpApp {
@@ -30,7 +36,7 @@ interface McpApp {
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(appsTrouble(res.status, body.error, `${res.status} ${res.statusText}`));
   return body;
 }
 
@@ -190,7 +196,7 @@ function AppFrame({
       body: JSON.stringify({ uri: app.uri, theme: paletteNow(resolvedTheme === "dark") }),
     })
       .then(async (res) => {
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not open this app");
+        if (!res.ok) throw new Error(appsTrouble(res.status, (await res.json().catch(() => ({}))).error, "Could not open this app"));
         return res.text();
       })
       .then(setHtml)

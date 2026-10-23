@@ -17916,6 +17916,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       ? null
       : deviceForToken(bearerToken(req));
   if (caller) noteClient(caller.id, req.headers["x-bloks-client"]);
+  // On this machine the guard above takes a valid member credential as the
+  // owner at the keyboard. A route that is the owner's alone asks this as
+  // well, and takes a credential that names a member at its word instead.
+  const namesMember = () =>
+    local && !asAgent && req.headers.authorization !== undefined && Boolean(deviceForToken(bearerToken(req))?.personId);
+  // One of the owner's own paired devices, on the network with its token
+  // or through Bloks Cloud: never a member's, whose requests are answered
+  // just below and never reach an owner route, and never an agent's
+  // credential, which only works on this machine.
+  const ownerDevice = Boolean(caller) && !caller?.personId;
   // One conversation's transcript as this caller may receive it: whole
   // here and on the same network, its newest part through Bloks Cloud,
   // with the count of what is left to ask for. olderMessages is always
@@ -23279,9 +23289,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // server that publishes an interface gets it framed here, on our
     // terms: no origin of its own, no network at all, and only the tools
     // it published may be called back.
+    //
+    // The owner's, from this window or from a device of their own (GitHub
+    // 356). A workspace on a server elsewhere has no window, and its owner
+    // was shown a Check that could only fail. None of it is more than the
+    // same device can already ask for: it adds and edits these servers,
+    // and its agents call the same tools. The terms travel with the
+    // document, the policy ahead of the server's own markup, so a frame in
+    // the app on another computer or in a browser is sealed off exactly as
+    // one here is, and what the frame asks for is checked here whoever
+    // relays it. Never a member, and never an agent (NEVER in
+    // server/agent-cli.ts).
+    const appsHere = !asAgent && (local ? !namesMember() : ownerDevice);
     m = path.match(/^\/api\/mcp-servers\/([\w-]+)\/apps$/);
     if (m && method === "GET") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!appsHere) return json(res, 403, { error: "not from here" });
       const server = (cfg.mcpServers ?? []).find((s) => s.id === m![1]);
       if (!server) return json(res, 404, { error: "no such server" });
       try {
@@ -23301,7 +23323,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // no chance to assemble it into something else.
     m = path.match(/^\/api\/mcp-servers\/([\w-]+)\/apps\/view$/);
     if (m && method === "POST") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!appsHere) return json(res, 403, { error: "not from here" });
       const server = (cfg.mcpServers ?? []).find((s) => s.id === m![1]);
       if (!server) return json(res, 404, { error: "no such server" });
       const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
@@ -23332,7 +23354,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // message was one of the shapes we accept.
     m = path.match(/^\/api\/mcp-servers\/([\w-]+)\/apps\/act$/);
     if (m && method === "POST") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!appsHere) return json(res, 403, { error: "not from here" });
       const server = (cfg.mcpServers ?? []).find((s) => s.id === m![1]);
       if (!server) return json(res, 404, { error: "no such server" });
       const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
@@ -23358,9 +23380,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // listed for, members and invite holders already sent to their own
     // small surface. One narrowing on top: on this machine the guard takes
     // a valid member credential as the owner at the keyboard, and here a
-    // credential that names a member is taken at its word instead.
-    const namesMember = () =>
-      local && !asAgent && req.headers.authorization !== undefined && Boolean(deviceForToken(bearerToken(req))?.personId);
+    // credential that names a member is taken at its word instead
+    // (namesMember, beside the guard).
     if (path === "/api/agent/settings") {
       if (namesMember()) return noStore(res, 403, { error: "settings inspection is the owner's" });
       const saved = savedConfigObservation();

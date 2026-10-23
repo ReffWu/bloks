@@ -2,6 +2,8 @@
 //
 // Publishes one interface and two tools: enough to prove the app can find
 // what a server draws, frame it, and call back only what was offered.
+// With --no-apps it publishes the tools and no interface, the way most
+// servers do.
 import { createInterface } from "node:readline";
 
 const APP = `<div id="app"><h1>Sales</h1><button id="go">Refresh</button></div>
@@ -19,7 +21,7 @@ const TOOLS = [
 const RESOURCES = [
   { uri: "ui://sales/dashboard", name: "Sales dashboard", description: "This quarter", mimeType: "text/html" },
   { uri: "res://sales/raw", name: "Raw rows", mimeType: "application/json" },
-];
+].filter((resource) => !process.argv.includes("--no-apps") || !resource.uri.startsWith("ui://"));
 
 const send = (frame) => process.stdout.write(`${JSON.stringify(frame)}\n`);
 

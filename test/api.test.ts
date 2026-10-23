@@ -4718,7 +4718,8 @@ describe("what an MCP server can draw", () => {
     await h.fetch(`/api/mcp-servers/${id}`, { method: "DELETE" });
   });
 
-  test("none of it is reachable from a website or a paired phone", async () => {
+  // the owner's own paired devices reach it too (test/mcp-apps-remote.test.ts)
+  test("none of it is reachable from a website or a device nobody paired", async () => {
     const id = await registered();
     for (const [path, method] of [
       [`/api/mcp-servers/${id}/apps`, "GET"],
