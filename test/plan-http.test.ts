@@ -1,6 +1,6 @@
-// The Plan page's local routes, through the real server, against a
-// stand-in for bloks.dev (test/helpers/fake-site.ts): the owner's own
-// window reads the plan and an agent never does, the key never comes
+// The Plan page's routes, through the real server, against a stand-in
+// for bloks.dev (test/helpers/fake-site.ts): the owner's own window
+// reads the plan and an agent never does, the key never comes
 // back to the page, the last good answer is kept for when the site
 // cannot be reached, and a fresh look moves the gates with the plan.
 import { test } from "node:test";
@@ -100,7 +100,8 @@ test("a bundle files the offers under its own name", async (t) => {
   assert.deepEqual(s.offersAsked, ["team-hosted"]);
 });
 
-test("only this computer's own window reads the plan: a website and the network are refused", async (t) => {
+// the owner's own paired devices read it too (test/plan-remote.test.ts)
+test("a website and a device nobody paired never read the plan", async (t) => {
   const s = await site(t);
   s.setAccount(SITE_LICENCE, { plan: "cloud" });
   const h = await withKey(t, s);

@@ -1,15 +1,18 @@
 // The Plan page's sense of things (src/lib/plan.ts): which offers show on
-// which plan, how a membership's status is said, and when a focus is
-// somebody coming back from bloks.dev with a different plan.
+// which plan, how a membership's status is said, when a focus is
+// somebody coming back from bloks.dev with a different plan, and what a
+// device other than the key's computer, or a look that failed, is shown.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
   RETURN_WINDOW_MS,
   cameBack,
+  failedLook,
   hostingOffer,
   hostingWords,
   isHostingOffer,
+  keyIsHere,
   ladderFor,
   planChange,
   planKey,
@@ -207,4 +210,32 @@ test("a fresh look says a change once, up with a moment and down plainly", () =>
   assert.equal(planChange("team", "cloud")?.up, false);
   assert.equal(planChange("cloud", "free")?.up, false);
   assert.match(planChange("cloud", "free")!.words, /own keys/);
+});
+
+test("the key, Hosting and the offers are offered only where the key is kept (GitHub 357)", () => {
+  assert.equal(keyIsHere({ sameComputer: true }), true);
+  assert.equal(keyIsHere({ sameComputer: false }), false, "a device elsewhere was offered the key's controls");
+  assert.equal(keyIsHere({}), true, "an older server answered only its own window");
+});
+
+test("a look that did not land never reads as no plan", () => {
+  const shown = { licence: { present: true, masked: "x", kept: true }, account: account({ plan: "team" }), ownerPlan: "team" } as PlanSnapshot;
+  // the server did not answer, or answered with a failure: what was shown stays, said to be old
+  for (const status of [null, 500, 502, 503]) {
+    const after = failedLook(shown, status);
+    assert.equal(after.snapshot, shown, `the plan shown went away after a ${status ?? "lost"} answer`);
+    assert.equal(after.stale, true);
+    assert.equal(after.problem, null);
+  }
+  // with nothing shown yet, the page says it could not look, not that there is no plan
+  const first = failedLook(null, null);
+  assert.equal(first.snapshot, null);
+  assert.equal(first.problem?.kind, "unreachable");
+  assert.match(first.problem!.words, /couldn't read your plan/);
+  // a refusal is this device not being shown the plan at all
+  const refused = failedLook(shown, 403);
+  assert.equal(refused.snapshot, null);
+  assert.equal(refused.stale, false);
+  assert.equal(refused.problem?.kind, "refused");
+  assert.match(refused.problem!.words, /computer this workspace runs on/);
 });

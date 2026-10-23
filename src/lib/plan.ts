@@ -2,10 +2,10 @@
 // says in a few words, which offers are worth showing, and when to look
 // again after somebody went to bloks.dev in their browser.
 //
-// The answers themselves come from bloks.dev, through this computer's
-// own server (GET /api/plan, server/plan-account.ts), already read
-// defensively there. Nothing in this file holds a price: an offer's price
-// is whatever words the site sent, and is drawn as it came.
+// The answers themselves come from bloks.dev, through the server of the
+// workspace the page shows (GET /api/plan, server/plan-account.ts),
+// already read defensively there. Nothing in this file holds a price: an
+// offer's price is whatever words the site sent, and is drawn as it came.
 
 export type PaidPlan = "cloud" | "team" | "ai";
 /** What the site files offers under: no licence is "free", and a bundle
@@ -70,6 +70,51 @@ export interface PlanSnapshot {
   /** The plan the gates in this workspace go by right now. */
   ownerPlan: "cloud" | "team" | null;
   members: { count: number; limit: number };
+  /** Whether this was asked on the computer the workspace runs on. False
+   * for the owner's own paired devices, which see the plan and open
+   * billing but leave the key, Hosting and the offers to that computer.
+   * Absent from an older server, which answered only its own window. */
+  sameComputer?: boolean;
+}
+
+/** Whether the page may offer what is done only where the key is kept:
+ * entering, replacing or removing it, Hosting, and the offers, which go
+ * to bloks.dev with that key attached. */
+export function keyIsHere(snapshot: Pick<PlanSnapshot, "sameComputer">): boolean {
+  return snapshot.sameComputer !== false;
+}
+
+/** Why the page has no plan to show: this device is not shown it, or it
+ * could not be asked. Never the same as having no plan. */
+export interface PlanProblem {
+  kind: "refused" | "unreachable";
+  words: string;
+}
+
+/**
+ * What a look at the plan that did not land leaves the page with.
+ * `status` is the answer's, or null when nothing answered at all.
+ *
+ * A refusal clears what was shown: this device is not one the plan is
+ * shown to, which an older Bloks on the computer the workspace runs on
+ * says to every device but its own window. Anything else keeps the last
+ * answer and says it is old, so a reading that went missing never looks
+ * like no subscription; with nothing to keep, the page says it could not
+ * look.
+ */
+export function failedLook(
+  kept: PlanSnapshot | null,
+  status: number | null,
+): { snapshot: PlanSnapshot | null; stale: boolean; problem: PlanProblem | null } {
+  if (status === 403) {
+    return {
+      snapshot: null,
+      stale: false,
+      problem: { kind: "refused", words: "Your plan shows on the computer this workspace runs on. Update Bloks there to see it here too." },
+    };
+  }
+  if (kept) return { snapshot: kept, stale: true, problem: null };
+  return { snapshot: null, stale: false, problem: { kind: "unreachable", words: "Bloks couldn't read your plan just now." } };
 }
 
 export const PLAN_NAMES: Record<string, string> = {

@@ -19,6 +19,14 @@
 // Going to bloks.dev arms a look on return (src/lib/planClient.ts): back
 // in the window, the plan is asked fresh, every gate follows it, and a
 // plan that went up gets its small moment here.
+//
+// On one of the owner's own devices other than the computer the workspace
+// runs on (the app on a server elsewhere, or a browser), the server
+// says so (sameComputer) and the page shows the plan and Manage billing,
+// and leaves the key, Hosting and the offers to that computer with one
+// line saying so (GitHub 357). A look that could not be had keeps the last
+// answer and says it is old: a reading that went missing is never shown
+// as no plan.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -55,6 +63,7 @@ import {
   hostingWords,
   intervalWords,
   isHostingOffer,
+  keyIsHere,
   ladderFor,
   monthYear,
   planKey,
@@ -93,10 +102,12 @@ interface RelayPlan {
   licence: boolean;
 }
 
-/** How many workspaces are online, in the relay's own words. */
-function useRelayPlan(refreshKey: unknown) {
+/** How many workspaces are online, in the relay's own words. Asked only
+ * where it is answered: the computer the workspace runs on. */
+function useRelayPlan(refreshKey: unknown, here: boolean) {
   const [plan, setPlan] = useState<RelayPlan | null>(null);
   useEffect(() => {
+    if (!here) return;
     let alive = true;
     call<RelayPlan>("/api/relay/plan")
       .then((p) => alive && setPlan(p))
@@ -104,7 +115,7 @@ function useRelayPlan(refreshKey: unknown) {
     return () => {
       alive = false;
     };
-  }, [refreshKey]);
+  }, [refreshKey, here]);
   return plan;
 }
 
@@ -155,7 +166,7 @@ function TryAgain({ busy }: { busy: boolean }) {
 
 /** A plan that just went up: said once, with the blocks the app spends on
  * good news. Rare by nature, so it may take a moment of delight. */
-function PlanMoment({ words, at }: { words: string; at: number }) {
+function PlanMoment({ words, at, here }: { words: string; at: number; here: boolean }) {
   const reduce = useReducedMotion();
   useEffect(() => {
     const t = setTimeout(clearPlanNews, 7000);
@@ -176,7 +187,9 @@ function PlanMoment({ words, at }: { words: string; at: number }) {
       </span>
       <span className="min-w-0">
         <span className="block text-lead font-semibold text-foreground">{words}</span>
-        <span className="block text-pretty text-body text-muted-foreground">Everything it includes is on now, in every workspace on this computer.</span>
+        <span className="block text-pretty text-body text-muted-foreground">
+          {here ? "Everything it includes is on now, in every workspace on this computer." : "Everything it includes is on now."}
+        </span>
       </span>
     </motion.div>
   );
@@ -244,25 +257,63 @@ function staleWords(snapshot: PlanSnapshot): string | null {
   return null;
 }
 
+/** The line about how old what is shown is, or null when it is current:
+ * this device could not ask again just now, or the server could not ask
+ * bloks.dev. */
+function oldWords(snapshot: PlanSnapshot, stale: boolean): string | null {
+  return stale ? "Couldn't check your plan just now, so this may be out of date." : staleWords(snapshot);
+}
+
+/** On a device other than the computer the workspace runs on, which keeps
+ * the key: said once, where the key's own row is on that computer. */
+const ELSEWHERE = "Your Bloks key, Hosting and add-ons are managed on the computer this workspace runs on.";
+
+function Elsewhere() {
+  return (
+    <footer data-setting-row="bloks-key" className="border-t bg-muted/30 px-6 py-3 text-pretty text-small text-muted-foreground transition-colors duration-700 max-sm:px-5">
+      {ELSEWHERE}
+    </footer>
+  );
+}
+
+/** How old the plan shown is, with the way to look again. */
+function OldLine({ words, loading, className }: { words: string; loading: boolean; className?: string }) {
+  return (
+    <p role="status" className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 text-pretty text-small text-muted-foreground", className)}>
+      <span>{words}</span>
+      <TryAgain busy={loading} />
+    </p>
+  );
+}
+
 function PlanCard({
   snapshot,
   loading,
+  stale,
+  here,
   onManage,
   managing,
   manageError,
+  ready,
+  onReadyOpened,
   onChanged,
 }: {
   snapshot: PlanSnapshot;
   loading: boolean;
+  /** How old what is shown is, when it is not current. */
+  stale: string | null;
+  here: boolean;
   onManage: () => void;
   managing: boolean;
   manageError: string | null;
+  /** A billing link the browser held back, for the person to press. */
+  ready: string | null;
+  onReadyOpened: () => void;
   onChanged: () => void;
 }) {
   const key = planKey(snapshot, appPlanOf(useWorkspaces()));
   const account = snapshot.account;
   const status = account ? statusOf(account) : null;
-  const stale = staleWords(snapshot);
   const refused = snapshot.accountState === "refused";
   const pill: { tone: Health; label: string } | null = refused ? { tone: "issue", label: "Key not recognised" } : status ? { tone: status.tone, label: status.label } : null;
   const facts = account ? factsOf(account) : [];
@@ -314,14 +365,17 @@ function PlanCard({
             {manageError}
           </p>
         )}
-        {stale && (
-          <p role="status" className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-pretty text-small text-muted-foreground">
-            <span>{stale}</span>
-            <TryAgain busy={loading} />
+        {ready && (
+          <p role="status" className="mt-3 text-pretty text-small text-muted-foreground">
+            Billing is ready to open.{" "}
+            <a href={ready} target="_blank" rel="noopener noreferrer" onClick={onReadyOpened} className="font-medium text-foreground underline underline-offset-2">
+              Open billing
+            </a>
           </p>
         )}
+        {stale && <OldLine words={stale} loading={loading} className="mt-4" />}
       </div>
-      <KeyFooter snapshot={snapshot} onChanged={onChanged} />
+      {here ? <KeyFooter snapshot={snapshot} onChanged={onChanged} /> : <Elsewhere />}
     </section>
   );
 }
@@ -335,8 +389,19 @@ const SELF_HOSTED_POINTS = [
   "Everything stays on this computer",
 ];
 
-function FreeCard({ onActivated }: { onActivated: () => void }) {
+function FreeCard({ onActivated, stale, loading, here }: { onActivated: () => void; stale: string | null; loading: boolean; here: boolean }) {
   const [open, setOpen] = useState(false);
+  if (!here) {
+    return (
+      <section aria-label="Your plan" className="mb-9 overflow-hidden rounded-2xl border bg-card">
+        <div className="p-6 max-sm:p-5">
+          <Headline glyph="free" name="Self-hosted" facts="This workspace runs on its own engines and keys." />
+          {stale && <OldLine words={stale} loading={loading} className="mt-4" />}
+        </div>
+        <Elsewhere />
+      </section>
+    );
+  }
   return (
     <section aria-label="Your plan" className="mb-9 overflow-hidden rounded-2xl border bg-card">
       <div className="p-6 max-sm:p-5">
@@ -352,6 +417,7 @@ function FreeCard({ onActivated }: { onActivated: () => void }) {
             </li>
           ))}
         </ul>
+        {stale && <OldLine words={stale} loading={loading} className="mt-4" />}
       </div>
       <footer data-setting-row="bloks-key" className="border-t bg-muted/30 px-6 py-3 transition-colors duration-700 max-sm:px-5">
         <AnimatePresence initial={false} mode="wait">
@@ -650,7 +716,7 @@ function OfCount({ n, of, unit }: { n: number; of?: number; unit?: string }) {
   );
 }
 
-function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: RelayPlan | null; ai: ReturnType<typeof useBloksAi> }) {
+function WhatYouHave({ snapshot, relay, ai, here }: { snapshot: PlanSnapshot; relay: RelayPlan | null; ai: ReturnType<typeof useBloksAi>; here: boolean }) {
   const { dispatch } = useStore();
   const go = (page: string) => dispatch({ type: "toggleAppSettings", open: true, page });
   const key = planKey(snapshot, appPlanOf(useWorkspaces()));
@@ -666,28 +732,32 @@ function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: R
 
   const tiles: React.ReactNode[] = [];
 
-  // workspaces online, as the relay counts them
-  if (!spaces) {
-    tiles.push(
-      <Tile
-        key="spaces"
-        rowId="workspaces-online"
-        label="Workspaces online"
-        quiet
-        value="None yet"
-        line={
-          <button type="button" className={cn(link, "inline-flex items-center gap-0.5")} onClick={() => go("workspace:online")}>
-            Put this one online
-            <ArrowRight size={12} aria-hidden />
-          </button>
-        }
-      />,
-    );
-  } else if (spaces.limit === null) {
-    tiles.push(<Tile key="spaces" rowId="workspaces-online" label="Workspaces online" value={<OfCount n={spaces.online} unit="online" />} line="No limit on your plan" />);
-  } else {
+  // workspaces online, as the relay counts them. Asked on the computer the
+  // workspace runs on alone (GET /api/relay/plan), so elsewhere the tile
+  // is left out rather than said to be none.
+  const spacesTile = (): React.ReactNode => {
+    if (!spaces) {
+      return (
+        <Tile
+          key="spaces"
+          rowId="workspaces-online"
+          label="Workspaces online"
+          quiet
+          value="None yet"
+          line={
+            <button type="button" className={cn(link, "inline-flex items-center gap-0.5")} onClick={() => go("workspace:online")}>
+              Put this one online
+              <ArrowRight size={12} aria-hidden />
+            </button>
+          }
+        />
+      );
+    }
+    if (spaces.limit === null) {
+      return <Tile key="spaces" rowId="workspaces-online" label="Workspaces online" value={<OfCount n={spaces.online} unit="online" />} line="No limit on your plan" />;
+    }
     const left = Math.max(0, spaces.limit - spaces.online);
-    tiles.push(
+    return (
       <Tile
         key="spaces"
         rowId="workspaces-online"
@@ -695,9 +765,10 @@ function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: R
         value={<OfCount n={spaces.online} of={spaces.limit} />}
         meter={<Meter label="Workspaces online" share={spaces.online / Math.max(1, spaces.limit)} value={spaces.online} max={spaces.limit} />}
         line={left > 0 ? `${left} more can go online` : "All in use. Turning one off frees its place."}
-      />,
+      />
     );
-  }
+  };
+  if (here) tiles.push(spacesTile());
 
   // members, on Bloks Team
   if (team) {
@@ -748,7 +819,7 @@ function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: R
           status.refused ? (
             <span className="text-warning">{status.refused.message}</span>
           ) : status.needsKey ? (
-            "Connect it below with your key"
+            here ? "Connect it below with your key" : "Connect it on the computer this workspace runs on"
           ) : (
             <>
               {[status.low && !empty ? "Running low" : null, resets ? `Resets ${shortDate(resets)}` : null, extra]
@@ -756,8 +827,9 @@ function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: R
                 .map((part) => `${part} · `)
                 .join("")}
               {/* the site's own page, so the key rides along in the
-                  fragment and nobody types it again there */}
-              <button type="button" title={TOP_UP_WORDS} className={link} onClick={() => void openOffer(status.checkoutUrl)}>
+                  fragment and nobody types it again there; elsewhere the
+                  key is not this device's to add */}
+              <button type="button" title={TOP_UP_WORDS} className={link} onClick={() => void (here ? openOffer(status.checkoutUrl) : openSite(status.checkoutUrl))}>
                 Top up
               </button>
             </>
@@ -785,6 +857,8 @@ function WhatYouHave({ snapshot, relay, ai }: { snapshot: PlanSnapshot; relay: R
     <SettingsGroup
       title="What you have"
       action={
+        // the offers are on the computer this workspace runs on
+        here &&
         locked &&
         ladder.some((o) => o.onSale && o.cta) && (
           <button type="button" className={cn(link, "inline-flex items-center gap-0.5 text-small")} onClick={toOptions}>
@@ -1182,12 +1256,15 @@ function PlanSkeleton() {
 }
 
 export function PlanPage() {
-  const { snapshot, problem, news, loading } = usePlan();
+  const { snapshot, problem, stale, news, loading } = usePlan();
   const appPlan = appPlanOf(useWorkspaces());
   const ai = useBloksAi();
   const [managing, setManaging] = useState(false);
   const [manageError, setManageError] = useState<string | null>(null);
-  const relay = useRelayPlan(snapshot?.accountAt ?? snapshot?.ownerPlan ?? null);
+  const [ready, setReady] = useState<string | null>(null);
+  // before the first answer, as before: only an answer says elsewhere
+  const here = snapshot ? keyIsHere(snapshot) : true;
+  const relay = useRelayPlan(snapshot?.accountAt ?? snapshot?.ownerPlan ?? null, here);
 
   useEffect(() => {
     void loadPlan();
@@ -1200,11 +1277,15 @@ export function PlanPage() {
   }, []);
 
   // A portal link lasts minutes, so it is asked for only now, and opened
-  // straight away. Link (which took some payments) has its own sign-in,
-  // and the person is told that before they land there.
+  // straight away on this device, whichever computer asked bloks.dev for
+  // it. Link (which took some payments) has its own sign-in, and the
+  // person is told that before they land there. A browser may hold back a
+  // window opened once the link is back, so then the link waits here to
+  // be pressed.
   const manage = async () => {
     setManaging(true);
     setManageError(null);
+    setReady(null);
     try {
       const said = await call<{ url: string; manageAt: "portal" | "link" }>("/api/plan/manage", { method: "POST" });
       if (said.manageAt === "link") {
@@ -1215,7 +1296,7 @@ export function PlanPage() {
         });
         if (!go) return;
       }
-      openSite(said.url);
+      if (!openSite(said.url)) setReady(said.url);
     } catch (e) {
       setManageError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1225,12 +1306,13 @@ export function PlanPage() {
 
   if (!snapshot) {
     if (problem) {
+      // could not look is not the same as no plan, and is not said as one
       return (
         <SettingsGroup>
           <SettingsEmpty
-            icon={<Lock size={18} />}
-            title="Your plan isn't here"
-            body={problem}
+            icon={problem.kind === "refused" ? <Lock size={18} /> : <TriangleAlert size={18} />}
+            title={problem.kind === "refused" ? "Your plan isn't shown here" : "Couldn't load your plan"}
+            body={problem.words}
             action={
               <Button size="sm" variant="secondary" onClick={() => void loadPlan(true)}>
                 Try again
@@ -1244,28 +1326,42 @@ export function PlanPage() {
   }
 
   const free = !snapshot.licence.present;
+  const old = oldWords(snapshot, stale);
   // one Try again on the page: the plan's, when it is already saying so
-  const retryShown = !free && staleWords(snapshot) !== null;
+  const retryShown = old !== null;
   const hosting = hostingWords(snapshot.account?.hosting ?? null);
   // the way to Hosting, for a licence known to have none (an account that
   // could not be read at all might have it)
   const hostingCard = free || (snapshot.account !== null && !hosting);
   return (
     <div className="@container">
-      <AnimatePresence>{news?.up && <PlanMoment key={news.at} words={news.words} at={news.at} />}</AnimatePresence>
+      <AnimatePresence>{news?.up && <PlanMoment key={news.at} words={news.words} at={news.at} here={here} />}</AnimatePresence>
       {free ? (
-        <FreeCard onActivated={changed} />
+        <FreeCard onActivated={changed} stale={old} loading={loading} here={here} />
       ) : (
-        <PlanCard snapshot={snapshot} loading={loading} onManage={() => void manage()} managing={managing} manageError={manageError} onChanged={changed} />
+        <PlanCard
+          snapshot={snapshot}
+          loading={loading}
+          stale={old}
+          here={here}
+          onManage={() => void manage()}
+          managing={managing}
+          manageError={manageError}
+          ready={ready}
+          onReadyOpened={() => setReady(null)}
+          onChanged={changed}
+        />
       )}
-      {!free && <WhatYouHave snapshot={snapshot} relay={relay} ai={ai} />}
-      {hostingCard ? (
-        <MoveToHostingCard snapshot={snapshot} appPlan={appPlan} />
-      ) : (
-        hosting && <HostingGroup hosting={hosting} state={snapshot.account?.hosting?.state ?? null} below={<HostingMove />} />
-      )}
-      {!free && bloksAiShown(ai, snapshot.account) && <BloksAiSettings ai={ai} />}
-      <YourOptions snapshot={snapshot} loading={loading} retryShown={retryShown} hostingCard={hostingCard} />
+      {!free && <WhatYouHave snapshot={snapshot} relay={relay} ai={ai} here={here} />}
+      {/* Hosting and the offers are the key's, and stay on its computer */}
+      {here &&
+        (hostingCard ? (
+          <MoveToHostingCard snapshot={snapshot} appPlan={appPlan} />
+        ) : (
+          hosting && <HostingGroup hosting={hosting} state={snapshot.account?.hosting?.state ?? null} below={<HostingMove />} />
+        ))}
+      {!free && bloksAiShown(ai, snapshot.account) && <BloksAiSettings ai={ai} keyHere={here} />}
+      {here && <YourOptions snapshot={snapshot} loading={loading} retryShown={retryShown} hostingCard={hostingCard} />}
     </div>
   );
 }

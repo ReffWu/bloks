@@ -19357,16 +19357,34 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
     // The Plan page (server/plan-account.ts): the membership on the
     // licence, the offers on it, the way to billing, and forgetting the
-    // key. This computer's own window only: never an agent, whose
-    // business the person's billing is not, and never a paired device,
-    // since the answer is read with the licence itself.
+    // key. Never an agent, whose business the person's billing is not,
+    // and never a member, a member's credential presented on this machine
+    // included.
+    //
+    // Reading the plan and opening billing are the owner's on any device
+    // of theirs (GitHub 357). A workspace on a server elsewhere has no
+    // window of its own, so its owner had no way to change a plan they
+    // pay for. Neither carries the key: the plan is read with it here,
+    // and the billing link is made only when somebody presses for it and
+    // goes back to the device that pressed. The rest stays on this
+    // computer: forgetting the key, and the way into a hosted workspace,
+    // whose link is sealed for this computer alone.
     if (path === "/api/plan" || path.startsWith("/api/plan/")) {
-      if (asAgent || !local) return json(res, 403, { error: "your plan is shown on this computer only" });
+      if (asAgent || namesMember()) return json(res, 403, { error: "your plan is the owner's" });
+      const anywhere = (method === "GET" && path === "/api/plan") || (method === "POST" && path === "/api/plan/manage");
+      if (!local && !(anywhere && ownerDevice)) {
+        return json(res, 403, { error: "that is done on the computer this workspace runs on" });
+      }
       const answered = await planRoute(method, path, url.searchParams, planDeps, planAccount);
       if (answered) {
-        // the app starts a move to Hosting once it is running, and the page
-        // is often the first to hear (somebody back from checkout)
-        if (method === "GET" && path === "/api/plan") tellDesktopAccount(answered.body);
+        if (method === "GET" && path === "/api/plan") {
+          // the app starts a move to Hosting once it is running, and the
+          // page is often the first to hear (somebody back from checkout)
+          tellDesktopAccount(answered.body);
+          // whether the key and Hosting can be changed from where this was
+          // asked, so a page elsewhere leaves them out rather than failing
+          return json(res, answered.status, { ...(answered.body as Record<string, unknown>), sameComputer: local });
+        }
         return json(res, answered.status, answered.body);
       }
     }

@@ -265,6 +265,9 @@ export const NEVER = [
   "/api/calls",
   "/api/terminal",
   "/api/usage",
+  // the person's plan and the way to their billing, which their own
+  // devices reach too: never a turn's (GitHub 357)
+  "/api/plan",
   "/api/profile",
   // a backup is the whole workspace, and a restore replaces it
   "/api/backups",

@@ -460,10 +460,12 @@ const ENDED = new Set(["canceled", "cancelled", "incomplete_expired", "unpaid"])
 
 /**
  * GET /api/plan, POST /api/plan/manage, POST /api/plan/hosting/link and
- * DELETE /api/plan/licence. The caller has already made sure it is this
- * computer's own window asking, never an agent's credential and never a
- * paired device: the plan, the way to billing and the way into a hosted
- * workspace are the owner's.
+ * DELETE /api/plan/licence. The caller has already made sure it is the
+ * owner asking, never an agent's credential or a member's: the plan, the
+ * way to billing and the way into a hosted workspace are the owner's. The
+ * first two answer the owner's own paired devices as well; the way into a
+ * hosted workspace and forgetting the key answer this computer's own
+ * window only.
  */
 export async function planRoute(
   method: string,

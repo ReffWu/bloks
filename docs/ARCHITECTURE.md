@@ -2853,12 +2853,17 @@ licence as the bearer, for the account and the offers on that plan;
 pressed; `POST /api/plan/hosting/link` asks for a pairing link to the
 hosted workspace on the licence, for the managed hosting that is coming
 (see Hosted mode); and `DELETE /api/plan/licence` forgets the key here
-and takes the workspace offline. These answer this computer's own window
-only, never an agent or a paired device, since the answer is read with
-the licence itself. The key never comes back to the page, only masked. What
-the site sends is read as unknowns and checked one field at a time, with
-strings bounded and stripped of control and direction characters, and a
-price is shown as the site wrote it, never worked out here. The last good
+and takes the workspace offline. None of them answers an agent or a
+member, a member's credential presented on this computer included. The
+plan and the billing link also answer the owner's own paired devices, so
+the owner of a workspace on a server elsewhere can see the plan and open
+billing from a device of theirs; the answer says `sameComputer: false`
+there, and the page leaves out the key, Hosting and the offers, which
+stay with this computer's own window. The key never comes back to the
+page, only masked. What the site sends is read as unknowns and checked
+one field at a time, with strings bounded and stripped of control and
+direction characters, and a price is shown as the site wrote it, never
+worked out here. The last good
 answers are kept in `plan-cache.json` under a fingerprint of the key, so
 a plan still shows, dated, when the site cannot be reached, and a fresh
 look moves the members and room sharing gates with the plan it reports.

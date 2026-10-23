@@ -1,6 +1,7 @@
-// The Plan page's line to this computer's server (GET /api/plan), kept
+// The Plan page's line to the workspace's server (GET /api/plan), kept
 // outside React so the answer outlives the page: Settings opened again
-// draws the last answer at once and looks again behind it.
+// draws the last answer at once and looks again behind it. A look that
+// fails keeps that answer and says it is old (failedLook in plan.ts).
 //
 // It also owns coming back from bloks.dev. Opening an offer or billing
 // arms a watch on the window; the next time the window is focused, within
@@ -11,19 +12,22 @@
 // the person is on when they come back.
 import { useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
-import { cameBack, planChange, planKey, type PlanKey, type PlanSnapshot } from "./plan.ts";
+import { cameBack, failedLook, planChange, planKey, type PlanKey, type PlanProblem, type PlanSnapshot } from "./plan.ts";
 
 export interface PlanState {
   snapshot: PlanSnapshot | null;
   loading: boolean;
-  /** Set when the page could not be read at all: this window is not on
-   * the computer that holds the plan, or the server did not answer. */
-  problem: string | null;
+  /** Set when there is no plan to show: this device is not shown it, or
+   * the server did not answer. Never beside a snapshot. */
+  problem: PlanProblem | null;
+  /** The last look failed and the snapshot is from one before it: still
+   * shown, and said to be old rather than passed off as the plan now. */
+  stale: boolean;
   /** A change a fresh look just found, for the page's moment. */
   news: { words: string; up: boolean; at: number } | null;
 }
 
-let state: PlanState = { snapshot: null, loading: false, problem: null, news: null };
+let state: PlanState = { snapshot: null, loading: false, problem: null, stale: false, news: null };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlanState>) => {
   state = { ...state, ...patch };
@@ -39,14 +43,13 @@ export function loadPlan(fresh = false): Promise<PlanSnapshot | null> {
   set({ loading: true });
   const run = fetch(`/api/plan${fresh ? "?fresh=1" : ""}`, { headers: { accept: "application/json" } })
     .then(async (res) => {
-      if (res.status === 403) {
-        set({ loading: false, problem: "Your plan shows on the computer that holds your Bloks key. Open Settings there to see it." });
-        return null;
+      if (!res.ok) {
+        set({ loading: false, ...failedLook(state.snapshot, res.status) });
+        return state.snapshot;
       }
-      if (!res.ok) throw new Error(String(res.status));
       const snapshot = (await res.json()) as PlanSnapshot;
       const change = fresh ? planChange(before, planKey(snapshot)) : null;
-      set({ snapshot, loading: false, problem: null, ...(change ? { news: { ...change, at: Date.now() } } : {}) });
+      set({ snapshot, loading: false, problem: null, stale: false, ...(change ? { news: { ...change, at: Date.now() } } : {}) });
       if (change) {
         if (change.up) toast.success(change.words, { id: "plan-change" });
         else toast(change.words, { id: "plan-change" });
@@ -54,8 +57,8 @@ export function loadPlan(fresh = false): Promise<PlanSnapshot | null> {
       return snapshot;
     })
     .catch(() => {
-      // what was shown stays shown; the page says it could not look
-      set({ loading: false, problem: state.snapshot ? null : "Bloks couldn't read your plan just now." });
+      // what was shown stays shown, and the page says it could not look
+      set({ loading: false, ...failedLook(state.snapshot, null) });
       return state.snapshot;
     })
     .finally(() => {
@@ -136,8 +139,22 @@ export async function openOffer(url: string): Promise<boolean> {
   return true;
 }
 
-/** Opens a page of the site with no key attached: billing, or plans. */
-export function openSite(url: string) {
+/**
+ * Opens a page of the site with no key attached: billing, or plans.
+ * False when a browser held the window back, which one may do for a link
+ * that arrived a moment after the click (billing's, asked for only then),
+ * so the page can offer the link itself to press.
+ */
+export function openSite(url: string): boolean {
   watchForReturn();
-  window.open(url, "_blank", "noopener,noreferrer");
+  // the app hands the window to the browser and answers null either way
+  if (window.bloks) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return true;
+  }
+  // without noopener, so that null means held back; cut loose at once
+  const opened = window.open(url, "_blank");
+  if (!opened) return false;
+  opened.opener = null;
+  return true;
 }
