@@ -106,6 +106,15 @@ export function fileBase(name: string): string {
   return name.split("/").pop() || name;
 }
 
+/** Why a shared file will not open here, said before anybody tries: this
+ * window reaches its server through Bloks Cloud, which opens files up to
+ * `openMaxBytes`, and the file is more (GitHub 366). Null when it will
+ * open, or when nothing says how much the way here carries. */
+export function tooLargeHere(size: number, openMaxBytes: number | null): string | null {
+  if (!openMaxBytes || !(size > openMaxBytes)) return null;
+  return `Too large to open through Bloks Cloud, which opens files up to ${Math.floor(openMaxBytes / 1024 / 1024)} MB.`;
+}
+
 /** Why a file did not open, in words for the person, from the status the
  * server answered. Retrying asks again for the file; it never starts a
  * turn, so it is safe to offer whatever went wrong. */

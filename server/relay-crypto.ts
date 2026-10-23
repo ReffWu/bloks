@@ -132,6 +132,14 @@ export interface RelayRequest {
   /** Which build of the app sent it ("iOS 2.1.6 (15)"), the same label a
    * phone on the network sends as x-bloks-client. Sealed like the rest. */
   client?: string;
+  /** Set with `raw` by a client that can take a file in parts, each one
+   * an ordinary answer the relay carries (relay-link.ts, servePart).
+   * `part` is which one it wants, from 0, and `tag` is what the first
+   * part said the file was, so a part of a file that changed since is
+   * refused rather than joined to the rest. */
+  parts?: boolean;
+  part?: number;
+  tag?: string;
 }
 
 /** And what it gets back. */
@@ -141,4 +149,10 @@ export interface RelayResponse {
   /** For a raw request: the content type, and the body gzipped, base64. */
   type?: string;
   z?: string;
+  /** For a request in parts: how big the whole is, how many parts it
+   * comes in, which one this is, and the tag to ask the rest by. */
+  size?: number;
+  parts?: number;
+  part?: number;
+  tag?: string;
 }

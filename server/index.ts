@@ -98,7 +98,7 @@ import {
   type CallTags,
   type WorkOrigin,
 } from "./bloks-ai.ts";
-import { type WakePreview, RelayLink, relayDeviceFor, relayInviteFor, type Wake } from "./relay-link.ts";
+import { type WakePreview, RAW_PARTS_MAX_BYTES, RelayLink, relayDeviceFor, relayInviteFor, relayTakesParts, type Wake } from "./relay-link.ts";
 import * as people from "./people.ts";
 import { mayApprove, memberCan, memberFrame, memberMessage, type MemberAction, type MemberView, type Standing as PersonStanding } from "./member-access.ts";
 import * as access from "./access.ts";
@@ -20677,6 +20677,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         href,
         // what to write in a reply: the app turns this into the viewer
         markdown: `[${info.name.replace(/[[\]]/g, "")}](${href})`,
+        // Shared all the same, since it opens on this computer. But the
+        // person's phone and their other devices reach it through Bloks
+        // Cloud, and said now the agent can make it smaller or send it
+        // another way, rather than the person finding out (GitHub 366).
+        ...(relayLink.state.configured && info.size > RAW_PARTS_MAX_BYTES
+          ? { warning: `${info.name.split("/").pop()} is too large to open on paired devices through Bloks Cloud, which opens files up to ${RAW_PARTS_MAX_BYTES / 1024 / 1024} MB. It opens on this computer; for the person's phone, make it smaller or send it another way.` }
+          : {}),
       });
     }
 
@@ -20712,6 +20719,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         "content-length": range ? range.end - range.start + 1 : opened.size,
         "accept-ranges": "bytes",
         ...(range ? { "content-range": `bytes ${range.start}-${range.end}/${opened.size}` } : {}),
+        // which version this is, so a device taking the file a part at a
+        // time through Bloks Cloud can tell when it changed in between
+        etag: `"${opened.tag}"`,
         // html artifacts render inside a sandboxed iframe; this keeps a
         // hostile file from becoming a same-origin script on the API
         "content-security-policy": "sandbox allow-scripts",
@@ -25109,6 +25119,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         partBytes: attachments.UPLOAD_PART_BYTES,
         fileMaxBytes: attachments.FILE_MAX_BYTES,
         imageMaxBytes: attachments.IMAGE_MAX_BYTES,
+        // and the most a shared file can be to open that way, so its card
+        // can say so before anybody clicks (GitHub 366). Said only to an
+        // app that takes files in parts: for one that does not, how much
+        // fits in its one answer depends on how well the file compresses.
+        ...(viaRelay !== null && relayTakesParts(req) ? { openMaxBytes: RAW_PARTS_MAX_BYTES } : {}),
       });
     }
     // A file sent in parts, so one of a few megabytes still crosses Bloks

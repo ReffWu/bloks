@@ -403,6 +403,27 @@ this machine or the same network are not cut. An answer that would still be
 too big is replaced with a short 413, so the phone hears why instead of
 waiting out the relay's timeout.
 
+A file is often more than one answer carries: about a megabyte when it
+does not compress. A device that says it takes parts (`parts: true` on a
+raw GET, feature `raw-parts`) is answered a part at a time
+(`servePart`): each part is 768 KB of the file, an ordinary ask and
+answer under the relay's limits, with the whole's `size`, how many
+`parts`, which `part` and a `tag` for the version of the file. The rest
+are asked for by number with that tag, and a part asked for by a tag the
+file no longer has is a 412, so two versions are never joined. The route
+is asked for each part's bytes alone with a `Range` header (the artifact
+route answers ranges and an `etag`); one that does not is read whole and
+sent whole when it fits, cut only when it does not. Past 50 MB a device
+is told so in a 413 that says the limit, before anything is read. A
+device that does not say it takes parts gets what it always did. The
+desktop app's stand-in server joins the parts (`electron/raw-parts.mjs`,
+a loop with no imports that a browser can use too), so the window opens
+and downloads a file of any size up to the limit, and
+`GET /api/attachments/where` says `openMaxBytes` to an app that comes
+through Bloks Cloud and takes parts, so a card says a file is too large
+before anybody clicks. `bloks share` still shares a file over it, and its answer carries
+a `warning` saying so while Bloks Cloud is on.
+
 A phone's Live Activities follow the turns the owner is waiting on
 (`server/live-activities.ts`): only a turn the owner's own message started
 or joined, from any device, never one another agent, a routine, a watcher,

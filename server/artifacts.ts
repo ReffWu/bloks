@@ -17,6 +17,7 @@
 // are one file, whatever is swapped in the directory meanwhile. A file
 // anywhere else on the computer reaches a person only by being shared
 // into it (see publish below), never by being named.
+import { createHash } from "node:crypto";
 import {
   closeSync,
   existsSync,
@@ -183,6 +184,10 @@ export function parseRange(header: string | null | undefined, size: number): { s
 /** A shared file, open: its size as the open file has it, and its bytes
  * from that same open file. */
 export interface OpenedArtifact extends ArtifactInfo {
+  /** Which version of the file this is, from the open file: another file
+   * put in its place, or this one written to, has another. A device that
+   * takes a large file a piece at a time asks every piece by it. */
+  tag: string;
   /** All of it, or a range read against `size`. Closes the file when it
    * ends, fails or is destroyed. */
   stream(range?: { start: number; end: number }): ReadStream;
@@ -199,10 +204,12 @@ export function openArtifact(botId: string, name: string): OpenedArtifact | null
   const found = holdArtifact(botId, name);
   if (!found) return null;
   const { held } = found;
+  const { dev, ino, size, mtimeMs, ctimeMs } = held.stat;
   return {
     name: found.name,
     mime: mimeOf(found.name),
-    size: held.stat.size,
+    size,
+    tag: createHash("sha256").update(`${dev}:${ino}:${size}:${mtimeMs}:${ctimeMs}`).digest("base64url").slice(0, 22),
     stream: (range) => streamHeld(held, range),
     read: (max) => readHeld(held, max),
     close: () => closeHeld(held),

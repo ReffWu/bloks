@@ -769,7 +769,8 @@ const COMMANDS = {
     about:
       "put one file in the conversation as a card the person can open in the app, here or on their phone, and get back a link " +
       "to write in your reply. The file can be anywhere on this computer you can read: it is copied into your files unless it " +
-      "is already there. --as names the copy, folders allowed (reports/q3.pdf)",
+      "is already there. --as names the copy, folders allowed (reports/q3.pdf). A `warning` in the answer means it is shared but too " +
+      "large to open on the person's paired devices through Bloks Cloud: make it smaller or send it another way",
     run: async (args) => {
       const flags = parseFlags(args);
       const [file] = positional(args);

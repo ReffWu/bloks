@@ -30,7 +30,8 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { modKey } from "@/lib/thisComputer";
-import { artifactHref, fileBase, fileTarget, openFailure, viewerFor, type Viewer } from "@/lib/sharedFile";
+import { destination } from "@/lib/attachments";
+import { artifactHref, fileBase, fileTarget, openFailure, tooLargeHere, viewerFor, type Viewer } from "@/lib/sharedFile";
 
 type ArtifactMeta = NonNullable<Message["artifact"]>;
 
@@ -83,10 +84,31 @@ async function fetchBytes(href: string): Promise<ArrayBuffer> {
   return res.arrayBuffer();
 }
 
+/** The most a shared file can be to open in this window, when it reaches
+ * its server through Bloks Cloud and the server says; null otherwise.
+ * Asked once a page (destination), so a long conversation of cards asks
+ * nothing more. */
+function useOpenLimit(): number | null {
+  const [limit, setLimit] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    void destination().then((where) => {
+      if (live) setLimit(where.throughCloud ? where.openMaxBytes : null);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return limit;
+}
+
 export function ArtifactCard({ botId, artifact }: { botId: string; artifact: ArtifactMeta }) {
   const [viewing, setViewing] = useState(false);
   const kind = kindOf(artifact);
   const href = artifactHref(botId, artifact.name);
+  // said on the card rather than after a click on View or Download, both
+  // of which would only fail (GitHub 366)
+  const tooLarge = tooLargeHere(artifact.size, useOpenLimit());
 
   return (
     <>
@@ -101,22 +123,25 @@ export function ArtifactCard({ botId, artifact }: { botId: string; artifact: Art
           <span className="block text-small text-muted-foreground">
             {kind.label} · {humanSize(artifact.size)}
           </span>
+          {tooLarge && <span className="block text-small text-muted-foreground">{tooLarge}</span>}
         </span>
-        <span className="flex shrink-0 items-center gap-1">
-          {kind.viewer !== "none" && (
-            <Button size="sm" variant="secondary" onClick={() => setViewing(true)}>
-              View
-            </Button>
-          )}
-          <a
-            href={`${href}?download`}
-            download={fileBase(artifact.name)}
-            title="Download"
-            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <Download size={15} />
-          </a>
-        </span>
+        {!tooLarge && (
+          <span className="flex shrink-0 items-center gap-1">
+            {kind.viewer !== "none" && (
+              <Button size="sm" variant="secondary" onClick={() => setViewing(true)}>
+                View
+              </Button>
+            )}
+            <a
+              href={`${href}?download`}
+              download={fileBase(artifact.name)}
+              title="Download"
+              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Download size={15} />
+            </a>
+          </span>
+        )}
       </div>
       {viewing && <ArtifactViewer botId={botId} artifact={artifact} onClose={() => setViewing(false)} />}
     </>

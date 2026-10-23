@@ -95,6 +95,11 @@ export interface Destination {
   partBytes: number;
   fileMaxBytes: number;
   imageMaxBytes: number;
+  /** The most a shared file can be to open here, when the way there is
+   * Bloks Cloud and the server says; null when it does not (on this
+   * computer or its network nothing is too large, and a server before
+   * parts cannot say). */
+  openMaxBytes: number | null;
 }
 
 /** What to go by when the server cannot say: that a path from here means
@@ -108,6 +113,7 @@ const ELSEWHERE: Destination = {
   partBytes: 384 * 1024,
   fileMaxBytes: FILE_MAX_BYTES,
   imageMaxBytes: IMAGE_MAX_BYTES,
+  openMaxBytes: null,
 };
 
 type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
@@ -130,6 +136,7 @@ export function destination(fetcher?: Fetcher): Promise<Destination> {
       partBytes: size(said.partBytes, ELSEWHERE.partBytes),
       fileMaxBytes: size(said.fileMaxBytes, ELSEWHERE.fileMaxBytes),
       imageMaxBytes: size(said.imageMaxBytes, ELSEWHERE.imageMaxBytes),
+      openMaxBytes: !sameComputer && typeof said.openMaxBytes === "number" && said.openMaxBytes > 0 ? said.openMaxBytes : null,
     };
   };
   if (fetcher) return ask().catch(() => ELSEWHERE);

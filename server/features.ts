@@ -148,4 +148,10 @@ export const FEATURES: readonly string[] = [
   // actions "full" and "restricted" on the Telegram route, `full` on each
   // person in its status, and telegramDelegate on the messages they send
   "telegram-full-access",
+  // a raw GET through Bloks Cloud answered in parts: `parts`, `part` and
+  // `tag` on the sealed request, `size`, `parts`, `part` and `tag` on each
+  // answer, 412 for a file that changed between parts, 413 past 50 MB
+  // (server/relay-link.ts, servePart); `openMaxBytes` on
+  // GET /api/attachments/where for a caller through Bloks Cloud
+  "raw-parts",
 ];
