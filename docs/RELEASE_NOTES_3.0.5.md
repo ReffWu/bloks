@@ -9,3 +9,4 @@
 ## For contributors
 
 - **A test server gets thirty seconds to start.** On a loaded machine, CI's included, starting the server could take more than ten seconds and fail a test for reasons that had nothing to do with it.
+- **The nightly tidy test runs the same at any hour.** Run in the small hours, it began inside a night the scheduler still owed a tidy, saw one run more than it counted and failed: every release built between about one and five in the morning, UTC, stopped on it.

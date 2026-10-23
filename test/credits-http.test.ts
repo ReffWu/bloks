@@ -192,7 +192,14 @@ test("the nightly tidy leaves an agent on credits alone until background work ma
   const clockHome = mkdtempSync(join(tmpdir(), "bloks-credits-clock-"));
   t.after(() => rmSync(clockHome, { recursive: true, force: true }));
   const clockFile = join(clockHome, "offset");
-  writeFileSync(clockFile, "0");
+  // The test's day starts at noon, whatever the real time. Started in the
+  // small hours, the server would begin inside a night whose tidy it is
+  // still owed and run it at once: one run more than this test counts.
+  const real = Date.now();
+  const noon = new Date(real);
+  noon.setHours(12, 0, 0, 0);
+  if (noon.getTime() <= real) noon.setDate(noon.getDate() + 1);
+  writeFileSync(clockFile, String(noon.getTime() - real));
   const h = await harness(t, {
     BLOKS_CREDITS_URL: fake.base,
     BLOKS_CREDITS_TOKEN: token,
@@ -207,8 +214,8 @@ test("the nightly tidy leaves an agent on credits alone until background work ma
   await waitFor(async () => (await h.json("/api/instances")).instances.find((i: any) => i.instanceId === "bloks" && i.snapshot.state === "available"));
   const tidyAsked = () => fake.completions.length;
 
-  const now = new Date();
-  const night = (days: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, 2, 30).getTime() - now.getTime();
+  // the clock's offset to half past two on the nights after that noon
+  const night = (days: number) => new Date(noon.getFullYear(), noon.getMonth(), noon.getDate() + days, 2, 30).getTime() - Date.now();
   writeFileSync(clockFile, String(night(1)));
   const first = await waitFor(async () => (await h.json(`/api/bots/${bot.id}/memory/tidy`)).runs[0], 20_000);
   assert.ok(first, "the night came");
