@@ -696,12 +696,20 @@ const PHOTO_MIMES = new Set(["image/png", "image/jpeg", "image/webp"]);
  * should not bury the chat; the rest are a tap away in the app. */
 export const FILES_PER_TURN = 5;
 
+/** The most Telegram shows under a photo or a file. */
+export const CAPTION_MAX_CHARS = 1024;
+/** Why a file over UPLOAD_MAX_BYTES did not go, in the words every
+ * answer about one uses. */
+export const TOO_BIG = "over Telegram's 50 MB";
+
 /** A file to send: what it is called, what it is, how big, and its bytes
- * when asked for, so nothing is read that is not going to be sent. */
+ * when asked for, so nothing is read that is not going to be sent. A
+ * caption, when there is one, goes under it as plain text. */
 export interface Deliverable {
   name: string;
   mime: string;
   size: number;
+  caption?: string;
   blob(): Promise<Blob>;
 }
 
@@ -712,6 +720,7 @@ async function upload(token: string, method: string, field: string, chatId: numb
     const form = new FormData();
     form.set("chat_id", String(chatId));
     form.set(field, await file.blob(), file.name);
+    if (file.caption) form.set("caption", file.caption);
     if (canSend && !canSend()) throw new Error("the Telegram connection changed");
     const response = await fetch(`${API}/bot${token}/${method}`, {
       method: "POST",
@@ -735,6 +744,18 @@ export async function sendFile(token: string, chatId: number, file: Deliverable,
   }
 }
 
+/** One file sent, or why not in a few words ("" when it went): the same
+ * reasons sendFiles names, for an answer about a single file. */
+export async function trySendFile(token: string, chatId: number, file: Deliverable, canSend?: () => boolean): Promise<string> {
+  if (file.size > UPLOAD_MAX_BYTES) return TOO_BIG;
+  try {
+    await sendFile(token, chatId, file, canSend);
+    return "";
+  } catch (error) {
+    return reason(error);
+  }
+}
+
 /**
  * What a turn produced, sent to the chat, a few at most, one after
  * another so they arrive in order. Returns a line for the person about
@@ -749,19 +770,16 @@ export async function sendFiles(token: string, chatId: number, files: Deliverabl
   for (const file of files) {
     if (canSend && !canSend()) break;
     if (file.size > UPLOAD_MAX_BYTES) {
-      missing.push(`${file.name} (over Telegram's 50 MB)`);
+      missing.push(`${file.name} (${TOO_BIG})`);
       continue;
     }
     if (sent >= max) {
       over++;
       continue;
     }
-    try {
-      await sendFile(token, chatId, file, canSend);
-      sent++;
-    } catch (error) {
-      missing.push(`${file.name} (${reason(error)})`);
-    }
+    const why = await trySendFile(token, chatId, file, canSend);
+    if (why) missing.push(`${file.name} (${why})`);
+    else sent++;
   }
   const left = missing.length + over;
   if (over) missing.push(`${over} more ${over === 1 ? "file" : "files"} (only ${max} come with an answer)`);

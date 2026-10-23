@@ -215,6 +215,12 @@ export const RULES: Rule[] = [
   // app on any device. The command reads the file, as the agent, and
   // sends its bytes; the route never reads a path it is given.
   { method: "POST", path: "/api/bots/:me/artifacts", why: "share one file into the conversation as a card the person can open, and get a link to it" },
+  // One file to the person's Telegram chat with this agent's own bot,
+  // whatever started the turn. Its own bot and its own paired chat only,
+  // and a file from its own folders only: the route judges the path it
+  // is given and the pairing as it stands. Its Telegram settings stay the
+  // person's (/api/bots/:id/telegram is not on this list).
+  { method: "POST", path: "/api/bots/:me/telegram/send", why: "send one file from its working folder or its own files to the person's Telegram chat with its own bot, while that bot is paired with them" },
 
   // Skills it can consult, and its own settings.
   { method: "GET", path: "/api/skills", why: "see the skill library" },
@@ -358,6 +364,9 @@ export function allows(botId: string, method: string, path: string, inRoom: InRo
   // its own things, being asked for on somebody else's behalf
   if (/^\/api\/bots\/[\w-]+\/(memory(\/topics\/[^/]+)?|artifacts)$/.test(clean)) {
     return { ok: false, reason: "an agent can only read and write its own memory and files" };
+  }
+  if (/^\/api\/bots\/[\w-]+\/telegram\/send$/.test(clean)) {
+    return { ok: false, reason: "an agent can only send files to its own Telegram chat" };
   }
   return { ok: false, reason: `${verb} ${clean} is not on the list of things an agent can do` };
 }

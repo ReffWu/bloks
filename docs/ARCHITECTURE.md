@@ -1806,7 +1806,17 @@ so the rest and anything bigger are named in one line saying they are in
 the app. A request held through a restart gets its files after its answer
 the same way (`TelegramReturns`), and only once that answer has arrived.
 Files go only with an answer that goes to the chat: a turn started in
-the app, a routine or a mail sends nothing there.
+the app, a routine or a mail sends nothing there on its own. An agent
+sends one there itself, whatever started its turn, with `bloks telegram
+send <file> [--caption "..."]` (`POST /api/bots/:me/telegram/send`,
+GitHub 367): only to the owner's chat with its own bot, only while that
+pairing holds (asked again before the upload), a file of up to 50 MB in
+its own files, its own workspace or the folder its turns work in, judged
+as the open file (`openUnder`: links followed and judged inside, nothing
+hidden on the way), with a caption of up to 1024 characters, and at most
+`MAX_TELEGRAM_SENDS_PER_HOUR` an hour. The answer says whether it went,
+and why not in the words a turn's files use. A paired agent is told the
+command alongside `bloks share`.
 
 While a Telegram turn runs the chat shows "typing" (`keepTyping`).
 Completed visible notes from its consuming turn go out as new silent messages

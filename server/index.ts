@@ -17,7 +17,7 @@ import { connect as netConnect } from "node:net";
 import { pipeline, type Duplex } from "node:stream";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { extname, join, relative, resolve, sep } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import * as attachments from "./attachments.ts";
 import { agentTurnLimit, validTurnLimit, pastAgentLimit, chainName, chainExcerpt, chainLimitText, chainAgentRefusal, MIN_AGENT_CHAIN_LIMIT, MAX_AGENT_CHAIN_LIMIT, agentTaskBudget, validTaskBudget, chainPast, taskFor, taskName, chainHoldText, MIN_TASK_BUDGET, MAX_TASK_BUDGET, type ChainBound, type ChainTask } from "./agent-chain.ts";
@@ -188,6 +188,7 @@ import {
   MAX_SKILLS,
   MAX_SSE_CLIENTS,
   MAX_TELEGRAM_GROUP_REQUESTS_PER_HOUR,
+  MAX_TELEGRAM_SENDS_PER_HOUR,
   MAX_TITLE_CHARS,
   MAX_URL_CHARS,
 } from "./limits.ts";
@@ -560,7 +561,7 @@ import { PriceBook, PRICES_URL, readOwnPrice, type OwnPrice } from "./model-pric
 import { TeamLibrary } from "./team-library.ts";
 import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam } from "./team-file.ts";
 import * as artifacts from "./artifacts.ts";
-import { closeHeld, openInside, readHeld, streamHeld } from "./open-inside.ts";
+import { closeHeld, openInside, openUnder, readHeld, streamHeld } from "./open-inside.ts";
 import * as workspace from "./workspace.ts";
 import * as speech from "./speech.ts";
 import { speakable } from "./speech-text.ts";
@@ -6374,7 +6375,7 @@ async function startClaimedTurn(
       "This is an email from someone the person you work for has not listed. Answer it from what you know, in conversation only: you have no tools here, and nothing private of theirs is yours to share.",
     // Not for a Telegram person: that folder is Bloks' own, refused to
     // their turn, and no file reaches them anyway.
-    !guestMail && !personSource && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, video, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place. Most answers need no file: a fact, a quick pick or a small comparison is a reply. Make one when it is asked for, when it will be kept, shared or come back to, or when a decision with real stakes needs more facts than a reply can hold. ${runsAProcess(instance.driverKind) ? `Before you make a page, report, comparison or deck, read the ${PAGE_DESIGN} skill and follow it. In short: ${PAGE_DESIGN_SHORT}` : PAGE_DESIGN_SHORT} Once you have made one, your reply is a sentence or two: what it is and its headline. Never repeat the file in the chat as a list.${!sharing && runsAProcess(instance.driverKind) ? ` To show the user a file that is already there, or one saved anywhere else on this computer, run \`${cliCommand} share <path>\`: it puts that one file in the chat as a card and answers with a link to it you can write in your reply.` : ""}`,
+    !guestMail && !personSource && `Deliverables: when you produce a file for the user (a report, web page, slide deck, spreadsheet, PDF, chart), save it to ${artifacts.artifactsDir(bot.id)} with a descriptive filename. Files saved there appear in the chat as cards the user can open in-app or download. HTML, PDF, images, video, CSV, XLSX, markdown and text all render in-app; for slide decks, save an HTML version alongside any .pptx so the deck is viewable in place. Most answers need no file: a fact, a quick pick or a small comparison is a reply. Make one when it is asked for, when it will be kept, shared or come back to, or when a decision with real stakes needs more facts than a reply can hold. ${runsAProcess(instance.driverKind) ? `Before you make a page, report, comparison or deck, read the ${PAGE_DESIGN} skill and follow it. In short: ${PAGE_DESIGN_SHORT}` : PAGE_DESIGN_SHORT} Once you have made one, your reply is a sentence or two: what it is and its headline. Never repeat the file in the chat as a list.${!sharing && runsAProcess(instance.driverKind) ? ` To show the user a file that is already there, or one saved anywhere else on this computer, run \`${cliCommand} share <path>\`: it puts that one file in the chat as a card and answers with a link to it you can write in your reply.` : ""}${!sharing && runsAProcess(instance.driverKind) && telegramBinding(bot.id)?.enabled && telegramBinding(bot.id)?.ownerChatId !== undefined ? ` Your Telegram bot is paired with the person. To send them a file there too, run \`${cliCommand} telegram send <path> [--caption "<words>"]\`; a turn they started on Telegram already sends what you saved back to them.` : ""}`,
     HOUSE_STYLE,
     // In a room, who else is here and who decides. Solo chats stay silent
     // about all of it.
@@ -12949,6 +12950,11 @@ async function takeTelegramGroup(runtime: TelegramRuntime, parts: telegram.Incom
 }
 
 const TELEGRAM_GROUP_HOUR_MS = 60 * 60_000;
+/** When each agent sent a file to its own Telegram chat in the last hour
+ * (bloks telegram send), against MAX_TELEGRAM_SENDS_PER_HOUR. Kept by
+ * agent rather than by connection, so pairing again does not start it
+ * over. */
+const telegramSends = new Map<string, number[]>();
 
 /** Every let-in person's group request can be a turn on the owner's
  * engine, and a busy group has many of them. Past the hour's share the
@@ -20730,6 +20736,79 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // a viewer that hangs up early takes the open file with it
       pipeline(opened.stream(range), res, () => {});
       return;
+    }
+
+    // ── one file to the agent's own Telegram chat (bloks telegram send) ──
+    // A file goes back to Telegram on its own only after a turn a Telegram
+    // message started (telegramFiles). An agent working from the app, a
+    // routine or another agent's message had no way to send the person
+    // the picture it made, there or anywhere else (GitHub 367). This is
+    // that way, and only that: the chat of the owner this agent's own bot
+    // is paired with, while the pairing holds, and a file from the agent's
+    // own folders, judged as the open file it is (open-inside.ts).
+    m = path.match(/^\/api\/bots\/([\w-]+)\/telegram\/send$/);
+    if (m && method === "POST") {
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      if (!local) return json(res, 403, { error: "a file is sent to Telegram from the computer it is on" });
+      if (asAgent && asAgent.botId !== bot.id) return json(res, 403, { error: "an agent can only send files to its own Telegram chat" });
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const wanted = typeof body.path === "string" ? body.path : "";
+      const caption = typeof body.caption === "string" ? body.caption.trim() : "";
+      if (!wanted || !isAbsolute(wanted)) return json(res, 400, { error: "telegram send needs the file, as a path" });
+      if (caption.length > telegram.CAPTION_MAX_CHARS) {
+        return json(res, 400, { error: `a caption is ${telegram.CAPTION_MAX_CHARS} characters at most, and that one is ${caption.length}` });
+      }
+      if (!telegramBinding(bot.id)?.token) {
+        return json(res, 409, { error: "you have no Telegram bot, so there is no chat to send to. Ask the person to connect one with `telegram connect @<your bot's username>`" });
+      }
+      const runtime = liveTelegram(bot.id);
+      const chatId = runtime ? currentTelegram(runtime)?.ownerChatId : undefined;
+      if (!runtime || chatId === undefined) {
+        return json(res, 409, { error: "your Telegram bot is not paired with the person's chat, or is switched off, so nothing was sent. Only the person can pair it or switch it on, in your settings in the app" });
+      }
+      // Its own files, the place its turns work in, and its own workspace,
+      // which is that place when nobody chose another.
+      const lane = bot.tasks.find((t) => t.id === asAgent?.taskId) ?? bot.tasks.find((t) => t.id === activeLaneOf(bot));
+      const roots = [artifacts.artifactsDir(bot.id), workspace.workspaceDir(bot.id), ...(lane ? [laneFolder(bot, lane)] : [])];
+      let held: ReturnType<typeof openUnder>;
+      try {
+        held = openUnder(roots, wanted);
+      } catch {
+        return json(res, 500, { error: `${wanted} could not be read` });
+      }
+      if (typeof held === "string") {
+        const refused = {
+          absent: [404, `there is no file at ${wanted}`],
+          folder: [400, "telegram send takes one file, not a folder. Send the files in it one at a time"],
+          hidden: [403, `${wanted} is a hidden file, or in a hidden folder, and is not sent`],
+          outside: [403, `${wanted} is outside your working folder and your own files (${artifacts.artifactsDir(bot.id)}). Save or copy it there first`],
+        } as const;
+        return json(res, refused[held][0], { error: refused[held][1] });
+      }
+      const name = basename(held.path);
+      if (held.stat.size > telegram.UPLOAD_MAX_BYTES) {
+        closeHeld(held);
+        return json(res, 413, { error: `${name} was not sent: ${telegram.TOO_BIG}` });
+      }
+      const now = Date.now();
+      const recent = (telegramSends.get(bot.id) ?? []).filter((at) => now - at < 60 * 60_000);
+      if (recent.length >= MAX_TELEGRAM_SENDS_PER_HOUR) {
+        closeHeld(held);
+        return json(res, 429, { error: `${name} was not sent: an agent sends at most ${MAX_TELEGRAM_SENDS_PER_HOUR} files to Telegram an hour. Try again later` });
+      }
+      const bytes = readHeld(held, telegram.UPLOAD_MAX_BYTES);
+      if (!bytes) return json(res, 500, { error: `${name} could not be read` });
+      telegramSends.set(bot.id, [...recent, now]);
+      const mime = artifacts.mimeOf(name);
+      const file: telegram.Deliverable = { name, mime, size: bytes.length, ...(caption ? { caption } : {}), blob: async () => new Blob([bytes], { type: mime }) };
+      // the pairing asked again before each try, since an upload can
+      // outlast it
+      const still = () => currentTelegram(runtime)?.ownerChatId === chatId;
+      const why = await telegram.trySendFile(runtime.token, chatId, file, still);
+      if (why) return json(res, 502, { error: `${name} was not sent: ${why}` });
+      const username = currentTelegram(runtime)?.username;
+      return json(res, 200, { ok: true, sent: name, note: `sent to the person's Telegram chat${username ? ` with @${username}` : ""}` });
     }
 
     m = path.match(/^\/api\/bots\/([\w-]+)\/tasks$/);

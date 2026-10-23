@@ -160,6 +160,42 @@ export function openInsideOr(root: string, name: string | readonly string[]): He
   return "outside";
 }
 
+/**
+ * The regular file at an absolute `path`, open, when it really is inside
+ * one of `roots` (links followed, then judged inside, as openInside does
+ * with a name) and nothing on the way to it from there is hidden; or why
+ * not: "absent", "folder", "hidden" (a dot file or a dot folder, where a
+ * key or a repository's history lives), or "outside". For a route that is
+ * handed a path by an agent, so what it opens is a file in the agent's
+ * own folders and that file alone.
+ */
+export function openUnder(roots: readonly string[], path: string): HeldFile | "absent" | "folder" | "hidden" | "outside" {
+  let real: string;
+  try {
+    real = realpathSync(path);
+  } catch {
+    return "absent";
+  }
+  for (const root of roots) {
+    let base: string;
+    try {
+      base = realpathSync(root);
+    } catch {
+      continue;
+    }
+    if (!within(base, real)) continue;
+    const parts = relative(base, real).split(sep);
+    if (parts.some((part) => part.startsWith("."))) return "hidden";
+    try {
+      if (statSync(real).isDirectory()) return "folder";
+    } catch {
+      return "absent";
+    }
+    return openInsideOr(base, parts);
+  }
+  return "outside";
+}
+
 /** Lets a held file go, once: the descriptor is forgotten as it is
  * closed, so a second call cannot close a number reused since. */
 export function closeHeld(held: Pick<HeldFile, "fd">): void {

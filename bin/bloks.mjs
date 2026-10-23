@@ -434,13 +434,37 @@ const COMMANDS = {
     },
   },
   telegram: {
-    use: "telegram connect @<your bot's username>",
+    use: 'telegram connect @<your bot\'s username> | telegram send <file> [--caption "<words>"]',
     about:
-      "ask the person to connect a Telegram bot you made for yourself with BotFather: a card in the chat names you and the bot, " +
-      "they paste its token there, and it goes to your own Telegram settings without ever being shown to you. Pairing stays theirs. End your turn after asking",
+      "connect: ask the person to connect a Telegram bot you made for yourself with BotFather: a card in the chat names you and the bot, " +
+      "they paste its token there, and it goes to your own Telegram settings without ever being shown to you. Pairing stays theirs. End your turn after asking. " +
+      "send: send one file from your working folder or your own files to the person's Telegram chat with your bot, whatever started this turn, " +
+      "up to 50 MB, with an optional caption of up to 1024 characters. Only while your bot is paired with them. A turn they started on Telegram " +
+      "already sends the files it saved back there, so do not send those again. The answer says whether it went",
     run: async (args) => {
-      const [action, name, ...rest] = args;
-      if (action !== "connect" || !name || rest.length) throw new Error("telegram takes connect and your bot's username, like telegram connect @PlanningBot");
+      const [action, ...rest] = args;
+      if (action === "send") {
+        const flags = parseFlags(rest);
+        const files = positional(rest);
+        if (files.length !== 1) throw new Error('telegram send takes one file, like telegram send chart.png --caption "The Q3 chart"');
+        // the path as the agent sees it, judged again by the workspace,
+        // which opens only a file in the agent's own folders
+        const at = resolve(files[0]);
+        let real;
+        try {
+          real = realpathSync(at);
+        } catch {
+          throw new Error(`there is no file at ${at}`);
+        }
+        if (!statSync(real).isFile()) throw new Error("telegram send takes one file, not a folder. Send the files in it one at a time");
+        const caption = flags.caption !== undefined && flags.caption !== "true" ? flags.caption : undefined;
+        const me = await request("GET", "/api/agent/whoami");
+        return request("POST", `/api/bots/${me.botId}/telegram/send`, { path: at, ...(caption ? { caption } : {}) });
+      }
+      const [name, ...more] = rest;
+      if (action !== "connect" || !name || more.length) {
+        throw new Error('telegram takes connect and your bot\'s username, like telegram connect @PlanningBot, or send and a file, like telegram send chart.png');
+      }
       const me = await request("GET", "/api/agent/whoami");
       return request("POST", `/api/bots/${me.botId}/secrets`, { telegramBot: name });
     },
