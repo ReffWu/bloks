@@ -85,4 +85,7 @@ test('tools read as the driver reads them: promised, switched on by the owner, o
   assert.deepEqual(tools({driver:'openrouter'}),value(true));
   // no switch on a catalog engine: a stray flag changes nothing
   assert.deepEqual(tools({driver:'ollama',config:{tools:true}}),value(false));
+  assert.deepEqual(field(inspectCustomEndpoint({...host,vision:true},ctx),'vision').effective,value(true));
+  assert.deepEqual(field(inspectCustomEndpoint(host,ctx),'vision').effective,value(false));
+  assert.deepEqual(field(inspectEngineSettings({driver:'custom',config:{url:'https://example.test/v1',vision:true}},ctx,true),'config.vision').effective,value(true));
 });

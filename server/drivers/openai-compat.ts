@@ -31,6 +31,7 @@ import { appendNative } from "./native.ts";
 import { BOAT_API } from "../boat.ts";
 import { callSignature } from "../repeats.ts";
 import { PERSON_REPLY_TOOL } from "../person-turn.ts";
+import type { TurnImage } from "../attachments.ts";
 
 export interface CompatConfig {
   url: string;
@@ -38,6 +39,39 @@ export interface CompatConfig {
   /** The owner switched tools on for this instance. Read only for a spec
    * that leaves them to the owner (ProviderSpec.toolsOptIn). */
   tools?: boolean;
+  /** The person says the model behind this URL sees pictures (a custom
+   * endpoint's switch), so a turn's attached images go to it as pictures. */
+  vision?: boolean;
+}
+
+/** A turn's words with its pictures beside them, in the shape the chat
+ * API takes: a text part, then one image part each, sent inline as data
+ * URLs since the server at the other end cannot read our disk. llama.cpp
+ * takes exactly this when its model was started with a vision projector. */
+export function withImages(text: string, images: readonly TurnImage[] | undefined) {
+  if (!images?.length) return text;
+  return [
+    { type: "text", text },
+    ...images.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mime};base64,${image.data}` } })),
+  ];
+}
+
+/** The same messages for the native copy, each picture written as its
+ * size. Its bytes say nothing about the wire format, and pictures written
+ * whole would fill the file in an afternoon. */
+function described(messages: Array<{ role: string; content: unknown }>) {
+  return messages.map((m) =>
+    Array.isArray(m.content)
+      ? {
+          ...m,
+          content: m.content.map((part: any) =>
+            part?.type === "image_url" && typeof part.image_url?.url === "string"
+              ? { ...part, image_url: { url: `${part.image_url.url.slice(0, part.image_url.url.indexOf(",") + 1)}(${part.image_url.url.length} characters)` } }
+              : part,
+          ),
+        }
+      : m,
+  );
 }
 
 /** How long a streamed reply may go without a byte before it is treated
@@ -508,6 +542,8 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
       // only a literal true: a flag that arrived as "yes" or 1 is a
       // config nobody meant, and the safe reading of it is chat only
       ...(spec.toolsOptIn && o.tools === true ? { tools: true } : {}),
+      // the same reading for pictures: only a literal true sends them
+      ...(o.vision === true ? { vision: true } : {}),
     };
   };
 
@@ -533,6 +569,23 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
       // Said with the name the person gave it: "Custom refused the tools"
       // is no help to someone with three hosts added.
       const shownName = input.displayName ?? spec.name;
+      // whether a turn's pictures are sent as pictures: the provider's
+      // own word for every model it serves, or the person's for this URL
+      const sees = spec.vision === true || config.vision === true;
+      /** What a refused call says. One that carried pictures and was
+       * refused over them says so in plain words: a model that does not
+       * see reads otherwise as a server fault, and llama.cpp started
+       * without its vision projector answers exactly that way. */
+      const refused = (status: number, body: string, messages: Array<{ content: unknown }>) => {
+        const pictured = messages.some((m) => Array.isArray(m.content) && m.content.some((part: any) => part?.type === "image_url"));
+        if (pictured && /image|vision|mmproj|multimodal/i.test(body)) {
+          return new Error(
+            `${shownName} could not take the image, because its model does not see images. ` +
+              (config.vision ? "Load one that does (llama.cpp needs its --mmproj file), or turn off Sees images for it in Settings." : "Send it again without the image."),
+          );
+        }
+        return new Error(`${spec.name} HTTP ${status}${body ? `: ${body.slice(0, 200)}` : ""}`);
+      };
       const listeners = new Set<RuntimeEventListener>();
       const active = new Map<
         string,
@@ -655,7 +708,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
       };
 
       const complete = async (
-        messages: Array<{ role: string; content: string }>,
+        messages: Array<{ role: string; content: string | ReturnType<typeof withImages> }>,
         model: string,
         opts: { stream: boolean; signal?: AbortSignal; onDelta?: (d: string) => void; tags?: CallTags },
       ): Promise<{ text: string; usage: Usage | null }> => {
@@ -666,7 +719,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         }, opts.tags);
         if (!res.ok) {
           const body = await res.text().catch(() => "");
-          throw new Error(`${spec.name} HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
+          throw refused(res.status, body, messages);
         }
         if (!opts.stream) {
           const json: any = await res.json();
@@ -775,7 +828,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
           // Only an owner's opt-in is read this way. A catalog engine's
           // tools are this build's promise, and its refusal is a fault.
           if (config.tools && refusedTools(res.status, body)) throw toolsRefused(`HTTP ${res.status}`, body);
-          throw new Error(`${spec.name} HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
+          throw refused(res.status, body, messages);
         }
         const json: any = await res.json();
         // Some gateways refuse with a 200 and an error where the choices
@@ -1089,12 +1142,14 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
             role: m.role === "assistant" ? "assistant" : "user",
             content: m.text,
           })),
-          { role: "user", content: turn.text },
+          // only the turn's own pictures: earlier ones are not sent again
+          // each turn, which a small local window could not hold
+          { role: "user", content: sees ? withImages(turn.text, turn.images) : turn.text },
         ];
         appendNative(threadId, {
           dir: "out",
           source: `${spec.kind}.chat.completions`,
-          msg: { model, messages },
+          msg: { model, messages: described(messages) },
         });
 
         emit({ ...base(threadId, turnId), type: "turn.started" });
@@ -1205,7 +1260,7 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
         snapshot,
         adapter: {
           provider: spec.kind,
-          capabilities: { sessionModelSwitch: "in-session", replaysNatively: true, replyToSender: toolLoop, toolLoop },
+          capabilities: { sessionModelSwitch: "in-session", replaysNatively: true, replyToSender: toolLoop, toolLoop, ...(sees ? { images: true } : {}) },
           sendTurn,
           interruptTurn: async (threadId) => active.get(threadId)?.abort.abort(),
           respondToRequest: async (threadId, requestId, decision) => {

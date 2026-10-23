@@ -211,6 +211,10 @@ export interface SendTurnInput {
   codexSpeed?: import("./codex-speed.ts").CodexSpeedChoice;
   threadId: ThreadId;
   text: string;
+  /** The pictures `text` attaches, read back as bytes, for an engine that
+   * takes pictures rather than paths (capabilities.images). The words
+   * still name each one. Set only for such an engine. */
+  images?: import("./attachments.ts").TurnImage[];
   model?: string;
   /** Run without the engine's hooks (Claude Code: plugins and settings
    * hooks). Engines without hooks ignore it. */
@@ -374,6 +378,10 @@ export interface ProviderAdapter {
     toolLoop?: boolean;
     /** Takes `compactFirst` on a turn (see SendTurnInput). */
     compactsFirst?: boolean;
+    /** Takes a turn's attached pictures as pictures (SendTurnInput.images).
+     * Absent on an engine that is sent only their paths, which one with a
+     * shell opens itself and an API model cannot see at all. */
+    images?: boolean;
     /** The reasoning effort levels this driver passes on to its engine,
      * least first. Absent is an engine with no dial, whose turns are sent
      * no effort (server/effort.ts). */

@@ -55,6 +55,11 @@ export interface ProviderSpec {
    * whose model is whatever someone loaded there, where only the person
    * who set it up knows whether it calls tools. */
   toolsOptIn?: boolean;
+  /** Whether every model this provider serves takes pictures, so a turn's
+   * attached images are sent to it as pictures. Off where it depends on
+   * the model; a custom endpoint is switched on by the person instead
+   * (CustomEndpoint.vision). */
+  vision?: boolean;
 }
 
 const OPENROUTER: ProviderSpec = {
@@ -94,6 +99,9 @@ const OPENROUTER: ProviderSpec = {
 const GEMINI: ProviderSpec = {
   kind: "gemini",
   tools: true,
+  // every Gemini model reads pictures, and its OpenAI-shaped door takes
+  // them inline as image_url data URLs
+  vision: true,
   name: "Gemini",
   url: "https://generativelanguage.googleapis.com/v1beta/openai",
   auth: "key",

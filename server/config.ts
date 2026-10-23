@@ -50,6 +50,11 @@ export interface CustomEndpoint {
    * which turns the API tool loop on for it. Missing is chat only: no
    * one but them knows what is loaded there. */
   tools?: boolean;
+  /** The person says the model behind this URL sees pictures, so a turn's
+   * attached images are sent to it as pictures. Nobody can tell from the
+   * outside (a llama.cpp server sees only with a vision projector loaded),
+   * so it is theirs to say, and off until they do. */
+  vision?: boolean;
 }
 
 export interface AppConfig {
@@ -496,7 +501,7 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
     map[customInstanceId(endpoint.id)] = {
       driver: CUSTOM_SPEC.kind,
       displayName: endpoint.name,
-      config: { url: endpoint.url, ...(endpoint.tools === true ? { tools: true } : {}) },
+      config: { url: endpoint.url, ...(endpoint.tools === true ? { tools: true } : {}), ...(endpoint.vision === true ? { vision: true } : {}) },
       environment: { [envVarFor(CUSTOM_SPEC.kind)]: cred.key },
     };
   }

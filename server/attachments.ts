@@ -31,7 +31,7 @@ import { pipeline } from "node:stream";
 
 import { DATA_DIR } from "./config.ts";
 import { PART_BYTES } from "./move-upload.ts";
-import { openInside, streamHeld } from "./open-inside.ts";
+import { openInside, readHeld, streamHeld } from "./open-inside.ts";
 
 const ATTACHMENTS_DIR = join(DATA_DIR, "attachments");
 
@@ -158,6 +158,53 @@ export function serveAttachment(name: string, res: ServerResponse): void {
     "cache-control": "private, max-age=31536000, immutable",
   });
   pipeline(streamHeld(held), res, () => {});
+}
+
+// ── pictures a prompt carries ──────────────────────────────────────────
+
+/** How a picture is named in the words a turn is sent, as the app writes
+ * it (composeOutgoing in src/lib/attachments.ts) and Telegram's are. */
+const IMAGE_TAG = /<attached-image\s+path="([^"]*)"\s*\/>/g;
+
+/** The most pictures one turn is sent as pictures. Past this the rest
+ * still go by name, which is how every engine had them before. */
+export const MAX_TURN_IMAGES = 8;
+
+/** A picture as an engine is sent it: what it is, and its bytes in base64. */
+export interface TurnImage {
+  mime: string;
+  data: string;
+}
+
+/** Whether these words attach a picture at all. */
+export function hasAttachedImage(text: string): boolean {
+  return /<attached-image\s+path="/.test(text);
+}
+
+/**
+ * The pictures these words attach, read back for an engine that is sent
+ * pictures rather than paths (GitHub 365). A path in a prompt is somebody's
+ * words, so it is only ever a name to look up here: its last part, by
+ * either slash, which is the same file whether it was written on Windows,
+ * on a Mac or as a file URL. Only a name this module minted is looked for,
+ * opened inside the folder the way serveAttachment opens one, and read as
+ * what it really is. One that is gone, too big or not a picture is left
+ * out, and the words still name it.
+ */
+export function attachedImages(text: string): TurnImage[] {
+  const images: TurnImage[] = [];
+  const seen = new Set<string>();
+  for (const [, path] of text.matchAll(IMAGE_TAG)) {
+    if (images.length >= MAX_TURN_IMAGES) break;
+    const name = path!.split(/[\\/]/).at(-1) ?? "";
+    if (!SAFE_NAME.test(name) || seen.has(name)) continue;
+    seen.add(name);
+    const held = openInside(ATTACHMENTS_DIR, [name]);
+    const bytes = held ? readHeld(held, IMAGE_MAX_BYTES) : null;
+    const mime = bytes ? sniffImage(bytes) : null;
+    if (bytes && mime) images.push({ mime, data: bytes.toString("base64") });
+  }
+  return images;
 }
 
 // ── files sent in parts ────────────────────────────────────────────────

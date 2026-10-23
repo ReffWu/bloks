@@ -7244,6 +7244,28 @@ async function startClaimedTurn(
         if (sending.handoff) sending.handoff = `${note}\n\n${sending.handoff}`;
       }
       sending.codexSpeed = codexSpeed;
+      // The pictures this turn's own words attach go as pictures to an
+      // engine that takes them (GitHub 365). An API model that is not
+      // set to see them gets only their paths, which it cannot open, so
+      // the chat says so rather than leave the agent to explain it has
+      // no eyes. Once per message: a retry of it is the same message.
+      if (!command && attachments.hasAttachedImage(text)) {
+        if (engine.adapter.capabilities.images) {
+          const images = attachments.attachedImages(text);
+          if (images.length) sending.images = images;
+        } else if (specFor(engine.driverKind) && !opts.retry && !opts.carriedOn) {
+          const name = engine.displayName ?? specFor(engine.driverKind)!.name;
+          const notice = store.appendMessage(roomId, {
+            role: "bot",
+            ...(blok ? { from: bot.id } : {}),
+            kind: "notice",
+            text: engine.driverKind === CUSTOM_SPEC.kind
+              ? `${name} is not set to see images, so the image was not sent to it. If its model can see them, turn on Sees images for it under Your endpoints in Settings.`
+              : `${name} is not set to see images, so the image was not sent to it.`,
+          });
+          broadcast({ kind: "message", threadId: roomId, message: notice });
+        }
+      }
       const textOrigin: { origin: CodexText["origin"]; turnId?: string } = { origin: opts.byYou ? "person" : !opts.recovery && !opts.routine && (opts.from || opts.answering || opts.roomAgentStarted) ? "agent" : opts.recovery ? "unknown" : "other" };
       if (engine.driverKind === "codex") codexOrigins.set(task.id, textOrigin);
       try {
@@ -16047,6 +16069,7 @@ function customCatalog() {
         name: endpoint.name,
         url: endpoint.url,
         instanceId: customInstanceId(endpoint.id),
+        vision: endpoint.vision === true,
         activeKeyId: active?.id ?? null,
         // false is chat only, which is what a host nobody vouched for is
         tools: endpoint.tools === true,
@@ -21354,14 +21377,26 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       await persistCustom(next);
       return json(res, 200, customCatalog());
     }
-    // Whether the model behind a host can use tools is the one thing
-    // about it that changes in place. The rest is a new host or a key.
+    // What the model behind a host can do (call tools, see pictures) is
+    // what changes in place, and only the person can say it (GitHub 359,
+    // 365). The rest is a new host or a key.
     if (m && method === "PATCH") {
       const endpoint = (cfg.custom ?? []).find((entry) => entry.id === m![1]);
       if (!endpoint) return json(res, 404, { error: "no such endpoint" });
       const body = await readBody(req);
-      if (typeof body.tools !== "boolean") return json(res, 400, { error: "tools must be true or false" });
-      const next = (cfg.custom ?? []).map((entry) => (entry.id === endpoint.id ? withCustomTools(entry, body.tools === true) : entry));
+      if (body.tools === undefined && body.vision === undefined) return json(res, 400, { error: "say tools or vision" });
+      if (body.tools !== undefined && typeof body.tools !== "boolean") return json(res, 400, { error: "tools must be true or false" });
+      if (body.vision !== undefined && typeof body.vision !== "boolean") return json(res, 400, { error: "vision must be true or false" });
+      const next = (cfg.custom ?? []).map((entry) => {
+        if (entry.id !== endpoint.id) return entry;
+        let changed = typeof body.tools === "boolean" ? withCustomTools(entry, body.tools) : entry;
+        // off is no field at all, as for tools
+        if (typeof body.vision === "boolean") {
+          const { vision: _was, ...rest } = changed;
+          changed = body.vision ? { ...rest, vision: true } : rest;
+        }
+        return changed;
+      });
       await persistCustom(next);
       return json(res, 200, customCatalog());
     }

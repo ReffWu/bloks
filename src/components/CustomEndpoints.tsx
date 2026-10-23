@@ -29,6 +29,8 @@ export interface CustomEndpointRow {
   name: string;
   url: string;
   instanceId: string;
+  /** Attached images go to its model as pictures (GitHub 365). */
+  vision?: boolean;
   activeKeyId: string | null;
   /** Off is chat only. */
   tools: boolean;
@@ -47,6 +49,25 @@ function ToolsSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) =>
         </span>
       </span>
       <Switch checked={on} onCheckedChange={onChange} aria-label="This model can use tools" />
+    </label>
+  );
+}
+
+/** The person's word that the model behind this URL sees pictures, so a
+ * turn's attached images go to it as pictures. Nobody can tell from the
+ * outside: llama.cpp sees only with its vision projector loaded. */
+function SeesImages({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-3 text-body text-foreground">
+      <span className="min-w-0">
+        Sees images
+        <span className="block text-small text-muted-foreground">
+          {on
+            ? "Attached images go to the model. Turn off if it can't see them."
+            : "Images stay out. Turn on if the model can see them."}
+        </span>
+      </span>
+      <Switch checked={on} onCheckedChange={onChange} aria-label="Sees images" />
     </label>
   );
 }
@@ -125,6 +146,17 @@ export function CustomEndpoints() {
       });
   };
 
+  const switchVision = (id: string, on: boolean) => {
+    setError(null);
+    setEndpoints((rows) => rows && rows.map((row) => (row.id === id ? { ...row, vision: on } : row)));
+    api(`/api/custom-endpoints/${id}`, { method: "PATCH", body: JSON.stringify({ vision: on }) })
+      .then(({ endpoints: rows }) => apply(rows))
+      .catch((e: Error) => {
+        setError(e.message);
+        reload();
+      });
+  };
+
   const addKey = (id: string) => {
     if (busy || !extraKey.trim()) return;
     setBusy(true);
@@ -189,8 +221,9 @@ export function CustomEndpoints() {
             </Button>
           </div>
 
-          <div className="mt-2">
+          <div className="mt-2 space-y-2">
             <ToolsSwitch on={endpoint.tools} onChange={(on) => switchTools(endpoint.id, on)} />
+            <SeesImages on={endpoint.vision === true} onChange={(on) => switchVision(endpoint.id, on)} />
           </div>
 
           <div className="mt-2 flex flex-col gap-1">
