@@ -10,8 +10,8 @@ import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
 const server= fileURLToPath(new URL('../../server/index.ts',import.meta.url));
 const cli=fileURLToPath(new URL('../../bin/bloks.mjs',import.meta.url));
-export async function until<T>(read:()=>T|Promise<T>,why='fixture did not settle'):Promise<NonNullable<T>> {
- const end=Date.now()+10000;
+export async function until<T>(read:()=>T|Promise<T>,why='fixture did not settle',ms=10000):Promise<NonNullable<T>> {
+ const end=Date.now()+ms;
  while(Date.now()<end){const x=await read();if(x)return x as NonNullable<T>;await new Promise(r=>setTimeout(r,10));}
  throw new Error(why);
 }
@@ -121,7 +121,9 @@ process.on('message',(m:any)=>{
  });
  const ready=async()=>{if(child.exitCode!==null||child.signalCode!==null)throw new Error(logs.slice(-1200));if(!logs.includes('bloks server on '+url))return false;try{return (await fetch(url+'/api/health')).ok}catch{return false}};
  for(let attempt=0;;attempt++){
-  const started=await until(async()=>{if(logs.includes('EADDRINUSE'))return 'taken';return (await ready())?'up':false},'isolated HTTP host did not start').catch(error=>{throw new Error(error.message+' '+logs.slice(-2500))});
+  // thirty seconds to start, as the harness gives: a loaded machine can
+  // take more than ten, and that is no fault of what is under test
+  const started=await until(async()=>{if(logs.includes('EADDRINUSE'))return 'taken';return (await ready())?'up':false},'isolated HTTP host did not start',30000).catch(error=>{throw new Error(error.message+' '+logs.slice(-2500))});
   if(started==='up')break;
   if(attempt>=4)throw new Error('no free port for the isolated host '+logs.slice(-1200));
   // the loser usually exits by itself; waiting on an exit already past would wait forever

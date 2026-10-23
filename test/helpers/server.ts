@@ -136,7 +136,11 @@ export async function startHarness(extraEnv: Record<string, string> = {}): Promi
 
     const listening = `bloks server on ${url}`;
     let ready = false;
-    for (let i = 0; i < 100 && child.exitCode === null; i++) {
+    // Thirty seconds to come up. A loaded machine, CI's included, can take
+    // more than ten to start the server, and a test that gave up here
+    // failed for the machine, not for anything it tests. A healthy start
+    // is as quick as ever: the loop leaves as soon as it answers.
+    for (let i = 0; i < 300 && child.exitCode === null; i++) {
       if (mine.out.includes(listening)) {
         try {
           ready = (await request(null, "/api/health")).ok;
