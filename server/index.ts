@@ -211,7 +211,7 @@ import {
   updateCount,
   type RegistryEntry,
 } from "./skill-registry.ts";
-import { REPORT_UNCERTAIN, type ReservedReport, type ReportResponse, AgentTokens, allows, capabilities, CLI_FROM_ENV, cliBriefing, cliMovedNote, messageHint, runsAProcess, secretHint, type AgentToken } from "./agent-cli.ts";
+import { REPORT_UNCERTAIN, type ReservedReport, type ReportResponse, AgentTokens, allows, capabilities, keptBackRefusal, CLI_FROM_ENV, cliBriefing, cliMovedNote, messageHint, runsAProcess, secretHint, type AgentToken } from "./agent-cli.ts";
 import {
   CACHE_LIFETIME_MS,
   COMPACT_AT,
@@ -18876,7 +18876,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         // The omitted selector is stable, even if General or lane state changes.
         const identity = JSON.stringify([m[1], text, requestedTask ?? null, replyTo ?? null, now, ...(named.name ? [named.name] : [])]);
         if (asAgent.report) {
-          if (asAgent.report.identity !== identity) return json(res, 429, { error: "this turn's direct reporting slot is occupied by another submission" });
+          if (asAgent.report.identity !== identity) return json(res, 429, { error: keptBackRefusal(asAgent.report) });
           const receipt = asAgent.report.response;
           return json(res, receipt.status, receipt.body);
         }
