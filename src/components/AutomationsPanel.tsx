@@ -47,7 +47,7 @@ import { IntentsTab } from "./IntentsTab";
 import { Zap } from "@/components/icons";
 import { Eye } from "@/components/icons";
 import { thisComputer } from "@/lib/thisComputer";
-import { gridHours } from "@/lib/dayGrid";
+import { cardLanes, gridHours } from "@/lib/dayGrid";
 import { checkInBand, foldQuietRuns, intervalShort } from "@/lib/checkIns";
 import { AUTOMATIONS_LIST, AUTOMATIONS_LIST_SIZE, useColumnFolded } from "@/lib/sideColumn";
 import { ShowColumn, SideColumn } from "./SideColumn";
@@ -78,6 +78,10 @@ interface WebhookRow {
 const HOUR_PX = 52;
 /** How far apart check-in bands sit, side by side at a column's edge. */
 const BAND_STEP = 10;
+/** The shortest a routine's card is drawn, so its name always fits. */
+const CARD_MIN_PX = 34;
+/** The space between two cards side by side. */
+const CARD_GAP = 2;
 
 const dayKey = (d: Date) => d.toDateString();
 
@@ -453,10 +457,21 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
 
                 {days.map((day, dayIndex) => {
                   const isToday = dayKey(day) === today;
-                  const slots = occurrences(day);
                   const bands = checkInsOn(day);
                   // the cards leave the bands their own strip on the right
                   const cardsRight = bands.length ? 6 + bands.length * BAND_STEP : 4;
+                  // each card where it is drawn, and those that overlap as
+                  // drawn, the shortest ones' height included, side by side
+                  const slots = occurrences(day).map((slot) => {
+                    const top = Math.max(0, ((slot.minutes - hours.start * 60) / 60) * HOUR_PX);
+                    // the card blocks out its duration, like an
+                    // appointment would
+                    const height = Math.max(CARD_MIN_PX, ((slot.routine.durationMin ?? 30) / 60) * HOUR_PX - 2);
+                    return { ...slot, top, height };
+                  });
+                  const lanes = cardLanes(slots.map(({ routine, top, height }) => ({ id: routine.id, start: top, end: top + height })));
+                  // the width the cards share, between the left edge and the bands
+                  const room = `(100% - ${4 + cardsRight}px)`;
                   return (
                     <div key={day.toISOString()} className="min-w-0 flex-1 border-r last:border-r-0">
                       <div
@@ -546,12 +561,18 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                           );
                         })}
 
-                        {slots.map(({ routine, minutes }) => {
+                        {slots.map(({ routine, top, height }) => {
                           const target = targetOf(routine.targetId);
-                          const top = ((minutes - hours.start * 60) / 60) * HOUR_PX;
+                          const lane = lanes.get(routine.id) ?? { column: 0, columns: 1 };
+                          const gap = lane.columns > 1 ? CARD_GAP : 0;
+                          // a narrow card cuts its words short, so the whole of
+                          // it is on hover and for a screen reader
+                          const label = `${routine.name || routine.prompt}, ${routine.time}${routine.repeat === "once" ? ", once" : ""}${target ? `, ${target.name}` : ""}`;
                           return (
                             <button
                               key={routine.id}
+                              title={label}
+                              aria-label={label}
                               onPointerDown={(e) => beginDrag(routine, day.getDay(), e)}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -562,29 +583,31 @@ export function AutomationsPanel({ onClose }: { onClose: () => void }) {
                                 setSelected(routine);
                               }}
                               className={cn(
-                                "absolute left-1 flex cursor-grab touch-none items-start gap-1.5 overflow-hidden rounded-lg border border-brand/25 bg-brand-soft px-1.5 py-1 text-left shadow-sm transition-transform duration-150 hover:scale-[1.02]",
+                                "@container absolute flex cursor-grab touch-none items-start gap-1.5 overflow-hidden rounded-lg border border-brand/25 bg-brand-soft px-1.5 py-1 text-left shadow-sm transition-transform duration-150 hover:scale-[1.02]",
                                 drag?.routine.id === routine.id && "opacity-40",
                               )}
                               style={{
-                                right: cardsRight,
-                                top: Math.max(0, top),
-                                // the chip blocks out its duration, like an
-                                // appointment would
-                                height: Math.max(34, ((routine.durationMin ?? 30) / 60) * HOUR_PX - 2),
+                                left: `calc(4px + ${room} * ${lane.column / lane.columns})`,
+                                width: `calc(${room} / ${lane.columns} - ${gap}px)`,
+                                top,
+                                height,
                               }}
                             >
-                              {target?.bot ? (
-                                <AgentAvatar bot={target.bot} size={18} />
-                              ) : (
-                                <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-muted">
-                                  <Users size={10} />
-                                </span>
-                              )}
-                              <span className="min-w-0">
+                              {/* too narrow for the face and the name, the name stays */}
+                              <span className="flex shrink-0 @max-[64px]:hidden">
+                                {target?.bot ? (
+                                  <AgentAvatar bot={target.bot} size={18} />
+                                ) : (
+                                  <span className="flex size-[18px] items-center justify-center rounded-full bg-muted">
+                                    <Users size={10} />
+                                  </span>
+                                )}
+                              </span>
+                              <span className="min-w-0 flex-1">
                                 <span className="block truncate text-caption font-medium leading-tight text-foreground">
                                   {routine.name || routine.prompt}
                                 </span>
-                                <span className="block text-micro leading-tight text-muted-foreground">
+                                <span className="block truncate text-micro leading-tight text-muted-foreground">
                                   {routine.time}
                                   {routine.repeat === "once" && " · once"}
                                   {" · "}
