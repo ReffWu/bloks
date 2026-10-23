@@ -1,10 +1,18 @@
 // The Usage page in words (src/lib/usagePage.ts): how a figure is
 // written, what the line under the headline admits to, how the span
 // before is compared, and what the page remembers between visits.
+//
+// And where an engine on a plan gave no price (Codex on its ChatGPT
+// sign-in, GitHub 360): its tokens here, and its plan's windows apart
+// from them, or a plain line when there is no reading.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
+import type { PlanUsage } from "../src/lib/contextCard.ts";
 import {
+  ACCOUNT_WIDE,
   DEFAULT_VIEW,
   PRICES_NOTE,
   axisMoney,
@@ -15,18 +23,26 @@ import {
   headlineNotes,
   isEstimate,
   money,
+  noPlanReading,
+  onPlan,
   perMillionText,
   niceTicks,
+  planTitle,
+  planUses,
+  planWithoutPrice,
   readView,
   saveView,
+  seePlanTitle,
   shareText,
   sortRows,
   topsUpLine,
   valueOf,
+  type UsageRow,
   type UsageTotals,
 } from "../src/lib/usagePage.ts";
 
 const totals = (over: Partial<UsageTotals> = {}): UsageTotals => ({ turns: 0, input: 0, output: 0, cost: 0, unmeasured: 0, ...over });
+const row = (id: string, over: Partial<UsageRow> = {}): UsageRow => ({ id, priced: false, ...totals(over), ...over });
 
 test("dollars are written as a bill writes them, and a sliver is never $0.00", () => {
   assert.equal(money(0), "$0.00");
@@ -122,4 +138,93 @@ test("the page's choices are kept on this device, and a damaged one falls back",
   kept.set("bloks-usage-view", "{not json");
   assert.deepEqual(readView(storage), DEFAULT_VIEW);
   assert.deepEqual(readView(null), DEFAULT_VIEW, "no storage at all is the default");
+});
+
+// ── an engine on a plan that gave no price ─────────────────────────────
+
+const HOUR = 60 * 60_000;
+const NOW = Date.UTC(2026, 9, 23, 12);
+const KINDS: Record<string, string> = { codex: "codex", claude: "claudeAgent", "claude-2": "claudeAgent", gemini: "gemini", bloks: "bloks" };
+const kindOf = (id: string) => KINDS[id] ?? id;
+const reading = (windows: PlanUsage["windows"], plan: string | null = "pro"): PlanUsage => ({ windows, plan, at: NOW - HOUR });
+
+test("only an engine on a plan that priced none of its turns gets its plan shown", () => {
+  const report = {
+    byEngine: [
+      row("codex", { turns: 5, input: 1_494_462, output: 6_318 }),
+      // Claude Code gives a price, so it has a cost to show
+      row("claude", { turns: 9, input: 400, output: 90, cost: 1.2, priced: true }),
+      // and a Claude Code turn with none failed before it said, which is
+      // no reason to say its plan gives no dollar figure
+      row("claude-2", { turns: 2 }),
+      // on a key of the person's own, with nothing to price it: not a plan
+      row("gemini", { turns: 2, input: 100, output: 10 }),
+      row("bloks", { turns: 3, input: 50, output: 5 }),
+    ],
+  };
+  const uses = planUses(report, kindOf, {}, NOW);
+  assert.deepEqual(uses.map((u) => u.id), ["codex"]);
+  assert.equal(uses[0].tokens, 1_500_780, "the tokens are this workspace's, input and output");
+  assert.equal(uses[0].turns, 5);
+  assert.equal(onPlan("codex"), true);
+  assert.equal(onPlan("claudeAgent"), true);
+  assert.equal(onPlan("gemini"), false);
+  assert.equal(onPlan(undefined), false);
+  assert.equal(planWithoutPrice("codex"), true);
+  assert.equal(planWithoutPrice("claudeAgent"), false, "Claude Code prices its turns on a plan too");
+  assert.deepEqual(planUses({ byEngine: [row("codex")] }, kindOf, {}, NOW), [], "an engine with no turns in view has nothing to say");
+});
+
+test("a current reading shows each window's share used and when it resets", () => {
+  const plans = {
+    codex: reading([
+      { id: "secondary", minutes: 7 * 24 * 60, used: 0.12, resetsAt: NOW + 3 * HOUR },
+      { id: "primary", minutes: 300, used: 0.42, resetsAt: NOW + 2 * HOUR + 10 * 60_000 },
+    ]),
+  };
+  const [use] = planUses({ byEngine: [row("codex", { turns: 5, input: 10, output: 1 })] }, kindOf, plans, NOW);
+  assert.equal(use.plan, "Pro");
+  assert.deepEqual(
+    use.windows.map((w) => [w.label, w.used, w.reset]),
+    [
+      ["5-hour limit", "42% used", "Resets in 2 h 10 min"],
+      ["Weekly limit", "12% used", "Resets in 3 h"],
+    ],
+    "shortest window first, as the Limits card has them",
+  );
+  assert.equal(planTitle(use.plan), "Your Pro plan");
+});
+
+test("no reading, or only windows that have reset since, is no current reading", () => {
+  const used = row("codex", { turns: 5, input: 10, output: 1 });
+  const none = planUses({ byEngine: [used] }, kindOf, {}, NOW)[0];
+  assert.deepEqual(none.windows, [], "the server keeps readings in memory, and a restart forgets them");
+  assert.equal(none.plan, null);
+  assert.equal(planTitle(none.plan), "Your plan");
+  assert.deepEqual(planUses({ byEngine: [used] }, kindOf, null, NOW)[0].windows, [], "an unanswered request is no reading either");
+  const stale = { codex: reading([{ id: "primary", minutes: 300, used: 0.9, resetsAt: NOW - 1 }]) };
+  assert.deepEqual(planUses({ byEngine: [used] }, kindOf, stale, NOW)[0].windows, [], "a window that has started again says nothing now");
+});
+
+test("the words for a plan say what is missing, and keep the account apart from the workspace", () => {
+  const line = noPlanReading("Codex");
+  assert.match(line, /^Codex /);
+  assert.match(line, /no dollar figure/);
+  assert.match(line, /no current reading/);
+  assert.match(ACCOUNT_WIDE, /outside this workspace/);
+  assert.match(seePlanTitle("Codex"), /in Limits/);
+  for (const words of [line, ACCOUNT_WIDE, seePlanTitle("Codex"), planTitle("Pro"), planTitle(null)]) {
+    assert.doesNotMatch(words, /[\u2013\u2014]/);
+  }
+});
+
+test("the page's links to a plan land on the Plans group", () => {
+  const source = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+  const limits = source("../src/components/usage/UsageLimits.tsx");
+  const page = source("../src/components/UsagePage.tsx");
+  assert.match(limits, /<Group id=\{PLANS_ID\} title="Plans"/, "the Plans group lost its anchor");
+  assert.match(page, /getElementById\(PLANS_ID\)/, "the page no longer scrolls to the Plans group");
+  // one reading for the page, so the headline and Limits never disagree
+  assert.equal((limits.match(/"\/api\/plan-usage"/g) ?? []).length, 1);
+  assert.doesNotMatch(page, /"\/api\/plan-usage"/);
 });

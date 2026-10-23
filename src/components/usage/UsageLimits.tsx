@@ -8,6 +8,9 @@
 // limit here that is theirs to move, so it is edited in place, with the
 // engine's own price per million tokens beside it for a model the
 // providers' list does not know (server/model-prices.ts).
+//
+// The plans are read once for the whole page (usePlanUsage), since the
+// headline shows them too, beside an engine on a plan that gave no price.
 import { useEffect, useState } from "react";
 import { Loader2 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -16,10 +19,10 @@ import { toast } from "@/components/ui/toast";
 import { ProviderMark } from "@/components/ProviderIcons";
 import { api, useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { planName, planRows, type PlanUsage } from "@/lib/contextCard";
+import { planName, planRows, type PlanRow, type PlanUsage } from "@/lib/contextCard";
 import { TOP_UP_WORDS, percentText, renewsLine, type BloksAiStatus } from "@/lib/credits";
 import { resetLine } from "@/lib/usageNotice";
-import { PRICES_NOTE, estimatedMoney, money, perMillionText, topsUpLine, type SpendLimitRow } from "@/lib/usagePage";
+import { PRICES_NOTE, estimatedMoney, money, onPlan, perMillionText, topsUpLine, type SpendLimitRow } from "@/lib/usagePage";
 
 /** A share as a bar. Warning colour near the end, where it matters. */
 function Bar({ fill, tone = "brand", label }: { fill: number; tone?: "brand" | "warning" | "destructive"; label: string }) {
@@ -88,9 +91,9 @@ function LimitCard({
   );
 }
 
-function Group({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+function Group({ id, title, note, children }: { id?: string; title: string; note: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-3">
+    <section id={id} className="flex scroll-mt-6 flex-col gap-3">
       <div>
         <h3 className="text-ui font-medium text-foreground">{title}</h3>
         <p className="mt-0.5 text-pretty text-small text-muted-foreground">{note}</p>
@@ -102,8 +105,29 @@ function Group({ title, note, children }: { title: string; note: string; childre
 
 // ── plans ──────────────────────────────────────────────────────────────
 
-function PlanCards({ badgeFor }: { badgeFor: (instanceId: string) => string | null }) {
-  const { state } = useStore();
+/** One window of a plan, in the warning colour near its end. */
+export function PlanLine({ row }: { row: PlanRow }) {
+  return (
+    <LimitLine
+      label={row.label}
+      fill={row.fill}
+      tone={row.note === "Limit reached" ? "destructive" : row.near || row.fill >= 0.8 ? "warning" : "brand"}
+      used={row.used}
+      note={[row.note, row.reset].filter(Boolean).join(" · ")}
+    />
+  );
+}
+
+/** Where the Plans group is, for a link from higher up the page. */
+export const PLANS_ID = "usage-plans";
+
+/**
+ * What each engine's plan last said, by engine, from GET /api/plan-usage;
+ * null until the answer is in. The server keeps only the latest reading,
+ * in memory, so an empty answer is normal after a restart, and the next
+ * turn brings it back. Asked again whenever `tick` moves.
+ */
+export function usePlanUsage(tick = 0): Record<string, PlanUsage> | null {
   const [plans, setPlans] = useState<Record<string, PlanUsage> | null>(null);
   useEffect(() => {
     let current = true;
@@ -113,12 +137,17 @@ function PlanCards({ badgeFor }: { badgeFor: (instanceId: string) => string | nu
     return () => {
       current = false;
     };
-  }, []);
-  const engines = state.instances.filter((i) => i.driverKind === "claudeAgent" || i.driverKind === "codex");
+  }, [tick]);
+  return plans;
+}
+
+function PlanCards({ plans, badgeFor }: { plans: Record<string, PlanUsage> | null; badgeFor: (instanceId: string) => string | null }) {
+  const { state } = useStore();
+  const engines = state.instances.filter((i) => onPlan(i.driverKind));
   if (!engines.length) return null;
   const now = Date.now();
   return (
-    <Group title="Plans" note="What a Claude or ChatGPT plan has left, as the engine said on its last turn.">
+    <Group id={PLANS_ID} title="Plans" note="What a Claude or ChatGPT plan has left, as the engine said on its last turn.">
       {engines.map((engine) => {
         const plan = plans?.[engine.instanceId] ?? null;
         const rows = planRows(plan, now);
@@ -131,16 +160,7 @@ function PlanCards({ badgeFor }: { badgeFor: (instanceId: string) => string | nu
             badge={badgeFor(engine.instanceId)}
           >
             {rows.length ? (
-              rows.map((row) => (
-                <LimitLine
-                  key={row.id}
-                  label={row.label}
-                  fill={row.fill}
-                  tone={row.note === "Limit reached" ? "destructive" : row.near || row.fill >= 0.8 ? "warning" : "brand"}
-                  used={row.used}
-                  note={[row.note, row.reset].filter(Boolean).join(" · ")}
-                />
-              ))
+              rows.map((row) => <PlanLine key={row.id} row={row} />)
             ) : (
               <p className="text-pretty text-small text-muted-foreground">
                 {plans === null ? "Reading..." : `Nothing heard yet. ${engine.displayName} says what its plan has left as it answers.`}
@@ -505,8 +525,9 @@ function SpendCards({ badgeFor }: { badgeFor: (instanceId: string) => string | n
  * Every limit, in three groups. `focus` is the agent the page is about,
  * when it is about one: the cards for the engine that agent runs on say
  * so, since that is the limit a person following a notice came to see.
+ * `plans` is the page's reading of them (usePlanUsage).
  */
-export function UsageLimits({ focusBot }: { focusBot: string | null }) {
+export function UsageLimits({ focusBot, plans }: { focusBot: string | null; plans: Record<string, PlanUsage> | null }) {
   const { state } = useStore();
   const bot = focusBot ? state.bots.find((b) => b.id === focusBot) : undefined;
   const runsOn = bot?.modelSelection.instanceId ?? null;
@@ -514,7 +535,7 @@ export function UsageLimits({ focusBot }: { focusBot: string | null }) {
   const badgeFor = (instanceId: string) => (bot && !onCredits && runsOn === instanceId ? `${bot.name}'s engine` : null);
   return (
     <div className="flex flex-col gap-8">
-      <PlanCards badgeFor={badgeFor} />
+      <PlanCards plans={plans} badgeFor={badgeFor} />
       <BloksAiCard badge={bot && onCredits ? `${bot.name}'s engine` : null} />
       <SpendCards badgeFor={badgeFor} />
     </div>

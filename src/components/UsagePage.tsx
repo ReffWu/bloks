@@ -7,6 +7,10 @@
 // (server/model-prices.ts), written "~$4.20" and said to be an estimate.
 // An engine nobody has a price for shows its tokens and says "not
 // reported" where a cost would be, never a dollar figure made up for it.
+// One on a plan that gives no price (Codex on its ChatGPT sign-in) shows,
+// beside its tokens, what its plan last said it has left, and says so
+// plainly when there is no reading: the tokens are this workspace's, and
+// the plan is the whole account's, so the two are never added up.
 // Bloks AI is never in dollars and never in a dollar total: its turns are
 // counted with the rest, and what it has left is in Limits, as shares,
 // the way the service says it.
@@ -36,6 +40,7 @@ import { api, useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { shortTokens } from "@/lib/contextCard";
 import {
+  ACCOUNT_WIDE,
   BLOKS_AI_ENGINE,
   METRICS,
   PRICES_NOTE,
@@ -46,19 +51,26 @@ import {
   headlineNotes,
   isEstimate,
   longDay,
+  noPlanReading,
+  planTitle,
+  planUses,
+  planWithoutPrice,
   readView,
   saveView,
+  seePlanTitle,
   shareText,
   sortRows,
+  turnsText,
   valueOf,
   type BreakdownTab,
+  type PlanUse,
   type SortKey,
   type UsageReport,
   type UsageRow,
   type UsageView,
 } from "@/lib/usagePage";
 import { ChartLegend, UsageChart, type ChartLine } from "./usage/UsageChart";
-import { UsageLimits } from "./usage/UsageLimits";
+import { PLANS_ID, PlanLine, UsageLimits, usePlanUsage } from "./usage/UsageLimits";
 
 /** Engines drawn as lines over the total: as many as there are series
  * colours after the brand's own, which the total wears. */
@@ -270,6 +282,72 @@ function Headline({ report, view, onMetric }: { report: UsageReport; view: Usage
   );
 }
 
+/**
+ * An engine on a plan that priced none of its turns, under the headline
+ * where its cost would be: what it used in view, and what its plan has
+ * left, side by side and never added up. With no current reading the
+ * tokens and turns are what there is, and the card says so in a line.
+ */
+function PlanUseCard({
+  use,
+  view,
+  days,
+  reading,
+  onPlans,
+}: {
+  use: PlanUse;
+  view: UsageView;
+  days: number;
+  /** The plans are still being asked for. */
+  reading: boolean;
+  onPlans: () => void;
+}) {
+  const names = useNames();
+  const name = names.engine(use.id);
+  const here = view.bot ? `${name}, for ${names.agent(view.bot)}` : `${name}, in this workspace`;
+  return (
+    <section aria-label={`${name} on a plan`} className="grid grid-cols-1 gap-4 rounded-xl border p-4 sm:grid-cols-2 sm:gap-6">
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="flex min-w-0 items-center gap-2 text-small text-muted-foreground">
+          <ProviderMark driverKind={names.kind(use.id)} size={13} />
+          <span className="min-w-0 truncate">{here}</span>
+        </p>
+        <p className="flex flex-wrap items-baseline gap-x-2">
+          <span className="text-title font-semibold tabular-nums text-foreground" title={use.tokens.toLocaleString("en-US")}>
+            {shortTokens(use.tokens)}
+          </span>
+          <span className="text-ui text-muted-foreground">tokens</span>
+        </p>
+        <p className="text-small tabular-nums text-muted-foreground">
+          {turnsText(use.turns)}, {spanWords(view, days)}
+        </p>
+      </div>
+      <div className="flex min-w-0 flex-col gap-3">
+        <p className="text-small text-muted-foreground">{planTitle(use.plan)}</p>
+        {reading ? (
+          <p className="text-small text-muted-foreground">Reading...</p>
+        ) : use.windows.length ? (
+          <>
+            {use.windows.map((row) => (
+              <PlanLine key={row.id} row={row} />
+            ))}
+            <p className="text-pretty text-small text-muted-foreground">{ACCOUNT_WIDE}</p>
+          </>
+        ) : (
+          <p className="text-pretty text-body text-foreground">{noPlanReading(name)}</p>
+        )}
+        <button
+          type="button"
+          onClick={onPlans}
+          className="self-start text-small font-medium text-foreground underline underline-offset-2"
+        >
+          See Plans in Limits
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function Totals({ report }: { report: UsageReport }) {
   const t = report.total;
   const items = [
@@ -333,14 +411,14 @@ function HeaderCell({
   );
 }
 
-/** Where a cost would be for Bloks AI, which has none: a way to what it
- * has left instead, in Limits. */
-function ToLimits({ label, onLimits }: { label: string; onLimits: () => void }) {
+/** Where a cost would be for Bloks AI, or for an engine on a plan, which
+ * have none: a way to what each has left instead, in Limits. */
+function ToLimits({ label, onLimits, title = "See what Bloks AI has left, in Limits" }: { label: string; onLimits: () => void; title?: string }) {
   return (
     <button
       type="button"
       onClick={onLimits}
-      title="See what Bloks AI has left, in Limits"
+      title={title}
       className="text-muted-foreground underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground"
     >
       {label}
@@ -353,11 +431,13 @@ function Breakdown({
   view,
   set,
   onLimits,
+  onPlans,
 }: {
   report: UsageReport;
   view: UsageView;
   set: (patch: Partial<UsageView>) => void;
   onLimits: () => void;
+  onPlans: () => void;
 }) {
   const { state } = useStore();
   const names = useNames();
@@ -408,6 +488,12 @@ function Breakdown({
     // runs on an allowance, which Limits shows
     if (metric === "cost" && !row.priced && row.turns > 0 && row.bloksAiTurns === row.turns) {
       return <ToLimits label="Bloks AI" onLimits={onLimits} />;
+    }
+    // an engine on a plan that gives no price, or any row of one when the
+    // page is narrowed to it: what the plan has left is in Limits
+    const plan = tab === "engine" ? row.id : view.engine;
+    if (metric === "cost" && !row.priced && row.turns > 0 && plan && planWithoutPrice(names.kind(plan))) {
+      return <ToLimits label="See plan" title={seePlanTitle(names.engine(plan))} onLimits={onPlans} />;
     }
     if (metric === "cost" && !row.priced) return <span className="text-muted-foreground">Not reported</span>;
     return figureOf(row, metric);
@@ -580,9 +666,20 @@ export function UsagePage() {
       return next;
     });
   }, []);
-  const { report, loading, failed, refresh } = useReport(view);
+  const { report, loading, failed, refresh: refreshReport } = useReport(view);
+  // the plans are read again with the report, so Refresh brings both
+  const [planTick, setPlanTick] = useState(0);
+  const plans = usePlanUsage(planTick);
+  const refresh = useCallback(() => {
+    refreshReport();
+    setPlanTick((n) => n + 1);
+  }, [refreshReport]);
   const limits = useRef<HTMLElement>(null);
   const toLimitsNow = useCallback(() => limits.current?.scrollIntoView({ block: "start", behavior: "smooth" }), []);
+  const toPlansNow = useCallback(
+    () => (document.getElementById(PLANS_ID) ?? limits.current)?.scrollIntoView({ block: "start", behavior: "smooth" }),
+    [],
+  );
 
   // Opened for its limits: there once the numbers above have landed, so
   // the page does not move under the person after it got there.
@@ -599,6 +696,11 @@ export function UsagePage() {
     if (drawn.length < 2) return [];
     return drawn.slice(0, MAX_LINES).map((e, i) => ({ id: e.id, name: names.engine(e.id), colour: lineColour(i) }));
   }, [report, view.engine, view.metric, names]);
+
+  const uses = useMemo(
+    () => (report && view.metric === "cost" ? planUses(report, names.kind, plans, Date.now()) : []),
+    [report, view.metric, names, plans],
+  );
 
   const empty = report && report.agents.length === 0;
   const metricLabel = METRICS.find((m) => m.value === view.metric)!.label.toLowerCase();
@@ -631,6 +733,9 @@ export function UsagePage() {
               <div className="flex flex-col gap-3">
                 <Headline report={report} view={view} onMetric={(metric) => set({ metric })} />
                 <FilterChips view={view} set={set} />
+                {uses.map((use) => (
+                  <PlanUseCard key={use.id} use={use} view={view} days={report.days} reading={plans === null} onPlans={toPlansNow} />
+                ))}
               </div>
               <Totals report={report} />
               <section aria-label="By day" className="flex flex-col gap-3 rounded-xl border p-4 pb-3">
@@ -642,7 +747,7 @@ export function UsagePage() {
                 />
                 {lines.length > 0 && <ChartLegend lines={lines} onPick={(engine) => set({ engine })} />}
               </section>
-              <Breakdown report={report} view={view} set={set} onLimits={toLimitsNow} />
+              <Breakdown report={report} view={view} set={set} onLimits={toLimitsNow} onPlans={toPlansNow} />
             </motion.div>
           )}
 
@@ -659,7 +764,7 @@ export function UsagePage() {
               </h2>
               <p className="mt-0.5 text-pretty text-body text-muted-foreground">What each plan, allowance and key of yours has left.</p>
             </div>
-            <UsageLimits focusBot={view.bot} />
+            <UsageLimits focusBot={view.bot} plans={plans} />
           </motion.section>
         </div>
       </div>

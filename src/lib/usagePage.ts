@@ -5,10 +5,16 @@
 // nobody reported a price, and when a figure is an estimate from tokens
 // (server/model-prices.ts), written "~$4.20" so it never reads as a bill.
 //
+// An engine on a plan that reports tokens and never a price (Codex on
+// its ChatGPT sign-in) has no dollar figure to give, but its
+// plan says what it has left (server/plan-usage.ts). So where its cost
+// would be, the page shows that instead, kept apart from the tokens: the
+// tokens are this workspace's, and the plan is the whole account's.
+//
 // Kept apart from the components so the wording and the arithmetic can
 // be tested without a DOM.
 
-import { shortTokens } from "./contextCard.ts";
+import { planName, planRows, shortTokens, type PlanRow, type PlanUsage } from "./contextCard.ts";
 
 export type UsageRange = "7d" | "30d" | "90d" | "month";
 export type UsageMetric = "cost" | "tokens" | "turns";
@@ -259,6 +265,85 @@ export function headlineNotes(report: Pick<UsageReport, "total" | "unpricedTurns
   if (metric === "cost" && report.bloksAiTurns > 0) notes.push(`${turnsText(report.bloksAiTurns)} on Bloks AI, never priced`);
   if (report.total.unmeasured > 0) notes.push(`${turnsText(report.total.unmeasured)} unmeasured`);
   return notes;
+}
+
+// ── on a plan ──────────────────────────────────────────────────────────
+
+/** Engines signed in to a Claude or ChatGPT plan, which say what the
+ * plan has left as they answer. */
+export const PLAN_KINDS: readonly string[] = ["claudeAgent", "codex"];
+
+export function onPlan(driverKind: string | null | undefined): boolean {
+  return PLAN_KINDS.includes(driverKind ?? "");
+}
+
+/** Of those, the ones that never give a price. Claude Code gives a turn's
+ * cost even on a plan, so a Claude turn with none failed before it said
+ * anything, and saying its plan reports no dollar figure would be wrong. */
+const PRICELESS_PLAN_KINDS: readonly string[] = ["codex"];
+
+export function planWithoutPrice(driverKind: string | null | undefined): boolean {
+  return PRICELESS_PLAN_KINDS.includes(driverKind ?? "");
+}
+
+/** An engine on a plan that used something in view and priced none of
+ * it: what it used, and what its plan last said it has left. */
+export interface PlanUse {
+  id: string;
+  turns: number;
+  tokens: number;
+  /** The plan's name as the engine gave it ("Pro"), when it did. */
+  plan: string | null;
+  /** The plan's windows still current, shortest first. None is no
+   * current reading: nothing heard since the server started, or only
+   * windows that have since started again. */
+  windows: PlanRow[];
+}
+
+/**
+ * The engines in a report that ran on a plan that never gives a price,
+ * each with its plan as GET /api/plan-usage last said it. An engine that
+ * priced any of its turns in view has a cost to show and is not one.
+ * `kindOf` names an engine's driver from its id.
+ */
+export function planUses(
+  report: Pick<UsageReport, "byEngine">,
+  kindOf: (engineId: string) => string,
+  plans: Record<string, PlanUsage> | null | undefined,
+  now: number,
+  format?: { locale?: string; timeZone?: string },
+): PlanUse[] {
+  return report.byEngine
+    .filter((row) => row.turns > 0 && !row.priced && row.id !== BLOKS_AI_ENGINE && planWithoutPrice(kindOf(row.id)))
+    .map((row) => {
+      const reading = plans?.[row.id] ?? null;
+      return {
+        id: row.id,
+        turns: row.turns,
+        tokens: row.input + row.output,
+        plan: planName(reading?.plan),
+        windows: planRows(reading, now, format),
+      };
+    });
+}
+
+/** What the plan side of a PlanUse is called: "Your Pro plan". */
+export function planTitle(plan: string | null): string {
+  return plan ? `Your ${plan} plan` : "Your plan";
+}
+
+/** Said under a plan's windows, so they are never read as this
+ * workspace's share of them. */
+export const ACCOUNT_WIDE = "Account-wide, so it counts use outside this workspace too.";
+
+/** Said in place of the windows when there is no current reading. */
+export function noPlanReading(engine: string): string {
+  return `${engine} reports no dollar figure on a plan, and there is no current reading of what the plan has left.`;
+}
+
+/** The title of the way to Limits where a plan engine's cost would be. */
+export function seePlanTitle(engine: string): string {
+  return `${engine} reports no dollar figure on a plan. See what the plan has left, in Limits.`;
 }
 
 // ── dates ──────────────────────────────────────────────────────────────
