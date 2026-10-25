@@ -1,0 +1,6 @@
+**GitHub for your agents: git and gh set up from Settings, and a protected connection that never hands an agent the token.**
+
+## What changed
+
+- **CLI plugins, starting with GitHub.** Settings, Plugins has a new CLIs tab. The GitHub page checks git and gh on this computer, shows who gh is signed in as and where it keeps that sign-in, and walks you through whatever is missing: installing gh, signing in (with a device code for a computer you reach remotely), or `gh auth setup-git`. With it on, agents are told to clone, branch, push and open pull requests with git and gh as usual. Bloks keeps no copy of gh's token, and the page says plainly that gh's own sign-in is open to any agent with a shell. Thanks @po-trottier (#387)
+- **A protected GitHub connection.** Add a GitHub token once and grant each agent no access, read, or read and write. A granted agent gets an address for its current turn, never the token: its git clone, fetch and push and its API calls go through Bloks, which checks the host, the method and the grant, adds the token on the way out, and logs every request under Recent use. Adding keys, collaborators, members or webhooks is always refused, since each would outlast a revoke, and taking a grant back stops access at the next request. Only your own turns get it, never shared rooms, members or strangers' mail. Thanks @po-trottier (#386)
