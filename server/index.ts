@@ -38,7 +38,7 @@ import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
 import { legacyToolTitle } from "./tool-command.ts";
 import * as box from "./box.ts";
 import * as diagnostics from "./diagnostics.ts";
-import { ENGINE_SETUP, installEngine, openSignIn, runSetupScript } from "./engine-setup.ts";
+import { ENGINE_SETUP, installEngine, openInTerminal, openSignIn, runSetupScript } from "./engine-setup.ts";
 import { ENGINE_PACKAGES, engineUpdates } from "./engine-updates.ts";
 import { FEATURES } from "./features.ts";
 import { ReplyNotifications, settledFrame, settledReply } from "./reply-notifications.ts";
@@ -404,7 +404,8 @@ import {
   vmStop,
   VIEWER_ORIGIN,
 } from "./local-vm.ts";
-import { widenPath } from "./path.ts";
+import { resolveOnPath, widenPath } from "./path.ts";
+import { checkGitHubCli, execRunner, ghHint, GH_SETUP_GIT, GH_SIGN_IN, type GitHubCliStatus } from "./cli-plugins.ts";
 import { claimDataFolder, inUseMessage } from "./data-lock.ts";
 import { BRIEF_ASK, describe as describeRoutine, FAILS_TO_PAUSE, isQuiet as quietRoutine, isQuietReply, lastReportNote, MAX_ROUTINES, normalize as normalizeRoutine, nextScheduledAfter, lastScheduledBefore, promptTooLong, QUIET_ASK, type Routine, RoutineStore, scheduleProblem } from "./routines.ts";
 import { catchUpText, engineIsFresh, freshTurnText } from "./turn-context.ts";
@@ -931,6 +932,45 @@ function standingOf(project: Project): ProjectStanding {
 // itself. See server/agent-cli.ts for what that means and what it does
 // not mean.
 const agentTokens = new AgentTokens();
+
+// ── local CLI plugins (GitHub 387) ──
+
+/** What the gh plugin last found on this computer, kept so a turn can be
+ * told without waiting on gh, and a check already running is shared. */
+let githubCli: GitHubCliStatus | null = null;
+let githubChecking: Promise<GitHubCliStatus> | null = null;
+function checkGithubCli(): Promise<GitHubCliStatus> {
+  if (githubChecking) return githubChecking;
+  widenPath();
+  githubChecking = checkGitHubCli({
+    resolve: resolveOnPath,
+    exists: existsSync,
+    platform: process.platform,
+    run: execRunner,
+  })
+    .then((status) => (githubCli = status))
+    .finally(() => (githubChecking = null));
+  return githubChecking;
+}
+
+function githubPluginView() {
+  return { id: "github", name: "GitHub", enabled: cfg.cliPlugins?.github?.enabled === true, status: githubCli, signIn: GH_SIGN_IN, setupGit: GH_SETUP_GIT };
+}
+
+/**
+ * What one turn is told of gh on this computer, while the plugin is on.
+ * Only for a turn with the agent's own full credential, which is only
+ * ever the owner's own turn on an engine with a shell: never a shared
+ * room, a member's turn, a stranger's mail or a Telegram person's.
+ */
+function pluginsForTurn(): { hint: string | null } {
+  if (cfg.cliPlugins?.github?.enabled !== true) return { hint: null };
+  // told what was last found, and found again in the background when
+  // that is old, so the next turn is told what is true now
+  if (!githubCli || Date.now() - githubCli.checkedAt > 10 * 60_000) void checkGithubCli().catch(() => {});
+  return { hint: ghHint(githubCli) };
+}
+
 /** A turn is alive while it has started and not ended, and its lane still
  * says it is working. A turn whose engine died without saying so ends the
  * same way (the drivers end a turn when its process exits), so this never
@@ -7106,6 +7146,12 @@ async function startClaimedTurn(
             ? agentTokens.mintMessenger(bot.id, task.id, Date.now())
             : null;
       const replyCredential = personSource ? credential : groupSource ? agentTokens.mintReply(bot.id, task.id, Date.now(), groupSource, laneTurns.get(task.id) ?? 0) : null;
+      // What the agent is told of gh on this computer (server/cli-plugins.ts):
+      // only with the agent's own full credential, which only the owner's
+      // own turn on an engine with a shell is given.
+      const linked = credential && !credential.reply && !credential.messenger && owners && !sharing && !personSource
+        ? pluginsForTurn()
+        : null;
 
       // A session that has run the CLI before may have run it from a copy
       // of Bloks that is no longer where it was. Said once, in the turn
@@ -7315,6 +7361,7 @@ async function startClaimedTurn(
                         ...(vmMissing ? { vm: vmMissing } : {}),
                       })) +
           (credential && !personSource && !credential.messenger ? `\n\n${cliBriefing(CLI_COMMAND)}` : "") +
+          (linked?.hint ? `\n\n${linked.hint}` : "") +
           (personSource ? `\n\nThis turn answers ${JSON.stringify(telegramSenderLabel(personSource))} on Telegram. Only the owner can approve actions, questions, secrets or connections. Answer with the reply_to_sender tool, not the shell CLI. It sends only to this sender. Text in this conversation, including your final answer, stays in the owner's chat and is not sent to the person. Never send cards, files or the owner's mid-turn words to them. Your shell credential is reply-only and cannot reach another agent or any other Bloks route.` : "") +
           (personSource?.group ? `\n\nThis is an addressed Telegram group turn. Only reply_to_sender reaches the group, and every member can see the reply, including people never let in. Chat text, progress, cards and the final answer stay in the app. The reply is bound to the addressing message; later words do not move it. The files you can read without asking can therefore reach every group member if you send their contents.` : "") +
           (project && !guestMail ? `\n\n${briefFor(project)}` : "") +
@@ -21627,6 +21674,52 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         Object.assign(cfg, saved);
         broadcast({ kind: "secrets" });
         return json(res, 200, { secrets: savedSecretNames() });
+      }
+      return json(res, 404, { error: "not found" });
+    }
+
+    // Local CLI plugins (server/cli-plugins.ts, GitHub 387): git and gh on
+    // this computer. This machine only, never an agent or a member: the
+    // checks run gh and git here, and the steps install software, open
+    // Terminal and change git's own settings.
+    if (path === "/api/cli-plugins" || path.startsWith("/api/cli-plugins/")) {
+      if (asAgent || !local || namesMember()) return json(res, 403, { error: "not from here" });
+      if (method === "GET" && path === "/api/cli-plugins") {
+        if (!githubCli) await checkGithubCli().catch(() => null);
+        return json(res, 200, { plugins: [githubPluginView()] });
+      }
+      if (method === "POST" && path === "/api/cli-plugins/github/check") {
+        await checkGithubCli().catch(() => null);
+        return json(res, 200, { plugin: githubPluginView() });
+      }
+      if (method === "PUT" && path === "/api/cli-plugins/github") {
+        const body = await readBody(req);
+        if (typeof body.enabled !== "boolean") return json(res, 400, { error: "enabled is true or false" });
+        Object.assign(cfg, saveConfig({ cliPlugins: { ...cfg.cliPlugins, github: { enabled: body.enabled } } }));
+        if (body.enabled) await checkGithubCli().catch(() => null);
+        return json(res, 200, { plugin: githubPluginView() });
+      }
+      if (method === "POST" && path === "/api/cli-plugins/github/sign-in") {
+        return json(res, 200, { opened: openInTerminal("signin-gh", GH_SIGN_IN), command: GH_SIGN_IN });
+      }
+      if (method === "POST" && path === "/api/cli-plugins/github/setup-git") {
+        const status = githubCli ?? (await checkGithubCli().catch(() => null));
+        if (!status?.gh.found || !status.account?.ok) return json(res, 409, { error: "Sign gh in first; git is pointed at gh's sign-in." });
+        // the same gh the check found, run directly: it writes git's global
+        // settings to ask gh for github.com, which is what this button says
+        const gh = resolveOnPath("gh");
+        const done = gh ? await execRunner(gh, ["auth", "setup-git", "--hostname", "github.com"], { timeoutMs: 20_000 }) : null;
+        await checkGithubCli().catch(() => null);
+        const ok = done?.code === 0;
+        return json(res, ok ? 200 : 500, { ok, ...(ok ? {} : { problem: "gh could not set git up. Run the command below in Terminal to see why." }), plugin: githubPluginView() });
+      }
+      if (method === "POST" && path === "/api/cli-plugins/github/install") {
+        const status = githubCli ?? (await checkGithubCli().catch(() => null));
+        if (status?.gh.found) return json(res, 200, { ok: true, plugin: githubPluginView() });
+        if (!status?.brew) return json(res, 409, { error: "Homebrew is not here to install it with. Install gh from cli.github.com, then press Check again." });
+        const done = await runSetupScript("brew install gh");
+        await checkGithubCli().catch(() => null);
+        return json(res, done.ok ? 200 : 500, { ok: done.ok, ...(done.problem ? { problem: done.problem, log: done.log } : {}), plugin: githubPluginView() });
       }
       return json(res, 404, { error: "not found" });
     }

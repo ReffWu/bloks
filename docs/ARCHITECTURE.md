@@ -2807,6 +2807,46 @@ wears a red dot in the sidebar and the page a count in its list
 (`src/lib/securityCheckup.ts` holds the one shared report); worth a look
 waits on the page.
 
+## Local CLI plugins
+
+Settings, Plugins has a CLIs list beside Apps, MCPs and Skills: tools on
+this computer that agents use from their own shell (`server/cli-plugins.ts`,
+`src/components/CliPlugins.tsx`, GitHub 387). GitHub is the first, as git
+and gh. An app connected through Composio gives agents tools that call
+GitHub for them; it does not make `git clone` of a private repository,
+`git push` or `gh pr create` work in the agent's shell, which sign in
+however this computer's git and gh are set up.
+
+`checkGitHubCli` finds git and gh with the PATH every turn starts from
+(`server/path.ts` widens it the same way for both) and asks gh
+`auth status --json hosts` (the words of an older gh otherwise) who is
+signed in to github.com, whether that still works, and where gh keeps it:
+the system keychain, a file, or an environment variable. It never runs
+`gh auth token` or asks status to show one. On a Mac without the
+developer tools `/usr/bin/git` is the installer stub, so it is never run
+(the checkpoint rule). Git counts as set up when its global config sends
+github.com credentials to `gh auth git-credential`. What is missing comes
+back as the next step, in order: git (`xcode-select --install`), gh
+(`brew install gh` when Homebrew is here, else cli.github.com), sign in
+(`gh auth login --hostname github.com --git-protocol https --web`, opened
+in Terminal the way an engine's sign-in is, with the command to copy for a
+computer reached over SSH, where gh's device code works from any browser),
+and `gh auth setup-git`, which the app runs with the gh it found.
+
+`GET /api/cli-plugins`, `POST .../github/check`, `PUT .../github`
+(`enabled`, kept as `cliPlugins.github` in config.json), and the
+`install`, `sign-in` and `setup-git` steps answer only a window on this
+computer: never a phone, a member or an agent (`/api/cli-plugins` is on
+the agents' never list). While the plugin is on, the owner's own turns
+on an engine with a shell are told gh is signed in, as whom, and to use
+git and gh as usual (`ghHint`), from the last check, which is redone in
+the background when it is ten minutes old. Turned off, agents are told
+nothing; gh stays signed in.
+
+Bloks keeps no copy of gh's sign-in, and it cannot keep it from an agent:
+an agent runs as the person, and gh hands its token to whoever runs
+`gh auth token`. The page says so.
+
 ## Boundaries worth knowing
 
 - `server/http-guard.ts` checks `Origin` and `Host` on every request.

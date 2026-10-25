@@ -134,6 +134,10 @@ export interface AppConfig {
   /** Values agents asked for via secret cards, injected into engine
    * environments under their env-var names. Never echoed to clients. */
   secrets?: Record<string, string>;
+  /** Tools on this computer agents use from their shell, and whether each
+   * plugin is on (server/cli-plugins.ts). No credential lives here: gh
+   * keeps its own sign-in. */
+  cliPlugins?: { github?: { enabled?: boolean } };
   /** When the one-time welcome was completed. Lives here, beside the
    * agents it describes, because a browser's localStorage is the wrong
    * place to remember whether a WORKSPACE has been set up: clear it, or
@@ -389,6 +393,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "credits",
     "spendLimits",
     "spendPrices",
+    "cliPlugins",
   ] as const) {
     if (patch[key] && typeof patch[key] === "object") {
       // The migrated Telegram section is a complete private record. A

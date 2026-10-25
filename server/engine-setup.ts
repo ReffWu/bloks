@@ -133,10 +133,18 @@ export function runSetupScript(script: string): Promise<InstallResult> {
  * elsewhere the answer is the command, for the person to run. */
 export function openSignIn(kind: string): { opened: boolean; command: string | null } {
   const command = ENGINE_SETUP[kind]?.signIn ?? null;
-  if (!command || process.platform !== "darwin") return { opened: false, command };
+  if (!command) return { opened: false, command };
+  return { opened: openInTerminal(`signin-${kind}`, command), command };
+}
+
+/** Opens Terminal running one command, for a step that is the person's
+ * own interactive flow (an engine's sign-in, gh's). False where there is
+ * no Terminal to open, and the caller shows the command instead. */
+export function openInTerminal(name: string, command: string): boolean {
+  if (process.platform !== "darwin") return false;
   // A .command file is what Finder hands to Terminal: no Automation
   // permission to ask for, which osascript would need.
-  const file = join(tmpdir(), `bloks-signin-${kind}.command`);
+  const file = join(tmpdir(), `bloks-${name.replace(/[^a-z0-9-]/gi, "")}.command`);
   writeFileSync(
     file,
     [
@@ -150,5 +158,5 @@ export function openSignIn(kind: string): { opened: boolean; command: string | n
   );
   chmodSync(file, 0o755);
   spawn("open", [file], { stdio: "ignore", detached: true }).unref();
-  return { opened: true, command };
+  return true;
 }

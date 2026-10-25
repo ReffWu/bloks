@@ -30,7 +30,7 @@ export type AutomationsFocus = { kind: "routine" | "watcher"; id: string };
 /** The two pages of Customize, the rail's Plugins place (Customize.tsx). */
 export type CustomizeTab = "plugins" | "skills";
 /** One thing on Settings' Plugins page with a page of its own. */
-export type PluginFocus = { kind: "app" | "mcp" | "skill"; id: string };
+export type PluginFocus = { kind: "app" | "mcp" | "skill" | "cli"; id: string };
 /** What the Memory place has open (MemoryPlace.tsx): an agent by its id,
  * the notes about the person, or the shared memory every agent reads. */
 export type MemoryTarget = string;

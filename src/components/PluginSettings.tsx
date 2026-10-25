@@ -1,8 +1,10 @@
 // Settings, Plugins: managing what agents can reach, where the Plugins
-// page in the rail is for finding it. Three lists under one switch, Apps,
-// MCPs and Skills, each counted, each searchable, and each item opening a
-// page of its own: an app's connection and who may use it, a server's
-// connection, values and agents, a skill's text and the agents using it.
+// page in the rail is for finding it. Four lists under one switch, Apps,
+// MCPs, CLIs and Skills, each counted, each searchable, and each item
+// opening a page of its own: an app's connection and who may use it, a
+// server's connection, values and agents, a CLI on this computer and the
+// protected connection beside it (src/components/CliPlugins.tsx), a
+// skill's text and the agents using it.
 //
 // The switches here are the ones Bloks really has. Apps are connected or
 // not, and each agent may use connected apps or not; servers and skills
@@ -26,6 +28,8 @@ import { useConnectors, type ToolkitCard } from "@/lib/useConnectors";
 import { detailsFor } from "@/lib/appDetails";
 import { tryPrompt } from "@/lib/tryPrompt";
 import { AddMcpServerDialog, BackLink, McpServerSettings, mcpTarget, useMcpServers } from "./McpServers";
+import { cliPluginLine, GitHubPluginSettings, useCliPlugins } from "./CliPlugins";
+import { GitHubMark } from "./ProviderIcons";
 import { AddSkillDialog } from "./SkillsPanel";
 import { ServiceIcon } from "./Customize";
 import { ComposioKeyDialog } from "./ComposioKeyDialog";
@@ -36,7 +40,7 @@ import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 
-type List = "apps" | "mcps" | "skills";
+type List = "apps" | "mcps" | "clis" | "skills";
 
 const pill =
   "flex h-9 items-center rounded-full outline-none transition-[background-color,color,scale,opacity] duration-150 ease-out active:scale-[0.97]";
@@ -98,6 +102,7 @@ export function PluginSettings() {
   const setFocus = (next: PluginFocus | null) => dispatch({ type: "openPluginSettings", focus: next });
   const connectors = useConnectors();
   const { servers, reload: reloadServers } = useMcpServers();
+  const { plugins: clis, error: cliError } = useCliPlugins();
   const [skills, setSkills] = useState<Skill[] | null>(null);
   const loadSkills = () =>
     api("/api/skills")
@@ -116,7 +121,7 @@ export function PluginSettings() {
   // a page opened from elsewhere (Manage on an app) shows its own list
   // behind it, so Back lands where it belongs
   useEffect(() => {
-    if (focus) setList(focus.kind === "app" ? "apps" : focus.kind === "mcp" ? "mcps" : "skills");
+    if (focus) setList(focus.kind === "app" ? "apps" : focus.kind === "mcp" ? "mcps" : focus.kind === "cli" ? "clis" : "skills");
   }, [focus]);
 
   const q = query.trim().toLowerCase();
@@ -125,6 +130,7 @@ export function PluginSettings() {
     [connectors.installed, q],
   );
   const shownServers = (servers ?? []).filter((s) => !q || `${s.name} ${s.target}`.toLowerCase().includes(q));
+  const shownClis = (clis ?? []).filter((p) => !q || `${p.name} git gh cli`.toLowerCase().includes(q));
   const shownSkills = (skills ?? []).filter((s) => !q || `${s.name} ${s.description}`.toLowerCase().includes(q));
 
   if (focus?.kind === "mcp") {
@@ -138,6 +144,7 @@ export function PluginSettings() {
       />
     );
   }
+  if (focus?.kind === "cli") return <GitHubPluginSettings onBack={() => setFocus(null)} />;
   if (focus?.kind === "app") {
     const card = connectors.cards?.find((c) => c.slug === focus.id);
     return card ? (
@@ -184,6 +191,7 @@ export function PluginSettings() {
   const counts: Record<List, number | null> = {
     apps: connectors.cards === null ? null : connectors.installed.length,
     mcps: servers === null ? null : servers.length,
+    clis: clis === null ? null : clis.length,
     skills: skills === null ? null : skills.length,
   };
 
@@ -192,7 +200,7 @@ export function PluginSettings() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-display font-semibold text-foreground">Plugins</h2>
-          <p className="mt-1.5 text-ui text-muted-foreground">Manage apps, MCP servers and skills.</p>
+          <p className="mt-1.5 text-ui text-muted-foreground">Manage apps, MCP servers, CLIs and skills.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -226,6 +234,7 @@ export function PluginSettings() {
             [
               ["apps", "Apps"],
               ["mcps", "MCPs"],
+              ["clis", "CLIs"],
               ["skills", "Skills"],
             ] as const
           ).map(([value, text]) => (
@@ -254,7 +263,7 @@ export function PluginSettings() {
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={list === "apps" ? "Search apps" : list === "mcps" ? "Search MCP servers" : "Search skills"}
+            placeholder={list === "apps" ? "Search apps" : list === "mcps" ? "Search MCP servers" : list === "clis" ? "Search CLIs" : "Search skills"}
             aria-label="Search"
             className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
           />
@@ -362,6 +371,44 @@ export function PluginSettings() {
                     />
                   );
                 })}
+              </Card>
+            </>
+          ))}
+
+        {list === "clis" &&
+          (clis === null ? (
+            <Loading />
+          ) : cliError ? (
+            <Empty>{cliError}</Empty>
+          ) : shownClis.length === 0 ? (
+            <Empty>{`No CLIs match “${query.trim()}”.`}</Empty>
+          ) : (
+            <>
+              <p className="mb-2.5 text-pretty text-body text-muted-foreground">Tools on this computer that agents use from their shell.</p>
+              <Card>
+                {shownClis.map((plugin) => (
+                  <Row
+                    key={plugin.id}
+                    onOpen={() => setFocus({ kind: "cli", id: plugin.id })}
+                    tile={
+                      <Tile>
+                        <GitHubMark size={18} />
+                      </Tile>
+                    }
+                    name={plugin.name}
+                    line={cliPluginLine(plugin)}
+                    aside={
+                      <button
+                        onClick={() => setFocus({ kind: "cli", id: plugin.id })}
+                        aria-label={`${plugin.name} settings`}
+                        className="flex shrink-0 items-center gap-2 text-body text-muted-foreground"
+                      >
+                        {plugin.enabled ? "On" : "Off"}
+                        <ChevronRight size={16} />
+                      </button>
+                    }
+                  />
+                ))}
               </Card>
             </>
           ))}
