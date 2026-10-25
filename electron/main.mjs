@@ -509,6 +509,7 @@ function runFor(id) {
       handLicence(run);
       handName(run);
       handMark(run);
+      handAttention(run);
       setStatus(run, "running");
       pointWindows(run.id);
     },
@@ -552,6 +553,7 @@ function launch(id) {
     if (up) handLicence(run);
     if (up) handName(run);
     if (up) handMark(run);
+    if (up) handAttention(run);
     setStatus(run, up ? "running" : "failed");
     return up;
   });
@@ -719,6 +721,20 @@ function handName(run) {
   if (!ws || isRemoteKind(ws.kind)) return;
   try {
     run.child.postMessage({ kind: "name", name });
+  } catch {
+    /* a server on its way out hears it again when it is back */
+  }
+}
+
+/** Hands a workspace's mute and notification level to its server, which
+ * holds a phone's "your answer is ready" to them as this end holds a
+ * banner (server/answer-ready.ts). The mute's end is a time the server
+ * reads itself, so only a change has to be said. */
+function handAttention(run) {
+  const ws = run ? entryOf(run.id) : null;
+  if (!ws || isRemoteKind(ws.kind) || !run.child) return;
+  try {
+    run.child.postMessage({ kind: "attention", mute: ws.mute ?? null, notify: ws.notify ?? "all" });
   } catch {
     /* a server on its way out hears it again when it is back */
   }
@@ -990,6 +1006,7 @@ function tellWorkspaces() {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send("workspaces:state", state);
   }
+  for (const run of servers.values()) handAttention(run);
   clearTimeout(muteTimer);
   const end = nextMuteEnd(registry.workspaces);
   if (end) {

@@ -438,6 +438,19 @@ engine taking over is the same wait), every phone's activity for it is
 ended. These go through the relay as ActivityKit pushes, which Apple
 reads, so they carry only a state word, the turn's start time and opaque
 ids, with the agent's name and the conversation sealed for the device.
+
+An activity's end is silent, so the same turns also say when their
+answer is ready (`server/answer-ready.ts`): once, as the turn's
+`reply.settled` goes out, a wake with reason `reply` to the owner's
+phones, its preview (the agent, the answer's first words, the lane)
+sealed for each. Only for a turn that ended well in a conversation with
+one agent, not one asked from Telegram, an agent whose notifications are
+off, a goal's turn, or a workspace the desktop app has muted or set to
+fewer notifications (handed to its server as `attention`). And not while
+any of the person's screens shows that conversation: windows and phones
+say what they have in front of the person with `POST /api/viewing`
+(feature `viewing`), again every thirty seconds while they do and null
+when they stop, and a word older than 75 seconds no longer counts.
 The tokens are kept per paired device, swept against the pairing every
 minute (which also ends what a restart left behind), and dropped when the
 device is unpaired. Without Bloks Cloud there is no way to push, and the

@@ -42,6 +42,7 @@ import { ENGINE_SETUP, installEngine, openSignIn, runSetupScript } from "./engin
 import { ENGINE_PACKAGES, engineUpdates } from "./engine-updates.ts";
 import { FEATURES } from "./features.ts";
 import { ReplyNotifications, settledFrame, settledReply } from "./reply-notifications.ts";
+import { AnswerReady, answerDue, answersAllowed, attentionFrom, Viewing, viewingReport, type Attention } from "./answer-ready.ts";
 import { LiveActivities } from "./live-activities.ts";
 import { deviceKey, seal } from "./relay-crypto.ts";
 import * as scout from "./scout.ts";
@@ -3454,6 +3455,13 @@ function wakeFor(payload: unknown): Wake | undefined {
     const owner = ownerClientDigest();
     return owner ? { reason: "brief", clients: [owner], preview: true } : "brief";
   }
+  // the answer to what the owner asked, when the end of its turn judged it
+  // news (answerReady): their phones alone, and once
+  if (p?.kind === "reply.settled") {
+    if (!answerReady.take((payload as { turnId?: unknown }).turnId)) return undefined;
+    const owner = ownerClientDigest();
+    return owner ? { reason: "reply", clients: [owner], preview: true } : undefined;
+  }
   // a shared room nearing what it may spend: the owner's to decide
   if (p?.kind === "room.spendWarning") {
     const owner = ownerClientDigest();
@@ -3538,7 +3546,13 @@ function wakeFor(payload: unknown): Wake | undefined {
 function previewOf(frame: unknown): WakePreview | null {
   const brief = frame as { kind?: string; headline?: string } | null;
   if (brief?.kind === "brief.ready") return { title: "Your morning brief", body: String(brief.headline ?? "").slice(0, 180), category: "brief" };
-  const f = frame as { kind?: string; threadId?: string; message?: Message } | null;
+  const f = frame as { kind?: string; threadId?: string; botId?: string; message?: Message } | null;
+  // an answer that is ready: who wrote it, and its first words, already
+  // clipped by settledFrame; the lane, so a tap opens where it is
+  if (f?.kind === "reply.settled" && f.threadId && f.message?.text) {
+    const bot = (f.botId ? store.bot(f.botId) : null) ?? store.botByThread(f.threadId);
+    return { title: bot?.name ?? "Your answer is ready", body: f.message.text, category: "reply", ...(bot ? { botId: bot.id } : {}), threadId: f.threadId };
+  }
   const card = f?.kind === "message.patch" && f.message?.incident?.kind === "needs-you";
   if ((f?.kind !== "message" && !card) || !f?.message || !f.threadId) return null;
   const m = f.message;
@@ -3692,6 +3706,13 @@ function recoverPlan(messageId: string, botId: string) {
 }
 
 const replyNotifications = new ReplyNotifications();
+/** The phone told once that what the person asked for is answered
+ * (server/answer-ready.ts): which lanes' turns they are waiting on, what
+ * each client has on screen, and the desktop's word on interruptions. */
+const answerReady = new AnswerReady();
+const answerAsked = new Map<string, boolean>();
+const viewing = new Viewing();
+let attention: Attention | null = null;
 
 bus.subscribe((event: RuntimeEvent) => {
   // Maintenance compaction (idle or before a turn) does not own a
@@ -4629,6 +4650,20 @@ bus.subscribe((event: RuntimeEvent) => {
       });
       const replyFrame = replyNotice &&
         settledFrame(replyNotice, store.messagesFor(replyNotice.threadId).find((m) => m.id === replyNotice.message.id));
+      // and the phone told the answer is ready, once, when the person was
+      // waiting on it and is not reading it now (server/answer-ready.ts):
+      // the wake rides on this frame (wakeFor)
+      if (replyFrame && answerDue({
+        asked: answerAsked.get(event.threadId) === true,
+        ok: event.ok !== false && event.stopReason !== "interrupted",
+        laneId: event.threadId,
+        replyIn: replyFrame.threadId,
+        personal: Boolean(privateTo(event.threadId)),
+        notifications: store.bot(bot.id)?.notifications !== false,
+        goalRunning: store.taskByThread(event.threadId)?.task.goal?.status === "active",
+        allowed: answersAllowed(attention),
+        viewed: viewing.sees(event.threadId),
+      })) answerReady.ready(replyFrame.turnId);
       if (replyFrame) broadcast(replyFrame);
       // a turn asked again or handed to the backup is not over yet, so what
       // waits on how it ends (a routine's run, a workflow step, a meeting's
@@ -6481,6 +6516,12 @@ async function startClaimedTurn(
   // The owner's own message, from any device: the one turn worth their
   // Lock Screen. Never another agent's, a routine's or a member's.
   if (opts.byYou && owners && !opts.from && !opts.routine && !delegateSource) liveActivities.started(task.id);
+  // The same turns are the ones whose answer the phone is told of, except
+  // one asked from Telegram, which answers there, and a room's. A turn
+  // that goes on with another (a retry, the backup, a pickup) is still
+  // the same wait, whoever its options now name.
+  const askedForAnswer = Boolean(opts.byYou && owners && !opts.from && !opts.routine && !delegateSource && !opts.fromTelegram && !blok);
+  if (!(opts.fallback || opts.retry || opts.carriedOn) || !answerAsked.has(task.id)) answerAsked.set(task.id, askedForAnswer);
   // a goal judged before this turn began is not judging this one
   laneTurns.set(task.id, (laneTurns.get(task.id) ?? 0) + 1);
   // the busy flag holds the lane from here
@@ -15081,6 +15122,7 @@ async function sendUserMessage(
       if (steered) {
         // the person joined this turn, so it is now one they wait on
         liveActivities.started(lane.id);
+        answerAsked.set(lane.id, true);
         // A turn stopped on a question or an approval reads nothing until
         // that is answered, and the step it is on is the person's own.
         const asked = [...askThreadByRequest.values()].includes(lane.id);
@@ -21322,6 +21364,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // (server/features.ts).
     if (method === "GET" && path === "/api/health") return json(res, 200, healthBody());
 
+    // ── what a client has in front of the person (server/answer-ready.ts) ──
+    // Said by the owner's own windows and paired phones while they show a
+    // conversation, and null when they stop: a conversation on screen is
+    // one whose answer needs no banner. A member's word is about their
+    // own conversations, whose answers are never the owner's news.
+    if (method === "POST" && path === "/api/viewing") {
+      if (asAgent || caller?.personId || namesMember()) return json(res, 403, { error: "only the person's own screens say what is on them" });
+      const said = viewingReport(await readBody(req));
+      if ("error" in said) return json(res, 400, said);
+      viewing.say(`${caller?.id ?? "here"}:${said.viewer}`, said.threadId, said.seq);
+      return json(res, 200, { ok: true });
+    }
+
     // A paired phone's Live Activity tokens (server/live-activities.ts):
     // the one that lets this computer start an activity on it, and one per
     // activity, which is what ends it while the phone sleeps. The owner's
@@ -25002,6 +25057,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (ok) deviceSettings.forget(m[1]);
       // its Live Activity tokens go with it
       if (ok) liveActivities.forget(m[1]);
+      // and what it last said it had on screen
+      if (ok) viewing.forget(`${m[1]}:`);
       // and where it last said it was, with whether it was sharing
       if (ok) {
         const had = whereabouts.sharing();
@@ -25773,6 +25830,9 @@ type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: u
       broadcast({ kind: "workspace.mark", mark: view.mark, default: view.default, chosen: view.chosen });
     }
   }
+  // the workspace's mute and notification level as the app keeps them,
+  // which an answer's phone banner keeps to too (server/answer-ready.ts)
+  if (message?.data?.kind === "attention") attention = attentionFrom(message.data);
   // the person's name, as they chose it in another workspace: one person,
   // called the same everywhere. Never an empty one, which only ever
   // clears the workspace it was cleared in.

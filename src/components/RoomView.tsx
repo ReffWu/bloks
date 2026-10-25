@@ -36,6 +36,7 @@ import { GroupMessage, PersonAvatar, SeenBy } from "./chat/Group";
 import { receiptsAt, runs, senderOf } from "@/lib/participants";
 import { useNamer, useWorkspaceRoster } from "@/lib/members";
 import { seedReads, useReadPosition, useReads } from "@/lib/readReceipts";
+import { useViewingReport } from "@/lib/viewing";
 import { JumpToLatest } from "./chat/JumpToLatest";
 import { HeldSends } from "./chat/HeldSends";
 import { heldToShow, isHostedWindow, useHeldSends, useWake } from "@/lib/waking";
@@ -714,6 +715,8 @@ export function RoomView({ blok }: { blok: Blok }) {
       .then((r: { reads?: unknown }) => seedReads(blok.id, r.reads))
       .catch(() => {});
   }, [withPeople, blok.id]);
+  // on screen here, so an answer that lands in it is no news for the phone
+  useViewingReport(blok.id, (body) => api("/api/viewing", { method: "POST", body: JSON.stringify(body) }));
   useReadPosition({
     threadId: withPeople ? blok.id : null,
     scroller: scrollRef,

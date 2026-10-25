@@ -154,4 +154,10 @@ export const FEATURES: readonly string[] = [
   // (server/relay-link.ts, servePart); `openMaxBytes` on
   // GET /api/attachments/where for a caller through Bloks Cloud
   "raw-parts",
+  // POST /api/viewing { viewer, threadId, seq }: what a window or a paired
+  // phone has in front of the person, said again every thirty seconds
+  // while it does and null when it stops; an answer the person was
+  // waiting on wakes their phones (reason "reply", category "reply") only
+  // while no client shows its conversation (server/answer-ready.ts)
+  "viewing",
 ];

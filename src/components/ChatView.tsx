@@ -2,6 +2,7 @@ import { useSettingsObservation } from "@/lib/useSettingsObservation";
 import { useNamer, useWorkspaceRoster } from "@/lib/members";
 import { isGroup, otherHumans, receiptsAt, runs, senderOf, speakers, teamHumans } from "@/lib/participants";
 import { seedReads, useReadPosition, useReads } from "@/lib/readReceipts";
+import { useViewingReport } from "@/lib/viewing";
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { Search } from "@/components/icons";
 import { ChevronUp } from "@/components/icons";
@@ -187,6 +188,8 @@ export function ChatView({ bot }: { bot: Bot }) {
       .then((r: { reads?: unknown }) => seedReads(bot.threadId, r.reads))
       .catch(() => {});
   }, [withPeople, bot.threadId]);
+  // on screen here, so an answer that lands in it is no news for the phone
+  useViewingReport(bot.threadId, (body) => api("/api/viewing", { method: "POST", body: JSON.stringify(body) }));
   useReadPosition({
     threadId: withPeople ? bot.threadId : null,
     scroller: scrollRef,
