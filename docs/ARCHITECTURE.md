@@ -446,8 +446,17 @@ answer is ready (`server/answer-ready.ts`): once, as the turn's
 phones, its preview (the agent, the answer's first words, the lane)
 sealed for each. Only for a turn that ended well in a conversation with
 one agent, not one asked from Telegram, an agent whose notifications are
-off, a goal's turn, or a workspace the desktop app has muted or set to
-fewer notifications (handed to its server as `attention`). And not while
+off, a goal's turn, or a workspace that is muted or set to fewer
+notifications. The server keeps that word in its data folder
+(`attention.json`, `server/attention.ts`), so a restart, or a server no
+app started, still has it; a server nobody ever told is not muted. The
+desktop app hands it to a server it started as `attention`, and says it
+to your hosted workspace, or one joined as its owner, on
+`PUT /api/workspace/attention` through the stand-in, only when it
+changed. The owner may set it there from any device of theirs (feature
+`attention`); agents, members and admins are refused, and a change on
+a server the app started is put to the app first, so the switcher
+shows it too. And not while
 any of the person's screens shows that conversation: windows and phones
 say what they have in front of the person with `POST /api/viewing`
 (feature `viewing`), again every thirty seconds while they do and null

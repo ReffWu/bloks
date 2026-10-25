@@ -160,4 +160,9 @@ export const FEATURES: readonly string[] = [
   // waiting on wakes their phones (reason "reply", category "reply") only
   // while no client shows its conversation (server/answer-ready.ts)
   "viewing",
+  // GET and PUT /api/workspace/attention { mute, notify }: the workspace's
+  // mute (null, "forever" or when it ends) and notification level, which
+  // an answer's wake keeps to, set by the owner from any device of theirs
+  // and kept by this server across restarts (server/attention.ts)
+  "attention",
 ];

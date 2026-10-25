@@ -88,6 +88,7 @@ import {
   markDefault,
   mergeDrains,
   muteFor,
+  NOTIFY_LEVELS,
   nextMuteEnd,
   oneAtATime,
   readRegistry,
@@ -106,6 +107,7 @@ import {
   writeRegistry,
 } from "./workspaces.mjs";
 import { startMeeting, startSpeech, stopMeeting, stopSpeech } from "./speech.mjs";
+import { createAttentionSayer } from "./attention-said.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ICON = path.join(HERE, "resources/app-icon.png");
@@ -728,16 +730,45 @@ function handName(run) {
 
 /** Hands a workspace's mute and notification level to its server, which
  * holds a phone's "your answer is ready" to them as this end holds a
- * banner (server/answer-ready.ts). The mute's end is a time the server
- * reads itself, so only a change has to be said. */
+ * banner (server/answer-ready.ts), and keeps them (server/attention.ts).
+ * The mute's end is a time the server reads itself, so only a change has
+ * to be said. A server on another machine, your hosted one or one you
+ * joined as its owner, is told through its stand-in instead
+ * (electron/attention-said.mjs). */
 function handAttention(run) {
   const ws = run ? entryOf(run.id) : null;
-  if (!ws || isRemoteKind(ws.kind) || !run.child) return;
+  if (!ws) return;
+  if (isRemoteKind(ws.kind)) {
+    if (run.status === "running" && run.port) void attentionThere().say(ws.id, { kind: ws.kind, base: `http://127.0.0.1:${run.port}` }, ws);
+    return;
+  }
+  if (!run.child) return;
   try {
     run.child.postMessage({ kind: "attention", mute: ws.mute ?? null, notify: ws.notify ?? "all" });
   } catch {
     /* a server on its way out hears it again when it is back */
   }
+}
+
+/** What each workspace on another machine last took, kept beside the list. */
+let attentionSayer = null;
+const attentionThere = () =>
+  (attentionSayer ??= createAttentionSayer({ file: path.join(app.getPath("userData"), "attention-said.json") }));
+
+/** A mute or level the owner chose on a device of theirs, put to the list
+ * by the server it was said to: kept, and handed back to that server, the
+ * way a change in the switcher is. */
+function attentionFromServer(id, said) {
+  const ws = entryOf(id);
+  if (!ws || isRemoteKind(ws.kind)) throw Object.assign(new Error("There is no such workspace here."), { status: 404 });
+  if (!NOTIFY_LEVELS.includes(said?.notify)) throw Object.assign(new Error("That is not a notification level."), { status: 400 });
+  const mute = said.mute === "forever" ? "forever" : Number.isSafeInteger(said.mute) && said.mute > 0 ? said.mute : null;
+  registry = updateWorkspace(registry, id, { mute, notify: said.notify });
+  saveRegistry();
+  tellWorkspaces();
+  applyBadge();
+  const now = entryOf(id);
+  return { ok: true, mute: now.mute ?? null, notify: now.notify ?? "all" };
 }
 
 /** A name a workspace's server said: kept, and handed to the rest. */
@@ -793,6 +824,7 @@ async function answerServer(id, child, said) {
   let reply;
   try {
     if (said.what === "mark") reply = markFromServer(id, said.mark);
+    else if (said.what === "attention") reply = attentionFromServer(id, said);
     else if (said.what === "workspaces") reply = await othersForPhone(id);
     else if (said.what === "pair") reply = await pairForPhone(id, said.target, said.device);
     else reply = { error: "The app does not answer that.", status: 404 };
@@ -1194,6 +1226,8 @@ async function pairHosted(link, { open = true } = {}) {
     await halt(added.entry.id);
   }
   fs.writeFileSync(joinedFile(added.entry.id), safeStorage.encryptString(JSON.stringify(profile)), { mode: 0o600 });
+  // a new pairing may be a new machine, which has heard nothing yet
+  attentionThere().forget(added.entry.id);
   registry = settle(added.registry, { personalDataDir: personalDataDir() });
   saveRegistry();
   tellWorkspaces();
@@ -1373,6 +1407,9 @@ function carryMove() {
 async function moveEnded(move) {
   if (move.phase !== "done") return;
   if (move.direction === "to-hosted") {
+    // the hosted server now holds the moved workspace's folder, with
+    // whatever mute that one kept, so it is told the hosted entry's again
+    attentionThere().forget(move.to.id);
     registry = markMoved(registry, move.from.id, move.to.id);
     keepMove({ moved: { at: Date.now(), from: move.from.id, to: move.to.id } });
   } else {

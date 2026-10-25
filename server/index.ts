@@ -43,6 +43,7 @@ import { ENGINE_PACKAGES, engineUpdates } from "./engine-updates.ts";
 import { FEATURES } from "./features.ts";
 import { ReplyNotifications, settledFrame, settledReply } from "./reply-notifications.ts";
 import { AnswerReady, answerDue, answersAllowed, attentionFrom, Viewing, viewingReport, type Attention } from "./answer-ready.ts";
+import { attentionRoute, keepAttention, readAttention, sameAttention } from "./attention.ts";
 import { LiveActivities } from "./live-activities.ts";
 import { deviceKey, seal } from "./relay-crypto.ts";
 import * as scout from "./scout.ts";
@@ -3955,7 +3956,32 @@ const replyNotifications = new ReplyNotifications();
 const answerReady = new AnswerReady();
 const answerAsked = new Map<string, boolean>();
 const viewing = new Viewing();
-let attention: Attention | null = null;
+/** The workspace's mute and level as this server last heard them, from
+ * the app that started it or on the owner's route, kept in the data
+ * folder so a restart, or a server no app started, still has them
+ * (server/attention.ts). Never told is null, and not muted. */
+let attention: Attention | null = (() => {
+  try {
+    return readAttention(DATA_DIR);
+  } catch (e) {
+    console.warn(`[attention] ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+})();
+
+/** Takes a new word on interruptions, and keeps it when it changed. The
+ * app says it again on every change to its list, which is mostly the
+ * same word, and that is not worth a write. */
+function setAttention(next: Attention) {
+  if (sameAttention(attention, next)) return;
+  attention = next;
+  try {
+    keepAttention(DATA_DIR, next);
+  } catch (e) {
+    // held for this run all the same; the next word tries the disk again
+    console.warn(`[attention] could not keep it: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
 
 bus.subscribe((event: RuntimeEvent) => {
   // Maintenance compaction (idle or before a turn) does not own a
@@ -18449,6 +18475,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // choice of mark staying on their side
       const marked = await markRoute(method, path, () => readBody(req), workspaceMarkDeps);
       if (marked) return json(res, marked.status, marked.body);
+      // the workspace's mute and level (server/attention.ts): the owner's,
+      // from this computer or a device of theirs, and a member's
+      // credential on this computer is taken at its word here
+      if (path === "/api/workspace/attention" && (local ? namesMember() : !ownerDevice)) {
+        return json(res, 403, { error: "the workspace's notifications are the owner's" });
+      }
+      const heard = await attentionRoute(method, path, () => readBody(req), {
+        current: () => attention,
+        save: setAttention,
+        askApp: (said) => desktopLine.ask("attention", { mute: said.mute, notify: said.notify }),
+      });
+      if (heard) return json(res, heard.status, heard.body);
       if (await workspacePeople.ownerRoute(req, res, method, path, { kind: "owner" })) return;
     }
     // The other workspaces on this computer, for the owner's phone paired
@@ -26291,8 +26329,12 @@ type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: u
     }
   }
   // the workspace's mute and notification level as the app keeps them,
-  // which an answer's phone banner keeps to too (server/answer-ready.ts)
-  if (message?.data?.kind === "attention") attention = attentionFrom(message.data);
+  // which an answer's phone banner keeps to too (server/answer-ready.ts),
+  // kept here as well so a start before the app says it again has them
+  if (message?.data?.kind === "attention") {
+    const said = attentionFrom(message.data);
+    if (said) setAttention(said);
+  }
   // the person's name, as they chose it in another workspace: one person,
   // called the same everywhere. Never an empty one, which only ever
   // clears the workspace it was cleared in.

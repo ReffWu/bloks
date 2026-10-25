@@ -3,7 +3,9 @@
 // synthetic phone, a turn held open by a provider that answers on cue.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createServer } from "node:http";
 import { test, type TestContext } from "node:test";
 import {
@@ -111,7 +113,9 @@ test("the desktop app hands each workspace's mute and level to its server, which
   // as each server starts or comes back, and whenever the list changes
   assert.equal(main.match(/handAttention\(run\);/g)?.length, 3);
   const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
-  assert.match(server, /kind === "attention"\) attention = attentionFrom\(message\.data\)/);
+  // and keeps them, so a start before the app says them again has them
+  assert.match(server, /kind === "attention"\) \{\s+const said = attentionFrom\(message\.data\);\s+if \(said\) setAttention\(said\);/);
+  assert.match(server, /let attention: Attention \| null = \(\(\) => \{\s+try \{\s+return readAttention\(DATA_DIR\);/);
   assert.match(server, /allowed: answersAllowed\(attention\)/);
 });
 
@@ -276,4 +280,70 @@ test("answering one of a conversation's cards counts as being there for a minute
   assert.equal(v.sees("lane-1"), true);
   now += 1;
   assert.equal(v.sees("lane-1"), false, "work that runs on past the minute still says when it is done");
+});
+
+// ── a server no app started (GitHub 391) ───────────────────────────────
+
+/** One message from the person, and the turn it starts settled. */
+async function ask(h: Harness, bot: { id: string; threadId: string }, text: string) {
+  assert.equal((await h.fetch(`/api/bots/${bot.id}/messages`, { method: "POST", body: JSON.stringify({ text }) })).status, 202);
+  assert.ok(await idle(h, bot));
+  await settle();
+}
+
+test("a server no app started is told the mute and level by the owner's phone, and keeps to them", async (t) => {
+  const p = await fakeProvider(t);
+  p.state.answerAtOnce = true;
+  const h = await startHarness();
+  t.after(() => h.stop());
+  const phone = await phoneRelay(t, h);
+  const bot = await agentOn(h, p.port, "Mira");
+  const tell = (body: unknown) => h.fetchRemote("/api/workspace/attention", { method: "PUT", token: phone.token, body: JSON.stringify(body) });
+
+  // never told: answered as it always was
+  assert.equal((await h.json("/api/workspace/attention")).attention, null);
+  await ask(h, bot, "First example");
+  assert.ok(await waitFor(() => phone.answers()[0]), "a server nobody told held the answer back");
+
+  // muted for good, from the phone
+  assert.equal((await tell({ mute: "forever", notify: "all" })).status, 200);
+  await ask(h, bot, "Second example");
+  assert.equal(phone.answers().length, 1, "a muted workspace woke the phone");
+
+  // "needs me" and "nothing": an answer is not something that needs the person
+  for (const notify of ["needs-me", "nothing"]) {
+    assert.equal((await tell({ mute: null, notify })).status, 200);
+    await ask(h, bot, `Example on ${notify}`);
+    assert.equal(phone.answers().length, 1, `"${notify}" woke the phone`);
+  }
+
+  // a mute for a while holds until it runs out, and not after
+  const until = Date.now() + 2_500;
+  assert.equal((await tell({ mute: until, notify: "all" })).status, 200);
+  await ask(h, bot, "Example while muted");
+  assert.equal(phone.answers().length, 1, "a timed mute woke the phone before it ran out");
+  await new Promise((r) => setTimeout(r, Math.max(0, until - Date.now() + 100)));
+  await ask(h, bot, "Example after the mute");
+  assert.ok(await waitFor(() => phone.answers()[1]), "a mute that ran out still held the answer back");
+
+  // and back to everything
+  assert.equal((await tell({ mute: null, notify: "all" })).status, 200);
+  await ask(h, bot, "Last example");
+  assert.ok(await waitFor(() => phone.answers()[2]));
+});
+
+test("a mute kept in the data folder holds answers back from the first turn after a start", async (t) => {
+  const home = mkdtempSync(join(tmpdir(), "bloks-attention-kept-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  mkdirSync(join(home, ".bloks"), { recursive: true });
+  writeFileSync(join(home, ".bloks", "attention.json"), JSON.stringify({ mute: "forever", notify: "all" }));
+  const p = await fakeProvider(t);
+  p.state.answerAtOnce = true;
+  const h = await startHarness({ HOME: home });
+  t.after(() => h.stop());
+  const phone = await phoneRelay(t, h);
+  const bot = await agentOn(h, p.port, "Mira");
+  assert.deepEqual((await h.json("/api/workspace/attention")).attention, { mute: "forever", notify: "all" });
+  await ask(h, bot, "Example after a start");
+  assert.equal(phone.answers().length, 0, "a kept mute was forgotten on the way up");
 });
