@@ -21393,6 +21393,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           behavior: body.behavior,
           message: body.message,
         });
+        // and the turn it was asked in, ending straight after, is no news
+        // to someone who just answered it (server/answer-ready.ts)
+        viewing.answer(askThread);
         // An answer is the person in the conversation as much as a
         // message is; in a room, the card was the room's.
         const askedIn = activeRoom.get(askThread);

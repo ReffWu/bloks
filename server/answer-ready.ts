@@ -47,9 +47,16 @@ export function viewingReport(body: unknown): { viewer: string; threadId: string
   return { viewer: b.viewer, threadId: b.threadId, seq: b.seq };
 }
 
+/** How long an answer to one of a conversation's cards counts as the
+ * person being there: they just decided something in it, so the turn
+ * ending straight after is no news, while work that runs on well past
+ * that still says when it is done. */
+export const ANSWERED_FRESH_MS = 60_000;
+
 /** What each client says it has in front of the person right now. */
 export class Viewing {
   private seen = new Map<string, { threadId: string | null; seq: number; at: number }>();
+  private answered = new Map<string, number>();
   private readonly now: () => number;
 
   constructor(now: () => number = Date.now) {
@@ -71,9 +78,20 @@ export class Viewing {
     return true;
   }
 
-  /** Whether some client has this conversation in front of the person. */
+  /** The person answered one of this conversation's cards just now,
+   * from wherever they were: a question, an approval, a denial. */
+  answer(threadId: string) {
+    this.answered.delete(threadId);
+    this.answered.set(threadId, this.now());
+    while (this.answered.size > MAX_VIEWERS) this.answered.delete(this.answered.keys().next().value!);
+  }
+
+  /** Whether some client has this conversation in front of the person,
+   * or the person has just answered something in it. */
   sees(threadId: string): boolean {
     const now = this.now();
+    const answeredAt = this.answered.get(threadId);
+    if (answeredAt !== undefined && now - answeredAt <= ANSWERED_FRESH_MS) return true;
     let found = false;
     for (const [viewer, word] of this.seen) {
       if (now - word.at > VIEWING_FRESH_MS) this.seen.delete(viewer);

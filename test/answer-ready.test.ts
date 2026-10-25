@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { test, type TestContext } from "node:test";
 import {
+  ANSWERED_FRESH_MS,
   AnswerReady,
   answerDue,
   answersAllowed,
@@ -262,4 +263,17 @@ test("only the person's own screens say what is on them", async (t) => {
   assert.equal((await h.fetch("/api/viewing", { method: "POST", body: JSON.stringify({ viewer: "nope", threadId: null, seq: 1 }) })).status, 400);
   const health = await h.json("/api/health");
   assert.ok(health.features.includes("viewing"), "a phone cannot know to say what it shows");
+});
+
+test("answering one of a conversation's cards counts as being there for a minute, and no longer", () => {
+  let now = 1_000_000;
+  const v = new Viewing(() => now);
+  assert.equal(v.sees("lane-1"), false);
+  v.answer("lane-1");
+  assert.equal(v.sees("lane-1"), true, "a turn that ends right after its card was answered is no news");
+  assert.equal(v.sees("lane-2"), false, "only the conversation the card was in");
+  now += ANSWERED_FRESH_MS;
+  assert.equal(v.sees("lane-1"), true);
+  now += 1;
+  assert.equal(v.sees("lane-1"), false, "work that runs on past the minute still says when it is done");
 });
