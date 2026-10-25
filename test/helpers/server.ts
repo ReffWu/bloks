@@ -122,6 +122,15 @@ export async function startHarness(extraEnv: Record<string, string> = {}): Promi
         // bin/bloks-server.mjs sets this, so a test run from inside a Bloks
         // agent would inherit it and find pairing forced on
         BLOKS_LOOPBACK_ONLY: "",
+        // and these, which would make a test's server think it was
+        // started by bloks-server and may update itself; a test that
+        // wants releases serves its own (server/server-update.ts)
+        BLOKS_SERVER_HOME: "",
+        BLOKS_SERVER_ROOT: "",
+        BLOKS_SERVER_STATIC: "",
+        BLOKS_SERVER_UPDATES: "",
+        BLOKS_RELEASES_URL: "http://127.0.0.1:9/releases/latest",
+        BLOKS_RELEASE_DOWNLOADS: "http://127.0.0.1:9/download",
         // a failed turn is asked again after a wait (GitHub 284), and a
         // minute is longer than most tests wait for a turn to settle
         BLOKS_RETRY_WAIT_MS: "50",

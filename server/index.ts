@@ -548,6 +548,7 @@ import { RoomTagQueues } from "./room-tags.ts";
 import { MAX_AGENT_HOPS, heldMention, hopsNotice } from "./room-hops.ts";
 import { RepeatWatch } from "./repeats.ts";
 import { Drain, DRAIN_GRACE_MS, DRAINING_TEXT, drainWindow } from "./drain.ts";
+import { installFacts, installOf, ServerUpdater, startHelper, UpdateError } from "./server-update.ts";
 import { covers, EnginePauses, FAMILY_NAMES, familyOf, PAUSE_MAX_MS, PauseRefusal, SELF_PAUSE_MAX_MS, type EnginePause, type EngineRoute, type PauseActor } from "./engine-pauses.ts";
 import {
   AUTO_KEEP,
@@ -17402,6 +17403,77 @@ async function runRestore(file: string, passphrase: string | undefined, drainMs:
   }
 }
 
+// ── updating this server from the app (server/server-update.ts) ──
+
+/** Where this server's code is: above server/ in a checkout, above
+ * dist-server/ in the release. */
+const CODE_ROOT = fileURLToPath(new URL("..", import.meta.url));
+
+/** The owner's way to a newer bloks-server from their own devices (GitHub
+ * 396). How it was installed is read once: a server does not change how
+ * it was started while it runs. */
+const serverUpdates = new ServerUpdater({
+  version: APP_VERSION,
+  install: installOf(
+    installFacts({ desktop: Boolean((process as NodeJS.Process & { parentPort?: unknown }).parentPort), hosted: HOSTED, codeRoot: CODE_ROOT }),
+  ),
+  dataDir: DATA_DIR,
+  port: PORT,
+  api: process.env.BLOKS_RELEASES_URL || undefined,
+  downloads: process.env.BLOKS_RELEASE_DOWNLOADS || undefined,
+  hooks: {
+    busy: () => (backupRunning || restoreUnderWay() ? "A backup or a restore is under way. Try again once it is done." : null),
+    drainStart(ms) {
+      drain.start(ms);
+      armDrainLapse();
+    },
+    drainStatus() {
+      const status = drainStatus();
+      return { done: status.done, running: status.running.length, deadline: status.deadline };
+    },
+    drainEnd: () => endDrain(),
+    handOver(planFile, plan, env) {
+      startHelper(planFile, plan, env);
+      console.log(`[bloks] updating to ${plan.to.version}: stopping so it can start. From here the output goes to ${plan.log}`);
+      // a moment for the page to read that it is restarting
+      setTimeout(shutDown, 1_500);
+    },
+  },
+});
+
+const serverUpdateUnderWay = () => Boolean(serverUpdates.job && ["downloading", "unpacking", "draining", "restarting"].includes(serverUpdates.job.phase));
+
+async function serveServerUpdate(req: IncomingMessage, res: ServerResponse, method: string, path: string) {
+  const status = () => ({ ...serverUpdates.status(), computer: computerName() });
+  try {
+    if (method === "GET" && path === "/api/server-update") return json(res, 200, status());
+    if (method === "POST" && path === "/api/server-update/check") {
+      await serverUpdates.checkNow();
+      return json(res, 200, status());
+    }
+    if (path === "/api/server-update/install" && method === "POST") {
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const job = serverUpdates.start(body.version, body.drainSeconds === undefined ? RESTORE_DRAIN_MS : drainWindow(body.drainSeconds));
+      record({
+        at: Date.now(),
+        kind: "server.update",
+        actor: "you",
+        summary: `Started updating this server from ${job.from} to ${job.version}`,
+        detail: { from: job.from, to: job.version },
+      });
+      return json(res, 202, status());
+    }
+    if (path === "/api/server-update/install" && method === "DELETE") {
+      serverUpdates.cancel();
+      return json(res, 200, status());
+    }
+    return json(res, 404, { error: "not found" });
+  } catch (e) {
+    if (e instanceof UpdateError) return json(res, e.status, { error: e.message });
+    return json(res, 500, { error: redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 300) });
+  }
+}
+
 // ── moving a workspace to another machine (server/workspace-move.ts) ──
 
 /** The most a move file may be: the whole workspace, transcripts and
@@ -17973,6 +18045,7 @@ async function serveBackups(req: IncomingMessage, res: ServerResponse, method: s
         if (backupRunning || restoreUnderWay()) {
           return json(res, 409, { error: "A backup or a restore is already under way. Try again once it is done." });
         }
+        if (serverUpdateUnderWay()) return json(res, 409, { error: "This server is updating. Try again once it is back." });
         const body = await readBody(req);
         const passphrase = passphraseIn(body);
         // said now, before anything stops: a wrong passphrase or a file
@@ -24834,6 +24907,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       if (method === "DELETE") endDrain();
       return json(res, 200, drainStatus());
+    }
+
+    // ── updating this server from the app (server/server-update.ts) ──
+    // The owner's, at this computer or from one of their own devices: a
+    // server with no screen is updated from the app or not at all. Never
+    // an agent's, which would be choosing what software runs its own
+    // workspace, and never a member's.
+    if (path === "/api/server-update" || path.startsWith("/api/server-update/")) {
+      if (asAgent || (local ? namesMember() : !ownerDevice)) return json(res, 403, { error: "updating the server is the owner's" });
+      return serveServerUpdate(req, res, method, path);
     }
 
     // ── backups of the whole workspace (server/backup.ts) ──

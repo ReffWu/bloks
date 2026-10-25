@@ -287,6 +287,8 @@ export const NEVER = [
   "/api/profile",
   // a backup is the whole workspace, and a restore replaces it
   "/api/backups",
+  // which version of Bloks runs the workspace is the person's to choose
+  "/api/server-update",
   // a map of what reaches the person's keys and screen, and its fixes
   "/api/security",
   // the secrets saved for agents, by name, and forgetting one: the

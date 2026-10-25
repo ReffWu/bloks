@@ -6,9 +6,15 @@
 // scripts/stage-server-deps.mjs), the built UI it serves, the two command
 // line entry points, and a package.json to mark it as ES modules. Nothing
 // is installed after unpacking: anything with Node 22 runs it.
+//
+// Beside the tarball goes its sha256, in the form sha256sum -c and
+// shasum -a 256 -c read. A server updating itself from the app refuses a
+// download that does not match it (server/server-update.ts), so the
+// release has to carry both files.
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -108,6 +114,15 @@ through Bloks Cloud. Your workspace lives in ~/.bloks on this machine.
 Agents run on the engines installed here. Install and sign in to Claude
 Code or Codex on this machine, or give agents API keys in the app.
 
+    node bin/bloks-server.mjs update             # install the latest release
+    node bin/bloks-server.mjs stop               # stop it
+
+The owner can update it from the app too, in Settings, About. A new
+version is unpacked under versions/ in this folder, checked against the
+release's checksum, and switched to; if it does not start, this one comes
+back. Under systemd, launchd or Docker it is updated by hand instead, and
+the app shows the steps. Your workspace in ~/.bloks is never touched.
+
 A Dockerfile and a systemd unit are included. Full guide:
 https://bloks.dev/docs#server
 `,
@@ -115,4 +130,6 @@ https://bloks.dev/docs#server
 
 const tarball = join(out, `bloks-server-${version}.tar.gz`);
 execFileSync("tar", ["-czf", tarball, "-C", out, "bloks-server"]);
-console.log(`packed ${tarball}`);
+const sum = createHash("sha256").update(readFileSync(tarball)).digest("hex");
+writeFileSync(`${tarball}.sha256`, `${sum}  ${basename(tarball)}\n`);
+console.log(`packed ${tarball} (sha256 ${sum})`);

@@ -7,7 +7,8 @@ the work; a human writes the notes and clicks publish.
 Two workflows run on the tag and attach to the same draft:
 [`release.yml`](../.github/workflows/release.yml) signs and notarizes
 the macOS build and packs `bloks-server` from what that build compiled
-(`scripts/pack-server.mjs`, attached as `bloks-server-*.tar.gz`), and
+(`scripts/pack-server.mjs`, attached as `bloks-server-*.tar.gz` with its
+sha256 beside it as `bloks-server-*.tar.gz.sha256`), and
 [`desktop-builds.yml`](../.github/workflows/desktop-builds.yml) produces
 the Windows and Linux ones. Nothing here needs to run on your machine.
 

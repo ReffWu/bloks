@@ -54,7 +54,8 @@ export type LedgerKind =
   | "control.released"
   | "conversation.rewound"
   | "setup.imported"
-  | "sessions.imported";
+  | "sessions.imported"
+  | "server.update";
 
 export interface LedgerEntry {
   /** Counts from zero, one per entry, no gaps. */

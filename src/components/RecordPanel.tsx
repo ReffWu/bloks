@@ -57,6 +57,7 @@ const LABEL: Record<string, string> = {
   "conversation.rewound": "Rewound",
   "setup.imported": "Setup brought over",
   "sessions.imported": "Past sessions brought over",
+  "server.update": "Server update",
 };
 
 function when(at: number): string {

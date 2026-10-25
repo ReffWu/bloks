@@ -1,5 +1,8 @@
 // Settings, About and updates: which Bloks this is, the way to the next
-// one, and the two ways to tell us something is wrong.
+// one, and the two ways to tell us something is wrong. Where the app is a
+// window onto a workspace server on another computer, that server's
+// version and its own way to the next one are said apart from the app's
+// (ServerUpdate.tsx).
 import { useEffect, useState } from "react";
 import { Check } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -7,6 +10,7 @@ import { useStore } from "@/state/store";
 import type { UpdateState } from "@/types/bridge";
 import { drainingLine } from "../UpdateCard";
 import { SettingRow, SettingsGroup } from "../SettingsLayout";
+import { ServerUpdateRow, useServerUpdate } from "./ServerUpdate";
 
 /** The small mark a hosted workspace wears in Settings, so nobody wonders
  * why the Mac's own options are not there. */
@@ -31,6 +35,13 @@ export function AboutPage() {
   const hosted = Boolean(state.config?.hosted?.on);
   const [version, setVersion] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>({ state: "idle" });
+  // the workspace server, when it is not the one inside this app
+  const server = useServerUpdate();
+  const apart = server.view.kind === "status" || server.view.kind === "older";
+  const bridge = Boolean(window.bloks?.appVersion);
+  const serverVersion =
+    server.view.kind === "status" ? server.view.status.version : server.view.kind === "older" ? server.view.version : null;
+  const serverLine = serverVersion ? `, workspace server Bloks ${serverVersion}` : "";
 
   useEffect(() => {
     // A window without the desktop app (a hosted workspace in a browser)
@@ -68,9 +79,11 @@ export function AboutPage() {
                 : null;
   // a restart into an update that came back on the same version says so
   // before whatever the updater is doing now
-  const description = update.notInstalled
+  const said = update.notInstalled
     ? `The update did not install. ${line ?? "You can get the installer from bloks.dev."}`
     : (line ?? "Updates download on their own and install when you restart.");
+  // beside a server of its own, which this updater never touches
+  const description = apart ? `${said} This updates the app on this computer, not the workspace server.` : said;
 
   return (
     <>
@@ -85,26 +98,32 @@ export function AboutPage() {
           description="It runs on a machine hosted for you, not on your Mac. Its browser and its virtual desktop are your agents' computer."
         />
       )}
-      <SettingRow
-        label={`Bloks ${version ?? ""}`}
-        description={description}
-        control={
-          update.state === "ready" ? (
-            <Button size="sm" disabled={Boolean(update.draining)} onClick={() => void window.bloks?.updateInstall?.()}>
-              Restart to update
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!window.bloks || update.state === "checking" || update.state === "downloading"}
-              onClick={() => void window.bloks?.updateCheck?.().then(setUpdate)}
-            >
-              Check for updates
-            </Button>
-          )
-        }
-      />
+      {/* A browser has no app of its own to update; the server row below
+          says which Bloks it reaches. */}
+      {(bridge || !apart) && (
+        <SettingRow
+          rowId="check-for-updates"
+          label={apart ? `This app: Bloks ${version ?? ""}` : `Bloks ${version ?? ""}`}
+          description={description}
+          control={
+            update.state === "ready" ? (
+              <Button size="sm" disabled={Boolean(update.draining)} onClick={() => void window.bloks?.updateInstall?.()}>
+                Restart to update
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!window.bloks || update.state === "checking" || update.state === "downloading"}
+                onClick={() => void window.bloks?.updateCheck?.().then(setUpdate)}
+              >
+                Check for updates
+              </Button>
+            )
+          }
+        />
+      )}
+      <ServerUpdateRow state={server} />
     </SettingsGroup>
     <SettingsGroup title="Help">
       <SettingRow
@@ -113,7 +132,7 @@ export function AboutPage() {
         control={
           <Button size="sm" variant="secondary" asChild>
             <a
-              href={`https://github.com/hamedgitty/bloks/issues/new?body=${encodeURIComponent(`\n\n---\nBloks ${version ?? ""} on ${navigator.platform}`)}`}
+              href={`https://github.com/hamedgitty/bloks/issues/new?body=${encodeURIComponent(`\n\n---\nBloks ${version ?? ""} on ${navigator.platform}${serverLine}`)}`}
               target="_blank"
               rel="noreferrer"
             >

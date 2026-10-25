@@ -1086,6 +1086,30 @@ start that finds itself still on that version says on the update card
 that the update did not install, once, with the offer to try again or
 to get the installer from bloks.dev.
 
+A `bloks-server` on a computer of its own is updated by its owner from
+Settings, About, on any of their own devices, or with
+`bloks-server update` (`server/server-update.ts`). The page says the
+app's version and the server's apart, since neither update touches the
+other. Only an install that `bloks-server` started from the release's
+folder, which the account it runs as can write, and which nothing else
+starts (systemd, launchd, pm2, supervisord, a container, a hosted
+machine, a source checkout, the app itself) updates itself; every other
+one is shown the steps to do it by hand. The server takes GitHub's
+latest stable release, downloads its tarball only once the checksum
+published beside it is there, keeps it only if it matches that and
+GitHub's own digest of the file, and unpacks it under `versions/` in
+the install folder. Then it drains, writes its orders, starts a helper
+(`server/server-update-finish.ts`) in a process group of its own, and
+stops. The helper waits for it to go, points `versions/current` at the
+new version with one rename, starts the install folder's
+`bin/bloks-server.mjs` (which hands over to the newest of its own
+version and `versions/current`), and waits for the new version to
+answer `/api/health` from its own pid. If it does not within two
+minutes, the helper stops it, points the link back and starts the old
+one. Either way it writes `server-update.json` in the data folder,
+which the page reads, and the started server's output goes to
+`server.log` beside it. The data folder itself is never touched.
+
 Nothing that arrives meanwhile is turned away. `startTurn` is where every
 turn starts, so it is where a drain holds them: words for one of an
 agent's lanes wait in that lane's queue, as they would behind a busy

@@ -236,8 +236,8 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     label: "About and updates",
     group: "help",
     description: "Version, updates and feedback.",
-    keywords: "version update feedback diagnostics bug report",
-    rows: ["Check for updates", "Something broken, or missing?", "Diagnostics"],
+    keywords: "version update feedback diagnostics bug report server headless workspace server bloks-server",
+    rows: ["Check for updates", "Workspace server", "Something broken, or missing?", "Diagnostics"],
   },
 ];
 
