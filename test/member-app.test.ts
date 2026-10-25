@@ -32,6 +32,7 @@ import { reachOf, startLanProxy } from "../electron/remote.mjs";
 import { startHarness } from "./helpers/server.ts";
 import { teamPlan } from "./helpers/team-plan.ts";
 import { JoinClient } from "../server/join-client.ts";
+import { parseInviteInput } from "../server/invites.ts";
 
 const agent = (over: Partial<MemberAgent>): MemberAgent => ({
   id: "a1",
@@ -196,9 +197,20 @@ test("a workspace joined on the owner's network opens through the stand-in, with
   const lan = new URL(h.url).host;
   await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Chief" }) });
   const made = await h.json("/api/workspace/invites", { method: "POST", body: JSON.stringify({ role: "member", name: "Sam" }) });
+  // The link may already carry this computer's own network address after
+  // a "~", and the parser keeps the first one it finds, so that suffix is
+  // taken off before the harness's is put on (GitHub 392). Whichever way
+  // the link came, the join goes to the harness.
+  const onHarness = (link: string) => `${link.split("~", 1)[0]}~${lan}`;
+  const bare = made.invite.link.split("~", 1)[0];
+  const elsewhere = `${bare}~192.0.2.10:8800`;
+  assert.equal(parseInviteInput(`${elsewhere}~${lan}`)?.lan, "192.0.2.10:8800", "appended to a suffix, the harness is never asked");
+  for (const link of [bare, elsewhere]) {
+    assert.equal(parseInviteInput(onHarness(link))?.lan, lan, link);
+  }
   // no Bloks Cloud anywhere: the relay address answers nothing
   const client = new JoinClient(() => "http://127.0.0.1:9");
-  const found = (await client.lookup(`${made.invite.link}~${lan}`)) as any;
+  const found = (await client.lookup(onHarness(made.invite.link))) as any;
   assert.equal(found.via, "lan");
   await client.claim(found.session, { name: "Sam" });
   await h.fetch(`/api/workspace/requests/${made.invite.id}/approve`, { method: "POST" });
