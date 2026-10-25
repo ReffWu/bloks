@@ -106,6 +106,9 @@ export async function startHarness(extraEnv: Record<string, string> = {}): Promi
         // real one; a test that wants a list serves its own
         BLOKS_PRICES_URL: "http://127.0.0.1:9/api/v1/models",
         BLOKS_HOSTED: "",
+        // the platform a test stands the server in for (server/hosted.ts);
+        // a test that wants Windows or Linux says so itself
+        BLOKS_TEST_PLATFORM: "",
         BLOKS_HOSTED_VNC: "",
         BLOKS_PUBLIC_URL: "",
         // tests speak as the dev UI (origin :5199), which a server serving

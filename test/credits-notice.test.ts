@@ -18,7 +18,7 @@ import {
   teamSignInWarning,
   topUpsLine,
 } from "../src/lib/credits.ts";
-import { computerOptions, offersThisComputer } from "../src/lib/hosted.ts";
+import { computerMeaning, computerOptions, firstPickedComputer, offersThisComputer, savedOwnScreenNote } from "../src/lib/hosted.ts";
 import { keysToEnter, kindLabel } from "../src/lib/backups.ts";
 import { computerChoices } from "../server/hosted.ts";
 import { CREDITS_KIND } from "../server/credits.ts";
@@ -101,6 +101,25 @@ test("both doors offer the computers the server says, and a Mac's four otherwise
   assert.equal(offersThisComputer(computerChoices(false, "win32")), false, "a PC's own screen is not offered, so Automatic does not promise it");
   assert.equal(offersThisComputer(computerChoices(true, "linux")), true, "a hosted machine is its own computer");
   assert.deepEqual(computerOptions([]).map(([id]) => id), ["cloud", "sandbox", "local", "off"], "an older server sends none");
+});
+
+// GitHub 388: on Windows, 3.0.9 turned Automatic off onto the Local VM,
+// and every turn then failed on a VM nobody had set up. And nothing next
+// to the choices said that none of them is where the agent runs.
+test("turning Automatic off picks this computer where offered, else Off, never the Local VM", () => {
+  assert.equal(firstPickedComputer(computerChoices(false, "darwin")), "local");
+  assert.equal(firstPickedComputer(computerChoices(false, "win32")), "off");
+  assert.equal(firstPickedComputer(computerChoices(false, "linux")), "off");
+  assert.equal(firstPickedComputer(computerChoices(true, "linux")), "local", "a hosted machine is its own computer");
+  assert.equal(firstPickedComputer(undefined), "local", "an older server is a Mac's");
+});
+
+test("the Computer setting says it is a screen, and that commands and files run here either way", () => {
+  assert.equal(computerMeaning("this PC", false), "The desktop it can see and click. Its commands and files run on this PC either way.");
+  assert.doesNotMatch(computerMeaning("this PC", true), /run on this PC/, "the cloud engine runs on its box");
+  const note = savedOwnScreenNote("this PC");
+  assert.match(note, /has no screen/);
+  assert.match(note, /commands and files still run on this PC/);
 });
 
 test("a moved workspace names the keys to enter again, each once", () => {

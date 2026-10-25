@@ -972,28 +972,36 @@ function CreateForm({
                     )}
                     {forAgent && target && (
                       <div>
-                        <div className="mb-2 text-body font-medium text-foreground">Runs on</div>
+                        {/* Was "Runs on", with None said to leave it
+                            able to "think and talk, not act". Neither was
+                            so: this is the screen the run is handed, and
+                            the run's commands and files are on this
+                            computer whichever is picked (GitHub 388). */}
+                        <div className="mb-2 text-body font-medium text-foreground">Computer</div>
                         <Segmented
-                          aria-label="Runs on"
+                          aria-label="Computer"
                           size="sm"
                           className="w-full sm:w-fit"
                           value={runsOn}
                           onChange={setRunsOn}
                           options={[
-                            { value: "", label: "Usual", title: `Wherever ${target.name} runs` },
+                            { value: "", label: "Usual", title: `${target.name}'s usual computer` },
                             { value: "cloud", label: "Cloud" },
                             ...(ownScreen ? [{ value: "local" as const, label: ThisComputer() }] : []),
-                            { value: "off", label: "None", title: "No computer" },
+                            { value: "off", label: "None", title: "No screen" },
                           ]}
                         />
                         <div className="mt-1.5 text-small text-muted-foreground">
                           {runsOn === "cloud"
-                            ? "On a cloud computer."
+                            ? "A cloud box to see and click."
                             : runsOn === "local"
-                              ? `On ${thisComputer()}.`
+                              ? `${ThisComputer()}'s own screen.`
                               : runsOn === "off"
-                                ? "No computer: it can think and talk, not act."
-                                : `Wherever ${target.name} usually runs.`}
+                                ? "No screen to see or click."
+                                : `${target.name}'s usual computer.`}
+                          {state.instances.find((i) => i.instanceId === target.bot?.modelSelection?.instanceId)?.driverKind === "boxAgent"
+                            ? ""
+                            : ` Its commands and files run on ${thisComputer()} either way.`}
                         </div>
                       </div>
                     )}

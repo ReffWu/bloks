@@ -138,11 +138,15 @@ async function mailbox(t: TestContext, env: Record<string, string> = {}) {
 }
 
 test("a mail whose turn fails getting ready leaves no sender to email the lane's next answer to", async (t) => {
-  // a runtime that is not there, so a turn on the Local VM fails before
-  // it reaches any engine
-  const box = await mailbox(t, { BLOKS_VM_RUNTIME: "/nonexistent/bloks-test-container-runtime" });
+  // A project whose folder is gone, so the turn stops before it reaches
+  // any engine. This used to be a Local VM with no container runtime,
+  // which no longer stops a turn (GitHub 388).
+  const box = await mailbox(t);
   const dee = await box.agent("Dee");
-  await box.h.fetch(`/api/bots/${dee.id}`, { method: "PATCH", body: JSON.stringify({ computer: "sandbox" }) });
+  const { project } = await box.h.json("/api/projects", {
+    method: "POST",
+    body: JSON.stringify({ name: "Ledger", folders: ["/nonexistent/bloks-test-ledger"], memberIds: [dee.id] }),
+  });
   // a listed sender's turn has the agent's computer; anyone else's has none
   await box.h.json("/api/chat/email", { method: "PATCH", body: JSON.stringify({ allowFrom: ["@example.com"] }) });
 
@@ -150,7 +154,9 @@ test("a mail whose turn fails getting ready leaves no sender to email the lane's
   const lane = await waitFor(() => box.lane(dee.id, "Email"));
   assert.ok(lane, "the mail never reached an Email lane");
   const failed = await waitFor(async () =>
-    (await box.h.json(`/api/bots/${dee.id}/messages?thread=${lane.id}&limit=50`)).messages.find((m: any) => m.tool?.ok === false),
+    (await box.h.json(`/api/bots/${dee.id}/messages?thread=${lane.id}&limit=50`)).messages.find(
+      (m: any) => m.kind === "notice" && /Ledger points at/.test(m.text ?? ""),
+    ),
   );
   assert.ok(failed, "the turn did not fail the way this test needs");
   assert.ok(await box.idle(dee.id));
@@ -158,7 +164,7 @@ test("a mail whose turn fails getting ready leaves no sender to email the lane's
   // The person then uses the lane themselves. Its answer is theirs: the
   // sender of the mail that never ran was still wired to the lane, and
   // was emailed it.
-  await box.h.fetch(`/api/bots/${dee.id}`, { method: "PATCH", body: JSON.stringify({ computer: "off" }) });
+  assert.equal((await box.h.fetch(`/api/projects/${project.id}`, { method: "DELETE" })).status, 200);
   await box.h.fetch(`/api/bots/${dee.id}/messages`, { method: "POST", body: JSON.stringify({ text: "Draft a note to myself", taskId: lane.id }) });
   assert.ok(await waitFor(() => box.model.state.calls.length >= 1), "the person's own turn never ran");
   assert.ok(await box.idle(dee.id));

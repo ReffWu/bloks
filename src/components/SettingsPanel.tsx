@@ -67,7 +67,7 @@ import { plural } from "@/lib/plural";
 import { stamp } from "@/lib/when";
 import { thisComputer } from "@/lib/thisComputer";
 import { sameEngineBackup } from "@/lib/backupChoice";
-import { computerOptions, offersThisComputer } from "@/lib/hosted";
+import { computerMeaning, computerOptions, firstPickedComputer, offersThisComputer, savedOwnScreenNote } from "@/lib/hosted";
 import { useEscape } from "@/lib/useEscape";
 import { EngineSuggestionCard, useEngineReport } from "./EngineReport";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, RULES_AND_MODES, type ApprovalMode } from "./ApprovalsChooser";
@@ -468,7 +468,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 <Group>
                   <ConnectedAppsRow bot={bot} patch={patch} />
                   <BrowserRow bot={bot} patch={patch} />
-                  <ComputerRow bot={bot} patch={patch} />
+                  <ComputerRow bot={bot} patch={patch} onBox={instance?.driverKind === "boxAgent"} />
                 </Group>
                 <McpAttachCard bot={bot} />
                 <SkillsCard bot={bot} />
@@ -1156,17 +1156,24 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   );
 }
 
-/** Four homes for an agent's hands. A 2x2 grid on a phone, because four
- * options in one row is where segmented controls stop being readable. */
-function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
+/** Four screens an agent can be handed. A 2x2 grid on a phone, because
+ * four options in one row is where segmented controls stop being
+ * readable. A screen, not a place it runs: its engine, commands and
+ * files stay on this computer whichever is picked (GitHub 388). */
+function ComputerRow({ bot, patch, onBox }: { bot: Bot; patch: (p: Patch) => void; onBox: boolean }) {
   const { state, dispatch } = useStore();
   // A hosted workspace offers only this machine and off (server/hosted.ts),
   // and the server says which; the Computer panel reads the same list.
   const hosted = Boolean(state.config?.hosted?.on);
-  const options = computerOptions(state.config?.hosted?.computers);
-  // Off a Mac there is no "this computer" for Automatic to fall back on,
-  // so it falls back on nothing, and choosing starts at the Local VM.
-  const ownScreen = offersThisComputer(state.config?.hosted?.computers);
+  const computers = state.config?.hosted?.computers;
+  const options = computerOptions(computers);
+  // Off a Mac there is no "this computer" screen for Automatic to fall
+  // back on, so it falls back on none, and choosing starts at Off.
+  const ownScreen = offersThisComputer(computers);
+  // 3.0.8 offered This computer off a Mac too. Kept as saved, it means no
+  // screen there, and is said so rather than shown as nothing picked.
+  const savedOwnScreen = !hosted && !ownScreen && bot.computer === "local";
+  const where = thisComputer();
   return (
     <SettingRow
       label="Computer"
@@ -1174,31 +1181,29 @@ function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
         hosted
           ? "This machine's browser and virtual desktop, or none."
           : bot.computer
-            ? "Where it gets a desktop and a terminal."
-            : ownScreen
-              ? "Uses your cloud box if you have one, otherwise this computer."
-              : "Uses your cloud box if you have one, otherwise none."
+            ? computerMeaning(where, onBox)
+            : `${computerMeaning(where, onBox)} Automatic uses your cloud box if you have one, otherwise ${ownScreen ? `${where}'s screen` : "none"}.`
       }
       control={
         <label className="flex items-center gap-2 text-body text-muted-foreground">
           Automatic
           <Switch
             checked={!bot.computer}
-            onCheckedChange={(on) => patch({ computer: on ? null : ownScreen || hosted ? "local" : "sandbox" })}
+            onCheckedChange={(on) => patch({ computer: on ? null : firstPickedComputer(computers) })}
             aria-label="Choose the computer automatically"
           />
         </label>
       }
     >
       {/* Auto's fallback should never be a surprise: with no box
-          configured it means "this Mac", or nothing at all off a Mac, and
+          configured it means "this Mac", or no screen at all off a Mac, and
           the person deciding deserves to know that at the moment they
           decide it. */}
       {!hosted && !bot.computer && !state.config?.box?.configured && (
         <Note>
           {ownScreen
             ? "No cloud box is set up, so Automatic uses this computer."
-            : "No cloud box is set up, so Automatic gives it no computer. Turn Automatic off and choose Local VM for a free Linux desktop here."}{" "}
+            : "No cloud box is set up, so Automatic gives it no screen. Its commands and files still run here. For a screen, turn Automatic off and choose Local VM, a free Linux desktop here."}{" "}
           <button
             className="font-medium text-foreground underline-offset-2 hover:underline"
             onClick={() => dispatch({ type: "toggleComputer", open: true })}
@@ -1231,6 +1236,7 @@ function ComputerRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
           ))}
         </div>
       )}
+      {savedOwnScreen && <Note>{savedOwnScreenNote(where)}</Note>}
     </SettingRow>
   );
 }

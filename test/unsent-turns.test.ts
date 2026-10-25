@@ -2,8 +2,8 @@
 //
 // A routine run, a workflow's ask step, a job and an email each register
 // themselves against a lane before its turn starts, and hear how it ended
-// from turn.completed. A turn that failed while it was getting ready (the
-// Local VM not running, a project folder gone) never reaches its engine,
+// from turn.completed. A turn that failed while it was getting ready (a
+// project folder gone) never reaches its engine,
 // so no turn.completed ever came: the run stayed "running", the job stayed
 // claimed by an agent that was not doing it, and the step held its run
 // forever, because a run waiting on a turn is never retried. The same
@@ -13,10 +13,6 @@ import assert from "node:assert/strict";
 
 import { startHarness, type Harness } from "./helpers/server.ts";
 import { agentOn, fakeProvider, waitFor } from "./helpers/turns.ts";
-
-/** A runtime that is not there, so a turn on the Local VM fails getting
- * ready rather than reaching any engine. */
-const NO_RUNTIME = { BLOKS_VM_RUNTIME: "/nonexistent/bloks-test-container-runtime" };
 
 async function only(h: Harness, keep: string) {
   // A fresh workspace greets you with an agent of its own. Put away, it
@@ -36,10 +32,17 @@ const idle = async (h: Harness, botId: string) =>
 test("a turn that fails getting ready ends the workflow step, the job and the routine run waiting on it", async (t) => {
   const fake = await fakeProvider(t);
   fake.state.answerAtOnce = true;
-  const h = await startHarness(NO_RUNTIME);
+  const h = await startHarness();
   t.after(() => h.stop());
   const vee = await agentOn(h, fake.port, "Vee");
-  await h.fetch(`/api/bots/${vee.id}`, { method: "PATCH", body: JSON.stringify({ computer: "sandbox" }) });
+  // A project whose folder is gone stops its agents' turns before any
+  // engine hears them. This used to be a Local VM with no container
+  // runtime, which no longer stops a turn: the agent runs without a
+  // screen instead (GitHub 388).
+  await h.json("/api/projects", {
+    method: "POST",
+    body: JSON.stringify({ name: "Ledger", folders: ["/nonexistent/bloks-test-ledger"], memberIds: [vee.id] }),
+  });
   await only(h, vee.id);
 
   // a workflow's ask step
@@ -59,7 +62,7 @@ test("a turn that fails getting ready ends the workflow step, the job and the ro
   });
   assert.ok(failed, "the run was left running on a turn that never started");
   assert.equal(failed.steps[0].state, "failed");
-  assert.match(failed.error, /Local VM|running/, "the run does not say why");
+  assert.match(failed.error, /Ledger points at/, "the run does not say why");
   assert.ok(await idle(h, vee.id), "the lane stayed busy");
 
   // a job
@@ -69,7 +72,7 @@ test("a turn that fails getting ready ends the workflow step, the job and the ro
     return found?.state === "failed" ? found : null;
   });
   assert.ok(ended, "the job stayed claimed by an agent that never started on it");
-  assert.match(ended.result, /Local VM|running/);
+  assert.match(ended.result, /Ledger points at/);
 
   // a routine run
   const { routine } = await h.json("/api/routines", {
@@ -83,7 +86,7 @@ test("a turn that fails getting ready ends the workflow step, the job and the ro
     return found?.runs?.[0]?.state === "failed" ? found.runs[0] : null;
   });
   assert.ok(closed, "the routine's run stayed open");
-  assert.match(closed.error, /Local VM|running/);
+  assert.match(closed.error, /Ledger points at/);
 
   // and none of it reached an engine
   assert.equal(fake.state.calls.length, 0);

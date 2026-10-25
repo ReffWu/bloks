@@ -1054,7 +1054,7 @@ function RoutineDetails({
       : routine.runsOn === "local"
         ? thisComputer()
         : routine.runsOn === "off"
-          ? "no computer"
+          ? "no screen"
           : null;
 
   return (

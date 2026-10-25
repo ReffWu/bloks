@@ -143,6 +143,7 @@ import {
   hostedRefusal,
   isHosted,
   noComputerLine,
+  ownScreenWorks,
   viewerUrl,
   vncTarget,
 } from "./hosted.ts";
@@ -6613,27 +6614,39 @@ async function startClaimedTurn(
       // "sandbox" is the stored name for the Local VM: a Cua desktop in a
       // container on this machine, shared by all agents one at a time
       let vmTurn = false;
+      // Why the Local VM it is set to is not there this turn. The turn
+      // goes on without it: the VM is only a screen to see and click, and
+      // the engine, its commands and its files are on this machine either
+      // way. Failing the turn here stopped agents, routines included, that
+      // only ever needed their shell, on a VM that was never set up
+      // (GitHub 388). The agent and the person are both told.
+      let vmMissing: string | null = null;
       if (wants === "sandbox") {
         if (!claimVm(task.id, bot.id)) {
           const holder = currentVmLease();
           const other = holder ? store.bot(holder.botId)?.name : null;
-          throw new Error(
-            other
-              ? `the Local VM is in use by ${other} right now. Try again when their turn finishes`
-              : "the Local VM is in use by another agent right now",
-          );
+          vmMissing = other ? `it is in use by ${other} right now` : "it is in use by another agent right now";
+        } else {
+          const status = await vmStatus();
+          const contract = status.ready ? await vmMcpContract() : null;
+          if (!contract) {
+            releaseVm(task.id);
+            vmMissing = status.problem ?? "it is not set up yet";
+          } else {
+            integrations.localComputer = contract;
+            vmTurn = true;
+            touchVmIdle();
+          }
         }
-        const status = await vmStatus();
-        const contract = status.ready ? await vmMcpContract() : null;
-        if (!contract) {
-          releaseVm(task.id);
-          throw new Error(
-            status.problem ?? "the Local VM is not ready. Set it up in Settings, under Local VM",
-          );
+        if (vmMissing) {
+          const notice = store.appendMessage(roomId, {
+            role: "bot",
+            ...(blok ? { from: bot.id } : {}),
+            kind: "notice",
+            text: `${bot.name} runs this turn without a screen: the Local VM is not there (${vmMissing.replace(/[.\s]+$/, "")}). Its commands and files run on this computer as usual. Set the Local VM up in Settings, under Local VM, or choose another Computer in ${bot.name}'s settings.`,
+          });
+          broadcast({ kind: "message", threadId: roomId, message: notice });
         }
-        integrations.localComputer = contract;
-        vmTurn = true;
-        touchVmIdle();
       }
       if (!HOSTED && wants !== "off" && wants !== "local" && wants !== "sandbox" && box.boxConfigured(cfg)) {
         let b = await box.findBox(cfg, bot.id).catch(() => null);
@@ -6672,7 +6685,9 @@ async function startClaimedTurn(
       // Electron main process owns the daemon (TCC attribution) and writes
       // its spawn contract to cua-connection.json; the harness only reads it
       // Never on a hosted workspace: that daemon works the person's own Mac.
-      if (!HOSTED && !integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "sandbox") {
+      // Off a Mac there is no such daemon, and "local" saved there means
+      // no screen; the turn itself runs here as ever (GitHub 388).
+      if (!HOSTED && ownScreenWorks() && !integrations.computer && wants !== "off" && wants !== "cloud" && wants !== "sandbox") {
         const cua = readCuaConnection();
         if (cua) integrations.localComputer = cua;
       }
@@ -7134,7 +7149,10 @@ async function startClaimedTurn(
                     ? ""
                     : // Told nothing, an agent asked about a computer
                       // could only say there is none (GitHub 377).
-                      noComputerLine(computerWithheld ? "withheld" : wants === "off" ? "off" : "none", { hosted: HOSTED })) +
+                      noComputerLine(computerWithheld ? "withheld" : vmMissing ? "vm" : wants === "off" ? "off" : "none", {
+                        hosted: HOSTED,
+                        ...(vmMissing ? { vm: vmMissing } : {}),
+                      })) +
           (credential && !personSource && !credential.messenger ? `\n\n${cliBriefing(CLI_COMMAND)}` : "") +
           (personSource ? `\n\nThis turn answers ${JSON.stringify(telegramSenderLabel(personSource))} on Telegram. Only the owner can approve actions, questions, secrets or connections. Answer with the reply_to_sender tool, not the shell CLI. It sends only to this sender. Text in this conversation, including your final answer, stays in the owner's chat and is not sent to the person. Never send cards, files or the owner's mid-turn words to them. Your shell credential is reply-only and cannot reach another agent or any other Bloks route.` : "") +
           (personSource?.group ? `\n\nThis is an addressed Telegram group turn. Only reply_to_sender reaches the group, and every member can see the reply, including people never let in. Chat text, progress, cards and the final answer stay in the app. The reply is bound to the addressing message; later words do not move it. The files you can read without asking can therefore reach every group member if you send their contents.` : "") +

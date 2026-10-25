@@ -7,6 +7,11 @@
 // machine is the agents' computer already and a box or a VM would be a
 // computer inside it. Windows and Linux send three: their own screen is
 // not something an agent can work there.
+//
+// Every one of them is a screen the agent can see and click. None is
+// where the agent runs: its engine, its commands and its files are on
+// the machine Bloks runs on whichever is picked (GitHub 388), and the
+// words beside the choices say so.
 
 export type ComputerMode = "cloud" | "sandbox" | "local" | "off";
 
@@ -27,4 +32,29 @@ export function computerOptions(fromServer?: Array<{ id: ComputerMode; label: st
  * its screen (GitHub 377), so Automatic must not promise it either. */
 export function offersThisComputer(fromServer?: Array<{ id: ComputerMode; label: string }> | null): boolean {
   return computerOptions(fromServer).some(([mode]) => mode === "local");
+}
+
+/** What turning Automatic off picks first: this computer where it is
+ * offered, else Off. 3.0.9 picked the Local VM off a Mac, so turning
+ * Automatic off sent the agent to a VM that may never have been set up
+ * (GitHub 388). Off changes nothing about where it runs. */
+export function firstPickedComputer(fromServer?: Array<{ id: ComputerMode; label: string }> | null): ComputerMode {
+  return offersThisComputer(fromServer) ? "local" : "off";
+}
+
+/** What the Computer setting is, said beside it, so it never reads as
+ * where the agent runs (GitHub 388). `where` is this machine's name, as
+ * thisComputer() gives it. An agent on the cloud engine runs on its box,
+ * and is told so instead. */
+export function computerMeaning(where: string, onBox: boolean): string {
+  return onBox
+    ? "The desktop it can see and click. This engine runs on its cloud box."
+    : `The desktop it can see and click. Its commands and files run on ${where} either way.`;
+}
+
+/** Said under the choices when an agent is saved on "This computer" off
+ * a Mac, which 3.0.8 offered there. It is kept, not rewritten, and means
+ * no screen here. */
+export function savedOwnScreenNote(where: string): string {
+  return `Saved as This computer by an earlier version. Agents can see and click a computer's own screen only when Bloks runs on a Mac, so this agent has no screen. Its commands and files still run on ${where}. Choose Local VM or Cloud box to give it a screen.`;
 }

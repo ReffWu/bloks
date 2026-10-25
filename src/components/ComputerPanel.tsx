@@ -38,7 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
-import { computerOptions, offersThisComputer } from "@/lib/hosted";
+import { computerMeaning, computerOptions, firstPickedComputer, offersThisComputer } from "@/lib/hosted";
 import { useEscape } from "@/lib/useEscape";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
@@ -399,7 +399,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     starting: "Starting your agent's computer…",
     unconfigured: "No cloud computer configured",
     "local-unavailable": "Local preview needs the desktop app",
-    "no-own-screen": "Agents can work this computer's own screen only on a Mac. Choose Local VM below.",
+    "no-own-screen": "No screen: agents can see and click this computer's own screen only on a Mac. Its commands and files still run here. Choose Local VM below for a screen.",
     off: "This agent's computer is off",
     error: "Couldn't reach the computer",
   };
@@ -527,7 +527,19 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
 
         {/* Computer source */}
         <div className="mt-4 rounded-2xl border bg-card p-4">
-          <div className="text-ui font-semibold text-foreground">Runs on</div>
+          {/* Called "Runs on" until GitHub 388, where it read as where
+              the agent runs, and a PC with no own screen on the list
+              looked like nowhere to run. It is the screen it is handed;
+              the agent itself runs here whichever is picked. */}
+          <div className="text-ui font-semibold text-foreground">Computer</div>
+          {!hosted && (
+            <div className="mt-1 text-small text-muted-foreground">
+              {computerMeaning(
+                thisComputer(),
+                state.instances.find((i) => i.instanceId === bot.modelSelection?.instanceId)?.driverKind === "boxAgent",
+              )}
+            </div>
+          )}
           {/* The same homes the settings card offers, in the same shape,
               from the same list (src/lib/hosted.ts). One setting, two
               doors; they must never disagree about what the options are. */}
@@ -539,7 +551,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
                   ? "This machine"
                   : ownScreen
                     ? "Cloud box if there is one, else this computer"
-                    : "Cloud box if there is one, else none"}
+                    : "Cloud box if there is one, else no screen"}
               </div>
             </div>
             <Switch
@@ -548,7 +560,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
                 dispatch({
                   type: "updateBot",
                   botId: bot.id,
-                  patch: { computer: on ? null : ownScreen || hosted ? "local" : "sandbox" },
+                  patch: { computer: on ? null : firstPickedComputer(state.config?.hosted?.computers) },
                 })
               }
             />
@@ -557,7 +569,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
             <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2 text-small text-muted-foreground">
               {ownScreen
                 ? "No cloud box yet, so this computer is used."
-                : "No cloud box yet, so it has no computer. Turn Automatic off and choose Local VM."}
+                : "No cloud box yet, so it has no screen. Its commands and files still run here. For a screen, turn Automatic off and choose Local VM."}
             </div>
           )}
           <div

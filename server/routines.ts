@@ -72,9 +72,11 @@ export interface Routine {
   date?: string;
   /** How long the calendar blocks out for it, minutes. Display only. */
   durationMin?: number;
-  /** Where the turn runs, overriding the agent's own computer setting:
-   * "cloud" its cloud computer, "local" this Mac, "off" no computer.
-   * Absent means wherever the agent normally runs. */
+  /** The screen the turn gets, overriding the agent's own computer
+   * setting: "cloud" its cloud computer, "local" this Mac's own screen
+   * (none off a Mac), "off" no screen. Absent means the agent's own. The
+   * name is older than the meaning: the turn itself, its commands and its
+   * files run on this computer whichever it is (GitHub 388). */
   runsOn?: "cloud" | "local" | "off";
   /** The conversation it runs in, by title or by id. Absent means the
    * agent's first, General, where the person talks to it too (GitHub
