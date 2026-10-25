@@ -478,14 +478,25 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           Leave blank for the main chat. A new name starts a new one.
         </span>
       </label>
-      {w.kind === "place" && (
+      {/* every kind can be asked to act once or stop at a time, so every
+          kind says so, and says when it is done */}
+      {(w.kind === "place" || w.once || w.until || w.done) && (
         <div className="flex flex-col gap-1 text-body text-muted-foreground">
-          <span>
-            {w.when === "leave" ? "When you leave" : "When you arrive"}
-            {w.radius ? `, within ${w.radius >= 1000 ? `${Math.round(w.radius / 100) / 10} km` : `${w.radius} m`}` : ""}
-            {w.once ? ", once" : ""}
-            {w.until ? `, until ${new Date(w.until).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}.
-          </span>
+          {w.kind === "place" ? (
+            <span>
+              {w.when === "leave" ? "When you leave" : "When you arrive"}
+              {w.radius ? `, within ${w.radius >= 1000 ? `${Math.round(w.radius / 100) / 10} km` : `${w.radius} m`}` : ""}
+              {w.once ? ", once" : ""}
+              {w.until ? `, until ${new Date(w.until).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}.
+            </span>
+          ) : (
+            w.once || w.until ? (
+              <span>
+                {w.once ? "Acts once" : "Acts on every change"}
+                {w.until ? `, until ${new Date(w.until).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}.
+              </span>
+            ) : null
+          )}
           {w.done && (
             <span className="text-foreground">
               Done {ago(w.done.at)}: {w.done.why === "once" ? "it acted once, as asked." : "its time ran out."} Switch it on to watch again.
