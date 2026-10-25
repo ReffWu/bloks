@@ -1,16 +1,21 @@
-// Bring your setup, through the real server: the look answers only this
-// computer and never an agent, nothing is written until an import, and
-// each ticked item lands where the person would have put it by hand.
+// Bring your setup, through the real server: the look answers the owner,
+// at this computer or on one of their own paired devices, and never an
+// agent or a member; nothing is written until an import, and each ticked
+// item lands where the person would have put it by hand. What is read is
+// always the server's own computer, which `where` names (GitHub 397).
 //
 // The harness runs with HOME set to a throwaway folder, and the other
 // tools' files are written into that folder, never read from a real home.
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
 
 import { allows, NEVER } from "../server/agent-cli.ts";
+import { JoinClient } from "../server/join-client.ts";
 import { startHarness, type Harness } from "./helpers/server.ts";
+import { teamPlan } from "./helpers/team-plan.ts";
 
 const SECRETS = ["sk-ant-api03-ROUTESROUTESROUTES0123456789", "ghp" + "_routesroutesroutesroutes0123456789", "sk-ant-oat01-NEVERREADNEVERREAD999"];
 
@@ -64,11 +69,17 @@ describe("bring your setup, over HTTP", () => {
     for (const method of ["GET", "POST"]) assert.equal(allows("some-agent", method, "/api/setup-import").ok, false);
   });
 
-  test("nothing from the network may look or import", async () => {
-    for (const method of ["GET", "POST"]) {
-      const remote = await h.fetchRemote("/api/setup-import", { method, body: method === "POST" ? "{}" : undefined });
-      assert.ok(remote.status === 401 || remote.status === 403, `${method} answered ${remote.status}`);
+  test("nothing unpaired from the network may look or import", async () => {
+    for (const [method, path] of [["GET", "/api/setup-import"], ["POST", "/api/setup-import"], ["GET", "/api/setup-import/where"]]) {
+      const remote = await h.fetchRemote(path, { method, body: method === "POST" ? "{}" : undefined });
+      assert.ok(remote.status === 401 || remote.status === 403, `${method} ${path} answered ${remote.status}`);
     }
+  });
+
+  test("at this computer, it says the setup is read here", async () => {
+    const where = await h.json("/api/setup-import/where");
+    assert.equal(where.here, true);
+    assert.equal(typeof where.computer, "string");
   });
 
   test("looking finds what is there, shows no secrets, and writes nothing", async () => {
@@ -172,4 +183,70 @@ describe("bring your setup, over HTTP", () => {
     await h.json("/api/setup-import", { method: "POST", body: JSON.stringify({ picks: picksOf(review, () => true) }) });
     assert.deepEqual((await h.json("/api/mcp-servers")).servers[0].needs, []);
   });
+});
+
+// A workspace on a server with no screen is reached only from the owner's
+// paired devices, so that is where its setup is brought over from: read on
+// the server, reviewed on the device, written on the server. A member's
+// device and a member's credential are refused, as an agent's is above.
+test("the owner's own device brings a setup over from the server's computer; a member cannot", { timeout: 120_000 }, async (t) => {
+  const home = mkdtempSync(join(tmpdir(), "bloks-setup-remote-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const licence = await teamPlan();
+  t.after(() => licence.close());
+  fixture(home);
+  mkdirSync(join(home, ".bloks"));
+  writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ remote: { enabled: true }, profile: { name: "Owner" }, ...licence.config }));
+  const h = await startHarness({ HOME: home, ...licence.env, BLOKS_COMPUTER_NAME: "Fixture Server" });
+  t.after(() => h.stop());
+
+  // the owner's phone or laptop, paired
+  await h.fetch("/api/pair", { method: "PUT", body: JSON.stringify({ enabled: true }) });
+  const started = await h.json("/api/pair/start", { method: "POST" });
+  const paired = await h.fetchRemote("/api/pair/claim", { method: "POST", body: JSON.stringify({ code: started.code, device: "Owner's MacBook" }) });
+  const owner = paired.body?.token as string;
+  assert.ok(owner, "the fixture device did not pair");
+
+  // named before anything is read, and named as not the device asking
+  const where = await h.fetchRemote("/api/setup-import/where", { token: owner });
+  assert.equal(where.status, 200);
+  assert.deepEqual(where.body, { computer: "Fixture Server", here: false });
+
+  // the same review as at the server itself, scrubbed the same way
+  const look = await h.fetchRemote("/api/setup-import", { token: owner });
+  assert.equal(look.status, 200);
+  const review = look.body as Review;
+  assert.deepEqual(review.sources.map((s) => s.id), ["claude", "openclaw"]);
+  for (const secret of SECRETS) assert.equal(JSON.stringify(review).includes(secret), false, `${secret} reached the device`);
+  assert.deepEqual(review, await h.json("/api/setup-import"));
+  assert.equal(existsSync(join(home, ".bloks", "setup-import.json")), false, "looking wrote something");
+
+  // a member: their device never reaches the owner's route, and their
+  // credential on this computer is taken at its word
+  const lan = new URL(h.url).host;
+  const made = await h.json("/api/workspace/invites", { method: "POST", body: JSON.stringify({ role: "admin", name: "Sam" }) });
+  const client = new JoinClient(() => "http://127.0.0.1:9");
+  const found = (await client.lookup(`${made.invite.link}~${lan}`)) as any;
+  assert.ok(found.ok, JSON.stringify(found));
+  await client.claim(found.session, { name: "Sam" });
+  assert.equal((await h.fetch(`/api/workspace/requests/${made.invite.id}/approve`, { method: "POST" })).status, 200);
+  const sam = ((await client.status(found.session)) as any).credentials as { deviceToken: string };
+  for (const [method, path] of [["GET", "/api/setup-import/where"], ["GET", "/api/setup-import"], ["POST", "/api/setup-import"]]) {
+    const body = method === "POST" ? JSON.stringify({ picks: picksOf(review) }) : undefined;
+    const there = await h.fetchRemote(path, { method, token: sam.deviceToken, body });
+    assert.notEqual(there.status, 200, `a member's device reached ${method} ${path}`);
+    const here = await h.fetch(path, { method, headers: { authorization: `Bearer ${sam.deviceToken}` }, body });
+    assert.equal(here.status, 403, `a member's credential on this computer reached ${method} ${path}`);
+  }
+  assert.equal(existsSync(join(home, ".bloks", "setup-import.json")), false, "a member's import wrote something");
+
+  // the owner's import, from the device: written on the server
+  const picks = picksOf(review);
+  const brought = await h.fetchRemote("/api/setup-import", { method: "POST", token: owner, body: JSON.stringify({ picks }) });
+  assert.equal(brought.status, 200, JSON.stringify(brought.body));
+  assert.deepEqual(brought.body.results.filter((r: { ok: boolean }) => !r.ok), []);
+  assert.ok(brought.body.results.length > 0);
+  assert.ok(existsSync(join(home, ".bloks", "setup-import.json")), "the import was not recorded on the server");
+  const { skills } = await h.json("/api/skills");
+  assert.ok(skills.some((s: { id: string }) => s.id === "standup"), "the skill did not land on the server");
 });

@@ -20019,14 +20019,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
 
     // ── bring your setup: what other agent tools already know ──
-    // Reading another tool's files is for the person at this computer to
-    // start. Not an agent, which would be reading the person's home on
-    // its own initiative, and not a phone or a remote window, which would
-    // carry the person's instructions and skills off this machine. The
-    // look and the import both read the files fresh; the import takes from
-    // the window only which items, and where.
+    // Reading another tool's files is the owner's to start: at this
+    // computer, or from one of their own paired devices, which is the only
+    // way in to a workspace on a server with no screen (GitHub 397). Never
+    // an agent, which would be reading the person's home on its own
+    // initiative, and never a member, whose devices are answered above and
+    // whose credential on this computer is taken at its word here. What is
+    // read is always this machine's: the files of the tools installed
+    // where the server runs, never the device asking. `where` says which
+    // machine that is, so the window can name it before anything is read.
+    // The look and the import both read the files fresh; the import takes
+    // from the window only which items, and where.
+    if (path === "/api/setup-import/where" && method === "GET") {
+      if (asAgent || (local ? namesMember() : !ownerDevice)) return json(res, 403, { error: "bringing a setup over is the owner's" });
+      return json(res, 200, { computer: computerName(), here: local });
+    }
     if (path === "/api/setup-import" && (method === "GET" || method === "POST")) {
-      if (!local || asAgent) return json(res, 403, { error: "only Bloks on this computer can bring a setup over" });
+      if (asAgent || (local ? namesMember() : !ownerDevice)) return json(res, 403, { error: "bringing a setup over is the owner's" });
       if (method === "GET") return json(res, 200, reviewOf(detectSetup(), setupRecord, setupImportDeps()));
       const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
       // A new agent's settings mean asking the engines which one answers,
@@ -20050,8 +20059,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           at: Date.now(),
           kind: "setup.imported",
           actor: "you",
-          summary: `Brought over ${brought} ${brought === 1 ? "item" : "items"} from other agent tools`,
-          detail: { items: brought },
+          summary: `Brought over ${brought} ${brought === 1 ? "item" : "items"} from other agent tools${local ? "" : ` on ${computerName()}`}`,
+          detail: { items: brought, ...(local ? {} : { from: computerName() }) },
         });
       }
       return json(res, 200, {

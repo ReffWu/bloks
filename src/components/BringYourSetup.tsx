@@ -10,6 +10,11 @@
 // Used twice: as its own page in Settings, and as an optional step in the
 // first-run flow when something was found. The step is the same list,
 // with the way on left to the flow.
+//
+// What is read is the computer the workspace runs on, which is not always
+// the one this window is on: the desktop app can be a window onto a
+// server elsewhere (GitHub 397). So the screen asks which computer that
+// is first, and names it whenever it is not this one.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Brain } from "@/components/icons";
 import { Check } from "@/components/icons";
@@ -76,22 +81,54 @@ interface Choice {
   botId?: string;
 }
 
+/** The computer a setup is read from: the one the workspace runs on, by
+ * its name, and whether that is the computer this window is on. */
+export interface SetupWhere {
+  computer: string;
+  here: boolean;
+}
+
+/** A workspace server from before 3.0.14 has no `where`, and brings a
+ * setup over only for a window on its own computer. */
+const OLDER_SERVER =
+  "The workspace server runs an older Bloks, which brings a setup over only at its own computer. Update the server to 3.0.14 or newer, then look again.";
+
 /** The review, looked up once and again on demand. Null while looking. */
-export function useSetupReview(): { review: SetupReview | null; error: string | null; reload: () => void; set: (r: SetupReview) => void } {
+export function useSetupReview(): {
+  review: SetupReview | null;
+  where: SetupWhere | null;
+  error: string | null;
+  reload: () => void;
+  set: (r: SetupReview) => void;
+} {
   const [review, setReview] = useState<SetupReview | null>(null);
+  const [where, setWhere] = useState<SetupWhere | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reload = useCallback(() => {
     setError(null);
-    api("/api/setup-import")
-      .then((r: SetupReview) => setReview(r))
-      .catch((e: Error) => {
-        setError(e.message);
+    void (async () => {
+      // which computer first, so the screen can say so before it reads
+      let older = false;
+      try {
+        setWhere((await api("/api/setup-import/where")) as SetupWhere);
+      } catch (e) {
+        older = (e as { status?: number }).status === 404;
+      }
+      try {
+        setReview((await api("/api/setup-import")) as SetupReview);
+      } catch (e) {
+        setError(older && (e as { status?: number }).status === 403 ? OLDER_SERVER : (e as Error).message);
         setReview({ sources: [], fresh: 0 });
-      });
+      }
+    })();
   }, []);
   useEffect(reload, [reload]);
-  return { review, error, reload, set: setReview };
+  return { review, where, error, reload, set: setReview };
 }
+
+/** The folders each tool keeps its setup in, as the person would copy
+ * them (server/setup-import.ts reads these and nothing else). */
+const SETUP_FOLDERS = "~/.claude, ~/.codex, ~/.openclaw or ~/.hermes";
 
 const KIND: Record<Kind, { label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
   instructions: { label: "Instructions", icon: FileText },
@@ -110,18 +147,44 @@ function choicesFrom(review: SetupReview): Record<string, Choice> {
   return out;
 }
 
-/** The line every version of this screen opens with. */
-export function SetupPrivacyLine({ className }: { className?: string }) {
+/**
+ * The line every version of this screen opens with. On the workspace's
+ * own computer, that nothing leaves it. Anywhere else, which computer is
+ * read, that this one is not, and the way to bring this one's setup
+ * instead, said before anything is looked at rather than after. Until the
+ * server has said which it is, only what is true either way.
+ */
+export function SetupPrivacyLine({ where, className }: { where: SetupWhere | null; className?: string }) {
+  const away = where && !where.here;
   return (
     <div className={cn("flex items-start gap-2.5 rounded-xl bg-success/10 px-3 py-2.5", className)}>
       <ShieldCheck size={16} className="mt-px shrink-0 text-success" />
       <div className="min-w-0 text-body leading-relaxed">
-        <div className="font-medium text-foreground">
-          Nothing leaves {thisComputer()} and no keys or passwords are copied.
-        </div>
-        <div className="text-muted-foreground">
-          Nothing is added until you choose.
-        </div>
+        {away ? (
+          <>
+            <div className="font-medium text-foreground">
+              Read on {where.computer}, where this workspace runs. No keys or passwords are copied.
+            </div>
+            <div className="text-muted-foreground">
+              Nothing is read from {thisComputer()}, and nothing is added until you choose. What you pick is added to the workspace on{" "}
+              {where.computer}.
+            </div>
+            <div className="mt-1.5 text-muted-foreground">
+              To bring a setup from {thisComputer()} instead, copy its folders ({SETUP_FOLDERS}) to the same place on {where.computer}, then look
+              again.
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="font-medium text-foreground">
+              {/* only said once the server has said it is this computer */}
+              {where?.here ? `Nothing leaves ${thisComputer()} and no keys or passwords are copied.` : "No keys or passwords are copied."}
+            </div>
+            <div className="text-muted-foreground">
+              Nothing is added until you choose.
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -480,10 +543,10 @@ export function SetupReviewList({
 
 /** The Settings page. */
 export function BringYourSetupPage() {
-  const { review, error, reload, set } = useSetupReview();
+  const { review, where, error, reload, set } = useSetupReview();
   return (
     <div className="flex flex-col gap-5">
-      <SetupPrivacyLine />
+      {!error && <SetupPrivacyLine where={where} />}
       {review === null ? (
         <div className="flex items-center gap-2 py-6 text-body text-muted-foreground">
           <Loader2 size={15} className="animate-spin" /> Looking…
@@ -494,7 +557,7 @@ export function BringYourSetupPage() {
         <div className="rounded-2xl border bg-card p-4">
           <div className="text-ui font-medium text-foreground">Nothing found to bring over</div>
           <div className="mt-1 text-body leading-relaxed text-muted-foreground">
-            Bloks checks for Claude Code, Codex, OpenClaw and Hermes.
+            Bloks checks {where && !where.here ? `${where.computer} ` : ""}for Claude Code, Codex, OpenClaw and Hermes.
           </div>
           <Button size="sm" variant="secondary" className="mt-3" onClick={reload}>
             Look again

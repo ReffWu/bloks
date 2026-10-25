@@ -554,9 +554,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               <Column>
                 <BeatHeading
                   title="Bring your setup"
-                  says={`Found in ${setup.review.sources.map((s) => s.name).join(", ")}. Tick what to bring over, now or later in Settings.`}
+                  says={`Found ${setup.where && !setup.where.here ? `on ${setup.where.computer} ` : ""}in ${setup.review.sources.map((s) => s.name).join(", ")}. Tick what to bring over, now or later in Settings.`}
                 />
-                <SetupPrivacyLine />
+                <SetupPrivacyLine where={setup.where} />
                 <div className="mt-6">
                   <SetupReviewList
                     review={setup.review}
