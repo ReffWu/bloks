@@ -46,6 +46,7 @@ import { CODEX_PERSON_HOLD, CODEX_PERSON_NEXT, personTurnHold } from "../person-
 import { CodexSpeedUnavailable, type CodexSpeedRefusal, FAST_TIER, fastRefusal, requireFastTier, resolveCodexSpeed } from "../codex-speed.ts";
 import { createAskBroker, type AskBroker } from "../harness/ask-broker.ts";
 import { checkCodexReplyEndpoint, makeCodexReplyFolder } from "../person-turn.ts";
+import { isConnectionEnvName } from "../connections.ts";
 
 const DRIVER_KIND = "codex";
 const NATIVE_SOURCE = "codex.app-server";
@@ -208,7 +209,12 @@ const SHELL_NAMES = ["BLOKS_CLI", "BLOKS_URL", "BLOKS_TOKEN", "BLOKS_REPLY_TOKEN
 export function shellConfig(env: Record<string, string | undefined> | undefined, includeOnly?: unknown): Record<string, unknown> | null {
   const config: Record<string, unknown> = {};
   const named: string[] = [];
-  for (const name of SHELL_NAMES) {
+  // A connection's address and git's pointer to it (server/connections.ts)
+  // ride the same way: Codex's default policy leaves out any name with
+  // KEY in it, which GIT_CONFIG_KEY_0 has, and a clone would then go
+  // straight to github.com with no address at all.
+  const connection = Object.keys(env ?? {}).filter((name) => isConnectionEnvName(name));
+  for (const name of [...SHELL_NAMES, ...connection]) {
     const value = env?.[name];
     if (typeof value !== "string" || !value) continue;
     config[`shell_environment_policy.set.${name}`] = value;

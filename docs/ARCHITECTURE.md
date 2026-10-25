@@ -132,6 +132,7 @@ Workspaces), written synchronously. No database.
 | `usage.json`, `model-prices.json` | Daily usage by agent, engine and person; the public price list estimates come from (see Usage and spending limits) |
 | `plan-cache.json` | The Plan page's last good answers from bloks.dev, under a fingerprint of the key |
 | `location.json` | The owner's iPhone's last reading and whether each phone shares, never a trail; left out of backups and moves (see Location) |
+| `connections-audit.jsonl` | One line per request an agent made through a connection, sent or refused: when, which agent, what, the status. Never a header, a body or a query string (see Connections) |
 | `messages-<id>.json` | One transcript per agent or room, same key space |
 | `config.json` | Connected providers and keys, `0600` |
 | `skills/*.md` | Installed skills |
@@ -2845,7 +2846,89 @@ nothing; gh stays signed in.
 
 Bloks keeps no copy of gh's sign-in, and it cannot keep it from an agent:
 an agent runs as the person, and gh hands its token to whoever runs
-`gh auth token`. The page says so.
+`gh auth token`. The page says so, and points to a protected connection
+for agents that should never hold a token.
+
+## Connections
+
+A connection is a credential an agent uses without ever holding it
+(`server/connections.ts`, GitHub 386). A saved secret is the other kind:
+it is in every owner's turn's environment, so the agent has the value.
+
+The person adds a GitHub token in Settings, Plugins, CLIs, GitHub
+(`POST /api/connections`). Bloks asks GitHub's `/user` whose it is and
+keeps it in config.json (`connections`, 0600, beside the saved secrets,
+left out of a backup without a passphrase like them, and scrubbed by
+`redactSecrets`). One per service for now. Grants are kept on the
+connection, never on the agent's record, which an agent may partly change
+itself: `PATCH /api/connections/:id` with `grants: { agentId: "read" |
+"write" | null }`. A member's own agent cannot be granted one.
+`POST .../check` asks GitHub again, `GET .../audit` lists recent use and
+`DELETE` forgets the token. All of it is the owner's, from this window or
+a device of theirs; never an agent (never list) or a member, on their
+device or with their credential here.
+
+An owner's own turn, on an engine with a shell, for an agent with a grant,
+gets an address and no value. The address carries a handle minted for
+that turn and bound to the turn's own credential
+(`http://127.0.0.1:<port>/connect/<handle>/<host>/<path>`): it ends when
+the turn does, and it is never given to a shared room, a member's turn,
+a stranger's mail or a Telegram person's. The turn's environment has
+`BLOKS_GITHUB_API` (the address for api.github.com) and git's own
+environment config, `url.<address>/github.com/.insteadOf https://github.com/`
+and an empty credential helper for the address, so `git clone`, `fetch`
+and `push` over https://github.com go through Bloks without the agent
+doing anything different. Codex is handed the same names as `set`
+entries, since its default policy drops any name with KEY in it.
+
+Each request to an address is decided in `proxyConnection`, before any
+credential is added: only on this computer (never off the relay line);
+the handle's turn still running; the grant still there; the host one of
+the service's (api.github.com, github.com); and the method and path one
+the access allows. Read is GET and HEAD on the API and clone and fetch
+over git; write adds POST, PUT, PATCH and DELETE and push. On github.com
+only git's smart HTTP requests go, so no web page, no LFS (which hands out
+tokens of its own). Some API calls are never sent whatever the grant,
+because each hands someone or something lasting access that taking the
+grant back would not end: account keys, deploy keys, collaborators,
+organization invitations and memberships, team memberships, and
+webhooks. Then the agent's own authorization, cookies and anything not on
+a short list of headers are dropped, the credential is added (Bearer for
+the API, Basic `x-access-token` for git), and the request goes to that
+host and nowhere else. A redirect to one of the service's hosts comes
+back through the address to be checked again; anywhere else it goes as
+it is, and the client follows it without the credential. A 401 from the
+service is said in words as a 502, so git never asks a credential helper
+for the address. Text responses are asked for uncompressed and held, at
+most 16 MB, so the token (and its git form) can be taken out of headers
+and body should a service ever echo it; a response too large to check is
+not passed on. Every request, sent or refused, is one line in
+`connections-audit.jsonl`, about a megabyte at most, shown as Recent use.
+
+What this protects: the token is never in an agent's environment, prompt,
+files, command line or output, never in a transcript, log or other file
+Bloks writes, and never sent to another host; a turn's address stops at
+the turn's end, at the next request after a grant is taken back, and
+when the connection is removed. What it does not: an agent can misuse
+what it was granted, reading everything the token can read, or with
+write pushing and opening and closing what the token can, so the token
+should be fine-grained to the repositories and permissions the work
+needs. An agent can use its address for anything that runs during its
+turn. It runs as the person, so it could read config.json with a file
+tool if the person let it read outside its folders, and gh's own sign-in,
+when there is one, is open to any agent with a shell; Settings says this
+beside the grants. Codex in its `workspace-write` sandbox has no network,
+so the address needs the same allowance a `bloks` command does.
+
+Not built yet: `gh` itself through a connection (gh will not talk to an
+address over plain HTTP for github.com, and teaching it to would need a
+certificate the system trusts), more than one connection per service,
+other services and custom ones, method and path rules the person writes,
+query and body field rules, response scrubbing rules beyond the
+credential itself, and sessions Bloks logs in to and out of. A gateway
+such as a self-hosted OneCLI could later stand behind the same address
+and grants, with `upstream` pointed at it rather than at the service; the
+grant and audit stay here either way.
 
 ## Boundaries worth knowing
 

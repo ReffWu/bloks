@@ -293,6 +293,7 @@ export const SECRET_PATHS = [
   "telegram.pending.token",
   "mcpServers[].headers",
   "secrets",
+  "connections[].token",
   "relay.agentToken",
   "relay.clientToken",
   "credits.licence",

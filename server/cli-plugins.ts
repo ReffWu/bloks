@@ -17,7 +17,9 @@
 // reads gh's status, never the token: nothing here runs `gh auth token`
 // or asks status to show it. That also means Bloks cannot keep the
 // sign-in from an agent. An agent runs as the person, so anything it runs
-// can ask gh for the token. Settings says so in as many words.
+// can ask gh for the token. Settings says so in as many words, and offers
+// the protected connection (server/connections.ts) for agents that should
+// never hold one.
 //
 // The checks run in this server's own environment, which is the one every
 // agent's turn starts from: the same PATH (server/path.ts widens it the

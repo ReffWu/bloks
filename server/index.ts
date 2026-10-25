@@ -63,6 +63,7 @@ import {
   ensureDirs,
   forgetSecret,
   instanceConfigs,
+  saveConnections,
   loadConfig,
   savedConfigObservation,
   saveConfig,
@@ -405,6 +406,20 @@ import {
   VIEWER_ORIGIN,
 } from "./local-vm.ts";
 import { resolveOnPath, widenPath } from "./path.ts";
+import {
+  AuditLog,
+  ConnectionHandles,
+  checkGitHubToken,
+  cleanToken,
+  connectBase,
+  connectionEnv,
+  connectionHint,
+  isAccess,
+  proxyConnection,
+  publicConnection,
+  serviceSpec,
+  type ConnectionRecord,
+} from "./connections.ts";
 import { checkGitHubCli, execRunner, ghHint, GH_SETUP_GIT, GH_SIGN_IN, type GitHubCliStatus } from "./cli-plugins.ts";
 import { claimDataFolder, inUseMessage } from "./data-lock.ts";
 import { BRIEF_ASK, describe as describeRoutine, FAILS_TO_PAUSE, isQuiet as quietRoutine, isQuietReply, lastReportNote, MAX_ROUTINES, normalize as normalizeRoutine, nextScheduledAfter, lastScheduledBefore, promptTooLong, QUIET_ASK, type Routine, RoutineStore, scheduleProblem } from "./routines.ts";
@@ -932,8 +947,55 @@ function standingOf(project: Project): ProjectStanding {
 // itself. See server/agent-cli.ts for what that means and what it does
 // not mean.
 const agentTokens = new AgentTokens();
+// The addresses a turn reaches a connection through (server/connections.ts),
+// each riding on that turn's credential, and the line kept per use.
+const connectionHandles = new ConnectionHandles();
+const connectionAudit = new AuditLog(join(DATA_DIR, "connections-audit.jsonl"));
 
-// ── local CLI plugins (GitHub 387) ──
+// ── connections and local CLI plugins (GitHub 386, 387) ──
+
+/** Where a service's host is really reached. Always the host itself,
+ * over HTTPS; a test points it at a stand-in of its own with
+ * BLOKS_CONNECTIONS_UPSTREAM, a JSON map of host to origin. Read once,
+ * from the environment this server was started with, which no agent and
+ * no request can change. */
+const CONNECTION_UPSTREAMS: Record<string, string> = (() => {
+  try {
+    const said = JSON.parse(process.env.BLOKS_CONNECTIONS_UPSTREAM || "{}");
+    return said && typeof said === "object" ? Object.fromEntries(Object.entries(said).filter(([, v]) => typeof v === "string")) as Record<string, string> : {};
+  } catch {
+    return {};
+  }
+})();
+const connectionUpstream = (host: string) => CONNECTION_UPSTREAMS[host] ?? `https://${host}`;
+
+function connectionRecords(): ConnectionRecord[] {
+  return Array.isArray(cfg.connections) ? cfg.connections : [];
+}
+
+/** Saves the whole list and puts it in the live settings as it is now:
+ * the merge every other save does would keep a removed one around. */
+function storeConnections(list: ConnectionRecord[]) {
+  cfg.connections = saveConnections(list).connections ?? [];
+  broadcast({ kind: "connections" });
+}
+
+function connectionsView() {
+  const exists = (id: string) => Boolean(store.bot(id));
+  return {
+    connections: connectionRecords().map((record) => publicConnection(record, exists)),
+    services: [{ id: "github", name: "GitHub", tokenUrl: serviceSpec("github")!.tokenUrl }],
+  };
+}
+
+/** The connection this agent may use for a service, and how. */
+function grantedConnection(botId: string, service: string): { record: ConnectionRecord; access: "read" | "write" } | null {
+  for (const record of connectionRecords()) {
+    const access = record.grants?.[botId];
+    if (record.service === service && isAccess(access)) return { record, access };
+  }
+  return null;
+}
 
 /** What the gh plugin last found on this computer, kept so a turn can be
  * told without waiting on gh, and a check already running is shared. */
@@ -958,25 +1020,48 @@ function githubPluginView() {
 }
 
 /**
- * What one turn is told of gh on this computer, while the plugin is on.
- * Only for a turn with the agent's own full credential, which is only
- * ever the owner's own turn on an engine with a shell: never a shared
- * room, a member's turn, a stranger's mail or a Telegram person's.
+ * What one turn gets from connections and plugins: the environment that
+ * points it at its connection's address, and what it is told. Only for a
+ * turn with the agent's own full credential, which is only ever the
+ * owner's own turn on an engine with a shell: never a shared room, a
+ * member's turn, a stranger's mail or a Telegram person's.
  */
-function pluginsForTurn(): { hint: string | null } {
-  if (cfg.cliPlugins?.github?.enabled !== true) return { hint: null };
-  // told what was last found, and found again in the background when
-  // that is old, so the next turn is told what is true now
-  if (!githubCli || Date.now() - githubCli.checkedAt > 10 * 60_000) void checkGithubCli().catch(() => {});
-  return { hint: ghHint(githubCli) };
+function connectionsForTurn(botId: string, credential: string): { env: Record<string, string>; hint: string | null } {
+  const granted = grantedConnection(botId, "github");
+  if (granted) {
+    const handle = connectionHandles.mint({ credential, botId, connectionId: granted.record.id });
+    const base = connectBase(`http://127.0.0.1:${PORT}`, handle);
+    return { env: connectionEnv("github", base, process.env), hint: connectionHint("github", granted.access, granted.record.account) };
+  }
+  if (cfg.cliPlugins?.github?.enabled === true) {
+    // told what was last found, and found again in the background when
+    // that is old, so the next turn is told what is true now
+    if (!githubCli || Date.now() - githubCli.checkedAt > 10 * 60_000) void checkGithubCli().catch(() => {});
+    return { env: {}, hint: ghHint(githubCli) };
+  }
+  return { env: {}, hint: null };
 }
 
+const connectionProxy = {
+  handles: connectionHandles,
+  liveAgent: (entry: { credential: string; botId: string }) => {
+    const held = agentTokens.identify(entry.credential, Date.now(), turnAlive);
+    return held && !held.reply && !held.messenger && held.botId === entry.botId ? held.botId : null;
+  },
+  connection: (id: string) => connectionRecords().find((record) => record.id === id),
+  agentName: (botId: string) => store.bot(botId)?.name,
+  audit: connectionAudit,
+  upstream: connectionUpstream,
+};
 /** A turn is alive while it has started and not ended, and its lane still
  * says it is working. A turn whose engine died without saying so ends the
  * same way (the drivers end a turn when its process exits), so this never
  * keeps a finished turn's credential going. */
 const turnAlive = (taskId: string) => turnStarted.has(taskId) && Boolean(store.taskByThread(taskId)?.task.busy);
-setInterval(() => agentTokens.sweep(Date.now(), turnAlive), 5 * 60_000).unref?.();
+setInterval(() => {
+  agentTokens.sweep(Date.now(), turnAlive);
+  connectionHandles.sweep((credential) => Boolean(agentTokens.identify(credential, Date.now(), turnAlive)));
+}, 5 * 60_000).unref?.();
 const AGENT_CLI = fileURLToPath(new URL("../bin/bloks.mjs", import.meta.url));
 /** How an agent with a shell is told to run the CLI. The path is wherever
  * this copy of Bloks is installed, and that changes: a standalone server
@@ -7146,11 +7231,12 @@ async function startClaimedTurn(
             ? agentTokens.mintMessenger(bot.id, task.id, Date.now())
             : null;
       const replyCredential = personSource ? credential : groupSource ? agentTokens.mintReply(bot.id, task.id, Date.now(), groupSource, laneTurns.get(task.id) ?? 0) : null;
-      // What the agent is told of gh on this computer (server/cli-plugins.ts):
+      // A connection's address and what the agent is told of it, or of gh
+      // on this computer (server/connections.ts, server/cli-plugins.ts):
       // only with the agent's own full credential, which only the owner's
-      // own turn on an engine with a shell is given.
+      // own turn on an engine with a shell is given, and never the value.
       const linked = credential && !credential.reply && !credential.messenger && owners && !sharing && !personSource
-        ? pluginsForTurn()
+        ? connectionsForTurn(bot.id, credential.token)
         : null;
 
       // A session that has run the CLI before may have run it from a copy
@@ -7288,6 +7374,8 @@ async function startClaimedTurn(
                 // Listed first so a secret can never shadow the lines below.
                 // Only on the owner's own turns: they are the owner's keys.
                 ...(owners ? usableSecrets(cfg.secrets) : {}),
+                // a connection's address, never its credential
+                ...(linked?.env ?? {}),
                 BLOKS_URL: `http://127.0.0.1:${PORT}`,
                 BLOKS_TOKEN: credential.token,
                 BLOKS_CLI: AGENT_CLI,
@@ -17992,6 +18080,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   const method = req.method ?? "GET";
   // The virtual desktop's viewer on a hosted workspace, by its ticket.
   if (path.startsWith("/hosted/desktop/")) return proxyDesktop(req, res, path, url.search);
+  // A connection's address (server/connections.ts): the handle in it is
+  // the whole credential for the turn it was minted for, so it is decided
+  // here and never falls through to anything below, whatever else the
+  // request carries. On this computer only, and never a request replayed
+  // off the relay line for a phone.
+  if (path.startsWith("/connect/")) {
+    const here = isLocalRequest(req) && !relayDeviceFor(req) && !relayInviteFor(req);
+    return proxyConnection(req, res, path, url.search, here, connectionProxy);
+  }
   // Reply bearers are checked before open webhook routes too. A spent
   // reply credential never falls through to the loopback owner.
   const replyBearer = bearerToken(req);
@@ -21676,6 +21773,84 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return json(res, 200, { secrets: savedSecretNames() });
       }
       return json(res, 404, { error: "not found" });
+    }
+
+    // Connections agents use without the credential (server/connections.ts,
+    // GitHub 386). The person's own, like the saved secrets: from this app,
+    // the app run against a server elsewhere, or a paired device of theirs.
+    // Never an agent (NEVER in server/agent-cli.ts, and asked again here),
+    // and never a member, on their device or with their credential on this
+    // machine. Nothing here ever answers with a token.
+    if (path === "/api/connections" || path.startsWith("/api/connections/")) {
+      if (asAgent || (local ? namesMember() : !ownerDevice)) return json(res, 403, { error: "connections are the owner's, not an agent's or a member's" });
+      if (method === "GET" && path === "/api/connections") return json(res, 200, connectionsView());
+      if (method === "POST" && path === "/api/connections") {
+        const body = await readBody(req);
+        const spec = serviceSpec(body.service);
+        if (!spec) return json(res, 400, { error: "Bloks connects GitHub this way so far" });
+        const token = cleanToken(body.token);
+        if (!token) return json(res, 400, { error: "That does not look like a GitHub token. Paste the whole token, with nothing around it." });
+        if (connectionRecords().some((record) => record.service === spec.id)) {
+          return json(res, 409, { error: `There is already a ${spec.name} connection. Disconnect it first to use another token.` });
+        }
+        const checked = await checkGitHubToken(token, connectionUpstream(spec.apiHost));
+        if (!checked.ok) return json(res, 400, { error: checked.error });
+        const record: ConnectionRecord = {
+          id: `conn_${randomBytes(8).toString("hex")}`,
+          service: spec.id,
+          token,
+          account: checked.account,
+          scopes: checked.scopes,
+          addedAt: Date.now(),
+          checkedAt: Date.now(),
+          grants: {},
+        };
+        storeConnections([...connectionRecords(), record]);
+        return json(res, 200, { connection: publicConnection(record, (id) => Boolean(store.bot(id))) });
+      }
+      m = path.match(/^\/api\/connections\/(conn_[0-9a-f]{16})(\/check|\/audit)?$/);
+      const record = m ? connectionRecords().find((one) => one.id === m![1]) : undefined;
+      if (!m || !record) return json(res, 404, { error: "no such connection" });
+      const shown = () => publicConnection(connectionRecords().find((one) => one.id === record.id)!, (id) => Boolean(store.bot(id)));
+      if (method === "GET" && m[2] === "/audit") return json(res, 200, { lines: connectionAudit.recent(record.id, 50) });
+      if (method === "POST" && m[2] === "/check") {
+        const checked = await checkGitHubToken(record.token, connectionUpstream(serviceSpec(record.service)!.apiHost));
+        const now = connectionRecords().find((one) => one.id === record.id);
+        if (!now) return json(res, 404, { error: "no such connection" });
+        if (checked.ok) {
+          storeConnections(connectionRecords().map((one) => (one.id === record.id ? { ...one, account: checked.account, scopes: checked.scopes, checkedAt: Date.now() } : one)));
+        }
+        return json(res, 200, { ok: checked.ok, ...(checked.ok ? {} : { error: checked.error }), connection: shown() });
+      }
+      if (m[2]) return json(res, 404, { error: "not found" });
+      if (method === "PATCH") {
+        const body = await readBody(req);
+        const asked = body.grants;
+        if (!asked || typeof asked !== "object" || Array.isArray(asked)) return json(res, 400, { error: "say which agents, as grants: { agentId: \"read\" | \"write\" | null }" });
+        const grants = { ...(record.grants ?? {}) };
+        for (const [botId, access] of Object.entries(asked as Record<string, unknown>)) {
+          const bot = store.bot(botId);
+          if (!bot) return json(res, 404, { error: "no such agent" });
+          if (access === null) {
+            delete grants[botId];
+            continue;
+          }
+          if (!isAccess(access)) return json(res, 400, { error: "access is \"read\", \"write\" or null" });
+          // a member's own agent runs the member's turns, which never get
+          // the owner's connections, so a grant there would only mislead
+          if (bot.solo && bot.solo.by !== "owner") return json(res, 409, { error: `${bot.name} is a member's own agent, and connections are yours` });
+          grants[botId] = access;
+        }
+        storeConnections(connectionRecords().map((one) => (one.id === record.id ? { ...one, grants } : one)));
+        return json(res, 200, { connection: shown() });
+      }
+      if (method === "DELETE") {
+        // gone from the file, token and all; every address minted for it
+        // stops working at its next request, since the record is gone
+        storeConnections(connectionRecords().filter((one) => one.id !== record.id));
+        return json(res, 200, connectionsView());
+      }
+      return json(res, 405, { error: "GET, POST, PATCH or DELETE" });
     }
 
     // Local CLI plugins (server/cli-plugins.ts, GitHub 387): git and gh on
@@ -25942,6 +26117,7 @@ function redactSecrets(message: string): string {
     ...Object.values(cfg.providers ?? {}).map((p) => p?.key),
     ...(cfg.custom ?? []).flatMap((endpoint) => endpoint.keys.map((cred) => cred.key)),
     ...Object.values(cfg.secrets ?? {}),
+    ...connectionRecords().map((record) => record.token),
     cfg.credits?.licence,
     cfg.credits?.token,
     creditsEnvToken() ?? undefined,
@@ -25954,7 +26130,9 @@ function redactSecrets(message: string): string {
   // never written to the config, so the list above cannot cover it.
   return out
     .replace(/\b(sk|ck|ak|gsk|xai)[-_][A-Za-z0-9_-]{12,}/g, "[redacted]")
-    .replace(/\bblok_live_[0-9a-f]{32}\b/g, "[redacted]");
+    .replace(/\bblok_live_[0-9a-f]{32}\b/g, "[redacted]")
+    // GitHub's own shapes, classic and fine-grained
+    .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, "[redacted]");
 }
 
 // Read once, here, and never again while the process lives: see the

@@ -134,6 +134,11 @@ export interface AppConfig {
   /** Values agents asked for via secret cards, injected into engine
    * environments under their env-var names. Never echoed to clients. */
   secrets?: Record<string, string>;
+  /** Services agents reach through Bloks without holding the credential
+   * (server/connections.ts). The token is a secret like the ones above,
+   * kept here for the same reason, and unlike them it never enters a turn.
+   * Replaced whole by saveConnections, never merged. */
+  connections?: import("./connections.ts").ConnectionRecord[];
   /** Tools on this computer agents use from their shell, and whether each
    * plugin is on (server/cli-plugins.ts). No credential lives here: gh
    * keeps its own sign-in. */
@@ -443,6 +448,21 @@ export function forgetSecret(name: string): AppConfig | null {
   const disk = readSaved<Record<string, any> | null>(p, null, isRecord);
   if (!disk || !isRecord(disk.secrets) || !Object.prototype.hasOwnProperty.call(disk.secrets, name)) return null;
   delete disk.secrets[name];
+  const bytes = JSON.stringify(disk, null, 2);
+  writeFileAtomic(p, bytes, 0o600);
+  observedSaved(JSON.parse(bytes), "owner-save");
+  return withEnvironment(disk);
+}
+
+/** Writes the whole list of connections (server/connections.ts), in
+ * place of the one on disk: a connection removed must be gone from the
+ * file, token and all, not merged back from what was there. */
+export function saveConnections(list: import("./connections.ts").ConnectionRecord[]): AppConfig {
+  const p = join(DATA_DIR, "config.json");
+  const disk = readSaved<Record<string, any>>(p, {}, isRecord);
+  if (list.length) disk.connections = list;
+  else delete disk.connections;
+  mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
   const bytes = JSON.stringify(disk, null, 2);
   writeFileAtomic(p, bytes, 0o600);
   observedSaved(JSON.parse(bytes), "owner-save");

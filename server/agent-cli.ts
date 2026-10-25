@@ -292,6 +292,10 @@ export const NEVER = [
   // the secrets saved for agents, by name, and forgetting one: the
   // person's to keep or drop, never a turn's
   "/api/secrets",
+  // the connections agents use without the credential, who may use them,
+  // and their audit log: what a turn gets is an address, never a say in
+  // what it reaches (server/connections.ts)
+  "/api/connections",
   // gh and git on this computer: installing, signing in and setting git
   // up are the person's to start (server/cli-plugins.ts)
   "/api/cli-plugins",
