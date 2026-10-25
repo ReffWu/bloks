@@ -138,13 +138,17 @@ describe("a home too deep for a socket", () => {
     const root = mkdtempSync(join(tmpdir(), "bloks-deep-"));
     const home = join(root, "h".repeat(90));
     mkdirSync(join(home, ".bloks"), { recursive: true });
-    t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     assert.ok(Buffer.byteLength(join(home, ".bloks", "perm-12345678-123456.sock")) >= 108, "the home is not deep enough to test this");
     const log = join(root, "asks.log");
     const cli = fakeClaude(root, log);
     writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ instances: { claude: { driver: "claudeAgent", config: { cli } } } }));
     const h = await startHarness({ HOME: home });
-    t.after(() => h.stop());
+    // the server stops before its folders go: removed first, a write it
+    // was still making landed as the folder went (ENOTEMPTY)
+    t.after(async () => {
+      await h.stop();
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    });
 
     const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Deep" }) });
     await h.fetch(`/api/bots/${bot.id}`, {
@@ -171,12 +175,16 @@ describe("a home too deep for a socket", () => {
     const temp = join(root, "t".repeat(110));
     mkdirSync(join(home, ".bloks"), { recursive: true });
     mkdirSync(temp, { recursive: true });
-    t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     const log = join(root, "asks.log");
     const cli = fakeClaude(root, log);
     writeFileSync(join(home, ".bloks", "config.json"), JSON.stringify({ instances: { claude: { driver: "claudeAgent", config: { cli } } } }));
     const h = await startHarness({ HOME: home, TMPDIR: temp });
-    t.after(() => h.stop());
+    // the server stops before its folders go: removed first, a write it
+    // was still making landed as the folder went (ENOTEMPTY)
+    t.after(async () => {
+      await h.stop();
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    });
 
     const { bot } = await h.json("/api/bots", { method: "POST", body: JSON.stringify({ name: "Deeper" }) });
     await h.fetch(`/api/bots/${bot.id}`, {

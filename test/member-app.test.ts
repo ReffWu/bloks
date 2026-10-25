@@ -213,9 +213,9 @@ test("a workspace joined on the owner's network opens through the stand-in, with
 
   const ui = mkdtempSync(join(tmpdir(), "bloks-lan-ui-"));
   writeFileSync(join(ui, "index.html"), "<!doctype html><title>Bloks</title>");
-  t.after(() => rmSync(ui, { recursive: true, force: true }));
   const proxy = await startLanProxy(credentials, { staticDir: ui });
   t.after(() => proxy.stop());
+  t.after(() => rmSync(ui, { recursive: true, force: true }));
   const base = `http://127.0.0.1:${proxy.port}`;
   const ws = await fetch(`${base}/api/member/workspace`);
   assert.equal(ws.status, 200);

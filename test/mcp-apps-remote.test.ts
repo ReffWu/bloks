@@ -37,7 +37,6 @@ test("the owner's own device checks a server's apps, opens one and runs its tool
   const relay = await sealedRelay();
   t.after(() => relay.stop());
   const home = mkdtempSync(join(tmpdir(), "bloks-test-mcp-remote-"));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
   mkdirSync(join(home, ".bloks"));
   writeFileSync(
     join(home, ".bloks", "config.json"),
@@ -49,6 +48,7 @@ test("the owner's own device checks a server's apps, opens one and runs its tool
   // a server that answers only on loopback, as bloks-server does
   const h = await startHarness({ HOME: home, BLOKS_LOOPBACK_ONLY: "1" });
   t.after(() => h.stop());
+  t.after(() => rmSync(home, { recursive: true, force: true }));
   await relay.connection;
 
   // one server that draws an app, and one that is only tools, as most are

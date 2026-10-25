@@ -380,7 +380,6 @@ describe("through the server", () => {
 describe("at night", () => {
   test("each agent with memory is tidied once in the small hours, and the brief says so", async (t) => {
     const clockHome = mkdtempSync(join(tmpdir(), "bloks-tidy-clock-"));
-    t.after(() => rmSync(clockHome, { recursive: true, force: true }));
     const clockFile = join(clockHome, "offset");
     writeFileSync(clockFile, "0");
     const h = await startHarness({
@@ -388,6 +387,7 @@ describe("at night", () => {
       BLOKS_TEST_CLOCK_FILE: clockFile,
     });
     t.after(() => h.stop());
+    t.after(() => rmSync(clockHome, { recursive: true, force: true }));
     // the brief should not be made by the clock passing eight
     await h.fetch("/api/briefs/settings", { method: "PATCH", body: JSON.stringify({ enabled: false }) });
     const provider = await tidyProvider(t, planFor);
