@@ -1,0 +1,9 @@
+**Agents on Windows and Linux run their scripts again, your phone tells you when an answer is ready, and the morning brief leads with what your routines found.**
+
+## What changed
+
+- **Computer is the screen, never where an agent runs.** In 3.0.9, agents without a screen were told they had no computer, and some models took that to mean they could not run anything, so routines stopped running their scripts. Agents are now told plainly that their commands and files run on this PC either way. A Local VM that is not set up no longer stops a turn: it runs without a screen and says why. An agent saved on This computer keeps working as it did in 3.0.8, and Settings now says Computer is only the desktop an agent can see and click. Thanks @animusastralis (#388)
+- **Your phone tells you when an answer is ready.** A turn you asked for now sends one notification when its answer is ready, unless you are reading that conversation on one of your screens. It follows each agent's notification setting and the workspace's mute, and tapping it opens the answer. Needs the iPhone app 3.0.4. Thanks @po-trottier (#384)
+- **The morning brief leads with results.** Overview's brief now opens with what your routines and watchers last reported, each as its own card with when it checked, and a clear mark when one is late or failed. You can pin, order and hide sections, choose which routines and watchers feed it, and set a routine to report only in the brief, so the morning brings one notification. Thanks @po-trottier (#378)
+- **Watchers stop when you said they would.** Act once and stop at a time now hold for every kind of watcher, not only places, through the CLI, the app and the API, and the Watchers page says when one is done. Thanks @rpavlovs (#385)
+- **A Codex helper's words stay its own.** A message from a Codex child thread no longer shows as the agent's own answer. Thanks @rpavlovs (#381)
