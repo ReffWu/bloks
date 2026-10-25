@@ -29,6 +29,7 @@ import { sendCardAnswer } from "@/lib/cardAnswer";
 import { sendMessage } from "@/lib/sendMessage";
 import { sendRoomPatch } from "@/lib/roomPatch";
 import { keepTrying } from "@/lib/retry";
+import { snapshotOrder, type SnapshotLoad } from "./snapshotOrder";
 import { sendHeld, takeWake, wakeFetch, wakeGaveUp } from "@/lib/waking";
 import { placeRow, type Listed } from "@/lib/sections";
 import { maybeAutoSpeak } from "@/components/Voice";
@@ -149,6 +150,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * rename from elsewhere undone by a slow answer), so only its
    * conversation's messages are taken. */
   const botSeq = useRef(new Map<string, number>());
+  /** The frames that touch the agents, kept while the agent list is being
+   * asked for, so a list made before them cannot undo them (GitHub 398). */
+  const listOrder = useRef(snapshotOrder<Action>());
+  /** The agent list, and over it what the stream said after it was made.
+   * `seq` is where the server says it made the list; a server too old to
+   * say gets everything since the request went out. */
+  const hydrateFrom = (bots: Bot[], seq?: unknown, load?: SnapshotLoad<Action>) => {
+    const made = typeof seq === "number" ? seq : undefined;
+    rawDispatch({ type: "hydrate", bots, after: load?.settle(made) });
+    // a conversation action's answer made before the list is older than it
+    // too, and is taken the way adoptAnswer takes any older answer
+    if (made !== undefined) for (const b of bots) botSeq.current.set(b.id, Math.max(botSeq.current.get(b.id) ?? 0, made));
+  };
   const adoptAnswer = (r: { bot?: Bot; seq?: number }) => {
     if (!r?.bot) return;
     const seen = botSeq.current.get(r.bot.id);
@@ -363,17 +377,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             api,
             action.botId,
             action.forget ? "forget" : "archive",
-            (bots) => rawDispatch({ type: "hydrate", bots }),
+            hydrateFrom,
             (error) => {
               // the "Archived" toast went up on the click; a refusal takes
               // it back down so it never sits beside the error saying why
               toast.dismiss(`archive-${action.botId}`);
               showError(error);
             },
+            listOrder.current.begin,
           );
           break;
         case "restoreBot":
-          void sendBotArchive(api, action.botId, "restore", (bots) => rawDispatch({ type: "hydrate", bots }), showError);
+          void sendBotArchive(api, action.botId, "restore", hydrateFrom, showError, listOrder.current.begin);
           break;
         case "createRoom":
           api("/api/bloks", {
@@ -746,13 +761,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true;
     let stopBots: (() => void) | null = null;
+    let botsLoad: SnapshotLoad<Action> | null = null;
     const loadAll = () => {
       // The agent list is what ends the loading screen, so it is asked
-      // again until it comes; the rest can wait for the next reload.
+      // again until it comes; the rest can wait for the next reload. A
+      // newer load takes over from one still out, whose answer is older.
       stopBots?.();
+      botsLoad?.drop();
+      const load = (botsLoad = listOrder.current.begin());
       stopBots = keepTrying(() =>
-        api("/api/bots").then(({ bots }) => {
-          if (alive) rawDispatch({ type: "hydrate", bots });
+        api("/api/bots").then(({ bots, seq }) => {
+          if (!alive || botsLoad !== load) return;
+          botsLoad = null;
+          hydrateFrom(bots, seq, load);
         }),
       );
       api("/api/bloks")
@@ -828,6 +849,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // workspace's, so it is never folded into state (src/lib/waking.ts)
       if (frame?.kind === "remote.wake") return takeWake(frame);
       if (typeof frame._seq === "number") lastSeq = frame._seq;
+      // what touches the agents is applied now and kept for a list still
+      // on its way, which is older than it when made before it
+      const applyFrame = (action: Action) => {
+        rawDispatch(action);
+        listOrder.current.note(typeof frame._seq === "number" ? frame._seq : undefined, action);
+      };
       // the workspace's people go to their own small bus (src/lib/members.ts)
       if (typeof frame.kind === "string" && frame.kind.startsWith("workspace.")) {
         workspaceFrame(frame, typeof frame._seq !== "number" || frame._seq > replayUntil.current);
@@ -861,7 +888,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           break;
         case "message": {
-          rawDispatch({ type: "messageAdded", threadId: frame.threadId, message: frame.message });
+          applyFrame({ type: "messageAdded", threadId: frame.threadId, message: frame.message });
           const msg = frame.message;
           const news = typeof frame._seq !== "number" || frame._seq > replayUntil.current;
           // a check-in's replies are spoken when its turn ends, if it was
@@ -897,7 +924,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           break;
         case "message.patch": {
-          rawDispatch({ type: "messagePatched", threadId: frame.threadId, message: frame.message, moved: frame.moved === true });
+          applyFrame({ type: "messagePatched", threadId: frame.threadId, message: frame.message, moved: frame.moved === true });
           // A failure's own notice turned into the person's card arrives
           // as a patch (server/incidents.ts). Said once per incident, as
           // a new card would be; its later updates are not news again.
@@ -953,7 +980,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }).catch(() => {});
           }
           if (typeof frame._seq === "number") botSeq.current.set(bot.id, frame._seq);
-          rawDispatch({ type: "botPatched", bot: withoutEdits(bot, editing(bot.id)) });
+          applyFrame({ type: "botPatched", bot: withoutEdits(bot, editing(bot.id)) });
           break;
         }
         case "runtime": {
@@ -963,13 +990,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           } else if (event.type === "content.delta" && event.streamKind === "assistant_text") {
             if (!isProgressText(event.codexText)) rawDispatch({ type: "streamDelta", threadId: event.threadId, delta: event.delta });
           } else if (event.type === "turn.started") {
-            rawDispatch({ type: "turnStarted", threadId: event.threadId });
+            applyFrame({ type: "turnStarted", threadId: event.threadId, turnId: typeof event.turnId === "string" ? event.turnId : undefined });
           } else if (event.type === "turn.completed") {
             // The streamed text stays until its message lands and takes its
             // place: through the relay the message can come after the end
             // of the turn, and clearing now left a gap where the reply was.
             // A turn that ended with no message of its own lets go shortly.
-            rawDispatch({ type: "turnSettled", threadId: event.threadId });
+            applyFrame({ type: "turnSettled", threadId: event.threadId, turnId: typeof event.turnId === "string" ? event.turnId : undefined });
             const threadId = event.threadId;
             setTimeout(() => rawDispatch({ type: "streamClear", threadId, onlyIfSettled: true }), STREAM_LINGER_MS);
             // a check-in that had something to say says it now
@@ -1033,7 +1060,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // only ever a delete for good (an archive arrives as a bot frame),
         // so it leaves the drawer too rather than staying there as a ghost
         case "bot.deleted":
-          rawDispatch({ type: "deleteBot", botId: frame.botId, forget: true });
+          applyFrame({ type: "deleteBot", botId: frame.botId, forget: true });
           break;
         // credentials changed and the engines were rebuilt, so the
         // picker needs to hear that something became usable
@@ -1055,6 +1082,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => {
       alive = false;
       stopBots?.();
+      botsLoad?.drop();
       if (retryTimer) clearTimeout(retryTimer);
       es?.close();
     };

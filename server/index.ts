@@ -18581,6 +18581,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
     // ── bots ──
     if (method === "GET" && path === "/api/bots") {
+      // Where on the event stream this list stands, taken before anything
+      // is read: a client applies every frame past it over the list, which
+      // may otherwise arrive after them and undo them (GitHub 398).
+      const seq = frameSeq;
       // ?messages=N trims each transcript to its tail. Phones hydrate
       // with a page and fetch history if someone actually scrolls.
       // Through Bloks Cloud the list is also held to what the relay can
@@ -18612,6 +18616,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           ...(fitted ? fitted[i] : { messages: lists[i] }),
           ...(engines ? { engine: { ...engines[i].readiness, ...(engines[i].engine ? { name: engines[i].engine } : {}) } } : {}),
         })),
+        seq,
       });
     }
     if (method === "POST" && path === "/api/bots") {

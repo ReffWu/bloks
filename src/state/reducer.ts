@@ -799,6 +799,9 @@ export interface AppState {
    * of them is late (pushes through the relay can arrive out of order)
    * and would reopen a finished reply beside its own message. */
   settledTurns: Record<string, true>;
+  /** The turn last seen starting in each thread, by its id, so the end of
+   * an earlier one heard late does not end the one running now. */
+  liveTurns: Record<string, string>;
   /** Agents whose open conversation changed with no transcript to show
    * for it, as when a lane is opened on another device: the lane, by
    * agent, whose messages the store is asking for. */
@@ -824,7 +827,9 @@ export interface AppState {
 }
 
 export type Action =
-  | { type: "hydrate"; bots: Bot[] }
+  /** The whole agent list. `after` is what the stream said after the
+   * list was made (src/state/snapshotOrder.ts), applied over it. */
+  | { type: "hydrate"; bots: Bot[]; after?: Action[] }
   /** A page of earlier messages for a transcript that arrived trimmed.
    * `threadId` guards against a lane that changed while it was loading. */
   | { type: "earlierLoaded"; id: string; threadId: string; messages: Message[]; olderMessages: number }
@@ -902,8 +907,8 @@ export type Action =
   | { type: "messagePatched"; threadId: string; message: Message; moved?: boolean }
   | { type: "streamDelta"; threadId: string; delta: string }
   | { type: "streamClear"; threadId: string; onlyIfSettled?: boolean }
-  | { type: "turnStarted"; threadId: string }
-  | { type: "turnSettled"; threadId: string }
+  | { type: "turnStarted"; threadId: string; turnId?: string }
+  | { type: "turnSettled"; threadId: string; turnId?: string }
   /** The event stream came back without the frames it missed (hello
    * with resumed: false), so what it was in the middle of is stale. */
   | { type: "streamRestarted" }
@@ -969,6 +974,37 @@ export type Action =
 
 function updateBot(state: AppState, botId: string, fn: (b: Bot) => Bot): AppState {
   return { ...state, bots: state.bots.map((b) => (b.id === botId ? fn(b) : b)) };
+}
+
+/**
+ * A turn starting or ending in one lane, on its tab: the lane reads
+ * working or idle, and its agent busy while a lane of it works. The
+ * server's next record of the agent says the same, but until it came a
+ * finished turn's tab still read working, or a running one idle, and sent
+ * the person to the wrong conversation (GitHub 398). A lane waiting on
+ * the person is left as it is: waiting outranks working on the server,
+ * and whether a card still waits once its turn is over is the server's
+ * to say.
+ */
+function laneTurn(state: AppState, threadId: string, running: boolean): AppState {
+  const owner = state.bots.find((b) => (b.tasks ? b.tasks.some((t) => t.id === threadId) : b.threadId === threadId));
+  if (!owner) return state;
+  return updateBot(state, owner.id, (b) => {
+    if (!b.tasks) return { ...b, busy: running };
+    const tasks = b.tasks.map((t): TaskSummary => {
+      if (t.id !== threadId || t.state === "needs-you") return t;
+      if (running) return t.state === "working" ? t : { ...t, state: "working" };
+      // the room it spoke in and the speed it ran at are said only while
+      // a turn runs
+      const { room: _room, codexDispatch: _dispatch, ...ended } = t;
+      return { ...ended, state: "idle" };
+    });
+    // A lane waiting on the person may still have its turn open. A
+    // member's private lanes are not listed here at all; the record the
+    // server sends after every turn's end says if one of those still runs.
+    const busy = running || tasks.some((t) => t.state === "working") || (Boolean(b.busy) && tasks.some((t) => t.state === "needs-you"));
+    return { ...b, tasks, busy };
+  });
 }
 
 /** An agent record from the server, minus the fields the person is still
@@ -1041,7 +1077,14 @@ export function reducer(state: AppState, action: Action): AppState {
         : wanted && !action.bots.some((b) => b.id === wanted)
           ? wanted
           : (action.bots.find((b) => !b.hidden)?.id ?? "");
-      return { ...state, bots: action.bots, selectedId, hydrated: true, laneLoads: {} };
+      const listed: AppState = { ...state, bots: action.bots, selectedId, hydrated: true, laneLoads: {} };
+      if (!action.after?.length) return listed;
+      // Those frames were applied as they came, so what streams and which
+      // turns run is already theirs; going through them again only puts
+      // the agents right. A reply landing a second time would otherwise
+      // clear the next turn's words as they stream.
+      const caught = action.after.reduce(reducer, listed);
+      return { ...caught, streaming: state.streaming, settledTurns: state.settledTurns, liveTurns: state.liveTurns };
     }
     case "earlierLoaded": {
       const prepend = <T extends { messages: Message[]; olderMessages?: number }>(t: T): T => {
@@ -1352,12 +1395,22 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, streaming: rest };
     }
     case "turnStarted": {
-      if (!state.settledTurns[action.threadId]) return state;
-      const { [action.threadId]: _, ...rest } = state.settledTurns;
-      return { ...state, settledTurns: rest };
+      const { [action.threadId]: _, ...settledTurns } = state.settledTurns;
+      // a turn with no id of its own leaves nothing to tell its end from
+      // an earlier one's, so whatever ends next ends it
+      const { [action.threadId]: _earlier, ...others } = state.liveTurns;
+      const liveTurns = action.turnId ? { ...others, [action.threadId]: action.turnId } : others;
+      return laneTurn({ ...state, settledTurns, liveTurns }, action.threadId, true);
     }
-    case "turnSettled":
-      return { ...state, settledTurns: { ...state.settledTurns, [action.threadId]: true } };
+    case "turnSettled": {
+      // An earlier turn's end, heard after a newer one began, ends nothing:
+      // the newer one is still running. One with no id (an engine rebuilt
+      // under it) ends whatever runs.
+      const live = state.liveTurns[action.threadId];
+      if (action.turnId && live && live !== action.turnId) return state;
+      const { [action.threadId]: _, ...liveTurns } = state.liveTurns;
+      return laneTurn({ ...state, settledTurns: { ...state.settledTurns, [action.threadId]: true }, liveTurns }, action.threadId, false);
+    }
     case "streamRestarted":
       // Whatever was streaming when the line dropped finished or moved on
       // unseen, and the messages that say so are coming in the reload. A
@@ -1365,7 +1418,7 @@ export function reducer(state: AppState, action: Action): AppState {
       // next turn's words were added to the end of it. A computer being
       // set up may have finished unseen too. Cleared here rather than in
       // hydrate, which also follows an archive, mid-turn for everyone else.
-      return { ...state, streaming: {}, settledTurns: {}, provisioning: {} };
+      return { ...state, streaming: {}, settledTurns: {}, liveTurns: {}, provisioning: {} };
     case "screenFrame":
       return {
         ...state,
@@ -1585,6 +1638,7 @@ export const initialState: AppState = {
   sectionOrder: [],
   streaming: {},
   settledTurns: {},
+  liveTurns: {},
   laneLoads: {},
   screens: {},
   roomPeople: {},

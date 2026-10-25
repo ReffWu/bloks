@@ -9,14 +9,21 @@
 // are taken from the server again, which is the one place that knows
 // what happened.
 
+// The list asked for after a refusal is ordered against the stream like
+// any other (src/state/snapshotOrder.ts): `begin` opens that, and the
+// list comes back with where it was made and the load it belongs to.
+
+import type { SnapshotLoad } from "@/state/snapshotOrder";
+
 type Api = (path: string, init?: RequestInit) => Promise<any>;
 
-export function sendBotArchive(
+export function sendBotArchive<A = unknown>(
   api: Api,
   botId: string,
   how: "archive" | "forget" | "restore",
-  hydrate: (bots: any[]) => void,
+  hydrate: (bots: any[], seq?: unknown, load?: SnapshotLoad<A>) => void,
   showError: (e: unknown) => void,
+  begin?: () => SnapshotLoad<A>,
 ): Promise<void> {
   const sent =
     how === "restore"
@@ -26,9 +33,10 @@ export function sendBotArchive(
     () => {},
     (e) => {
       showError(e);
+      const load = begin?.();
       return api("/api/bots").then(
-        ({ bots }) => hydrate(bots),
-        () => {},
+        ({ bots, seq }) => hydrate(bots, seq, load),
+        () => load?.drop(),
       );
     },
   );

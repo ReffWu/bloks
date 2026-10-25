@@ -2461,6 +2461,21 @@ describe("the resumable event stream", () => {
     assert.match(replay, /"resumed":true/);
     assert.match(replay, /Retitled while offline/);
   });
+
+  test("the agent list says where on the stream it was made, so a slow one cannot undo newer frames", async () => {
+    // GitHub 398: a client applies every frame past this over the list
+    const { bots } = await h.json("/api/bots");
+    const id = bots[0].id;
+    await h.fetch(`/api/bots/${id}`, { method: "PATCH", body: JSON.stringify({ title: "Before the list" }) });
+    const listed = await h.json("/api/bots");
+    assert.equal(typeof listed.seq, "number");
+    assert.equal(listed.bots.find((b: any) => b.id === id).title, "Before the list");
+    await h.fetch(`/api/bots/${id}`, { method: "PATCH", body: JSON.stringify({ title: "After the list" }) });
+    const past = await sip(await h.fetch(`/api/events?since=${listed.seq}`));
+    assert.match(past, /"resumed":true/);
+    assert.match(past, /After the list/);
+    assert.doesNotMatch(past, /Before the list/, "a frame the list already holds was counted as newer");
+  });
 });
 
 describe("uploaded avatars", () => {
