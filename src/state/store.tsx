@@ -22,7 +22,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { CheckInHold, NoticeDelivery, noticeFor, settlesReplies } from "@/lib/notify";
+import { BRIEF_TARGET, briefNoticeFor, CheckInHold, NoticeDelivery, noticeFor, settlesReplies } from "@/lib/notify";
 import { itemProgress, isProgressText } from "@/lib/codexProgress";
 import { sendBotArchive } from "@/lib/botArchive";
 import { sendCardAnswer } from "@/lib/cardAnswer";
@@ -732,6 +732,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const open = (target: string | null | undefined) => {
       if (!target) return;
       if (target === "workspace:members") rawDispatch({ type: "toggleAppSettings", open: true, page: "workspace:members" });
+      // the morning brief's notification opens that brief on Overview
+      else if (target.startsWith(BRIEF_TARGET)) rawDispatch({ type: "openBrief", id: target.slice(BRIEF_TARGET.length) });
       // a page of Settings by name: a pairing made from another
       // workspace's phone opens this one's Phone and devices
       else if (target.startsWith("settings:")) rawDispatch({ type: "toggleAppSettings", open: true, page: target.slice("settings:".length) });
@@ -876,6 +878,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (news && msg?.kind === "text" && !settledReplies.current) announceLanded(frame.threadId, msg);
           break;
         }
+        case "brief.ready":
+          // The morning's one notification (src/lib/notify.ts). Caught up
+          // on after a sleep, it is not said again: the brief is on
+          // Overview, and the server's own frame is already in the past.
+          if (noticeDelivery.current.take(frame._seq, `brief:${frame.id}`)) {
+            const notice = briefNoticeFor(frame, {
+              focused: document.hasFocus() && document.visibilityState === "visible",
+              onOverview: stateRef.current.page === "overview",
+            });
+            if (notice && window.bloks) void window.bloks.notifyShow(notice).catch(() => {});
+          }
+          break;
         case "reply.settled":
           // Saved-content snapshot only: no history insertion or speech.
           if (noticeDelivery.current.take(frame._seq, `reply:${frame.threadId}:${frame.botId}:${frame.turnId}`)) {

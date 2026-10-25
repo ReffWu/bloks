@@ -150,8 +150,16 @@ export interface AppConfig {
   /** `name` is how members of a shared room see the owner. */
   profile?: { about?: string; name?: string };
   /** The morning brief (server/brief.ts): on unless turned off, at 08:00
-   * unless another time is chosen. */
-  brief?: { enabled?: boolean; time?: string };
+   * unless another time is chosen. `notify` off keeps it to the page;
+   * `allClear` notifies on a quiet morning too. `layout` is how the
+   * person arranged its sections (briefSettings reads it with defaults). */
+  brief?: {
+    enabled?: boolean;
+    time?: string;
+    notify?: boolean;
+    allClear?: boolean;
+    layout?: { order: string[]; pinned: string[]; hidden: string[] };
+  };
   /** The daily backup (server/backup.ts): on unless turned off. It never
    * holds saved keys, since nobody is there to give it a passphrase. */
   backups?: { auto?: boolean };

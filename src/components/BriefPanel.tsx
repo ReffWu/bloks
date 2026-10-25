@@ -6,6 +6,12 @@
 // you comes first because it is the only part that needs you to do
 // anything; the rest is there to be read, in any order, or not at all.
 //
+// Above that come the cards (BriefCards.tsx): what the routines and
+// watchers the person set up last reported, which is what most mornings
+// are opened for (GitHub 378). The person arranges the page
+// (BriefCustomize.tsx), and nothing arranged is the order it always had,
+// with the cards first.
+//
 // Play reads it as a round: an opening, then each agent in its own voice,
 // then what is waiting. While it plays, the part being read stays lit and
 // the rest steps back, so the page follows the voice. Every line links
@@ -34,6 +40,10 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
 import { SkeletonAvatar } from "@/components/ui/skeleton";
+import { SlidersHorizontal } from "@/components/icons";
+import { ResultCard, type BriefResult } from "./BriefCards";
+import { BriefCustomize, type ArrangedSection } from "./BriefCustomize";
+import { DEFAULT_SECTIONS, layoutOf } from "@/lib/briefLayout";
 
 interface BriefPart {
   botId: string | null;
@@ -66,13 +76,22 @@ export interface Brief {
    * what had stopped for failing. Absent on a brief from before. */
   incidents?: Array<{ id: string; title: string; why: string; state: string; threadId?: string; needs?: string }>;
   failing?: Array<{ kind: "routine" | "watcher"; id: string; name: string; error: string; since: number }>;
+  /** The cards as they stood when it was made. Absent on a brief from
+   * before there were cards. */
+  results?: BriefResult[];
   quiet: boolean;
   readAt?: number;
 }
 
 interface BriefList {
   briefs: Brief[];
-  settings: { enabled: boolean; time: string };
+  /** `notify`, `allClear` and `layout` are absent from a server older
+   * than the arranging, which then shows the brief as it always did. */
+  settings: { enabled: boolean; time: string; notify?: boolean; allClear?: boolean };
+  /** Every section in the person's order, hidden ones too. */
+  sections?: ArrangedSection[];
+  /** The cards as they stand now, for the newest brief. */
+  live?: BriefResult[];
   audio: boolean;
 }
 
@@ -85,7 +104,8 @@ export function useBriefs() {
       .then((r) => setData(r))
       .catch(() => setData({ briefs: [], settings: { enabled: true, time: "08:00" }, audio: false }));
   }, []);
-  useEffect(reload, [reload, state.ticks.brief]);
+  // a routine or a watcher reporting, or being changed, moves its card
+  useEffect(reload, [reload, state.ticks.brief, state.ticks.routines, state.ticks.watchers]);
   return { data, reload };
 }
 
@@ -215,6 +235,14 @@ export function BriefPanel() {
   const briefs = data?.briefs ?? [];
   const index = Math.max(0, briefs.findIndex((b) => b.id === pick));
   const brief = briefs[index] ?? null;
+
+  // A notification opens the brief it was about, even when a newer one
+  // has been made since: yesterday's tap is yesterday's brief.
+  useEffect(() => {
+    if (!state.briefFocus) return;
+    setPick(state.briefFocus);
+    dispatch({ type: "openBrief", id: null });
+  }, [state.briefFocus, dispatch]);
 
   // opening it is reading it
   useEffect(() => {
@@ -379,6 +407,52 @@ export function BriefPanel() {
   const enabled = want.enabled ?? data?.settings.enabled ?? true;
   const time = want.time ?? data?.settings.time ?? "08:00";
 
+  // ── arranging ──
+  const [customizing, setCustomizing] = useState(false);
+  // the arrangement answers at once too, and the server's catches up
+  const [arranged, setArranged] = useState<ArrangedSection[] | null>(null);
+  useEffect(() => setArranged(null), [data?.sections]);
+  const sections: ArrangedSection[] =
+    arranged ?? data?.sections ?? DEFAULT_SECTIONS.map((key) => ({ key, kind: key, pinned: false, hidden: false }));
+  const [notifyWant, setNotifyWant] = useState<{ notify?: boolean; allClear?: boolean }>({});
+  useEffect(() => setNotifyWant({}), [data?.settings.notify, data?.settings.allClear]);
+  const arrange = (next: ArrangedSection[]) => {
+    setArranged(next);
+    api("/api/briefs/settings", { method: "PATCH", body: JSON.stringify({ layout: layoutOf(next) }) })
+      .then(reload)
+      .catch((e: Error) => {
+        setArranged(null);
+        setError(e.message);
+      });
+  };
+  const notifySettings = (patch: { notify?: boolean; allClear?: boolean }) => {
+    setNotifyWant((w) => ({ ...w, ...patch }));
+    api("/api/briefs/settings", { method: "PATCH", body: JSON.stringify(patch) })
+      .then(reload)
+      .catch((e: Error) => {
+        setNotifyWant({});
+        setError(e.message);
+      });
+  };
+  const briefOnly = (routineId: string, on: boolean) => {
+    setArranged(sections.map((x) => (x.key === `routine:${routineId}` ? { ...x, briefOnly: on } : x)));
+    api(`/api/routines/${routineId}`, { method: "PATCH", body: JSON.stringify({ briefOnly: on }) })
+      .then(reload)
+      .catch((e: Error) => {
+        setArranged(null);
+        setError(e.message);
+      });
+  };
+
+  // The cards: as they stand now on the newest brief, where a report that
+  // came in late updates its card, and as they stood on an older one.
+  const newest = index === 0;
+  const cards = new Map<string, BriefResult>(((newest ? data?.live : undefined) ?? brief?.results ?? []).map((r) => [r.key, r]));
+  // a card from an older brief whose routine has gone since is still
+  // what that morning said, so it comes first rather than not at all
+  const orphans = newest ? [] : (brief?.results ?? []).filter((r) => !sections.some((x) => x.key === r.key));
+  const openCard = (r: BriefResult) => r.botId && r.threadId && open(r.botId, r.threadId);
+
   const bot = (id: string | null) => (id ? state.bots.find((b) => b.id === id) : undefined);
   const closing = brief ? brief.parts.findIndex((p, i) => i > 0 && !p.botId) : -1;
   // while it plays, everything but the part being read steps back
@@ -433,6 +507,11 @@ export function BriefPanel() {
             {brief && (
               <Button variant="ghost" size="icon-sm" disabled={making} onClick={make} title="Make a fresh brief now" aria-label="Make a fresh brief now">
                 {making ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              </Button>
+            )}
+            {data?.sections && (
+              <Button variant="ghost" size="icon-sm" onClick={() => setCustomizing(true)} title="Customize the brief" aria-label="Customize the brief">
+                <SlidersHorizontal size={14} />
               </Button>
             )}
           </>
@@ -528,137 +607,180 @@ export function BriefPanel() {
                 )}
               </AnimatePresence>
 
-              {brief.waiting.length > 0 && (
-                <div className={cn("mt-8 transition-opacity duration-200", closing >= 0 && dim(closing) && "opacity-45")}>
-                  <SubHead className="flex items-center gap-1.5">
-                    {waitingLeft ? (
-                      <>Waiting on you</>
-                    ) : (
-                      <>
-                        <Check size={12} className="text-success" />
-                        All handled
-                      </>
-                    )}
-                  </SubHead>
-                  <ul className="-mx-3 flex flex-col">
-                    {brief.waiting.map((w) => (
-                      <WaitingRow
-                        key={w.messageId}
-                        item={w}
-                        agent={bot(w.botId)}
-                        done={doneFor(w)}
-                        busy={busy === w.messageId}
-                        onAnswer={(behavior) => answer(w, behavior)}
-                        onOpen={() => {
-                          if (!w.requestId) markDone(w.messageId, "Opened");
-                          open(w.botId, w.threadId);
-                        }}
-                      />
-                    ))}
-                  </ul>
+              {/* The sections in the person's order (server/brief.ts
+                  arrangeSections): the cards, then the brief's own. */}
+              {orphans.length > 0 && (
+                <div className="mt-8 flex flex-col gap-3">
+                  {orphans.map((r) => (
+                    <ResultCard key={r.key} result={r} onOpen={openCard} />
+                  ))}
                 </div>
               )}
-
-              {(brief.incidents?.length || brief.failing?.length) ? (
-                <div className={cn("mt-8 transition-opacity duration-200", closing >= 0 && dim(closing) && "opacity-45")}>
-                  <SubHead>Something failed</SubHead>
-                  <ul className="flex flex-col gap-2">
-                    {(brief.incidents ?? []).map((i) => (
-                      <li key={i.id} className="text-body text-foreground">
-                        {i.title} failed: <span className="text-muted-foreground">{i.why}.</span>
-                        {i.needs ? <span className="text-warning"> Needs you: {i.needs}</span> : null}
-                      </li>
-                    ))}
-                    {(brief.failing ?? []).map((f) => (
-                      <li key={f.id} className="text-body text-foreground">
-                        The {f.kind} {f.name} kept failing, so it is paused:{" "}
-                        <span className="text-muted-foreground">{f.error}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              <div className="mt-8 flex flex-col gap-8">
-                {brief.parts.map((part, at) => {
-                  if (!part.botId) return null;
-                  const agent = bot(part.botId);
-                  const reading = playing === at;
+              {sections.map((section, at) => {
+                if (section.hidden) return null;
+                const card = cards.get(section.key);
+                if (card) {
+                  // cards that follow one another sit close, as one group
+                  const prev = sections.slice(0, at).reverse().find((x) => !x.hidden && (cards.has(x.key) || x.kind !== "routine" && x.kind !== "watcher"));
+                  const grouped = Boolean(prev && cards.has(prev.key));
                   return (
-                    <section key={at} className={cn("transition-opacity duration-200", dim(at) && "opacity-45")}>
-                      <div className="flex items-center gap-2">
-                        {agent && <AgentAvatar bot={agent} size={20} />}
-                        <h3 className="text-ui font-semibold text-foreground">{part.name}</h3>
-                        {agent?.title && <span className="truncate text-small text-muted-foreground">{agent.title}</span>}
-                        {reading && <AudioLines size={13} className="shrink-0 text-brand-ink" aria-label="Reading now" />}
-                      </div>
-                      <div className="mt-2 flex flex-col gap-1.5">
-                        {part.items.map((item, i) => {
-                          if (QUIET.test(item.text)) {
-                            return (
-                              <p key={i} className="text-body text-muted-foreground">
-                                {item.text}
-                              </p>
-                            );
-                          }
-                          const { lane, said, files } = readItem(item.text);
+                    <div key={section.key} className={grouped ? "mt-3" : "mt-8"}>
+                      <ResultCard result={card} after={newest && Boolean(card.at && card.at > brief.at)} onOpen={openCard} />
+                    </div>
+                  );
+                }
+                if (section.key === "waiting" && brief.waiting.length > 0) {
+                  return (
+                    <div key="waiting" className={cn("mt-8 transition-opacity duration-200", closing >= 0 && dim(closing) && "opacity-45")}>
+                      <SubHead className="flex items-center gap-1.5">
+                        {waitingLeft ? (
+                          <>Waiting on you</>
+                        ) : (
+                          <>
+                            <Check size={12} className="text-success" />
+                            All handled
+                          </>
+                        )}
+                      </SubHead>
+                      <ul className="-mx-3 flex flex-col">
+                        {brief.waiting.map((w) => (
+                          <WaitingRow
+                            key={w.messageId}
+                            item={w}
+                            agent={bot(w.botId)}
+                            done={doneFor(w)}
+                            busy={busy === w.messageId}
+                            onAnswer={(behavior) => answer(w, behavior)}
+                            onOpen={() => {
+                              if (!w.requestId) markDone(w.messageId, "Opened");
+                              open(w.botId, w.threadId);
+                            }}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                }
+                if (section.key === "failed" && (brief.incidents?.length || brief.failing?.length)) {
+                  return (
+                    <div key="failed" className={cn("mt-8 transition-opacity duration-200", closing >= 0 && dim(closing) && "opacity-45")}>
+                      <SubHead>Something failed</SubHead>
+                      <ul className="flex flex-col gap-2">
+                        {(brief.incidents ?? []).map((i) => (
+                          <li key={i.id} className="text-body text-foreground">
+                            {i.title} failed: <span className="text-muted-foreground">{i.why}.</span>
+                            {i.needs ? <span className="text-warning"> Needs you: {i.needs}</span> : null}
+                          </li>
+                        ))}
+                        {(brief.failing ?? []).map((f) => (
+                          <li key={f.id} className="text-body text-foreground">
+                            The {f.kind} {f.name} kept failing, so it is paused:{" "}
+                            <span className="text-muted-foreground">{f.error}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                }
+                if (section.key === "agents") {
+                  return (
+                    <div key="agents" className="mt-8 flex flex-col gap-8">
+                      {cards.size > 0 && brief.parts.some((p) => p.botId) && <SubHead className="-mb-6">What your agents did</SubHead>}
+                      {brief.parts.map((part, at) => {
+                        if (!part.botId) return null;
+                        const agent = bot(part.botId);
+                        const reading = playing === at;
+                        return (
+                          <section key={at} className={cn("transition-opacity duration-200", dim(at) && "opacity-45")}>
+                            <div className="flex items-center gap-2">
+                              {agent && <AgentAvatar bot={agent} size={20} />}
+                              <h3 className="text-ui font-semibold text-foreground">{part.name}</h3>
+                              {agent?.title && <span className="truncate text-small text-muted-foreground">{agent.title}</span>}
+                              {reading && <AudioLines size={13} className="shrink-0 text-brand-ink" aria-label="Reading now" />}
+                            </div>
+                            <div className="mt-2 flex flex-col gap-1.5">
+                              {part.items.map((item, i) => {
+                                if (QUIET.test(item.text)) {
+                                  return (
+                                    <p key={i} className="text-body text-muted-foreground">
+                                      {item.text}
+                                    </p>
+                                  );
+                                }
+                                const { lane, said, files } = readItem(item.text);
+                                return (
+                                  <button
+                                    key={i}
+                                    onClick={() => part.botId && open(part.botId, item.threadId)}
+                                    className="group -mx-2 rounded-lg px-2 py-1 text-left text-lead text-pretty text-foreground/90 transition-colors duration-150 hover:bg-accent/60 hover:text-foreground"
+                                  >
+                                    {lane && <span className="font-medium text-foreground">{lane}. </span>}
+                                    {said}
+                                    {files && <span className="text-body text-muted-foreground"> · {files}</span>}
+                                    <ArrowUpRight
+                                      size={13}
+                                      className="ml-1 inline-block -translate-y-px text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                                    />
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+                if (section.key === "memory" && (brief.memory?.length ?? 0) > 0) {
+                  return (
+                    <div key="memory" className="mt-8">
+                      <SubHead className="flex items-center gap-1.5">
+                        <Moon size={12} />
+                        Memory, tidied overnight
+                      </SubHead>
+                      <ul className="-mx-2 flex flex-col">
+                        {brief.memory!.map((line) => {
+                          const agent = bot(line.botId);
                           return (
-                            <button
-                              key={i}
-                              onClick={() => part.botId && open(part.botId, item.threadId)}
-                              className="group -mx-2 rounded-lg px-2 py-1 text-left text-lead text-pretty text-foreground/90 transition-colors duration-150 hover:bg-accent/60 hover:text-foreground"
-                            >
-                              {lane && <span className="font-medium text-foreground">{lane}. </span>}
-                              {said}
-                              {files && <span className="text-body text-muted-foreground"> · {files}</span>}
-                              <ArrowUpRight
-                                size={13}
-                                className="ml-1 inline-block -translate-y-px text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-                              />
-                            </button>
+                            <li key={line.runId}>
+                              <button
+                                onClick={() => dispatch({ type: "openMemory", target: line.botId })}
+                                className="group flex w-full items-start gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent/60"
+                              >
+                                {agent ? <AgentAvatar bot={agent} size={20} /> : null}
+                                <span className="min-w-0 flex-1 text-pretty text-body text-foreground/90">
+                                  <span className="font-medium text-foreground">{line.name}: </span>
+                                  {line.text}
+                                  <span className="ml-1 whitespace-nowrap text-muted-foreground transition-colors duration-150 group-hover:text-foreground">
+                                    Review or undo
+                                    <ArrowUpRight size={12} className="ml-0.5 inline-block -translate-y-px" />
+                                  </span>
+                                </span>
+                              </button>
+                            </li>
                           );
                         })}
-                      </div>
-                    </section>
+                      </ul>
+                    </div>
                   );
-                })}
-              </div>
-              {/* Housekeeping, so it comes last and is never read aloud:
-                  a line per agent, each leading to that agent's Memory
-                  page, where last night's changes open with their Undo. */}
-              {(brief.memory?.length ?? 0) > 0 && (
-                <div className="mt-8">
-                  <SubHead className="flex items-center gap-1.5">
-                    <Moon size={12} />
-                    Memory, tidied overnight
-                  </SubHead>
-                  <ul className="-mx-2 flex flex-col">
-                    {brief.memory!.map((line) => {
-                      const agent = bot(line.botId);
-                      return (
-                        <li key={line.runId}>
-                          <button
-                            onClick={() => dispatch({ type: "openMemory", target: line.botId })}
-                            className="group flex w-full items-start gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent/60"
-                          >
-                            {agent ? <AgentAvatar bot={agent} size={20} /> : null}
-                            <span className="min-w-0 flex-1 text-pretty text-body text-foreground/90">
-                              <span className="font-medium text-foreground">{line.name}: </span>
-                              {line.text}
-                              <span className="ml-1 whitespace-nowrap text-muted-foreground transition-colors duration-150 group-hover:text-foreground">
-                                Review or undo
-                                <ArrowUpRight size={12} className="ml-0.5 inline-block -translate-y-px" />
-                              </span>
-                            </span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
+                }
+                return null;
+              })}
             </motion.article>
           </AnimatePresence>
+        )}
+
+        {data?.sections && (
+          <BriefCustomize
+            open={customizing}
+            onOpenChange={setCustomizing}
+            sections={sections}
+            notify={notifyWant.notify ?? data.settings.notify ?? true}
+            allClear={notifyWant.allClear ?? data.settings.allClear ?? false}
+            onArrange={arrange}
+            onSettings={notifySettings}
+            onBriefOnly={briefOnly}
+          />
         )}
 
         {data && (

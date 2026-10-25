@@ -160,7 +160,7 @@ export interface Message {
   failing?: { kind: "routine" | "watcher"; id: string; name: string };
   /** The routine's name and start mode when this message was written,
    * and whether its agent was told it may answer QUIET. */
-  routine?: { name?: string; manual: boolean; quiet?: boolean };
+  routine?: { name?: string; manual: boolean; quiet?: boolean; brief?: boolean };
   /** Part of a quiet check-in: shown folded into one muted line with the
    * rest of its run, and never news (server/store.ts). */
   quiet?: boolean;
@@ -760,6 +760,9 @@ export interface AppState {
   memoryTarget: MemoryTarget | null;
   /** What the last link into Usage asked for, or null (UsagePage). */
   usageFocus: UsageFocus | null;
+  /** The brief a notification asked Overview to open, until the brief
+   * panel takes it (BriefPanel). */
+  briefFocus: string | null;
   /** The agent taking meeting notes, while its panel is open. */
   meetingFor: string | null;
   /** The conversation whose "Set a goal" dialog is open (GoalDialog). */
@@ -915,6 +918,9 @@ export type Action =
   | { type: "error"; message: string | null; at?: number }
   | { type: "toggleSettings"; open?: boolean }
   | { type: "openPage"; page: RailPage | null }
+  /** Overview, at one brief: the one its notification was about. Null
+   * only says the panel has it now. */
+  | { type: "openBrief"; id: string | null }
   | { type: "openCustomize"; tab: CustomizeTab; app?: string | null }
   | { type: "openPluginSettings"; focus: PluginFocus | null }
   /** The Memory place, on `target` when given (an agent's id, "you" or
@@ -1407,6 +1413,10 @@ export function reducer(state: AppState, action: Action): AppState {
       return action.page
         ? { ...state, page: action.page, usageFocus: null, routinesOpen: false, appSettingsOpen: false, settingsOpen: false }
         : { ...state, page: null };
+    case "openBrief":
+      return action.id
+        ? { ...state, page: "overview", briefFocus: action.id, usageFocus: null, routinesOpen: false, appSettingsOpen: false, settingsOpen: false }
+        : { ...state, briefFocus: null };
     case "openCustomize":
       return {
         ...state,
@@ -1553,6 +1563,7 @@ export const initialState: AppState = {
   newAgentFirstRun: false,
   memoryTarget: null,
   usageFocus: null,
+  briefFocus: null,
   meetingFor: null,
   goalFor: null,
   rehearsalsTick: 0,

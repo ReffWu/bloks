@@ -54,6 +54,9 @@ export interface Routine {
   activeHours?: { from: string; to: string };
   /** Its agent may answer QUIET, and a quiet run is not announced. */
   quiet?: boolean;
+  /** Its reports wait in the morning brief, with no notification of
+   * their own (server/routines.ts). */
+  briefOnly?: boolean;
   enabled: boolean;
   lastRunAt?: number;
   summary?: string;

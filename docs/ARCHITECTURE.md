@@ -1886,6 +1886,35 @@ part ("12 quiet check-ins, nothing needed you"); they are not things in
 the headline, and a night of nothing but them is still a quiet night,
 which wakes no phone.
 
+It leads with outcomes (GitHub 378). Every agent's repeating routine
+that is on, and every watcher that is on, is a card (`BriefResult`):
+what it last reported, as its agent wrote it and cut at a line
+(`excerpt`), with when, and whether that was within the brief's stretch
+of time (`fresh`). A gap is a card too: a run due and not run is
+`late`, a failed run or look is `failed`, and a run that went fine is
+only `reported` or `quiet`, never healthy. With cards, the headline is
+what came in, what is missing and what waits on the person; the turns
+routines and watchers started are left out of the agents' parts, since
+their cards say them. `GET /api/briefs` adds `live`, every card as it
+stands now (a report that comes in after the brief updates its card,
+without a notification), and `sections`, every section in the person's
+order: a card per source and the brief's own `waiting`, `failed`,
+`agents` and `memory`. The person pins, orders and hides them
+(`cfg.brief.layout`, read by `briefSettings`, arranged by
+`arrangeSections`, which puts a source made since beside its
+neighbours). A hidden source does not feed the brief.
+
+The brief is the one notification of the morning (`briefNotice`): on
+unless `notify` is off, never on a quiet morning unless `allClear` is
+on. Its `brief.ready` frame names the brief (`id`), so a tap opens that
+morning's: the phone's sealed preview carries `briefId`, a background
+workspace's server gives the desktop app a `brief:<id>` banner target
+at the "activity" level (so a workspace's mute and level apply), and
+the window on screen says it itself unless Overview is in front. A
+routine with `briefOnly` sends no `reply.settled` for its runs while
+the brief is on (`briefOnlyTurn`), unless the person joined the turn;
+its turn is told its answer opens a card (`BRIEF_ASK`).
+
 ## Routines and check-ins
 
 `server/routines.ts` keeps routines in `routines.json` and a thirty

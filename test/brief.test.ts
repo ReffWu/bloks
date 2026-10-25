@@ -124,7 +124,7 @@ describe("through the server", () => {
     assert.equal(bad.status, 400);
     await h.fetch("/api/briefs/settings", { method: "PATCH", body: JSON.stringify({ time: "07:15", enabled: false }) });
     list = await h.json("/api/briefs");
-    assert.deepEqual(list.settings, { enabled: false, time: "07:15" });
+    assert.deepEqual({ enabled: list.settings.enabled, time: list.settings.time }, { enabled: false, time: "07:15" });
     assert.ok(list.briefs[0].readAt);
   });
 });

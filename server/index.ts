@@ -406,7 +406,7 @@ import {
 } from "./local-vm.ts";
 import { widenPath } from "./path.ts";
 import { claimDataFolder, inUseMessage } from "./data-lock.ts";
-import { describe as describeRoutine, FAILS_TO_PAUSE, isQuiet as quietRoutine, isQuietReply, lastReportNote, MAX_ROUTINES, normalize as normalizeRoutine, nextScheduledAfter, lastScheduledBefore, promptTooLong, QUIET_ASK, type Routine, RoutineStore, scheduleProblem } from "./routines.ts";
+import { BRIEF_ASK, describe as describeRoutine, FAILS_TO_PAUSE, isQuiet as quietRoutine, isQuietReply, lastReportNote, MAX_ROUTINES, normalize as normalizeRoutine, nextScheduledAfter, lastScheduledBefore, promptTooLong, QUIET_ASK, type Routine, RoutineStore, scheduleProblem } from "./routines.ts";
 import { catchUpText, engineIsFresh, freshTurnText } from "./turn-context.ts";
 import { standingFor, type Standing, type StandingRecord } from "./standing-prompt.ts";
 import { Checkpoints, diffLines, trackable, type CheckpointRecord } from "./checkpoints.ts";
@@ -417,7 +417,7 @@ import { indexMemory, indexMessages, mostOf, recallBlock, recallFrom, recallText
 import { excerpt, IndexCache, rank, type TermIndex } from "./recall-index.ts";
 import { noteBriefing, ProfileNotes } from "./profile-notes.ts";
 import { accountName, nameRefusal } from "./owner-name.ts";
-import { briefDue, composeBrief, parseBriefTime, type Brief, type BriefWaiting } from "./brief.ts";
+import { arrangeSections, BRIEF_SECTIONS, briefDue, briefNotice, briefSettings, composeBrief, gist, parseBriefTime, parseLayout, routineResult, watcherResult, type Brief, type BriefResult, type BriefWaiting } from "./brief.ts";
 import { localDate } from "./usage.ts";
 import { engineReport, TurnLogStore, type Outcome, type TurnLog } from "./engine-report.ts";
 import {
@@ -2994,10 +2994,116 @@ function waitingOnYou(): BriefWaiting[] {
   return out;
 }
 
+/**
+ * The routines and watchers that can feed the brief, each as its card
+ * (server/brief.ts), in the order they come when nobody has arranged
+ * them: routines by the time they run, then watchers, each by name. An
+ * agent's repeating routines that are on, and watchers that are on; a
+ * one-time routine is a reminder, not something being tracked, and an
+ * archived agent's are paused with it.
+ */
+function briefSources(since: number, now: number): BriefResult[] {
+  const at = new Date(now);
+  const agentOf = (botId: string) => {
+    const bot = store.bot(botId);
+    return bot && !bot.hidden && !bot.archivedAt ? bot : null;
+  };
+  const fromRoutines = routines.routines
+    .filter((r) => r.targetKind === "agent" && r.enabled && r.repeat !== "once" && agentOf(r.targetId))
+    .sort((a, b) => a.time.localeCompare(b.time) || (a.name ?? a.prompt).localeCompare(b.name ?? b.prompt))
+    .map((r) => {
+      const bot = agentOf(r.targetId)!;
+      const slot = lastScheduledBefore(r, at)?.getTime() ?? null;
+      const lane = namedLane(bot, r.thread) ?? mainLaneOf(bot);
+      return routineResult(
+        {
+          id: r.id,
+          name: r.name || gist(r.prompt, 1, 60),
+          botId: bot.id,
+          agent: bot.name,
+          ...(r.briefOnly ? { briefOnly: true } : {}),
+          runs: r.runs ?? [],
+          ...(r.lastReport ? { lastReport: r.lastReport } : {}),
+          ...(r.failing ? { failing: r.failing } : {}),
+          ...(r.lastRunAt !== undefined ? { lastRunAt: r.lastRunAt } : {}),
+          // a slot from before it had this schedule was never its to run
+          dueAt: slot !== null && slot >= (r.scheduledAt ?? r.createdAt) ? slot : null,
+          nextAt: r.failing ? null : (nextScheduledAfter(r, at)?.getTime() ?? null),
+          ...(lane ? { threadId: lane.id } : {}),
+        },
+        since,
+        now,
+      );
+    });
+  const fromWatchers = watchers
+    .filter((w) => w.enabled && !w.done && agentOf(w.botId))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((w) => {
+      const bot = agentOf(w.botId)!;
+      const fire = w.fires[0];
+      // where it speaks, as watcherLane finds it, without making one
+      const own = w.laneId ? bot.tasks.find((t) => t.id === w.laneId && (!w.thread || t.title === w.thread)) : undefined;
+      const lane = own ?? namedLane(bot, w.thread) ?? mainLaneOf(bot);
+      return watcherResult(
+        {
+          id: w.id,
+          name: w.name,
+          botId: bot.id,
+          agent: bot.name,
+          fires: w.fires,
+          ...(w.lastCheck ? { lastCheck: w.lastCheck } : {}),
+          ...(w.lastError ? { lastError: w.lastError } : {}),
+          ...(w.failing ? { failing: w.failing } : {}),
+          ...(lane ? { threadId: lane.id } : {}),
+          ...(fire && lane ? { reply: watcherReply(lane.id, fire.at) } : {}),
+        },
+        since,
+        now,
+      );
+    });
+  return [...fromRoutines, ...fromWatchers];
+}
+
+/** What a watcher's agent said about its newest change: the last thing
+ * it wrote in the turn the change started, or nothing yet. The newest
+ * watcher's message is that turn's: a turn that waited for a busy
+ * conversation starts later than the change, so it is looked for from a
+ * minute before the change on, and never further back. */
+function watcherReply(laneId: string, firedAt: number): { text: string; at: number; threadId: string } | undefined {
+  const messages = store.messagesFor(laneId);
+  let start = -1;
+  for (let i = messages.length - 1; i >= 0 && messages[i].at >= firedAt - 60_000; i--) {
+    if (messages[i].role === "user" && messages[i].via === "watcher") {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) return undefined;
+  let said: { text: string; at: number; threadId: string } | undefined;
+  for (const m of messages.slice(start + 1)) {
+    if (m.role === "user") break;
+    if (m.role === "bot" && m.kind === "text" && m.text?.trim() && !m.quiet && !m.deleted) said = { text: m.text, at: m.at, threadId: laneId };
+  }
+  return said;
+}
+
+/** Every section there is now, in the order the person arranged them,
+ * with the cards that feed it and the brief's own sections. */
+function briefLayout(sources: BriefResult[]) {
+  const settings = briefSettings(cfg.brief);
+  const sections = arrangeSections([...sources.map((r) => r.key), ...BRIEF_SECTIONS], settings.layout);
+  return { settings, sections };
+}
+
 function makeBrief(now = Date.now()): Brief {
   const last = briefs[briefs.length - 1];
   // since the last one, and never more than two days back
   const since = Math.max(last?.at ?? 0, now - 48 * 60 * 60 * 1000);
+  const sources = briefSources(since, now);
+  const { settings, sections } = briefLayout(sources);
+  // what feeds it is what is not hidden, in the order it is arranged
+  const shown = new Map(sources.map((r) => [r.key, r]));
+  const results = sections.filter((x) => !x.hidden && shown.has(x.key)).map((x) => shown.get(x.key)!);
   usage.flush();
   const from = localDate(new Date(since));
   let turns = 0;
@@ -3047,23 +3153,28 @@ function makeBrief(now = Date.now()): Brief {
         ...(i.needs ? { needs: i.needs } : {}),
       })),
       failing: failingAutomations().map(({ kind, id, name, error, since }) => ({ kind, id, name, error, since })),
+      results,
     },
     newId(),
   );
   briefs = [...briefs, brief].slice(-MAX_BRIEFS);
   saveBriefs();
   broadcast({ kind: "brief" });
-  // the phone hears about it, sealed like any other wake; not for a
-  // quiet night, which is nobody's reason to pick up a phone
-  if (!brief.quiet) broadcast({ kind: "brief.ready", id: brief.id, headline: brief.headline });
+  // The one notification of the morning (briefNotice): to the phone,
+  // sealed like any other wake, and to this computer's windows. Not for a
+  // quiet night unless the person asked to hear that all is clear, and
+  // not at all when they turned it off. It names this brief, so a tap
+  // later in the day opens this morning's and not a newer one.
+  const notice = briefNotice(brief, settings);
+  if (notice) broadcast({ kind: "brief.ready", id: brief.id, at: brief.at, headline: brief.headline, title: notice.title, body: notice.body });
   return brief;
 }
 
 // Checked once a minute: the chosen time has passed and today's brief has
 // not been made. A Mac asleep at eight makes it when it wakes.
 setInterval(() => {
-  if (cfg.brief?.enabled === false) return;
-  const time = parseBriefTime(cfg.brief?.time) ?? "08:00";
+  const { enabled, time } = briefSettings(cfg.brief);
+  if (!enabled) return;
   const last = briefs[briefs.length - 1];
   if (briefDue(time, last ? localDate(new Date(last.at)) : null, new Date())) makeBrief();
 }, 60_000).unref?.();
@@ -3544,8 +3655,15 @@ function wakeFor(payload: unknown): Wake | undefined {
  * waiting for your approval" is the thing this replaces.
  */
 function previewOf(frame: unknown): WakePreview | null {
-  const brief = frame as { kind?: string; headline?: string } | null;
-  if (brief?.kind === "brief.ready") return { title: "Your morning brief", body: String(brief.headline ?? "").slice(0, 180), category: "brief" };
+  const brief = frame as { kind?: string; id?: string; headline?: string; title?: string; body?: string } | null;
+  if (brief?.kind === "brief.ready") {
+    return {
+      title: brief.title || "Your morning brief is ready",
+      body: String(brief.body ?? brief.headline ?? "").slice(0, 180),
+      category: "brief",
+      ...(typeof brief.id === "string" ? { briefId: brief.id } : {}),
+    };
+  }
   const f = frame as { kind?: string; threadId?: string; botId?: string; message?: Message } | null;
   // an answer that is ready: who wrote it, and its first words, already
   // clipped by settledFrame; the lane, so a tap opens where it is
@@ -4664,7 +4782,9 @@ bus.subscribe((event: RuntimeEvent) => {
         allowed: answersAllowed(attention),
         viewed: viewing.sees(event.threadId),
       })) answerReady.ready(replyFrame.turnId);
-      if (replyFrame) broadcast(replyFrame);
+      // A routine that reports in the morning brief says nothing now: its
+      // card there is updated, and the brief is the one notification.
+      if (replyFrame && !briefOnlyTurn(event.threadId)) broadcast(replyFrame);
       // a turn asked again or handed to the backup is not over yet, so what
       // waits on how it ends (a routine's run, a workflow step, a meeting's
       // write-up, a mail's reply) waits for the attempt that ends it
@@ -14861,14 +14981,30 @@ function fromRoutinePrompt(routine: NonNullable<Message["routine"]>, text: strin
   const name = quoted ? ` ${quoted}` : "";
   const started = routine.manual ? "was run by hand." : "started this turn on its schedule.";
   const quiet = routine.quiet ? ` ${QUIET_ASK}` : "";
-  return `(Your routine${name} ${started}${quiet})\n\n${last ? `${last}\n\n` : ""}${text}`;
+  const brief = routine.brief ? ` ${BRIEF_ASK}` : "";
+  return `(Your routine${name} ${started}${quiet}${brief})\n\n${last ? `${last}\n\n` : ""}${text}`;
 }
 
 /** How a routine's prompt is marked in the transcript: its name, whether
  * the person ran it by hand, and whether it may answer QUIET, kept on
  * the message so a replayed or retried turn is framed the same way. */
 function routineMark(routine: Routine, manual: boolean): NonNullable<Message["routine"]> {
-  return { name: routine.name, manual, ...(quietRoutine(routine) ? { quiet: true } : {}) };
+  return { name: routine.name, manual, ...(quietRoutine(routine) ? { quiet: true } : {}), ...(briefOnlyNow(routine) ? { brief: true } : {}) };
+}
+
+/** Whether a routine's reports go to the brief and not a notification
+ * right now: it asks to, and the brief is on to carry them. */
+function briefOnlyNow(routine: Pick<Routine, "briefOnly" | "targetKind">): boolean {
+  return routine.briefOnly === true && routine.targetKind === "agent" && briefSettings(cfg.brief).enabled;
+}
+
+/** Whether the turn ending in this lane is a run of such a routine that
+ * nobody joined: its reply is said in the brief, not on its own. One the
+ * person spoke into is theirs, and says itself as any reply does. */
+function briefOnlyTurn(laneId: string): boolean {
+  const open = openRuns.get(laneId);
+  const routine = open ? routines.get(open.routineId) : null;
+  return Boolean(routine && briefOnlyNow(routine) && !turnsForYou.has(laneId));
 }
 
 /** What a routine run in this lane said last time it said anything, as
@@ -22957,9 +23093,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
     // ── the morning brief ──
     if (method === "GET" && path === "/api/briefs") {
+      // The cards as they stand now, over the newest brief's stretch of
+      // time: a report that came in after the brief was made updates its
+      // card here without a notification of its own. Every source is
+      // listed, hidden ones too, so the page can offer them back.
+      const now = Date.now();
+      const newest = briefs[briefs.length - 1];
+      const live = briefSources(newest?.since ?? now - 24 * 60 * 60 * 1000, now);
+      const { settings, sections } = briefLayout(live);
+      const named = new Map(live.map((r) => [r.key, r]));
       return json(res, 200, {
         briefs: [...briefs].reverse(),
-        settings: { enabled: cfg.brief?.enabled !== false, time: parseBriefTime(cfg.brief?.time) ?? "08:00" },
+        settings,
+        sections: sections.map((x) => {
+          const source = named.get(x.key);
+          return { ...x, kind: source ? source.kind : x.key, ...(source ? { name: source.name, ...(source.briefOnly ? { briefOnly: true } : {}) } : {}) };
+        }),
+        live,
         audio: Boolean(await briefVoice(null)),
       });
     }
@@ -22970,17 +23120,25 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (method === "PATCH" && path === "/api/briefs/settings") {
       if (asAgent) return json(res, 403, { error: "the brief is for the person" });
       const body = await readBody(req);
-      const next: { enabled?: boolean; time?: string } = {};
+      const next: NonNullable<typeof cfg.brief> = {};
       if (typeof body.enabled === "boolean") next.enabled = body.enabled;
       if (body.time !== undefined) {
         const time = parseBriefTime(body.time);
         if (!time) return json(res, 400, { error: "a time is HH:MM, like 08:00" });
         next.time = time;
       }
+      if (typeof body.notify === "boolean") next.notify = body.notify;
+      if (typeof body.allClear === "boolean") next.allClear = body.allClear;
+      // the whole arrangement at once, as the page holds it: an order,
+      // what is pinned and what is hidden, unknown keys left out
+      if (body.layout !== undefined) {
+        if (!body.layout || typeof body.layout !== "object") return json(res, 400, { error: "a layout is { order, pinned, hidden }, each a list of section keys" });
+        next.layout = parseLayout(body.layout);
+      }
       cfg.brief = { ...(cfg.brief ?? {}), ...next };
       saveConfig({ brief: cfg.brief });
       broadcast({ kind: "brief" });
-      return json(res, 200, { settings: { enabled: cfg.brief.enabled !== false, time: parseBriefTime(cfg.brief.time) ?? "08:00" } });
+      return json(res, 200, { settings: briefSettings(cfg.brief) });
     }
     m = path.match(/^\/api\/briefs\/([\w-]+)\/read$/);
     if (m && method === "POST") {
@@ -24926,6 +25084,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         every: body.every === null ? undefined : (body.every ?? existing.every),
         activeHours: body.activeHours === null ? undefined : (body.activeHours ?? existing.activeHours),
         quiet: body.quiet ?? (leavesCheckIn ? undefined : existing.quiet),
+        briefOnly: body.briefOnly ?? existing.briefOnly,
       };
       const unscheduled = scheduleProblem(input);
       if (unscheduled) return json(res, 400, { error: unscheduled });

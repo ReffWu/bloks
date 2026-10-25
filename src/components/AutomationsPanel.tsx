@@ -1042,6 +1042,7 @@ function RoutineDetails({
   onClose: () => void;
 }) {
   const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const [briefOnly, setBriefOnly] = useState(Boolean(routine.briefOnly));
   const daysLabel =
     routine.repeat === "once"
       ? `Once on ${routine.date ?? "?"}`
@@ -1130,6 +1131,28 @@ function RoutineDetails({
             }
           />
         </div>
+        {/* An agent's routine can keep its reports to the morning brief,
+            so several of them make one notification in the morning
+            rather than one each (server/brief.ts). */}
+        {routine.targetKind === "agent" && routine.repeat !== "once" && (
+          <label className="mt-4 flex items-start justify-between gap-4 rounded-xl bg-muted/40 px-3 py-2.5 text-body text-foreground">
+            <span>
+              Report in the morning brief only
+              <span className="block text-small text-muted-foreground">
+                {briefOnly ? "No notification when it runs. Its card in the brief has what it said." : "Notifies when it runs, and its card is in the brief too."}
+              </span>
+            </span>
+            <Switch
+              aria-label={`${routine.name || "This routine"}: report in the morning brief only`}
+              checked={briefOnly}
+              onCheckedChange={(on) => {
+                // the dialog stays open on this one, so it answers at once
+                setBriefOnly(on);
+                onWrite(api(`/api/routines/${routine.id}`, { method: "PATCH", body: JSON.stringify({ briefOnly: on }) }));
+              }}
+            />
+          </label>
+        )}
         <div className="mt-4 flex gap-2">
           <Button
             variant="secondary"

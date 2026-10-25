@@ -66,9 +66,12 @@ const preview = (text: string) => clipReply(text);
  * The banner a frame deserves when nobody is looking, or null. Only
  * frames a page would have raised one for: a question or an approval, a
  * blocked goal, an incident put to the person, an engine that is out, a
- * routine that stopped, a goal's end, and a settled reply.
+ * routine that stopped, a goal's end, a settled reply, and the morning
+ * brief.
  */
 export function desktopNotice(frame: unknown, ctx: NoticeContext): DesktopNotice | null {
+  const brief = briefNotice(frame);
+  if (brief) return brief;
   const f = frame as { kind?: string; threadId?: string; message?: NoticeMessage } | null;
   if (!f || typeof f.threadId !== "string" || !f.message) return null;
   const kind = f.kind;
@@ -118,10 +121,33 @@ export function desktopNotice(frame: unknown, ctx: NoticeContext): DesktopNotice
   return null;
 }
 
+/** Where a click on the morning brief's notification goes: that brief,
+ * on Overview. The window reads it (src/state/store.tsx). */
+export const BRIEF_TARGET = "brief:";
+
+/**
+ * The morning brief's one notification (server/brief.ts briefNotice),
+ * when its frame says one is due. News, not a question: "activity", so a
+ * workspace set to notify only when it needs the person, or muted, keeps
+ * it to the page.
+ */
+export function briefNotice(frame: unknown): DesktopNotice | null {
+  const f = frame as { kind?: string; id?: unknown; title?: unknown; body?: unknown; headline?: unknown } | null;
+  if (f?.kind !== "brief.ready" || typeof f.id !== "string" || !f.id) return null;
+  const body = typeof f.body === "string" ? f.body : typeof f.headline === "string" ? f.headline : "";
+  return {
+    level: "activity",
+    title: typeof f.title === "string" && f.title ? f.title : "Your morning brief is ready",
+    body: preview(body),
+    target: `${BRIEF_TARGET}${f.id}`,
+  };
+}
+
 /** The key one notice is known by, so a card patched again, or a frame
  * seen twice, is said once. */
 export function noticeKey(frame: unknown): string | null {
-  const f = frame as { kind?: string; threadId?: string; turnId?: string; botId?: string; message?: NoticeMessage } | null;
+  const f = frame as { kind?: string; id?: string; threadId?: string; turnId?: string; botId?: string; message?: NoticeMessage } | null;
+  if (f?.kind === "brief.ready" && typeof f.id === "string") return `brief:${f.id}`;
   if (!f?.message || !f.threadId) return null;
   if (f.kind === "reply.settled") return `reply:${f.threadId}:${f.botId ?? ""}:${f.turnId ?? ""}`;
   if (f.kind === "message.patch") return `incident:${f.message.incident?.id ?? f.message.id ?? ""}`;

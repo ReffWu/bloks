@@ -28,6 +28,11 @@
 //   its turns' replies are the work too: the goal's end is said once,
 //   when it comes, rather than twenty times on the way.
 //
+//   The morning brief is one notification for the morning, whatever fed
+//   it (server/brief.ts briefNotice decides whether there is one at all),
+//   and it opens that brief on Overview. Not while Overview is in front
+//   of you: the brief is already there.
+//
 //   A quiet check-in never interrupts. Its agent answered QUIET because
 //   nothing needed you, and what a check-in says on the way to deciding
 //   that waits for the end of its turn (CheckInHold), so the commentary
@@ -245,4 +250,26 @@ export class NoticeDelivery {
     if (this.keys.size > 512) this.keys.delete(this.keys.values().next().value!);
     return true;
   }
+}
+
+/** What a click on the brief's notification opens: `brief:<id>`, the
+ * same target a background workspace's server gives it
+ * (server/desktop-notice.ts BRIEF_TARGET). */
+export const BRIEF_TARGET = "brief:";
+
+/** The morning brief's notification, from its brief.ready frame, or null
+ * when there is nothing to say or Overview is already in front of you. */
+export function briefNoticeFor(
+  frame: { id?: unknown; title?: unknown; body?: unknown; headline?: unknown },
+  ctx: { focused: boolean; onOverview: boolean },
+): Notice | null {
+  if (typeof frame.id !== "string" || !frame.id) return null;
+  if (ctx.focused && ctx.onOverview) return null;
+  const body = typeof frame.body === "string" ? frame.body : typeof frame.headline === "string" ? frame.headline : "";
+  return {
+    title: typeof frame.title === "string" && frame.title ? frame.title : "Your morning brief is ready",
+    body: preview(body),
+    target: `${BRIEF_TARGET}${frame.id}`,
+    urgent: false,
+  };
 }

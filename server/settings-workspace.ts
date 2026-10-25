@@ -22,6 +22,8 @@ export function inspectWorkspaceCategory(category:SettingsCategory,input:Workspa
     fields.push(...core.filter((f)=>/^(compaction|turns|recall|agents|skills|changes|shortcuts)\./.test(f.id)));
     plain(['brief','enabled'],'Brief > Settings',read('brief','enabled')!==false);
     plain(['brief','time'],'Brief > Settings',parseBriefTime(read('brief','time'))??'08:00');
+    plain(['brief','notify'],'Brief > Customize',read('brief','notify')!==false);
+    plain(['brief','allClear'],'Brief > Customize',read('brief','allClear')===true);
   }else if(category==='workspace.profile')fields.push(...core.filter((f)=>f.id.startsWith('profile.')));
   else if(category==='workspace.voices'){
     fields.push(...core.filter((f)=>f.id.startsWith('speech.')));

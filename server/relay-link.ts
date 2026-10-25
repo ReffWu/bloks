@@ -158,6 +158,9 @@ export interface WakePreview {
   botId?: string;
   requestId?: string;
   threadId?: string;
+  /** "brief": the brief this is about, so a tap opens that morning's and
+   * not whichever is newest by then. */
+  briefId?: string;
 }
 
 /** The build label a sealed request carried, as the header a request on

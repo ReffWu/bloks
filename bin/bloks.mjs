@@ -563,18 +563,20 @@ const COMMANDS = {
         when: r.summary,
         ...(r.repeat === "once" ? { once: r.date } : {}),
         ...(r.quiet ? { quiet: true } : {}),
+        ...(r.briefOnly ? { inBrief: true } : {}),
         next: r.nextRunAt ? localStamp(new Date(r.nextRunAt)) : null,
         enabled: r.enabled,
       }));
     },
   },
   routine: {
-    use: 'routine --prompt <text> (--time HH:MM [--date YYYY-MM-DD] [--quiet] | --every 30m [--between 09:00-18:00]) [--days "1,2,3"] [--name <name>] [--thread <conversation>]',
+    use: 'routine --prompt <text> (--time HH:MM [--date YYYY-MM-DD] [--quiet] | --every 30m [--between 09:00-18:00]) [--days "1,2,3"] [--name <name>] [--thread <conversation>] [--in-brief]',
     about:
       "file a routine for yourself: at a --time on --days (0 is Sunday, 6 is Saturday), once on --date to come back to something later, " +
       "or a check-in --every 15m to 24h, optionally --between two times. Leave out --days and it runs every day. " +
       "A check-in's turn may answer QUIET when nothing needs the person, and then they are not told; --quiet lets a --time routine do the same. " +
       "The prompt can be up to 4,000 characters. " +
+      "--in-brief sends what it reports to the person's morning brief, as a card there, instead of a notification of its own; use it for something they asked you to track every day. " +
       "It runs in your first conversation, where the person talks to you; --thread runs it in another, by its title (made if missing) or its id",
     run: async (args) => {
       const flags = parseFlags(args);
@@ -605,6 +607,7 @@ const COMMANDS = {
         prompt: flags.prompt,
         ...(every !== null ? { every, ...(between ? { activeHours: between } : {}) } : { time: flags.time }),
         ...(flags.quiet === "true" && every === null ? { quiet: true } : {}),
+        ...(flags["in-brief"] === "true" ? { briefOnly: true } : {}),
         // another conversation, so it does not share context with the rest
         ...(flags.thread ? { thread: flags.thread } : {}),
         ...(once

@@ -161,8 +161,9 @@ export interface Message {
    * about it (fix it, pause it, remove it) where the person reads it. */
   failing?: { kind: "routine" | "watcher"; id: string; name: string };
   /** The routine's name and start mode when this message was written,
-   * and `quiet` when its agent was told it may answer QUIET. */
-  routine?: { name?: string; manual: boolean; quiet?: boolean };
+   * `quiet` when its agent was told it may answer QUIET, and `brief`
+   * when its answer goes to the morning brief rather than a notification. */
+  routine?: { name?: string; manual: boolean; quiet?: boolean; brief?: boolean };
   /** Part of a quiet check-in: a routine's prompt that the agent answered
    * with QUIET, that answer, and what the turn did in between. Nothing in
    * it needed the person, so it marked nothing unread, notified nobody,
