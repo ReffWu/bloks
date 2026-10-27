@@ -325,7 +325,7 @@ export function CatalogPage({
                 aria-pressed={on}
                 onClick={() => setTags((prev) => (on ? prev.filter((t) => t !== tag) : [...prev, tag]))}
                 className={cn(
-                  "h-7 rounded-full border px-3 text-small outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring/40",
+                  "h-7 rounded-full border px-3 text-small transition-colors duration-150",
                   on ? "border-foreground/20 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                 )}
               >
@@ -433,7 +433,7 @@ function ItemPage({
     <>
       <button
         onClick={onBack}
-        className="-ml-1 mb-5 flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-body text-muted-foreground outline-none transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+        className="-ml-1 mb-5 flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         <ArrowLeft size={15} />
         Catalogue

@@ -110,7 +110,7 @@ function SkillRow({ skill }: { skill: PlannedSkill }) {
         disabled={!readable}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={readable ? open : undefined}
-        className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-default"
+        className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left disabled:cursor-default"
       >
         <Sparkles size={15} className="shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
