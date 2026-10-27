@@ -102,6 +102,16 @@ stops and says so, and the card waits in the app. Applying a team file
 never deletes or archives anything and never touches an agent's engine,
 keys or approvals.
 
+**A turn's command line is narrower than you.** An agent's turn gets a
+credential of its own that lasts the turn, works only on this computer,
+and reaches only the routes listed in `server/agent-cli.ts`; each change
+it makes counts against twelve a turn, and agents writing to agents are
+held at the limit you set in Settings, Behaviour. Opening a new
+conversation is on that list only as saying its first message, to the
+agent itself or one it may already message, and is refused wherever that
+message would be. An empty conversation, and which one you have open,
+stay yours.
+
 **The renderer is pinned to its own origin.** The packaged app serves its
 UI with a strict `Content-Security-Policy`: no remote script, no remote
 frames, no form posts, and `connect-src 'self'`. The Electron window runs

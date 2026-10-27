@@ -1385,6 +1385,41 @@ with the queue they ride on, rather than on the lane record: a restart
 begins every chain again, which lets a loop that spans one run a stretch
 more at most, and leaves nothing on disk to clear when a lane closes.
 
+A new conversation is its own command, and the only way an agent opens
+one (GitHub 408). `bloks tab <agent-id|me> [--title <title>] <first
+message>` is `POST /api/agent/conversations` with `{ to, text, title }`:
+a lane of the recipient's (itself when `to` is left out or `me`) with
+that message as its first words, made in the background so the person's
+screen stays on the lane they had open. `to` is read as `agentNamed`
+reads it, so a member's own agent is no such agent, as on the roster an
+agent reads. The words go through `sendUserMessage` with the sender's
+`chainFrom`, as `say`'s do, and are counted as one change. Everything
+that would refuse `say` to that agent is checked first and refuses this
+before a lane exists: archived, somebody at the wheel, or past the
+chain limit or the person's budget, in which case the words are held
+where `say`'s would be, on the notice in the recipient's first
+conversation. A send that still fails takes its empty lane away again.
+Twenty lanes is the cap here as everywhere. The answer names the agent,
+the lane's id and its title, and `queued`, `note` and `engine` when a
+message would carry them; the sender's own conversation records it as
+it records a `say`. The person's own route for an empty lane, `POST
+/api/bots/:id/tasks`, and switching lanes stay off an agent's list. So
+there are three things an agent asked for "a new conversation" may
+mean, and the command line keeps them apart: `tab` is a new lane, `say
+--task <name>` names the work a message hands off for counting turns
+and lands in the recipient's first conversation, and `fresh` keeps the
+lane it is in with a new engine session.
+
+Which of those fits what the person asked, with the rest of the command
+line, is a built-in skill, `using-bloks` (`BLOKS_GUIDE` in
+`server/skills.ts`). It rides along as `page-design` does
+(`withBloksGuide`), one line in the skills index and its body read on
+demand with `bloks skill using-bloks`, but only on the turns that get
+the full credential it describes: the owner's own, outside a shared
+room, on an engine that runs a process. It names every command `bloks
+help` lists, which `test/agent-tab.test.ts` checks against the shipped
+CLI, and what only the person can do, with the Settings page for each.
+
 Separate tasks are counted apart only when the person allows it
 (GitHub 326). `agents.taskBudget` is off until they set it in Settings,
 Behaviour, to a whole number from 2 to 100; an agent is refused the
@@ -3141,7 +3176,9 @@ closes with it.
 
 The chat's tab strip shows only while an agent has more than one lane;
 New conversation is on the agent's row in the sidebar (its menu, and the
-`+` of the conversations view), as Clear is.
+`+` of the conversations view), as Clear is. An agent opens one only by
+saying its first message there (`bloks tab`, see Agents writing to
+agents).
 
 Unread is per lane: a turn that ends in a lane marks that lane
 (`store.markLane`), except a quiet check-in (see Routines and check-ins),

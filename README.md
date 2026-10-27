@@ -223,8 +223,10 @@ already run on unless you pick one in Settings, Behaviour.
 
 A lead that needs more people can propose a team: who it wants, what each
 owns, which skills to give them. You approve or you don't. Agents can
-message each other, hire, open rooms, and stop a teammate they outrank,
-with a credential that ends with the turn. When something fails for
+message each other, hire, open rooms, start a new conversation for a
+teammate, and stop one they outrank, with a credential that ends with the
+turn. A built-in skill tells them which command fits what you asked,
+and which things only you can do, and where in Settings. When something fails for
 good, an **incident desk** hands it to the lead to retry once, pass on,
 or bring to you, instead of letting it fail quietly or in a storm.
 

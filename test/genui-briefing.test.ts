@@ -165,6 +165,10 @@ test("every agent that makes files is pointed at the design skill, and can read 
   const { persona } = await turn("Compare two consoles", "Here.");
   assert.match(persona, /^- page-design: Page design\. Read before making a page/m);
   assert.match(persona, /read the page-design skill and follow it/);
+  // the guide to Bloks itself rides along the same way, for the owner's
+  // own turn, which has the command line it describes (GitHub 408)
+  assert.match(persona, /^- using-bloks: Using Bloks\. Read before acting on Bloks itself/m);
+  assert.doesNotMatch(persona, /A new tab: `tab /);
   // and the chat side of a file is a sentence, not a recap
   assert.match(persona, /Never repeat the file in the chat as a list/);
   // the design rules in short, even for an agent that could read the skill

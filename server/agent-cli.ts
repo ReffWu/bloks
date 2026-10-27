@@ -175,6 +175,11 @@ export const RULES: Rule[] = [
   // between one agent and one person into a workspace.
   { method: "POST", path: "/api/bots/:id/messages", why: "say something to another agent" },
   { method: "POST", path: "/api/bots/:id/take-back", why: "take back its own messages still waiting for another agent" },
+  // A new conversation is only ever opened by saying something in it, to
+  // itself or to an agent it may message, and the words go through every
+  // check `say`'s do (GitHub 408). The person's own route for an empty
+  // one, POST /api/bots/:id/tasks, stays off this list.
+  { method: "POST", path: "/api/agent/conversations", why: "open a new conversation, a tab of its own, for itself or another agent it may message, with the first message in it" },
   { method: "POST", path: "/api/bloks/:room/messages", why: "say something in a room it is in" },
   { method: "GET", path: "/api/bloks/:room/messages", why: "read what was said in a room it is in" },
 

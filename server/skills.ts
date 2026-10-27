@@ -434,6 +434,58 @@ The file speaks for itself. Your reply is one or two sentences: what you made an
 Return: one self contained file in your artifacts folder, and a reply of a sentence or two.
 Approval: none needed.`,
   },
+  {
+    id: "using-bloks",
+    name: "Using Bloks",
+    description: "Read before acting on Bloks itself for the person: hiring, a new conversation tab or a handoff, rooms, routines, watchers, sharing files, and what only the person can do",
+    // Every command `bloks help` lists is named here, which
+    // test/agent-tab.test.ts holds it to, so a command added to the CLI
+    // without a line here fails the build rather than going unmentioned.
+    body: `Use this when the person asks you to do something in Bloks itself: hire or brief an agent, open a new conversation tab, hand work on, set up a room, schedule or watch for something, share a file, or arrange the sidebar. You do it with the bloks command line. Run \`bloks help\` for the exact flags of the version installed; this says which command fits.
+
+Not for: the work itself. Do what was asked; reach for these only when Bloks has to change.
+
+## Which conversation
+- A new tab: \`tab <agent-id|me> "<first message>" --title "<name>"\` opens a conversation of its own for you (me) or another agent, with that message in it. Use it when the work should be kept apart ("start a new tab for the setup"). The person's screen stays where it is.
+- A handoff: \`say <agent-id> "<text>"\` goes to that agent's first conversation, starting a turn there or waiting behind the one running. \`--task <name>\` only names the work for counting turns between agents; it never opens a tab. \`--now\` is for a correction to a turn already running. \`take-back\` withdraws your words still waiting.
+- A fresh session: \`fresh\` keeps the conversation you are in and its transcript, and starts your next turn there without the old engine context. Keep what matters with \`memory\` first. \`rename\`, \`close\` and \`summary\` also act only on the conversation you are in.
+
+## People and rooms
+- \`agents\` and \`rooms\` list who and what exists, with ids; \`whoami\` is you. Use ids from there, never guessed ones.
+- \`hire\` adds a teammate. \`stop\` and \`archive\` act only on an agent you hired or lead.
+- A room for shared work: \`room --name "<name>" --members "id,id"\` (you are added), then brief it with \`say <room-id> "<brief>"\`, naming with @Name each agent whose part it is. \`history <room-id>\` reads it.
+- \`sidebar\` shows the arrangement; \`file\`, \`pin\` and \`unpin\` change where a row sits.
+- \`message-person\` writes to one person privately, only when the owner or an admin asked you to in a team conversation or a room.
+
+## Work that comes back
+- \`routine\` files a time of day or a check-in for you; \`routines\` lists them, \`unroutine\` drops one.
+- \`watch\` looks at a folder, a page, a feed, a command or a place and acts on a change; \`watchers\`, \`edit-watch\`, \`unwatch\`. \`watch-app\` (see \`app-events\`) only proposes: nothing listens until the person says yes.
+- \`intent\` proposes a standing intent for the person to approve; \`intents\`, \`unintent\`.
+- \`post\` puts work on the job board for whoever takes it; \`jobs\` reads it.
+- \`pause\`, \`pauses\` and \`unpause\` hold an engine for your own work, up to a day.
+- \`incident\` reads a failure you lead and retries it once, hands it on, or tells the person.
+
+## Files, answers and the person
+- \`share <file>\` puts a file in the chat as a card and gives a link; \`telegram\` sends one to their Telegram chat with your bot; \`show\` answers with a chart or a table.
+- \`secret\` asks for a key through a secure field; never ask for one in the chat. \`note\` suggests a fact about the person for them to keep or not.
+- \`memory\` and \`recall\` are your own notes and past conversations. \`skills\` and \`skill\` read the library; \`skill revise\` only proposes a change.
+- \`settings\`, \`goal\` and \`location\` only read. \`browser\` drives the Bloks browser while the person watches. \`home\` asks Home Assistant, and a change waits for their yes unless they marked it auto. \`reply\` answers the group message that started this turn.
+
+## What only the person can do
+Say so plainly, and where:
+- Answer a card, switch which tab is open, rewind, delete an agent, set a goal (/goal in the chat).
+- How much agents ask, and the rules: Settings, Rules and approvals.
+- The limit on agents writing to agents, the budget across tasks, who answers in an Auto room: Settings, Behaviour.
+- Engines, sign-ins and model keys: Settings, Engines and keys. Saved secrets and app keys: Settings, Apps and keys. Tool servers and connectors: Settings, Plugins.
+- Phones and location: Settings, Phone and devices. Telegram, Signal and email: Settings, Chat and email. Which sites the browser may use: Settings, Browser. Home Assistant: Settings, Home Assistant.
+- Members, Plan, Backups and Export for training: the Settings pages of those names.
+
+## Say what happened
+Every command answers JSON. Report what it said: the tab's title and id, whether it started or is queued, an engine warning, a card waiting. A refusal means nothing happened: say why in a sentence and what the person can do, and do not look for another way around it.
+
+Return: a sentence or two on what changed, or on what the person needs to do.
+Approval: anything that waits on a card (an app watcher, an intent, a skill revision, a change to the home, a secret) is not done until the person says yes; say it is waiting.`,
+  },
 ];
 
 /** The design skill every agent that makes files has, attached or not:
@@ -453,6 +505,19 @@ export function withPageDesign(attached: Skill[]): Skill[] {
   if (attached.some((s) => s.id === PAGE_DESIGN)) return attached;
   const design = getSkills([PAGE_DESIGN]);
   return [...attached, ...design];
+}
+
+/** The skill on Bloks itself, which rides along as the design skill does,
+ * for every agent whose turn has the command line to act with: told only
+ * the commands, an agent asked for a new tab guessed, and a handoff landed
+ * in a conversation nobody meant (GitHub 408). */
+export const BLOKS_GUIDE = "using-bloks";
+
+/** An agent's skills with the Bloks guide added when it is not among
+ * them, read through the library so the person's own copy counts. */
+export function withBloksGuide(attached: Skill[]): Skill[] {
+  if (attached.some((s) => s.id === BLOKS_GUIDE)) return attached;
+  return [...attached, ...getSkills([BLOKS_GUIDE])];
 }
 
 // ── reading ───────────────────────────────────────────────────────────

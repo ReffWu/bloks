@@ -228,6 +228,7 @@ import {
   observedSkillLibrary,
   PAGE_DESIGN,
   PAGE_DESIGN_SHORT,
+  withBloksGuide,
   withPageDesign,
   type Skill,
 } from "./skills.ts";
@@ -7524,12 +7525,15 @@ async function startClaimedTurn(
     // not for a guest's mail: what the owner wrote them is the owner's
     // The design skill rides along for every agent that can read it on
     // demand: one line here, the body only when a page is being made.
+    // The guide to Bloks itself only where the turn gets the full command
+    // line it describes (the credential below): the owner's own turn,
+    // outside a shared room.
     // An engine that cannot fetch it would be sent the whole of it every
     // turn, so it gets the short form in Deliverables instead.
     !guestMail &&
       skillsPrompt(
         runsAProcess(instance.driverKind) && !personSource
-          ? disclose(withPageDesign(attached), true)
+          ? disclose(withPageDesign(!sharing && owners ? withBloksGuide(attached) : attached), true)
           : disclose(attached, false),
         `To read one, run: ${cliCommand} skill <id>`,
       ),
@@ -28598,6 +28602,98 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (method === "POST" && path === "/api/agent/message-person") {
       if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });
       return json(res, 200, await agentMessagePerson(asAgent, await readBody(req)));
+    }
+    // A new conversation, a tab of its own, for this agent or another it
+    // may message, opened by its first message (`bloks tab`, GitHub 408).
+    // `say` goes on in an agent's first conversation, and the person's
+    // route for an empty one stays theirs: an agent opens one only by
+    // saying something there, so the words meet every check `say`'s meet
+    // (an archived agent, the person at the wheel, the chain limit and
+    // the person's budget across tasks), and are counted the same way.
+    if (method === "POST" && path === "/api/agent/conversations") {
+      if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });
+      const sender = store.bot(asAgent.botId);
+      if (!sender) return json(res, 403, { error: "the sending agent no longer exists" });
+      const body = await readBody(req);
+      if (typeof body.text === "string" && body.text.length > MAX_MESSAGE_CHARS) {
+        return json(res, 413, { error: "that message is too long to send in one go" });
+      }
+      const text = clamp(body.text, MAX_MESSAGE_CHARS);
+      if (!text) return json(res, 400, { error: "a new conversation needs its first message" });
+      const asked = typeof body.to === "string" && body.to.trim() && body.to.trim() !== "me" ? body.to : sender.id;
+      // the roster an agent reads (`bloks agents`): never a member's own agent
+      const recipient = agentNamed(asked);
+      if (!recipient) return json(res, 404, { error: "no such agent. `bloks agents` lists who you can write to" });
+      const chain = chainFrom(sender, asAgent.taskId);
+      // Refused before anything is made, and as `say` refuses, so a
+      // refusal never leaves an empty tab behind. Held at the chain limit,
+      // the words wait where `say`'s would have: the agent's first
+      // conversation, on the notice that says why.
+      if (recipient.archivedAt) {
+        return json(res, 409, { error: `${recipient.name} is archived. Restore it to give it work.` });
+      }
+      const holding = wheel.heldBy(recipient.id);
+      if (holding) {
+        wheel.noteTurnedAway(recipient.id);
+        broadcast({ kind: "bot", bot: clientBot(store.bot(recipient.id)) });
+        return json(res, 409, { error: heldRefusal(holding, recipient.name) });
+      }
+      const past = chainPast(chain.depth, chain.task, agentLimit(), agentBudget());
+      if (past) throw chainRefusal(recipient, mainLaneOf(recipient).id, chain, text, past);
+      const title =
+        clamp(typeof body.title === "string" ? body.title.replace(/\s+/g, " ") : undefined, 40) ??
+        text.replace(/\s+/g, " ").trim().slice(0, 40);
+      // made beside whatever the person has open, which stays on screen
+      const active = recipient.activeTaskId;
+      const lane = store.createTask(recipient.id, title);
+      if (!lane) {
+        return json(res, 409, {
+          error: `${recipient.name} has as many conversations as an agent keeps (${MAX_TASKS}). Use \`bloks say\` to write in its first one, or ask the person to close one.`,
+        });
+      }
+      store.setActiveTask(recipient.id, active);
+      broadcast({ kind: "bot", bot: clientBot(store.bot(recipient.id)) });
+      const from = recipient.id !== sender.id ? { botId: sender.id, name: sender.name } : undefined;
+      let waiting: { laneId: string; id: string } | undefined;
+      let result;
+      try {
+        result = await sendUserMessage(recipient.id, text, {
+          taskId: lane.id,
+          from,
+          personal: false,
+          chain,
+          ...(from ? { onQueued: (laneId: string, message: Message) => { waiting = { laneId, id: message.id }; } } : {}),
+        });
+      } catch (e) {
+        // nothing was said there, so the empty tab goes again
+        if (!store.messagesFor(lane.id).length && deleteLane(recipient.id, lane.id) === "ok") {
+          broadcast({ kind: "bot", bot: clientBot(store.bot(recipient.id)) });
+        }
+        throw e;
+      }
+      // the sender's record of it, as for any message to another agent
+      if (from && sender.tasks.some((t) => t.id === asAgent.taskId)) {
+        const record = store.appendMessage(asAgent.taskId, {
+          role: "bot",
+          kind: "activity",
+          text,
+          tool: { name: `messaged ${recipient.name}`, ok: true },
+          agent: { dir: "out", peerId: recipient.id, peerName: recipient.name, status: result.queued || waiting ? "queued" : "sent" },
+        });
+        broadcast({ kind: "message", threadId: asAgent.taskId, message: record });
+        if (waiting) tieRecord(waiting.laneId, waiting.id, { laneId: asAgent.taskId, id: record.id });
+      }
+      const ready = from ? await readinessOf(recipient).catch(() => null) : null;
+      const warning = ready ? readinessWarning(recipient.name, ready.engine, ready.readiness) : null;
+      return json(res, 201, {
+        ok: true,
+        agent: { id: recipient.id, name: recipient.name },
+        taskId: lane.id,
+        title: lane.title,
+        ...(result.queued ? { queued: true } : {}),
+        ...(result.note ? { note: result.note } : {}),
+        ...(warning ? { engine: warning } : {}),
+      });
     }
     if (method === "GET" && path === "/api/agent/whoami") {
       if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });

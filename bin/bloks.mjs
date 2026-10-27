@@ -252,6 +252,32 @@ const COMMANDS = {
       }
     },
   },
+  tab: {
+    use: "tab <agent-id|me> [--title <title>] <first message…>",
+    about:
+      "open a new conversation, a tab of its own, for yourself (me) or another agent, with its first message in it, which starts a turn there. " +
+      "Use it for a separate piece of work the person wants kept apart; `say` goes on in an agent's first conversation instead, and `fresh` keeps this one with a new session. " +
+      "--title names the tab, in up to 40 characters; without it the tab is named from the message. " +
+      "It is refused, and nothing is opened, wherever `say` to that agent would be. The answer names the tab and its id",
+    run: async (args) => {
+      // --title anywhere, as a pair; everything else after who it is for
+      // is the message, as with `say`
+      const rest = [...args];
+      let title;
+      const at = rest.findIndex((arg) => arg === "--title" || arg.startsWith("--title="));
+      if (at >= 0) {
+        const joined = rest[at].startsWith("--title=");
+        title = joined ? rest[at].slice("--title=".length) : rest[at + 1];
+        if (!title || title.startsWith("--")) throw new Error('--title needs the name of the tab, quoted when it has spaces: --title "Setup"');
+        rest.splice(at, joined ? 1 : 2);
+      }
+      const [target, ...words] = rest;
+      const text = words.join(" ").trim();
+      if (!target || !text) throw new Error("tab needs who it is for (an agent id, or me for yourself) and its first message");
+      const opened = await request("POST", "/api/agent/conversations", { to: target, text, ...(title ? { title } : {}) });
+      return { ...opened, said: `Opened "${opened.title}" for ${opened.agent?.name ?? target} (conversation ${opened.taskId}).` };
+    },
+  },
   "take-back": {
     use: "take-back <agent-id>",
     about: "take back all your messages still waiting for another agent, and list their words. Already received messages cannot be taken back; send a correction instead. Rooms are not included",
