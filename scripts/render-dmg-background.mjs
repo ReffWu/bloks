@@ -22,10 +22,12 @@
 //
 // Run after any change to the mark or the layout:
 //   node scripts/render-dmg-background.mjs
+import { build } from "esbuild";
 import { chromium } from "playwright-core";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -35,9 +37,36 @@ export const LAYOUT = {
   width: 660,
   height: 420,
   icon: 100,
-  app: { x: 180, y: 244 },
-  apps: { x: 480, y: 244 },
+  app: { x: 180, y: 222 },
+  apps: { x: 480, y: 222 },
 };
+
+// The agents along the bottom: the faces the app draws, each a different
+// shape and colour and in a different mood, so the line under them ("the
+// agents that live on your Mac") has somebody to be about.
+const CROWD = [
+  { color: "blue", shape: "star", expression: "friendly" },
+  { color: "orange", shape: "burst", expression: "excited" },
+  { color: "green", shape: "invader", expression: "mischievous" },
+  { color: "purple", shape: "cloud", expression: "thinking" },
+  { color: "yellow", shape: "diamond", expression: "focused" },
+  { color: "red", shape: "drop", expression: "friendly" },
+  { color: "cyan", shape: "bit", expression: "sleepy" },
+  { color: "pink", shape: "triangle", expression: "surprised" },
+];
+const FACE = 30;
+// How each one stands: a point or two up or down and a few degrees off
+// true, fixed so the art is the same every time it is drawn.
+const STANCE = [
+  [0, -4],
+  [-3, 3],
+  [1, -2],
+  [-2, 4],
+  [0, -3],
+  [-3, 2],
+  [1, -4],
+  [-1, 3],
+];
 
 // The mark's colours, in the order its bars spiral in.
 const BARS = ["#0b4fb3", "#5ce1e6", "#7ed957", "#ffbd59", "#ff7420", "#ff5757", "#cb6ce6"];
@@ -48,6 +77,41 @@ const wordmark = asData(path.join(root, "public", "brand", "bloks-wordmark-dark.
 const inter = asData(path.join(root, "node_modules", "@fontsource-variable", "inter", "files", "inter-latin-wght-normal.woff2"), "font/woff2");
 
 const { width: W, height: H, icon: I, app, apps } = LAYOUT;
+
+// The faces come from the app's own component (src/components/Avatar.tsx),
+// bundled here and rendered to plain SVG, so the installer's agents can
+// never drift from the ones in the app.
+const bundled = await build({
+  stdin: {
+    contents: `
+      import { renderToStaticMarkup } from "react-dom/server";
+      import { createElement } from "react";
+      import { BlokAvatar } from "@/components/Avatar";
+      export const faces = (crowd, size) =>
+        crowd.map((c) => renderToStaticMarkup(createElement(BlokAvatar, { ...c, size })));
+    `,
+    resolveDir: root,
+    loader: "tsx",
+  },
+  bundle: true,
+  write: false,
+  format: "esm",
+  platform: "node",
+  jsx: "automatic",
+  alias: { "@": path.join(root, "src") },
+  define: { "process.env.NODE_ENV": '"production"' },
+  // React ships as CommonJS, which asks for require inside the bundle
+  banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
+  logLevel: "silent",
+});
+const work = mkdtempSync(path.join(tmpdir(), "bloks-faces-"));
+const entry = path.join(work, "faces.mjs");
+writeFileSync(entry, bundled.outputFiles[0].text);
+const { faces } = await import(pathToFileURL(entry).href);
+rmSync(work, { recursive: true, force: true });
+const crowdSvg = faces(CROWD, FACE)
+  .map((svg, i) => `<span class="face" style="transform:translateY(${STANCE[i][0]}px) rotate(${STANCE[i][1]}deg)">${svg}</span>`)
+  .join("");
 
 // The bars of the arrow: each a little longer than the one before, the
 // gaps closing up, as if gathering speed toward the folder.
@@ -101,7 +165,12 @@ const html = `<!doctype html><meta charset="utf-8"><style>
   .head i:last-child{transform:rotate(-40deg)}
   .plate{position:absolute;height:22px;border-radius:11px;transform:translateX(-50%);
     background:#76767c;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 1px 2px rgba(0,0,0,.35)}
-  .foot{position:absolute;left:0;right:0;bottom:22px;text-align:center;color:#6b6b73;font-size:11.5px;font-weight:450;letter-spacing:.01em}
+  /* the crowd: a little uneven, the way people stand, and a soft shadow
+     so the faces sit on the window rather than float on it */
+  .crowd{position:absolute;left:0;right:0;top:${H - 92}px;display:flex;justify-content:center;gap:9px}
+  .face{display:block;width:${FACE}px;height:${FACE}px;filter:drop-shadow(0 3px 4px rgba(0,0,0,.5))}
+  .face svg{display:block;width:100%;height:100%}
+  .foot{position:absolute;left:0;right:0;bottom:24px;text-align:center;color:#6b6b73;font-size:11.5px;font-weight:450;letter-spacing:.01em}
 </style>
 <span class="rule"></span>
 <img class="word" src="${wordmark}">
@@ -109,6 +178,7 @@ const html = `<!doctype html><meta charset="utf-8"><style>
 <span class="halo app"></span><span class="halo apps"></span>
 ${bars}${head}
 ${plate(app.x, "Bloks")}${plate(apps.x, "Applications")}
+<div class="crowd">${crowdSvg}</div>
 <p class="foot">Personal AI agents that live on your Mac.</p>`;
 
 const executablePath = process.env.CHROMIUM_PATH || undefined;
