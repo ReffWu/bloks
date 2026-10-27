@@ -1,11 +1,15 @@
 // Bring your setup: what the person's other agent tools already know,
 // offered item by item (server/setup-import.ts).
 //
-// A review, not a wizard. Everything found is on one list with a preview
-// and where it would go, the person ticks what they want, and only that
-// is written. The server reads the files again on import and takes from
-// here only which items and where, so nothing on this screen can change
-// what gets imported.
+// A review, not a wizard. Everything found is on one list, grouped by what
+// it becomes here, with a preview and where it would go. The person ticks
+// what they want, settles any name that is already taken, and fills in
+// the values a server or a chat app needs; only that is written. The
+// server reads the files again on import and takes from here only those
+// decisions, so nothing on this screen can change what gets imported.
+//
+// A value is never shown here, only its name. Each one is typed in, or
+// copied from the other tool's config by ticking that one value's box.
 //
 // Used twice: as its own page in Settings, and as an optional step in the
 // first-run flow when something was found. The step is the same list,
@@ -16,69 +20,52 @@
 // server elsewhere (GitHub 397). So the screen asks which computer that
 // is first, and names it whenever it is not this one.
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Bot } from "@/components/icons";
 import { Brain } from "@/components/icons";
 import { Check } from "@/components/icons";
 import { ChevronRight } from "@/components/icons";
+import { Cpu } from "@/components/icons";
 import { FileText } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
+import { Lock } from "@/components/icons";
+import { MessagesSquare } from "@/components/icons";
 import { Scale } from "@/components/icons";
 import { Server } from "@/components/icons";
 import { ShieldCheck } from "@/components/icons";
 import { Sparkles } from "@/components/icons";
+import { Undo2 } from "@/components/icons";
 import { UserRound } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
+import { plural } from "@/lib/plural";
+import {
+  choicesFrom,
+  conflictLine,
+  groupReview,
+  landingLine,
+  missingSecrets,
+  pickFor,
+  type Choice,
+  type SetupDestination as Destination,
+  type SetupItem,
+  type SetupKind as Kind,
+  type SetupReview,
+  type SetupRun,
+  type SetupSource,
+} from "@/lib/setupReview";
 import { thisComputer } from "@/lib/thisComputer";
 
-type Kind = "instructions" | "memory" | "skill" | "mcp" | "rule" | "fact";
-type Destination = "brief" | "memory" | "skills" | "mcp" | "rules" | "about";
-
-export interface SetupItem {
-  key: string;
-  kind: Kind;
-  title: string;
-  from: string;
-  preview: string;
-  chars: number;
-  digest: string;
-  notes: string[];
-  status: "new" | "changed" | "imported";
-  destinations: Destination[];
-  suggested: { to: Destination; botId?: string };
-  picked: boolean;
-  skill?: { name: string; description: string };
-  mcp?: { name: string; transport: "stdio" | "http"; needs: string[] };
-  rule?: { effect: "allow" | "deny"; summary: string };
-}
-
-export interface SetupSource {
-  id: string;
-  name: string;
-  folder: string;
-  agentName: string;
-  items: SetupItem[];
-  skipped: Array<{ from: string; why: string }>;
-}
-
-export interface SetupReview {
-  sources: SetupSource[];
-  fresh: number;
-}
+export type { SetupItem, SetupReview, SetupSource } from "@/lib/setupReview";
 
 interface Result {
   key: string;
   ok: boolean;
   did?: "added" | "updated" | "unchanged";
+  note?: string;
   error?: string;
-}
-
-/** What the person has chosen for one item. */
-interface Choice {
-  on: boolean;
-  to: Destination;
-  botId?: string;
 }
 
 /** The computer a setup is read from: the one the workspace runs on, by
@@ -128,24 +115,19 @@ export function useSetupReview(): {
 
 /** The folders each tool keeps its setup in, as the person would copy
  * them (server/setup-import.ts reads these and nothing else). */
-const SETUP_FOLDERS = "~/.claude, ~/.codex, ~/.openclaw or ~/.hermes";
+const SETUP_FOLDERS = "~/.claude, ~/.codex, ~/.cursor, ~/.openclaw or ~/.hermes";
 
 const KIND: Record<Kind, { label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
+  agent: { label: "Agent", icon: Bot },
   instructions: { label: "Instructions", icon: FileText },
   memory: { label: "Memory", icon: Brain },
   skill: { label: "Skill", icon: Sparkles },
   mcp: { label: "MCP server", icon: Server },
+  setting: { label: "Model", icon: Cpu },
   rule: { label: "Rule", icon: Scale },
   fact: { label: "About you", icon: UserRound },
+  channel: { label: "Chat app", icon: MessagesSquare },
 };
-
-function choicesFrom(review: SetupReview): Record<string, Choice> {
-  const out: Record<string, Choice> = {};
-  for (const source of review.sources) {
-    for (const item of source.items) out[item.key] = { on: item.picked, to: item.suggested.to, botId: item.suggested.botId };
-  }
-  return out;
-}
 
 /**
  * The line every version of this screen opens with. On the workspace's
@@ -163,7 +145,7 @@ export function SetupPrivacyLine({ where, className }: { where: SetupWhere | nul
         {away ? (
           <>
             <div className="font-medium text-foreground">
-              Read on {where.computer}, where this workspace runs. No keys or passwords are copied.
+              Read on {where.computer}, where this workspace runs. No key or password is copied unless you tick it.
             </div>
             <div className="text-muted-foreground">
               Nothing is read from {thisComputer()}, and nothing is added until you choose. What you pick is added to the workspace on{" "}
@@ -178,11 +160,11 @@ export function SetupPrivacyLine({ where, className }: { where: SetupWhere | nul
           <>
             <div className="font-medium text-foreground">
               {/* only said once the server has said it is this computer */}
-              {where?.here ? `Nothing leaves ${thisComputer()} and no keys or passwords are copied.` : "No keys or passwords are copied."}
+              {where?.here
+                ? `Nothing leaves ${thisComputer()}, and no key or password is copied unless you tick it.`
+                : "No key or password is copied unless you tick it."}
             </div>
-            <div className="text-muted-foreground">
-              Nothing is added until you choose.
-            </div>
+            <div className="text-muted-foreground">Nothing is added until you choose, and an import can be undone.</div>
           </>
         )}
       </div>
@@ -270,15 +252,108 @@ function WhereItGoes({ item, source, choice, onChange }: { item: SetupItem; sour
       </div>
     );
   }
-  const line =
-    item.kind === "skill"
-      ? "Added to Skills. Attach it to an agent to use it."
-      : item.kind === "mcp"
-        ? "Added to MCP servers. Attach it to an agent to use it."
-        : item.kind === "rule"
-          ? `Becomes a rule: ${item.rule?.summary ?? item.preview}.`
-          : "Suggested in About you.";
-  return <div className="text-small leading-relaxed text-muted-foreground">{line}</div>;
+  if (item.kind === "setting" || (item.kind === "channel" && item.channel?.perAgent)) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-small text-muted-foreground">
+          {item.kind === "setting" ? `On ${item.setting?.engineName ?? "its engine"}, for` : "Answers as"}
+        </span>
+        <AgentPicker
+          value={choice.botId}
+          agentName={source.agentName}
+          label={item.kind === "setting" ? `Which agent runs on ${item.title}` : `Which agent ${item.title} answers as`}
+          onChange={(botId) => onChange({ ...choice, botId })}
+        />
+      </div>
+    );
+  }
+  const line = landingLine(item);
+  return line ? <div className="text-small leading-relaxed text-muted-foreground">{line}</div> : null;
+}
+
+/** A name already taken here: keep both, or write over the other. */
+function ConflictChoice({ item, choice, onChange }: { item: SetupItem; choice: Choice; onChange: (next: Choice) => void }) {
+  const c = item.conflict!;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-2.5 py-2">
+      <span className="text-small text-foreground">{conflictLine(item)}</span>
+      {c.canReplace ? (
+        <Segmented
+          size="sm"
+          aria-label={`What to do about ${c.name}`}
+          value={choice.conflict ?? "both"}
+          onChange={(conflict) => onChange({ ...choice, conflict })}
+          options={[
+            { value: "both" as const, label: "Keep both" },
+            { value: "replace" as const, label: c.kind === "agent" ? "Update it" : "Replace it" },
+          ]}
+          className="w-auto"
+        />
+      ) : (
+        <span className="text-small text-muted-foreground">This one is added beside it, under a name of its own.</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The values an item needs. Each is empty unless the person types one,
+ * or ticks the box to copy the one the other tool's config holds, which
+ * is offered only when there is one and is never ticked for them.
+ */
+function SecretFields({ item, choice, onChange }: { item: SetupItem; choice: Choice; onChange: (next: Choice) => void }) {
+  const slots = item.secrets ?? [];
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-background/60 px-2.5 py-2.5">
+      <div className="flex items-center gap-1.5 text-small font-medium text-foreground">
+        <Lock size={12} className="text-muted-foreground" />
+        {slots.some((s) => s.required) ? "Needs" : "Values it uses"}
+      </div>
+      {slots.map((slot) => {
+        const copying = Boolean(choice.copy?.[slot.id]);
+        const fieldId = `secret-${item.key}-${slot.id}`;
+        return (
+          <div key={slot.id} className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor={fieldId} className="w-full font-mono text-caption text-foreground/80 sm:w-[38%] sm:truncate">
+                {slot.name}
+                {slot.required && <span className="text-muted-foreground"> (required)</span>}
+              </label>
+              <Input
+                id={fieldId}
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={copying}
+                value={copying ? "" : (choice.typed?.[slot.id] ?? "")}
+                onChange={(e) => onChange({ ...choice, typed: { ...choice.typed, [slot.id]: e.target.value } })}
+                placeholder={copying ? "Copied on import" : slot.required ? "Paste it here" : "Paste it, or leave it empty"}
+                className="h-8 min-w-0 flex-1 rounded-lg font-mono text-body"
+              />
+            </div>
+            {slot.copyFrom && (
+              <label className="flex cursor-pointer items-center gap-2 text-small text-muted-foreground sm:pl-[calc(38%+0.5rem)]">
+                <input
+                  type="checkbox"
+                  checked={copying}
+                  onChange={(e) => onChange({ ...choice, copy: { ...choice.copy, [slot.id]: e.target.checked } })}
+                  className="size-3.5 shrink-0 accent-(--brand)"
+                />
+                <span>
+                  Copy the one in <span className="font-mono text-caption">{slot.copyFrom}</span>
+                </span>
+              </label>
+            )}
+            {!slot.copyFrom && slot.ref && (
+              <div className="text-caption text-muted-foreground sm:pl-[calc(38%+0.5rem)]">
+                It was read from <span className="font-mono">${slot.ref}</span> in your shell, so paste its value.
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function ItemRow({
@@ -300,6 +375,7 @@ function ItemRow({
   const id = `setup-${item.key}`;
   // a fact's preview is its title, and a rule's is its summary: nothing more to show
   const hasPreview = item.kind !== "fact" && item.kind !== "rule";
+  const missing = choice.on ? missingSecrets(item, choice) : [];
   return (
     <li className={cn("flex gap-3 px-3.5 py-3 transition-colors duration-150", choice.on && "bg-brand-soft/30")}>
       <input
@@ -315,15 +391,26 @@ function ItemRow({
             <Icon size={14} className="shrink-0 text-muted-foreground" />
             <span className="min-w-0 truncate text-ui font-medium text-foreground">{item.title}</span>
           </label>
-          <span className="text-small text-muted-foreground">{meta.label}</span>
+          <span className="text-small text-muted-foreground">
+            {item.kind === "instructions" || item.kind === "memory" ? `${meta.label}, ${source.name}` : source.name}
+          </span>
           <StatusChip status={item.status} />
         </div>
         {item.kind === "skill" && item.skill?.description && (
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">{item.skill.description}</div>
         )}
+        {item.kind === "agent" && item.agent?.title && <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">{item.agent.title}</div>}
         <div className="mt-0.5 truncate font-mono text-caption text-muted-foreground/80">{item.from}</div>
-        <div className="mt-2">
+        {item.sameAs && <div className="mt-1 text-small text-muted-foreground">The same as {item.sameAs}, so it is not ticked.</div>}
+        <div className="mt-2 flex flex-col gap-2">
           <WhereItGoes item={item} source={source} choice={choice} onChange={onChange} />
+          {choice.on && item.conflict && <ConflictChoice item={item} choice={choice} onChange={onChange} />}
+          {choice.on && (item.secrets?.length ?? 0) > 0 && <SecretFields item={item} choice={choice} onChange={onChange} />}
+          {missing.length > 0 && (
+            <div className="text-small text-warning">
+              Needs its {missing.map((s) => s.name.toLowerCase()).join(" and ")} to come over.
+            </div>
+          )}
         </div>
         {item.notes.length > 0 && (
           <ul className="mt-1.5 flex flex-col gap-0.5">
@@ -355,16 +442,80 @@ function ItemRow({
         {result && (
           <div className={cn("mt-1.5 text-small", result.ok ? "text-success" : "text-destructive")} aria-live="polite">
             {result.ok
-              ? result.did === "unchanged"
-                ? "Already here."
-                : result.did === "updated"
-                  ? "Updated."
-                  : "Brought over."
+              ? `${result.did === "unchanged" ? "Already here." : result.did === "updated" ? "Updated." : "Brought over."}${result.note ? ` ${result.note}` : ""}`
               : `Not brought over: ${result.error}`}
           </div>
         )}
       </div>
     </li>
+  );
+}
+
+function when(at: number): string {
+  return new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * The way back from an import: one button, and afterwards what went back
+ * and what stayed because it had changed since.
+ */
+function UndoImport({
+  run,
+  onReview,
+  onUndone,
+  lead,
+}: {
+  run: SetupRun;
+  onReview: (next: SetupReview) => void;
+  /** The list's own word on each item is about the import, so it goes. */
+  onUndone?: () => void;
+  lead: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<{ undone: number; kept: Array<{ title: string; why: string }> } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const undo = async () => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const out: { undone: Array<{ title: string }>; kept: Array<{ title: string; why: string }>; review: SetupReview } = await api("/api/setup-import/undo", {
+        method: "POST",
+        body: JSON.stringify({ runId: run.id }),
+      });
+      setDone({ undone: out.undone.length, kept: out.kept });
+      onUndone?.();
+      onReview(out.review);
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : "Could not undo it. Nothing changed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (done) {
+    return (
+      <div className="flex flex-col gap-1 text-body text-foreground" aria-live="polite">
+        <div>{done.undone ? `Took back ${plural(done.undone, "change")}.` : "Nothing needed taking back."}</div>
+        {done.kept.length > 0 && (
+          <ul className="flex flex-col gap-0.5">
+            {done.kept.map((k) => (
+              <li key={`${k.title}:${k.why}`} className="text-small leading-relaxed text-muted-foreground">
+                Kept {k.title}: {k.why}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground">
+      <span>{lead}</span>
+      <Button size="sm" variant="secondary" disabled={busy} onClick={() => void undo()}>
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
+        {busy ? "Undoing…" : "Undo"}
+      </Button>
+      {problem && <span className="text-small text-destructive">{problem}</span>}
+    </div>
   );
 }
 
@@ -392,22 +543,34 @@ export function SetupReviewList({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [run, setRun] = useState<SetupRun | null>(null);
+  const [undone, setUndone] = useState(false);
 
-  // a new review (after an import, or a look again) starts from its own ticks
-  useEffect(() => setChoices(choicesFrom(review)), [review]);
-
-  const picked = useMemo(
-    () => review.sources.flatMap((s) => s.items.filter((i) => choices[i.key]?.on)),
-    [review, choices],
+  // A new review (after an import, or a look again) starts from its own
+  // ticks. Values typed for an item still listed are kept: a person who
+  // pasted a key should not have to paste it again after a second look.
+  useEffect(
+    () =>
+      setChoices((current) => {
+        const next = choicesFrom(review);
+        for (const [key, choice] of Object.entries(next)) {
+          if (current[key]?.typed) choice.typed = current[key].typed;
+        }
+        return next;
+      }),
+    [review],
   );
+
+  const groups = useMemo(() => groupReview(review), [review]);
+  const picked = useMemo(() => review.sources.flatMap((s) => s.items.filter((i) => choices[i.key]?.on)), [review, choices]);
   // a server that just came over without its keys is the one loose end
-  const needsKeys = review.sources.some((s) => s.items.some((i) => i.mcp?.needs.length && results[i.key]?.ok));
+  const needsKeys = review.sources.some((s) => s.items.some((i) => i.mcp?.needs.length && results[i.key]?.ok && results[i.key]?.note?.startsWith("Still needs")));
 
   const set = (key: string, next: Choice) => setChoices((current) => ({ ...current, [key]: next }));
-  const setAll = (source: SetupSource, on: boolean) =>
+  const setAll = (keys: string[], on: boolean) =>
     setChoices((current) => {
       const next = { ...current };
-      for (const item of source.items) next[item.key] = { ...next[item.key], on };
+      for (const key of keys) next[key] = { ...next[key], on };
       return next;
     });
 
@@ -415,12 +578,11 @@ export function SetupReviewList({
     setBusy(true);
     setProblem(null);
     setSummary(null);
+    setRun(null);
+    setUndone(false);
     try {
-      const picks = picked.map((item) => {
-        const choice = choices[item.key];
-        return { key: item.key, digest: item.digest, to: choice.to, ...(choice.botId ? { botId: choice.botId } : {}) };
-      });
-      const outcome: { results: Result[]; created: string[]; review: SetupReview } = await api("/api/setup-import", {
+      const picks = picked.map((item) => pickFor(item, choices[item.key]));
+      const outcome: { results: Result[]; created: string[]; run?: SetupRun | null; review: SetupReview } = await api("/api/setup-import", {
         method: "POST",
         body: JSON.stringify({ picks }),
       });
@@ -429,12 +591,16 @@ export function SetupReviewList({
       const failed = outcome.results.filter((r) => !r.ok).length;
       setSummary(
         [
-          brought ? `Brought over ${brought} ${brought === 1 ? "item" : "items"}.` : "Nothing new to bring over.",
+          brought ? `Brought over ${plural(brought, "item")}.` : "Nothing new to bring over.",
+          outcome.created.length ? `Made ${plural(outcome.created.length, "new agent")}.` : "",
           failed ? `${failed} failed, see below.` : "",
         ]
           .filter(Boolean)
           .join(" "),
       );
+      setRun(outcome.run ?? null);
+      // what was typed has done its job; it is not kept on screen
+      setChoices((current) => Object.fromEntries(Object.entries(current).map(([k, c]) => [k, { ...c, typed: undefined, copy: undefined }])));
       onReview(outcome.review);
       onImported?.({ brought, created: outcome.created.length });
     } catch (e) {
@@ -444,72 +610,110 @@ export function SetupReviewList({
     }
   };
 
+  // the last import, from an earlier visit, while it can still be undone
+  const earlier = !run && !summary && !compact ? review.lastRun : null;
+
   return (
     <div className="flex min-h-0 flex-col">
+      {/* the first-run step names the tools in its own heading */}
+      <div className={cn("mb-4 px-1 text-body leading-relaxed text-muted-foreground", compact && "hidden")}>
+        Found in{" "}
+        {review.sources.map((source, i) => (
+          <span key={source.id}>
+            {i > 0 && (i === review.sources.length - 1 ? " and " : ", ")}
+            <span className="text-foreground">{source.name}</span> <span className="font-mono text-caption">{source.folder}</span>
+          </span>
+        ))}
+        .
+      </div>
+      {earlier && (
+        <div className="mb-4 px-1">
+          <UndoImport run={earlier} onReview={onReview} onUndone={() => setResults({})} lead={`Your last import, ${when(earlier.at)}, brought over ${plural(earlier.items, "item")}.`} />
+        </div>
+      )}
       <div className="flex flex-col gap-5">
-        {review.sources.map((source) => {
-          const on = source.items.filter((i) => choices[i.key]?.on).length;
+        {groups.map((group) => {
+          const keys = group.entries.map((e) => e.item.key);
+          const on = keys.filter((k) => choices[k]?.on).length;
           return (
-            <section key={source.id} aria-label={source.name}>
+            <section key={group.id} aria-label={group.label}>
               <div className="mb-2 flex items-end justify-between gap-3 px-1">
-                <div className="min-w-0">
-                  <h2 className="text-ui font-semibold text-foreground">{source.name}</h2>
-                  <div className="truncate font-mono text-caption text-muted-foreground">{source.folder}</div>
-                </div>
-                {source.items.length > 1 && (
+                <h2 className="text-ui font-semibold text-foreground">
+                  {group.label} <span className="font-normal text-muted-foreground">{group.entries.length}</span>
+                </h2>
+                {group.entries.length > 1 && (
                   <button
                     type="button"
-                    onClick={() => setAll(source, on < source.items.length)}
+                    onClick={() => setAll(keys, on < keys.length)}
                     className="shrink-0 rounded-md px-1.5 py-0.5 text-small text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
-                    {on < source.items.length ? "Select all" : "Select none"}
+                    {on < keys.length ? "Select all" : "Select none"}
                   </button>
                 )}
               </div>
-              {source.items.length > 0 && (
-                <ul className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
-                  {source.items.map((item) => (
-                    <ItemRow
-                      key={item.key}
-                      item={item}
-                      source={source}
-                      choice={choices[item.key] ?? { on: false, to: item.suggested.to, botId: item.suggested.botId }}
-                      result={results[item.key]}
-                      onChange={(next) => set(item.key, next)}
-                    />
-                  ))}
-                </ul>
-              )}
-              {source.skipped.length > 0 && (
-                <details className="group mt-2 px-1">
-                  <summary className="flex cursor-pointer list-none items-center gap-1 text-small text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
-                    <ChevronRight size={12} className="transition-transform duration-150 group-open:rotate-90" />
-                    Left out ({source.skipped.length})
-                  </summary>
-                  <ul className="mt-1.5 flex flex-col gap-1 pl-4">
-                    {source.skipped.map((skip) => (
-                      <li key={`${skip.from}:${skip.why}`} className="text-small leading-relaxed text-muted-foreground">
-                        <span className="break-all font-mono text-caption text-foreground/80">{skip.from}</span>: {skip.why}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
+              <ul className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
+                {group.entries.map(({ item, source }) => (
+                  <ItemRow
+                    key={item.key}
+                    item={item}
+                    source={source}
+                    choice={choices[item.key] ?? { on: false, to: item.suggested.to, botId: item.suggested.botId }}
+                    result={results[item.key]}
+                    onChange={(next) => set(item.key, next)}
+                  />
+                ))}
+              </ul>
             </section>
           );
         })}
+        {review.sources.some((s) => s.skipped.length > 0) && (
+          <details className="group px-1">
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-small text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight size={12} className="transition-transform duration-150 group-open:rotate-90" />
+              Left out ({review.sources.reduce((n, s) => n + s.skipped.length, 0)})
+            </summary>
+            <div className="mt-1.5 flex flex-col gap-2.5 pl-4">
+              {review.sources
+                .filter((s) => s.skipped.length > 0)
+                .map((source) => (
+                  <div key={source.id}>
+                    <div className="text-small font-medium text-foreground">{source.name}</div>
+                    <ul className="mt-0.5 flex flex-col gap-1">
+                      {source.skipped.map((skip) => (
+                        <li key={`${skip.from}:${skip.why}`} className="text-small leading-relaxed text-muted-foreground">
+                          <span className="break-all font-mono text-caption text-foreground/80">{skip.from}</span>: {skip.why}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+            </div>
+          </details>
+        )}
       </div>
 
       <div className={cn("flex flex-col gap-2", compact ? "mt-4" : "sticky bottom-0 -mx-1 mt-5 bg-background/90 px-1 pb-1 pt-3 backdrop-blur")}>
         {problem && <div className="text-small text-destructive">{problem}</div>}
-        {summary && (
+        {summary && !undone && (
           <div className="text-body text-foreground" aria-live="polite">
             {summary}
           </div>
         )}
+        {run && (
+          <UndoImport
+            key={run.id}
+            run={run}
+            onReview={onReview}
+            onUndone={() => {
+              setResults({});
+              setUndone(true);
+            }}
+            lead="Not what you wanted?"
+          />
+        )}
         {needsKeys && !compact && (
           <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground">
-            Some servers need a key.
+            Some servers still need a key.
             <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })}>
               Add keys
             </Button>
@@ -532,7 +736,7 @@ export function SetupReviewList({
             ) : picked.length === 0 ? (
               "Nothing selected"
             ) : (
-              `Bring over ${picked.length} ${picked.length === 1 ? "item" : "items"}`
+              `Bring over ${plural(picked.length, "item")}`
             )}
           </Button>
         )}
@@ -557,8 +761,13 @@ export function BringYourSetupPage() {
         <div className="rounded-2xl border bg-card p-4">
           <div className="text-ui font-medium text-foreground">Nothing found to bring over</div>
           <div className="mt-1 text-body leading-relaxed text-muted-foreground">
-            Bloks checks {where && !where.here ? `${where.computer} ` : ""}for Claude Code, Codex, OpenClaw and Hermes.
+            Bloks checks {where && !where.here ? `${where.computer} ` : ""}for Claude Code, Codex, Cursor, OpenClaw and Hermes.
           </div>
+          {review.lastRun && (
+            <div className="mt-3">
+              <UndoImport run={review.lastRun} onReview={set} lead={`Your last import, ${when(review.lastRun.at)}, brought over ${plural(review.lastRun.items, "item")}.`} />
+            </div>
+          )}
           <Button size="sm" variant="secondary" className="mt-3" onClick={reload}>
             Look again
           </Button>

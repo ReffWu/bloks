@@ -214,8 +214,8 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     id: "bring-setup",
     label: "Bring your setup",
     group: "data",
-    description: "Import instructions, skills and MCP servers from tools you already use. Keys stay behind.",
-    keywords: "import migrate claude code codex openclaw hermes claude.md agents.md skills mcp memory rules move switch",
+    description: "Import agents, instructions, skills and MCP servers from tools you already use. Keys come only when you say.",
+    keywords: "import migrate claude code codex cursor openclaw hermes claude.md agents.md subagents commands prompts skills mcp memory rules telegram slack discord move switch undo",
   },
   {
     id: "record",

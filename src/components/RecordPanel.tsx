@@ -57,6 +57,7 @@ const LABEL: Record<string, string> = {
   "control.released": "You handed back",
   "conversation.rewound": "Rewound",
   "setup.imported": "Setup brought over",
+  "setup.undone": "Setup import undone",
   "sessions.imported": "Past sessions brought over",
   "server.update": "Server update",
 };
