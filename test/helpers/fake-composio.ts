@@ -191,7 +191,7 @@ export async function fakeComposio(): Promise<FakeComposio> {
       return;
     }
     say({ event: "pusher:connection_established", data: JSON.stringify({ socket_id: socketId, activity_timeout: 120 }) });
-    let pending = Buffer.alloc(0);
+    let pending: Buffer = Buffer.alloc(0);
     socket.on("data", (chunk: Buffer) => {
       const { messages, rest } = unframe(Buffer.concat([pending, chunk]));
       pending = rest;

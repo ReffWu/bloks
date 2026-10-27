@@ -511,6 +511,7 @@ import {
 import {
   appEventTurn,
   appSentence,
+  appWhen,
   checkConfig,
   eventSummary,
   eventWords,
@@ -9329,6 +9330,84 @@ async function patchAppWatcher(res: ServerResponse, w: Watcher, body: Record<str
   syncAppDelivery();
   broadcast({ kind: "watchers" });
   return json(res, 200, { watcher: watcherView(w) });
+}
+
+/**
+ * An admin's app watchers, through the member surface. The apps watched
+ * are the owner's connections, so what an admin sets up is narrow: an
+ * agent whose team conversation they are on, its turns there and as the
+ * admin's own (none of the owner's tools the admin could not ask for
+ * themselves), acting rather than rehearsing on the owner's folders. Each
+ * is the admin's to change and remove; the owner sees, changes and removes
+ * every one in Watchers, and the team conversation is told when one starts.
+ */
+async function memberAppWatchers(
+  req: IncomingMessage,
+  res: ServerResponse,
+  action: Extract<MemberAction, { kind: "appWatchers" }>,
+  person: { id: string; name: string },
+) {
+  const mine = (w: Watcher) => w.kind === "app" && w.app?.madeBy?.personId === person.id;
+  if (action.method === "GET") return json(res, 200, { watchers: watchers.filter(mine).map(watcherView) });
+  const api = triggerApi();
+  if (action.method === "POST") {
+    if (!api) return json(res, 409, { error: `${hostName()} has not set up app events in this workspace yet.` });
+    const body = await readBody(req);
+    const bot = typeof body.botId === "string" ? store.bot(body.botId) : null;
+    const who = people.person(person.id);
+    const lane = bot && !bot.archivedAt && !bot.solo && who && access.inTeamConversation(bot, asWho(who)) ? store.teamLane(bot.id) : null;
+    if (!bot || !lane) return json(res, 404, { error: "no agent whose team conversation you are on" });
+    const checked = cleanWatcher({ ...body, kind: "app", botId: bot.id, mode: "act", thread: undefined }, () => true);
+    if (!checked.ok) return json(res, 400, { error: checked.error });
+    if (watchers.length >= 50) return json(res, 409, { error: "fifty watchers is the limit" });
+    const { app: fields, ...rest } = checked.value;
+    const w: Watcher = {
+      id: newId(),
+      ...rest,
+      enabled: false,
+      createdAt: Date.now(),
+      fires: [],
+      app: { ...fields!, toolkitName: appName(fields!.toolkit), madeBy: { personId: person.id, name: person.name }, runs: [], turnsAt: [], seen: [] },
+    };
+    try {
+      await startAppWatcher(w, api);
+    } catch (e) {
+      const failed = composioStatus(e);
+      return json(res, failed.status, { error: failed.error });
+    }
+    watchers.push(w);
+    saveWatchers();
+    syncAppDelivery();
+    broadcast({ kind: "watchers" });
+    const said = store.appendMessage(lane.id, {
+      role: "bot",
+      kind: "notice",
+      event: true,
+      text: `${person.name} set ${bot.name} to act here when ${appWhen(w.app!)}.`,
+    });
+    broadcast({ kind: "message", threadId: lane.id, message: said });
+    return json(res, 201, { watcher: watcherView(w) });
+  }
+  const w = watchers.find((x) => x.id === action.watcherId);
+  if (!w || !mine(w)) return json(res, 404, { error: "no such app watcher of yours" });
+  if (action.method === "DELETE") {
+    if (w.app?.triggerId && api) {
+      try {
+        await api.deleteTrigger(w.app.triggerId);
+      } catch (e) {
+        return json(res, 502, { error: `Composio did not remove its trigger, so the watcher is kept. ${composioStatus(e).error}` });
+      }
+    }
+    watchers = watchers.filter((x) => x.id !== w.id);
+    saveWatchers();
+    syncAppDelivery();
+    broadcast({ kind: "watchers" });
+    return json(res, 200, { ok: true });
+  }
+  // what it says, its filter, its limits and on or off; never another
+  // agent, another conversation, or a rehearsal
+  const { botId: _b, thread: _t, mode: _m, kind: _k, ...body } = await readBody(req);
+  return patchAppWatcher(res, w, body, false);
 }
 
 /** Check now, for an app: whether it can hear, in one line. */
@@ -18196,6 +18275,20 @@ async function serveMember(
         .catch(() => {});
       return json(res, 200, { ok: true });
     }
+
+    case "appTriggers": {
+      const api = triggerApi();
+      if (!api) return json(res, 409, { error: `${hostName()} has not set up app events in this workspace yet.` });
+      try {
+        return json(res, 200, { toolkit: action.toolkit, appName: appName(action.toolkit), types: await triggerTypesOf(api, action.toolkit.toLowerCase()) });
+      } catch (e) {
+        const failed = composioStatus(e);
+        return json(res, failed.status, { error: failed.error });
+      }
+    }
+
+    case "appWatchers":
+      return memberAppWatchers(req, res, action, { id: personId, name: who.name });
 
     case "notes":
       return json(res, 200, { notes: workspacePeople.notesOf(personId).list() });

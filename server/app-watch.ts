@@ -591,13 +591,19 @@ export function appEventTurn(
   ].join("\n");
 }
 
+/** When it acts, in words: `Gmail says “New message”, only when it
+ * mentions “Acme”`. */
+export function appWhen(app: Pick<AppWatch, "toolkit" | "toolkitName" | "trigger" | "triggerName" | "filter">): string {
+  const event = (app.triggerName || app.trigger).replace(/\.$/, "");
+  const filter = app.filter?.length ? `, only when it mentions ${app.filter.map((f) => `“${f}”`).join(" or ")}` : "";
+  return `${app.toolkitName || app.toolkit} says “${event}”${filter}`;
+}
+
 /** The watcher read back as a sentence, for the card and the list. */
 export function appSentence(
   agentName: string,
   app: Pick<AppWatch, "toolkit" | "toolkitName" | "trigger" | "triggerName" | "filter">,
   conversation: string,
 ): string {
-  const event = (app.triggerName || app.trigger).replace(/\.$/, "");
-  const filter = app.filter?.length ? `, only when it mentions ${app.filter.map((f) => `“${f}”`).join(" or ")}` : "";
-  return `When ${app.toolkitName || app.toolkit} says “${event}”${filter}, ${agentName} acts in ${conversation}.`;
+  return `When ${appWhen(app)}, ${agentName} acts in ${conversation}.`;
 }

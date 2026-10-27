@@ -51,7 +51,11 @@ export type MemberAction =
   | { kind: "noteDrop"; noteId: string }
   // the people routes: anyone may list who is in, an admin may change it
   | { kind: "people" }
-  | { kind: "admin"; method: string; path: string };
+  | { kind: "admin"; method: string; path: string }
+  // an admin's own app watchers (server/app-watch.ts), whose turns go to
+  // a team conversation they are on; and the events an app offers
+  | { kind: "appWatchers"; method: string; watcherId?: string }
+  | { kind: "appTriggers"; toolkit: string };
 
 const ID = "([A-Za-z0-9_-]{1,64})";
 
@@ -141,6 +145,14 @@ const ROUTES: Array<{ method: string; pattern: RegExp; action: (m: RegExpMatchAr
       ["PATCH", new RegExp(`^/api/workspace/rooms/${ID}/access$`)],
     ] as const
   ).map(([method, pattern]) => ({ method, pattern, action: (m: RegExpMatchArray) => ({ kind: "admin" as const, method, path: m[0] }) })),
+  { method: "GET", pattern: /^\/api\/member\/app-watchers$/, action: () => ({ kind: "appWatchers", method: "GET" }) },
+  { method: "POST", pattern: /^\/api\/member\/app-watchers$/, action: () => ({ kind: "appWatchers", method: "POST" }) },
+  ...(["PATCH", "DELETE"] as const).map((method) => ({
+    method,
+    pattern: new RegExp(`^/api/member/app-watchers/${ID}$`),
+    action: (m: RegExpMatchArray) => ({ kind: "appWatchers" as const, method, watcherId: m[1] }),
+  })),
+  { method: "GET", pattern: new RegExp(`^/api/member/app-triggers/${ID}$`), action: (m) => ({ kind: "appTriggers", toolkit: m[1] }) },
 ];
 
 export type Verdict = { ok: true; action: MemberAction } | { ok: false; status: number; error: string };
@@ -164,10 +176,16 @@ export function memberCan(
   const action = route.action(path.match(route.pattern)!);
   // A guest from a chat channel is in rooms, not in the workspace: the
   // workspace's agents and people are not theirs to reach.
-  const workspaceWide = ["workspace", "agents", "newAgent", "usage", "dropAgent", "leaveWorkspace", "conversation", "say", "reply", "notes", "note", "noteKeep", "noteDrop", "people", "admin"];
+  const workspaceWide = ["workspace", "agents", "newAgent", "usage", "dropAgent", "leaveWorkspace", "conversation", "say", "reply", "notes", "note", "noteKeep", "noteDrop", "people", "admin", "appWatchers", "appTriggers"];
   if (workspaceWide.includes(action.kind) && !workspaceRole) return { ok: false, status: 403, error: "not available to room guests" };
   if (action.kind === "admin" && workspaceRole !== "admin") {
     return { ok: false, status: 403, error: "only the owner and admins can manage people" };
+  }
+  // A member's agents act when they are asked; an app that starts them
+  // on its own is the owner's or an admin's to set up, as the owner's
+  // own watchers are the owner's.
+  if ((action.kind === "appWatchers" || action.kind === "appTriggers") && workspaceRole !== "admin") {
+    return { ok: false, status: 403, error: "only the owner and admins can set agents to act on events in apps" };
   }
   if (!("roomId" in action)) return { ok: true, action };
 

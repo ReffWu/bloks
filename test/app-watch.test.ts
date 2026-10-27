@@ -4,7 +4,13 @@
 // down and fencing it as data, the limits), then the REST client and the
 // realtime channel against a stand-in Composio with no network.
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   appEventTurn,
@@ -236,6 +242,63 @@ describe("what an agent may do", () => {
     assert.equal(allows("me", "POST", "/api/watchers/w1/decline").ok, false);
     assert.equal(allows("me", "GET", "/api/app-triggers/gmail/accounts").ok, false);
     assert.ok(FEATURES.includes("app-watchers"));
+  });
+});
+
+describe("the command line", () => {
+  test("watch-app files a proposal the way the route reads it; app-events lists what an app can say", async (t) => {
+    const cli = fileURLToPath(new URL("../bin/bloks.mjs", import.meta.url));
+    const home = mkdtempSync(join(tmpdir(), "bloks-app-cli-"));
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+    const calls: Array<{ method?: string; path?: string; body: any }> = [];
+    const server = createServer(async (req, res) => {
+      let text = "";
+      for await (const chunk of req) text += chunk;
+      calls.push({ method: req.method, path: req.url, body: text ? JSON.parse(text) : null });
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify(
+          req.url?.startsWith("/api/app-triggers/")
+            ? { types: [{ slug: "GITHUB_ISSUE_LABELED_EVENT", name: "Issue labelled", description: "", delivery: "webhook", fields: [{ key: "owner", type: "string", required: true, title: "Owner", description: "" }] }] }
+            : { watcher: { id: "w1" } },
+        ),
+      );
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const run = (args: string[]) =>
+      new Promise<{ code: number; out: string; err: string }>((resolve) => {
+        execFile(process.execPath, [cli, ...args], { env: { HOME: home, PATH: "/nonexistent", BLOKS_URL: url, BLOKS_TOKEN: "blk_fixture" }, timeout: 10_000 }, (error, out, err) =>
+          resolve({ code: typeof error?.code === "number" ? error.code : 0, out, err }),
+        );
+      });
+
+    assert.equal((await run(["watch-app", "github", "GITHUB_ISSUE_LABELED_EVENT", "--config", "owner=octo, repo=app", "--filter", "bug", "--do", "Triage it.", "--thread", "Triage"])).code, 0);
+    assert.deepEqual(calls.at(-1), {
+      method: "POST",
+      path: "/api/watchers",
+      body: { kind: "app", toolkit: "github", trigger: "GITHUB_ISSUE_LABELED_EVENT", instruction: "Triage it.", config: { owner: "octo", repo: "app" }, filter: "bug", thread: "Triage" },
+    });
+    await run(["watch-app", "gmail", "GMAIL_NEW_GMAIL_MESSAGE", "--config", '{"interval": 5}', "--do", "Summarise."]);
+    assert.deepEqual(calls.at(-1)?.body.config, { interval: 5 });
+
+    const listed = await run(["app-events", "github"]);
+    assert.equal(calls.at(-1)?.path, "/api/app-triggers/github");
+    assert.match(listed.out, /GITHUB_ISSUE_LABELED_EVENT/);
+    assert.match(listed.out, /within seconds/);
+
+    for (const [args, error] of [
+      [["watch-app", "github"], /needs an app and an event/],
+      [["watch-app", "github", "X_Y", "--config", "owner"], /needs --do|has no =/],
+      [["watch-app", "github", "X_Y", "--do", "x", "--config", "{nope"], /JSON object/],
+    ] as const) {
+      const before = calls.length;
+      const result = await run([...args]);
+      assert.notEqual(result.code, 0);
+      assert.match(result.out + result.err, error);
+      assert.equal(calls.length, before, "nothing is sent for a command that is wrong");
+    }
   });
 });
 
