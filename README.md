@@ -283,6 +283,15 @@ file or a `bloks://install?url=` link through the same review, and use
   several agents try the same task and keep the best attempt.
 - **Rewind to here.** Take a conversation back to a message you sent, and
   the files with it.
+- **Work somewhere else.** An agent on Claude Code, Codex or another engine
+  that runs a program can work in a Docker container or on another
+  machine over SSH: a throwaway container that can break nothing here,
+  or the build server or GPU box the work needs. Its engine runs there
+  and talks to Bloks over the same stdio it always does. Set it under
+  the agent's Engine settings, where Test goes there and says exactly
+  what is missing. Your engine sign-in is never copied there unless you
+  say so on a card that names each file. Files it saves come back as
+  cards; undo works on a mounted folder and is said to be off elsewhere.
 - **Messages while it works.** Say something mid-turn and Bloks reads it:
   a stop stops, a correction goes in now, a new request waits its turn.
   One press changes its mind.

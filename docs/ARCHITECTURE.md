@@ -3483,6 +3483,67 @@ only a window on this computer and never an agent. Claude Code and Codex
 report signed in or not (`claude auth status`, `codex login status`), and
 the first-run check counts an engine as ready only when it is both.
 
+## Where an agent works
+
+An agent whose engine runs a program (Claude Code, Codex, Antigravity and
+the ACP agents) can work in a Docker container or on another machine
+over SSH (`bot.workplace`, set with `PUT /api/bots/:id/workplace`, the
+owner's alone on this computer). Three files:
+
+- `server/workplace.ts` is pure: the shape of a place, the checks a saved
+  one passes, and the exact command lines (`docker run`, `docker exec -i`,
+  `ssh -T` with its options and reverse tunnel), the bootstrap and the
+  preamble, the probe a Test runs and the sentences it becomes.
+- `server/workplace-run.ts` runs them. Before a turn it gets the place
+  ready (makes, starts or remakes a container Bloks made, labelled with
+  the agent and a hash of the settings it was made from; checks a host is
+  there) and asks it one quick question, its home and whether it has
+  Node. `begin` then opens the gate for the turn's tokens and a gate
+  token of its own, sends the person's attachments ahead and rewrites the
+  words to point at them there, and hands the driver a `PlaceRun`
+  (`SendTurnInput.place`). On `turn.completed`, `end` closes the gate,
+  brings the lane's outbox back into the agent's files, which the
+  artifact sweep then cards, and removes the run's folder there.
+- `server/workplace-gate.ts` is the only way back in: a listener of its
+  own that answers a live turn's token and passes `/api/*` to the
+  workspace with only the headers the CLI needs, and serves each MCP
+  server of the turn at `/mcp/<slug>` as streamable HTTP, running a stdio
+  one here per session.
+
+A driver changes in three places when `turn.place` is set: it starts its
+engine with `place.spawn` (the engine as it is named there, with only the
+turn's environment and the driver's own switches), writes files with
+`place.file` (they travel in the preamble), and points the engine at
+every MCP server through `place.mcp`. The protocol is untouched: the
+process there speaks the same stdio JSON lines.
+
+The bootstrap is one line of `sh` that reads its preamble from stdin up to
+a sentinel random per run, evaluates it (files written `0600` in
+`~/.bloks/run/<id>`, environment exported, the working folder made and
+entered, its pid written down), and `exec`s the engine, which inherits
+stdin from the byte after. When the local `docker`/`ssh` client exits,
+however it exits, a reaper run there ends that pid (and its group, under
+SSH) if `/proc` still says it is this run's.
+
+Bloks is reached from there through an SSH reverse tunnel bound to the
+far loopback, at `host.docker.internal` (the bridge's address on Linux,
+where the gate also listens), or with a container's network off, through
+`bin/bloks-line.mjs`: copied in for the turn and run with `docker exec -i`,
+it listens on the container's loopback and carries each connection back
+over its stdio framed as type, id, length (`server/workplace-line.ts`),
+where the Bloks opening goes to the gate and the proxy opening accepts a
+`CONNECT` only to the engine's own hosts on 443 (`LINE_HOSTS`).
+
+What assumes this computer's files is decided per place: checkpoints and
+undo run on the folder a container mounts and are off otherwise (the
+agent is told, and the settings say so); rehearsals and shared rooms
+refuse with a sentence; memory is kept through `bloks memory`; a lane
+records the place its session lives in (`task.where`) and starts a new
+one, told the conversation, when its agent moves. A dropped SSH link
+fails the turn with a notice and the place is looked at again until it
+answers, which the header shows (`workplaceStatus`). A container Bloks
+made is stopped, or removed, after its idle minutes.
+
 ## Usage and spending limits
 
 Usage is counted from events the drivers already emit

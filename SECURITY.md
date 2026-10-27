@@ -337,6 +337,62 @@ functions a test can walk. Workspaces never share a folder, so an agent
 in one cannot read another's memory, and the safety floor keeps agents
 out of every workspace's folder, not only their own's.
 
+## Agents that work somewhere else
+
+An agent can work in a Docker container or on another machine over SSH
+instead of on this computer. Its engine runs there; its stdio is carried
+back over `docker exec -i` or `ssh -T`. The boundary between the two
+sides is drawn on purpose:
+
+- **Only the owner sets it, on this computer.** The routes refuse an
+  agent's token, a member, a paired device and any website. Bloks only
+  ever stops or removes a container it made for that agent, which it
+  knows by a label it put there; a container you run is only execed into.
+- **What crosses to the other side is the turn's own.** Its token, which
+  lasts the turn; the agent's command line; the persona and the MCP
+  config it would read here; the files the person attached to the
+  message; and the secrets you saved for agents. All of it travels on the
+  engine's own stdin, ahead of the engine, never in an argument that
+  `ps` on either machine could read. This computer's environment does
+  not go, and nor does any engine key or workspace key: Composio's, the
+  box token, an `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
+- **Your engine sign-in stays here.** Bloks never copies a sign-in to a
+  container or a host on its own. The Test says when the engine there is
+  not signed in, and offers to open Terminal signed in there, or to copy
+  your sign-in file after a card that names the file at both ends and
+  says that anyone who can use that machine can then use it as you. The
+  copy happens only for the plan that card showed, and is recorded with
+  the agent. A Claude Code sign-in kept in the macOS Keychain is not a
+  file, and is never copied.
+- **The way back in is a gate, not the workspace.** On this computer a
+  request with no credential is you, so the other side never reaches the
+  workspace's own server. It reaches a gate (`server/workplace-gate.ts`)
+  on a port of its own: over an SSH reverse tunnel bound to the far
+  side's loopback, at Docker's host address, or with the container's
+  network off over a line of Bloks' own through `docker exec`. The gate
+  answers nothing but a running turn's token, passes the workspace only
+  the headers the command line needs (no origin, no cookie, no relay
+  mark), where the agent's usual rules apply, and closes when the turn
+  ends. The tunnel's port on the far loopback can be reached by anyone
+  on that machine, and they get nothing without the token.
+- **MCP servers stay here.** The approval bridge, the computer, the
+  browser and your own servers run on this computer as before, and the
+  engine there reaches each over HTTP through the gate. A server's key is
+  added here, so it never leaves either.
+- **SSH is keys only.** Bloks runs ssh with `BatchMode=yes`: no password
+  prompt, and a host key this computer does not know is a refusal to fix
+  in Terminal, never a question answered for you. A host is a name from
+  your SSH config or `user@host`, and nothing that begins with a dash,
+  which ssh would read as an option.
+- **Network off means two hosts.** A container made with its network off
+  reaches only Bloks and its engine's own service (`LINE_HOSTS` in
+  `server/workplace.ts`), on 443, through a proxy Bloks answers. An engine
+  whose hosts depend on how it is set up cannot be run that way.
+- **What it does there is not undoable from here** unless its folder is
+  this computer's own, mounted into a container. The settings say so, and
+  so is the agent told. What it saves to its outbox there is brought back
+  as plain files under plain names, never a link.
+
 ## Skills are executable trust
 
 A skill is markdown that gets injected into an agent's system prompt on
@@ -454,6 +510,7 @@ from source. See [docs/RELEASING.md](docs/RELEASING.md).
 - Secrets are not in the Keychain. The desktop app keeps your Bloks key
   there, but each workspace's API keys are still in its `config.json`.
 - There is no sandbox between an agent and the rest of your machine
-  beyond what the provider CLI enforces. That includes agents a member
-  of your workspace talks to: give a team agent only the folder and the
-  tools you would let those people near.
+  beyond what the provider CLI enforces, unless you set it to work in a
+  container (see Agents that work somewhere else). That includes agents
+  a member of your workspace talks to: give a team agent only the folder
+  and the tools you would let those people near.
