@@ -181,9 +181,14 @@ export const RULES: Rule[] = [
   { method: "PATCH", path: "/api/routines/:id", why: "change a routine" },
   { method: "DELETE", path: "/api/routines/:id", why: "drop a routine" },
   { method: "GET", path: "/api/watchers", why: "see its own watchers" },
-  { method: "POST", path: "/api/watchers", why: "watch a folder, a web page or a feed, run a cheap check, or wait for the person to arrive at or leave a place, and act when it finds something" },
+  // An app watcher an agent files is only ever a proposal: the route puts
+  // a card in front of the person and nothing listens until they say yes
+  // (POST /api/watchers/:id/confirm is not on this list, and the route
+  // refuses an agent's PATCH of one).
+  { method: "POST", path: "/api/watchers", why: "watch a folder, a web page or a feed, run a cheap check, wait for the person to arrive at or leave a place, or propose acting on an event in a connected app, and act when it finds something" },
   { method: "PATCH", path: "/api/watchers/:id", why: "change one of its own watchers without replacing it" },
-  { method: "DELETE", path: "/api/watchers/:id", why: "stop one of its own watchers" },
+  { method: "DELETE", path: "/api/watchers/:id", why: "stop one of its own watchers, or withdraw an app watcher it proposed" },
+  { method: "GET", path: "/api/app-triggers/:id", why: "see the events a connected app can start work on, and the config each asks for" },
   // Standing intents (server/intents.ts): an agent proposes, the person
   // approves. Nothing on this list approves, pauses or changes one; the
   // route files an agent's as a proposal whatever the body says.

@@ -165,4 +165,10 @@ export const FEATURES: readonly string[] = [
   // an answer's wake keeps to, set by the owner from any device of theirs
   // and kept by this server across restarts (server/attention.ts)
   "attention",
+  // watchers of kind "app": an event in a connected app starts a turn
+  // (server/app-watch.ts). GET /api/app-triggers/:toolkit and its
+  // /accounts, POST /api/watchers/:id/confirm and /decline for an agent's
+  // proposal, `app` on each such watcher with its run history, and `apps`
+  // on GET /api/watchers saying whether events can be heard
+  "app-watchers",
 ];

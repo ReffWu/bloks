@@ -81,6 +81,22 @@ export interface OptionCardData {
    * card stays in the conversation, where one only hidden read as a
    * question that was never asked. */
   closed?: string;
+  /** Present when an agent proposed an app watcher (server/app-watch.ts):
+   * what it would watch and who would act where, for the person to start
+   * or not. Answered through the watcher's own routes, never as a reply. */
+  appWatch?: {
+    watcherId: string;
+    toolkit: string;
+    appName: string;
+    trigger: string;
+    eventName: string;
+    config: Record<string, string | number | boolean>;
+    filter: string[];
+    botId: string;
+    agentName: string;
+    conversation: string;
+    instruction: string;
+  };
   /** Present when a lead has proposed hiring a team (server/teams.ts). */
   team?: {
     room: string;

@@ -38,7 +38,9 @@ export function nextDueAt({ routines, watchers, suspended, now }: NextDueInput):
     consider(nextScheduledAfter(routine, new Date(now))?.getTime());
   }
   for (const watcher of watchers) {
-    if (!watcher.enabled || watcher.failing || watcher.kind === "folder" || watcher.kind === "place") continue;
+    // a folder, a place and an app are told when something happens; only
+    // what looks on a schedule needs waking for
+    if (!watcher.enabled || watcher.failing || watcher.kind === "folder" || watcher.kind === "place" || watcher.kind === "app") continue;
     if (suspended(watcher.botId)) continue;
     const every = Math.max(1, Number(watcher.every) || 0) * 60_000;
     consider(Math.max(now, (watcher.lastCheck ?? 0) + every));

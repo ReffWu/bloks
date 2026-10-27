@@ -17,7 +17,8 @@
 import type { AppConfig } from "./config.ts";
 
 const MCP_ENDPOINT = "https://connect.composio.dev/mcp";
-const CATALOG_ENDPOINT = "https://backend.composio.dev/api/v3";
+// a test serves its own (BLOKS_COMPOSIO_BACKEND), as app watchers do
+const CATALOG_ENDPOINT = `${(process.env.BLOKS_COMPOSIO_BACKEND || "https://backend.composio.dev").replace(/\/+$/, "")}/api/v3`;
 
 /** The one MCP tool this file drives. Every connection operation is this
  * call with a different `action`, which is why they all funnel through

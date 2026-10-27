@@ -88,6 +88,10 @@ export async function startHarness(extraEnv: Record<string, string> = {}): Promi
         COMPOSIO_KEY: "",
         BOX_TOKEN: "",
         BLOKS_COMPOSIO_KEY: "",
+        // Composio's project side and its realtime channel (app watchers):
+        // never the real ones; a test that wants them serves its own
+        BLOKS_COMPOSIO_BACKEND: "http://127.0.0.1:9",
+        BLOKS_COMPOSIO_REALTIME: "ws://127.0.0.1:9",
         BLOKS_BOX_TOKEN: "",
         OPENAI_API_KEY: "",
         ANTHROPIC_API_KEY: "",

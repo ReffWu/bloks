@@ -505,8 +505,30 @@ import {
   SETTLE_MS,
   watcherTurn,
   WATCHING,
+  type AppFields,
   type Watcher,
 } from "./watchers.ts";
+import {
+  appEventTurn,
+  appSentence,
+  checkConfig,
+  eventSummary,
+  eventWords,
+  firstHearing,
+  MAX_PROPOSED_PER_AGENT as MAX_APP_PROPOSALS,
+  missedWindow,
+  passesFilter,
+  readEvent,
+  readTriggerType,
+  recordRun,
+  trimPayload,
+  withinLimits,
+  type AppRun,
+  type AppWatch,
+  type TriggerEvent,
+  type TriggerType,
+} from "./app-watch.ts";
+import { ComposioError, RealtimeDelivery, restTriggerApi, type ConnectedAccount, type DeliveryState, type TriggerApi, type TriggerDelivery } from "./composio-triggers.ts";
 import { MemoryJournal, readMemoryText } from "./memory-journal.ts";
 import {
   applyPlan,
@@ -8245,8 +8267,9 @@ function saveWatchers() {
 }
 /** What a client sees: everything but the last look's contents, and
  * whether it is paused because its agent is archived. */
-const watcherView = ({ seen: _seen, seenItems: _items, ...rest }: Watcher) => ({
+const watcherView = ({ seen: _seen, seenItems: _items, app, ...rest }: Watcher) => ({
   ...rest,
+  ...(app ? { app: appView(app) } : {}),
   ...(suspendedFor(rest.botId) ? { suspended: "archived" as const } : {}),
 });
 
@@ -8452,6 +8475,9 @@ async function checkWatcher(id: string, manual = false): Promise<{ fired: boolea
   // and moved its last look on for work nobody was there to do.
   const owner = store.bot(w.botId);
   if (owner?.archivedAt) return { fired: false, note: `${owner.name} is archived, so this watcher is paused until it is restored.` };
+  // An app is not looked at: Composio says when something happens. A
+  // look by hand asks whether it is still able to hear.
+  if (w.kind === "app") return appLook(w);
   // Stopped for failing (countLook): only a look by hand, or the person
   // changing it, starts it again.
   if (w.failing && !manual) return { fired: false, note: "It stopped looking after failing again and again. Change it, or look by hand, to start it again." };
@@ -8677,7 +8703,7 @@ setInterval(() => {
   const now = Date.now();
   for (const w of watchers) {
     if (watcherFinished(w, now)) continue;
-    if (!w.enabled || w.failing || suspendedFor(w.botId) || w.kind === "place") continue;
+    if (!w.enabled || w.failing || suspendedFor(w.botId) || w.kind === "place" || w.kind === "app") continue;
     if ((w.lastCheck ?? 0) + w.every * 60_000 <= now) void checkWatcher(w.id);
   }
   lookAtPlaces();
@@ -8819,6 +8845,508 @@ function placeNews(w: Watcher, at: SharedLocation, now: number): string {
     `${who} ${crossingWords(w.target, w.radius, w.when ?? "arrive")}.`,
     `Their iPhone placed them in ${placeWords(at)} ${agoWords(now - at.observedAt)} (${new Date(at.observedAt).toISOString()}), ${precisionWords(at)}.`,
   ].join(" ");
+}
+
+// ── app watchers (server/app-watch.ts, server/composio-triggers.ts) ────
+
+/** Said wherever an app watcher cannot go on without the project key. */
+const NEEDS_PROJECT_KEY =
+  "App watchers need your Composio project key (it starts ak_) as well as the connector key. Add it in Settings, Apps and keys.";
+/** When Bloks last knew it was hearing events, kept across restarts so
+ * the time it was closed can be shown as missed. */
+const APP_DELIVERY_FILE = join(DATA_DIR, "app-delivery.json");
+let appLiveAt: number | undefined = (() => {
+  const saved = readSaved<{ liveAt?: unknown }>(APP_DELIVERY_FILE, {}, (v): v is { liveAt?: unknown } => Boolean(v) && typeof v === "object");
+  return typeof saved.liveAt === "number" && Number.isFinite(saved.liveAt) ? saved.liveAt : undefined;
+})();
+let appDelivery: TriggerDelivery | null = null;
+let appDeliveryKey = "";
+let appListening: DeliveryState = { state: "down" };
+
+function noteAppLive(at: number) {
+  appLiveAt = at;
+  try {
+    writeFileAtomic(APP_DELIVERY_FILE, JSON.stringify({ liveAt: at }), 0o600);
+  } catch {
+    /* kept in memory; written next minute */
+  }
+}
+
+/** Composio's trigger side, with the project key, or null without one. */
+function triggerApi(): TriggerApi | null {
+  const key = cfg.composio?.apiKey;
+  return key ? restTriggerApi(key) : null;
+}
+
+/** App watchers that should be hearing events now. */
+function listeningApps(): Watcher[] {
+  return watchers.filter((w) => w.kind === "app" && w.app?.triggerId && !w.app.proposal && w.enabled && !w.done && !suspendedFor(w.botId));
+}
+
+/**
+ * One connection to Composio's realtime channel while any app watcher is
+ * listening, and none otherwise; a changed key is a new connection. Called
+ * after anything that could change which app watchers listen.
+ */
+function syncAppDelivery() {
+  const key = cfg.composio?.apiKey ?? "";
+  const wanted = Boolean(key) && !movedAway() && listeningApps().length > 0;
+  if (appDelivery && (!wanted || key !== appDeliveryKey)) {
+    appDelivery.stop();
+    appDelivery = null;
+    if (appListening.state === "live") noteAppLive(Date.now());
+    appListening = { state: "down" };
+  }
+  if (!wanted || appDelivery) return;
+  appDeliveryKey = key;
+  appDelivery = new RealtimeDelivery(restTriggerApi(key));
+  appDelivery.start({ event: (raw) => void hearAppEvent(raw), state: appDeliveryState });
+}
+
+/** The line came up, went down, or the key was refused. Coming up after
+ * a gap is when what was missed is said, since the channel does not
+ * replay: each listening watcher records the stretch it heard nothing. */
+function appDeliveryState(s: DeliveryState) {
+  const was = appListening.state;
+  appListening = s;
+  const now = Date.now();
+  if (s.state === "live" && was !== "live") {
+    if (appDelivery && !appDelivery.catchesUp) {
+      for (const w of listeningApps()) {
+        const gap = missedWindow(appLiveAt, w.app!.since, now);
+        if (!gap) continue;
+        recordRun(w.app!, {
+          at: now,
+          outcome: "missed",
+          ...gap,
+          summary: `Bloks was not listening from ${new Date(gap.from).toLocaleString()} to ${new Date(gap.to).toLocaleString()}, so anything that happened in ${w.app!.toolkitName || w.app!.toolkit} then was not heard.`,
+        });
+      }
+      saveWatchers();
+    }
+    noteAppLive(now);
+  } else if (s.state !== "live" && was === "live") {
+    noteAppLive(now);
+  }
+  if (s.state !== was || s.error) broadcast({ kind: "watchers" });
+}
+
+// While listening, the time is written down each minute: a crash or a
+// force quit leaves the last minute it was heard, not the last restart.
+setInterval(() => {
+  if (appListening.state === "live") noteAppLive(Date.now());
+}, 60_000).unref?.();
+
+/** An app's name as people say it: the catalog's label, else its slug. */
+function appName(toolkit: string): string {
+  return composio.connectorCatalogFallback().find((c) => c.slug === toolkit)?.label ?? toolkit;
+}
+
+/** The trigger types an app offers, for ten minutes per app and key: the
+ * list is a catalog, not state, and the form asks for it on every pick. */
+const triggerTypeCache = new Map<string, { at: number; key: string; types: TriggerType[] }>();
+async function triggerTypesOf(api: TriggerApi, toolkit: string): Promise<TriggerType[]> {
+  const key = cfg.composio?.apiKey ?? "";
+  const kept = triggerTypeCache.get(toolkit);
+  if (kept && kept.key === key && Date.now() - kept.at < 10 * 60_000) return kept.types;
+  const types = (await api.listTriggerTypes(toolkit)).map(readTriggerType).filter((t): t is TriggerType => t !== null);
+  triggerTypeCache.set(toolkit, { at: Date.now(), key, types });
+  return types;
+}
+
+/**
+ * What an app watcher needs from Composio before it can listen: its
+ * trigger type (so the config is checked against what it declares), and
+ * the account it watches, the one asked for or the only one there is.
+ * Throws with a status a route can answer.
+ */
+async function resolveApp(api: TriggerApi, fields: AppFields): Promise<{ type: TriggerType; config: Record<string, string | number | boolean>; account: ConnectedAccount }> {
+  const refuse = (status: number, message: string) => Object.assign(new Error(message), { status });
+  const types = await triggerTypesOf(api, fields.toolkit);
+  const type = types.find((t) => t.slug === fields.trigger) ?? readTriggerType(await api.getTriggerType(fields.trigger).catch(() => null));
+  if (!type) throw refuse(400, `${appName(fields.toolkit)} has no event called ${fields.trigger}. See the ones it has with bloks app-events ${fields.toolkit}.`);
+  const config = checkConfig(type.fields, fields.config);
+  if (!config.ok) throw refuse(400, config.error);
+  const accounts = await api.listAccounts(fields.toolkit);
+  const account = fields.accountId ? accounts.find((a) => a.id === fields.accountId) : accounts[0];
+  if (!account) {
+    throw refuse(
+      409,
+      fields.accountId
+        ? `That ${appName(fields.toolkit)} account is not connected in your Composio project any more. Pick another, or connect it again.`
+        : `No ${appName(fields.toolkit)} account is connected in your Composio project yet. Connect one there, then try again.`,
+    );
+  }
+  return { type, config: config.value, account };
+}
+
+/** A Composio failure as a route answers it. */
+function composioStatus(e: unknown): { status: number; error: string } {
+  const status = (e as { status?: number }).status;
+  if (e instanceof ComposioError) return { status: e.status === 401 || e.status === 403 ? 409 : 502, error: e.message };
+  return { status: typeof status === "number" && status >= 400 ? status : 502, error: redactSecrets((e as Error).message ?? String(e)).slice(0, 300) };
+}
+
+/** What a client sees of an app watcher: no remembered event ids. */
+function appView(app: AppWatch) {
+  const { seen: _seen, turnsAt, ...rest } = app;
+  const day = Date.now() - 24 * 60 * 60_000;
+  return { ...rest, turnsToday: turnsAt.filter((at) => at > day).length };
+}
+
+/** Where an app watcher's turns go: an admin's into the agent's team
+ * conversation, everyone else's as any watcher's (watcherLane). */
+function appLane(w: Watcher, bot: BotRecord): TaskRecord | null {
+  if (w.app?.madeBy) return store.teamLane(bot.id);
+  return watcherLane(w, bot);
+}
+
+/** The conversation an app watcher's turns go to, as the card says it. */
+function appConversation(w: Pick<Watcher, "thread" | "app">, bot: BotRecord): string {
+  if (w.app?.madeBy) return `${bot.name}'s team conversation`;
+  const named = w.thread ? bot.tasks.find((t) => t.id === w.thread || t.title === w.thread) : undefined;
+  if (named) return `“${named.title}”`;
+  if (w.thread) return `a new conversation, “${w.thread}”`;
+  return `“${mainLaneOf(bot)?.title ?? "General"}”`;
+}
+
+/**
+ * One event's turn: in the conversation the watcher names, queued like a
+ * person's message when that one is busy, or on a copy when it rehearses.
+ * An admin's goes to the team conversation as the admin's own turn, so it
+ * carries none of the owner's tools the admin could not use themselves.
+ */
+async function fireAppTurn(w: Watcher, bot: BotRecord, text: string): Promise<{ laneId?: string; messageId?: string; queued: boolean }> {
+  if (w.mode === "rehearse") {
+    await openRehearsals([bot], text, { quiet: true, via: "watcher" });
+    return { queued: false };
+  }
+  const lane = appLane(w, bot);
+  if (!lane) throw new Error(`${bot.name} has no team conversation for this watcher to speak in.`);
+  const by = w.app?.madeBy;
+  if (by) {
+    const busy = Boolean(lane.busy) || Boolean(steerQueues.get(lane.id)?.items.length) || memberWaiting.has(lane.id);
+    const said = store.appendMessage(lane.id, { role: "user", kind: "text", text, via: "watcher", ...(busy ? { queued: true, queuedAt: Date.now() } : {}) });
+    broadcast({ kind: "message", threadId: lane.id, message: said });
+    if (busy) {
+      const list = memberWaiting.get(lane.id) ?? [];
+      list.push({ personId: by.personId, messageId: said.id, text, botId: bot.id });
+      memberWaiting.set(lane.id, list);
+      return { laneId: lane.id, messageId: said.id, queued: true };
+    }
+    await startTurn(bot.id, text, { taskId: lane.id, presetMessage: true, requester: by.personId });
+    return { laneId: lane.id, messageId: said.id, queued: false };
+  }
+  if (laneWaits(lane)) {
+    const queued = queueOnLane(bot.id, lane.id, text, { via: "watcher" });
+    return { laneId: lane.id, messageId: queued.id, queued: true };
+  }
+  const said = store.appendMessage(lane.id, { role: "user", kind: "text", text, via: "watcher" });
+  broadcast({ kind: "message", threadId: lane.id, message: said });
+  await startTurn(bot.id, text, { taskId: lane.id, presetMessage: true });
+  return { laneId: lane.id, messageId: said.id, queued: false };
+}
+
+/** Something arrived on the realtime channel. Events for triggers this
+ * workspace did not make (another app on the same project) are not ours
+ * and are dropped unread. */
+async function hearAppEvent(raw: unknown) {
+  if (movedAway()) return;
+  const event = readEvent(raw);
+  if (!event) return;
+  if (event.kind === "account") {
+    if (event.status === "ACTIVE") return;
+    pauseAppWatchers(
+      (w) => w.app?.accountId === event.accountId,
+      (w) => `${w.app!.toolkitName || w.app!.toolkit} was disconnected at Composio (${event.status.toLowerCase()}), so this watcher is paused. Connect it again, then switch the watcher back on.`,
+    );
+    return;
+  }
+  for (const w of watchers.filter((x) => x.kind === "app" && x.app?.triggerId === event.triggerId)) await deliverAppEvent(w, event);
+}
+
+/**
+ * One event for one watcher: once only, through its filter and its
+ * limits, then a turn. Every event a listening watcher hears is in its
+ * history, with what became of it.
+ */
+async function deliverAppEvent(w: Watcher, event: TriggerEvent) {
+  const app = w.app!;
+  // switched off here, but its trigger not yet off at Composio: nobody
+  // asked for this one
+  if (!w.enabled || w.done || app.proposal || app.paused || suspendedFor(w.botId)) return;
+  if (!firstHearing(app, event.eventId)) return;
+  const now = Date.now();
+  const summary = eventSummary(event.data, app.triggerName || app.trigger);
+  const run = (outcome: AppRun["outcome"], said: string, more: Partial<AppRun> = {}) =>
+    recordRun(app, { at: now, outcome, eventId: event.eventId, summary: said, ...more });
+  try {
+    const filtered = passesFilter(app.filter, eventWords(trimPayload(event.data).value));
+    if (!filtered.ok) {
+      run("filtered", summary);
+      return;
+    }
+    const limit = withinLimits(app, now);
+    if (!limit.ok) {
+      run("held", summary);
+      w.lastError = limit.why;
+      return;
+    }
+    const bot = store.bot(w.botId);
+    if (!bot) return;
+    try {
+      const fired = await fireAppTurn(w, bot, appEventTurn(w, app, event));
+      run(fired.queued ? "queued" : "started", summary, { ...(fired.laneId ? { laneId: fired.laneId } : {}), ...(fired.messageId ? { messageId: fired.messageId } : {}) });
+      w.lastCheck = now;
+      w.lastError = undefined;
+      w.fires = [{ at: now, summary }, ...w.fires].slice(0, 10);
+      thingWorked(`watcher:${w.id}`, "It heard its next event and started a turn.");
+      if (w.once) {
+        finishWatcher(w, "once");
+        void triggerApi()?.setTriggerEnabled(app.triggerId!, false).catch(() => {});
+        syncAppDelivery();
+      }
+    } catch (e) {
+      const why = redactSecrets((e as Error).message ?? String(e)).slice(0, 200);
+      // An event is not looked for again, so this one is lost: said in
+      // the history and on the watcher, not counted as a failed look.
+      run("failed", summary);
+      w.lastError = `The turn for an event did not start: ${why}`;
+    }
+  } finally {
+    saveWatchers();
+    broadcast({ kind: "watchers" });
+  }
+}
+
+/**
+ * App watchers switched off by Bloks, not the person: their connection
+ * went away. Each is paused with the reason, its trigger at Composio is
+ * switched off too, and its conversation is told once, so the silence that
+ * follows is not mistaken for a quiet inbox.
+ */
+function pauseAppWatchers(match: (w: Watcher) => boolean, note: (w: Watcher) => string) {
+  const hit = watchers.filter((w) => w.kind === "app" && w.app && w.enabled && !w.app.proposal && match(w));
+  if (!hit.length) return;
+  const api = triggerApi();
+  for (const w of hit) {
+    const said = note(w);
+    w.enabled = false;
+    w.app!.paused = { at: Date.now(), why: "disconnected", note: said };
+    w.lastError = said;
+    if (api && w.app!.triggerId) void api.setTriggerEnabled(w.app!.triggerId, false).catch(() => {});
+    const bot = store.bot(w.botId);
+    const lane = bot ? (w.app!.madeBy ? store.teamLane(bot.id) : watcherToldIn(w, bot)) : null;
+    if (lane) {
+      const shown = store.appendMessage(lane.id, { role: "bot", kind: "notice", text: `The watcher ${w.name} is paused. ${said}` });
+      broadcast({ kind: "message", threadId: lane.id, message: shown });
+    }
+  }
+  saveWatchers();
+  broadcast({ kind: "watchers" });
+  syncAppDelivery();
+}
+
+/** Whether each listening app watcher's account is still connected:
+ * every quarter of an hour, and by hand from Check now. A network that
+ * is down says nothing either way. */
+async function checkAppAccounts(only?: Watcher): Promise<string | null> {
+  const api = triggerApi();
+  if (!api) return null;
+  const list = only ? [only] : listeningApps();
+  let said: string | null = null;
+  for (const w of list) {
+    if (!w.app?.accountId) continue;
+    let status: string | null;
+    try {
+      status = await api.accountStatus(w.app.accountId);
+    } catch (e) {
+      if (only) said = composioStatus(e).error;
+      continue;
+    }
+    if (status === "ACTIVE") continue;
+    pauseAppWatchers(
+      (x) => x === w,
+      () => `${w.app!.toolkitName || w.app!.toolkit} is not connected in your Composio project any more${status ? ` (${status.toLowerCase()})` : ""}, so this watcher is paused. Connect it again, then switch the watcher back on.`,
+    );
+    said = w.lastError ?? null;
+  }
+  return said;
+}
+setInterval(() => void checkAppAccounts().catch(() => {}), 15 * 60_000).unref?.();
+
+/** A person's "yes" to an app watcher, or its being switched back on:
+ * the trigger made or switched on at Composio, and it listens from now. */
+async function startAppWatcher(w: Watcher, api: TriggerApi) {
+  const app = w.app!;
+  const { type, config, account } = await resolveApp(api, app);
+  const triggerId = await api.upsertTrigger(type.slug, account.id, config);
+  // a changed event or account is a new instance; the old one is not left
+  // sending events nobody listens for
+  if (app.triggerId && app.triggerId !== triggerId) void api.deleteTrigger(app.triggerId).catch(() => {});
+  Object.assign(app, { triggerId, accountId: account.id, config, triggerName: type.name, toolkitName: appName(app.toolkit), since: Date.now() });
+  delete app.paused;
+  delete app.proposal;
+  w.enabled = true;
+  w.lastError = undefined;
+}
+
+/** Settles an app watcher's proposal card, wherever it is. */
+function settleAppCard(proposal: AppWatch["proposal"], answered: string) {
+  if (!proposal) return;
+  const card = store.messagesFor(proposal.laneId).find((m) => m.id === proposal.messageId);
+  if (!card?.card) return;
+  const patched = store.patchMessage(proposal.laneId, proposal.messageId, { card: { ...card.card, answered } });
+  if (patched) broadcast({ kind: "message.patch", threadId: proposal.laneId, message: patched });
+}
+
+/**
+ * Filed by an agent: nothing at Composio, nothing listening, a card in
+ * the conversation it asked from that shows the app, the event, the
+ * filter, who acts and where, for the person to start it or not.
+ */
+async function proposeAppWatcher(w: Watcher, bot: BotRecord, laneId: string, api: TriggerApi | null) {
+  const app = w.app!;
+  app.toolkitName = appName(app.toolkit);
+  if (api) {
+    // the event's own name on the card, when Composio can say it now
+    const type = await triggerTypesOf(api, app.toolkit)
+      .then((types) => types.find((t) => t.slug === app.trigger))
+      .catch(() => undefined);
+    if (type) app.triggerName = type.name;
+  }
+  const conversation = appConversation(w, bot);
+  const card = store.appendMessage(laneId, {
+    role: "bot",
+    kind: "options",
+    card: {
+      title: `${bot.name} wants to watch ${app.toolkitName}`,
+      subtitle: appSentence(bot.name, app, conversation),
+      options: [],
+      appWatch: {
+        watcherId: w.id,
+        toolkit: app.toolkit,
+        appName: app.toolkitName,
+        trigger: app.trigger,
+        eventName: app.triggerName || app.trigger,
+        config: app.config,
+        filter: app.filter ?? [],
+        botId: bot.id,
+        agentName: bot.name,
+        conversation,
+        instruction: w.instruction,
+      },
+    },
+  });
+  broadcast({ kind: "message", threadId: laneId, message: card });
+  app.proposal = { botId: bot.id, name: bot.name, laneId, messageId: card.id, at: Date.now() };
+}
+
+/**
+ * An app watcher changed by the person. What it says and where it says it
+ * change here; a different app, event, config or account is a different
+ * trigger at Composio, made when the watcher is on (and the old one
+ * removed), or when it is next switched on. Switching it off switches its
+ * trigger off too. An agent proposes; it does not change one.
+ */
+async function patchAppWatcher(res: ServerResponse, w: Watcher, body: Record<string, unknown>, byAgent: boolean) {
+  if (w.kind !== "app" || !w.app) return json(res, 400, { error: "an app watcher is made new, not changed into from another kind" });
+  if (byAgent) return json(res, 403, { error: "Only the person changes an app watcher. Withdraw yours and propose it again, or ask them to change it in Watchers." });
+  if (body.kind !== undefined && body.kind !== "app") return json(res, 400, { error: "an app watcher stays one; make a new watcher for something else" });
+  const app = w.app;
+  const checked = cleanWatcher(
+    { ...w, ...body, kind: "app", app, until: Object.hasOwn(body, "until") ? body.until : undefined, botId: body.botId ?? w.botId },
+    (id) => Boolean(store.bot(id) && !store.bot(id)!.archivedAt),
+  );
+  if (!checked.ok) return json(res, 400, { error: checked.error });
+  const v = checked.value;
+  if ((v.thread !== w.thread || v.botId !== w.botId) && threadRefusal(v.botId, v.thread)) return json(res, 400, { error: threadRefusal(v.botId, v.thread)! });
+  if (app.madeBy && v.botId !== w.botId) return json(res, 400, { error: "an admin's app watcher stays with the agent it was made for" });
+  const next = v.app!;
+  const moved =
+    next.toolkit !== app.toolkit || next.trigger !== app.trigger || JSON.stringify(next.config) !== JSON.stringify(app.config) || (next.accountId ?? "") !== (app.accountId ?? "");
+  const on = typeof body.enabled === "boolean" ? body.enabled : w.enabled;
+  if (on && app.proposal) return json(res, 409, { error: "Say yes on its card first, or with Start watching here." });
+  // A draft, so a refusal from Composio leaves the watcher as it was.
+  const draft: Watcher = structuredClone(w);
+  Object.assign(draft, {
+    name: v.name,
+    instruction: v.instruction,
+    thread: v.thread,
+    botId: v.botId,
+    mode: v.mode,
+    enabled: on,
+  });
+  if (v.once) draft.once = true;
+  else delete draft.once;
+  if (Object.hasOwn(body, "until")) {
+    if (v.until === undefined) delete draft.until;
+    else draft.until = v.until;
+  }
+  if (!v.thread) delete draft.thread;
+  Object.assign(draft.app!, next);
+  if (!next.filter) delete draft.app!.filter;
+  if (moved && next.toolkit !== app.toolkit) draft.app!.toolkitName = appName(next.toolkit);
+  if (moved && next.trigger !== app.trigger) delete draft.app!.triggerName;
+  const api = triggerApi();
+  const starting = on && !app.proposal && (moved || !w.enabled || !app.triggerId);
+  if (starting) {
+    if (!api) return json(res, 409, { error: NEEDS_PROJECT_KEY });
+    try {
+      // switched on again after a pause, as it is: switched on at
+      // Composio, its account first asked whether it is still there
+      if (!moved && app.triggerId && app.accountId) {
+        const status = await api.accountStatus(app.accountId);
+        if (status !== "ACTIVE") {
+          return json(res, 409, { error: `${app.toolkitName || app.toolkit} is not connected in your Composio project${status ? ` (${status.toLowerCase()})` : ""}. Connect it again first.` });
+        }
+        await api.setTriggerEnabled(app.triggerId, true);
+        draft.app!.since = Date.now();
+        delete draft.app!.paused;
+        draft.lastError = undefined;
+      } else await startAppWatcher(draft, api);
+    } catch (e) {
+      const failed = composioStatus(e);
+      return json(res, failed.status, { error: failed.error });
+    }
+    delete draft.done;
+  } else if (!on && w.enabled && app.triggerId) {
+    // off here at once, whatever Composio says; events that still come
+    // are dropped unread (deliverAppEvent)
+    void api?.setTriggerEnabled(app.triggerId, false).catch(() => {});
+  }
+  // the person changing it has had their say (MAX_AGENT_CHAIN)
+  delete draft.chain;
+  // Into the watcher and its app in place: an event being handled now
+  // holds them, and what it records must land in the one that is kept.
+  const { app: settled, ...fields } = draft;
+  for (const key of Object.keys(w) as Array<keyof Watcher>) if (key !== "app" && !(key in fields)) delete w[key];
+  Object.assign(w, fields);
+  const { runs: _runs, seen: _seen, turnsAt: _turns, ...appFields } = settled!;
+  for (const key of Object.keys(app) as Array<keyof AppWatch>) if (!["runs", "seen", "turnsAt"].includes(key) && !(key in appFields)) delete app[key];
+  Object.assign(app, appFields);
+  saveWatchers();
+  syncAppDelivery();
+  broadcast({ kind: "watchers" });
+  return json(res, 200, { watcher: watcherView(w) });
+}
+
+/** Check now, for an app: whether it can hear, in one line. */
+async function appLook(w: Watcher): Promise<{ fired: boolean; note: string }> {
+  const app = w.app;
+  if (!app) return { fired: false, note: "This watcher has lost what app it watches. Remove it and make it again." };
+  if (app.proposal) return { fired: false, note: `Waiting for your yes on ${app.proposal.name}'s card.` };
+  if (!triggerApi()) return { fired: false, note: NEEDS_PROJECT_KEY };
+  if (!w.enabled) return { fired: false, note: app.paused?.note ?? "Paused. Switch it on to listen." };
+  const problem = await checkAppAccounts(w);
+  if (problem) return { fired: false, note: problem };
+  w.lastCheck = Date.now();
+  saveWatchers();
+  broadcast({ kind: "watchers" });
+  const name = app.toolkitName || app.toolkit;
+  if (appListening.state === "live") return { fired: false, note: `Listening. ${name} is connected, and events arrive as they happen.` };
+  if (appListening.state === "refused") return { fired: false, note: appListening.error ?? "Composio refused to send events here." };
+  return { fired: false, note: `${name} is connected. Bloks is ${appListening.state === "connecting" ? "connecting to" : "reconnecting to"} Composio to hear its events.` };
 }
 
 /**
@@ -9293,6 +9821,7 @@ async function windDown(bot: BotRecord) {
   // watchers are skipped while it is archived (see suspendedFor); none
   // of their definitions change.
   for (const w of watchers) if (w.botId === bot.id) disarmWatcher(w.id);
+  syncAppDelivery();
   broadcast({ kind: "routines" });
   broadcast({ kind: "watchers" });
 }
@@ -9305,6 +9834,10 @@ async function windDown(bot: BotRecord) {
  */
 function resumeSchedules(bot: BotRecord) {
   for (const w of watchers) if (w.botId === bot.id) armWatcher(w);
+  // an app it watches listens again from now: what came while it was
+  // archived was not for anyone, and is not a gap
+  for (const w of watchers) if (w.botId === bot.id && w.app) w.app.since = Date.now();
+  syncAppDelivery();
   broadcast({ kind: "routines" });
   broadcast({ kind: "watchers" });
   const now = new Date();
@@ -17723,8 +18256,15 @@ async function forgetAgent(bot: BotRecord, actor: "you" | null) {
   profileNotes.forgetSuggestionsBy(bot.id);
   turnLog.forgetBot(bot.id);
   for (const w of watchers.filter((x) => x.botId === bot.id)) disarmWatcher(w.id);
+  // its app watchers' triggers go too, or Composio keeps sending events
+  // for an agent that is gone
+  const appApi = triggerApi();
+  for (const w of watchers) {
+    if (w.botId === bot.id && w.app?.triggerId && appApi) void appApi.deleteTrigger(w.app.triggerId).catch(() => {});
+  }
   watchers = watchers.filter((x) => x.botId !== bot.id);
   saveWatchers();
+  syncAppDelivery();
   policy.removeForBot(bot.id);
   habits.forgetBot(bot.id);
   artifactComments.removeForBot(bot.id);
@@ -18153,6 +18693,7 @@ function setMoved(mark: MovedMark | null) {
   else clearMovedMark(DATA_DIR);
   movedMark = mark;
   for (const w of watchers) armWatcher(w);
+  syncAppDelivery();
   for (const bot of store.bots) startTelegramBot(bot.id);
   for (const platform of CHAT_PLATFORMS) startChat(platform);
   nextDueChanged();
@@ -24138,7 +24679,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // nobody else's.
     if (method === "GET" && path === "/api/watchers") {
       const mine = asAgent ? watchers.filter((w) => w.botId === asAgent.botId) : watchers;
-      return json(res, 200, { watchers: mine.map(watcherView) });
+      return json(res, 200, {
+        watchers: mine.map(watcherView),
+        // whether app watchers can hear at all, for the page to say so
+        ...(asAgent
+          ? {}
+          : {
+              apps: {
+                connectorKey: Boolean(cfg.composio?.key),
+                projectKey: Boolean(cfg.composio?.apiKey),
+                listening: appListening.state,
+                ...(appListening.error ? { error: appListening.error } : {}),
+                catchesUp: false,
+              },
+            }),
+      });
     }
     if (method === "POST" && path === "/api/watchers") {
       const body = await readBody(req);
@@ -24147,15 +24702,57 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!checked.ok) return json(res, 400, { error: checked.error });
       const unnamed = threadRefusal(checked.value.botId, checked.value.thread);
       if (unnamed) return json(res, 400, { error: unnamed });
+      // An app watcher: made at Composio when the person files it, and
+      // only proposed when an agent does, on a card the person answers.
+      if (checked.value.kind === "app") {
+        if (watchers.length >= 50) return json(res, 409, { error: "fifty watchers is the limit" });
+        const { app: fields, ...rest } = checked.value;
+        const bot = store.bot(rest.botId)!;
+        const w: Watcher = {
+          id: newId(),
+          ...rest,
+          enabled: false,
+          createdAt: Date.now(),
+          fires: [],
+          app: { ...fields!, toolkitName: appName(fields!.toolkit), runs: [], turnsAt: [], seen: [] },
+        };
+        const api = triggerApi();
+        if (asAgent) {
+          if (watchers.filter((x) => x.app?.proposal?.botId === asAgent.botId).length >= MAX_APP_PROPOSALS) {
+            return json(res, 409, { error: `you have ${MAX_APP_PROPOSALS} app watchers waiting for an answer already; wait for one first` });
+          }
+          await proposeAppWatcher(w, bot, asAgent.taskId, api);
+          watchers.push(w);
+          saveWatchers();
+          broadcast({ kind: "watchers" });
+          return json(res, 201, {
+            watcher: watcherView(w),
+            note: `Proposed. Nothing listens until ${hostName()} says yes on the card in this conversation, so tell them what it would do.${api ? "" : ` ${NEEDS_PROJECT_KEY}`}`,
+          });
+        }
+        if (!api) return json(res, 409, { error: NEEDS_PROJECT_KEY });
+        try {
+          await startAppWatcher(w, api);
+        } catch (e) {
+          const failed = composioStatus(e);
+          return json(res, failed.status, { error: failed.error });
+        }
+        watchers.push(w);
+        saveWatchers();
+        syncAppDelivery();
+        broadcast({ kind: "watchers" });
+        return json(res, 201, { watcher: watcherView(w) });
+      }
       // a place follows the owner, so only for the owner's own agents, and
       // only where a phone can say where the owner is (not a hosted machine)
       if (checked.value.kind === "place" && HOSTED) return json(res, 409, { error: "This workspace is hosted, and location from the iPhone goes only to a computer of your own, so a place watcher has nothing to go on here." });
       const placeRefused = checked.value.kind === "place" ? locationRefusal(checked.value.botId, asAgent?.taskId) : null;
       if (placeRefused) return json(res, 403, { error: placeRefused });
       if (watchers.length >= 50) return json(res, 409, { error: "fifty watchers is the limit" });
+      const { app: _app, ...made } = checked.value;
       const w: Watcher = {
         id: newId(),
-        ...checked.value,
+        ...made,
         createdAt: Date.now(),
         fires: [],
         // filed from an agent's turn, its turns go on from that one's place
@@ -24189,6 +24786,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (m && (method === "PATCH" || method === "DELETE")) {
       const w = watchers.find((x) => x.id === m![1]);
       if (!w || (asAgent && w.botId !== asAgent.botId)) return json(res, 404, { error: "no such watcher" });
+      let leftAtComposio = false;
+      if (method === "DELETE" && w.kind === "app" && w.app) {
+        // Its trigger goes first: a watcher removed here while Composio
+        // kept sending would be events going nowhere, on the person's
+        // account. A trigger that cannot be removed keeps the watcher, so
+        // the person can try again, unless there is no key to try with.
+        const api = triggerApi();
+        if (w.app.triggerId && api) {
+          try {
+            await api.deleteTrigger(w.app.triggerId);
+          } catch (e) {
+            return json(res, 502, { error: `Composio did not remove its trigger, so the watcher is kept. ${composioStatus(e).error}` });
+          }
+        } else if (w.app.triggerId) leftAtComposio = true;
+        settleAppCard(w.app.proposal, asAgent ? "Withdrawn" : "Not now");
+      }
       if (method === "DELETE") {
         disarmWatcher(w.id);
         watchers = watchers.filter((x) => x.id !== w.id);
@@ -24205,10 +24818,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           closeAfterTurn.add(w.laneId);
           closeIfAsked(w.laneId);
         }
+        if (w.kind === "app") syncAppDelivery();
         broadcast({ kind: "watchers" });
-        return json(res, 200, { ok: true });
+        return json(res, 200, {
+          ok: true,
+          ...(leftAtComposio ? { note: `Removed here. Without the project key Bloks could not remove its trigger at Composio, so remove it there too. ${NEEDS_PROJECT_KEY}` } : {}),
+        });
       }
       const body = await readBody(req);
+      if (w.kind === "app" || body.kind === "app") return patchAppWatcher(res, w, body, Boolean(asAgent));
       // A watcher that finished at its time and is switched on again
       // starts with no time, or it would only finish again. A time already
       // kept is not checked against now; one given in this change is.
@@ -24290,6 +24908,73 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         saveWatchers();
       }
       return json(res, 200, await checkWatcher(w.id, true));
+    }
+    // An agent's proposed app watcher, answered: yes makes its trigger at
+    // Composio and it listens from then; no removes it. The person's
+    // alone: no rule lets an agent's credential here (server/agent-cli.ts).
+    m = path.match(/^\/api\/watchers\/([\w-]+)\/(confirm|decline)$/);
+    if (m && method === "POST") {
+      if (asAgent) return json(res, 403, { error: "the person answers a proposed app watcher" });
+      const w = watchers.find((x) => x.id === m![1]);
+      if (!w || w.kind !== "app" || !w.app) return json(res, 404, { error: "no such app watcher" });
+      const proposal = w.app.proposal;
+      if (!proposal) return json(res, 409, { error: "nothing is waiting on this one" });
+      if (m[2] === "decline") {
+        settleAppCard(proposal, "Not now");
+        watchers = watchers.filter((x) => x.id !== w.id);
+        saveWatchers();
+        broadcast({ kind: "watchers" });
+        return json(res, 200, { ok: true });
+      }
+      const api = triggerApi();
+      if (!api) return json(res, 409, { error: NEEDS_PROJECT_KEY });
+      const body = await readBody(req);
+      // the person may pick the account, or settle the config, as they say yes
+      if (body.accountId !== undefined || body.config !== undefined) {
+        const checked = cleanWatcher({ ...w, ...body, kind: "app", app: w.app, until: undefined }, (id) => Boolean(store.bot(id)));
+        if (!checked.ok) return json(res, 400, { error: checked.error });
+        Object.assign(w.app, { config: checked.value.app!.config, ...(checked.value.app!.accountId ? { accountId: checked.value.app!.accountId } : {}) });
+      }
+      try {
+        await startAppWatcher(w, api);
+      } catch (e) {
+        const failed = composioStatus(e);
+        return json(res, failed.status, { error: failed.error });
+      }
+      // the person's yes is a say of their own (MAX_AGENT_CHAIN)
+      delete w.chain;
+      settleAppCard(proposal, "Start watching");
+      saveWatchers();
+      syncAppDelivery();
+      broadcast({ kind: "watchers" });
+      return json(res, 200, { watcher: watcherView(w) });
+    }
+    // What an app can say happened, with the config each event asks for,
+    // for the Watchers form and for an agent about to propose one.
+    m = path.match(/^\/api\/app-triggers\/([\w-]+)$/);
+    if (m && method === "GET") {
+      const api = triggerApi();
+      if (!api) return json(res, 409, { error: NEEDS_PROJECT_KEY });
+      const toolkit = m[1].toLowerCase();
+      try {
+        return json(res, 200, { toolkit, appName: appName(toolkit), types: await triggerTypesOf(api, toolkit) });
+      } catch (e) {
+        const failed = composioStatus(e);
+        return json(res, failed.status, { error: failed.error });
+      }
+    }
+    // Which accounts of an app could be watched: the person's to pick.
+    m = path.match(/^\/api\/app-triggers\/([\w-]+)\/accounts$/);
+    if (m && method === "GET") {
+      if (asAgent) return json(res, 403, { error: "the person picks the account" });
+      const api = triggerApi();
+      if (!api) return json(res, 409, { error: NEEDS_PROJECT_KEY });
+      try {
+        return json(res, 200, { accounts: await api.listAccounts(m[1].toLowerCase()) });
+      } catch (e) {
+        const failed = composioStatus(e);
+        return json(res, failed.status, { error: failed.error });
+      }
     }
 
     // What is waiting on the person right now, wherever it was asked.
@@ -27278,6 +27963,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // The rest (profile, speech, Composio, and the sections saved above)
       // are read fresh when they are used.
       if (patch.xai || patch.box) await reloadProviders();
+      // a new project key is a new line to Composio's events, and none is none
+      if (patch.composio) syncAppDelivery();
       const status = configStatus();
       broadcast({ kind: "config", ...status });
       // A saved reading has a new denominator even with no new request.
@@ -27422,7 +28109,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     m = path.match(/^\/api\/connectors\/([\w-]+)\/authorize$/);
     if (m && method === "POST") return json(res, 200, await composio.beginConnectorAuth(cfg, m[1]));
     m = path.match(/^\/api\/connectors\/([\w-]+)$/);
-    if (m && method === "DELETE") return json(res, 200, await composio.disconnectConnector(cfg, m[1]));
+    if (m && method === "DELETE") {
+      const removed = await composio.disconnectConnector(cfg, m[1]);
+      // what watched that app has nothing to hear any more, and says so
+      const slug = m[1].toLowerCase();
+      pauseAppWatchers(
+        (w) => w.app?.toolkit === slug,
+        (w) => `${w.app!.toolkitName || appName(slug)} was disconnected, so this watcher is paused. Connect it again, then switch the watcher back on.`,
+      );
+      return json(res, 200, removed);
+    }
 
     // ── the bot's local sandbox (a container on this machine) ──
     m = path.match(/^\/api\/bots\/([\w-]+)\/sandbox$/);
@@ -27603,6 +28299,8 @@ server.listen(PORT, BIND, () => {
   // the desktop app counts what is waiting from the first moment, not
   // from the first agent that changes
   tellDesktop({ kind: "hello" });
+  // app watchers hear through one connection, made once something listens
+  syncAppDelivery();
   // turns cut off when Bloks last stopped, and messages that were
   // waiting on a turn (the second inside the first)
   recoverCutOff();

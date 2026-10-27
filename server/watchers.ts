@@ -47,13 +47,18 @@
 // and a crossing heard too late, or a fix that wobbles on the line, is
 // not acted on. It can be told to act once and be done, or to stop at a
 // time, since "when I land" is about one flight.
+//
+// A sixth kind is an app: an event in an app connected through Composio,
+// a new email, a labelled issue, a message in a channel. It does not look
+// either. Composio says when it happens (server/app-watch.ts has the rest).
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { cleanAppFields, type AppWatch } from "./app-watch.ts";
 import { DEFAULT_RADIUS, MAX_RADIUS, MIN_RADIUS, parsePlace } from "./location.ts";
 
-export type WatchKind = "folder" | "page" | "feed" | "check" | "place";
+export type WatchKind = "folder" | "page" | "feed" | "check" | "place" | "app";
 
 export interface Watcher {
   id: string;
@@ -116,6 +121,9 @@ export interface Watcher {
    * The person changing it, or a look by hand that works, starts it
    * again. */
   failing?: { at: number; error: string };
+  /** Apps only: the app, the event, its trigger at Composio and what each
+   * event became (server/app-watch.ts). Its target is "toolkit/TRIGGER". */
+  app?: AppWatch;
 }
 
 /** Failed looks in a row before a watcher stops looking on its own. */
@@ -467,13 +475,29 @@ export function watcherTurn(w: Pick<Watcher, "kind" | "target" | "instruction" |
 /** Place-specific fields, validated separately from the common lifetime. */
 export type PlaceFields = Pick<Watcher, "when" | "radius">;
 
+/** An app watcher's fields as checked, before the server has asked
+ * Composio about them. */
+export type AppFields = Pick<AppWatch, "toolkit" | "trigger" | "config" | "filter" | "accountId" | "perHour" | "perDay">;
+
 export function cleanWatcher(raw: Record<string, unknown>, botExists: (id: string) => boolean, now = Date.now()):
-  | { ok: true; value: Pick<Watcher, "botId" | "name" | "kind" | "target" | "instruction" | "mentions" | "mode" | "every" | "enabled" | "thread" | "once" | "until"> & PlaceFields }
+  | { ok: true; value: Pick<Watcher, "botId" | "name" | "kind" | "target" | "instruction" | "mentions" | "mode" | "every" | "enabled" | "thread" | "once" | "until"> & PlaceFields & { app?: AppFields } }
   | { ok: false; error: string } {
   const kind = raw.kind;
-  if (kind !== "folder" && kind !== "page" && kind !== "feed" && kind !== "check" && kind !== "place") return { ok: false, error: "kind is folder, page, feed, check or place" };
+  if (kind !== "folder" && kind !== "page" && kind !== "feed" && kind !== "check" && kind !== "place" && kind !== "app") {
+    return { ok: false, error: "kind is folder, page, feed, check, place or app" };
+  }
   const botId = typeof raw.botId === "string" ? raw.botId : "";
   if (!botExists(botId)) return { ok: false, error: "no such agent" };
+  // An app is named by its toolkit and event, as the request gives them
+  // or as the watcher being changed has them; the target only says so.
+  let app: AppFields | undefined;
+  if (kind === "app") {
+    const base = raw.app && typeof raw.app === "object" ? (raw.app as AppFields) : undefined;
+    const checked = cleanAppFields(raw, base);
+    if (!checked.ok) return checked;
+    app = checked.value;
+    raw = { ...raw, target: `${app.toolkit}/${app.trigger}` };
+  }
   const target = String(raw.target ?? "").trim();
   if (kind !== "check" && target.length > MAX_WATCHER_TARGET) return { ok: false, error: "a watcher target is at most 1,000 characters" };
   if (kind === "check") {
@@ -485,6 +509,8 @@ export function cleanWatcher(raw: Record<string, unknown>, botExists: (id: strin
     if (!target.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(target)) return { ok: false, error: "a folder is a full path" };
   } else if (kind === "place") {
     if (!parsePlace(target)) return { ok: false, error: 'a place is a name as the phone would put it ("Toronto", "Shinjuku, Tokyo") or "latitude,longitude"' };
+  } else if (kind === "app") {
+    /* checked above, with its app */
   } else if (!/^https?:\/\/[^\s]+$/i.test(target)) {
     return { ok: false, error: "a page or feed is an http or https address" };
   }
@@ -515,11 +541,19 @@ export function cleanWatcher(raw: Record<string, unknown>, botExists: (id: strin
   const mentions = String(raw.mentions ?? "").trim().slice(0, 120);
   // a lane title or id: one line, as short as any other lane's
   const thread = typeof raw.thread === "string" ? raw.thread.replace(/\s+/g, " ").trim().slice(0, 40) : "";
-  const named = kind === "check" ? target.split(/\s+/).slice(0, 3).join(" ") : kind === "place" ? `${place.when === "leave" ? "Leaving" : "Arriving at"} ${target}` : target.split(/[\\/]/).filter(Boolean).pop();
+  const named =
+    kind === "check"
+      ? target.split(/\s+/).slice(0, 3).join(" ")
+      : kind === "place"
+        ? `${place.when === "leave" ? "Leaving" : "Arriving at"} ${target}`
+        : kind === "app"
+          ? app!.trigger.toLowerCase().replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())
+          : target.split(/[\\/]/).filter(Boolean).pop();
   return {
     ok: true,
     value: {
       ...place,
+      ...(app ? { app } : {}),
       ...(raw.once === true ? { once: true } : {}),
       ...(until !== undefined ? { until: Math.round(until) } : {}),
       botId,
