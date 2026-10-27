@@ -15,7 +15,7 @@ import { idle, messagesOf, waitFor } from "./helpers/turns.ts";
 const COMPOSIO = "ck_place_canary_51a7";
 const LOCAL_ONLY = "local_only_canary_93be";
 
-async function setup(t: TestContext) {
+async function setup(t: TestContext, path?: (fake: FakePlaces) => string) {
   const root = mkdtempSync(join(tmpdir(), "bloks-place-"));
   const seen = join(root, "seen.json");
   const fake = fakePlaces(root, seen);
@@ -27,7 +27,7 @@ async function setup(t: TestContext) {
       composio: { key: COMPOSIO, url: "http://127.0.0.1:9/mcp" },
     }),
   );
-  const h = await startHarness({ HOME: root, ...fake.env, FAKE_SECRET_HERE: LOCAL_ONLY });
+  const h = await startHarness({ HOME: root, ...fake.env, ...(path ? { PATH: path(fake) } : {}), FAKE_SECRET_HERE: LOCAL_ONLY });
   t.after(async () => {
     await h.stop();
     rmSync(root, { recursive: true, force: true, maxRetries: 5 });
@@ -326,7 +326,9 @@ test("where an agent works is the owner's to set, for an engine that can work th
 });
 
 test("Docker that is not installed is said so, plainly", async (t) => {
-  const { h, fake, bot, project } = await setup(t);
+  // only the fake tools on the path: a CI runner has a real Docker in
+  // /usr/bin, and this is about a computer that has none
+  const { h, fake, bot, project } = await setup(t, (f) => `${f.bin}:${f.there}`);
   rmSync(join(fake.bin, "docker"));
   const tested = await h.json(`/api/bots/${bot.id}/workplace/test`, {
     method: "POST",
