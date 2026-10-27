@@ -425,6 +425,7 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     rows: [
       "settingsPages.training.row.shape",
       "settingsPages.training.row.eachRecordIs",
+      "settingsPages.training.row.metadata",
       "settingsPages.training.row.dates",
       "settingsPages.training.row.engines",
       "settingsPages.training.row.onlyFinishedWell",

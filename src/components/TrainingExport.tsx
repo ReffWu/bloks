@@ -22,6 +22,8 @@ import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
 import { deviceWord } from "@/lib/thisComputer";
+import { sizeText } from "@/lib/backups";
+import { formatDate, formatList, formatNumber, t, tr, type MessageKey } from "@/lib/i18n";
 import { SettingRow, SettingsGroup, SettingsSkeleton } from "./SettingsLayout";
 
 type Format = "openai" | "sharegpt" | "trajectory";
@@ -72,23 +74,24 @@ interface Preview {
   previewOf: { agent: string; conversation: string; startedAt: string } | null;
 }
 
-const FORMATS: Array<{ value: Format; label: string; line: string }> = [
-  { value: "openai", label: "OpenAI chat", line: "messages with tools and tool_calls, the JSONL OpenAI fine-tuning reads." },
-  { value: "sharegpt", label: "ShareGPT", line: "conversations of from and value, with calls and results as tagged blocks." },
-  { value: "trajectory", label: "Bloks trajectory", line: "every step with its timing, engine, model, tokens and cost." },
+// Words are kept as keys and translated where they are drawn, so a change of
+// language reaches them.
+const FORMATS: Array<{ value: Format; label: MessageKey; line: MessageKey }> = [
+  { value: "openai", label: "trainingExport.format.openai.label", line: "trainingExport.format.openai.line" },
+  { value: "sharegpt", label: "trainingExport.format.sharegpt.label", line: "trainingExport.format.sharegpt.line" },
+  { value: "trajectory", label: "trainingExport.format.trajectory.label", line: "trainingExport.format.trajectory.line" },
 ];
-const RESULTS: Record<Completeness, string> = {
-  complete: "Tool results complete",
-  partial: "Some tool results not recorded",
-  missing: "Tool results not recorded",
-  none: "No tool calls",
+const RESULTS: Record<Completeness, MessageKey> = {
+  complete: "trainingExport.results.complete",
+  partial: "trainingExport.results.partial",
+  missing: "trainingExport.results.missing",
+  none: "trainingExport.results.none",
 };
 
-const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
-const sizeText = (bytes: number) =>
-  bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
 const errorOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const dayFormat = new Intl.DateTimeFormat([], { month: "short", day: "numeric", year: "numeric" });
+const day = (at: number) => formatDate(at, { month: "short", day: "numeric", year: "numeric" });
+/** Counts of different things in a row ("2 email addresses, 1 name"): the reader's own joiner, with no "and". */
+const run = (items: string[]) => formatList(items, { type: "unit" });
 const whole = (text: string) => (text.trim() === "" ? null : Number(text));
 
 export function TrainingExportPage() {
@@ -99,7 +102,7 @@ export function TrainingExportPage() {
 function Elsewhere() {
   return (
     <SettingsGroup>
-      <SettingRow label="Exports are written on the computer running Bloks" description="Open Bloks there to export your agents' runs." />
+      <SettingRow label={t("trainingExport.elsewhere")} description={t("trainingExport.openElsewhere")} />
     </SettingsGroup>
   );
 }
@@ -145,6 +148,7 @@ function TrainingExport() {
   const [repeats, setRepeats] = useState(true);
   const [capOn, setCapOn] = useState(false);
   const [capTokens, setCapTokens] = useState("16000");
+  const [metadata, setMetadata] = useState(true);
 
   const [busy, setBusy] = useState<"preview" | "write" | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -188,8 +192,9 @@ function TrainingExport() {
       privacy,
       include,
       compression: { toolResultChars: shortenOn ? whole(resultChars) : null, repeats, capTokens: capOn ? whole(capTokens) : null },
+      metadata,
     };
-  }, [format, unit, picked, conversations.length, from, to, offEngines, listing, finishedWell, uncorrected, thumbsUp, completeResults, minTokens, maxTokens, privacy, include, shortenOn, resultChars, repeats, capOn, capTokens]);
+  }, [format, unit, picked, conversations.length, from, to, offEngines, listing, finishedWell, uncorrected, thumbsUp, completeResults, minTokens, maxTokens, privacy, include, shortenOn, resultChars, repeats, capOn, capTokens, metadata]);
 
   // anything changed is a new export: the old preview no longer says what it would write
   const key = JSON.stringify(body);
@@ -218,8 +223,8 @@ function TrainingExport() {
       setListing((l) => (l ? { ...l, exports: done.exports } : l));
       if (done.file) {
         setWritten({ ...done.file, summary: done.summary });
-        toast.success(`Exported ${plural(done.summary.records, "record", "records")}, ${sizeText(done.file.size)}`);
-      } else setProblem("Nothing matched, so nothing was written.");
+        toast.success(t("trainingExport.exported", { records: t("trainingExport.count.records", { count: done.summary.records }), size: sizeText(done.file.size) }));
+      } else setProblem(t("trainingExport.nothingMatched"));
     } catch (e) {
       setProblem(errorOf(e));
     } finally {
@@ -233,14 +238,14 @@ function TrainingExport() {
       const yes = await confirm(
         what === "memberPrivate"
           ? {
-              title: "Include members' private conversations?",
-              body: "Members wrote these to an agent, not to you. Ask them before you share the file, and keep it to yourself if you can't.",
-              confirmLabel: "Include them",
+              title: t("trainingExport.includeMemberPrivateTitle"),
+              body: t("trainingExport.includeMemberPrivateBody"),
+              confirmLabel: t("trainingExport.includeThem"),
             }
           : {
-              title: "Include other people's messages?",
-              body: "Members in team conversations, people on Telegram, email and chat apps. Their names are still taken out if you keep that on, but their words are theirs.",
-              confirmLabel: "Include them",
+              title: t("trainingExport.includeOtherPeopleTitle"),
+              body: t("trainingExport.includeOtherPeopleBody"),
+              confirmLabel: t("trainingExport.includeThem"),
             },
       );
       if (!yes) return;
@@ -253,7 +258,7 @@ function TrainingExport() {
     if (problem) return <div className="px-1 py-6 text-body text-destructive">{problem}</div>;
     return (
       <>
-        <SettingsSkeleton rows={2} label="Loading the export" />
+        <SettingsSkeleton rows={2} label={t("trainingExport.loading")} />
         <SettingsSkeleton rows={4} />
       </>
     );
@@ -267,25 +272,33 @@ function TrainingExport() {
       <div className="mb-8 flex items-start gap-2.5 rounded-xl bg-success/10 px-3 py-2.5">
         <ShieldCheck size={16} className="mt-px shrink-0 text-success" />
         <div className="min-w-0 text-body leading-relaxed">
-          <div className="font-medium text-foreground">Written to a file on {thisComputer()}. Nothing is sent anywhere.</div>
-          <div className="text-muted-foreground">Keys, tokens and passwords are always taken out. Nothing is written until you preview it.</div>
+          <div className="font-medium text-foreground">{t("trainingExport.verdict", { computer: thisComputer() })}</div>
+          <div className="text-muted-foreground">{t("trainingExport.verdictHint")}</div>
         </div>
       </div>
 
-      <SettingsGroup title="Format">
-        <SettingRow label="Shape" description={FORMATS.find((f) => f.value === format)!.line}>
-          <Segmented className="mt-3 max-w-[520px]" aria-label="Shape" value={format} onChange={setFormat} options={FORMATS.map((f) => ({ value: f.value, label: f.label }))} />
+      <SettingsGroup title={t("trainingExport.format")}>
+        <SettingRow label={t("trainingExport.shape")} description={t(FORMATS.find((f) => f.value === format)!.line)}>
+          <Segmented className="mt-3 max-w-[520px]" aria-label={t("trainingExport.shape")} value={format} onChange={setFormat} options={FORMATS.map((f) => ({ value: f.value, label: t(f.label) }))} />
         </SettingRow>
         <SettingRow
-          label="Each record is"
-          description={unit === "turn" ? "One ask and everything the agent did for it." : "A whole conversation, its kept turns in order."}
-          control={<Segmented size="sm" aria-label="Each record is" value={unit} onChange={setUnit} options={[{ value: "turn", label: "One turn" }, { value: "conversation", label: "A conversation" }]} />}
+          label={t("trainingExport.eachRecordIs")}
+          description={unit === "turn" ? t("trainingExport.unitTurnHint") : t("trainingExport.unitConversationHint")}
+          control={<Segmented size="sm" aria-label={t("trainingExport.eachRecordIs")} value={unit} onChange={setUnit} options={[{ value: "turn", label: t("trainingExport.unitTurn") }, { value: "conversation", label: t("trainingExport.unitConversation") }]} />}
         />
+        {/* the trajectory is Bloks's own shape, all of it metadata */}
+        {format !== "trajectory" && (
+          <SettingRow
+            label={t("trainingExport.metadata")}
+            description={t("trainingExport.metadataHint")}
+            control={<Switch aria-label={t("trainingExport.metadata")} checked={metadata} onCheckedChange={setMetadata} />}
+          />
+        )}
       </SettingsGroup>
 
-      <SettingsGroup title="Which runs" footnote={nothing ? undefined : `${plural(picked.length, "conversation", "conversations")} of ${conversations.length.toLocaleString()} ticked.`}>
+      <SettingsGroup title={t("trainingExport.whichRuns")} footnote={nothing ? undefined : t("trainingExport.pickedOf", { count: picked.length, total: conversations.length })}>
         {nothing ? (
-          <SettingRow label="No conversations yet" description="Once your agents have done some work, their runs can be exported here." />
+          <SettingRow label={t("trainingExport.noConversations")} description={t("trainingExport.noConversationsHint")} />
         ) : (
           <div className="px-2 py-2">
             {listing.agents.map((agent) => (
@@ -305,15 +318,15 @@ function TrainingExport() {
             ))}
           </div>
         )}
-        <SettingRow label="Dates" description="Only turns started on these days. Leave either empty for no limit.">
+        <SettingRow label={t("trainingExport.dates")} description={t("trainingExport.datesHint")}>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Input type="date" aria-label="From" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-8 w-auto" />
-            <span className="text-body text-muted-foreground">to</span>
-            <Input type="date" aria-label="To" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-8 w-auto" />
+            <Input type="date" aria-label={t("trainingExport.from")} value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-8 w-auto" />
+            <span className="text-body text-muted-foreground">{t("trainingExport.rangeTo")}</span>
+            <Input type="date" aria-label={t("trainingExport.to")} value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-8 w-auto" />
           </div>
         </SettingRow>
         {engineChoice && (
-          <SettingRow label="Engines" description="What each engine writes down of its tool calls is beside it. Every record says what it has.">
+          <SettingRow label={t("trainingExport.engines")} description={t("trainingExport.enginesHint")}>
             <ul className="mt-3 flex flex-col gap-2">
               {listing.engines.map((engine) => (
                 <li key={engine.kind} className="flex items-start gap-2.5">
@@ -331,7 +344,7 @@ function TrainingExport() {
                   />
                   <label htmlFor={`engine-${engine.kind}`} className="min-w-0 cursor-pointer text-body">
                     <span className="text-foreground">{engine.name}</span>
-                    <span className="text-muted-foreground"> · {RESULTS[engine.toolResults]}</span>
+                    <span className="text-muted-foreground"> · {t(RESULTS[engine.toolResults])}</span>
                   </label>
                 </li>
               ))}
@@ -340,103 +353,103 @@ function TrainingExport() {
         )}
       </SettingsGroup>
 
-      <SettingsGroup title="Quality">
+      <SettingsGroup title={t("trainingExport.quality")}>
         <SettingRow
-          label="Only turns that finished well"
-          description="No error, and not stopped."
-          control={<Switch aria-label="Only turns that finished well" checked={finishedWell} onCheckedChange={setFinishedWell} />}
+          label={t("trainingExport.onlyFinishedWell")}
+          description={t("trainingExport.onlyFinishedWellHint")}
+          control={<Switch aria-label={t("trainingExport.onlyFinishedWell")} checked={finishedWell} onCheckedChange={setFinishedWell} />}
         />
         <SettingRow
-          label="Only turns you didn't correct"
-          description="Leaves out turns you stopped, steered while they ran, edited, redid or gave a thumbs down."
-          control={<Switch aria-label="Only turns you didn't correct" checked={uncorrected} onCheckedChange={setUncorrected} />}
+          label={t("trainingExport.onlyUncorrected")}
+          description={t("trainingExport.onlyUncorrectedHint")}
+          control={<Switch aria-label={t("trainingExport.onlyUncorrected")} checked={uncorrected} onCheckedChange={setUncorrected} />}
         />
         <SettingRow
-          label="Only turns with a thumbs up"
-          description="A 👍 you added to one of the agent's replies."
-          control={<Switch aria-label="Only turns with a thumbs up" checked={thumbsUp} onCheckedChange={setThumbsUp} />}
+          label={t("trainingExport.onlyThumbsUp")}
+          description={t("trainingExport.onlyThumbsUpHint")}
+          control={<Switch aria-label={t("trainingExport.onlyThumbsUp")} checked={thumbsUp} onCheckedChange={setThumbsUp} />}
         />
         <SettingRow
-          label="Only turns with every tool result"
-          description="Some engines never send what their tools returned. Leaves those turns out rather than marking the gaps."
-          control={<Switch aria-label="Only turns with every tool result" checked={completeResults} onCheckedChange={setCompleteResults} />}
+          label={t("trainingExport.onlyCompleteResults")}
+          description={t("trainingExport.onlyCompleteResultsHint")}
+          control={<Switch aria-label={t("trainingExport.onlyCompleteResults")} checked={completeResults} onCheckedChange={setCompleteResults} />}
         />
-        <SettingRow label="Length" description="In tokens, estimated at four characters each, of the record as written.">
+        <SettingRow label={t("trainingExport.length")} description={t("trainingExport.lengthHint")}>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Input inputMode="numeric" aria-label="Shortest, in tokens" placeholder="Shortest" value={minTokens} onChange={(e) => setMinTokens(e.target.value.replace(/\D/g, ""))} className="h-8 w-28" />
-            <span className="text-body text-muted-foreground">to</span>
-            <Input inputMode="numeric" aria-label="Longest, in tokens" placeholder="Longest" value={maxTokens} onChange={(e) => setMaxTokens(e.target.value.replace(/\D/g, ""))} className="h-8 w-28" />
+            <Input inputMode="numeric" aria-label={t("trainingExport.shortestTokens")} placeholder={t("trainingExport.shortest")} value={minTokens} onChange={(e) => setMinTokens(e.target.value.replace(/\D/g, ""))} className="h-8 w-28" />
+            <span className="text-body text-muted-foreground">{t("trainingExport.rangeTo")}</span>
+            <Input inputMode="numeric" aria-label={t("trainingExport.longestTokens")} placeholder={t("trainingExport.longest")} value={maxTokens} onChange={(e) => setMaxTokens(e.target.value.replace(/\D/g, ""))} className="h-8 w-28" />
           </div>
         </SettingRow>
       </SettingsGroup>
 
-      <SettingsGroup title="Privacy" footnote="Keys, tokens and passwords are always taken out, and so is every key saved in this workspace.">
-        <SettingRow label="Take out email addresses" control={<Switch aria-label="Take out email addresses" checked={privacy.emails} onCheckedChange={(on) => setPrivacy((p) => ({ ...p, emails: on }))} />} />
-        <SettingRow label="Take out phone numbers" control={<Switch aria-label="Take out phone numbers" checked={privacy.phones} onCheckedChange={(on) => setPrivacy((p) => ({ ...p, phones: on }))} />} />
+      <SettingsGroup title={t("trainingExport.privacy")} footnote={t("trainingExport.privacyHint")}>
+        <SettingRow label={t("trainingExport.takeOutEmails")} control={<Switch aria-label={t("trainingExport.takeOutEmails")} checked={privacy.emails} onCheckedChange={(on) => setPrivacy((p) => ({ ...p, emails: on }))} />} />
+        <SettingRow label={t("trainingExport.takeOutPhones")} control={<Switch aria-label={t("trainingExport.takeOutPhones")} checked={privacy.phones} onCheckedChange={(on) => setPrivacy((p) => ({ ...p, phones: on }))} />} />
         <SettingRow
-          label="Shorten paths in your home folder"
-          description="Your home folder is written as ~, so your account name stays behind."
-          control={<Switch aria-label="Shorten paths in your home folder" checked={privacy.homePaths} onCheckedChange={(on) => setPrivacy((p) => ({ ...p, homePaths: on }))} />}
+          label={t("trainingExport.shortenPaths")}
+          description={t("trainingExport.shortenPathsHint")}
+          control={<Switch aria-label={t("trainingExport.shortenPaths")} checked={privacy.homePaths} onCheckedChange={(on) => setPrivacy((p) => ({ ...p, homePaths: on }))} />}
         />
         <SettingRow
-          label="Take out people's names"
-          description="Yours, and everyone this workspace knows: members, guests and people on Telegram."
-          control={<Switch aria-label="Take out people's names" checked={privacy.names} onCheckedChange={(on) => setPrivacy((p) => ({ ...p, names: on }))} />}
-        />
-      </SettingsGroup>
-
-      <SettingsGroup title="Also include" description="Left out unless you ask for them.">
-        <SettingRow
-          label="Members' private conversations"
-          description={listing.privateReadable ? "Members wrote these to an agent, not to you." : "Turn on reading members' private conversations in Members first."}
-          control={<Switch aria-label="Members' private conversations" checked={include.memberPrivate} disabled={!listing.privateReadable} onCheckedChange={(on) => void ask("memberPrivate", on)} />}
-        />
-        <SettingRow
-          label="Other people's messages"
-          description="Members in team conversations, people on Telegram, email and chat apps."
-          control={<Switch aria-label="Other people's messages" checked={include.otherPeople} onCheckedChange={(on) => void ask("otherPeople", on)} />}
-        />
-        <SettingRow
-          label="Agent descriptions"
-          description="Each agent's name, title and description, as the system message."
-          control={<Switch aria-label="Agent descriptions" checked={include.systemPrompt} onCheckedChange={(on) => setInclude((i) => ({ ...i, systemPrompt: on }))} />}
-        />
-        <SettingRow
-          label="Agent memory"
-          description="Each agent's MEMORY.md, in the system message."
-          control={<Switch aria-label="Agent memory" checked={include.memory} onCheckedChange={(on) => setInclude((i) => ({ ...i, memory: on }))} />}
+          label={t("trainingExport.takeOutNames")}
+          description={t("trainingExport.takeOutNamesHint")}
+          control={<Switch aria-label={t("trainingExport.takeOutNames")} checked={privacy.names} onCheckedChange={(on) => setPrivacy((p) => ({ ...p, names: on }))} />}
         />
       </SettingsGroup>
 
-      <SettingsGroup title="Long runs" footnote="Every record that was shortened says how, in its metadata.">
+      <SettingsGroup title={t("trainingExport.alsoInclude")} description={t("trainingExport.alsoIncludeHint")}>
         <SettingRow
-          label="Shorten long tool results"
-          description="Keeps the start and the end, with the gap marked."
-          control={<Switch aria-label="Shorten long tool results" checked={shortenOn} onCheckedChange={setShortenOn} />}
+          label={t("trainingExport.memberPrivate")}
+          description={listing.privateReadable ? t("trainingExport.memberPrivateHint") : t("trainingExport.memberPrivateOff")}
+          control={<Switch aria-label={t("trainingExport.memberPrivate")} checked={include.memberPrivate} disabled={!listing.privateReadable} onCheckedChange={(on) => void ask("memberPrivate", on)} />}
+        />
+        <SettingRow
+          label={t("trainingExport.otherPeople")}
+          description={t("trainingExport.otherPeopleHint")}
+          control={<Switch aria-label={t("trainingExport.otherPeople")} checked={include.otherPeople} onCheckedChange={(on) => void ask("otherPeople", on)} />}
+        />
+        <SettingRow
+          label={t("trainingExport.agentDescriptions")}
+          description={t("trainingExport.agentDescriptionsHint")}
+          control={<Switch aria-label={t("trainingExport.agentDescriptions")} checked={include.systemPrompt} onCheckedChange={(on) => setInclude((i) => ({ ...i, systemPrompt: on }))} />}
+        />
+        <SettingRow
+          label={t("trainingExport.agentMemory")}
+          description={t("trainingExport.agentMemoryHint")}
+          control={<Switch aria-label={t("trainingExport.agentMemory")} checked={include.memory} onCheckedChange={(on) => setInclude((i) => ({ ...i, memory: on }))} />}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title={t("trainingExport.longRuns")} footnote={t("trainingExport.longRunsHint")}>
+        <SettingRow
+          label={t("trainingExport.shortenLong")}
+          description={t("trainingExport.shortenLongHint")}
+          control={<Switch aria-label={t("trainingExport.shortenLong")} checked={shortenOn} onCheckedChange={setShortenOn} />}
         >
           {shortenOn && (
             <div className="mt-3 flex items-center gap-2 text-body text-muted-foreground">
-              <span>Past</span>
-              <Input inputMode="numeric" aria-label="Characters kept" value={resultChars} onChange={(e) => setResultChars(e.target.value.replace(/\D/g, ""))} className="h-8 w-24" />
-              <span>characters</span>
+              {tr("trainingExport.pastCharacters", {
+                input: <Input inputMode="numeric" aria-label={t("trainingExport.charactersKept")} value={resultChars} onChange={(e) => setResultChars(e.target.value.replace(/\D/g, ""))} className="h-8 w-24" />,
+              })}
             </div>
           )}
         </SettingRow>
         <SettingRow
-          label="Leave out repeated results"
-          description="The same call with the same result again keeps the call and points back at the first."
-          control={<Switch aria-label="Leave out repeated results" checked={repeats} onCheckedChange={setRepeats} />}
+          label={t("trainingExport.leaveOutRepeats")}
+          description={t("trainingExport.leaveOutRepeatsHint")}
+          control={<Switch aria-label={t("trainingExport.leaveOutRepeats")} checked={repeats} onCheckedChange={setRepeats} />}
         />
         <SettingRow
-          label="Cap each record"
-          description="Shortens the longest results further, then drops a conversation's earliest turns. A record that still doesn't fit is left out."
-          control={<Switch aria-label="Cap each record" checked={capOn} onCheckedChange={setCapOn} />}
+          label={t("trainingExport.capEach")}
+          description={t("trainingExport.capEachHint")}
+          control={<Switch aria-label={t("trainingExport.capEach")} checked={capOn} onCheckedChange={setCapOn} />}
         >
           {capOn && (
             <div className="mt-3 flex items-center gap-2 text-body text-muted-foreground">
-              <span>At</span>
-              <Input inputMode="numeric" aria-label="Cap, in tokens" value={capTokens} onChange={(e) => setCapTokens(e.target.value.replace(/\D/g, ""))} className="h-8 w-24" />
-              <span>tokens</span>
+              {tr("trainingExport.capTokensLine", {
+                input: <Input inputMode="numeric" aria-label={t("trainingExport.capTokensLabel")} value={capTokens} onChange={(e) => setCapTokens(e.target.value.replace(/\D/g, ""))} className="h-8 w-24" />,
+              })}
             </div>
           )}
         </SettingRow>
@@ -451,20 +464,24 @@ function TrainingExport() {
         <div className="flex flex-wrap items-center gap-2">
           <Button variant={preview ? "secondary" : "brand"} disabled={busy !== null || nothing || picked.length === 0} onClick={() => void runPreview()}>
             {busy === "preview" ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
-            {busy === "preview" ? "Reading every turn…" : preview ? "Preview again" : "Preview"}
+            {busy === "preview" ? t("trainingExport.readingEveryTurn") : preview ? t("trainingExport.previewAgain") : t("common.preview")}
           </Button>
           {preview && !written && (
             <Button variant="brand" disabled={busy !== null || preview.summary.records === 0} onClick={() => void write()}>
               {busy === "write" ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-              {busy === "write" ? "Writing…" : preview.summary.records === 0 ? "Nothing to export" : `Export ${plural(preview.summary.records, "record", "records")}`}
+              {busy === "write"
+                ? t("trainingExport.writing")
+                : preview.summary.records === 0
+                  ? t("trainingExport.nothingToExport")
+                  : t("trainingExport.exportCount", { records: t("trainingExport.count.records", { count: preview.summary.records }) })}
             </Button>
           )}
         </div>
-        <p className="mt-2 px-1 text-small text-muted-foreground">Saved in {listing.folder}.</p>
+        <p className="mt-2 px-1 text-small text-muted-foreground">{t("trainingExport.savedIn", { folder: listing.folder })}</p>
       </section>
 
       {listing.exports.length > 0 && (
-        <SettingsGroup title={`Exports (${listing.exports.length})`}>
+        <SettingsGroup title={t("trainingExport.exportsCount", { count: listing.exports.length })}>
           {listing.exports.map((file) => (
             <ExportRow key={file.name} file={file} onChanged={load} />
           ))}
@@ -482,15 +499,18 @@ function AgentPicks({ agent, rows, unticked, onPick }: { agent: Agent; rows: Con
   return (
     <div className="rounded-xl">
       <div className="flex items-start gap-3 px-3 py-2">
-        <Tick checked={on === rows.length} mixed={on > 0 && on < rows.length} onChange={(next) => onPick(rows.map((c) => c.id), next)} label={`Every conversation with ${agent.name}`} />
+        <Tick checked={on === rows.length} mixed={on > 0 && on < rows.length} onChange={(next) => onPick(rows.map((c) => c.id), next)} label={t("trainingExport.everyConversationWith", { name: agent.name })} />
         <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex min-w-0 flex-1 items-start gap-2 text-left">
           <div className="min-w-0 flex-1">
             <div className="truncate text-ui font-medium text-foreground">
               {agent.name}
-              {agent.archived && <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-caption font-normal text-muted-foreground">Archived</span>}
+              {agent.archived && <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-caption font-normal text-muted-foreground">{t("trainingExport.archived")}</span>}
             </div>
             <div className="text-small text-muted-foreground">
-              {plural(rows.length, "conversation", "conversations")}, {plural(turns, "turn", "turns")}
+              {t("trainingExport.agentCounts", {
+                conversations: t("trainingExport.count.conversations", { count: rows.length }),
+                turns: t("trainingExport.count.turns", { count: turns }),
+              })}
             </div>
           </div>
           <ChevronRight size={14} className={cn("mt-1 shrink-0 text-muted-foreground transition-transform duration-150", open && "rotate-90")} />
@@ -506,7 +526,7 @@ function AgentPicks({ agent, rows, unticked, onPick }: { agent: Agent; rows: Con
                 <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
                   <div className="truncate text-body text-foreground">{c.title}</div>
                   <div className="text-small text-muted-foreground">
-                    {[c.kind === "team" ? "Team conversation" : c.kind === "member" ? "Private" : null, plural(c.turns, "turn", "turns"), c.lastAt ? `the latest ${dayFormat.format(c.lastAt)}` : null]
+                    {[c.kind === "team" ? t("trainingExport.kindTeam") : c.kind === "member" ? t("trainingExport.kindPrivate") : null, t("trainingExport.count.turns", { count: c.turns }), c.lastAt ? t("trainingExport.latest", { date: day(c.lastAt) }) : null]
                       .filter(Boolean)
                       .join(" · ")}
                   </div>
@@ -525,36 +545,43 @@ function PreviewCard({ preview }: { preview: Preview }) {
   const { summary } = preview;
   const r = summary.removed;
   const taken = [
-    r.secrets && plural(r.secrets, "key or password", "keys or passwords"),
-    r.emails && plural(r.emails, "email address", "email addresses"),
-    r.phones && plural(r.phones, "phone number", "phone numbers"),
-    r.homePaths && plural(r.homePaths, "home folder path", "home folder paths"),
-    r.names && plural(r.names, "name", "names"),
+    r.secrets && t("trainingExport.count.secrets", { count: r.secrets }),
+    r.emails && t("trainingExport.count.emails", { count: r.emails }),
+    r.phones && t("trainingExport.count.phones", { count: r.phones }),
+    r.homePaths && t("trainingExport.count.homePaths", { count: r.homePaths }),
+    r.names && t("trainingExport.count.names", { count: r.names }),
   ].filter(Boolean) as string[];
   const c = summary.compression;
   const shortened = [
-    c.shortened && plural(c.shortened, "long result shortened", "long results shortened"),
-    c.repeats && plural(c.repeats, "repeated result left out", "repeated results left out"),
-    c.droppedTurns && plural(c.droppedTurns, "early turn dropped to fit the cap", "early turns dropped to fit the cap"),
+    c.shortened && t("trainingExport.count.shortened", { count: c.shortened }),
+    c.repeats && t("trainingExport.count.repeats", { count: c.repeats }),
+    c.droppedTurns && t("trainingExport.count.droppedTurns", { count: c.droppedTurns }),
   ].filter(Boolean) as string[];
   return (
     <div className="mb-4 rounded-2xl border bg-card p-4">
       <div className="text-ui font-medium text-foreground">
         {summary.records
-          ? `${plural(summary.records, "record", "records")} from ${plural(summary.turns, "turn", "turns")}, about ${sizeText(summary.bytes)}`
-          : "Nothing matches these choices"}
+          ? t("trainingExport.summary", {
+              records: t("trainingExport.count.records", { count: summary.records }),
+              turns: t("trainingExport.count.turns", { count: summary.turns }),
+              size: sizeText(summary.bytes),
+            })
+          : t("trainingExport.nothingMatches")}
       </div>
       <ul className="mt-1.5 flex flex-col gap-1 text-body leading-relaxed text-muted-foreground">
         {summary.leftOut.total > 0 && (
           <li>
-            Left out {plural(summary.leftOut.total, "turn", "turns")}: {summary.leftOut.reasons.map((x) => `${x.count.toLocaleString()} ${x.label}`).join(", ")}.
+            {t("trainingExport.leftOut", {
+              turns: t("trainingExport.count.turns", { count: summary.leftOut.total }),
+              reasons: run(summary.leftOut.reasons.map((x) => `${formatNumber(x.count)} ${x.label}`)),
+            })}
           </li>
         )}
-        {taken.length > 0 && <li>Taken out: {taken.join(", ")}.</li>}
-        {shortened.length > 0 && <li>Shortened: {shortened.join(", ")}.</li>}
+        {taken.length > 0 && <li>{t("trainingExport.takenOut", { items: run(taken) })}</li>}
+        {shortened.length > 0 && <li>{t("trainingExport.shortened", { items: run(shortened) })}</li>}
         {summary.engines.map((e) => (
           <li key={e.kind}>
-            {e.name}: {plural(e.turns, "turn", "turns")}. {RESULTS[e.toolResults]}.
+            {t("trainingExport.engineLine", { name: e.name, turns: t("trainingExport.count.turns", { count: e.turns }), results: t(RESULTS[e.toolResults]) })}
           </li>
         ))}
       </ul>
@@ -567,11 +594,11 @@ function PreviewCard({ preview }: { preview: Preview }) {
       {preview.preview && preview.previewOf && (
         <>
           <div className="mt-3 text-small text-muted-foreground">
-            The first record, as it will be written: {preview.previewOf.agent}, {preview.previewOf.conversation}, {dayFormat.format(Date.parse(preview.previewOf.startedAt))}
+            {t("trainingExport.firstRecordIntro", { agent: preview.previewOf.agent, conversation: preview.previewOf.conversation, date: day(Date.parse(preview.previewOf.startedAt)) })}
           </div>
           <pre
             tabIndex={0}
-            aria-label="The first record"
+            aria-label={t("trainingExport.firstRecord")}
             className="mt-1.5 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/40 p-2.5 font-mono text-caption leading-relaxed text-foreground/90"
           >
             {preview.preview}
@@ -591,11 +618,11 @@ const reveal = (name: string) =>
 
 function FileActions({ name, onDeleted }: { name: string; onDeleted: () => void }) {
   const remove = async () => {
-    const yes = await confirm({ title: "Delete this export?", body: "The file is deleted from this computer. This can't be undone.", confirmLabel: "Delete", destructive: true });
+    const yes = await confirm({ title: t("trainingExport.deleteExportTitle"), body: t("trainingExport.deleteExportBody"), confirmLabel: t("common.delete"), destructive: true });
     if (!yes) return;
     api(`/api/training-export/files/${encodeURIComponent(name)}`, { method: "DELETE" })
       .then(() => {
-        toast("Export deleted");
+        toast(t("trainingExport.exportDeleted"));
         onDeleted();
       })
       .catch((e: Error) => toast.error(e.message));
@@ -604,17 +631,17 @@ function FileActions({ name, onDeleted }: { name: string; onDeleted: () => void 
     <div className="mt-2.5 flex flex-wrap gap-1.5">
       <Button size="sm" variant="secondary" onClick={() => void reveal(name)}>
         <FolderOpen size={13} />
-        {deviceWord() === "Mac" ? "Show in Finder" : "Show in folder"}
+        {deviceWord() === "Mac" ? t("trainingExport.showInFinder") : t("trainingExport.showInFolder")}
       </Button>
       <Button size="sm" variant="secondary" asChild>
         <a href={`/api/training-export/files/${encodeURIComponent(name)}`} download={name}>
           <Download size={13} />
-          Download
+          {t("trainingExport.download")}
         </a>
       </Button>
       <Button size="sm" variant="ghost" className="hover:text-destructive" onClick={() => void remove()}>
         <Trash2 size={13} />
-        Delete
+        {t("common.delete")}
       </Button>
     </div>
   );
@@ -624,7 +651,7 @@ function WrittenRow({ file, onDeleted }: { file: { name: string; path: string; s
   return (
     <div role="status" className="mb-4 rounded-2xl border border-success/30 bg-success/5 p-4">
       <div className="text-ui font-medium text-foreground">
-        Exported {plural(file.summary.records, "record", "records")}, {sizeText(file.size)}
+        {t("trainingExport.exported", { records: t("trainingExport.count.records", { count: file.summary.records }), size: sizeText(file.size) })}
       </div>
       <div className="mt-0.5 break-all font-mono text-small text-muted-foreground">{file.path}</div>
       <FileActions name={file.name} onDeleted={onDeleted} />
@@ -633,14 +660,15 @@ function WrittenRow({ file, onDeleted }: { file: { name: string; path: string; s
 }
 
 function ExportRow({ file, onChanged }: { file: ExportFile; onChanged: () => void }) {
-  const shape = FORMATS.find((f) => f.value === file.format)?.label ?? file.format;
+  const format = FORMATS.find((f) => f.value === file.format);
+  const shape = format ? t(format.label) : file.format;
   return (
     <div className="px-4 py-3.5">
       <div className="text-ui font-medium text-foreground">
-        {new Date(file.created).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+        {formatDate(file.created, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
       </div>
       <div className="mt-0.5 text-body text-muted-foreground">
-        {shape}, {file.unit === "turn" ? "one turn each" : "a conversation each"}, {sizeText(file.size)}
+        {t("trainingExport.exportLine", { shape, unit: file.unit === "turn" ? t("trainingExport.oneTurnEach") : t("trainingExport.conversationEach"), size: sizeText(file.size) })}
       </div>
       <FileActions name={file.name} onDeleted={onChanged} />
     </div>
