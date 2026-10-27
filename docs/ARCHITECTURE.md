@@ -60,8 +60,18 @@ tool calls and permission requests.
 
 **CLI over the Agent Client Protocol.** `acp.ts` is generic: ACP is a
 JSON-RPC protocol that agent CLIs speak so editors can drive them, so one
-implementation serves any agent that speaks it. Gemini CLI is the first.
-Adding another is an entry in `ACP_SPECS`.
+implementation serves any agent that speaks it. Gemini CLI was the first;
+OpenCode, the Grok CLI, Pi, Cursor (`cursor-agent acp`) and Cline (`cline
+--acp`) followed. Adding another is an entry in `ACP_SPECS`, which can
+also say how the CLI reports its sign-in (`signInCheck`, a command, for
+Cursor's keychain login), which ACP auth method to call before a session
+(`authMethod`, Cursor's `cursor_login`), and the oldest release that
+works (`minVersion`, 3.0.68 for Cline; an older one is unavailable with
+that reason, and its row offers an update). Every CLI engine can be
+started from a path of the person's choosing (`enginePaths` in
+`config.json`, set with `PUT /api/engines/:kind/path` from this computer
+only), which applies to each instance of that driver that names no CLI
+of its own.
 
 **OpenAI-compatible HTTP.** `openai-compat.ts` is generic too. Nearly
 every lab now answers `/chat/completions`, so providers are data in

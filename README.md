@@ -316,6 +316,11 @@ conversations, and says exactly what it was given.
 - **Any browser.** With Bloks Cloud, the same app opens at
   [bloks.dev/web](https://bloks.dev/web), every request sealed in the
   browser for your computer alone.
+- **Out loud.** Give an agent a voice and it reads replies aloud, and you
+  can call it, or call a room. Voices come from ElevenLabs, OpenAI, Fish
+  Audio or xAI with a key of yours (xAI's uses your Grok key if you have
+  one), from a Chatterbox server you run on your own machine or network,
+  or from the Mac's own voices with no key at all.
 - **Chat and email.** Talk to agents from Telegram, or carry a room into
   Slack, Discord or a WhatsApp group. With Bloks Cloud, each agent gets an
   email address you can forward things to.
@@ -388,10 +393,12 @@ picks its own.
 </p>
 
 The first-run check, and Settings, Engines and keys, install Claude Code,
-Codex, Gemini CLI, Pi, Antigravity and the Grok CLI with one button. They
-go into your own `~/.local`, so no admin password and no npm permission
-errors, and an engine that is installed but not signed in says so, with
-a button that opens Terminal at its sign-in. To do it by hand:
+Codex, Gemini CLI, Pi, Antigravity, the Grok CLI, Cursor and Cline with
+one button. They go into your own `~/.local`, so no admin password and no
+npm permission errors, and an engine that is installed but not signed in
+says so, with a button that opens Terminal at its sign-in. An engine
+installed somewhere else, or a build of your own, can be pointed at with
+**Use a different copy** under its row. To do it by hand:
 
 | Engine | How you connect | Works in your folders |
 | --- | --- | --- |
@@ -401,6 +408,8 @@ a button that opens Terminal at its sign-in. To do it by hand:
 | Pi | `npm i -g --prefix ~/.local --ignore-scripts @earendil-works/pi-coding-agent pi-acp`, then `pi` | yes |
 | OpenCode | `npm i -g --prefix ~/.local opencode-ai`, then `opencode auth login` | yes |
 | Grok CLI | `curl -fsSL https://x.ai/cli/install.sh \| bash`, then `grok login` | yes |
+| Cursor | `curl https://cursor.com/install -fsS \| bash`, then `cursor-agent login` (the Cursor CLI, not the editor) | yes |
+| Cline | `npm i -g --prefix ~/.local cline` (3.0.68 or newer), then `cline auth` | yes |
 | Antigravity | `curl -fsSL https://antigravity.google/cli/install.sh \| bash`, then `agy` | yes |
 | OpenRouter | Sign in from Settings, in your browser | no |
 | Gemini, Grok, Kimi, Llama, DeepSeek, Mistral, Groq | Paste a key in Settings | no |

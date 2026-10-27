@@ -27,9 +27,14 @@ of your own, OpenRouter's public model list is fetched at most once a
 day, with no key and nothing about you, to estimate what unpriced turns
 cost; and with a Bloks key, bloks.dev is asked, with that key, about your
 plan. Everything else on the wire is the engines (Claude Code, Codex and
-the rest) and whatever connectors you configure, talking to their own
-services, and Bloks Cloud when you turn it on, which carries sealed
-traffic it cannot read. On a Mac with phone access on, the desktop app
+the rest), the voice vendors whose keys you save (the text being read
+aloud, to ElevenLabs, OpenAI, Fish Audio or xAI), and whatever connectors
+you configure, talking to their own services, and Bloks Cloud when you
+turn it on, which carries sealed traffic it cannot read. A Chatterbox
+server for voices must be on this computer or its local network (a
+loopback, private or link-local address, or a local name): Bloks refuses
+an address on the internet, since every reply read aloud is sent there
+as text with no key. On a Mac with phone access on, the desktop app
 also says on the local network where each listening workspace is (see
 Phones and other devices).
 
@@ -48,6 +53,13 @@ name the loopback interface, which defeats DNS rebinding. See
 written `0600` inside a `0700` directory. That keeps
 other user accounts out, but it is not encrypted at rest. Moving these
 into the macOS Keychain is the top open item.
+
+**Which program runs as an engine is the person's choice, on this
+computer.** An engine's CLI can be started from a path other than PATH's
+copy. Only a window on this computer can set it (never a phone, a remote
+window or an agent's token), the path must be a file that can run, the
+Cursor editor is refused where the Cursor CLI is meant, and every change
+is written to the activity ledger.
 
 **Approvals are the safety gate.** When a provider asks to do something
 risky, Bloks surfaces an approval card and blocks until you answer.
