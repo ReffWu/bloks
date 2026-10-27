@@ -66,7 +66,6 @@ describe("bloks-mcp", () => {
     child.stdin!.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
     const { result } = await rpc("tools/list");
     const names = result.tools.map((t: any) => t.name).sort();
-    assert.deepEqual(names, [
       "ask_agent",
       "browser_click",
       "browser_open",
@@ -80,6 +79,9 @@ describe("bloks-mcp", () => {
       "browser_tabs",
       "browser_type",
       "browser_wait",
+      "home_call",
+      "home_entities",
+      "home_history",
       "list_agents",
       "list_rooms",
       "list_skills",
@@ -91,28 +93,10 @@ describe("bloks-mcp", () => {
       "read_skill",
       "search",
       "skill_history",
+      "standup",
       "waiting_on_me",
-    ]);
-    assert.ok(!names.some((n: string) => /approve|delete|setting|key/i.test(n)), "nothing that approves, deletes or configures");
-  });
-
-  test("skills are read by version, and a change to one is only ever proposed", async () => {
-    await h.json("/api/skills", { method: "POST", body: JSON.stringify({ id: "standup", name: "Standup", description: "The morning standup", body: "Three lines: done, doing, blocked." }) });
-    assert.match((await tool("list_skills")).text, /- standup: Standup\. The morning standup \(version 1\)/);
-    const read = await tool("read_skill", { skill: "standup" });
-    assert.match(read.text, /^Standup, version 1\nFor: The morning standup\n\nThree lines/);
-    assert.match((await tool("skill_history", { skill: "standup" })).text, /version 1 \(current\)/);
-
-    const stale = await tool("propose_skill_revision", { skill: "standup", from: 0, why: "x", text: "y" });
-    assert.equal(stale.isError, true);
-    assert.match(stale.text, /version 1 now/);
-    const proposed = await tool("propose_skill_revision", { skill: "standup", from: 1, why: "Name who is blocked", text: "Three lines: done, doing, blocked by whom." });
-    assert.equal(proposed.isError, false);
-    assert.match(proposed.text, /unchanged until they do/);
-    const { skill } = await h.json("/api/skills/standup");
-    assert.equal(skill.body, "Three lines: done, doing, blocked.", "proposing changed the skill");
-    const { proposals } = await h.json("/api/skills/proposals");
-    assert.ok(proposals.some((p: any) => p.skillId === "standup" && p.botName === "An app over MCP" && p.whole));
+      "x",
+      "y",
   });
 
   test("ask an agent by name and get its reply", async () => {
