@@ -223,7 +223,24 @@ Bloks therefore:
 - shows the full body before anything is installed,
 - never fetches and installs a skill on its own initiative,
 - caps skill size, and confines skills to slugged filenames inside
-  `~/.bloks/skills` so a crafted name cannot escape the directory.
+  `~/.bloks/skills` so a crafted name cannot escape the directory,
+- never changes a skill on its own. When suggestions are on, a review of
+  a finished conversation can suggest a new skill or a change to one,
+  and an agent can ask for a change (`bloks skill revise`, or an MCP
+  client's `propose_skill_revision`). Every one of those is staged with
+  its reason and its diff, and only the person keeps it. A conversation
+  can contain anything a web page, a file or an email put into it, and a
+  skill is read into every future turn, so letting a review or an agent
+  rewrite one unattended would give whoever wrote that page a lasting
+  say in what your agents do. The review is told that what it reads is
+  data, and what it writes has anything shaped like a key taken out,
+  but the guarantee is the person's approval, not the prompt,
+- keeps every version of a skill, with who made it and why, so a change
+  that got through can be seen and put back. An agent's credential can
+  read versions and ask for a change against the version it read; it
+  cannot edit, restore, install, or keep a suggestion, and a change
+  written against a version that has since moved on is refused rather
+  than allowed to undo the newer one.
 
 **Only install skills from a source you'd trust with your accounts.**
 The same caution applies to anything an agent reads and treats as

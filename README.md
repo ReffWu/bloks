@@ -275,6 +275,18 @@ conversations, and says exactly what it was given.
   <img alt="Memory for the Head of Marketing: its topic files, and Recent changes, where the agent changed MEMORY.md during a conversation and you changed it after, each with an Undo button" src="docs/screenshots/memory.png">
 </p>
 
+### Skills that get better, and keep every version
+
+Skills are instructions your agents pick up, from the catalogue or
+written by you. Turn on suggestions and, after a turn that worked
+something out (many steps, a failure it got past, or you putting it
+right), Bloks offers it as a new skill; after a skill was used and you
+corrected it, it offers a change to that skill, shown as a diff with
+the reason. Nothing changes until you keep it, and every version stays:
+who changed it and why, any two compared, any one restored, with how
+often each was used and then corrected. Agents can ask for a change too
+(`bloks skill revise`), against the version they read.
+
 ### Work that runs without you
 
 - **Routines and check-ins** on a calendar you drag, that answer quietly
@@ -508,6 +520,7 @@ Inside each workspace's folder:
 | `usage.json` | What each agent and engine used, by day |
 | `reads.json` | How far each person has read each conversation |
 | `skills/` | Installed skills, one markdown file each |
+| `skill-history/` | Every version of each of your skills, with who changed it and why |
 | `workspaces/` | Each agent's own home folder, with its `MEMORY.md` and topic files |
 | `checkpoints/` | Each turn's before and after, kept once per file version, for undo |
 | `memory-journal/` | Every change to an agent's memory, with the text before and after |

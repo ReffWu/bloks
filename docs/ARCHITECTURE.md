@@ -171,6 +171,9 @@ Workspaces), written synchronously. No database.
 | `messages-<id>.json` | One transcript per agent or room, same key space |
 | `config.json` | Connected providers and keys, `0600` |
 | `skills/*.md` | Installed skills |
+| `skill-history/<id>.json` | Every version of each skill of the person's, whole, with who made it, when and why (see Skill versions) |
+| `skill-usage.json` | How often each skill and each version was used, and corrected straight after |
+| `proposals.json` | Suggested skills and changes to skills, staged until the person keeps or dismisses them |
 | `setup-import.json` | What was brought over from other agent tools, by item: a digest, where it went, and the exact text added |
 | `session-import.json` | Which past Claude Code and Codex sessions became which lanes, with the digest of what came over |
 | `engine-sessions.json` | Engine session ids Bloks itself ran, so they are never offered back as past sessions |
@@ -2173,6 +2176,84 @@ is in, at most five waiting; it does nothing until approved, the agent
 sees and withdraws only its own proposals, and the brief counts them as
 ready for a look.
 
+## Skill versions
+
+`server/skill-history.ts` keeps every version of every skill of the
+person's, whole, in `skill-history/<id>.json` beside the skill's own
+file: its number (never reused or renumbered), when, who (`person`,
+`agent`, `proposal`, `catalog`, `import`, `file`, `migration`,
+`builtin`), why in one line, and the name, description and body. The
+file under `skills/` stays the truth. Every write goes through
+`installSkill` (`server/skills.ts`), which first brings the record in
+line with the file: a skill with no record becomes version 1 as it
+stands, and a file edited by hand since its last version is kept as a
+version "changed outside Bloks" before anything is written over it. The
+server does the same for every skill as it starts
+(`migrateSkillHistory`), so a skill from before versions comes in whole.
+Reading the library never writes. A hundred versions are kept, the first
+always among them.
+
+A writer may say which version it read (`from`). When the skill has
+moved on since, nothing is written and the answer is 409 with the
+current version, so two writers that read the same version cannot both
+land. A built-in is version 0 and never changes: the first change to one
+(`POST /api/skills/:id/fork`, or keeping a suggested change to it) makes
+the person's own copy under the same id, whose history starts with the
+text as it ships, and removing the copy brings the built-in back.
+
+The routes: `GET /api/skills/:id?version=n`, `GET
+/api/skills/:id/history` (newest first, each version with its uses and
+corrections), `GET /api/skills/:id/history/:n`, `GET
+/api/skills/:id/diff?from=a&to=b` (by default the last change), and the
+person's own `PUT /api/skills/:id`, `POST /api/skills/:id/restore` (a
+new version that names the one it put back) and `POST
+/api/skills/:id/fork`. Each refuses an agent's credential as well as
+being off its list. The ledger records `skill.changed`.
+
+`server/skill-usage.ts` counts uses in `skill-usage.json`, once a turn
+and against the version current then: a skill the person named with a
+slash, or one an agent read in full in a turn. A use is corrected when
+the person's next words in that conversation read as putting the agent
+right (`looksLikeCorrection` in `server/proposals.ts`). Counting spends
+nothing and happens whatever the suggestion setting.
+
+### Suggestions from a turn
+
+After a turn ends (and not one handed to a backup engine, which is not
+over yet), `settleSkillUses` gathers what the turn used and the turn
+before it used, and `turnSigns` reads the transcript for tool calls,
+failures, a failure worked around, and a correction at the start of the
+turn or during it. `whatToLearn` decides, without a model, whether a
+review is worth a call and of what: a skill used and then corrected, or
+used while a step failed and was worked around, gets a revision of that
+skill (one call, `revisionPrompt`, answered with WHY, LESSON and
+find-and-replace edits); otherwise a new skill is looked for after a
+conversation that went back and forth, many tool calls, a recovery or a
+correction (`reviewPrompt`, and `patchPrompt` when it names a skill that
+exists). The setting is `skills.learn` in `config.json`: `off` (the
+default, and what an unset value reads unless the old `skills.propose`
+switch was on, which reads as `suggest`), `suggest` (clear signs only,
+at most 20 reviews a day) or `more` (weaker signs, and any turn that
+used a skill for real work, at most 60). Shared rooms, members' lanes,
+Telegram people, strangers' mail and engine commands are never read
+back, as before.
+
+Everything a review reads is framed as data (`DATA_NOT_INSTRUCTIONS`),
+and what it writes passes through the secret scrubber before it is
+staged. Nothing is ever applied: a suggestion waits in `proposals.json`
+with its reason, its trigger and the version it was read against, and
+`GET /api/skills/proposals` shows a change as its diff against the skill
+as it is now. Keeping one (`POST /api/skills/proposals/:id`, the
+person's alone) applies edits to the skill as it is then.
+
+An agent asks for a change with `POST /api/skills/:id/revisions` (`bloks
+skill revise <id> --from <version> --why "..."`, the text from `--file`
+or stdin; the MCP server's `propose_skill_revision`). The whole new text
+is staged with `whole` and `base`: refused at once when `from` is not
+the current version, and refused again when kept if the skill has moved
+on since, because kept on top of a newer version it would quietly undo
+it. The person may still keep their own edit of it.
+
 ## The nightly memory tidy
 
 `server/memory-tidy.ts` tidies each agent's memory once a night, between
@@ -2601,11 +2682,13 @@ out.
 ## MCP server
 
 `bin/bloks-mcp.mjs` is a dependency-free stdio MCP server that finds the
-local Bloks on its known ports and offers eight tools (list agents and
+local Bloks on its known ports and offers thirteen tools (list agents and
 rooms, ask an agent and wait for the reply, post in a room, read a
-conversation, search, the latest brief, what is waiting). It has no tool
-that approves, deletes or configures. `/api/mcp-config` gives the command
-to paste, using the runtime the server itself runs on.
+conversation or one message, search, the latest brief, what is waiting,
+and the skills: list them, read one at a version, its history, and
+propose a revision, which only ever stages it). It has no tool that
+approves, deletes or configures. `/api/mcp-config` gives the command to
+paste, using the runtime the server itself runs on.
 
 ## Lanes, unread and the sidebar
 
