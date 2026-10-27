@@ -394,7 +394,7 @@ function SkillHistory({
               onClick={() => setPicked(row.n)}
               aria-pressed={row.n === picked}
               className={cn(
-                "w-full rounded-lg px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring/50",
+                "w-full rounded-lg px-2.5 py-2 text-left transition-colors duration-150",
                 row.n === picked ? "bg-accent" : "hover:bg-accent/60",
               )}
             >
