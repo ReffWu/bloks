@@ -32,6 +32,7 @@ import { keepTrying } from "@/lib/retry";
 import { snapshotOrder, type SnapshotLoad } from "./snapshotOrder";
 import { sendHeld, takeWake, wakeFetch, wakeGaveUp } from "@/lib/waking";
 import { placeRow, type Listed } from "@/lib/sections";
+import { askLaneFocus, dropLaneFocus } from "@/lib/drafts";
 import { maybeAutoSpeak } from "@/components/Voice";
 import {
   configFromFrame,
@@ -454,9 +455,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .then(() => rawDispatch({ type: "blokDeleted", blokId: action.blokId }))
             .catch(showError);
           break;
-        case "newTask":
-          switchLane(action.botId, api(`/api/bots/${action.botId}/tasks`, { method: "POST", body: "{}" }));
+        case "newTask": {
+          // The new conversation's box takes the keyboard once it shows
+          // (drafts.ts), on a computer: on a phone that would be the
+          // keyboard sliding up over the conversation it just opened.
+          const bot = stateRef.current.bots.find((b) => b.id === action.botId);
+          const had = document.activeElement === document.body ? null : document.activeElement;
+          const asked =
+            bot && window.matchMedia?.("(pointer: fine)").matches
+              ? askLaneFocus(bot.id, bot.activeTaskId ?? bot.threadId, had)
+              : null;
+          const made = api(`/api/bots/${action.botId}/tasks`, { method: "POST", body: "{}" });
+          // refused, or answered with nothing to open: no box is coming
+          if (asked) made.then((r) => !r?.bot && dropLaneFocus(asked), () => dropLaneFocus(asked));
+          switchLane(action.botId, made);
           break;
+        }
         case "selectTask":
           keptUnread.current = null;
           switchLane(action.botId, api(`/api/bots/${action.botId}/tasks/${action.taskId}/activate`, { method: "POST" }));

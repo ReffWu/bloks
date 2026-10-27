@@ -137,3 +137,68 @@ export function takeFocus(): boolean {
   focusCarried = false;
   return had;
 }
+
+/**
+ * A conversation made from this window wants the keyboard in its box
+ * (GitHub 400): the + that made it has the focus, not the box, so the
+ * words typed next went nowhere. The box takes it once it shows, but a
+ * new conversation can take a while to come back, and whoever made it
+ * may have moved on by then; it never takes the keyboard from somewhere
+ * they went in the meantime.
+ *
+ * Asked for by agent, with the conversation open when it was asked
+ * (`from`): the + in the sidebar opens the agent first, and that box is
+ * not the new one. The first other box of that agent's to show is the new
+ * one; a box of another agent's means they went elsewhere, and so does
+ * the time running out.
+ */
+interface LaneFocus {
+  botId: string;
+  from: string;
+  /** What had the keyboard when it was asked, usually the + itself. */
+  had: unknown;
+  at: number;
+}
+let laneFocus: LaneFocus | null = null;
+
+/** Long enough for a hosted workspace to wake and answer. */
+export const LANE_FOCUS_TTL = 30_000;
+
+/** A new conversation is on its way for this agent. Returns the ask, to
+ * drop it again if the conversation never comes. */
+export function askLaneFocus(botId: string, from: string, had: unknown, now = Date.now()): object {
+  laneFocus = { botId, from, had, at: now };
+  return laneFocus;
+}
+
+/** The conversation was refused: nothing is coming to take the keyboard. */
+export function dropLaneFocus(ask: object): void {
+  if (laneFocus === ask) laneFocus = null;
+}
+
+/**
+ * Whether the box showing now is the new conversation's and may take the
+ * keyboard. `active` is what has it now, null for nothing in particular
+ * (the page itself), and `inDialog` whether that is inside a dialog. It
+ * may if the keyboard is still where it was when the conversation was
+ * asked for, or has gone nowhere since, which is what happens when the
+ * thing clicked was a menu that has closed or a box that has gone.
+ */
+export function takeLaneFocus(
+  botId: string,
+  lane: string,
+  active: unknown,
+  inDialog: boolean,
+  now = Date.now(),
+): boolean {
+  const ask = laneFocus;
+  if (!ask) return false;
+  if (botId !== ask.botId || now - ask.at > LANE_FOCUS_TTL) {
+    laneFocus = null;
+    return false;
+  }
+  if (lane === ask.from) return false;
+  laneFocus = null;
+  if (inDialog) return false;
+  return active === null || active === ask.had;
+}

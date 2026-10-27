@@ -53,7 +53,7 @@ import { AttachmentChip, AttachmentChips, usePendingImages } from "./composer/At
 import { Button } from "@/components/ui/button";
 import { modKey } from "@/lib/thisComputer";
 import { edgeMask } from "@/lib/composerSize";
-import { acceptDraft, boxFor, carryFocus, discardRecovery, isEmptyDraft, keepDraft, readDraft, readRecoveries, recoverDraft, restoreRecovery, showBox, takeFocus, type Draft } from "@/lib/drafts";
+import { acceptDraft, boxFor, carryFocus, discardRecovery, isEmptyDraft, keepDraft, readDraft, readRecoveries, recoverDraft, restoreRecovery, showBox, takeFocus, takeLaneFocus, type Draft } from "@/lib/drafts";
 import { grouped, insert as insertCommand, matches as matchCommands, segments, slashAt, withBloksCommands, type Command } from "@/lib/slashCommands";
 import { escapeTaken } from "@/lib/useEscape";
 import { ComparePicker } from "./composer/ComparePicker";
@@ -349,8 +349,18 @@ export function Composer({
   // Layout, not passive: on the way out the box has to still be in the
   // page to tell whether it had the keyboard, and the box replacing it
   // takes the keyboard in the same commit.
+  // A conversation just made from a + or a menu takes it too, unless the
+  // keyboard went somewhere else while it was being made.
   useLayoutEffect(() => {
-    if (takeFocus()) inputRef.current?.focus();
+    const carried = takeFocus();
+    const at = document.activeElement;
+    const made = takeLaneFocus(
+      bot.id,
+      bot.activeTaskId ?? bot.threadId,
+      !at || at === document.body ? null : at,
+      Boolean(at?.closest("[role=dialog], [role=alertdialog]")),
+    );
+    if (carried || made) inputRef.current?.focus();
     const input = inputRef.current;
     return () => carryFocus(Boolean(input) && document.activeElement === input);
   }, [draftKey]);
