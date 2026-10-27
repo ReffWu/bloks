@@ -1638,13 +1638,118 @@ one every four seconds in a conversation, as before.
 
 ## Chat platforms
 
-A shared room can be carried into Slack, Discord or a WhatsApp group
-(`server/chat-bridge.ts` holds the rules, one transport file each moves
-the bytes). Slack and Discord are connections this machine opens. WhatsApp
+A shared room can be carried into Slack, Discord, or a WhatsApp or Signal
+group (`server/chat-bridge.ts` holds the rules, one transport file each
+moves the bytes; Signal's rides the same stream as its agents, see
+Signal). Slack and Discord are connections this machine opens. WhatsApp
 can only call a public address, so Bloks Cloud gives each workspace one
 and hands every call over the relay line as an ask; the call arrives
 readable, because Meta sends it that way, and is believed only if Meta's
 signature checks out against the app secret, which stays here.
+
+## Signal
+
+The same shape as Telegram, on an account rather than a bot. Signal has
+no bots, so an agent answers on a real Signal account, and Bloks never
+holds its keys: signal-cli, running on this computer as a JSON-RPC daemon
+(`signal-cli daemon --http 127.0.0.1:8080`, multi-account), is linked to
+the account as a secondary device and keeps everything in its own data
+folder. Bloks talks to it over loopback only (`cleanDaemonUrl` refuses
+anything else, since the daemon has no password): `POST /api/v1/rpc` for
+`listAccounts`, `startLink`/`finishLink`, `send`, `sendTyping`,
+`remoteDelete`, `getAttachment` and `listGroups`, and one Server-Sent
+Events stream, `GET /api/v1/events`, for every account it has linked.
+`server/signal.ts` holds the parse and the rules (`decide`),
+`server/signal-people.ts` the people rules, and the Signal section of
+`server/index.ts` the plumbing.
+
+Linking is a code to scan: `POST /api/bots/:id/signal {link: true}` asks
+for a `sgnl://linkdevice` URI, the settings screen draws it as a QR code,
+and `finishLink` waits in the background for the phone. An account already
+linked can be chosen instead. One account answers for one agent. The
+owner pairs with a single-use word, as on Telegram, and where it arrives
+decides the shape: from another account, that account is the owner and
+the linked account is the agent's own number; in Note to Self, the linked
+account is the owner's own, and from then on only Note to Self is read.
+On the owner's own account every other conversation, and every message
+the owner sends to anyone else from the phone, is dropped by `decide`
+before anything reads it, and nobody can knock.
+
+The owner's words become a turn in the agent's ordinary conversation,
+marked `fromSignal`, and the answer comes back with what the turn saved
+(five files at most, as data URIs). Cards the turn raises are said in the
+chat and answered by typing a number or yes / no; an approval needs one of
+its own answers, and voice never answers one. Photos arrive as the
+composer's images, voice notes are transcribed with the speech key, and
+long turns get a note that is taken back (`remoteDelete`) when the answer
+comes. Everything sent is remembered by timestamp, so an echo is never
+heard, and everything handled is kept in `signal-seen.json`, since the
+daemon replays what it still holds to a stream that starts over.
+
+People follow Telegram's rules: a stranger knocks once, the owner gets a
+card in the app and in their own chat, answered there only by a reply
+that quotes it, the waiting list and the closed records are bounded by
+the same limits, names are cleaned and namesakes flagged, and every change
+to a person's access is a new grant. A person's words land in a
+conversation of their own (`TaskRecord.signalPerson`), never in the
+owner's, framed as theirs. Without full access their requester is
+`signal:<hash of agent, connection, person, grant>`, which `startTurn`
+treats as an outsider, like an email from anyone: no tools, no notes, no
+memory, a fresh engine session with their own conversation replayed, and
+only on an engine whose tools can be switched off. With full access their
+turns run with the agent's own trust and their files come back to them.
+Either way the cards their turns raise go to the owner, never to them.
+
+A room can be carried into a Signal group through any linked account
+(`chat.signal` in config.json, `server/chat-bridge.ts` for the rules). A
+group message on that account goes to the room; the account's own
+messages arrive as sync messages, which never reach the bridge, so the
+room cannot wake itself.
+
+## Home Assistant
+
+`server/home-assistant.ts` holds the rules; the Home Assistant section of
+`server/index.ts` meets them. One connection for the workspace: an
+address and a long-lived access token, checked with `GET /api/` and kept
+in config.json (`home.token` is in `SECRET_PATHS`). The token never comes
+back out of `/api/home`, never enters a turn, and every request is made by
+Bloks with redirects refused.
+
+What an agent reaches is the owner's choice: entities and whole domains
+on a list, and the agents allowed to use the home at all. An agent uses
+it through its own command line (`bloks home entities | history | call |
+wait`, routes under `/api/bots/:me/home/`), only in the owner's own turns:
+not in a shared room, not for a person on Telegram or Signal, full access
+or not, and not for mail from anyone. Reading is free. A service call
+names entities on the list, in their own domain or Home Assistant's
+generic on, off and toggle, with any `entity_id`, `area_id`, `device_id`,
+`floor_id` or `label_id` in its data taken out, so it cannot reach past
+what it names. It runs at once only when the owner marked every entity to
+change without asking; otherwise it is an approval card in the lane
+(`home:<id>`, answered through `/api/bots/:id/respond`, and on the owner's
+Signal chat when the turn began there). Locks, alarms, and covers classed
+or named as garage doors or gates ask every time, whatever was marked. The
+route waits 90 seconds for an answer, then says it is still waiting; a yes
+counts only while the turn that asked is still running.
+
+What comes back is the device's words, not the owner's: names, states and
+attributes are cleaned of control characters and reordering marks,
+bounded in length and depth, stripped of pictures and tokens, and sent
+with a note that they are data. The owner's picker reads areas from Home
+Assistant's WebSocket registries, and shows names cleaned the same way.
+
+The other direction needs nothing new: Home Assistant posts to an agent's
+webhook. `POST /api/home/automation` makes (or reuses) a webhook named
+"Home Assistant" for the agent and returns a `rest_command`, a state
+automation and a voice automation (a `conversation` trigger with
+`set_conversation_response`), with the address this computer is reachable
+at. Home Assistant's own conversation agent integrations are not
+supported: none in Home Assistant calls an arbitrary HTTP endpoint, and
+standing in for one would be a new model endpoint on this computer.
+
+The Bloks MCP server reads the list too (`home_entities`, `home_history`)
+once the owner lets other AI apps in, and `home_call` changes only what
+needs no asking: there is no turn there to put a card in.
 
 ## Telegram
 
@@ -2945,15 +3050,16 @@ out.
 ## MCP server
 
 `bin/bloks-mcp.mjs` is a dependency-free stdio MCP server that finds the
-local Bloks on its known ports and offers twenty five tools: thirteen of
-its own (list agents and
-rooms, ask an agent and wait for the reply, post in a room, read a
-conversation or one message, search, the latest brief, what is waiting,
-and the skills: list them, read one at a version, its history, and
-propose a revision, which only ever stages it), and the Bloks browser's
-twelve (`browser_open` and the rest, through `POST /api/browser/command`).
-It has no tool that approves, deletes or configures. `/api/mcp-config`
-gives the command to paste, using the runtime the server itself runs on.
+local Bloks on its known ports and offers twenty eight tools: thirteen of
+its own (list agents and rooms, ask an agent and wait for the reply, post
+in a room, read a conversation or one message, search, the latest brief,
+what is waiting, and the skills: list them, read one at a version, its
+history, and propose a revision, which only ever stages it), the Bloks
+browser's twelve (`browser_open` and the rest, through
+`POST /api/browser/command`), and three for Home Assistant once the owner
+allows it (see Home Assistant). It has no tool that approves, deletes or
+configures. `/api/mcp-config` gives the command to paste, using the
+runtime the server itself runs on.
 
 ## Lanes, unread and the sidebar
 

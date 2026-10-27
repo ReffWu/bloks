@@ -131,6 +131,29 @@ of its window and processes, `app.log` in its logs folder (on a Mac,
 folder and never sent off this computer. What the page writes to it is
 budgeted, so a page failing in a loop cannot fill the disk.
 
+**Signal is signal-cli's, not Bloks's.** An agent on Signal answers on
+an account linked to signal-cli on this computer, which keeps the
+account's keys in its own data folder; Bloks stores the account's number,
+the owner's and who is let in, never a credential. signal-cli's daemon has
+no password, so Bloks only ever talks to one on loopback, and anyone on
+this computer who can reach that port can speak as the account: unlink it
+in Signal on the phone (Settings, Linked devices) to end it. On the
+owner's own account, signal-cli receives every conversation; Bloks reads
+only Note to Self and drops the rest unread, but signal-cli may keep
+attachments others send in its folder. A person let in without full
+access talks to an agent with no tools and nothing of the owner's, and
+everything their turn asks goes to the owner.
+
+**The home asks first.** Home Assistant's token lives in `config.json`
+with the other keys and never reaches a client or a turn. Agents see only
+the entities the owner lists, and only agents the owner names, in the
+owner's own conversations. Every change is a card unless the owner marked
+that entity as one to change without asking, and locks, alarms and garage
+doors always ask. A long-lived token acts as the Home Assistant user who
+made it, so make it on an account that can reach only what agents should
+be near. What devices report reaches an agent as data, cleaned and
+bounded.
+
 ## Phones and other devices
 
 Your phone, a browser at bloks.dev/web or another computer of yours

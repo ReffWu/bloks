@@ -370,9 +370,19 @@ often each was used and then corrected. Agents can ask for a change too
   Audio or xAI with a key of yours (xAI's uses your Grok key if you have
   one), from a Chatterbox server you run on your own machine or network,
   or from the Mac's own voices with no key at all.
-- **Chat and email.** Talk to agents from Telegram, or carry a room into
-  Slack, Discord or a WhatsApp group. With Bloks Cloud, each agent gets an
-  email address you can forward things to.
+- **Chat and email.** Talk to agents from Telegram or Signal, or carry a
+  room into Slack, Discord, or a WhatsApp or Signal group. On Signal an
+  agent answers on an account of its own, linked to signal-cli on your
+  computer like Signal Desktop, which keeps the keys; or on your own
+  account, where it reads only your Note to Self. People you let in talk
+  to it in a conversation of their own. With Bloks Cloud, each agent gets
+  an email address you can forward things to.
+- **Your home.** Connect Home Assistant and choose what agents may see.
+  They read states and history freely; every change asks you on a card
+  unless you let that entity change without asking, and locks, alarms
+  and garage doors always ask. Home Assistant can start an agent too: an
+  automation, or your voice assistant, posts to the agent's webhook with
+  YAML made for you in Settings.
 - **Your other AI apps.** Bloks is an MCP server: Claude Desktop, Claude
   Code or Cursor can hand your agents work and read their conversations,
   and use the Bloks browser on sites your rules allow, but never approve,
