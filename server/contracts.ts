@@ -156,8 +156,17 @@ export type RuntimeEvent = RuntimeEventBase &
         input?: unknown;
         summary: string;
         choices?: string[];
+        /** Nothing is waiting on this question: the engine was told it was
+         * taken and carried on (Codex's request_user_input_async). Its
+         * answer is said in the conversation, as the person's words. */
+        async?: true;
       }
-    | { type: "request.resolved"; behavior: string; source: string }
+    | {
+        type: "request.resolved"; behavior: string; source: string;
+        /** What the person answered an async question with, for the
+         * harness to say in the conversation that asked it. */
+        answer?: string;
+      }
     | {
         type: "thread.token-usage.updated";
         input: number;

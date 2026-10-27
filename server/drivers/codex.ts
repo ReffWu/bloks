@@ -502,6 +502,37 @@ const QUESTION_METHOD = "item/tool/requestUserInput";
 const MCP_ELICITATION_METHOD = "mcpServer/elicitation/request";
 const EDIT_APPROVAL_METHODS = new Set(["item/fileChange/requestApproval", "applyPatchApproval"]);
 
+// ── questions that do not wait ────────────────────────────────────────
+//
+// Codex has a second way to ask, request_user_input_async, and it is not
+// a request at all: the tool tells the agent its question was taken, the
+// agent carries on, and the question arrives as a finished agentMessage
+// with `delivery: "async"` and the questions themselves beside its text.
+// Read as a reply, it was words in the transcript with nothing to answer
+// and nobody told (GitHub 402). It opens the same card a blocking
+// question does now, and since no call is left to hear the answer, the
+// answer goes to the conversation as the person's words.
+
+/** Outstanding async questions an instance keeps, and the items it
+ * remembers having carded. Past these the oldest goes. */
+const MAX_ASYNC_ASKS = 256;
+const MAX_ASYNC_SEEN = 1_024;
+
+/** An async question item, read the way a blocking question's card is:
+ * every question's title, and the first one's choices. Null for an item
+ * that is only words, or one whose questions name nothing to ask. */
+export function asyncQuestion(item: any): { summary: string; choices: string[] } | null {
+  if (item?.delivery !== "async" || !Array.isArray(item.questions)) return null;
+  const said = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
+  const asked = item.questions
+    .map((q: any) => ({ title: said(q?.title ?? q?.question ?? q?.header, 500), options: Array.isArray(q?.options) ? q.options : [] }))
+    .filter((q: { title: string }) => q.title);
+  if (!asked.length) return null;
+  // a choice is a plain string here, a { label } on the blocking path
+  const choices: string[] = asked[0].options.map((o: any) => said(typeof o === "string" ? o : o?.label, 200)).filter(Boolean);
+  return { summary: asked.map((q: { title: string }) => q.title).join(" · "), choices: [...new Set(choices)].slice(0, 5) };
+}
+
 /** What the agent is asking to touch, in a word the transcript can show. */
 function toolOf(method: string, params: any): string {
   if (EDIT_APPROVAL_METHODS.has(method)) return "edit";
@@ -629,6 +660,14 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       asks: Map<string, Answer>;
     }
     const running = new Map<string, RunningTurn>();
+    /** Async questions still open, by the request id on their card, with
+     * the conversation and turn that asked. The instance's, not the
+     * turn's: the turn that asked has often ended by the time anyone
+     * answers, and the answer still has somewhere to go. */
+    const asyncAsks = new Map<string, { threadId: string; turnId: string }>();
+    /** The async question items already carded, by conversation, Codex
+     * turn and item, so the same item said again is not a second card. */
+    const asyncSeen = new Set<string>();
     /** Conversations already told their Codex would not take the shell's
      * config (SHELL_REFUSED_NOTICE), so a lane hears it once, not every turn. */
     const toldShellRefused = new Set<string>();
@@ -956,6 +995,45 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         });
       }
 
+      // An async question's card. Nothing here waits on it and nothing
+      // times it out: the agent is working on, and the card is open until
+      // somebody answers or puts it aside, or Bloks stops.
+      function askAsync(params: any, question: { summary: string; choices: string[] }) {
+        const item = params.item;
+        const said = typeof item.id === "string" && item.id ? item.id : question.summary;
+        const key = JSON.stringify([threadId, typeof params.turnId === "string" ? params.turnId : "", said]);
+        if (asyncSeen.has(key)) return;
+        asyncSeen.add(key);
+        while (asyncSeen.size > MAX_ASYNC_SEEN) asyncSeen.delete(asyncSeen.keys().next().value!);
+        const requestId = newId();
+        asyncAsks.set(requestId, { threadId, turnId });
+        appendNative(threadId, {
+          dir: "out",
+          source: "bloks.approval",
+          msg: {
+            stage: "opened", requestId, method: "request_user_input_async", threadId, turnId,
+            providerThreadId: params.threadId, providerTurnId: params.turnId, itemId: item.id,
+          },
+        });
+        emit({
+          ...envelope(threadId, turnId),
+          type: "request.opened",
+          requestId,
+          requestType: "question",
+          tool: "ask_user",
+          summary: question.summary,
+          choices: question.choices,
+          async: true,
+        });
+        // One nobody ever answers is let go of, the oldest first, and its
+        // card says it closed rather than staying open for good.
+        while (asyncAsks.size > MAX_ASYNC_ASKS) {
+          const [oldest, asked] = asyncAsks.entries().next().value!;
+          asyncAsks.delete(oldest);
+          emit({ ...envelope(asked.threadId, asked.turnId), type: "request.resolved", requestId: oldest, behavior: "deny", source: "engine" });
+        }
+      }
+
       // News of a thread other than the one this turn is in. Before the
       // turn knows its thread, or from an app-server that does not say
       // which thread it means, nothing counts as elsewhere.
@@ -1083,6 +1161,14 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             if (item.type === "contextCompaction") { compactionItem(params, true); break; }
             if (item.type === "agentMessage") {
               if (elsewhere(params)) break;
+              // A question, card only, as a blocking one is: its text is
+              // the same question written out, and said as well it would
+              // read as a reply to be answered by typing.
+              const question = asyncQuestion(item);
+              if (question) {
+                askAsync(params, question);
+                break;
+              }
               if (!item.text?.trim()) break;
               // read once, so the streamed text and the stored text agree
               const codexItem = codexItemText(item);
@@ -1673,6 +1759,29 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         interruptTurn: async (threadId) => running.get(threadId)?.abort(),
 
         respondToRequest: async (threadId, requestId, decision) => {
+          // An async question has no call to reply to. Its answer goes
+          // back to the harness, to say in the conversation (the
+          // contract's request.resolved answer); put aside, it is only
+          // settled, since the agent already went on without it.
+          const asked = asyncAsks.get(requestId);
+          if (asked && asked.threadId === threadId) {
+            asyncAsks.delete(requestId);
+            const answer = decision.behavior === "answer" && decision.message?.trim() ? decision.message : undefined;
+            appendNative(threadId, {
+              dir: "out",
+              source: "bloks.approval",
+              msg: { stage: "resolved", requestId, method: "request_user_input_async", threadId, turnId: asked.turnId, behavior: decision.behavior, source: "user" },
+            });
+            emit({
+              ...envelope(threadId, asked.turnId),
+              type: "request.resolved",
+              requestId,
+              behavior: decision.behavior,
+              source: "user",
+              ...(answer ? { answer } : {}),
+            });
+            return;
+          }
           const answer = running.get(threadId)?.asks.get(requestId);
           if (!answer) {
             appendNative(threadId, {
@@ -1699,6 +1808,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
 
       dispose: async () => {
         skillCatalogs.clear();
+        asyncAsks.clear();
         for (const turn of running.values()) turn.abort();
         listeners.clear();
         await engines.end();

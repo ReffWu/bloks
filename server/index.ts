@@ -3894,6 +3894,19 @@ const askTargets = new Map<string, { botId: string; tool: string; command?: stri
  * that had not heard yet) is told so beside the card it was pressed on. */
 const settledAsks = new Map<string, { thread: string; messageId: string }>();
 const MAX_SETTLED_ASKS = 500;
+/** Who answered a live question, said by whichever door the answer came
+ * through. An async question's answer is said in the conversation as
+ * that person's words, with what they may do and no more
+ * (deliverAsyncAnswer): a collaborator's answer carrying the owner's
+ * authority into a full-access turn is the owner having said it. */
+type Answerer =
+  | { kind: "owner" }
+  | { kind: "member"; personId: string; name: string; text: string; room?: { id: string; limited: boolean } }
+  | { kind: "delegate"; delegate: TelegramSender; chatId: number; generation: string };
+const answeredBy = new Map<string, Answerer>();
+/** Cards sent to the Telegram chat of a person with full access, which
+ * only they can answer from there (GitHub 320). */
+const telegramDelegateAsks = new Map<string, { delegate: TelegramSender; chatId: number; generation: string }>();
 
 /** An ask is over, however it ended: nothing is waiting on it now. */
 function forgetAsk(requestId: string) {
@@ -3909,6 +3922,8 @@ function forgetAsk(requestId: string) {
   askEngineByRequest.delete(requestId);
   decidedByMember.delete(requestId);
   askTargets.delete(requestId);
+  answeredBy.delete(requestId);
+  telegramDelegateAsks.delete(requestId);
 }
 
 /** What a card says under its question once it closed with nobody having
@@ -4532,6 +4547,7 @@ bus.subscribe((event: RuntimeEvent) => {
           // the rest.
           const yesOrNo = !asking;
           const waitingAsk = { requestId, botId: bot.id, options: message.card?.options ?? [], permission: yesOrNo };
+          if (delegate && delegateChat !== undefined && chatId === delegateChat) telegramDelegateAsks.set(requestId, { delegate, chatId, generation: runtime.generation });
           if (telegramPerson || telegramGroup) runtime.personAsks.set(requestId, { ...waitingAsk, chatId });
           else runtime.asks.set(chatId, waitingAsk);
           const { title, subtitle, options } = message.card ?? {};
@@ -4559,6 +4575,17 @@ bus.subscribe((event: RuntimeEvent) => {
         settleTelegramCard(event.requestId, (card) => outcomeOf(card, event.behavior, event.source));
       }
       const messageId = event.requestId ? askMessageByRequest.get(event.requestId) : null;
+      // An async question's answer has no call waiting for it, so it is
+      // said in the conversation that asked (deliverAsyncAnswer), once
+      // the card is settled. Only a live ask's: forgetAsk below ends it,
+      // so the same answer cannot be said twice.
+      const asyncAnswer = event.answer && event.source === "user" && event.behavior === "answer" && event.requestId && askThreadByRequest.get(event.requestId) === event.threadId
+        ? (() => {
+            const card = messageId ? store.messagesFor(askCardThread.get(event.requestId!) ?? roomId).find((m) => m.id === messageId)?.card : undefined;
+            const excerpt = clamp(card?.subtitle || card?.title, 200);
+            return { text: event.answer!, by: answeredBy.get(event.requestId!), ...(messageId && excerpt ? { replyTo: { id: messageId, author: bot.name, excerpt } } : {}) };
+          })()
+        : null;
       if (messageId) {
         // Where the card is, which is not always where the lane speaks
         // now: an ask closed after its turn ended finds the lane out of
@@ -4615,6 +4642,7 @@ bus.subscribe((event: RuntimeEvent) => {
         }
         if (event.requestId) forgetAsk(event.requestId);
       }
+      if (asyncAnswer) deliverAsyncAnswer(bot, event.threadId, asyncAnswer.text, asyncAnswer.by, asyncAnswer.replyTo);
       broadcast({ kind: "bot", bot: clientBot(bot) });
       break;
     }
@@ -13562,6 +13590,10 @@ async function answerTelegramAsk(
   const message = ask.permission ? undefined : (read.option ?? read.free);
   telegramCards.expect(ask.requestId, message);
   if (!instance) return false;
+  // A card sent to a person with full access went to their chat alone,
+  // so a Telegram answer to it is theirs; any other is the owner's.
+  const delegated = telegramDelegateAsks.get(ask.requestId);
+  answeredBy.set(ask.requestId, delegated ? { kind: "delegate", ...delegated } : { kind: "owner" });
   return instance.adapter.respondToRequest(askThread, ask.requestId, { behavior, message }).then(() => true, () => false);
 }
 
@@ -15562,6 +15594,113 @@ async function sendUserMessage(
   return { ok: true, taskId: lane.id, lane: lane.title };
 }
 
+/**
+ * The answer to an async question (Codex's request_user_input_async), said
+ * in the conversation that asked, quoting the question. The agent was told
+ * its question was taken and went on, so these words are all it hears of
+ * the answer, and they arrive exactly as the same person typing them
+ * would: the owner's into the turn running there when it can take them
+ * (as anything typed into a card), a collaborator's as their own message
+ * or room post, a person with full access's as words from their Telegram
+ * chat. Never one person's words as another's: an answer whose author is
+ * not known is not said at all. A conversation that cannot take them now
+ * (the agent archived, somebody at the wheel, a spending limit, access
+ * ended) says so where the answer was given, rather than it going nowhere.
+ */
+function deliverAsyncAnswer(bot: BotRecord, laneId: string, text: string, by: Answerer | undefined, replyTo?: ReplyRef) {
+  const notDelivered = (why: string, where = store.taskByThread(laneId) ? laneId : bot.threadId) => {
+    const notice = store.appendMessage(where, {
+      role: "bot",
+      ...(bloks.get(where) ? { from: bot.id } : {}),
+      kind: "notice",
+      text: `That answer did not reach ${bot.name}: ${why.trim().replace(/\.$/, "")}. Send it again as a message once it can take it.`,
+    });
+    broadcast({ kind: "message", threadId: where, message: notice });
+  };
+  const failed = (e: unknown) => (e instanceof Error ? e.message : String(e));
+  if (!by) return notDelivered("Bloks could not tell who gave it, so it was not said as anyone's words");
+  if (by.kind === "member") {
+    const person = { id: by.personId, name: by.name };
+    if (by.room) {
+      try {
+        const posted = memberPosts(by.room.id, { id: by.personId, limited: by.room.limited }, by.text, replyTo);
+        if ("error" in posted) notDelivered(posted.error, by.room.id);
+      } catch (e) {
+        notDelivered(failed(e), by.room.id);
+      }
+      return;
+    }
+    const lane = store.taskByThread(laneId)?.task;
+    if (!lane) return notDelivered("that conversation is gone");
+    const said = memberSays(bot, lane, person, by.text, replyTo);
+    if ("error" in said) notDelivered(said.error);
+    return;
+  }
+  if (by.kind === "delegate") {
+    const runtime = liveTelegram(bot.id);
+    if (!runtime || runtime.generation !== by.generation || !telegramDelegateCurrent(telegramBinding(bot.id), by.delegate)) {
+      return notDelivered("the access it was given from Telegram has ended");
+    }
+    return deliverOverTelegram(runtime, by.chatId, text, replyTo, by.delegate);
+  }
+  void sendUserMessage(bot.id, text, { taskId: laneId, yours: true, steer: true, delivery: "answer", ...(replyTo ? { replyTo } : {}) }).catch((e) => notDelivered(failed(e)));
+}
+
+/** A member's words to an agent, in a conversation of theirs with it: a
+ * turn of their own, or waiting for one behind whatever is running,
+ * never joined to it. In the team conversation the engine hears whose
+ * words these are. */
+function memberSays(
+  bot: BotRecord,
+  lane: TaskRecord,
+  person: { id: string; name: string },
+  text: string,
+  replyTo?: ReplyRef,
+): { message: Message; queued: boolean } | { status: number; error: string; code?: string } {
+  const stopped = workspacePeople.limitRefusal(person.id);
+  if (stopped) return { status: 402, error: stopped, code: "limit" };
+  if (bot.archivedAt) return { status: 409, error: `${bot.name} is archived.` };
+  const busy = Boolean(lane.busy) || Boolean(steerQueues.get(lane.id)?.items.length) || memberWaiting.has(lane.id);
+  const message = store.appendMessage(lane.id, {
+    role: "user",
+    kind: "text",
+    text,
+    author: person.id,
+    ...(replyTo ? { replyTo } : {}),
+    ...(busy ? { queued: true, queuedAt: Date.now() } : {}),
+  });
+  broadcast({ kind: "message", threadId: lane.id, message });
+  const said = withReply(lane.team ? `[${person.name}] ${text}` : text, replyTo);
+  if (busy) {
+    const list = memberWaiting.get(lane.id) ?? [];
+    list.push({ personId: person.id, messageId: message.id, text: said, botId: bot.id });
+    memberWaiting.set(lane.id, list);
+  } else {
+    void startTurn(bot.id, said, { taskId: lane.id, presetMessage: true, requester: person.id }).catch((e) => noteTurnRefused(lane.id, e));
+  }
+  return { message, queued: busy };
+}
+
+/** A member's post in a room. `limited` is a workspace person, whose
+ * spending limit holds here too. A room open to everyone that nobody had
+ * shared yet becomes shared the moment a member speaks in it: from now on
+ * other people read its replies, so the room's rules for that apply. */
+function memberPosts(
+  roomId: string,
+  person: { id: string; limited: boolean },
+  text: string,
+  replyTo?: ReplyRef,
+): { message: Message; blok: BlokRecord } | { status: number; error: string; code?: string } {
+  let blok = bloks.get(roomId);
+  if (!blok) return { status: 404, error: "no such room" };
+  const stopped = person.limited ? workspacePeople.limitRefusal(person.id) : null;
+  if (stopped) return { status: 402, error: stopped, code: "limit" };
+  if (!blok.sharing) blok = bloks.share(blok.id, {}) ?? blok;
+  // a human message starts a fresh chain: whoever it wakes is at no hops
+  const { message } = enqueueRoomPost(blok, text, { personId: person.id, hops: 0, replyTo });
+  return { message, blok };
+}
+
 const choosingDecisions = new Set<string>();
 
 function drainSteer(threadId: string) {
@@ -16832,20 +16971,13 @@ async function serveMember(
       return json(res, 200, memberRoom(action.roomId, personId));
 
     case "post": {
-      let blok = bloks.get(action.roomId)!;
       const body = await readBody(req);
       const text = clamp(body.text, 8_000);
       if (!text) return json(res, 400, { error: "say something first" });
-      const stopped = who.role ? workspacePeople.limitRefusal(personId) : null;
-      if (stopped) return json(res, 402, { error: stopped, code: "limit" });
-      // A room open to everyone that nobody had shared yet becomes shared
-      // the moment a member speaks in it: from now on other people read
-      // its replies, so the room's rules for that apply.
-      if (!blok.sharing) blok = bloks.share(blok.id, {}) ?? blok;
-      // a human message starts a fresh chain: whoever it wakes is at no hops
-      const { message } = enqueueRoomPost(blok, text, { personId, hops: 0, replyTo: replyRef(body.replyTo) });
-      const view = viewOf(personId, blok.id)!;
-      return json(res, 202, { message: memberMessage(message, view) });
+      const posted = memberPosts(action.roomId, { id: personId, limited: Boolean(who.role) }, text, replyRef(body.replyTo));
+      if ("error" in posted) return json(res, posted.status, { error: posted.error, ...(posted.code ? { code: posted.code } : {}) });
+      const view = viewOf(personId, posted.blok.id)!;
+      return json(res, 202, { message: memberMessage(posted.message, view) });
     }
 
     case "answer": {
@@ -16887,6 +17019,8 @@ async function serveMember(
         const askThread = askThreadByRequest.get(message.card.requestId);
         const instance = bot ? askInstance(bot, askThread, message.card.requestId) : null;
         if (!bot || !instance || !askThread) return json(res, 409, { error: "that question has closed" });
+        // said in the room as this member's post if nothing is waiting on it
+        answeredBy.set(message.card.requestId, { kind: "member", personId, name: who.name, text: answer, room: { id: blok.id, limited: Boolean(who.role) } });
         await instance.adapter
           .respondToRequest(askThread, message.card.requestId, { behavior: "answer", message: `${who.name} answered: ${answer}` })
           .catch(() => {});
@@ -17040,28 +17174,9 @@ async function serveMember(
         const body = await readBody(req);
         const text = clamp(body.text, 8_000);
         if (!text) return json(res, 400, { error: "say something first" });
-        const stopped = workspacePeople.limitRefusal(personId);
-        if (stopped) return json(res, 402, { error: stopped, code: "limit" });
-        if (bot.archivedAt) return json(res, 409, { error: `${bot.name} is archived.` });
-        const busy = Boolean(lane.busy) || Boolean(steerQueues.get(lane.id)?.items.length) || memberWaiting.has(lane.id);
-        const message = store.appendMessage(lane.id, {
-          role: "user",
-          kind: "text",
-          text,
-          author: personId,
-          ...(busy ? { queued: true, queuedAt: Date.now() } : {}),
-        });
-        broadcast({ kind: "message", threadId: lane.id, message });
-        // in the team conversation the engine hears whose words these are
-        const said = lane.team ? `[${who.name}] ${text}` : text;
-        if (busy) {
-          const list = memberWaiting.get(lane.id) ?? [];
-          list.push({ personId, messageId: message.id, text: said, botId: bot.id });
-          memberWaiting.set(lane.id, list);
-        } else {
-          void startTurn(bot.id, said, { taskId: lane.id, presetMessage: true, requester: personId }).catch((e) => noteTurnRefused(lane.id, e));
-        }
-        return json(res, 202, { message: memberMessage(message, view), queued: busy });
+        const said = memberSays(bot, lane, { id: personId, name: who.name }, text);
+        if ("error" in said) return json(res, said.status, { error: said.error, ...(said.code ? { code: said.code } : {}) });
+        return json(res, 202, { message: memberMessage(said.message, view), queued: said.queued });
       }
 
       // a card in the conversation: an approval or a question
@@ -17089,6 +17204,8 @@ async function serveMember(
           .catch(() => {});
         return json(res, 200, { ok: true });
       }
+      // said as this member's words if nothing is waiting on the answer
+      answeredBy.set(message.card.requestId, { kind: "member", personId, name: who.name, text: answer });
       await instance.adapter
         .respondToRequest(askThread, message.card.requestId, { behavior: "answer", message: lane.team ? `${who.name} answered: ${answer}` : answer })
         .catch(() => {});
@@ -21726,6 +21843,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         if (!live) throw new Error("not a live ask");
         // so a copy of the card on a phone can say what was chosen here
         if (body.behavior === "answer" && typeof body.message === "string") telegramCards.expect(requestId, body.message);
+        // the owner's own app, which no agent's credential reaches
+        answeredBy.set(requestId, { kind: "owner" });
         await instance.adapter.respondToRequest(askThread, requestId, {
           behavior: body.behavior,
           message: body.message,

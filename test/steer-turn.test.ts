@@ -405,17 +405,21 @@ test("Codex completed items carry exact phase/question facts and item identity o
   instance.adapter.onEvent((event) => events.push(event));
   await instance.adapter.sendTurn({ threadId: "task-a", text: "Check sample" });
   assert.ok(await waitFor(() => state.frames.some((f) => f.method === "turn/start") ? true : null, 5_000));
-  for (const [id, phase, questions] of [
-    ["progress", "commentary", null], ["async-final", "final_answer", [{ title: "Which option?", options: null }]],
-    ["partial", "partial_answer", []], ["future", "future_phase", undefined],
+  for (const [id, phase, questions, delivery] of [
+    ["progress", "commentary", null, "async"], ["async-final", "final_answer", [{ title: "Which option?", options: null }], "async"],
+    ["named-final", "final_answer", [{ title: "Which option?", options: null }], undefined],
+    ["partial", "partial_answer", [], "async"], ["future", "future_phase", undefined, "async"],
   ] as const) {
-    send({ method: "item/completed", params: { threadId: "codex-thread", turnId: "codex-turn-1", item: { type: "agentMessage", id, text: "UNCHANGED " + id, phase, questions, delivery: "async" } } });
+    send({ method: "item/completed", params: { threadId: "codex-thread", turnId: "codex-turn-1", item: { type: "agentMessage", id, text: "UNCHANGED " + id, phase, questions, delivery } } });
   }
   for (let i = 0; i < 5; i++) await setImmediate();
   const answers = events.filter((e) => e.type === "item.completed" && e.itemType === "assistant_text");
   assert.deepEqual(answers.map((e) => [e.itemId, e.codexItem]), [
-    ["progress", { phase: "commentary", questions: "none" }], ["async-final", { phase: "final_answer", questions: "present" }],
+    ["progress", { phase: "commentary", questions: "none" }], ["named-final", { phase: "final_answer", questions: "present" }],
     ["partial", { phase: "partial_answer", questions: "none" }], ["future", { phase: "future_phase", questions: "unknown" }],
   ]);
   assert.deepEqual(events.filter((e) => e.type === "content.delta").map((e) => [e.itemId, e.codexItem]), answers.map((e) => [e.itemId, e.codexItem]));
+  // an async question is a card, not a reply (GitHub 402, test/codex-async-questions.test.ts)
+  const asked = events.filter((e) => e.type === "request.opened");
+  assert.deepEqual(asked.map((e) => e.type === "request.opened" && [e.requestType, e.summary, e.async]), [["question", "Which option?", true]]);
 });
