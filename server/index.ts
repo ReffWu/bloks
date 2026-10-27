@@ -38,7 +38,7 @@ import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
 import { legacyToolTitle } from "./tool-command.ts";
 import * as box from "./box.ts";
 import * as diagnostics from "./diagnostics.ts";
-import { ENGINE_SETUP, installEngine, openInTerminal, openSignIn, runSetupScript } from "./engine-setup.ts";
+import { ENGINE_SETUP, checkEnginePath, installEngine, openInTerminal, openSignIn, runSetupScript } from "./engine-setup.ts";
 import { ENGINE_PACKAGES, engineUpdates } from "./engine-updates.ts";
 import { FEATURES } from "./features.ts";
 import { ReplyNotifications, settledFrame, settledReply } from "./reply-notifications.ts";
@@ -16772,6 +16772,9 @@ async function providerCatalog() {
       {
         installed: d.snapshot.state === "available",
         signedOut: d.snapshot.state === "available" && d.snapshot.authenticated === false,
+        // there, but a release this driver turns away (AcpSpec.minVersion):
+        // a version with no availability is only ever that
+        outdated: d.snapshot.state !== "available" && Boolean(d.snapshot.version),
       },
     ]),
   );
@@ -16797,6 +16800,10 @@ async function providerCatalog() {
     keyPrefix: undefined,
     connected: cliReady.get(p.kind)?.installed ?? false,
     needsSignIn: cliReady.get(p.kind)?.signedOut ?? false,
+    outdated: cliReady.get(p.kind)?.outdated ?? false,
+    // where it is started from when not PATH's copy; the person's own
+    // setting, read only by the person's screens (never an agent's)
+    path: cfg.enginePaths?.[p.kind] ?? null,
     agentic: true,
   }));
   return { providers: [...cli, ...api] };
@@ -22377,6 +22384,34 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         if (reloaded) broadcast({ kind: "providers", ...(await providerCatalog()) });
       }
       return json(res, 200, { ...result, reloaded });
+    }
+    // Which copy of an engine's CLI runs, when it is not the one on PATH.
+    // This machine only, like installing: it names a program Bloks will
+    // start with the person's files and keys, which no phone, remote
+    // window or agent may choose. Null goes back to PATH.
+    m = path.match(/^\/api\/engines\/([\w-]+)\/path$/);
+    if (m && method === "PUT") {
+      if (!local || asAgent) return json(res, 403, { error: "not from here" });
+      const kind = m[1];
+      if (!CLI_PROVIDERS.some((p) => p.kind === kind)) return json(res, 404, { error: "no such engine" });
+      const body = await readBody(req);
+      let chosen: string | null = null;
+      if (body.path !== null && body.path !== "") {
+        const checked = checkEnginePath(kind, body.path);
+        if ("error" in checked) return json(res, 400, checked);
+        chosen = checked.path;
+      }
+      Object.assign(cfg, saveConfig({ enginePaths: { [kind]: chosen } as unknown as Record<string, string> }));
+      record({
+        at: Date.now(),
+        kind: "engine.installed",
+        actor: "you",
+        summary: chosen ? `${kind}: started from ${chosen}` : `${kind}: started from PATH again`,
+      });
+      await reloadProviders();
+      const catalog = await providerCatalog();
+      broadcast({ kind: "providers", ...catalog });
+      return json(res, 200, catalog);
     }
     m = path.match(/^\/api\/engines\/([\w-]+)\/(install|signin)$/);
     if (m && method === "POST") {

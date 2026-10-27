@@ -96,6 +96,13 @@ const ENGINES: Array<{
     want: "Optional. Another engine for your agents.",
   },
   {
+    kind: "cursor",
+    name: "Cursor",
+    command: "curl https://cursor.com/install -fsS | bash",
+    have: "Installed. Uses your Cursor account.",
+    want: "Optional. The Cursor CLI, on your Cursor plan.",
+  },
+  {
     kind: "pi",
     name: "Pi",
     command: "npm i -g --prefix ~/.local --ignore-scripts @earendil-works/pi-coding-agent pi-acp",
@@ -115,6 +122,13 @@ const ENGINES: Array<{
     command: "curl -fsSL https://x.ai/cli/install.sh | bash",
     have: "Installed. Uses your grok.com subscription.",
     want: "Optional. Runs on an existing Grok subscription.",
+  },
+  {
+    kind: "cline",
+    name: "Cline",
+    command: "npm i -g --prefix ~/.local cline",
+    have: "Installed. Runs on the provider Cline is set up with.",
+    want: "Optional. Cline's agent, on the provider you choose.",
   },
   {
     kind: "kimi",

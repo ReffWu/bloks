@@ -19,7 +19,7 @@ import { CREDITS_ENGINE } from "@/lib/credits";
 import { CodexSpeedControl } from "./CodexSpeed";
 import { EngineReport } from "./EngineReport";
 import { EnginePauses } from "./EnginePauses";
-import { EngineSetupActions, EngineUpdateNote } from "./EngineSetup";
+import { EngineOutdatedActions, EnginePathControl, EngineSetupActions, EngineUpdateNote } from "./EngineSetup";
 import { TeamSignInNotice } from "./TeamSignInNotice";
 
 const AUTH_NOTE: Record<ProviderRow["auth"], string> = {
@@ -151,7 +151,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
 
         {provider.auth === "cli" ? (
           <span className="shrink-0 text-small text-muted-foreground">
-            {provider.connected ? "" : "Not found"}
+            {provider.connected || provider.outdated ? "" : "Not found"}
           </span>
         ) : provider.connected ? (
           <Button
@@ -194,7 +194,12 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
           Monthly spending limit
         </button>
       )}
-      {provider.auth === "cli" && (!provider.connected || provider.needsSignIn) && (
+      {provider.auth === "cli" && provider.outdated && (
+        <div className="pl-10">
+          <EngineOutdatedActions kind={provider.kind} name={provider.name} onChanged={refresh} />
+        </div>
+      )}
+      {provider.auth === "cli" && !provider.outdated && (!provider.connected || provider.needsSignIn) && (
         <div className="pl-10">
           <EngineSetupActions
             kind={provider.kind}
@@ -205,7 +210,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
           />
         </div>
       )}
-      {provider.auth === "cli" && (!provider.connected || provider.needsSignIn) && (
+      {provider.auth === "cli" && !provider.outdated && (!provider.connected || provider.needsSignIn) && (
         <div className="mt-1.5 pl-10 text-small leading-relaxed text-muted-foreground">
           {/* Installed and installed-but-signed-out need different advice.
               Some CLIs sign in where we cannot see it, so the second is a
@@ -217,6 +222,17 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
       )}
       {provider.auth === "cli" && provider.connected && (
         <EngineUpdateNote kind={provider.kind} name={provider.name} className="ml-10 mt-2" />
+      )}
+      {provider.auth === "cli" && provider.command && (
+        <div className="pl-10">
+          <EnginePathControl
+            kind={provider.kind}
+            name={provider.name}
+            command={provider.command}
+            path={provider.path ?? null}
+            onChanged={refresh}
+          />
+        </div>
       )}
       {error && <div className="mt-1.5 pl-10 text-small text-destructive">{error}</div>}
     </div>

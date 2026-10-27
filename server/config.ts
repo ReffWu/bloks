@@ -73,10 +73,17 @@ export interface AppConfig {
    * connections and gives agents their tools. The project key is optional
    * and only makes the plugin grid prettier. */
   composio?: { key?: string; apiKey?: string; url?: string };
-  /** Voice vendors. Either key lights up voices and calls. */
+  /** Voice vendors. Any key lights up voices and calls. */
   speech?: {
     elevenlabsKey?: string;
     openaiKey?: string;
+    fishKey?: string;
+    /** xAI's speech API. Unset, the Grok engine's key is used: it is the
+     * same account, already given to Bloks (server/speech.ts xaiKey). */
+    xaiKey?: string;
+    /** A Chatterbox server on this computer or the local network. Not a
+     * secret, and no key: it is the person's own machine. */
+    chatterboxUrl?: string;
     /** The user's explicit yes to using a key discovered in the
      * environment or Codex's auth file for voice billing. */
     useDiscoveredOpenAI?: boolean;
@@ -260,6 +267,10 @@ export interface AppConfig {
    * a host of their own, or a model the providers' list does not know.
    * Ahead of that list when a turn comes back unpriced. */
   spendPrices?: Record<string, { input: number; output: number }>;
+  /** The CLI an engine is started from, by driver kind, when it is not
+   * the one on PATH: a second install, a build of one's own. Applied to
+   * every instance of that driver whose own config does not name one. */
+  enginePaths?: Record<string, string>;
   instances?: InstanceConfigMap;
 }
 
@@ -405,6 +416,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "spendLimits",
     "spendPrices",
     "cliPlugins",
+    "enginePaths",
   ] as const) {
     if (patch[key] && typeof patch[key] === "object") {
       // The migrated Telegram section is a complete private record. A
@@ -415,7 +427,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
       // credits forgets by null: a token from an old licence must be gone
       // from the file, not kept beside a newer one; a limit taken off is
       // gone the same way, not kept as a zero that reads like one
-      if (key === "credits" || key === "spendLimits" || key === "spendPrices") {
+      if (key === "credits" || key === "spendLimits" || key === "spendPrices" || key === "enginePaths") {
         const merged = disk[key] as Record<string, unknown>;
         for (const name of Object.keys(merged)) if (merged[name] === null || merged[name] === undefined) delete merged[name];
       }
@@ -499,6 +511,8 @@ const BUILT_IN_CLI_INSTANCES: InstanceConfigMap = {
   gemini_cli: { driver: "geminiCli" },
   opencode: { driver: "opencode" },
   grok_cli: { driver: "grokCli" },
+  cursor: { driver: "cursor" },
+  cline: { driver: "cline" },
   antigravity: { driver: "antigravity" },
   pi: { driver: "pi" },
   computer: { driver: "boxAgent" },
@@ -552,6 +566,11 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
     map[CREDITS_KIND] = { driver: CREDITS_SPEC.kind, displayName: CREDITS_SPEC.name, config: { url: creditsCompatUrl() } };
   }
   for (const entry of Object.values(map)) {
+    const path = cfg.enginePaths?.[entry.driver];
+    const own = entry.config as Record<string, unknown> | undefined;
+    if (typeof path === "string" && path && !(typeof own?.cli === "string" && own.cli)) {
+      entry.config = { ...own, cli: path };
+    }
     entry.environment = {
       ...usableSecrets(cfg.secrets),
       ...Object.fromEntries(

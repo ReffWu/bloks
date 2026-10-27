@@ -39,7 +39,8 @@ import type {
 import { newEventId, newId } from "../contracts.ts";
 import type { Effort } from "../effort.ts";
 import { outReason } from "../failover.ts";
-import { attachRpc } from "../harness/jsonrpc-stdio.ts";
+import { attachRpc, type RpcLink } from "../harness/jsonrpc-stdio.ts";
+import { isNewer, versionOf } from "../engine-updates.ts";
 import { killTree, launchSpec, onPath, widenPath } from "../path.ts";
 import { callSignature } from "../repeats.ts";
 import { appendNative } from "./native.ts";
@@ -78,6 +79,19 @@ export interface AcpSpec {
   /** Answers without any sign-in (OpenCode serves free models out of the
    * box), so a missing credential is not "signed out", only unknown. */
   signInOptional?: boolean;
+  /** A command that says whether the CLI is signed in, for one that keeps
+   * its login where no file shows it (Cursor's is in the keychain). Read
+   * only when no key and no auth file already answered; output matching
+   * neither pattern leaves the answer unknown rather than guessed. */
+  signInCheck?: { args: string[]; signedOut: RegExp; signedIn: RegExp };
+  /** The ACP auth method to call before opening a session, for an agent
+   * whose documented flow has the client authenticate first (Cursor's
+   * `cursor_login`). Called only when initialize lists it. */
+  authMethod?: string;
+  /** The oldest release that speaks ACP the way this driver does. An
+   * older one is reported as unavailable with the reason, not left to
+   * fail its first message in some stranger way. */
+  minVersion?: string;
   /** Used until session/new reports what the agent actually serves. */
   models: ModelCatalog;
   /** When --version would start a session instead of printing a
@@ -135,6 +149,11 @@ export function acpReading(update: any): { used: number | null; window: number |
 /** How long a probe session may take to report its catalog. A hung CLI
  * (pi-acp --version starts a session) will sit forever without this. */
 const PROBE_TIMEOUT_MS = 15_000;
+
+/** How long a sign-in check's answer stands (AcpSpec.signInCheck). Long
+ * enough that a screen polling the engines does not start a process each
+ * time, short enough that signing in shows up while the person watches. */
+const SIGN_IN_TTL_MS = 3_000;
 
 /** A turn's pictures as ACP prompt blocks, the bytes inline: an image
  * block by its data needs no path, so nothing about where the file sits
@@ -357,6 +376,48 @@ export function piTurnError(sessionId: string, since: number, home = homedir()):
   return null;
 }
 
+/** How long an agent's own authenticate may take. A CLI that is signed
+ * in answers at once; one that is not may sit waiting on a browser
+ * nobody opened, and the turn should say so rather than hang. */
+const AUTHENTICATE_MS = 30_000;
+
+/**
+ * Authenticate the way the agent's documentation says to, when the spec
+ * names a method and initialize offers it. An agent that does not list it
+ * is not asked: a method it never advertised is a request it can only
+ * refuse. A refusal reads as signed out, which is what it means, so the
+ * backup is asked and the row says what to run.
+ */
+export async function authenticateIfAsked(spec: AcpSpec, hello: any, rpc: RpcLink): Promise<void> {
+  if (!spec.authMethod) return;
+  const offered: any[] = Array.isArray(hello?.authMethods) ? hello.authMethods : [];
+  if (!offered.some((m) => m?.id === spec.authMethod)) return;
+  try {
+    await within(rpc.request("authenticate", { methodId: spec.authMethod }), "signing in", spec.name, AUTHENTICATE_MS);
+  } catch (e) {
+    throw new Error(
+      `${spec.name} is not signed in (${(e as Error).message})${spec.signIn ? `: ${spec.signIn}, then send this again` : ""}.`,
+    );
+  }
+}
+
+/** What a sign-in check printed, read as signed in, signed out, or
+ * unknown when it says neither in words we know. */
+export function signInFromOutput(check: NonNullable<AcpSpec["signInCheck"]>, output: string): boolean | undefined {
+  if (check.signedOut.test(output)) return false;
+  if (check.signedIn.test(output)) return true;
+  return undefined;
+}
+
+/** Why an installed release is too old for this driver, or null when it
+ * is new enough or its version cannot be read (an unreadable version is
+ * not a reason to turn an engine away). */
+export function tooOld(spec: AcpSpec, said: string | null | undefined): string | null {
+  const have = versionOf(said);
+  if (!spec.minVersion || !have || !isNewer(spec.minVersion, have)) return null;
+  return `${spec.name} ${have} is too old for Bloks, which needs ${spec.minVersion} or newer. Update it.`;
+}
+
 /** The catalog an ACP agent serves, from one throwaway session, or null
  * when the agent cannot be asked. ACP has no catalog without a session,
  * so there is no cheaper question. No prompt is sent: nothing is spent,
@@ -386,7 +447,8 @@ async function probeCatalog(spec: AcpSpec, cli: string, env: Record<string, stri
   child.on("close", () => rpc.failPending(new Error("exited")));
 
   try {
-    await rpc.request("initialize", CLIENT_HELLO);
+    const hello = await rpc.request("initialize", CLIENT_HELLO);
+    await authenticateIfAsked(spec, hello, rpc);
     const session = await rpc.request("session/new", { cwd: tmpdir(), mcpServers: [] });
     return catalogFromSession(session);
   } catch {
@@ -874,6 +936,7 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
         (async () => {
           try {
             const hello: any = await within(rpc.request("initialize", CLIENT_HELLO), "starting up", spec.name);
+            await authenticateIfAsked(spec, hello, rpc);
             // An agent that says it takes pictures in a prompt is sent the
             // turn's own (GitHub 365). One that does not still has their
             // paths in the words, to open with its own tools.
@@ -1079,13 +1142,36 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
               );
             });
         if (!version) return { state: "unavailable", reason: `\`${config.cli}\` CLI not found` };
+        const old = tooOld(spec, version);
+        if (old) return { state: "unavailable", reason: old, version: `${spec.name} ${version}` };
         const hasKey = (spec.keyEnv ?? []).some((k) => input.environment[k] || process.env[k]);
         const signedIn = (spec.authFiles ?? []).some((f) => existsSync(join(homedir(), f)));
         // An agent that answers without a sign-in is not "signed out" for
         // want of one: saying so put up a warning nobody could clear while
         // the agent was answering fine on a free model.
-        const authenticated = hasKey || signedIn ? true : spec.signInOptional ? undefined : false;
+        const authenticated =
+          hasKey || signedIn ? true : spec.signInCheck ? await askSignedIn() : spec.signInOptional ? undefined : false;
         return { state: "available", version: `${spec.name} ${version}`, authenticated };
+      };
+
+      // The sign-in check is another process, and the engines are looked
+      // at whenever a screen asks, so its answer is kept a little while.
+      let signInSeen: { at: number; value: boolean | undefined } | null = null;
+      const askSignedIn = async (): Promise<boolean | undefined> => {
+        const check = spec.signInCheck!;
+        if (signInSeen && Date.now() - signInSeen.at < SIGN_IN_TTL_MS) return signInSeen.value;
+        const value = await new Promise<boolean | undefined>((resolve) => {
+          const launch = launchSpec(config.cli, check.args);
+          execFile(
+            launch.command,
+            launch.args,
+            { timeout: 8_000, windowsHide: true, windowsVerbatimArguments: launch.windowsVerbatimArguments, env: childEnv() },
+            // a check that failed outright still printed why, often enough
+            (_err, stdout, stderr) => resolve(signInFromOutput(check, `${stdout}\n${stderr}`)),
+          );
+        });
+        signInSeen = { at: Date.now(), value };
+        return value;
       };
 
       return {
@@ -1184,6 +1270,62 @@ export const ACP_SPECS: readonly AcpSpec[] = [
         { id: "grok-4.5", label: "Grok 4.5" },
         { id: "grok-build-0.1", label: "Grok Build 0.1" },
       ],
+    },
+  },
+  {
+    kind: "cursor",
+    name: "Cursor",
+    // The Cursor CLI, never the editor: `cursor` opens a window, and
+    // `agent`, the newer name the installer also writes, is too common a
+    // word to trust as a sign that this is Cursor's. `acp` is the
+    // documented (if hidden) subcommand that speaks ACP over stdio.
+    command: "cursor-agent",
+    args: ["acp"],
+    install: "curl https://cursor.com/install -fsS | bash",
+    signIn: "run `cursor-agent login` in a terminal",
+    // a key saved for agents in Bloks under Cursor's own names is used;
+    // otherwise the CLI's own login is
+    keyEnv: ["CURSOR_API_KEY", "CURSOR_AUTH_TOKEN"],
+    // its login lives in the keychain, so ask the CLI itself
+    signInCheck: {
+      args: ["status"],
+      signedOut: /not (?:logged|signed) in|logged out|unauthenticated|no (?:active )?(?:login|session)/i,
+      signedIn: /logged in|signed in|authenticated/i,
+    },
+    // Cursor's documented ACP flow authenticates between initialize and
+    // session/new
+    authMethod: "cursor_login",
+    // the models a Cursor account can use differ by plan, and the
+    // session says which
+    probeModels: true,
+    models: {
+      default: "auto",
+      options: [{ id: "auto", label: "Auto" }],
+    },
+  },
+  {
+    kind: "cline",
+    name: "Cline",
+    command: "cline",
+    args: ["--acp"],
+    // Nothing is approved without asking in ACP mode unless this says so;
+    // only the person's Full auto in Bloks does.
+    turnArgs: ({ fullAuto }) => (fullAuto ? ["--auto-approve", "true"] : []),
+    // the first release Bloks is known to work with over ACP
+    minVersion: "3.0.68",
+    install: "npm i -g --prefix ~/.local cline",
+    signIn: "run `cline auth` in a terminal",
+    keyEnv: ["CLINE_API_KEY"],
+    authFiles: [".cline/data/settings/providers.json"],
+    // Cline can also sign in inside the session, and keeps that login
+    // where no documented file shows it, so no file is "unknown", not
+    // "signed out"
+    signInOptional: true,
+    // whichever provider Cline is set up with decides its catalog
+    probeModels: true,
+    models: {
+      default: "auto",
+      options: [{ id: "auto", label: "Auto" }],
     },
   },
   {

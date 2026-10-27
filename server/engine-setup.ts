@@ -14,9 +14,9 @@
 // every engine's login is its own interactive flow, but the app opens that
 // Terminal with the command already running.
 import { spawn } from "node:child_process";
-import { chmodSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { accessSync, chmodSync, constants, statSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, isAbsolute, join } from "node:path";
 import { widenPath } from "./path.ts";
 import { shellFor } from "./terminal.ts";
 
@@ -45,6 +45,9 @@ export const ENGINE_SETUP: Record<string, EngineSetup> = {
   pi: { install: npmUser("--ignore-scripts @earendil-works/pi-coding-agent pi-acp") },
   antigravity: { install: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
   grokCli: { install: "curl -fsSL https://x.ai/cli/install.sh | bash" },
+  // Cursor's own installer, which writes cursor-agent into ~/.local/bin
+  cursor: { install: "curl https://cursor.com/install -fsS | bash", signIn: "cursor-agent login" },
+  cline: { install: npmUser("cline"), signIn: "cline auth" },
 };
 
 /** Long enough for a slow download, short enough that a hung installer
@@ -159,4 +162,55 @@ export function openInTerminal(name: string, command: string): boolean {
   chmodSync(file, 0o755);
   spawn("open", [file], { stdio: "ignore", detached: true }).unref();
   return true;
+}
+
+// ── a CLI from somewhere other than PATH ──────────────────────────────
+
+/** The longest path kept. Anything longer is not a path anybody typed. */
+const MAX_ENGINE_PATH = 1_024;
+
+/** What each engine's CLI is not, by the names people reach for first:
+ * Cursor the editor answers to `cursor`, and starting it opens a window
+ * rather than an agent. */
+const NOT_THE_CLI: Record<string, { names: RegExp; say: string }> = {
+  cursor: {
+    names: /^cursor(?:\.exe|\.cmd)?$/i,
+    say: "That is the Cursor editor. Bloks needs the Cursor CLI, cursor-agent, which curl https://cursor.com/install -fsS | bash installs.",
+  },
+};
+
+/**
+ * A path the person gave for an engine's CLI, checked before it is kept:
+ * a whole path (a leading ~ is their home folder), to a file that is
+ * there and can be run. The engine is started from it on the next turn,
+ * so a typo is said now, not as a failed message later.
+ */
+export function checkEnginePath(
+  kind: string,
+  raw: unknown,
+  home: string = homedir(),
+): { path: string } | { error: string } {
+  if (typeof raw !== "string" || !raw.trim()) return { error: "Give the full path to the CLI." };
+  const said = raw.trim();
+  if (said.length > MAX_ENGINE_PATH) return { error: "That path is too long." };
+  if (/[\u0000-\u001f]/.test(said)) return { error: "That path has characters a path cannot have." };
+  const path = said === "~" ? home : said.startsWith("~/") ? join(home, said.slice(2)) : said;
+  if (!isAbsolute(path)) return { error: "Give the full path, starting with / (or ~/ for your home folder)." };
+  const wrong = NOT_THE_CLI[kind];
+  if (wrong?.names.test(basename(path))) return { error: wrong.say };
+  let info;
+  try {
+    info = statSync(path);
+  } catch {
+    return { error: `Nothing is at ${path}.` };
+  }
+  if (!info.isFile()) return { error: `${path} is a folder, not the CLI itself.` };
+  if (process.platform !== "win32") {
+    try {
+      accessSync(path, constants.X_OK);
+    } catch {
+      return { error: `${path} cannot be run. Check it is the CLI itself, or make it executable with chmod +x.` };
+    }
+  }
+  return { path };
 }

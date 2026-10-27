@@ -418,7 +418,7 @@ export function capabilities(): string[] {
  * them rather than excluding the two obvious ones means a driver added
  * later gets nothing until somebody has decided it should.
  */
-export const CLI_DRIVERS = new Set(["claudeAgent", "codex", "antigravity", "opencode", "grokCli", "pi"]);
+export const CLI_DRIVERS = new Set(["claudeAgent", "codex", "antigravity", "opencode", "grokCli", "pi", "cursor", "cline"]);
 
 export function runsAProcess(driverKind: string): boolean {
   return CLI_DRIVERS.has(driverKind);

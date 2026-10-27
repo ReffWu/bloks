@@ -310,11 +310,13 @@ export function normalizeCompatUrl(url: string): string | undefined {
  * here, only described, so the connections screen can tell you why one is
  * dark and what to install. */
 // Two hints, not one: telling somebody to install a CLI they already
-// have is the fastest way to look like nothing is listening.
+// have is the fastest way to look like nothing is listening. `command` is
+// the name looked up on PATH, said where a different copy can be chosen.
 export const CLI_PROVIDERS = [
   {
     kind: "claudeAgent",
     name: "Claude Code",
+    command: "claude",
     auth: "cli" as const,
     keyHint: "Install it with the button above, or run curl -fsSL https://claude.ai/install.sh | bash",
     signInHint: "Run claude once in a terminal to sign in",
@@ -323,6 +325,7 @@ export const CLI_PROVIDERS = [
   {
     kind: "codex",
     name: "Codex",
+    command: "codex",
     auth: "cli" as const,
     keyHint: "Install it with the button above, or run npm i -g --prefix ~/.local @openai/codex",
     signInHint: "Run codex login in a terminal",
@@ -331,14 +334,35 @@ export const CLI_PROVIDERS = [
   {
     kind: "grokCli",
     name: "Grok CLI",
+    command: "grok",
     auth: "cli" as const,
     keyHint: "Install with: curl -fsSL https://x.ai/cli/install.sh | bash",
     signInHint: "Run grok login to bind your grok.com subscription",
     docsUrl: "https://x.ai/cli",
   },
   {
+    kind: "cursor",
+    name: "Cursor",
+    command: "cursor-agent",
+    auth: "cli" as const,
+    // the CLI, not the editor: having Cursor the app is not enough
+    keyHint: "Install the Cursor CLI with the button above, or run curl https://cursor.com/install -fsS | bash",
+    signInHint: "Run cursor-agent login in a terminal",
+    docsUrl: "https://cursor.com/docs/cli/acp",
+  },
+  {
+    kind: "cline",
+    name: "Cline",
+    command: "cline",
+    auth: "cli" as const,
+    keyHint: "Install it with the button above, or run npm i -g --prefix ~/.local cline (3.0.68 or newer)",
+    signInHint: "Run cline auth in a terminal to connect a provider",
+    docsUrl: "https://docs.cline.bot/usage/acp",
+  },
+  {
     kind: "antigravity",
     name: "Antigravity",
+    command: "agy",
     auth: "cli" as const,
     keyHint: "Install with: curl -fsSL https://antigravity.google/cli/install.sh | bash",
     signInHint: "Run agy once to sign in with Google",
@@ -347,6 +371,7 @@ export const CLI_PROVIDERS = [
   {
     kind: "opencode",
     name: "OpenCode",
+    command: "opencode",
     auth: "cli" as const,
     keyHint: "Install with npm i -g --prefix ~/.local opencode-ai",
     signInHint: "Run opencode auth login to connect a provider",
@@ -355,6 +380,7 @@ export const CLI_PROVIDERS = [
   {
     kind: "geminiCli",
     name: "Gemini CLI",
+    command: "gemini",
     auth: "cli" as const,
     keyHint: "Install it with the button above, or run npm i -g --prefix ~/.local @google/gemini-cli",
     // it reads GEMINI_API_KEY, so connecting Gemini below is enough; a
@@ -365,6 +391,7 @@ export const CLI_PROVIDERS = [
   {
     kind: "pi",
     name: "Pi",
+    command: "pi-acp",
     auth: "cli" as const,
     keyHint: "Install it with the button above, or run npm i -g --prefix ~/.local --ignore-scripts @earendil-works/pi-coding-agent pi-acp",
     signInHint: "Run pi (or pi-acp --terminal-login) and configure providers/login",

@@ -106,7 +106,7 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     label: "Engines and keys",
     group: "agents",
     description: "The AI tools and API keys your agents think with.",
-    keywords: "engines models providers claude codex gemini grok openai api key cli sign in bloks ai endpoints pause speed",
+    keywords: "engines models providers claude codex gemini grok cursor cline openai api key cli sign in bloks ai endpoints pause speed path",
     rows: ["Your engines", "Pauses", "Codex speed", "How your engines are doing", "Your endpoints"],
   },
   {

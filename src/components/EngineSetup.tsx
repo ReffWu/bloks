@@ -15,6 +15,7 @@ import { Loader2 } from "@/components/icons";
 import { Info } from "@/components/icons";
 import { LogIn } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { isHostedWindow } from "@/lib/waking";
 import { api, useStore } from "@/state/store";
@@ -64,6 +65,199 @@ function loadSetup(): Promise<SetupTable | null> {
     .then((d) => (d?.setup as SetupTable) ?? null)
     .catch(() => null);
   return cached;
+}
+
+/** Whether this window is on the computer Bloks runs on, where it can
+ * install, update and choose which CLI runs. Null until it is known. */
+function useOnThisComputer(): boolean | null {
+  const [local, setLocal] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void loadSetup().then((s) => alive && setLocal(Boolean(s)));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return local;
+}
+
+/**
+ * An engine that is installed but too old to run here. Not "missing",
+ * since installing again beside it would leave the old one first on
+ * PATH: it is updated where it is, by the same route the update note
+ * uses (server/engine-updates.ts).
+ */
+export function EngineOutdatedActions({
+  kind,
+  name,
+  onChanged,
+}: {
+  kind: string;
+  name: string;
+  onChanged: () => void;
+}) {
+  const local = useOnThisComputer();
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  if (local === null) return null;
+  if (!local) {
+    return <div className="mt-1.5 text-small text-muted-foreground">Update it on the computer Bloks runs on.</div>;
+  }
+  const update = async () => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const res = await fetch(`/api/engines/${kind}/update`, { method: "POST" });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.ok) setProblem(result.problem ?? `${name} did not update.`);
+    } catch {
+      setProblem("Bloks could not start the update.");
+    } finally {
+      setBusy(false);
+      onChanged();
+    }
+  };
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      <div>
+        <Button size="sm" variant="secondary" onClick={() => void update()} disabled={busy}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          {busy ? "Updating…" : `Update ${name}`}
+        </Button>
+      </div>
+      {problem && (
+        <div className="rounded-lg bg-warning/10 px-2.5 py-2 text-small leading-relaxed text-warning">
+          {problem}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Which copy of an engine's CLI runs: the one on PATH, or one the person
+ * points at (a second install, a build of their own). Only on the
+ * computer Bloks runs on, since it chooses a program to start there; the
+ * server checks the path is a file that can run before keeping it.
+ */
+export function EnginePathControl({
+  kind,
+  name,
+  command,
+  path,
+  onChanged,
+}: {
+  kind: string;
+  name: string;
+  /** The name looked up on PATH, for saying what runs now. */
+  command: string;
+  path: string | null;
+  onChanged: () => void;
+}) {
+  const local = useOnThisComputer();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(path ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!local) return null;
+
+  const put = async (next: string | null) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/engines/${kind}/path`, { method: "PUT", body: JSON.stringify({ path: next }) });
+      setEditing(false);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const id = `engine-path-${kind}`;
+
+  if (!editing) {
+    return (
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-small text-muted-foreground">
+        {path ? (
+          <>
+            <span className="min-w-0 truncate">
+              Runs <code className="font-mono text-foreground">{path}</code>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setValue(path);
+                setEditing(true);
+              }}
+              className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
+            >
+              Change
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void put(null)}
+              className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
+            >
+              {busy ? "Saving…" : `Use ${command} from PATH`}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setValue("");
+              setEditing(true);
+            }}
+            className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
+          >
+            Use a different copy of {name}
+          </button>
+        )}
+        {error && <span className="basis-full text-destructive">{error}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2">
+      <label htmlFor={id} className="text-small text-muted-foreground">
+        Full path to the {name} CLI
+      </label>
+      <div className="mt-1 flex gap-2">
+        <Input
+          id={id}
+          autoFocus
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && value.trim()) void put(value.trim());
+            if (e.key === "Escape") setEditing(false);
+          }}
+          placeholder={`/usr/local/bin/${command}`}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={error ? true : undefined}
+          className="h-8 min-w-0 flex-1 font-mono text-small"
+        />
+        <Button variant="secondary" size="sm" className="h-8" disabled={busy || !value.trim()} onClick={() => void put(value.trim())}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : "Save"}
+        </Button>
+        <Button variant="ghost" size="sm" className="h-8" disabled={busy} onClick={() => setEditing(false)}>
+          Cancel
+        </Button>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1.5 text-small text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function CopyCommand({ command, className }: { command: string; className?: string }) {

@@ -91,6 +91,9 @@ export async function startHarness(extraEnv: Record<string, string> = {}): Promi
         BLOKS_BOX_TOKEN: "",
         OPENAI_API_KEY: "",
         ANTHROPIC_API_KEY: "",
+        CURSOR_API_KEY: "",
+        CURSOR_AUTH_TOKEN: "",
+        CLINE_API_KEY: "",
         // a test run from inside a Bloks agent would otherwise act as it
         BLOKS_TOKEN: "",
         // the throwaway HOME is the whole point: a data folder named by the

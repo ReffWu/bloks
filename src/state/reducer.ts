@@ -714,11 +714,18 @@ export interface ProviderRow {
   keyHint: string;
   /** For CLI engines: what to do once it is installed but not signed in. */
   signInHint?: string;
+  /** For CLI engines: the name it is looked up by on PATH. */
+  command?: string;
   keyPrefix?: string;
   docsUrl: string;
   connected: boolean;
   /** Installed, but with no login we can see. Not the same as missing. */
   needsSignIn?: boolean;
+  /** Installed, but a release too old to run here: updating fixes it. */
+  outdated?: boolean;
+  /** For CLI engines: the CLI started instead of the one on PATH, or
+   * null for PATH's. */
+  path?: string | null;
   /** Whether this engine can run tools and touch files, or only chat. */
   agentic: boolean;
 }

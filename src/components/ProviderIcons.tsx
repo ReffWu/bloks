@@ -42,6 +42,36 @@ export function GrokCliMark({ size = 16, className }: IconProps) {
   );
 }
 
+/** The Cursor CLI. Cursor's cube, three faces in three strengths of the
+ * one ink, so it reads in both themes like the other monochrome marks. */
+export function CursorMark({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden className={cn("fill-foreground", className)}>
+      <path d="M12 2 20.66 7 12 12 3.34 7Z" opacity="0.92" />
+      <path d="M3.34 7 12 12v10l-8.66-5Z" opacity="0.55" />
+      <path d="M20.66 7 12 12v10l8.66-5Z" opacity="0.3" />
+      <path d="M12 12 20.66 7 12 22Z" />
+    </svg>
+  );
+}
+
+/** Cline. Its little robot: a rounded head with two eyes, an antenna
+ * and an ear each side, cut from the ink so the eyes show the tile. */
+export function ClineMark({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden className={cn("fill-foreground", className)}>
+      <circle cx="12" cy="3.4" r="1.7" />
+      <path d="M11.2 4.6h1.6V7h-1.6Z" />
+      <path
+        fillRule="evenodd"
+        d="M9 6.5h6a5 5 0 0 1 5 5v3.5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5v-3.5a5 5 0 0 1 5-5ZM7.9 13.5a1.6 2.1 0 1 0 3.2 0a1.6 2.1 0 1 0-3.2 0ZM12.9 13.5a1.6 2.1 0 1 0 3.2 0a1.6 2.1 0 1 0-3.2 0Z"
+      />
+      <rect x="1.6" y="11" width="1.8" height="5" rx="0.9" />
+      <rect x="20.6" y="11" width="1.8" height="5" rx="0.9" />
+    </svg>
+  );
+}
+
 /** GitHub's mark, for the GitHub CLI plugin and its connection. */
 export function GitHubMark({ size = 16, className }: IconProps) {
   return (
@@ -279,6 +309,10 @@ export function ProviderMark({ driverKind, size, className }: IconProps & { driv
       return <RouterMark size={size} className={className} />;
     case "pi":
       return <PiMark size={size} className={className} />;
+    case "cursor":
+      return <CursorMark size={size} className={className} />;
+    case "cline":
+      return <ClineMark size={size} className={className} />;
     case "bloks":
       return <BloksMark size={size} className={className} />;
   }
