@@ -652,6 +652,17 @@ export class Checkpoints {
     return lines ? { ...base, lines } : { ...base, tooLong: true };
   }
 
+  /** A file as the turn left it, from the copy kept then rather than the
+   * folder, which a later turn or the person may have changed since: what
+   * a script exporting a run's work gets (server/runs.ts). Null for a
+   * deletion, a file too big to have been kept, or a path the record
+   * does not have. */
+  contentAfter(id: string, path: string): Buffer | null {
+    const change = this.get(id)?.files.find((f) => f.path === path);
+    if (!change || change.big || change.status === "deleted" || !change.after) return null;
+    return this.blob(change.after);
+  }
+
   /**
    * Puts the folder back the way it was before the turn, file by file,
    * leaving anything that has changed since alone.

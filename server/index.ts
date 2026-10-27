@@ -583,6 +583,8 @@ import { RoomTagQueues } from "./room-tags.ts";
 import { MAX_AGENT_HOPS, heldMention, hopsNotice } from "./room-hops.ts";
 import { RepeatWatch } from "./repeats.ts";
 import { Drain, DRAIN_GRACE_MS, DRAINING_TEXT, drainWindow } from "./drain.ts";
+import { RUN_WAIT_MAX_MS, Runs, type RunFile, type SeenMessage } from "./runs.ts";
+import { briefOf, briefText, drawNames, planTeam, statedLooks, TeamPlanError, type TeamChange, type TeamPlan as TeamApplyPlan, type TeamWorld } from "./team-apply.ts";
 import { installFacts, installOf, ServerUpdater, startHelper, UpdateError } from "./server-update.ts";
 import { covers, EnginePauses, FAMILY_NAMES, familyOf, PAUSE_MAX_MS, PauseRefusal, SELF_PAUSE_MAX_MS, type EnginePause, type EngineRoute, type PauseActor } from "./engine-pauses.ts";
 import {
@@ -617,7 +619,7 @@ import { rangeDays, summarize, usageReport, UsageStore, USAGE_RANGES, type Usage
 import { monthBounds, monthKey, monthSpend, providerCreditNotice, readLimit, spendNotices, spendRefusal, spendStatus, MAX_LIMIT_USD, type SpendStatus } from "./spend-limits.ts";
 import { PriceBook, PRICES_URL, readOwnPrice, type OwnPrice } from "./model-prices.ts";
 import { TeamLibrary } from "./team-library.ts";
-import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam } from "./team-file.ts";
+import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam, type TeamFile } from "./team-file.ts";
 import * as artifacts from "./artifacts.ts";
 import { closeHeld, openInside, openUnder, readHeld, streamHeld } from "./open-inside.ts";
 import * as workspace from "./workspace.ts";
@@ -944,6 +946,9 @@ setInterval(() => cutOff.touch(), 5 * 60_000).unref?.();
 // (server/drain.ts). In memory; a restart ends it, and so does its own
 // deadline long past. Tests shorten that grace through the environment.
 const drain = new Drain(Number(process.env.BLOKS_DRAIN_GRACE_MS) || DRAIN_GRACE_MS);
+// Tasks handed to an agent from a script, followed until they and every
+// handoff they made are done (server/runs.ts). In memory, like a stream.
+const runs = new Runs();
 // Engines and models paused for a while (server/engine-pauses.ts). Read
 // once here; written only when a pause is added or called off.
 const enginePauses = new EnginePauses(join(DATA_DIR, "engine-pauses.json"));
@@ -2646,6 +2651,15 @@ function broadcast(payload: unknown) {
   // a routine or a watcher changed: a sleeping machine's next wake may too
   const kind = (payload as { kind?: unknown } | null)?.kind;
   if (kind === "routines" || kind === "watchers") nextDueChanged();
+  // a run from a script reads what its conversations say off the same
+  // frames the app does (server/runs.ts)
+  if (kind === "message" && runs.active) {
+    try {
+      const { threadId, message } = payload as { threadId: string; message: SeenMessage };
+      const speaker = message.from ? store.bot(message.from) : store.botByThread(threadId);
+      runs.message(threadId, message, speaker ? { botId: speaker.id, agent: speaker.name } : null);
+    } catch {}
+  }
   // A member's private conversation, or their solo agent: for them, and
   // for the owner only when the workspace says the owner reads those
   // (server/access.ts). Decided once here, for every way out below.
@@ -4107,6 +4121,7 @@ bus.subscribe((event: RuntimeEvent) => {
   if (event.type === "turn.started") {
     replyNotifications.start(event.threadId, event.turnId, roomId, bot.id,
       store.taskByThread(event.threadId)?.task.goal?.status === "active");
+    runs.started(event.threadId, bot.id, bot.name);
   }
 
   // `soon` for the rows that stream (see Store.save)
@@ -4936,6 +4951,7 @@ bus.subscribe((event: RuntimeEvent) => {
         cost: typeof event.cost === "number" ? event.cost : null,
       };
       turnLog.add(loggedTurn);
+      runs.spent(event.threadId, { input: loggedTurn.input, output: loggedTurn.output, cost: loggedTurn.cost });
       // what the turn did to its folder, as a card with the way back
       const rehearsing = rehearsals.byTask(event.threadId);
       const carded = checkpoints
@@ -7857,6 +7873,8 @@ function unsendable(botId: string): string | null {
  */
 function settleOwners(bot: BotRecord, laneId: string, outcome: { ok: boolean; why: string | null; unsent?: boolean; quiet?: boolean; said?: string }) {
   const { ok, why, unsent, quiet } = outcome;
+  // a run from a script reads how its conversation's turn really ended
+  runs.ended(laneId, { ok, why });
   // what the agent actually said; a turn that never ran said nothing,
   // and the last reply in its lane belongs to an earlier one. A turn
   // that ended on the bare quiet word said that, though the chat never
@@ -10041,13 +10059,16 @@ interface AgentChain {
   depth: number;
   sender: { botId: string; name: string };
   task?: ChainTask;
+  /** The sending turn's own conversation, for a run that follows its
+   * handoffs (server/runs.ts). */
+  lane?: string;
 }
 
 /** The place in the chain a message from the agent whose turn runs in
  * `laneId` would take, on the task it names, if any. */
 function chainFrom(sender: { id: string; name: string }, laneId: string, named?: string): AgentChain {
   const task = taskFor(chainTasks.get(laneId), named, agentChain.get(laneId) ?? 0);
-  return { depth: nextAgentChain(laneId), sender: { botId: sender.id, name: sender.name }, ...(task ? { task } : {}) };
+  return { depth: nextAgentChain(laneId), sender: { botId: sender.id, name: sender.name }, lane: laneId, ...(task ? { task } : {}) };
 }
 
 /** The place in the chain for a turn that takes these waiting items,
@@ -15823,6 +15844,9 @@ async function sendUserMessage(
   // is one more turn nobody but the agents asked for.
   const past = options.chain ? chainPast(options.chain.depth, options.chain.task, agentLimit(), agentBudget()) : null;
   if (options.chain && past) throw chainRefusal(bot, lane.id, options.chain, text, past);
+  // A run from a script that the sender is in now waits for this lane
+  // too, however these words meet it: a turn, a running turn, a queue.
+  if (options.chain?.lane && options.chain.lane !== lane.id) runs.link(options.chain.lane, lane.id, options.chain.sender.name, bot.name);
   const admission = options.guardedAdmission?.(lane);
   // A kept-back message's receipt is fixed the moment it is admitted, so
   // what the sender is told goes in with the admission rather than after.
@@ -16731,6 +16755,67 @@ interface RoundTag {
 /** Rooms with a dispatch loop in flight, holding whoever got named while
  * it ran. One room, one speaker at a time. */
 const dispatching = new Map<string, Map<string, RoundTag>>();
+
+// ── runs from a script (server/runs.ts) ───────────────────────────────
+
+/** Whether nothing in a lane is going or about to: no turn, no claim on
+ * it, nothing waiting in its queue, no changes card being made after a
+ * turn, no goal that starts the next turn on its own. A turn waiting to
+ * be asked again keeps its lane busy (askAgain), so a retry counts. */
+function laneQuiet(laneId: string): boolean {
+  const task = store.taskByThread(laneId)?.task;
+  if (!task) return true;
+  if (task.busy || claimedLanes.has(laneId) || cardsPending.has(laneId)) return false;
+  if (steerQueues.get(laneId)?.items.length) return false;
+  return task.goal?.status !== "active";
+}
+
+/** The same for a room: nobody speaking, nothing posted waiting its turn. */
+function roomQuiet(roomId: string): boolean {
+  if (dispatching.has(roomId) || roomPosting.has(roomId)) return false;
+  for (const [laneId, room] of activeRoom) if (room === roomId && !laneQuiet(laneId)) return false;
+  return true;
+}
+
+setInterval(() => {
+  if (!runs.active) return;
+  try {
+    runs.tick(laneQuiet, roomQuiet, (requestId) => askThreadByRequest.has(requestId));
+  } catch (e) {
+    console.error(redactSecrets(e instanceof Error ? e.message : String(e)));
+  }
+}, 250).unref?.();
+
+/** The conversation a run goes to: General when none is named, a new one
+ * for "new", else the one with that id or title, made when there is none.
+ * Never a shared room's lane, a rehearsal's, a member's or a stranger's
+ * mail's, whatever it is called. */
+function runLane(bot: BotRecord, asked: string | undefined, text: string): { lane: TaskRecord } | { status: number; error: string } {
+  const usable = (t: TaskRecord) => !isSharedLane(t.id) && !rehearsals.forTask(t.id) && !t.guestMail && !t.personId;
+  const named = asked?.trim();
+  if (!named) return { lane: mainLaneOf(bot) };
+  const found = named.toLowerCase() === "new"
+    ? undefined
+    : bot.tasks.find((t) => t.id === named) ?? bot.tasks.find((t) => t.title.toLowerCase() === named.toLowerCase());
+  if (found) return usable(found) ? { lane: found } : { status: 403, error: `"${found.title}" is not a conversation a script can use` };
+  if (LANE_ID.test(named)) return { status: 404, error: `${bot.name} has no conversation with that id` };
+  // made in the background: the person's screen stays where it was
+  const title = named.toLowerCase() === "new" ? text.replace(/\s+/g, " ").trim().slice(0, 40) || `Task ${bot.tasks.length + 1}` : named.slice(0, 40);
+  const active = bot.activeTaskId;
+  const made = store.createTask(bot.id, title);
+  if (!made) return { status: 409, error: `${bot.name} has as many conversations as an agent keeps (${MAX_TASKS}). Name one of them, or close one in the app.` };
+  store.setActiveTask(bot.id, active);
+  broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
+  return { lane: made };
+}
+
+/** An agent named by id, or by name with its case forgiven. */
+function agentNamed(asked: unknown): BotRecord | null {
+  const said = typeof asked === "string" ? asked.trim() : "";
+  if (!said) return null;
+  const shown = store.bots.filter((b) => !b.solo || b.solo.by === "owner");
+  return shown.find((b) => b.id === said) ?? shown.find((b) => b.name.toLowerCase() === said.toLowerCase()) ?? null;
+}
 
 // ── reacting to changed settings ──────────────────────────────────────
 function configStatus() {
@@ -23158,6 +23243,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           text,
           ...(replyTo ? { replyTo } : {}),
         });
+        // a run from a script this agent is in waits for the room too
+        runs.linkRoom(asAgent.taskId, blok.id);
         broadcast({ kind: "message", threadId: blok.id, message });
         // whoever started the turn it said this from is still the one who
         // asked, so a member's chain does not become the owner's
@@ -23557,6 +23644,189 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       broadcast({ kind: "blok", blok });
       return json(res, 201, { blok: { ...blok, messages: store.messagesFor(blok.id) } });
+    }
+
+    // A team file applied to the workspace, from a script (server/team-apply.ts):
+    // the room and its agents made or brought in line with the file,
+    // only what differs changed. `dryRun` says what would change and
+    // changes nothing. The owner's, from this computer or a device of
+    // theirs, never an agent's or a member's: it hires agents.
+    if (method === "POST" && path === "/api/teams/apply") {
+      if (asAgent || (local ? namesMember() : !ownerDevice)) return json(res, 403, { error: "applying a team is the owner's", code: "refused" });
+      const body = await readBody(req);
+      const text = typeof body.text === "string" ? body.text : "";
+      let team: TeamFile;
+      try {
+        team = parseTeamFile(text);
+      } catch (e) {
+        return json(res, 400, { error: e instanceof TeamFileError ? e.message : "That file could not be read as a team." });
+      }
+      const world: TeamWorld = {
+        agents: store.bots.map((b) => ({
+          id: b.id,
+          name: b.name,
+          title: b.title ?? "",
+          description: b.description ?? "",
+          skills: b.skills ?? [],
+          seniority: b.seniority ?? 1,
+          color: b.color,
+          shape: b.shape ?? "",
+          archived: Boolean(b.archivedAt),
+          placeable: roomMayHold(b.id),
+        })),
+        rooms: bloks.bloks.map((r) => ({
+          id: r.id,
+          name: r.name,
+          memberIds: r.memberIds,
+          leadId: r.leadId ?? null,
+          archived: Boolean(r.archived),
+          brief: briefOf(store.messagesFor(r.id)),
+        })),
+      };
+      let plan: TeamApplyPlan;
+      try {
+        plan = planTeam(team, world, { looks: statedLooks(text), prune: body.prune === true });
+      } catch (e) {
+        if (e instanceof TeamPlanError) return json(res, 409, { error: e.message });
+        throw e;
+      }
+      if (body.dryRun === true || !plan.changes.length) return json(res, 200, { plan, applied: false });
+      // Hires first, so the room can be made with everyone in it. Each
+      // gets the workspace's defaults for a new agent and nothing else.
+      const seats = [...plan.seats];
+      const hires = plan.changes.filter((c): c is Extract<TeamChange, { kind: "hire" }> => c.kind === "hire");
+      const drawn = drawNames(hires.filter((h) => !h.name).length, store.bots.map((b) => b.name));
+      const settings = hires.length ? await newAgentSettings() : {};
+      for (const hire of hires) {
+        const member = team.members[hire.seat];
+        const name = hire.name ?? drawn.shift()!;
+        const made = store.createBot({
+          name,
+          title: member.title,
+          description: member.description,
+          skills: member.skills,
+          seniority: member.seniority,
+          color: member.color,
+          shape: member.shape,
+          greeting: `${name} here. ${member.title || "Ready to work."}`,
+          setup: { title: "Hired from a team file", subtitle: "", options: [] },
+        });
+        store.patchBot(made.id, settings);
+        seats[hire.seat] = made.id;
+        broadcast({ kind: "bot", bot: { ...clientBot(store.bot(made.id))!, messages: store.messagesFor(made.threadId) } });
+        record({ at: Date.now(), kind: "agent.created", actor: "you", summary: `Made ${name}, ${member.title}, from the team file for ${team.name}`, detail: { agent: name } });
+        hire.name = name;
+      }
+      for (const change of plan.changes) {
+        if (change.kind !== "update") continue;
+        const member = team.members[change.seat];
+        const patch: Partial<BotRecord> = {};
+        for (const f of change.fields) {
+          if (f.field === "skills") patch.skills = member.skills;
+          else if (f.field === "seniority") patch.seniority = member.seniority;
+          else if (f.field === "color") patch.color = member.color;
+          else if (f.field === "shape") patch.shape = member.shape;
+          else patch[f.field] = member[f.field];
+        }
+        store.patchBot(change.agentId, patch);
+        broadcast({ kind: "bot", bot: clientBot(store.bot(change.agentId)) });
+      }
+      const leadId = seats[team.members.reduce((best, m, i) => (m.seniority > team.members[best].seniority ? i : best), 0)];
+      const pruned = new Set(plan.changes.flatMap((c) => (c.kind === "prune" ? [c.agentId] : [])));
+      const seated = seats.filter((id): id is string => Boolean(id));
+      let blok = plan.room.id ? bloks.get(plan.room.id) : null;
+      if (!blok) {
+        blok = bloks.create(team.name, seated, Date.now(), leadId);
+        const opened = store.appendMessage(blok.id, {
+          role: "bot",
+          kind: "text",
+          text: `Room opened with ${seated.map((id) => store.bot(id)?.name ?? "").filter(Boolean).join(", ")}. Mention someone with @name, or just talk and everyone answers.`,
+        });
+        broadcast({ kind: "message", threadId: blok.id, message: opened });
+      } else {
+        const memberIds = [...blok.memberIds.filter((id) => !pruned.has(id)), ...seated.filter((id) => !blok!.memberIds.includes(id))];
+        blok = bloks.patch(blok.id, { memberIds, leadId })!;
+      }
+      if (plan.changes.some((c) => c.kind === "brief")) {
+        const note = store.appendMessage(blok.id, { role: "bot", kind: "text", text: briefText(team.blurb) });
+        broadcast({ kind: "message", threadId: blok.id, message: note });
+      }
+      broadcast({ kind: "blok", blok });
+      return json(res, 200, { plan: { ...plan, room: { id: blok.id, name: blok.name }, seats }, applied: true });
+    }
+
+    // ── runs from a script: a task, followed to its answer (server/runs.ts) ──
+    // The owner's, from this computer or a device of theirs: a run speaks
+    // as the person, so an agent's credential or a member's never starts one.
+    const runRefusal = () => asAgent || (local ? namesMember() : !ownerDevice);
+    if (method === "POST" && path === "/api/runs") {
+      if (runRefusal()) return json(res, 403, { error: "runs are the owner's, not an agent's or a member's", code: "refused" });
+      const body = await readBody(req);
+      if (typeof body.text === "string" && body.text.length > MAX_MESSAGE_CHARS) {
+        return json(res, 413, { error: "that task is too long to send in one go", code: "refused" });
+      }
+      const text = clamp(body.text, MAX_MESSAGE_CHARS);
+      if (!text) return json(res, 400, { error: "a run needs a task" });
+      const bot = agentNamed(body.agent);
+      if (!bot) return json(res, 404, { error: `There is no agent called "${clamp(body.agent, MAX_NAME_CHARS) ?? ""}" in this workspace.`, code: "agent-not-found" });
+      if (bot.archivedAt) return json(res, 409, { error: `${bot.name} is archived. Restore it to give it work.`, code: "refused" });
+      // words sent now would wait for the restart, which ends the run
+      if (drain.on) return json(res, 503, { error: DRAINING_TEXT, code: "refused" });
+      const chosen = runLane(bot, typeof body.conversation === "string" ? body.conversation : undefined, text);
+      if ("error" in chosen) return json(res, chosen.status, { error: chosen.error, code: chosen.status === 404 ? "conversation-not-found" : "refused" });
+      const started = runs.begin({ botId: bot.id, agent: bot.name, laneId: chosen.lane.id, laneTitle: chosen.lane.title });
+      try {
+        // the person's own words, as if typed in the app; a turn running
+        // there now is waited for, not joined, so the task is a turn of its own
+        await sendUserMessage(bot.id, text, { taskId: chosen.lane.id, yours: true, steer: false });
+      } catch (e) {
+        runs.drop(started.id);
+        const status = (e as { status?: number }).status ?? 500;
+        return json(res, status, { error: redactSecrets(e instanceof Error ? e.message : String(e)), code: "refused" });
+      }
+      return json(res, 201, { run: runs.view(started.id) });
+    }
+    m = path.match(/^\/api\/runs\/([\w-]+)$/);
+    if (m && method === "GET") {
+      if (runRefusal()) return json(res, 403, { error: "runs are the owner's", code: "refused" });
+      const after = Math.max(0, Math.floor(Number(url.searchParams.get("after")) || 0));
+      // a long poll: held until something happens, or the wait is up
+      const waitMs = Math.min(RUN_WAIT_MAX_MS, Math.max(0, (Number(url.searchParams.get("wait")) || 0) * 1000));
+      let view = runs.view(m[1], after);
+      if (!view) return json(res, 404, { error: "There is no such run. Bloks may have restarted since it began.", code: "run-not-found" });
+      if (waitMs && view.endedAt === null && view.next <= after) {
+        await runs.wait(m[1], waitMs);
+        view = runs.view(m[1], after) ?? view;
+      }
+      return json(res, 200, { run: view });
+    }
+    m = path.match(/^\/api\/runs\/([\w-]+)\/stop$/);
+    if (m && method === "POST") {
+      if (runRefusal()) return json(res, 403, { error: "runs are the owner's", code: "refused" });
+      const id = m[1];
+      if (!runs.view(id)) return json(res, 404, { error: "There is no such run.", code: "run-not-found" });
+      // every conversation the run reached, not only the first: stopping
+      // the agent while its teammate carries on would stop nothing
+      for (const laneId of runs.lanesOf(id)) {
+        const bot = store.botByThread(laneId);
+        if (bot && !laneQuiet(laneId)) await stopForYou(bot, laneId).catch(() => {});
+      }
+      runs.stop(id);
+      return json(res, 200, { run: runs.view(id) });
+    }
+    // A file a run's turn changed, as the turn left it, for `--export`.
+    // Deliverables an agent saved come from its artifacts route instead.
+    m = path.match(/^\/api\/runs\/([\w-]+)\/file$/);
+    if (m && method === "GET") {
+      if (runRefusal()) return json(res, 403, { error: "runs are the owner's", code: "refused" });
+      const view = runs.view(m[1]);
+      if (!view) return json(res, 404, { error: "There is no such run.", code: "run-not-found" });
+      const wanted = url.searchParams.get("path") ?? "";
+      const change = view.files.find((f): f is Extract<RunFile, { kind: "change" }> => f.kind === "change" && f.path === wanted && f.botId === url.searchParams.get("agent"));
+      const content = change ? checkpoints.contentAfter(change.checkpointId, change.path) : null;
+      if (!content) return json(res, 404, { error: "That file was not kept: it was deleted, or too big to keep." });
+      res.writeHead(200, { "content-type": "application/octet-stream", "content-length": content.length, "cache-control": "no-store" });
+      return res.end(content);
     }
 
     // ── search: every transcript, one query ──
