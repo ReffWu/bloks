@@ -9,6 +9,8 @@ import "./styles.css";
 import { startTranscriptWidth } from "./lib/useTranscriptWidth";
 import { applyAccent, chooseAccent, hasStoredAccent, storedAccent } from "./lib/accent";
 import { accentForMark } from "./lib/workspaceMark";
+import { useLanguage } from "./lib/i18n";
+import { startLanguage } from "./lib/language";
 
 // before the first render, so the chosen colour is there from the start.
 // A workspace opened for the first time starts on the accent nearest its
@@ -19,12 +21,31 @@ if (workspace && workspace.kind !== "personal" && workspace.mark && !hasStoredAc
 else applyAccent(storedAccent());
 startTranscriptWidth();
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
+/**
+ * The whole interface, drawn again when the language changes. The words
+ * are read where they are drawn (src/lib/i18n.ts), so drawing everything
+ * once more is the whole of a language change: nothing remounts, and an
+ * open dialog, a draft or a scroll position stays where it was.
+ */
+function Root() {
+  useLanguage();
+  return (
     <ThemeProvider>
       <ErrorBoundary>
         <App />
       </ErrorBoundary>
     </ThemeProvider>
-  </StrictMode>,
-);
+  );
+}
+
+// The person's language is loaded before the first frame, so the window
+// never opens in English and then changes its mind.
+void startLanguage()
+  .catch(() => {})
+  .then(() => {
+    createRoot(document.getElementById("root")!).render(
+      <StrictMode>
+        <Root />
+      </StrictMode>,
+    );
+  });

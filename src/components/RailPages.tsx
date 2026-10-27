@@ -12,6 +12,7 @@ import { ActivityPanel } from "./Activity";
 import { ProjectsPanel } from "./ProjectsPanel";
 import { UsagePage } from "./UsagePage";
 import { useActivityCount } from "@/lib/activityCount";
+import { t } from "@/lib/i18n";
 
 /** A greeting for the time of day, as the page is opened. */
 function greeting(now = new Date()): string {
@@ -56,7 +57,7 @@ function OverviewPage() {
             <p className="text-body text-muted-foreground">{today}</p>
             <h1 className="mt-1 text-balance text-display font-semibold text-foreground">{greeting()}</h1>
             <p className="mt-2 text-pretty text-ui text-muted-foreground">
-              {now.length ? `${now.join(", ")}.` : "Nothing running or waiting."}
+              {now.length ? `${now.join(", ")}.` : t("railPages.nothingRunningOrWaiting")}
             </p>
           </motion.header>
           <div className="grid grid-cols-1 items-start gap-x-14 gap-y-12 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">

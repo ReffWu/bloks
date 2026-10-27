@@ -18,6 +18,7 @@ import { stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
 import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
 import { confirm } from "@/components/ui/confirm";
+import { t } from "@/lib/i18n";
 
 /** Opens the editor on a queued message: the server holds back the turn
  * it waits for until the editor closes (GitHub 155). What comes back
@@ -173,7 +174,7 @@ function WaitingRow({
                 }
               }}
               rows={Math.min(6, editing.split("\n").length + 1)}
-              aria-label="Edit the waiting message"
+              aria-label={t("waitingStrip.editTheWaitingMessage")}
               className="max-h-[calc(6lh+10px)] w-full resize-none rounded-lg border bg-background px-2 py-1 text-body text-foreground outline-none [field-sizing:content] focus:border-ring/50"
             />
             <div className="flex items-center gap-2 text-small text-muted-foreground">
@@ -181,12 +182,12 @@ function WaitingRow({
                 onClick={() => stopEditing(editing.trim() || undefined)}
                 className="font-medium text-foreground underline underline-offset-2"
               >
-                Save
+                {t("common.save")}
               </button>
               <button onClick={() => stopEditing()} className="hover:text-foreground">
-                Cancel
+                {t("common.cancel")}
               </button>
-              <span className="hidden opacity-70 sm:inline">Enter saves, Escape cancels</span>
+              <span className="hidden opacity-70 sm:inline">{t("waitingStrip.enterSavesEscapeCancels")}</span>
             </div>
           </div>
         ) : (
@@ -205,7 +206,7 @@ function WaitingRow({
                 : undefined
             }
             onDoubleClick={editable ? startEditing : undefined}
-            title={editable ? "Double-click to edit" : undefined}
+            title={editable ? t("waitingStrip.doubleClickToEdit") : undefined}
           >
             {message.text}
           </div>
@@ -228,23 +229,23 @@ function WaitingRow({
               onClick={() => onSendAgain(message)}
               className="mr-0.5 h-7 rounded-full px-2.5 text-small font-medium text-foreground transition-colors duration-150 hover:bg-accent"
             >
-              Send again
+              {t("waitingStrip.sendAgain")}
             </button>
           ) : null}
           {editable && (
-            <IconButton label="Edit" onClick={startEditing}>
+            <IconButton label={t("common.edit")} onClick={startEditing}>
               <Pencil size={13} strokeWidth={1.8} />
             </IconButton>
           )}
           {yours && message.queued && onSendNow && (
-            <IconButton label="Send now" onClick={onSendNow}>
+            <IconButton label={t("waitingStrip.sendNow")} onClick={onSendNow}>
               <ArrowUp size={14} strokeWidth={1.8} />
             </IconButton>
           )}
           {/* not yours to take back while it waits; one never sent, though,
               is only clutter if it stays, so anyone's can be cleared */}
           {(yours || message.unsent) && (
-            <IconButton label={message.unsent ? "Delete" : "Take back"} onClick={() => takeBack(threadId, message.id)}>
+            <IconButton label={message.unsent ? t("common.delete") : t("waitingStrip.takeBack")} onClick={() => takeBack(threadId, message.id)}>
               <Trash2 size={13} strokeWidth={1.8} />
             </IconButton>
           )}
@@ -328,10 +329,10 @@ export function useQueuedNotice({
       unsent === messages.length
         ? `${unsent === 1 ? "A message" : `${unsent} messages`} didn't send.`
         : `${messages.length === 1 ? "A message is" : `${messages.length} messages are`} waiting to send.`,
-    actions: mineQueued && working && onSendNow && <TrayButton onClick={onSendNow}>Send now</TrayButton>,
+    actions: mineQueued && working && onSendNow && <TrayButton onClick={onSendNow}>{t("waitingStrip.sendNow")}</TrayButton>,
     keepOpen: asked || editing.size > 0,
     body: (
-      <div className="flex max-h-[30vh] flex-col gap-1 overflow-y-auto overscroll-contain" aria-label="Waiting to send">
+      <div className="flex max-h-[30vh] flex-col gap-1 overflow-y-auto overscroll-contain" aria-label={t("waitingStrip.waitingToSend")}>
         {messages.map((m) => (
           <WaitingRow
             key={m.id}
@@ -382,7 +383,7 @@ export function WaitingStrip({
     <div className="px-4 md:px-6">
       <div
         className="mx-auto flex max-h-[40vh] max-w-[var(--transcript-width,760px)] flex-col gap-1.5 overflow-y-auto pb-1"
-        aria-label="Waiting to send"
+        aria-label={t("waitingStrip.waitingToSend")}
       >
         {messages.map((m) => (
           <WaitingRow

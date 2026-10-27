@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/cn";
 import { TITLEBAR_TABS_ID } from "@/lib/titlebarSlot";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { t } from "@/lib/i18n";
 
 const isElectron = navigator.userAgent.includes("Electron");
 /** The main rail's width (AppRail.tsx, w-14). */
@@ -120,14 +121,14 @@ export function TitleBar() {
             browser has none, so its buttons start at the rail's edge */}
         <div className={cn("shrink-0", isElectron ? "w-[78px]" : "w-14")} />
         <div ref={cluster} className="flex min-w-0 items-center gap-0.5 pl-1.5">
-          <BarButton label="Back" keys={`${mod}[`} disabled={!history.canBack} onClick={history.back}>
+          <BarButton label={t("common.back")} keys={`${mod}[`} disabled={!history.canBack} onClick={history.back}>
             <ArrowLeft size={17} strokeWidth={1.75} />
           </BarButton>
-          <BarButton label="Forward" keys={`${mod}]`} disabled={!history.canForward} onClick={history.forward}>
+          <BarButton label={t("titleBar.forward")} keys={`${mod}]`} disabled={!history.canForward} onClick={history.forward}>
             <ArrowRight size={17} strokeWidth={1.75} />
           </BarButton>
           <BarButton
-            label="Toggle sidebar"
+            label={t("titleBar.toggleSidebar")}
             keys={`${mod}B`}
             disabled={!column}
             pressed={Boolean(column) && columnOpen}

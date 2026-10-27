@@ -14,6 +14,7 @@ import { cn } from "@/lib/cn";
 import { useEscape } from "@/lib/useEscape";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { NoticeTray, type Notice } from "./Tray";
+import { t } from "@/lib/i18n";
 
 /**
  * Send, which becomes Stop while the agent works and the box is empty.
@@ -49,7 +50,7 @@ export function SendStop({
       onClick={stop ? onStop : onSend}
       disabled={mode === "idle"}
       title={stop ? stopLabel : sendLabel}
-      aria-label={stop ? "Stop" : sendLabel}
+      aria-label={stop ? t("common.stop") : sendLabel}
       className="relative flex size-8 shrink-0 items-center justify-center rounded-full transition-transform duration-150 ease-out active:scale-90 disabled:cursor-not-allowed disabled:active:scale-100"
     >
       <span aria-hidden className="absolute inset-0 flex items-center justify-center rounded-full bg-muted text-muted-foreground/60">

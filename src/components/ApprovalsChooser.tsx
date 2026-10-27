@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { Check } from "@/components/icons";
 import { api } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export type ApprovalMode = "ask" | "edits" | "auto" | "full";
 
@@ -60,7 +61,7 @@ export function ApprovalsChooser({
   compact?: boolean;
 }) {
   return (
-    <div role="radiogroup" aria-label="How much agents ask" className="flex flex-col gap-1.5">
+    <div role="radiogroup" aria-label={t("approvalsChooser.howMuchAgentsAsk")} className="flex flex-col gap-1.5">
       {APPROVAL_MODES.map((mode) => {
         const on = mode.id === value;
         return (

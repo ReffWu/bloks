@@ -15,6 +15,7 @@ import { toast } from "@/components/ui/toast";
 import { X } from "@/components/icons";
 import { hasOwnBrowser } from "@/lib/appBrowser";
 import { SavedMark, SettingRow, SettingsGroup, SettingsSkeleton } from "../SettingsLayout";
+import { t } from "@/lib/i18n";
 
 interface Settings {
   mode: "ask" | "auto";
@@ -62,26 +63,26 @@ export function BrowserPage() {
   };
 
   if (error && !settings) return <p className="text-body text-destructive">{error}</p>;
-  if (!settings) return <SettingsSkeleton rows={3} label="Loading browser settings" />;
+  if (!settings) return <SettingsSkeleton rows={3} label={t("browserPage.loadingBrowserSettings")} />;
 
   return (
     <>
       <SettingsGroup
-        title="When an agent opens a site"
-        footnote="Typing a password or a card number, and choosing a file to upload, always ask you first, whichever you pick. Agents never open files on this computer, the browser's own pages, or Bloks itself."
+        title={t("browserPage.whenAnAgentOpensA")}
+        footnote={t("browserPage.typingAPasswordOrA")}
       >
         <SettingRow
-          label="Asks"
+          label={t("browserPage.asks")}
           description={
             settings.mode === "ask"
-              ? "A site that is not on your list asks you on a card, the first time in a turn."
-              : "Any site but the ones you block, without asking."
+              ? t("browserPage.aSiteThatIsNot")
+              : t("browserPage.anySiteButTheOnes")
           }
           control={
             <div className="flex items-center gap-2">
               <SavedMark on={saved} />
               <Segmented
-                aria-label="When an agent opens a site"
+                aria-label={t("browserPage.whenAnAgentOpensA")}
                 value={settings.mode}
                 onChange={(mode) => void chooseMode(mode)}
                 options={[
@@ -95,18 +96,18 @@ export function BrowserPage() {
       </SettingsGroup>
 
       <SiteList
-        title="Sites agents may use"
-        empty="None yet. Press Always allow on a card, or add a site here."
+        title={t("browserPage.sitesAgentsMayUse")}
+        empty={t("browserPage.noneYetPressAlwaysAllow")}
         sites={settings.allow}
         onChange={(allow) => save({ allow })}
-        footnote={settings.mode === "auto" ? "In Auto every site is open to agents, so this list only matters if you go back to Ask first." : "A site covers its subdomains: example.com includes shop.example.com."}
+        footnote={settings.mode === "auto" ? t("browserPage.inAutoEverySiteIs") : t("browserPage.aSiteCoversItsSubdomains")}
       />
       <SiteList
-        title="Sites agents never use"
-        empty="None. Agents may be asked about any site."
+        title={t("browserPage.sitesAgentsNeverUse")}
+        empty={t("browserPage.noneAgentsMayBeAsked")}
         sites={settings.deny}
         onChange={(deny) => save({ deny })}
-        footnote="Blocked beats allowed. A page that tries to take an agent to one of these stays where it was."
+        footnote={t("browserPage.blockedBeatsAllowedAPage")}
       />
       {error && (
         <p role="alert" className="-mt-6 mb-9 px-1 text-small text-destructive">
@@ -115,19 +116,19 @@ export function BrowserPage() {
       )}
 
       {hasOwnBrowser() && (
-        <SettingsGroup title="This workspace's browser" footnote="Its sign-ins are this workspace's own: another workspace, and the rest of Bloks, never see them.">
+        <SettingsGroup title={t("browserPage.thisWorkspacesBrowser")} footnote={t("browserPage.itsSignInsAreThis")}>
           <SettingRow
-            label="Downloads"
+            label={t("browserPage.downloads")}
             description={<span className="break-all">{folder}</span>}
             control={
               <Button size="sm" variant="secondary" onClick={() => void window.bloks?.browserDo?.("openDownloads")}>
-                Open
+                {t("common.open")}
               </Button>
             }
           />
           <SettingRow
-            label="Sign out of every site"
-            description="Clears the cookies, saved sign-ins and cache of this workspace's browser."
+            label={t("browserPage.signOutOfEverySite")}
+            description={t("browserPage.clearsTheCookiesSavedSign")}
             control={
               <Button
                 size="sm"
@@ -146,7 +147,7 @@ export function BrowserPage() {
                   })
                 }
               >
-                Sign out
+                {t("browserPage.signOut")}
               </Button>
             }
           />
@@ -214,7 +215,7 @@ function SiteList({
           className="h-8 flex-1"
         />
         <Button size="sm" variant="secondary" type="submit" disabled={!adding.trim()}>
-          Add
+          {t("common.add")}
         </Button>
       </form>
     </SettingsGroup>

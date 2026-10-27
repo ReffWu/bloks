@@ -27,6 +27,7 @@ import { AgentsBeat, Column, EnginesBeat, ReadyDot, namesOf, useAgentHiring, use
 import { InviteSheet } from "./members/InviteSheet";
 import { NeedsTeam } from "./TeamLock";
 import { WorkspaceMark } from "./WorkspaceMark";
+import { t } from "@/lib/i18n";
 
 const isElectron = navigator.userAgent.includes("Electron");
 
@@ -119,9 +120,9 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
       >
         <div className="justify-self-start">
           {at > 0 ? (
-            <Button variant="ghost" onClick={back} aria-label="Back" className="max-sm:px-2">
+            <Button variant="ghost" onClick={back} aria-label={t("common.back")} className="max-sm:px-2">
               <ArrowLeft size={15} />
-              <span className="max-sm:hidden">Back</span>
+              <span className="max-sm:hidden">{t("common.back")}</span>
             </Button>
           ) : (
             <span className="flex h-8 items-center gap-2 px-2">
@@ -136,8 +137,8 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
         )}
         <div className="justify-self-end">
           <Button variant="ghost" onClick={() => finish("skipped")} className="max-sm:px-2">
-            <span className="max-sm:hidden">Skip for now</span>
-            <span className="sm:hidden">Skip</span>
+            <span className="max-sm:hidden">{t("common.skipForNow")}</span>
+            <span className="sm:hidden">{t("workspaceWelcome.skip")}</span>
           </Button>
         </div>
       </div>
@@ -175,7 +176,7 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
                 hiring={hiring}
                 onHire={hire}
                 title={`Who works in ${name}?`}
-                says="Pick the kinds of work done here. Agents for it appear below."
+                says={t("workspaceWelcome.pickTheKindsOfWork")}
               />
             </motion.div>
           ) : (
@@ -193,7 +194,7 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
             {shown === "engines" ? (
               <>
                 <ReadyDot state={!engines.instances ? "checking" : engines.ready ? "ready" : "missing"} />
-                <span className="truncate">{engines.readyEngine ? `${engines.readyEngine.name} is ready` : "No engine ready yet, agents can't reply"}</span>
+                <span className="truncate">{engines.readyEngine ? `${engines.readyEngine.name} is ready` : t("workspaceWelcome.noEngineReadyYetAgents")}</span>
               </>
             ) : shown === "agents" ? (
               <>
@@ -213,22 +214,22 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
                   {hireNote ??
                     (hired.length
                       ? `${namesOf(hired.map((h) => AGENT_TEMPLATES.find((t) => t.id === h.template)?.name ?? "An agent"))} added`
-                      : "Optional. You can add agents any time.")}
+                      : t("workspaceWelcome.optionalYouCanAddAgents"))}
                 </span>
               </>
             ) : (
-              <span className="truncate max-sm:hidden">{shown === "business" ? "Change both any time in its settings." : "Optional. Members is in its settings."}</span>
+              <span className="truncate max-sm:hidden">{shown === "business" ? t("workspaceWelcome.changeBothAnyTimeIn") : t("workspaceWelcome.optionalMembersIsInIts")}</span>
             )}
           </span>
           {shown === "engines" && (
-            <Button variant="ghost" size="lg" onClick={() => void engines.checkEngines()} aria-label="Check again" className="max-sm:px-3">
+            <Button variant="ghost" size="lg" onClick={() => void engines.checkEngines()} aria-label={t("common.checkAgain")} className="max-sm:px-3">
               <RefreshCw size={14} className={cn(engines.checking && "animate-spin")} />
-              <span className="max-sm:hidden">Check again</span>
+              <span className="max-sm:hidden">{t("common.checkAgain")}</span>
             </Button>
           )}
           <Button size="lg" onClick={() => void goOn()} disabled={saving || hiring.length > 0}>
             {saving && <Loader2 size={15} className="animate-spin" />}
-            {last ? `Open ${name}` : "Continue"}
+            {last ? `Open ${name}` : t("common.continue")}
             {!last && <ArrowRight size={15} />}
           </Button>
         </div>
@@ -250,7 +251,7 @@ function BusinessBeat({ name, onName, error, onSubmit }: { name: string; onName:
   };
   return (
     <Column>
-      <BeatHeading title="Name it, and add your logo" says="How it shows in the switcher, in banners and on the invites you send." />
+      <BeatHeading title={t("workspaceWelcome.nameItAndAddYour")} says={t("workspaceWelcome.howItShowsInThe")} />
       <div className="flex items-center gap-5 rounded-2xl border bg-card p-5 max-sm:flex-col max-sm:items-start">
         <span key={ws?.logo ?? "mark"} className="flex animate-pop-in">
           <WorkspaceMark mark={ws?.mark ?? null} logo={ws?.logo} size={72} label={`${name}'s mark`} />
@@ -264,7 +265,7 @@ function BusinessBeat({ name, onName, error, onSubmit }: { name: string; onName:
             }}
           >
             <label htmlFor="welcome-business-name" className="text-small font-medium text-muted-foreground">
-              Name
+              {t("common.name")}
             </label>
             <Input
               id="welcome-business-name"
@@ -285,12 +286,12 @@ function BusinessBeat({ name, onName, error, onSubmit }: { name: string; onName:
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="secondary" size="sm" className="gap-1.5" disabled={busy || !ws} onClick={() => void logo(window.bloks?.workspaceLogoPick?.(ws!.id))}>
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-              {ws?.logo ? "Choose another logo" : "Upload logo"}
+              {ws?.logo ? t("workspaceWelcome.chooseAnotherLogo") : t("workspaceWelcome.uploadLogo")}
             </Button>
             {ws?.logo && (
               <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" disabled={busy} onClick={() => void logo(window.bloks?.workspaceLogoClear?.(ws.id))}>
                 <Trash2 size={13} />
-                Use the mark
+                {t("workspaceWelcome.useTheMark")}
               </Button>
             )}
           </div>
@@ -323,25 +324,25 @@ function InviteBeat({ name }: { name: string }) {
     <Column>
       <BeatHeading
         title={`Invite people to ${name}`}
-        says="Each person gets their own conversations with the agents here. Nobody gets in until you say so."
+        says={t("workspaceWelcome.eachPersonGetsTheirOwn")}
       />
       <div className="flex flex-col items-start gap-3 rounded-2xl border bg-card p-5">
         {!data && !problem ? (
           <span className="flex items-center gap-2 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
-            Getting the invitations ready
+            {t("workspaceWelcome.gettingTheInvitationsReady")}
           </span>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">
               <Button size="lg" onClick={() => setInviting(true)} disabled={!data || !teamOn}>
                 <Plus size={16} />
-                {out ? "Invite someone else" : "Invite someone"}
+                {out ? t("workspaceWelcome.inviteSomeoneElse") : t("workspaceWelcome.inviteSomeone")}
               </Button>
               {out > 0 && (
                 <span className="flex items-center gap-1.5 text-body text-muted-foreground">
                   <Check size={14} className="text-success" />
-                  {out === 1 ? "1 invitation out" : `${out} invitations out`}
+                  {out === 1 ? t("workspaceWelcome.n1InvitationOut") : `${out} invitations out`}
                 </span>
               )}
             </div>

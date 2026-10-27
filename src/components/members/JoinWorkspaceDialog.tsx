@@ -36,6 +36,7 @@ import {
 } from "@/lib/members";
 import { BlockConfetti } from "./BlockBurst";
 import { WorkspaceMark } from "@/components/WorkspaceMark";
+import { t } from "@/lib/i18n";
 
 export interface Joined {
   credentials: JoinCredentials;
@@ -303,9 +304,9 @@ export function JoinWorkspaceDialog({
 
         {(stage.kind === "enter" || stage.kind === "found") && (
           <div className="mt-1.5 flex flex-col gap-[18px]">
-            <DialogDescription className="mt-0">Paste the invite link, or type its 8-character code.</DialogDescription>
+            <DialogDescription className="mt-0">{t("membersJoinWorkspaceDialog.pasteTheInviteLinkOr")}</DialogDescription>
             <label className="flex flex-col gap-1.5">
-              <span className="text-small text-muted-foreground">Invite link or code</span>
+              <span className="text-small text-muted-foreground">{t("membersJoinWorkspaceDialog.inviteLinkOrCode")}</span>
               <div ref={codeBox}>
                 <Input
                   ref={codeInput}
@@ -316,7 +317,7 @@ export function JoinWorkspaceDialog({
                     setProblem(null);
                     if (stage.kind === "found") setStage({ kind: "enter" });
                   }}
-                  placeholder="bloks.dev/j/... or K7QF-M2XR"
+                  placeholder={t("membersJoinWorkspaceDialog.bloksDevJOrK7qf")}
                   spellCheck={false}
                   autoCapitalize="characters"
                   aria-invalid={problem?.field === "code"}
@@ -342,7 +343,7 @@ export function JoinWorkspaceDialog({
             {busy && stage.kind === "enter" && (
               <div className="flex items-center gap-2 text-body text-muted-foreground" role="status">
                 <Loader2 size={14} className="animate-spin" />
-                Looking it up
+                {t("membersJoinWorkspaceDialog.lookingItUp")}
               </div>
             )}
 
@@ -357,11 +358,11 @@ export function JoinWorkspaceDialog({
                       {stage.invite.expiresAt ? ` · expires ${whenWords(stage.invite.expiresAt)}` : ""}
                     </span>
                   </div>
-                  <Check size={18} className="text-success" aria-label="Invite found" />
+                  <Check size={18} className="text-success" aria-label={t("membersJoinWorkspaceDialog.inviteFound")} />
                 </div>
                 <div className="flex gap-3 max-sm:flex-col">
                   <label className="flex flex-1 flex-col gap-1.5">
-                    <span className="text-small text-muted-foreground">Your name</span>
+                    <span className="text-small text-muted-foreground">{t("common.yourName")}</span>
                     <Input
                       autoFocus
                       value={name}
@@ -378,7 +379,7 @@ export function JoinWorkspaceDialog({
                   {stage.invite.password !== false && (
                     <label className="flex flex-1 flex-col gap-1.5">
                       <span className={cn("text-small", problem?.field === "password" ? "text-destructive" : "text-muted-foreground")}>
-                        Join password{stage.invite.password === null ? " (if asked)" : ""}
+                        Join password{stage.invite.password === null ? t("membersJoinWorkspaceDialog.ifAsked") : ""}
                       </span>
                       <div ref={passBox}>
                         <Input
@@ -409,10 +410,10 @@ export function JoinWorkspaceDialog({
 
             <div className="flex items-center gap-2.5">
               <span className="flex-1 text-pretty text-small text-muted-foreground">
-                {currentWorkspace ? `It opens beside ${currentWorkspace}. Nothing moves between them.` : "It opens beside your own workspace. Nothing moves between them."}
+                {currentWorkspace ? `It opens beside ${currentWorkspace}. Nothing moves between them.` : t("membersJoinWorkspaceDialog.itOpensBesideYourOwn")}
               </span>
               <Button variant="ghost" size="lg" onClick={() => onOpenChange(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button size="lg" disabled={stage.kind !== "found" || busy} onClick={() => void ask()}>
                 {busy && stage.kind === "found" && <Loader2 size={14} className="animate-spin" />}
@@ -449,9 +450,9 @@ export function JoinWorkspaceDialog({
               )}
             </div>
             <div className="flex items-center gap-2.5">
-              <span className="flex-1 text-pretty text-small text-muted-foreground">You can leave this open, or close it: you will be let in all the same.</span>
+              <span className="flex-1 text-pretty text-small text-muted-foreground">{t("membersJoinWorkspaceDialog.youCanLeaveThisOpen")}</span>
               <Button variant="ghost" size="lg" className="text-destructive hover:text-destructive" onClick={() => void cancelRequest()}>
-                Cancel request
+                {t("membersJoinWorkspaceDialog.cancelRequest")}
               </Button>
             </div>
           </div>
@@ -469,7 +470,7 @@ export function JoinWorkspaceDialog({
               <WorkspaceMark mark={stage.welcome.workspace.mark} size={64} />
             </motion.div>
             <p aria-hidden className="mt-1 text-[32px] font-extrabold leading-tight tracking-[-0.03em] text-foreground">
-              You're in
+              {t("membersJoinWorkspaceDialog.youreIn")}
             </p>
             <p className="text-pretty text-lead text-muted-foreground">
               Welcome to {stage.welcome.workspace.name}, {stage.name.split(" ")[0]}.<br />
@@ -477,7 +478,7 @@ export function JoinWorkspaceDialog({
             </p>
             {stage.welcome.agents.length > 0 && (
               <div className="mt-3 flex w-full flex-col gap-3 rounded-2xl border bg-card p-4 text-left">
-                <span className="text-body font-medium text-muted-foreground">Meet the team</span>
+                <span className="text-body font-medium text-muted-foreground">{t("membersJoinWorkspaceDialog.meetTheTeam")}</span>
                 <div className="grid grid-cols-4 gap-2">
                   {stage.welcome.agents.slice(0, stage.welcome.agentCount > 4 ? 3 : 4).map((a, i) => (
                     <div key={a.id} className="flex animate-rise-in flex-col items-center gap-1.5" style={{ animationDelay: `${120 + i * 60}ms`, animationFillMode: "backwards" }}>
@@ -488,7 +489,7 @@ export function JoinWorkspaceDialog({
                   {stage.welcome.agentCount > 4 && (
                     <div className="flex flex-col items-center gap-1.5">
                       <span className="grid size-12 place-items-center rounded-[14px] bg-muted text-ui font-semibold tabular-nums text-muted-foreground">+{stage.welcome.agentCount - 3}</span>
-                      <span className="text-small text-foreground">More</span>
+                      <span className="text-small text-foreground">{t("membersJoinWorkspaceDialog.more")}</span>
                     </div>
                   )}
                 </div>
@@ -550,16 +551,16 @@ function EndedView({
       <div className="mt-3 flex justify-end gap-2">
         {stage.code !== "declined" && stage.code !== "already_member" && (
           <Button variant="ghost" size="lg" onClick={onRetry}>
-            Try another code
+            {t("membersJoinWorkspaceDialog.tryAnotherCode")}
           </Button>
         )}
         {onOpen ? (
           <Button size="lg" onClick={onOpen}>
-            Open {workspace ?? "the workspace"}
+            Open {workspace ?? t("membersJoinWorkspaceDialog.theWorkspace")}
           </Button>
         ) : (
           <Button size="lg" onClick={onDone}>
-            Done
+            {t("common.done")}
           </Button>
         )}
       </div>

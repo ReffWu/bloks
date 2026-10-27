@@ -14,6 +14,7 @@ import { useStore, type Bot } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { layoutTeamMap } from "@/lib/teamMap";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export function TeamMapView({ onNavigate }: { onNavigate: (id: string) => void }) {
   const { state } = useStore();
@@ -140,7 +141,7 @@ export function TeamMapView({ onNavigate }: { onNavigate: (id: string) => void }
           </div>
           {bots.length === 0 && (
             <div className="py-16 text-center text-body text-muted-foreground">
-              No agents yet. The map fills in as you hire.
+              {t("teamMap.noAgentsYetTheMap")}
             </div>
           )}
       </div>

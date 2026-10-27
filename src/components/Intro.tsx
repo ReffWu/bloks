@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { composioKeyMistake } from "@/lib/keyShape";
 import type { BlokExpression } from "@/lib/mascot";
+import { t } from "@/lib/i18n";
 
 export const INTRO_KEY = "bloks-intro-v1";
 /** Plugin picks made during the intro, read by the plugins panel later. */
@@ -155,14 +156,13 @@ export function Intro({ onDone }: { onDone: () => void }) {
             className="intro-rise mx-auto hidden h-12 dark:block"
           />
           <h1 className="intro-rise mt-6 text-display font-semibold text-foreground [animation-delay:120ms]">
-            Welcome to Bloks
+            {t("intro.welcomeToBloks")}
           </h1>
           <p className="intro-rise mt-2 text-lead text-muted-foreground [animation-delay:240ms]">
-            Personal AI agents that live on your machine, not in someone
-            else's cloud.
+            {t("intro.personalAiAgentsThatLive")}
           </p>
           <Button className="intro-rise mt-8 [animation-delay:360ms]" onClick={() => setStage("computers")}>
-            Next
+            {t("intro.next")}
           </Button>
         </Panel>
       )}
@@ -175,7 +175,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
           onClick={() => finish()}
           className="absolute bottom-5 right-6 rounded-lg px-2 py-1 text-small text-muted-foreground/70 transition-colors hover:text-foreground"
         >
-          Skip intro
+          {t("intro.skipIntro")}
         </button>
       )}
     </div>
@@ -268,18 +268,17 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
     return (
       <Panel key="plugins-key">
         <h2 className="intro-rise text-heading font-semibold text-foreground">
-          Connect your everyday tools
+          {t("intro.connectYourEverydayTools")}
         </h2>
         <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:100ms]">
-          Agents reach Slack, Gmail, Notion and more through Composio.
-          Paste a Composio Connect key (starts with ck_) to link them here. Get one free at composio.dev.
+          {t("intro.agentsReachSlackGmailNotion")}
         </p>
         <div className="intro-rise mx-auto mt-6 max-w-[380px] text-left [animation-delay:200ms]">
           <input
             value={key}
             onChange={(e) => setKey(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && saveKey()}
-            placeholder="ck_…"
+            placeholder={t("intro.ck")}
             spellCheck={false}
             autoComplete="off"
             className="w-full rounded-lg border bg-background px-3 py-2.5 text-ui text-foreground outline-none transition-colors focus:border-brand"
@@ -288,19 +287,19 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
         </div>
         <div className="intro-rise mt-6 flex items-center justify-center gap-4 [animation-delay:300ms]">
           <Button onClick={saveKey} disabled={saving || !key.trim()}>
-            {saving ? "Checking key…" : "Connect"}
+            {saving ? t("intro.checkingKey") : t("common.connect")}
           </Button>
           <button
             onClick={() => onDone([])}
             className="text-body text-muted-foreground transition-colors hover:text-foreground"
           >
-            Skip for now
+            {t("common.skipForNow")}
           </button>
         </div>
         <p className="intro-rise mt-4 text-small text-muted-foreground/70 [animation-delay:380ms]">
           No key yet?{" "}
           <a href="https://composio.dev" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
-            Get a free one at composio.dev
+            {t("intro.getAFreeOneAt")}
           </a>
           , or skip and do this later in Plugins.
         </p>
@@ -311,10 +310,10 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
   return (
     <Panel key="plugins-grid" wide>
       <h2 className="intro-rise text-heading font-semibold text-foreground">
-        What do you use every day?
+        {t("intro.whatDoYouUseEvery")}
       </h2>
       <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:100ms]">
-        Click a tool to sign in and connect it.
+        {t("intro.clickAToolToSign")}
       </p>
       <div className="intro-rise mt-6 grid grid-cols-4 gap-2 sm:grid-cols-5 [animation-delay:200ms]">
         {EVERYDAY.map(({ slug, label, domain, icon }) => {
@@ -337,17 +336,17 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
                 <span className="absolute right-1.5 top-1.5 text-caption text-success">✓</span>
               )}
               <ToolIcon label={label} domain={domain} icon={icon} />
-              {isBusy ? "Opening…" : label}
+              {isBusy ? t("intro.opening") : label}
             </button>
           );
         })}
       </div>
       {error && <div className="mt-3 text-body text-destructive">{error}</div>}
       <p className="mt-4 text-small text-muted-foreground/70">
-        Cards turn green once you're signed in. More in Plugins later.
+        {t("intro.cardsTurnGreenOnceYoure")}
       </p>
       <Button className="mt-5" onClick={() => onDone(connected)}>
-        {connected.length ? `Continue with ${connected.length} connected` : "Continue"}
+        {connected.length ? `Continue with ${connected.length} connected` : t("common.continue")}
       </Button>
     </Panel>
   );
@@ -558,7 +557,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
           <span className="size-3 rounded-full bg-[#febc2e]" />
           <span className="size-3 rounded-full bg-[#28c840]" />
           <span className="ml-2 text-small text-muted-foreground">
-            Research Analyst's computer
+            {t("intro.researchAnalystsComputer")}
           </span>
         </div>
 
@@ -574,11 +573,11 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
               <span className="size-2 rounded-full bg-foreground/15" />
               <span className="size-2 rounded-full bg-foreground/15" />
               <div className="ml-1 flex-1 rounded-md bg-background px-2.5 py-1 text-caption text-muted-foreground">
-                dashboard.bloks.dev
+                {t("intro.dashboardBloksDev")}
               </div>
             </div>
             <div className="px-4 pb-1 pt-3 text-small font-semibold text-foreground">
-              Revenue dashboard
+              {t("intro.revenueDashboard")}
             </div>
             {/* stat tiles land one by one before the chart rises */}
             <div className="flex gap-2 px-4 pt-1.5">
@@ -622,7 +621,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
             )}
           >
             <div className="border-b bg-muted/50 px-3 py-1.5 text-caption font-medium text-muted-foreground">
-              Weekly numbers · Q3
+              {t("intro.weeklyNumbersQ3")}
             </div>
             <table className="w-full border-collapse">
               <tbody>
@@ -661,22 +660,22 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
               step >= 5 ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0",
             )}
           >
-            ✓ Report updated, 4 charts refreshed
+            {t("intro.reportUpdated4ChartsRefreshed")}
           </div>
 
           {/* dock */}
           <div className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 gap-2.5 rounded-2xl border bg-card/80 px-3 py-2 shadow backdrop-blur">
-            <DockIcon label="Browser" active={step >= 2}>
+            <DockIcon label={t("intro.browser")} active={step >= 2}>
               <div className="size-full rounded-full border-[3px] border-brand" />
             </DockIcon>
-            <DockIcon label="Sheets" active={step >= 4}>
+            <DockIcon label={t("intro.sheets")} active={step >= 4}>
               <div className="grid size-full grid-cols-2 gap-[2px]">
                 {[0, 1, 2, 3].map((i) => (
                   <div key={i} className="rounded-[1.5px] bg-success/80" />
                 ))}
               </div>
             </DockIcon>
-            <DockIcon label="Mail" active={false}>
+            <DockIcon label={t("intro.mail")} active={false}>
               <div className="flex size-full items-center justify-center rounded-[3px] border-[2px] border-foreground/30">
                 <div className="h-0 w-0 border-x-[5px] border-t-[4px] border-x-transparent border-t-foreground/30" />
               </div>
@@ -693,7 +692,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
               <path d="M4 2 L20 12 L12.5 13.5 L9 21 Z" fill="var(--brand-ink)" stroke="var(--background)" strokeWidth="1.5" />
             </svg>
             <span className="ml-2.5 whitespace-nowrap rounded-full bg-brand-ink px-2 py-0.5 text-micro font-medium text-brand-foreground shadow">
-              Research Analyst
+              {t("intro.researchAnalyst")}
             </span>
             {/* click ripple on each landing */}
             {(step === 2 || step === 4) && (
@@ -704,13 +703,13 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
       </div>
 
       <h2 className="intro-rise mt-7 text-heading font-semibold text-foreground [animation-delay:150ms]">
-        Every agent gets its own computer
+        {t("intro.everyAgentGetsItsOwn")}
       </h2>
       <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:250ms]">
-        A real machine to browse, run tools and finish work on.
+        {t("intro.aRealMachineToBrowse")}
       </p>
       <Button className="intro-rise mt-7 [animation-delay:350ms]" onClick={onNext}>
-        Next
+        {t("intro.next")}
       </Button>
     </Panel>
   );
@@ -794,14 +793,13 @@ function JobsStage({ onNext }: { onNext: () => void }) {
         })}
       </div>
       <h2 className="intro-rise mt-2 text-heading font-semibold text-foreground">
-        Give every agent a job
+        {t("intro.giveEveryAgentAJob")}
       </h2>
       <p className="intro-rise mt-2 text-ui text-muted-foreground [animation-delay:120ms]">
-        Each has its own role, skills and memory. In a room together, one
-        of them leads.
+        {t("intro.eachHasItsOwnRole")}
       </p>
       <Button className="intro-rise mt-6 [animation-delay:240ms]" onClick={onNext}>
-        Next
+        {t("intro.next")}
       </Button>
     </Panel>
   );

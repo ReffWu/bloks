@@ -44,6 +44,7 @@ import { usePageVisible } from "@/lib/pageVisible";
 import { cloudOnly, pairingAway, pairingTrouble } from "@/lib/pairing";
 import { ThisComputer, thisComputer } from "@/lib/thisComputer";
 import { ConnectionError, ConnectionHeader, ConnectionNote, HealthLine, PairedMoment, type Health } from "./ConnectionKit";
+import { t } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -132,14 +133,14 @@ function ThisBrowser() {
     <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <ConnectionHeader
         icon={<Globe size={14} className="shrink-0 text-muted-foreground" />}
-        title="This browser"
+        title={t("devicesSection.thisBrowser")}
         says={
           <>
-            Connected to {window.bloksWeb?.host || "your computer"} through Bloks Cloud, end-to-end encrypted. To fully
+            Connected to {window.bloksWeb?.host || t("devicesSection.yourComputer")} through Bloks Cloud, end-to-end encrypted. To fully
             disconnect, also remove this browser on your computer.
           </>
         }
-        health={<HealthLine tone="on" label="Connected" />}
+        health={<HealthLine tone="on" label={t("common.connected")} />}
       />
       <Button
         variant="secondary"
@@ -178,7 +179,7 @@ function PairLinkRow({
         </code>
         <Button size="sm" variant="secondary" onClick={onCopy}>
           {copied ? <Check size={13} /> : <Copy size={13} />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("common.copied") : t("common.copy")}
         </Button>
       </div>
     </div>
@@ -207,7 +208,7 @@ function PairedList({
 }) {
   const labels = deviceLabels(devices, now);
   return (
-    <ul aria-label="Paired" className="mt-4 flex flex-col border-t pt-2">
+    <ul aria-label={t("devicesSection.paired")} className="mt-4 flex flex-col border-t pt-2">
       {devices.map((device) => {
         const label = labels.get(device.id) ?? { name: device.name, detail: "" };
         return (
@@ -243,7 +244,7 @@ function PairedList({
                   if (yes) onRemove(device);
                 }}
               >
-                Remove
+                {t("common.remove")}
               </Button>
             )}
           </li>
@@ -269,7 +270,7 @@ function OnboardingStep({ n, done, children, control }: { n: number; done?: bool
       </span>
       <span className="min-w-0 flex-1 text-pretty text-body text-foreground">
         {children}
-        {done && <span className="sr-only"> (done)</span>}
+        {done && <span className="sr-only"> {t("devicesSection.done")}</span>}
       </span>
       {control}
     </li>
@@ -538,16 +539,16 @@ function PairingControls() {
         {away
           ? `Restart Bloks on ${away} to finish turning this on.`
           : status.enabled
-            ? "Restart Bloks to finish turning this on."
-            : "Restart Bloks to stop listening on your network."}
+            ? t("devicesSection.restartBloksToFinishTurning")
+            : t("devicesSection.restartBloksToStopListening")}
       </span>
       {away ? null : window.bloks?.relaunch ? (
         <Button size="sm" variant="secondary" onClick={() => void window.bloks?.relaunch?.()}>
           <RotateCw size={13} />
-          Restart now
+          {t("devicesSection.restartNow")}
         </Button>
       ) : (
-        <span>Quit Bloks and open it again.</span>
+        <span>{t("devicesSection.quitBloksAndOpenIt")}</span>
       )}
     </ConnectionNote>
   ) : null;
@@ -555,13 +556,13 @@ function PairingControls() {
   const linkRows = (link: { web: string; pair: string }) => (
     <>
       <PairLinkRow
-        label="Open in a browser"
+        label={t("devicesSection.openInABrowser")}
         link={link.web}
         copied={copied === "web"}
         onCopy={() => void navigator.clipboard.writeText(link.web).then(() => setCopied("web"))}
       />
       <PairLinkRow
-        label="Paste into the Bloks app or another computer"
+        label={t("devicesSection.pasteIntoTheBloksApp")}
         link={link.pair}
         copied={copied === "pair"}
         onCopy={() => void navigator.clipboard.writeText(link.pair).then(() => setCopied("pair"))}
@@ -596,8 +597,8 @@ function PairingControls() {
           away
             ? `Scan this with your iPhone on the same network as ${away}.`
             : onboarding
-              ? "Scan this code with your iPhone."
-              : "On your iPhone, open Bloks and tap Scan the code."
+              ? t("devicesSection.scanThisCodeWithYour")
+              : t("devicesSection.onYourIphoneOpenBloks")
         }
         onAgain={() => {
           setError(null);
@@ -608,7 +609,7 @@ function PairingControls() {
       />
       {browserLink && browserSecondsLeft > 0 && (
         <div className="mt-3 rounded-xl border bg-muted/30 p-4" data-browser-link>
-          <div className="text-body font-medium text-foreground">Pair with a link</div>
+          <div className="text-body font-medium text-foreground">{t("devicesSection.pairWithALink")}</div>
           <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
             Works once, for {Math.ceil(browserSecondsLeft / 60)} more minute{browserSecondsLeft > 60 ? "s" : ""}.
             Anyone who opens a link gets access, so keep it private.
@@ -616,7 +617,7 @@ function PairingControls() {
           {linkRows(browserLink)}
           <div className="mt-2 flex justify-end">
             <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setBrowserLink(null)}>
-              Done
+              {t("common.done")}
             </Button>
           </div>
         </div>
@@ -642,27 +643,27 @@ function PairingControls() {
       <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0" data-setting-row="phone-access">
         <ConnectionHeader
           icon={<Smartphone size={14} className="shrink-0 text-muted-foreground" />}
-          title="Pair your iPhone"
+          title={t("devicesSection.pairYourIphone")}
           says={
             away
               ? `Talk to your agents on ${away} from your phone, and approve their work from your Lock Screen.`
-              : "Talk to your agents from your phone, and approve their work from your Lock Screen."
+              : t("devicesSection.talkToYourAgentsFrom")
           }
           info={offElsewhere}
           health={health && <HealthLine tone={health.tone} label={health.label} />}
           control={
             !away && (
-              <Switch aria-label="Phone access" checked={status.enabled} onCheckedChange={(on) => (on ? pairPhone() : setEnabled(false))} />
+              <Switch aria-label={t("devicesSection.phoneAccess")} checked={status.enabled} onCheckedChange={(on) => (on ? pairPhone() : setEnabled(false))} />
             )
           }
         />
         <ConnectionError>{error}</ConnectionError>
-        <ol aria-label="Pair a phone" className="mt-4 flex flex-col gap-2">
+        <ol aria-label={t("devicesSection.pairAPhone")} className="mt-4 flex flex-col gap-2">
           <OnboardingStep n={1} done={flow && listening}>
-            Press Pair a phone below.
+            {t("devicesSection.pressPairAPhoneBelow")}
           </OnboardingStep>
-          <OnboardingStep n={2}>On your iPhone, open Bloks and tap Scan the code.</OnboardingStep>
-          <OnboardingStep n={3}>Point it at the code. It works once.</OnboardingStep>
+          <OnboardingStep n={2}>{t("devicesSection.onYourIphoneOpenBloks")}</OnboardingStep>
+          <OnboardingStep n={3}>{t("devicesSection.pointItAtTheCode")}</OnboardingStep>
         </ol>
         {restart}
         {/* waiting on a restart, the button would only press the same switch again */}
@@ -670,7 +671,7 @@ function PairingControls() {
           (!(status.enabled && status.restartRequired) && (
             <Button variant="brand" className="mt-4" onClick={pairPhone}>
               <Smartphone size={14} />
-              Pair a phone
+              {t("devicesSection.pairAPhone")}
             </Button>
           ))}
       </div>
@@ -681,11 +682,11 @@ function PairingControls() {
     <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0" data-setting-row="phone-access">
       <ConnectionHeader
         icon={<Smartphone size={14} className="shrink-0 text-muted-foreground" />}
-        title="Phone access"
+        title={t("devicesSection.phoneAccess")}
         says={says}
         info={offElsewhere}
         health={health && <HealthLine tone={health.tone} label={health.label} />}
-        control={!away && !unanswered && <Switch aria-label="Phone access" checked={status?.enabled ?? false} onCheckedChange={setEnabled} />}
+        control={!away && !unanswered && <Switch aria-label={t("devicesSection.phoneAccess")} checked={status?.enabled ?? false} onCheckedChange={setEnabled} />}
       />
 
       <ConnectionError>{error}</ConnectionError>
@@ -721,7 +722,7 @@ function PairingControls() {
         (listening && !arrived && (
           <Button size="sm" variant="secondary" className="mt-3" onClick={pairPhone}>
             <Smartphone size={13} />
-            Pair another phone
+            {t("devicesSection.pairAnotherPhone")}
           </Button>
         ))}
 
@@ -761,10 +762,10 @@ function PairingLink({
         variant="ghost"
         size="sm"
         onClick={onClose}
-        aria-label="Close pairing"
+        aria-label={t("devicesSection.closePairing")}
         className="absolute right-2 top-2 text-muted-foreground"
       >
-        Close
+        {t("common.close")}
       </Button>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
         {/* the QR always sits on white; a themed QR is an unscannable QR */}
@@ -777,9 +778,9 @@ function PairingLink({
           {stopped ? (
             <Smartphone size={20} aria-hidden />
           ) : link?.qr ? (
-            <img src={link.qr} alt="Pairing code to scan with the Bloks app" className="size-[132px]" />
+            <img src={link.qr} alt={t("devicesSection.pairingCodeToScanWith")} className="size-[132px]" />
           ) : link ? (
-            <span className="px-2 text-center text-caption text-neutral-500">Copy the link instead</span>
+            <span className="px-2 text-center text-caption text-neutral-500">{t("devicesSection.copyTheLinkInstead")}</span>
           ) : (
             <Loader2 size={16} className="animate-spin text-neutral-400" />
           )}
@@ -787,25 +788,25 @@ function PairingLink({
         <div className="min-w-[220px] flex-1">
           {stopped ? (
             <>
-              <p className="text-body font-medium text-foreground">{expired ? "That link ran out." : "No link right now."}</p>
+              <p className="text-body font-medium text-foreground">{expired ? t("devicesSection.thatLinkRanOut") : t("devicesSection.noLinkRightNow")}</p>
               <p className="mt-0.5 text-pretty text-small text-muted-foreground">
-                {expired ? "Links work for fifteen minutes. Get a new one when you're ready." : "Try again in a moment."}
+                {expired ? t("devicesSection.linksWorkForFifteenMinutes") : t("devicesSection.tryAgainInAMoment")}
               </p>
               <Button size="sm" variant="secondary" className="mt-3" onClick={onAgain}>
-                New link
+                {t("devicesSection.newLink")}
               </Button>
             </>
           ) : (
             <>
               <p className="pr-14 text-pretty text-body font-medium text-foreground">
-                On your iPhone, open Bloks and tap Scan the code, or scan it with the Camera.
+                {t("devicesSection.onYourIphoneOpenBloksAnd")}
               </p>
               <p className="mt-1 text-pretty text-small text-muted-foreground">
                 It pairs with {place} through Bloks Cloud, from any network. Anyone who opens it in time becomes one of your devices, so
                 keep it to yourself.
               </p>
               <div className="mt-3 text-small tabular-nums text-muted-foreground">
-                {link ? `Works once, for ${Math.ceil(secondsLeft / 60)} more minute${secondsLeft > 60 ? "s" : ""}.` : "Works once."}
+                {link ? `Works once, for ${Math.ceil(secondsLeft / 60)} more minute${secondsLeft > 60 ? "s" : ""}.` : t("devicesSection.worksOnce")}
               </div>
             </>
           )}
@@ -844,10 +845,10 @@ function PairingCode({
         variant="ghost"
         size="sm"
         onClick={onClose}
-        aria-label="Close pairing"
+        aria-label={t("devicesSection.closePairing")}
         className="absolute right-2 top-2 text-muted-foreground"
       >
-        Close
+        {t("common.close")}
       </Button>
       {stopped ? (
         // the same footprint, empty, so nothing jumps when a code returns
@@ -858,9 +859,9 @@ function PairingCode({
         // the QR always sits on white; a themed QR is an unscannable QR
         <div className="flex size-[148px] shrink-0 items-center justify-center rounded-lg bg-white p-2 shadow-sm ring-1 ring-black/5">
           {code?.qr ? (
-            <img src={code.qr} alt="Pairing code to scan with the Bloks app" className="size-[132px]" />
+            <img src={code.qr} alt={t("devicesSection.pairingCodeToScanWith")} className="size-[132px]" />
           ) : code ? (
-            <span className="px-2 text-center text-caption text-neutral-500">Type the code instead</span>
+            <span className="px-2 text-center text-caption text-neutral-500">{t("devicesSection.typeTheCodeInstead")}</span>
           ) : (
             <Loader2 size={16} className="animate-spin text-neutral-400" />
           )}
@@ -871,19 +872,19 @@ function PairingCode({
         {stopped ? (
           <>
             <p className="text-body font-medium text-foreground">
-              {stopped === "closed" ? "That code stopped working early." : "No code right now."}
+              {stopped === "closed" ? t("devicesSection.thatCodeStoppedWorkingEarly") : t("devicesSection.noCodeRightNow")}
             </p>
             <p className="mt-0.5 text-pretty text-small text-muted-foreground">
-              {stopped === "closed" ? "Codes close after a few wrong tries. Get a new one when you're ready." : "Try again in a moment."}
+              {stopped === "closed" ? t("devicesSection.codesCloseAfterAFew") : t("devicesSection.tryAgainInAMoment")}
             </p>
             <Button size="sm" variant="secondary" className="mt-3" onClick={onAgain}>
-              New code
+              {t("devicesSection.newCode")}
             </Button>
           </>
         ) : (
           <>
             <p className="pr-14 text-pretty text-body font-medium text-foreground">{lead}</p>
-            <div className="mt-3 text-small text-muted-foreground">Or type this code</div>
+            <div className="mt-3 text-small text-muted-foreground">{t("devicesSection.orTypeThisCode")}</div>
             <div
               className={cn(
                 "mt-0.5 font-mono text-heading font-semibold tabular-nums tracking-[0.2em] text-foreground transition-opacity duration-200",
@@ -895,7 +896,7 @@ function PairingCode({
               ) : (
                 <>
                   <span aria-hidden>000000</span>
-                  <span className="sr-only">Making a code</span>
+                  <span className="sr-only">{t("devicesSection.makingACode")}</span>
                 </>
               )}
             </div>
@@ -909,13 +910,13 @@ function PairingCode({
             )}
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="text-small tabular-nums text-muted-foreground">
-                {code ? `Works once. New code in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}.` : "Works once."}
+                {code ? `Works once. New code in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}.` : t("devicesSection.worksOnce")}
               </span>
               {/* a camera that will not focus, a phone on another network,
                   or a browser: all of them want a link instead */}
               <Button size="sm" variant="ghost" className="-ml-2 sm:ml-auto" onClick={onLink}>
                 <Globe size={13} />
-                Pair with a link
+                {t("devicesSection.pairWithALink")}
               </Button>
             </div>
           </>

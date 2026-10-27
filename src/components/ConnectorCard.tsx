@@ -11,6 +11,7 @@ import { Loader2 } from "@/components/icons";
 import { X } from "@/components/icons";
 import { type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -76,21 +77,21 @@ export function ConnectorCard({ botId, message }: { botId: string; message: Mess
           <div className="truncate text-small text-muted-foreground">
             {status === "connected"
               ? connector.resumed
-                ? "Connected. Task resumed."
-                : "Connected"
+                ? t("connectorCard.connectedTaskResumed")
+                : t("common.connected")
               : status === "authorizing"
-                ? "Waiting for your sign-in…"
+                ? t("connectorCard.waitingForYourSignIn")
                 : status === "failed"
-                  ? (connector.error ?? "Connection failed.")
+                  ? (connector.error ?? t("connectorCard.connectionFailed"))
                   : status === "dismissed"
-                    ? "Dismissed"
-                    : "Sign in so your agent can use it"}
+                    ? t("connectorCard.dismissed")
+                    : t("connectorCard.signInSoYourAgent")}
           </div>
         </div>
         {status === "connected" ? (
           <span className="flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-small font-semibold text-success">
             <Check size={13} strokeWidth={3} />
-            Added
+            {t("connectorCard.added")}
           </span>
         ) : status === "dismissed" ? null : (
           <div className="flex shrink-0 items-center gap-1">
@@ -102,16 +103,16 @@ export function ConnectorCard({ botId, message }: { botId: string; message: Mess
               {busy ? (
                 <Loader2 size={13} className="animate-spin" />
               ) : status === "authorizing" ? (
-                "Reopen"
+                t("connectorCard.reopen")
               ) : status === "failed" ? (
-                "Retry"
+                t("connectorCard.retry")
               ) : (
-                "Connect"
+                t("common.connect")
               )}
             </button>
             <button
               onClick={() => void call("dismiss").catch(() => {})}
-              title="Dismiss"
+              title={t("common.dismiss")}
               className="rounded-full p-1.5 text-muted-foreground/60 transition-colors hover:text-foreground"
             >
               <X size={13} />

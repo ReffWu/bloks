@@ -16,6 +16,7 @@ import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export interface ProfileNote {
   id: string;
@@ -61,7 +62,7 @@ export function Suggestion({ note, onDone }: { note: ProfileNote; onDone: () => 
             if (e.key === "Escape") (e.preventDefault(), setEditing(false), setText(note.text));
           }}
           className="min-h-[64px] resize-none bg-card text-ui leading-relaxed"
-          aria-label="The note, in your words"
+          aria-label={t("aboutYou.theNoteInYourWords")}
           autoFocus
         />
       ) : (
@@ -70,11 +71,11 @@ export function Suggestion({ note, onDone }: { note: ProfileNote; onDone: () => 
       <p className="mt-1.5 text-body text-muted-foreground">Suggested by {note.by.name}</p>
       <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
         <Button size="sm" disabled={busy || text.trim().length < 3} onClick={keep}>
-          <Check size={13} /> {editing ? "Keep this" : "Keep"}
+          <Check size={13} /> {editing ? t("aboutYou.keepThis") : t("common.keep")}
         </Button>
         {!editing && (
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(true)}>
-            <Pencil size={12} /> Edit
+            <Pencil size={12} /> {t("common.edit")}
           </Button>
         )}
         <Button
@@ -83,7 +84,7 @@ export function Suggestion({ note, onDone }: { note: ProfileNote; onDone: () => 
           disabled={busy}
           onClick={() => act(api(`/api/profile/notes/${note.id}`, { method: "DELETE" }))}
         >
-          <X size={13} /> Dismiss
+          <X size={13} /> {t("common.dismiss")}
         </Button>
       </div>
     </div>
@@ -111,7 +112,7 @@ export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; relo
     <div className="overflow-hidden rounded-2xl border bg-card">
       {notes !== null && kept.length === 0 ? (
         <p className="px-5 py-6 text-ui text-muted-foreground">
-          Nothing yet. Add a note below.
+          {t("aboutYou.nothingYetAddANote")}
         </p>
       ) : (
         <ul className="divide-y">
@@ -121,12 +122,12 @@ export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; relo
               <div className="min-w-0 flex-1">
                 <div className="text-pretty text-ui leading-relaxed text-foreground">{note.text}</div>
                 <div className="mt-0.5 text-small text-muted-foreground">
-                  {note.by.id === "you" ? "You wrote this" : `From ${note.by.name}`}
+                  {note.by.id === "you" ? t("aboutYou.youWroteThis") : `From ${note.by.name}`}
                 </div>
               </div>
               <button
                 aria-label={`Remove "${note.text}"`}
-                title="Remove"
+                title={t("common.remove")}
                 onClick={() => api(`/api/profile/notes/${note.id}`, { method: "DELETE" }).then(reload).catch(() => {})}
                 className={cn(
                   "flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 outline-none transition-[opacity,background-color,color] duration-150 hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100",
@@ -142,14 +143,14 @@ export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; relo
         <Plus size={15} className="ml-2 shrink-0 text-muted-foreground" />
         <input
           value={draft}
-          placeholder="Add a note, like: I prefer short answers"
-          aria-label="Add a note about you"
+          placeholder={t("aboutYou.addANoteLikeI")}
+          aria-label={t("aboutYou.addANoteAboutYou")}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && add()}
           className="min-w-0 flex-1 bg-transparent py-1 text-ui text-foreground outline-none placeholder:text-muted-foreground"
         />
         <Button size="sm" variant="secondary" disabled={draft.trim().length < 3} onClick={add}>
-          Add
+          {t("common.add")}
         </Button>
       </div>
       {error && <div className="border-t px-5 py-2 text-body text-destructive">{error}</div>}
@@ -197,17 +198,17 @@ export function AboutText() {
       <textarea
         value={value}
         onChange={(e) => save(e.target.value)}
-        aria-label="About you, in your own words"
-        placeholder="I'm a founder building a local-first agent app. Keep replies short and skip the preamble."
+        aria-label={t("aboutYou.aboutYouInYourOwn")}
+        placeholder={t("aboutYou.imAFounderBuildingA")}
         className="block [field-sizing:content] min-h-[132px] w-full resize-none bg-transparent px-5 py-4 text-ui leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
       />
       <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-5 py-2.5 text-body text-muted-foreground">
-        <span>Every agent reads this. People you invite never see it.</span>
+        <span>{t("aboutYou.everyAgentReadsThisPeople")}</span>
         <span
           className={cn("flex shrink-0 items-center gap-1 text-success transition-opacity duration-200", justSaved ? "opacity-100" : "opacity-0")}
           aria-live="polite"
         >
-          <Check size={12} /> Saved
+          <Check size={12} /> {t("common.saved")}
         </span>
       </div>
     </div>

@@ -11,6 +11,7 @@ import { CornerDownLeft } from "@/components/icons";
 import { AgentAvatar } from "./Avatar";
 import { cn } from "@/lib/cn";
 import { api } from "@/state/store";
+import { t } from "@/lib/i18n";
 
 interface QuickBot {
   id: string;
@@ -134,7 +135,7 @@ export function QuickAsk() {
               onClick={() => window.bloks?.quickOpenMain()}
               className="rounded-lg px-2 py-1 text-body text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              Open Bloks
+              {t("quickAsk.openBloks")}
             </button>
           </div>
         ) : (
@@ -159,7 +160,7 @@ export function QuickAsk() {
                     send();
                   }
                 }}
-                placeholder={bot ? `Ask ${bot.name}…` : "No agents yet"}
+                placeholder={bot ? `Ask ${bot.name}…` : t("quickAsk.noAgentsYet")}
                 className="min-h-[46px] w-full resize-none bg-transparent text-lead leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
               />
             </div>
@@ -183,7 +184,7 @@ export function QuickAsk() {
                 ))}
               </div>
               <span className="flex shrink-0 items-center gap-1 pl-1 text-caption text-muted-foreground">
-                <CornerDownLeft size={11} /> send
+                <CornerDownLeft size={11} /> {t("quickAsk.send")}
               </span>
             </div>
           </>

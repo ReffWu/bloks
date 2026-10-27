@@ -57,6 +57,7 @@ import { acceptDraft, boxFor, carryFocus, discardRecovery, isEmptyDraft, keepDra
 import { grouped, insert as insertCommand, matches as matchCommands, segments, slashAt, withBloksCommands, type Command } from "@/lib/slashCommands";
 import { escapeTaken } from "@/lib/useEscape";
 import { ComparePicker } from "./composer/ComparePicker";
+import { t } from "@/lib/i18n";
 
 /** Fade whichever edges have more text beyond them (see edgeMask). */
 function shadeEdges(el: HTMLTextAreaElement) {
@@ -191,7 +192,7 @@ function ReplyTag({ draft, onClear }: { draft: ReplyDraft; onClear: () => void }
         type="button"
         onClick={onClear}
         className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors duration-150 hover:bg-background/60 hover:text-foreground"
-        aria-label="Cancel reply"
+        aria-label={t("composer.cancelReply")}
       >
         <X size={12} />
       </button>
@@ -218,7 +219,7 @@ function DeliveryLine({ preview, onFlip }: { preview: DeliveryPreview; onFlip: (
         onMouseDown={(e) => e.preventDefault()}
         className="rounded-md font-medium text-foreground underline-offset-2 transition-colors duration-150 hover:underline"
       >
-        {waits ? "Send now" : "Wait instead"}
+        {waits ? t("composer.sendNow") : t("composer.waitInstead")}
       </button>
     </div>
   );
@@ -728,7 +729,7 @@ export function Composer({
           icon: <Mic size={14} />,
           title: speechError,
           actions: (micDenied || speechPane === "speech") && (
-            <TrayButton onClick={() => void window.bloks?.permOpenSettings(speechPane)}>Open Settings</TrayButton>
+            <TrayButton onClick={() => void window.bloks?.permOpenSettings(speechPane)}>{t("composer.openSettings")}</TrayButton>
           ),
           onDismiss: () => setSpeechError(null),
         }
@@ -773,10 +774,10 @@ export function Composer({
                 setBlockedRecovery(null);
               }}
             >
-              Discard
+              {t("common.discard")}
             </TrayButton>
             <TrayButton strong onClick={() => restore(item.id)}>
-              Restore
+              {t("composer.restore")}
             </TrayButton>
           </>
         ),
@@ -848,7 +849,7 @@ export function Composer({
           className="shrink-0"
           onClick={() => dispatch({ type: "restoreBot", botId: bot.id })}
         >
-          Restore
+          {t("composer.restore")}
         </Button>
       </>,
       "bg-muted",
@@ -870,7 +871,7 @@ export function Composer({
             void api(`/api/bots/${bot.id}/wheel`, { method: "DELETE" }).catch(() => {});
           }}
         >
-          Hand it back
+          {t("composer.handItBack")}
         </Button>
       </>,
       "border-warning/40 bg-background",
@@ -941,7 +942,7 @@ export function Composer({
             pick={pick}
             onHover={setPick}
             onChoose={choose}
-            empty="No skills yet. Add some from Skills or agent settings."
+            empty={t("composer.noSkillsYetAddSome")}
           />
         )
       }
@@ -958,7 +959,7 @@ export function Composer({
               e.target.value = "";
             }}
           />
-          <BoxButton title="Attach a file or image" onClick={() => pickerRef.current?.click()}>
+          <BoxButton title={t("composer.attachAFileOrImage")} onClick={() => pickerRef.current?.click()}>
             <Plus size={18} />
           </BoxButton>
         </>
@@ -969,15 +970,15 @@ export function Composer({
               it is on, and then plainly on: the next message becomes a
               rehearsal, which is worth not forgetting. */}
           <BoxButton
-            title={rehearse ? "Stop rehearsing" : "Rehearse"}
-            hint={rehearse ? "Rehearsing: the next message runs on a copy" : "Rehearse: try it on a copy first"}
+            title={rehearse ? t("composer.stopRehearsing") : t("composer.rehearse")}
+            hint={rehearse ? t("composer.rehearsingTheNextMessageRuns") : t("composer.rehearseTryItOnA")}
             pressed={rehearse}
             onClick={() => (rehearse ? stopRehearsing() : setRehearse(true))}
           >
             <FlaskConical size={16} />
           </BoxButton>
           <BoxButton
-            title={recording ? "Stop dictation (Esc)" : "Dictate"}
+            title={recording ? t("composer.stopDictationEsc") : t("composer.dictate")}
             onClick={() => void toggleMic()}
             className={cn(recording && "animate-pulse bg-destructive/15 text-destructive hover:bg-destructive/20 hover:text-destructive motion-reduce:animate-none")}
           >
@@ -1117,11 +1118,11 @@ export function Composer({
           }}
           placeholder={
             recording
-              ? "Listening…"
+              ? t("composer.listening")
               : rehearse
                 ? compareWith.length
-                  ? "Describe the task to compare…"
-                  : "Describe the task to rehearse…"
+                  ? t("composer.describeTheTaskToCompare")
+                  : t("composer.describeTheTaskToRehearse")
                 : // the transcript and the header already say it is
                   // working; this says what typing does about it, and the
                   // Send button's own hint has the stop-first shortcut

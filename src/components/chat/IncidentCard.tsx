@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 /** The frame both cards share: the shape of a goal's card, with a quiet
  * label over the words. */
@@ -66,10 +67,10 @@ export function IncidentNotice({ message, fresh }: { message: Message; fresh?: b
     return (
       <Card
         fresh={fresh}
-        label={<span className="text-warning">Several things failed</span>}
+        label={<span className="text-warning">{t("incidentCard.severalThingsFailed")}</span>}
         actions={
           <Button variant="secondary" size="sm" onClick={() => dispatch({ type: "openPage", page: "overview" })}>
-            See them in Activity
+            {t("incidentCard.seeThemInActivity")}
           </Button>
         }
       >
@@ -85,11 +86,11 @@ export function IncidentNotice({ message, fresh }: { message: Message; fresh?: b
       label={
         settled ? (
           <span className="flex items-center gap-1 text-success">
-            <Check size={12} aria-hidden /> Resolved
+            <Check size={12} aria-hidden /> {t("incidentCard.resolved")}
           </span>
         ) : (
           <span className="flex items-center gap-1 text-warning">
-            <Hand size={12} aria-hidden /> Needs you
+            <Hand size={12} aria-hidden /> {t("incidentCard.needsYou")}
           </span>
         )
       }
@@ -99,10 +100,10 @@ export function IncidentNotice({ message, fresh }: { message: Message; fresh?: b
         ) : (
           <>
             <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => act("retry")}>
-              <RotateCw size={12} /> {busy === "retry" ? "Trying again…" : "Try again"}
+              <RotateCw size={12} /> {busy === "retry" ? t("incidentCard.tryingAgain") : t("common.tryAgain")}
             </Button>
             <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => act("resolve")}>
-              Mark resolved
+              {t("incidentCard.markResolved")}
             </Button>
           </>
         )
@@ -151,10 +152,10 @@ export function FailingNotice({ message, fresh }: { message: Message; fresh?: bo
       settled={done !== null}
       label={
         done ? (
-          <span className="text-muted-foreground">{done === "paused" ? "Paused" : "Removed"}</span>
+          <span className="text-muted-foreground">{done === "paused" ? t("common.paused") : t("incidentCard.removed")}</span>
         ) : (
           <span className="flex items-center gap-1 text-warning">
-            <Hand size={12} aria-hidden /> Needs you
+            <Hand size={12} aria-hidden /> {t("incidentCard.needsYou")}
           </span>
         )
       }
@@ -167,13 +168,13 @@ export function FailingNotice({ message, fresh }: { message: Message; fresh?: bo
               disabled={busy}
               onClick={() => dispatch({ type: "toggleRoutines", open: true, tab: what.kind === "routine" ? "schedules" : "watchers", focus: { kind: what.kind, id: what.id } })}
             >
-              Fix it
+              {t("incidentCard.fixIt")}
             </Button>
             <Button variant="ghost" size="sm" disabled={busy} onClick={pause}>
-              Pause
+              {t("common.pause")}
             </Button>
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => void remove()}>
-              Remove
+              {t("common.remove")}
             </Button>
           </>
         )

@@ -10,6 +10,7 @@ import { Check } from "@/components/icons";
 import { BLOK_COLORS, type BlokColor, type BlokShape } from "@/lib/mascot";
 import { BlokAvatar } from "./Avatar";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 /** Quick, and over before the eye has finished moving: a beat changing is
  * a page turning, not a show. Reduce motion keeps only the fade. */
@@ -44,7 +45,7 @@ export function Stepper<T extends string>({
 }) {
   const at = complete ? steps.length : steps.findIndex((s) => s.id === step);
   return (
-    <nav aria-label="Steps" className="flex items-center gap-1 rounded-full border bg-card/80 p-1 backdrop-blur-sm">
+    <nav aria-label={t("common.steps")} className="flex items-center gap-1 rounded-full border bg-card/80 p-1 backdrop-blur-sm">
       {steps.map((s, i) => {
         const on = !complete && s.id === step;
         const open = isOpen(i);
@@ -182,17 +183,17 @@ export function PreviewCard({
         </motion.div>
         <div className={cn("w-full text-center", compact ? "mt-3" : "mt-4")}>
           <div className={cn("truncate text-title font-semibold tracking-tight", name ? "text-foreground" : "text-muted-foreground")}>
-            {name || "Your agent"}
+            {name || t("beats.yourAgent")}
           </div>
           <div className="mt-0.5 line-clamp-2 min-h-[20px] text-body text-muted-foreground">
-            {empty ? "Describe a job and they take shape here." : title || " "}
+            {empty ? t("beats.describeAJobAndThey") : title || " "}
           </div>
         </div>
       </div>
 
       <div className={cn("px-5 pb-5 pt-4", compact && "flex flex-1 flex-col")}>
         {/* the first thing they will say, as it will look in the chat */}
-        <div className="text-small font-medium text-muted-foreground">First words</div>
+        <div className="text-small font-medium text-muted-foreground">{t("beats.firstWords")}</div>
         <div className="mt-2 flex items-end gap-2">
           <BlokAvatar color={identity.color} shape={identity.shape} expression="friendly" size={22} />
           <div className="min-w-0 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-body leading-relaxed text-foreground">

@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ComponentRenderer } from "@openuidev/react-lang";
 import { cn } from "@/lib/cn";
 import { elements, figure, list, num, text } from "./read";
+import { t } from "@/lib/i18n";
 
 type Part = ComponentRenderer<Record<string, unknown>>;
 
@@ -61,7 +62,7 @@ function DataTable({ caption, labels, lines }: { caption: string; labels: string
       <caption>{caption}</caption>
       <thead>
         <tr>
-          <th scope="col">Label</th>
+          <th scope="col">{t("charts.label")}</th>
           {lines.map((line, i) => (
             <th key={i} scope="col">
               {line.name || `Series ${i + 1}`}

@@ -15,6 +15,7 @@ import { useStore } from "@/state/store";
 import { cycle, prune, sameView, visit, type Viewed } from "@/lib/recent";
 import { AgentAvatar } from "./Avatar";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 /** How long a conversation has to stay on screen to count as seen.
  * Passing through on the way somewhere is not a visit: ⌥↓ held down, or
@@ -151,7 +152,7 @@ export function Switcher({ shown }: { shown: Viewed | null }) {
     <div className="pointer-events-none fixed inset-0 z-50 flex items-start justify-center pt-[14vh]">
       <div
         role="listbox"
-        aria-label="Recent conversations"
+        aria-label={t("switcher.recentConversations")}
         className="w-[340px] max-w-[92vw] rounded-2xl border bg-popover p-1.5 shadow-2xl"
       >
         {choosing.list.map((v, index) => {

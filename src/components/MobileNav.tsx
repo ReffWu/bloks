@@ -9,6 +9,7 @@ import { useStore } from "@/state/store";
 import { useEscape } from "@/lib/useEscape";
 import { AppRail } from "./AppRail";
 import { Sidebar } from "./Sidebar";
+import { t } from "@/lib/i18n";
 
 export function MobileNav() {
   const { state } = useStore();
@@ -25,7 +26,7 @@ export function MobileNav() {
     <>
       <button
         onClick={() => setOpen(true)}
-        aria-label={unread ? "Open sidebar, unread messages" : "Open sidebar"}
+        aria-label={unread ? t("mobileNav.openSidebarUnreadMessages") : t("mobileNav.openSidebar")}
         aria-expanded={open}
         className="fixed left-3 top-[max(env(safe-area-inset-top),10px)] z-30 flex size-10 items-center justify-center rounded-full border bg-popover/95 text-muted-foreground shadow-md shadow-(color:--shadow-color) backdrop-blur-sm transition-[scale,color] duration-150 ease-out hover:text-foreground active:scale-[0.96] md:hidden"
       >
@@ -44,7 +45,7 @@ export function MobileNav() {
               onClick={() => setOpen(false)}
             />
             <motion.nav
-              aria-label="Sidebar"
+              aria-label={t("mobileNav.sidebar")}
               className="absolute inset-y-0 left-0 flex w-[min(380px,88vw)] overflow-hidden rounded-r-2xl border-r bg-sidebar pt-[env(safe-area-inset-top)] shadow-2xl shadow-(color:--shadow-color)"
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}

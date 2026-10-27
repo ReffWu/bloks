@@ -6,11 +6,15 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { appMenuTemplate, TAB_COMMANDS, type MenuCommand, type MenuTemplateItem } from "../electron/app-menu.mjs";
+import { fileURLToPath } from "node:url";
+import { menuWords } from "../electron/menu-words.mjs";
 import { SHORTCUTS } from "../src/lib/shortcuts.ts";
+
+const words = menuWords(fileURLToPath(new URL("../src/locales", import.meta.url)), "en");
 
 function build(packaged = true) {
   const asked: MenuCommand[] = [];
-  const menu = appMenuTemplate({ name: "Bloks", packaged, command: (word) => asked.push(word) });
+  const menu = appMenuTemplate({ name: "Bloks", packaged, command: (word) => asked.push(word), words });
   return { menu, asked };
 }
 
@@ -70,7 +74,7 @@ describe("the rest of the bar", () => {
       [
         ["New Conversation", "CmdOrCtrl+T"],
         ["Close Conversation", "CmdOrCtrl+W"],
-        ["close", "CmdOrCtrl+Shift+W"],
+        ["Close Window", "CmdOrCtrl+Shift+W"],
       ],
     );
   });
@@ -144,7 +148,7 @@ test("no menu key takes one the window answers to", () => {
     const keyed = all(build(packaged).menu).filter((item) => item.accelerator);
     assert.deepEqual(
       keyed.map((item) => item.label ?? item.role),
-      ["Settings…", "New Conversation", "Close Conversation", "close", "Previous Conversation", "Next Conversation"],
+      ["Settings…", "New Conversation", "Close Conversation", "Close Window", "Previous Conversation", "Next Conversation"],
     );
     // and none of them is one the page keeps to itself
     const owned = keyed.map((item) => item.accelerator?.replace("CmdOrCtrl", "Mod"));

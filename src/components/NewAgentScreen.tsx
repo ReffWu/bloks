@@ -59,6 +59,7 @@ import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, useWorkspaceApproval
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
 import { useEscape } from "@/lib/useEscape";
+import { t } from "@/lib/i18n";
 
 const isElectron = navigator.userAgent.includes("Electron");
 
@@ -487,7 +488,7 @@ export function NewAgentScreen() {
       {dragging && (
         <div className="pointer-events-none absolute inset-3 z-40 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-primary/50 bg-background/80 backdrop-blur-sm">
           <Upload size={22} className="text-muted-foreground" />
-          <div className="text-ui font-medium text-foreground">Drop the agent here</div>
+          <div className="text-ui font-medium text-foreground">{t("newAgentScreen.dropTheAgentHere")}</div>
         </div>
       )}
 
@@ -503,29 +504,29 @@ export function NewAgentScreen() {
           {step !== "job" ? (
             <Button variant="ghost" onClick={back}>
               <ArrowLeft size={15} />
-              Back
+              {t("common.back")}
             </Button>
           ) : firstRun ? (
             // On first run there is nothing to go back to: setup is
             // finished, and Nova is already waiting.
             <Button variant="ghost" onClick={close}>
-              Skip for now
+              {t("common.skipForNow")}
             </Button>
           ) : canGoBack ? (
             <Button variant="ghost" onClick={close}>
               <ArrowLeft size={15} />
-              Cancel
+              {t("common.cancel")}
             </Button>
           ) : null}
         </div>
         <Stepper steps={STEPS} step={step} isOpen={(i) => i === 0 || ready} onGo={goTo} layoutId="new-agent-step" />
         <div className="flex items-center gap-1 justify-self-end">
-          <Button variant="ghost" className="max-sm:hidden" onClick={() => fileRef.current?.click()} title="Import an agent from a file">
+          <Button variant="ghost" className="max-sm:hidden" onClick={() => fileRef.current?.click()} title={t("newAgentScreen.importAnAgentFromA")}>
             <Upload size={14} />
-            Import
+            {t("newAgentScreen.import")}
           </Button>
           <Button variant="ghost" onClick={() => void hire({}, "blank")} disabled={creating}>
-            Start blank
+            {t("newAgentScreen.startBlank")}
           </Button>
           <input
             ref={fileRef}
@@ -550,8 +551,8 @@ export function NewAgentScreen() {
               <div className="mb-6 flex items-center gap-3 lg:hidden">
                 <AvatarLanding color={identity.color} shape={identity.shape} size={44} excited={creating} />
                 <div className="min-w-0">
-                  <div className="truncate text-lead font-semibold text-foreground">{shownName || "Your agent"}</div>
-                  <div className="truncate text-body text-muted-foreground">{persona.title || "Ready when you are"}</div>
+                  <div className="truncate text-lead font-semibold text-foreground">{shownName || t("newAgentScreen.yourAgent")}</div>
+                  <div className="truncate text-body text-muted-foreground">{persona.title || t("newAgentScreen.readyWhenYouAre")}</div>
                 </div>
               </div>
             )}
@@ -624,7 +625,7 @@ export function NewAgentScreen() {
 
           </div>
 
-          <aside aria-label="Preview" className="hidden lg:block">
+          <aside aria-label={t("common.preview")} className="hidden lg:block">
             <div className="sticky top-6">
               <PreviewCard
                 identity={identity}
@@ -654,13 +655,13 @@ export function NewAgentScreen() {
             <span className={cn("mr-auto min-w-0 truncate text-body", createError ? "text-destructive" : "text-muted-foreground max-sm:hidden")}>
               {createError ??
                 (step === "identity"
-                  ? "You can change all of this later."
-                  : "Their greeting will be waiting in your first chat.")}
+                  ? t("newAgentScreen.youCanChangeAllOf")
+                  : t("newAgentScreen.theirGreetingWillBeWaiting"))}
             </span>
             {step === "identity" && (
               <Button variant="ghost" size="lg" onClick={() => setStep("setup")} disabled={creating} className="max-sm:px-3">
-                <span className="sm:hidden">Setup</span>
-                <span className="max-sm:hidden">How they work</span>
+                <span className="sm:hidden">{t("newAgentScreen.setup")}</span>
+                <span className="max-sm:hidden">{t("newAgentScreen.howTheyWork")}</span>
                 <ArrowRight size={15} />
               </Button>
             )}
@@ -716,11 +717,11 @@ function JobBeat({
   return (
     <>
       <BeatHeading
-        title={firstRun ? "Who do you need first?" : "Who do you need?"}
+        title={firstRun ? t("newAgentScreen.whoDoYouNeedFirst") : t("newAgentScreen.whoDoYouNeed")}
         says={
           firstRun
-            ? "Describe the job, or pick a role. You can add more any time."
-            : "Describe the job, or start from a role."
+            ? t("newAgentScreen.describeTheJobOrPick")
+            : t("newAgentScreen.describeTheJobOrStart")
         }
       />
 
@@ -738,8 +739,8 @@ function JobBeat({
             }
           }}
           rows={3}
-          aria-label="What should it do?"
-          placeholder="e.g. Keep my inbox at zero and draft replies for me to approve"
+          aria-label={t("newAgentScreen.whatShouldItDo")}
+          placeholder={t("newAgentScreen.eGKeepMyInbox")}
           className="block w-full resize-none bg-transparent px-3 pb-1 pt-2.5 text-lead leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-between gap-2 pl-3">
@@ -751,7 +752,7 @@ function JobBeat({
                 As {asRole(template)}
                 <button
                   onClick={onClearTemplate}
-                  aria-label="Not this role"
+                  aria-label={t("newAgentScreen.notThisRole")}
                   className="rounded p-0.5 text-muted-foreground/70 transition-colors duration-150 hover:text-foreground"
                 >
                   <X size={11} />
@@ -760,13 +761,13 @@ function JobBeat({
             ) : heard ? (
               `Sounds like ${asRole(heard)}`
             ) : has ? (
-              "A role of its own"
+              t("newAgentScreen.aRoleOfItsOwn")
             ) : (
-              "Enter to continue"
+              t("newAgentScreen.enterToContinue")
             )}
           </span>
           <Button onClick={onContinue} disabled={!has || creating} className="rounded-xl">
-            Continue
+            {t("common.continue")}
             <ArrowRight size={14} />
           </Button>
         </div>
@@ -774,7 +775,7 @@ function JobBeat({
 
       <section className="mt-10">
         <Label aside={<span className="text-small text-muted-foreground">{AGENT_TEMPLATES.length} roles</span>}>
-          Or start from a role
+          {t("newAgentScreen.orStartFromARole")}
         </Label>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {AGENT_TEMPLATES.map((t, i) => {
@@ -820,13 +821,13 @@ function JobBeat({
               onClick={() => setTeamsOpen((v) => !v)}
               className="text-body text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
             >
-              {teamsOpen ? "Hide teams" : "Show teams"}
+              {teamsOpen ? t("newAgentScreen.hideTeams") : t("newAgentScreen.showTeams")}
             </button>
           }
         >
           <span className="flex items-center gap-2">
             <Users size={15} className="text-muted-foreground" />
-            Or hire a whole team
+            {t("newAgentScreen.orHireAWholeTeam")}
           </span>
         </Label>
         {!teamsOpen ? (
@@ -842,7 +843,7 @@ function JobBeat({
               ))}
             </span>
             <span className="min-w-0 text-body text-muted-foreground">
-              A lead and their agents, in a room of their own.
+              {t("newAgentScreen.aLeadAndTheirAgents")}
             </span>
           </button>
         ) : (
@@ -858,7 +859,7 @@ function JobBeat({
           onClick={onImport}
           className="rounded-md px-1 py-0.5 font-medium text-foreground underline-offset-2 transition-colors duration-150 hover:underline"
         >
-          Import a file
+          {t("newAgentScreen.importAFile")}
         </button>
         or drop it here.
       </div>
@@ -911,16 +912,16 @@ function TeamShelf({ onTeam }: { onTeam: (team: HireableTeam) => void }) {
             onClick={() => setAsked(true)}
             className="font-medium text-foreground underline-offset-2 transition-colors duration-150 hover:underline"
           >
-            More from the gallery at bloks.dev
+            {t("newAgentScreen.moreFromTheGalleryAt")}
           </button>
         ) : gallery === null ? (
           <span className="flex items-center gap-1.5">
-            <Loader2 size={12} className="animate-spin" /> Loading the gallery
+            <Loader2 size={12} className="animate-spin" /> {t("newAgentScreen.loadingTheGallery")}
           </span>
         ) : galleryError ? (
-          "Could not reach the gallery."
+          t("newAgentScreen.couldNotReachTheGallery")
         ) : gallery.length === 0 ? (
-          "Nothing else in the gallery yet."
+          t("newAgentScreen.nothingElseInTheGallery")
         ) : null}
       </div>
     </motion.div>
@@ -1043,11 +1044,11 @@ function IdentityBeat({
   return (
     <>
       <BeatHeading
-        title={shownName ? `Meet ${shownName}` : "Who are they?"}
+        title={shownName ? `Meet ${shownName}` : t("newAgentScreen.whoAreThey")}
         says={
           template
             ? `Set up as ${asRole(template)}, with ${plural(persona.skills.length, "skill")}. Make them yours.`
-            : "Change anything you like."
+            : t("newAgentScreen.changeAnythingYouLike")
         }
       />
 
@@ -1058,8 +1059,8 @@ function IdentityBeat({
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && onHire()}
-            placeholder="Name your agent"
-            aria-label="Name"
+            placeholder={t("newAgentScreen.nameYourAgent")}
+            aria-label={t("common.name")}
             spellCheck={false}
             className={cn(
               "h-12 w-full rounded-xl border bg-card px-4 text-title font-semibold tracking-tight text-foreground outline-none transition-[border-color] duration-150 placeholder:font-normal placeholder:text-muted-foreground focus:border-ring/60",
@@ -1074,23 +1075,23 @@ function IdentityBeat({
               {drafting ? (
                 <span className="flex items-center gap-1.5 px-1.5">
                   <Loader2 size={12} className="animate-spin" />
-                  Thinking
+                  {t("newAgentScreen.thinking")}
                 </span>
               ) : (
                 <>
                   {drafted.has("name") && (
                     <span className="flex items-center gap-1 px-1">
                       <Sparkles size={11} />
-                      Suggested
+                      {t("newAgentScreen.suggested")}
                     </span>
                   )}
                   <button
                     onClick={onAnother}
-                    title="Suggest another"
+                    title={t("newAgentScreen.suggestAnother")}
                     className="flex items-center gap-1 rounded-md px-1.5 py-1 outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground active:scale-[0.96]"
                   >
                     <RefreshCw size={11} />
-                    Another
+                    {t("newAgentScreen.another")}
                   </button>
                 </>
               )}
@@ -1100,8 +1101,8 @@ function IdentityBeat({
         <Input
           value={persona.title}
           onChange={(e) => editPersona({ title: e.target.value })}
-          placeholder="What they do, in a line"
-          aria-label="Title"
+          placeholder={t("newAgentScreen.whatTheyDoInA")}
+          aria-label={t("newAgentScreen.title")}
           className="h-10 rounded-xl bg-card px-4 text-ui"
         />
       </div>
@@ -1114,14 +1115,14 @@ function IdentityBeat({
               className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-body text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
             >
               <RefreshCw size={12} />
-              Surprise me
+              {t("newAgentScreen.surpriseMe")}
             </button>
           }
         >
-          A face
+          {t("newAgentScreen.aFace")}
         </Label>
         <div className="rounded-2xl border bg-card p-4">
-          <div role="radiogroup" aria-label="Color" className="flex flex-wrap gap-2.5">
+          <div role="radiogroup" aria-label={t("newAgentScreen.color")} className="flex flex-wrap gap-2.5">
             {BLOK_COLOR_NAMES.map((color) => (
               <button
                 key={color}
@@ -1138,7 +1139,7 @@ function IdentityBeat({
               />
             ))}
           </div>
-          <div role="radiogroup" aria-label="Shape" className="mt-4 grid grid-cols-4 gap-1.5 sm:grid-cols-8">
+          <div role="radiogroup" aria-label={t("newAgentScreen.shape")} className="mt-4 grid grid-cols-4 gap-1.5 sm:grid-cols-8">
             {BLOK_SHAPES.map((shape) => (
               <button
                 key={shape}
@@ -1163,7 +1164,7 @@ function IdentityBeat({
         <Label
           aside={
             <span className="text-small text-muted-foreground">
-              {personaDrafted ? "Suggested, " : ""}
+              {personaDrafted ? t("newAgentScreen.suggested2") : ""}
               {plural(persona.skills.length, "skill")}
             </span>
           }
@@ -1180,15 +1181,15 @@ function IdentityBeat({
                 onClick={onEditJob}
                 className="shrink-0 text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
               >
-                Edit
+                {t("common.edit")}
               </button>
             </div>
           )}
           <textarea
             value={persona.description}
             onChange={(e) => editPersona({ description: e.target.value })}
-            placeholder={described ? "Anything else about how they work (optional)" : "What they care about and how they work"}
-            aria-label="How they work"
+            placeholder={described ? t("newAgentScreen.anythingElseAboutHowThey") : t("newAgentScreen.whatTheyCareAboutAnd")}
+            aria-label={t("newAgentScreen.howTheyWork")}
             rows={4}
             className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-body leading-relaxed text-foreground outline-none transition-[border-color] duration-150 placeholder:text-muted-foreground focus:border-ring/60"
           />
@@ -1218,8 +1219,8 @@ function IdentityBeat({
                   <button
                     onClick={() => editPersona({ skills: persona.skills.filter((_, j) => j !== i) })}
                     className="mt-1 shrink-0 rounded p-0.5 text-muted-foreground/60 opacity-0 transition-[opacity,color] duration-150 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-                    title="Remove skill"
-                    aria-label="Remove skill"
+                    title={t("newAgentScreen.removeSkill")}
+                    aria-label={t("newAgentScreen.removeSkill")}
                   >
                     <X size={12} />
                   </button>
@@ -1232,14 +1233,14 @@ function IdentityBeat({
                 value={newSkill}
                 onChange={(e) => setNewSkill(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && addSkill()}
-                placeholder="Add a skill: when to use it, and what to return"
-                aria-label="New skill"
+                placeholder={t("newAgentScreen.addASkillWhenTo")}
+                aria-label={t("newAgentScreen.newSkill")}
                 className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-body text-foreground outline-none placeholder:text-muted-foreground/70 hover:bg-accent/50 focus:bg-accent/60"
               />
               <button
                 onClick={addSkill}
                 disabled={!newSkill.trim()}
-                aria-label="Add skill"
+                aria-label={t("newAgentScreen.addSkill")}
                 className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:opacity-40"
               >
                 <Plus size={13} />
@@ -1251,7 +1252,7 @@ function IdentityBeat({
               skill, not a line about it. */}
           {offered.length > 0 && (
             <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t pt-3">
-              <span className="mr-1 text-small text-muted-foreground">From your library</span>
+              <span className="mr-1 text-small text-muted-foreground">{t("newAgentScreen.fromYourLibrary")}</span>
               {offered.map((id) => {
                 const on = persona.skillIds.includes(id);
                 return (
@@ -1318,16 +1319,16 @@ function SetupBeat({
   return (
     <>
       <BeatHeading
-        title={shownName ? `How ${shownName} works` : "How they work"}
-        says="Defaults are set. Change anything, now or later."
+        title={shownName ? `How ${shownName} works` : t("newAgentScreen.howTheyWork")}
+        says={t("newAgentScreen.defaultsAreSetChangeAnything")}
       />
 
       <section>
-        <Label>The engine</Label>
+        <Label>{t("newAgentScreen.theEngine")}</Label>
         <p className="-mt-1.5 mb-3 text-pretty text-body leading-relaxed text-muted-foreground">
-          Bigger models think better and cost more. Smaller ones are faster.
+          {t("newAgentScreen.biggerModelsThinkBetterAnd")}
         </p>
-        <div role="radiogroup" aria-label="Engine" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div role="radiogroup" aria-label={t("common.engine")} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <EngineOption
             on={!engine}
             onPick={() => setEngine(null)}
@@ -1336,7 +1337,7 @@ function SetupBeat({
                 <Sparkles size={14} />
               </span>
             }
-            title="Workspace default"
+            title={t("newAgentScreen.workspaceDefault")}
             line={defaultEngine ? label(defaultEngine.instanceId, defaultEngine.model) : "What Bloks gives every new agent"}
           />
           {usable.map((inst) => (
@@ -1357,7 +1358,7 @@ function SetupBeat({
         <div className="mt-3 flex flex-wrap items-center gap-2 text-body text-muted-foreground" data-keep-escape>
           Or pick a model:
           <div className="rounded-lg border bg-card">
-            <ModelPicker value={engine} onPick={setEngine} noneLabel="Workspace default" />
+            <ModelPicker value={engine} onPick={setEngine} noneLabel={t("newAgentScreen.workspaceDefault")} />
           </div>
         </div>
       </section>
@@ -1370,29 +1371,29 @@ function SetupBeat({
             )
           }
         >
-          How much they ask
+          {t("newAgentScreen.howMuchTheyAsk")}
         </Label>
         <ApprovalsChooser value={mode} onChange={onApprovals} compact />
-        {refused && <div className="mt-2 text-small text-warning">Not confirmed. Nothing changed.</div>}
+        {refused && <div className="mt-2 text-small text-warning">{t("newAgentScreen.notConfirmedNothingChanged")}</div>}
       </section>
 
       <section className="mt-9">
         <Label>
           <span className="flex items-center gap-2">
             <FolderOpen size={15} className="text-muted-foreground" />
-            Where they work
+            {t("newAgentScreen.whereTheyWork")}
           </span>
         </Label>
         <p className="-mt-1.5 mb-3 text-pretty text-body leading-relaxed text-muted-foreground">
-          Pick a project folder, or leave it empty for their own workspace.
+          {t("newAgentScreen.pickAProjectFolderOr")}
         </p>
         <div className="flex gap-2">
           <Input
             value={folder}
             onChange={(e) => setFolder(e.target.value)}
-            placeholder={defaultFolder || "Their own workspace"}
+            placeholder={defaultFolder || t("newAgentScreen.theirOwnWorkspace")}
             spellCheck={false}
-            aria-label="Working folder"
+            aria-label={t("common.workingFolder")}
             className="h-9 rounded-xl bg-card font-mono text-body"
           />
           <BrowseFolderButton onPick={setFolder} className="h-9 rounded-xl" />

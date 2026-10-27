@@ -18,6 +18,7 @@ import { BlokAvatar } from "./Avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import type { BlokColor, BlokShape } from "@/lib/mascot";
+import { t } from "@/lib/i18n";
 
 /** What the server says a file would do, before it does it. */
 export interface AgentPreview {
@@ -92,14 +93,14 @@ export function ImportAgentDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-[460px] flex-col gap-0 overflow-hidden p-0">
         <div className="flex h-[52px] shrink-0 items-center border-b px-5">
-          <DialogTitle className="text-lead">Import an agent</DialogTitle>
+          <DialogTitle className="text-lead">{t("importAgent.importAnAgent")}</DialogTitle>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-5">
           {!preview && !error && (
             <div className="flex items-center gap-2 py-6 text-body text-muted-foreground">
               <Loader2 size={15} className="animate-spin" />
-              Reading the file
+              {t("importAgent.readingTheFile")}
             </div>
           )}
 
@@ -139,15 +140,15 @@ export function ImportAgentDialog({
               {/* What it comes with, counted rather than described, so the
                   size of what is about to land is legible at a glance. */}
               <div className="mt-4 flex flex-col gap-1.5 rounded-xl border bg-card p-3">
-                <Line label="Skills" value={String(preview.skills.length)} />
+                <Line label={t("common.skills")} value={String(preview.skills.length)} />
                 {fresh.length > 0 && (
-                  <Line label="New to your library" value={fresh.map((s) => s.name).join(", ")} />
+                  <Line label={t("importAgent.newToYourLibrary")} value={fresh.map((s) => s.name).join(", ")} />
                 )}
                 {preview.capabilities.length > 0 && (
-                  <Line label="What it does" value={preview.capabilities.join(", ")} />
+                  <Line label={t("importAgent.whatItDoes")} value={preview.capabilities.join(", ")} />
                 )}
                 <Line
-                  label="Memory"
+                  label={t("common.memory")}
                   value={
                     preview.memoryBytes || preview.topics
                       ? [
@@ -159,7 +160,7 @@ export function ImportAgentDialog({
                       : "none"
                   }
                 />
-                {preview.hasPhoto && <Line label="Photo" value="included" />}
+                {preview.hasPhoto && <Line label={t("importAgent.photo")} value="included" />}
               </div>
 
               {preview.notes.length > 0 && (
@@ -180,8 +181,7 @@ export function ImportAgentDialog({
               <div className="mt-3 flex gap-2 rounded-xl bg-muted/50 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
                 <AlertTriangle size={14} className="mt-[1px] shrink-0" />
                 <span>
-                  Its instructions come from whoever made it. Only import agents
-                  from people you trust.
+                  {t("importAgent.itsInstructionsComeFromWhoever")}
                 </span>
               </div>
 
@@ -196,11 +196,11 @@ export function ImportAgentDialog({
 
         <div className="flex shrink-0 items-center justify-end gap-2 border-t px-5 py-3">
           <Button variant="ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button disabled={!preview || importing} onClick={bringItIn}>
             {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-            {importing ? "Importing" : "Import"}
+            {importing ? t("importAgent.importing") : t("importAgent.import")}
           </Button>
         </div>
       </DialogContent>

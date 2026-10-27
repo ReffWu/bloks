@@ -23,6 +23,7 @@ import { MoveHome } from "./MoveHome";
 import { MoveKeys } from "./MoveKeys";
 import { MoveSteps } from "./MoveSteps";
 import { said, useHostingMove } from "./useHostingMove";
+import { t } from "@/lib/i18n";
 
 const LOCAL = new Set(["personal", "business", "custom"]);
 
@@ -55,7 +56,7 @@ function MoveCard({ move, state }: { move: Move; state: HostingMoveState }) {
   const done = move.phase === "done";
   return (
     <section
-      aria-label="Moving a workspace"
+      aria-label={t("hostingHostingMove.movingAWorkspace")}
       data-setting-row="moving-a-workspace"
       className={cn("rounded-2xl border bg-card p-5", failed && "border-destructive/25")}
     >
@@ -85,10 +86,10 @@ function MoveCard({ move, state }: { move: Move; state: HostingMoveState }) {
           {move.phase === "running" && move.stoppable && (
             <>
               <Button size="sm" variant="secondary" onClick={() => act(window.bloks?.hostingMoveStop?.("stop"))}>
-                Stop
+                {t("common.stop")}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => act(window.bloks?.hostingMoveStop?.("later"))}>
-                Not now
+                {t("common.notNow")}
               </Button>
             </>
           )}
@@ -96,26 +97,26 @@ function MoveCard({ move, state }: { move: Move; state: HostingMoveState }) {
             <>
               <Button size="sm" className="gap-1.5" onClick={() => act(window.bloks?.hostingMoveResume?.())}>
                 <RotateCcw size={14} />
-                Retry
+                {t("hostingHostingMove.retry")}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => act(window.bloks?.hostingMoveStop?.("later"))}>
-                Not now
+                {t("common.notNow")}
               </Button>
             </>
           )}
           {(move.phase === "stopped" || move.phase === "later") && (
             <>
               <Button size="sm" onClick={() => act(window.bloks?.hostingMoveResume?.())}>
-                Carry on
+                {t("hostingHostingMove.carryOn")}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => act(window.bloks?.hostingMoveDismiss?.())}>
-                Forget it
+                {t("hostingHostingMove.forgetIt")}
               </Button>
             </>
           )}
           {done && (
             <Button size="sm" variant="secondary" onClick={() => act(window.bloks?.hostingMoveDismiss?.())}>
-              Done
+              {t("common.done")}
             </Button>
           )}
         </div>
@@ -137,12 +138,12 @@ function Waiting({ move }: { move: Move }) {
   return (
     <div className="flex flex-col gap-3">
       <p role="status" className="text-pretty text-body text-foreground tabular-nums">
-        {left > 0 ? `${move.from.name} starts moving to ${whereTo(move)} in ${left} s.` : "Starting."}
+        {left > 0 ? `${move.from.name} starts moving to ${whereTo(move)} in ${left} s.` : t("hostingHostingMove.starting")}
       </p>
-      <ChooseFrom label="Move another workspace instead" except={move.from.id} onChoose={(id) => act(window.bloks?.hostingMoveChange?.(id))} />
+      <ChooseFrom label={t("hostingHostingMove.moveAnotherWorkspaceInstead")} except={move.from.id} onChoose={(id) => act(window.bloks?.hostingMoveChange?.(id))} />
       <div>
         <Button size="sm" variant="ghost" onClick={() => act(window.bloks?.hostingMoveStop?.("later"))}>
-          Not now
+          {t("common.notNow")}
         </Button>
       </div>
     </div>
@@ -179,15 +180,15 @@ function ChooseFrom({ label, except, onChoose, action = "Move this one" }: { lab
  * its own was put off, say), the way to start it by hand. */
 function MoveThere({ state }: { state: HostingMoveState }) {
   return (
-    <section aria-label="Move to your hosted machine" className="rounded-2xl border bg-card p-5">
-      <h2 className="text-ui font-medium text-foreground">Move a workspace to your hosted machine</h2>
+    <section aria-label={t("hostingHostingMove.moveToYourHostedMachine")} className="rounded-2xl border bg-card p-5">
+      <h2 className="text-ui font-medium text-foreground">{t("hostingHostingMove.moveAWorkspaceToYour")}</h2>
       <p className="mt-0.5 max-w-[62ch] text-pretty text-body text-muted-foreground">
         Everything in it goes: agents, conversations, rooms, routines, watchers, workflows, memory and settings. Keys stay on this Mac, and the app lists them to
-        enter again there.{state.bloksAi ? " Agents run on Bloks AI there from the start." : ""}
+        enter again there.{state.bloksAi ? t("hostingHostingMove.agentsRunOnBloksAi") : ""}
       </p>
       <div className="mt-3">
         <ChooseFrom
-          label="Move"
+          label={t("hostingHostingMove.move")}
           action="Move it"
           onChoose={(id) => act(window.bloks?.hostingMoveStart?.({ direction: "to-hosted", from: id }))}
         />

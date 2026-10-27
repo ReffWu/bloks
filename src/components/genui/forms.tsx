@@ -29,6 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import { useLabels } from "./host";
 import { elements, figure, isElement, list, num, text } from "./read";
+import { t } from "@/lib/i18n";
 
 type Part = ComponentRenderer<Record<string, unknown>>;
 
@@ -56,7 +57,7 @@ export const Form: Part = ({ props, renderNode }) => {
               {sent && (
                 <span role="status" className="flex animate-fade-in items-center gap-1 text-small text-muted-foreground">
                   <Check size={12} strokeWidth={2.4} aria-hidden className="text-success" />
-                  Sent
+                  {t("forms.sent")}
                 </span>
               )}
             </div>
@@ -203,7 +204,7 @@ export const Select: Part = ({ props }) => {
         )}
       >
         <option value="" disabled>
-          {placeholder || "Choose…"}
+          {placeholder || t("forms.choose")}
         </option>
         {items.map((item, i) => (
           <option key={i} value={item.value} className="text-foreground">
@@ -354,9 +355,9 @@ export const DatePicker: Part = ({ props }) => {
     const [from, to] = [text(list(field.value)[0]), text(list(field.value)[1])];
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <UiInput id={id} type="date" aria-label="From" value={from} disabled={field.disabled} onChange={(e) => field.set([e.target.value, to], true)} className={look} />
-        <span className="text-small text-muted-foreground">to</span>
-        <UiInput type="date" aria-label="To" value={to} min={from || undefined} disabled={field.disabled} onChange={(e) => field.set([from, e.target.value], true)} className={look} />
+        <UiInput id={id} type="date" aria-label={t("forms.from")} value={from} disabled={field.disabled} onChange={(e) => field.set([e.target.value, to], true)} className={look} />
+        <span className="text-small text-muted-foreground">{t("forms.to")}</span>
+        <UiInput type="date" aria-label={t("forms.to2")} value={to} min={from || undefined} disabled={field.disabled} onChange={(e) => field.set([from, e.target.value], true)} className={look} />
       </div>
     );
   }

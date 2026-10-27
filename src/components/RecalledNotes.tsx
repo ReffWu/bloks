@@ -14,6 +14,7 @@ import { Users } from "@/components/icons";
 import { useStore, type RecalledNote } from "@/state/store";
 import { stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 const ICONS = { conversation: MessagesSquare, room: Users, memory: FileText } as const;
 
@@ -42,13 +43,13 @@ export function RecalledNotes({ notes }: { notes: RecalledNote[] }) {
         className="flex items-center gap-1 rounded-full px-2 py-0.5 text-small text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
       >
         <BookOpen size={12} />
-        Recalled {notes.length === 1 ? "1 note" : `${notes.length} notes`}
+        Recalled {notes.length === 1 ? t("recalledNotes.n1Note") : `${notes.length} notes`}
         <ChevronDown size={12} className={cn("transition-transform duration-200", open && "rotate-180")} />
       </button>
       {open && (
         <div className="mt-1 w-[420px] max-w-full animate-fade-in rounded-2xl border bg-card p-2 text-left shadow-sm">
           <p className="px-1.5 pb-1.5 pt-0.5 text-small leading-snug text-muted-foreground">
-            Shared with the agent for this message only. It may ignore them.
+            {t("recalledNotes.sharedWithTheAgentFor")}
           </p>
           <ul className="flex flex-col gap-1">
             {notes.map((note, i) => {

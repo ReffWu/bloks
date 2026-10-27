@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 const easeOut = [0.23, 1, 0.32, 1] as const;
 
@@ -394,7 +395,7 @@ export function CopyRow({ label, value, big }: { label?: string; value: string; 
         size="sm"
         variant="secondary"
         className={big ? "h-8" : undefined}
-        aria-label={copied ? "Copied" : `Copy ${label ?? (big ? "the word" : "this")}`}
+        aria-label={copied ? t("common.copied") : `Copy ${label ?? (big ? "the word" : "this")}`}
         onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true))}
       >
         {copied ? <Check size={13} /> : <Copy size={13} />}

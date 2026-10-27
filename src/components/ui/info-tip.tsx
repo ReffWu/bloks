@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export function InfoTip({ text, className }: { text: string; className?: string }) {
   return (
@@ -21,7 +22,7 @@ export function InfoTip({ text, className }: { text: string; className?: string 
         <TooltipTrigger asChild>
           <button
             type="button"
-            aria-label="More about this"
+            aria-label={t("infoTip.moreAboutThis")}
             className={cn(
               "rounded-full p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground",
               className,

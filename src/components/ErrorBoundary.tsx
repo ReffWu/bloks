@@ -10,6 +10,7 @@
 import { Component, useState, type ErrorInfo, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { errorDetails } from "@/lib/errorDetails";
+import { t } from "@/lib/i18n";
 
 export class ErrorBoundary extends Component<{ children: ReactNode }, { details: string | null }> {
   state = { details: null as string | null };
@@ -40,15 +41,14 @@ function Stopped({ details }: { details: string }) {
   return (
     <div role="alert" className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
       <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-        <h1 className="text-ui font-semibold">Something went wrong</h1>
+        <h1 className="text-ui font-semibold">{t("errorBoundary.somethingWentWrong")}</h1>
         <p className="text-body text-muted-foreground">
-          This window could not draw part of Bloks. Your agents keep working, and nothing they have done is lost.
-          Reloading usually brings it back.
+          {t("errorBoundary.thisWindowCouldNotDraw")}
         </p>
         <div className="mt-2 flex gap-2">
-          <Button onClick={() => location.reload()}>Reload</Button>
+          <Button onClick={() => location.reload()}>{t("errorBoundary.reload")}</Button>
           <Button variant="outline" onClick={copy}>
-            {copied ? "Copied" : "Copy details"}
+            {copied ? t("common.copied") : t("errorBoundary.copyDetails")}
           </Button>
         </div>
       </div>

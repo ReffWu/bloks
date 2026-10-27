@@ -2,7 +2,8 @@
 // shortcut that reaches it from anywhere.
 //
 // The person's own page, so it holds only what is theirs: their name,
-// the theme (which follows them into every workspace), the accent, how
+// the theme and the language (which follow them into every workspace),
+// the accent, how
 // wide a chat reads, and the system-wide hotkey. How agents behave has a
 // page of its own (settings/BehaviourPage.tsx).
 import { useEffect, useState } from "react";
@@ -19,6 +20,8 @@ import { cn } from "@/lib/cn";
 import { AccentPicker } from "../AccentPicker";
 import { SettingRow, SettingsGroup } from "../SettingsLayout";
 import { YourName } from "./YourName";
+import { LANGUAGES, isLanguage, t } from "@/lib/i18n";
+import { chooseLanguage, systemLanguage, useLanguageChoice } from "@/lib/language";
 
 const THEME_OPTIONS: Array<{ value: Theme; label: string; icon: React.ReactNode }> = [
   { value: "light", label: "Light", icon: <Sun size={14} /> },
@@ -86,8 +89,8 @@ function QuickAskShortcut() {
 
   return (
     <SettingRow
-      label="Quick ask shortcut"
-      info="Tab picks a different agent, Enter sends, Escape closes."
+      label={t("generalPage.quickAskShortcut")}
+      info={t("generalPage.tabPicksADifferentAgent")}
       description={`Ask any agent from anywhere on ${thisComputer()}.`}
       error={problem}
       control={
@@ -97,7 +100,7 @@ function QuickAskShortcut() {
               onClick={() => void save(null)}
               className="rounded-lg px-2 py-1 text-body text-muted-foreground transition-colors hover:text-foreground"
             >
-              Clear
+              {t("common.clear")}
             </button>
           )}
           <button
@@ -114,9 +117,40 @@ function QuickAskShortcut() {
                 : "border-input text-foreground hover:border-foreground/25",
             )}
           >
-            {capturing ? "Press the keys…" : (accelerator ?? "Not set")}
+            {capturing ? t("generalPage.pressTheKeys") : (accelerator ?? t("generalPage.notSet"))}
           </button>
         </div>
+      }
+    />
+  );
+}
+
+/**
+ * The language the interface is read in. Each language is named in its
+ * own words, so somebody who landed in one they cannot read can still
+ * find theirs; "System" says which one it comes to.
+ */
+function LanguageRow() {
+  const { choice } = useLanguageChoice();
+  const system = LANGUAGES.find((l) => l.code === systemLanguage())?.name ?? "English";
+  return (
+    <SettingRow
+      label={t("language.label")}
+      description={t("language.description")}
+      control={
+        <select
+          aria-label={t("language.label")}
+          value={choice}
+          onChange={(e) => void chooseLanguage(isLanguage(e.target.value) ? e.target.value : "system")}
+          className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-body text-foreground outline-none transition-colors hover:border-foreground/25 focus-visible:border-brand"
+        >
+          <option value="system">{t("language.system", { language: system })}</option>
+          {LANGUAGES.map((l) => (
+            <option key={l.code} value={l.code} lang={l.code}>
+              {l.name}
+            </option>
+          ))}
+        </select>
       }
     />
   );
@@ -130,41 +164,42 @@ export function GeneralPage() {
   const shared = Boolean(window.bloks?.workspace && workspaces.available && workspaces.sameAccent);
   return (
     <>
-      <SettingsGroup title="You">
+      <SettingsGroup title={t("generalPage.you")}>
         <YourName />
       </SettingsGroup>
-      <SettingsGroup title="Appearance">
+      <SettingsGroup title={t("generalPage.appearance")}>
         <SettingRow
-          label="Theme"
-          description="Follows you into every workspace."
+          label={t("generalPage.theme")}
+          description={t("generalPage.followsYouIntoEveryWorkspace")}
           control={
             <Segmented
-              aria-label="Theme"
+              aria-label={t("generalPage.theme")}
               value={theme}
               onChange={setTheme}
               options={THEME_OPTIONS.map((o) => ({ value: o.value, label: <>{o.icon}{o.label}</> }))}
             />
           }
         />
+        <LanguageRow />
         <SettingRow
-          label="Accent"
+          label={t("generalPage.accent")}
           description={
             !window.bloks?.workspace
-              ? "Your messages, the main buttons and what is selected."
+              ? t("generalPage.yourMessagesTheMainButtons")
               : shared
-                ? "Your messages, the main buttons and what is selected, in every workspace."
-                : "Your messages, the main buttons and what is selected, in this workspace."
+                ? t("generalPage.yourMessagesTheMainButtonsAnd")
+                : t("generalPage.yourMessagesTheMainButtonsAndWhat")
           }
           control={<AccentPicker />}
         />
         {/* only where there are workspaces to share it between */}
         {window.bloks?.workspace && workspaces.available && window.bloks.prefsSameAccent && (
           <SettingRow
-            label="Same accent in every workspace"
-            description="Off, each workspace keeps its own."
+            label={t("generalPage.sameAccentInEveryWorkspace")}
+            description={t("generalPage.offEachWorkspaceKeepsIts")}
             control={
               <Switch
-                aria-label="Same accent in every workspace"
+                aria-label={t("generalPage.sameAccentInEveryWorkspace")}
                 checked={Boolean(workspaces.sameAccent)}
                 onCheckedChange={(on) => void setSameAccent(on)}
               />
@@ -172,11 +207,11 @@ export function GeneralPage() {
           />
         )}
         <SettingRow
-          label="Transcript width"
-          description="How wide chats read on this device."
+          label={t("generalPage.transcriptWidth")}
+          description={t("generalPage.howWideChatsReadOn")}
           control={
             <Segmented
-              aria-label="Transcript width"
+              aria-label={t("generalPage.transcriptWidth")}
               value={width}
               onChange={setWidth}
               options={[
@@ -188,18 +223,18 @@ export function GeneralPage() {
           }
         />
         <SettingRow
-          label="Show conversations in the sidebar"
-          description="List each agent's conversations under it."
-          control={<Switch aria-label="Show conversations in the sidebar" checked={conversations} onCheckedChange={setConversations} />}
+          label={t("generalPage.showConversationsInTheSidebar")}
+          description={t("generalPage.listEachAgentsConversationsUnder")}
+          control={<Switch aria-label={t("generalPage.showConversationsInTheSidebar")} checked={conversations} onCheckedChange={setConversations} />}
         />
         {/* the app says whether there is one: only on a Mac */}
         {window.bloks?.prefsNotch && workspaces.available && typeof workspaces.notch === "boolean" && (
           <SettingRow
-            label="Show working agents in the notch"
-            description="Who is at work, at the top of the screen. Point at it for what each one is doing."
+            label={t("generalPage.showWorkingAgentsInThe")}
+            description={t("generalPage.whoIsAtWorkAt")}
             control={
               <Switch
-                aria-label="Show working agents in the notch"
+                aria-label={t("generalPage.showWorkingAgentsInThe")}
                 checked={workspaces.notch}
                 onCheckedChange={(on) => void window.bloks?.prefsNotch?.(on)}
               />
@@ -208,7 +243,7 @@ export function GeneralPage() {
         )}
       </SettingsGroup>
       {window.bloks && (
-        <SettingsGroup title="Shortcut">
+        <SettingsGroup title={t("generalPage.shortcut")}>
           <QuickAskShortcut />
         </SettingsGroup>
       )}

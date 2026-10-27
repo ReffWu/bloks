@@ -12,6 +12,7 @@ import { api } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
+import { t } from "@/lib/i18n";
 
 interface Entry {
   seq: number;
@@ -101,15 +102,14 @@ export function RecordPanel() {
       <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-ui font-semibold text-foreground">The record</div>
+            <div className="text-ui font-semibold text-foreground">{t("recordPanel.theRecord")}</div>
             <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-              What your agents did, and changes to what they can do. Check it
-              to see if anything was edited.
+              {t("recordPanel.whatYourAgentsDidAnd")}
             </div>
           </div>
           <Button variant="secondary" size="sm" disabled={checking} onClick={check}>
             {checking ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-            {checking ? "Checking" : "Check it"}
+            {checking ? t("recordPanel.checking") : t("recordPanel.checkIt")}
           </Button>
         </div>
 
@@ -130,7 +130,7 @@ export function RecordPanel() {
             <span>
               {result.ok
                 ? result.entries === 0
-                  ? "Nothing recorded yet."
+                  ? t("recordPanel.nothingRecordedYet")
                   : `All ${result.entries} entries check out. Nothing was changed.`
                 : `${result.reason[0].toUpperCase()}${result.reason.slice(1)}${
                     result.seq !== null ? `, at entry ${result.seq}` : ""
@@ -142,7 +142,7 @@ export function RecordPanel() {
         {stray > 0 && (
           <div className="mt-2 rounded-xl bg-destructive/10 px-3 py-2.5 text-small text-destructive">
             {stray === 1
-              ? "One line in the file isn't an entry."
+              ? t("recordPanel.oneLineInTheFile")
               : `${stray} lines in the file aren't entries.`}
           </div>
         )}
@@ -162,12 +162,12 @@ export function RecordPanel() {
         {!entries && !error && (
           <div className="flex items-center gap-2 px-3 py-6 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
-            Reading the record
+            {t("recordPanel.readingTheRecord")}
           </div>
         )}
         {entries?.length === 0 && (
           <div className="px-3 py-6 text-center text-body text-muted-foreground">
-            Nothing yet. Approvals and changes appear here.
+            {t("recordPanel.nothingYetApprovalsAndChanges")}
           </div>
         )}
         {entries?.map((entry) => (

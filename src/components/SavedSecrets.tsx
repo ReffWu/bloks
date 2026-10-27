@@ -9,6 +9,7 @@ import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/confirm";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
+import { t } from "@/lib/i18n";
 
 export function SavedSecrets() {
   const { state } = useStore();
@@ -55,11 +56,11 @@ export function SavedSecrets() {
   // it can be about.
   return (
     <SettingsGroup
-      title="Saved secrets"
-      footnote={names?.length ? "Every agent's turns get these as environment variables. Only the names are shown." : undefined}
+      title={t("savedSecrets.savedSecrets")}
+      footnote={names?.length ? t("savedSecrets.everyAgentsTurnsGetThese") : undefined}
     >
       {names === null ? (
-        <Quiet>{error ? <span role="alert" className="text-destructive">{error}</span> : "Looking…"}</Quiet>
+        <Quiet>{error ? <span role="alert" className="text-destructive">{error}</span> : t("savedSecrets.looking")}</Quiet>
       ) : names.length ? (
         names.map((name, i) => (
           <SettingRow
@@ -75,13 +76,13 @@ export function SavedSecrets() {
                 onClick={() => void forget(name)}
                 className="text-muted-foreground hover:text-destructive"
               >
-                {forgetting === name ? "Forgetting…" : "Forget"}
+                {forgetting === name ? t("savedSecrets.forgetting") : t("savedSecrets.forget")}
               </Button>
             }
           />
         ))
       ) : (
-        <Quiet>None yet. When an agent asks for a key or password and you save it, it shows here by name.</Quiet>
+        <Quiet>{t("savedSecrets.noneYetWhenAnAgent")}</Quiet>
       )}
       {names !== null && error && (
         <p role="alert" className="px-5 py-3 text-pretty text-small text-destructive">

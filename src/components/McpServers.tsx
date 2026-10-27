@@ -25,6 +25,7 @@ import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { AgentAvatar } from "./Avatar";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -130,16 +131,16 @@ export function AddMcpServerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[88vh] max-w-[560px] flex-col overflow-y-auto p-7">
-        <DialogTitle className="text-heading font-semibold">Add custom MCP server</DialogTitle>
+        <DialogTitle className="text-heading font-semibold">{t("mcpServers.addCustomMcpServer")}</DialogTitle>
 
         <div className="mt-6 flex flex-col gap-5">
           <label>
-            <span className={label}>Name</span>
-            <Input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Custom tool" className={field} />
+            <span className={label}>{t("common.name")}</span>
+            <Input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder={t("mcpServers.customTool")} className={field} />
           </label>
 
           <div>
-            <span className={label}>Connection</span>
+            <span className={label}>{t("mcpServers.connection")}</span>
             <div role="tablist" className="mb-2 flex gap-1">
               {(
                 [
@@ -173,17 +174,17 @@ export function AddMcpServerDialog({
                 <Input
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
-                  placeholder="npx -y @example/mcp-server --flag"
+                  placeholder={t("mcpServers.npxYExampleMcpServer")}
                   className={cn(field, "font-mono text-body")}
                 />
-                <p className="mt-1.5 text-body text-muted-foreground">Runs on this computer.</p>
+                <p className="mt-1.5 text-body text-muted-foreground">{t("mcpServers.runsOnThisComputer")}</p>
               </>
             )}
           </div>
 
           {transport === "http" && (
             <div>
-              <span className={label}>Authentication</span>
+              <span className={label}>{t("mcpServers.authentication")}</span>
               <div role="tablist" className="mb-2 flex gap-1">
                 {(
                   [
@@ -210,7 +211,7 @@ export function AddMcpServerDialog({
                   <Input
                     value={headerName}
                     onChange={(e) => setHeaderName(e.target.value)}
-                    aria-label="Header name"
+                    aria-label={t("mcpServers.headerName")}
                     className={cn(field, "w-[38%] font-mono text-body")}
                   />
                   <Input
@@ -218,8 +219,8 @@ export function AddMcpServerDialog({
                     onChange={(e) => setHeaderValue(e.target.value)}
                     type="password"
                     autoComplete="off"
-                    aria-label="Header value"
-                    placeholder={headerName.trim().toLowerCase() === "authorization" ? "Bearer …" : "Value"}
+                    aria-label={t("mcpServers.headerValue")}
+                    placeholder={headerName.trim().toLowerCase() === "authorization" ? t("mcpServers.bearer") : t("mcpServers.value")}
                     className={cn(field, "flex-1 font-mono text-body")}
                   />
                 </div>
@@ -229,7 +230,7 @@ export function AddMcpServerDialog({
 
           <div className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-ui text-foreground">
             <AlertTriangle size={17} className="shrink-0 text-warning" />
-            Custom MCP servers can be risky.
+            {t("mcpServers.customMcpServersCanBe")}
           </div>
 
           <label className="flex cursor-pointer gap-3 rounded-xl border bg-background px-4 py-3.5">
@@ -240,10 +241,9 @@ export function AddMcpServerDialog({
               className="mt-0.5 size-4 shrink-0 accent-foreground"
             />
             <span>
-              <span className="block text-ui font-medium text-foreground">I understand and want to continue</span>
+              <span className="block text-ui font-medium text-foreground">{t("mcpServers.iUnderstandAndWantTo")}</span>
               <span className="mt-1 block text-pretty text-body leading-relaxed text-muted-foreground">
-                Only add servers you trust. A bad server can read what agents send it and steer them into changing or
-                deleting data.
+                {t("mcpServers.onlyAddServersYouTrust")}
               </span>
             </span>
           </label>
@@ -253,7 +253,7 @@ export function AddMcpServerDialog({
 
         <div className="mt-7 flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={add} disabled={!ready || busy}>
             {busy && <Loader2 size={14} className="animate-spin" />}
@@ -292,7 +292,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
   if (servers === null) {
     return (
       <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
-        <Loader2 size={14} className="animate-spin" /> Loading
+        <Loader2 size={14} className="animate-spin" /> {t("common.loading2")}
       </div>
     );
   }
@@ -300,7 +300,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
     return (
       <div>
         <BackLink onBack={onBack} />
-        <p className="mt-6 text-ui text-muted-foreground">Server not found.</p>
+        <p className="mt-6 text-ui text-muted-foreground">{t("mcpServers.serverNotFound")}</p>
       </div>
     );
   }
@@ -345,7 +345,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
         <div className="min-w-0">
           <h2 className="truncate text-display font-semibold text-foreground">{server.name}</h2>
           <p className="mt-1.5 text-ui text-muted-foreground">
-            To change the connection, remove it and add it again.
+            {t("mcpServers.toChangeTheConnectionRemove")}
           </p>
         </div>
         <button
@@ -353,28 +353,28 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
           className="flex h-9 items-center gap-1.5 rounded-xl bg-destructive/10 px-3.5 text-ui font-medium text-destructive transition-colors duration-150 hover:bg-destructive/15"
         >
           <Trash2 size={15} />
-          Remove
+          {t("common.remove")}
         </button>
       </div>
 
       <div className="mt-6 flex flex-col gap-4">
-        <Section title="Connection">
+        <Section title={t("mcpServers.connection")}>
           <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-y-2.5 text-ui">
-            <span className="text-muted-foreground">Type</span>
-            <span className="text-foreground">{server.transport === "http" ? "Server URL" : "Command on this computer"}</span>
-            <span className="text-muted-foreground">{server.transport === "http" ? "Address" : "Runs"}</span>
+            <span className="text-muted-foreground">{t("mcpServers.type")}</span>
+            <span className="text-foreground">{server.transport === "http" ? t("mcpServers.serverUrl") : t("mcpServers.commandOnThisComputer")}</span>
+            <span className="text-muted-foreground">{server.transport === "http" ? t("common.address") : t("mcpServers.runs")}</span>
             <span className="truncate font-mono text-body text-foreground">{server.target}</span>
             {server.hasHeaders && (
               <>
-                <span className="text-muted-foreground">Authentication</span>
-                <span className="text-foreground">A header, kept on this computer</span>
+                <span className="text-muted-foreground">{t("mcpServers.authentication")}</span>
+                <span className="text-foreground">{t("mcpServers.aHeaderKeptOnThis")}</span>
               </>
             )}
           </div>
         </Section>
 
         {needs.length > 0 && (
-          <Section title="Finish setup" says="Add the missing values. They stay on this computer.">
+          <Section title={t("mcpServers.finishSetup")} says={t("mcpServers.addTheMissingValuesThey")}>
             <div className="flex flex-col gap-3">
               {needs.map((name) => (
                 <label key={name} className="flex flex-col gap-1.5">
@@ -384,23 +384,23 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
                     autoComplete="off"
                     value={values[name] ?? ""}
                     onChange={(e) => setValues((current) => ({ ...current, [name]: e.target.value }))}
-                    placeholder={name === "Authorization" ? "Bearer …" : "Paste the value"}
+                    placeholder={name === "Authorization" ? t("mcpServers.bearer") : t("mcpServers.pasteTheValue")}
                     className={cn(field, "font-mono text-body")}
                   />
                 </label>
               ))}
               <div className="flex justify-end">
                 <Button onClick={save} disabled={busy || !Object.values(values).some((v) => v.trim())}>
-                  Save
+                  {t("common.save")}
                 </Button>
               </div>
             </div>
           </Section>
         )}
 
-        <Section title="Agents that can use it">
+        <Section title={t("mcpServers.agentsThatCanUseIt")}>
           {agents.length === 0 ? (
-            <p className="text-ui text-muted-foreground">No agents yet.</p>
+            <p className="text-ui text-muted-foreground">{t("mcpServers.noAgentsYet")}</p>
           ) : (
             <div className="flex flex-col divide-y">
               {agents.map((bot) => {
@@ -440,7 +440,7 @@ export function BackLink({ onBack }: { onBack: () => void }) {
       className="flex items-center gap-1.5 text-ui text-muted-foreground transition-colors duration-150 hover:text-foreground"
     >
       <ArrowLeft size={16} />
-      Back
+      {t("common.back")}
     </button>
   );
 }

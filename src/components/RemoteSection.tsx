@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
 import { ConnectionHeader, HealthLine } from "./ConnectionKit";
+import { t } from "@/lib/i18n";
 
 type Status = { mode: "local" } | { mode: "remote"; host: string; connected: boolean; revoked?: boolean };
 
@@ -73,7 +74,7 @@ export function RemoteSection() {
         <>
           <ConnectionHeader
             icon={icon}
-            title="Where your Bloks runs"
+            title={t("remoteSection.whereYourBloksRuns")}
             says={
               status.revoked
                 ? `On ${status.host}, which no longer knows this app. Pair it again.`
@@ -82,7 +83,7 @@ export function RemoteSection() {
             health={
               <HealthLine
                 tone={status.connected && !status.revoked ? "on" : "issue"}
-                label={status.revoked ? "Pair again" : status.connected ? "Connected" : "Can't reach it"}
+                label={status.revoked ? t("remoteSection.pairAgain") : status.connected ? t("common.connected") : t("remoteSection.cantReachIt")}
               />
             }
           />
@@ -92,7 +93,7 @@ export function RemoteSection() {
         </>
       ) : (
         <>
-          <ConnectionHeader icon={icon} title="Where your Bloks runs" says={`On ${thisComputer()}, so agents pause when it sleeps.`} />
+          <ConnectionHeader icon={icon} title={t("remoteSection.whereYourBloksRuns")} says={`On ${thisComputer()}, so agents pause when it sleeps.`} />
           <form
             className="mt-3 flex gap-2"
             onSubmit={(e) => {
@@ -106,8 +107,8 @@ export function RemoteSection() {
                 setLink(e.target.value);
                 setError(null);
               }}
-              aria-label="Link from bloks-server"
-              placeholder="Paste a link from bloks-server"
+              aria-label={t("remoteSection.linkFromBloksServer")}
+              placeholder={t("remoteSection.pasteALinkFromBloks")}
               autoComplete="off"
               spellCheck={false}
               className={cn("h-8 min-w-0 flex-1 text-body", link && "font-mono")}
@@ -121,10 +122,10 @@ export function RemoteSection() {
           <details className="group mt-2.5">
             <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded text-small text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
               <ChevronRight size={12} className="transition-transform duration-150 group-open:rotate-90" />
-              How
+              {t("remoteSection.how")}
             </summary>
             <p className="mt-1.5 max-w-[60ch] pl-4 text-pretty text-small leading-relaxed text-muted-foreground">
-              Install <Code>bloks-server</Code> on a computer that stays on. Run <Code>bloks-server pair</Code> there and
+              Install <Code>{t("remoteSection.bloksServer")}</Code> on a computer that stays on. Run <Code>{t("remoteSection.bloksServerPair")}</Code> there and
               paste the link it prints. Your agents then keep working when {thisComputer()} sleeps.
             </p>
           </details>

@@ -34,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { confirm } from "@/components/ui/confirm";
 import { stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export type ReplyDraft = { id?: string; author: string; excerpt: string };
 
@@ -329,9 +330,9 @@ export function MessageActionBar({
 
   const react = onReact ? (
     <DropdownMenu modal={false} open={menu === "react"} onOpenChange={toggle("react")}>
-      <Tip label="React" quiet={menu === "react" || settling === "react"}>
+      <Tip label={t("messageActions.react")} quiet={menu === "react" || settling === "react"}>
         <DropdownMenuTrigger asChild>
-          <Verb label="React" {...settled} className={look === "pill" ? "rounded-full" : undefined}>
+          <Verb label={t("messageActions.react")} {...settled} className={look === "pill" ? "rounded-full" : undefined}>
             <SmilePlus size={size} strokeWidth={1.8} />
           </Verb>
         </DropdownMenuTrigger>
@@ -367,9 +368,9 @@ export function MessageActionBar({
       {react}
       {more.length > 0 && (
         <DropdownMenu modal={false} open={menu === "more"} onOpenChange={toggle("more")}>
-          <Tip label="More" quiet={menu === "more" || settling === "more"}>
+          <Tip label={t("messageActions.more")} quiet={menu === "more" || settling === "more"}>
             <DropdownMenuTrigger asChild>
-              <Verb label="More actions" {...settled}>
+              <Verb label={t("messageActions.moreActions")} {...settled}>
                 <MoreHorizontal size={size} strokeWidth={1.8} />
               </Verb>
             </DropdownMenuTrigger>
@@ -502,7 +503,7 @@ export function ReplyChip({ draft, onClear }: { draft: ReplyDraft; onClear: () =
       <button
         onClick={onClear}
         className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
-        aria-label="Cancel reply"
+        aria-label={t("messageActions.cancelReply")}
       >
         <X size={13} />
       </button>
@@ -543,7 +544,7 @@ export function ForwardDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[70vh] w-full max-w-[400px] flex-col gap-0 overflow-hidden p-0">
         <div className="flex h-[52px] shrink-0 items-center border-b px-5">
-          <DialogTitle className="text-lead">Forward to…</DialogTitle>
+          <DialogTitle className="text-lead">{t("messageActions.forwardTo")}</DialogTitle>
         </div>
         <div className="border-b bg-muted/40 px-5 py-2.5">
           <div className="line-clamp-2 text-small text-muted-foreground">
@@ -563,7 +564,7 @@ export function ForwardDialog({
               <span className="flex-1 truncate text-ui font-medium text-foreground">
                 {room.name}
               </span>
-              {sent === room.id && <span className="text-small text-success">Sent</span>}
+              {sent === room.id && <span className="text-small text-success">{t("messageActions.sent")}</span>}
             </button>
           ))}
           {agents.map((bot) => (
@@ -583,7 +584,7 @@ export function ForwardDialog({
                   </span>
                 )}
               </span>
-              {sent === bot.id && <span className="text-small text-success">Sent</span>}
+              {sent === bot.id && <span className="text-small text-success">{t("messageActions.sent")}</span>}
             </button>
           ))}
         </div>

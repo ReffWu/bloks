@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Reach } from "./reach";
+import { t } from "@/lib/i18n";
 
 export function ReachMenu({
   blok,
@@ -94,7 +95,7 @@ export function ReachMenu({
       <DropdownMenuContent side="top" align="start" sideOffset={6} className="w-[280px] max-w-[calc(100vw-24px)]">
         {answering.length > 1 && (
           <>
-            <DropdownMenuLabel>Who answers</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("reachMenu.whoAnswers")}</DropdownMenuLabel>
             {choices.map((c) => (
               <DropdownMenuItem
                 key={c.label}
@@ -115,13 +116,13 @@ export function ReachMenu({
             <DropdownMenuSeparator />
           </>
         )}
-        <DropdownMenuLabel>Ask someone</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("reachMenu.askSomeone")}</DropdownMenuLabel>
         {answering.map((m) => (
           <DropdownMenuItem key={m.id} onSelect={() => onMention(m.name)} className="[&_svg]:text-inherit">
             <AgentAvatar bot={m} size={16} className={cn(!m.avatarAt && "rounded-[5px]")} />
             <span className="min-w-0 flex-1 truncate">{m.name}</span>
             {m.id === lead?.id && answering.length > 1 && (
-              <span className="flex text-brand-ink" title="Lead">
+              <span className="flex text-brand-ink" title={t("reachMenu.lead")}>
                 <Crown size={12} />
               </span>
             )}

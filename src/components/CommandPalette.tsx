@@ -44,6 +44,7 @@ import { openWorkspaceDialog, useWorkspaces } from "@/lib/workspaces";
 import type { WorkspaceInfo } from "@/types/bridge";
 import { WorkspaceMark } from "./WorkspaceMark";
 import { goToWorkspace } from "./WorkspaceSwitcher";
+import { t } from "@/lib/i18n";
 
 interface MessageHit {
   threadId: string;
@@ -394,7 +395,7 @@ export function CommandPalette() {
     >
       <div
         role="dialog"
-        aria-label="Search"
+        aria-label={t("common.search")}
         className={cn(
           "flex max-h-[min(560px,64vh)] w-[680px] max-w-[92vw] flex-col overflow-hidden rounded-2xl border bg-popover shadow-2xl shadow-(color:--shadow-color)",
           settles && "animate-pop-in",
@@ -405,7 +406,7 @@ export function CommandPalette() {
           ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search chats, messages and commands"
+          aria-label={t("commandPalette.searchChatsMessagesAndCommands")}
           role="combobox"
           aria-expanded
           aria-controls="palette-results"
@@ -424,13 +425,13 @@ export function CommandPalette() {
               if (n < Math.min(chats.length, RECENT)) (e.preventDefault(), activate(n));
             }
           }}
-          placeholder="Search chats, messages and commands"
+          placeholder={t("commandPalette.searchChatsMessagesAndCommands")}
           className="h-14 w-full shrink-0 bg-transparent px-5 text-lead text-foreground outline-none placeholder:text-muted-foreground"
         />
 
         <div ref={listRef} id="palette-results" role="listbox" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {chats.length > 0 && (
-            <Section label="Chats">
+            <Section label={t("commandPalette.chats")}>
               {chats.map((chat, i) =>
                 chat.kind === "agent"
                   ? row(
@@ -451,13 +452,13 @@ export function CommandPalette() {
             </Section>
           )}
           {commands.length > 0 && (
-            <Section label="Actions">
+            <Section label={t("commandPalette.actions")}>
               {commands.map((c, i) => command(commandsAt + i, c))}
             </Section>
           )}
-          {goTo.length > 0 && <Section label="Go to">{goTo.map((c, i) => command(goToAt + i, c))}</Section>}
+          {goTo.length > 0 && <Section label={t("commandPalette.goTo")}>{goTo.map((c, i) => command(goToAt + i, c))}</Section>}
           {pages.length > 0 && (
-            <Section label="Settings">
+            <Section label={t("common.settings")}>
               {pages.map((page, i) => {
                 const Icon = page.icon;
                 return row(pagesAt + i, <Icon size={16} />, page.label, page.description);
@@ -465,7 +466,7 @@ export function CommandPalette() {
             </Section>
           )}
           {hits.length > 0 && (
-            <Section label="Messages">
+            <Section label={t("commandPalette.messages")}>
               {hits.map((hit, i) =>
                 row(
                   hitsAt + i,

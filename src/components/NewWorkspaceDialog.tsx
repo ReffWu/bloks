@@ -27,6 +27,7 @@ import { MarkActions, MarkPicker } from "./MarkPicker";
 import { WorkspaceMark } from "./WorkspaceMark";
 import { NeedsTeam } from "./TeamLock";
 import { askYourName, ensureYourName } from "./YourNameDialog";
+import { t } from "@/lib/i18n";
 
 type Kind = "business" | "custom";
 
@@ -170,8 +171,8 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
           take(30);
         }}
       >
-        <DialogTitle className="text-balance">New workspace</DialogTitle>
-        <DialogDescription className="mt-1 text-pretty">Its own agents, memory, keys and rooms.</DialogDescription>
+        <DialogTitle className="text-balance">{t("newWorkspaceDialog.newWorkspace")}</DialogTitle>
+        <DialogDescription className="mt-1 text-pretty">{t("newWorkspaceDialog.itsOwnAgentsMemoryKeys")}</DialogDescription>
 
         <form
           className="mt-5 flex flex-col gap-4"
@@ -185,7 +186,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
               here, every new workspace is one with a name of its own */}
           {!hasBusiness && (
             <Segmented<Kind>
-              aria-label="Kind"
+              aria-label={t("newWorkspaceDialog.kind")}
               value={kind}
               onChange={(next) => {
                 setKind(next);
@@ -201,7 +202,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
             />
           )}
 
-          <Field label="Name" htmlFor="new-workspace-name" error={nameError}>
+          <Field label={t("common.name")} htmlFor="new-workspace-name" error={nameError}>
             <Input
               id="new-workspace-name"
               ref={nameField}
@@ -209,7 +210,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
               maxLength={40}
               autoComplete="off"
               spellCheck={false}
-              placeholder={kind === "business" ? "Business" : "Okafor Studio"}
+              placeholder={kind === "business" ? t("newWorkspaceDialog.business") : t("newWorkspaceDialog.okaforStudio")}
               disabled={busy}
               onChange={(e) => {
                 setName(e.target.value);
@@ -221,12 +222,12 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
           </Field>
 
           <Field
-            label="Who uses it"
+            label={t("newWorkspaceDialog.whoUsesIt")}
             error={error?.place === "team" ? error.text : null}
-            note={!teamOpen ? <NeedsTeam /> : team ? "You'll invite people next." : null}
+            note={!teamOpen ? <NeedsTeam /> : team ? t("newWorkspaceDialog.youllInvitePeopleNext") : null}
           >
             <Segmented<"solo" | "team">
-              aria-label="Who uses it"
+              aria-label={t("newWorkspaceDialog.whoUsesIt")}
               value={team && teamOpen ? "team" : "solo"}
               onChange={(next) => {
                 setTeam(next === "team" && teamOpen);
@@ -239,7 +240,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
             />
           </Field>
 
-          <Field label="Mark" error={error?.place === "mark" ? error.text : markWorn ? "Another workspace has that mark. Choose another." : null}>
+          <Field label={t("newWorkspaceDialog.mark")} error={error?.place === "mark" ? error.text : markWorn ? "Another workspace has that mark. Choose another." : null}>
             {/* how it will look in the switcher, chosen right beside it */}
             <div className="rounded-[14px] border bg-sidebar/60 p-3">
               <div className="mb-2.5 flex min-w-0 items-center gap-3 pl-0.5">
@@ -271,14 +272,14 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
 
           <div className="mt-1 flex items-center justify-end gap-2">
             <Button type="button" variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             {/* off until it would work; while it works it stays lit with
                 its spinner, and a second press is the same workspace */}
-            <Button type="submit" disabled={busy ? false : !ready} aria-disabled={busy || undefined} aria-label={busy ? "Creating" : undefined} className="min-w-[92px]">
+            <Button type="submit" disabled={busy ? false : !ready} aria-disabled={busy || undefined} aria-label={busy ? t("newWorkspaceDialog.creating") : undefined} className="min-w-[92px]">
               {/* both in one cell, so the button keeps its width either way */}
               <span className="grid place-items-center">
-                <span className={cn("col-start-1 row-start-1", busy && "invisible")}>Create</span>
+                <span className={cn("col-start-1 row-start-1", busy && "invisible")}>{t("newWorkspaceDialog.create")}</span>
                 {busy && <Loader2 size={15} className="col-start-1 row-start-1 animate-spin" aria-hidden />}
               </span>
             </Button>

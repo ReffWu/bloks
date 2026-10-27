@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { readYourName, saveYourName } from "@/lib/yourName";
+import { t } from "@/lib/i18n";
 
 export interface AskNameOptions {
   /** Who will see it, in a sentence: "Everyone you invite to Okafor Studio sees it." */
@@ -147,9 +148,9 @@ function NameQuestion({ asking: q }: { asking: Asking }) {
         field.current?.select();
       }}
     >
-      <DialogTitle className="text-pretty pr-6">What should people call you?</DialogTitle>
+      <DialogTitle className="text-pretty pr-6">{t("yourNameDialog.whatShouldPeopleCallYou")}</DialogTitle>
       <DialogDescription className="text-pretty">
-        {q.why ?? "Everyone you let in sees this name."} Your agents use it too, and you can change it any time in Settings.
+        {q.why ?? t("yourNameDialog.everyoneYouLetInSees")} Your agents use it too, and you can change it any time in Settings.
       </DialogDescription>
       <form
         className="mt-4 flex flex-col gap-4"
@@ -164,8 +165,8 @@ function NameQuestion({ asking: q }: { asking: Asking }) {
             value={name}
             maxLength={40}
             autoComplete="name"
-            aria-label="Your name"
-            placeholder="Your name"
+            aria-label={t("common.yourName")}
+            placeholder={t("common.yourName")}
             aria-invalid={error ? true : undefined}
             onChange={(e) => {
               typed.current = true;
@@ -182,10 +183,10 @@ function NameQuestion({ asking: q }: { asking: Asking }) {
         </div>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" disabled={busy} onClick={() => q.answer(null)}>
-            Not now
+            {t("common.notNow")}
           </Button>
           <Button type="submit" disabled={!clean || busy} className="min-w-[96px]">
-            {busy ? <Loader2 size={14} className="animate-spin" /> : "Continue"}
+            {busy ? <Loader2 size={14} className="animate-spin" /> : t("common.continue")}
           </Button>
         </div>
       </form>

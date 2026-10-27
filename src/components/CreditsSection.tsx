@@ -23,6 +23,7 @@ import { memberRows, parseCap, type BloksAiStatus, type MemberRow } from "@/lib/
 import { SecretField } from "./ConnectionKit";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import { TeamSignInNotice } from "./TeamSignInNotice";
+import { t } from "@/lib/i18n";
 
 const CLOUD_KEY = /^blok_live_[0-9a-f]{32}$/;
 
@@ -118,38 +119,38 @@ export function BloksAiSettings({ ai, keyHere = true }: { ai: BloksAi; keyHere?:
   return (
     <>
       {status.teamSignInWarning && <TeamSignInNotice className="mb-6" />}
-      <SettingsGroup title="Bloks AI" footnote={status.fromEnvironment ? "This machine came with its own Bloks AI token." : undefined}>
+      <SettingsGroup title="Bloks AI" footnote={status.fromEnvironment ? t("creditsSection.thisMachineCameWithIts") : undefined}>
         {status.needsKey && keyHere && (
-          <SettingRow label="Connect Bloks AI" description="The same key you activated Cloud with." rowId="connect-bloks-ai" error={ai.error}>
+          <SettingRow label={t("creditsSection.connectBloksAi")} description={t("creditsSection.theSameKeyYouActivated")} rowId="connect-bloks-ai" error={ai.error}>
             <div className="mt-3 flex items-start gap-2">
               <SecretField
                 id="credits-key"
-                label="Bloks key"
+                label={t("creditsSection.bloksKey")}
                 quietLabel
                 value={key}
                 onChange={(value) => setKey(value)}
                 shape={CLOUD_KEY}
-                hint="Starts with blok_live_. It's in your confirmation email."
+                hint={t("creditsSection.startsWithBlokLiveIts")}
                 placeholder="blok_live_..."
                 onEnter={connect}
                 className="min-w-0 flex-1"
               />
               <Button size="sm" variant="brand" className="h-8" disabled={ai.busy || !CLOUD_KEY.test(key.trim())} onClick={connect}>
-                {ai.busy ? <Loader2 size={13} className="animate-spin" /> : "Connect"}
+                {ai.busy ? <Loader2 size={13} className="animate-spin" /> : t("common.connect")}
               </Button>
             </div>
           </SettingRow>
         )}
         <SettingRow
-          label="Let background work use Bloks AI"
-          info="The nightly memory tidy, skill suggestions and quiet compaction of idle conversations run without anybody asking at that moment. Off, they skip agents on Bloks AI."
-          description="Off unless you turn it on. Work you ask for always can."
+          label={t("creditsSection.letBackgroundWorkUseBloks")}
+          info={t("creditsSection.theNightlyMemoryTidySkill")}
+          description={t("creditsSection.offUnlessYouTurnIt")}
           error={status.needsKey ? null : ai.error}
-          control={<Switch aria-label="Let background work use Bloks AI" checked={status.background} disabled={ai.busy} onCheckedChange={ai.setBackground} />}
+          control={<Switch aria-label={t("creditsSection.letBackgroundWorkUseBloks")} checked={status.background} disabled={ai.busy} onCheckedChange={ai.setBackground} />}
         />
       </SettingsGroup>
       {rows.length > 0 && (
-        <SettingsGroup title="Your team this month" footnote="A daily cap is a share of the month one person may use in a day. Empty is no cap.">
+        <SettingsGroup title={t("creditsSection.yourTeamThisMonth")} footnote={t("creditsSection.aDailyCapIsA")}>
           {rows.map((row) => (
             <MemberCapRow key={row.member} row={row} onSave={ai.setCap} />
           ))}
@@ -197,7 +198,7 @@ function MemberCapRow({ row, onSave }: { row: MemberRow; onSave: (member: string
                 setProblem(null);
               }}
               onKeyDown={(e) => e.key === "Enter" && save()}
-              placeholder="No cap"
+              placeholder={t("creditsSection.noCap")}
               aria-label={`Daily cap for ${row.name}, as a percent of the month`}
               aria-invalid={cap === undefined}
               className="h-8 w-24 pr-7 tabular-nums"
@@ -205,7 +206,7 @@ function MemberCapRow({ row, onSave }: { row: MemberRow; onSave: (member: string
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-small text-muted-foreground">%</span>
           </div>
           <Button size="sm" variant="secondary" className="h-8" disabled={!changed || saving} onClick={save}>
-            {saving ? <Loader2 size={13} className="animate-spin" /> : "Save"}
+            {saving ? <Loader2 size={13} className="animate-spin" /> : t("common.save")}
           </Button>
         </div>
       }

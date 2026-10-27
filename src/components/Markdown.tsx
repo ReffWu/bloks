@@ -27,6 +27,7 @@ import { TableScroll } from "./TableScroll";
 import { SharedFileLink } from "./Artifacts";
 import { GenUIBlock, useInsideGenUi } from "./genui/GenUIBlock";
 import { isOpenUiLang } from "@/lib/genui/schema";
+import { t } from "@/lib/i18n";
 
 /** The gap every block keeps from the one above it, tighter under a
  * heading, and none at all for the first. */
@@ -320,8 +321,8 @@ function MarkdownCode({ block, highlight }: { block: CodeBlock; highlight: strin
         <button
           onClick={toggleWrap}
           aria-pressed={wrap}
-          aria-label="Wrap long lines"
-          title={wrap ? "Stop wrapping long lines" : "Wrap long lines"}
+          aria-label={t("markdown.wrapLongLines")}
+          title={wrap ? t("markdown.stopWrappingLongLines") : t("markdown.wrapLongLines")}
           className={cn(CODE_BUTTON, "w-6 justify-center px-0", wrap && "bg-foreground/[0.06] text-foreground")}
         >
           <CornerDownLeft size={13} strokeWidth={1.8} />
@@ -339,7 +340,7 @@ function MarkdownCode({ block, highlight }: { block: CodeBlock; highlight: strin
           ) : (
             <Copy size={13} strokeWidth={1.8} />
           )}
-          <span aria-live="polite">{copied ? "Copied" : "Copy"}</span>
+          <span aria-live="polite">{copied ? t("common.copied") : t("common.copy")}</span>
         </button>
       </div>
       <pre
@@ -423,7 +424,7 @@ function MarkdownList({
               {item.task && <Check size={10} strokeWidth={3} />}
             </span>
           )}
-          {item.task !== null && <span className="sr-only">{item.task ? "Done: " : "To do: "}</span>}
+          {item.task !== null && <span className="sr-only">{item.task ? t("markdown.done") : t("markdown.toDo")}</span>}
           <span className={cn(item.task && "text-muted-foreground")}>
             {linesOf(item.lines, `${keyBase}-${i}`, highlight, names)}
           </span>

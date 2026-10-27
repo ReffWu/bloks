@@ -44,6 +44,7 @@ import {
   useSideColumn,
   type SideColumnSize,
 } from "@/lib/sideColumn";
+import { t } from "@/lib/i18n";
 
 /** How long a fold takes, with the motion class below; the column's
  * contents leave the page once it is over. */
@@ -169,7 +170,7 @@ function ColumnEdge({ id, size, width, resizing }: { id: string; size: SideColum
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize sidebar"
+      aria-label={t("sideColumn.resizeSidebar")}
       aria-controls={`side-column-${id}`}
       aria-valuemin={size.min}
       aria-valuemax={size.max}

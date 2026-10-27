@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { isHostedWindow } from "@/lib/waking";
 import { api, useStore } from "@/state/store";
+import { t } from "@/lib/i18n";
 
 type SetupTable = Record<string, { install: string; signIn?: string }>;
 
@@ -101,7 +102,7 @@ export function EngineOutdatedActions({
   const [problem, setProblem] = useState<string | null>(null);
   if (local === null) return null;
   if (!local) {
-    return <div className="mt-1.5 text-small text-muted-foreground">Update it on the computer Bloks runs on.</div>;
+    return <div className="mt-1.5 text-small text-muted-foreground">{t("engineSetup.updateItOnTheComputer")}</div>;
   }
   const update = async () => {
     setBusy(true);
@@ -122,7 +123,7 @@ export function EngineOutdatedActions({
       <div>
         <Button size="sm" variant="secondary" onClick={() => void update()} disabled={busy}>
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-          {busy ? "Updating…" : `Update ${name}`}
+          {busy ? t("engineSetup.updating") : `Update ${name}`}
         </Button>
       </div>
       {problem && (
@@ -192,7 +193,7 @@ export function EnginePathControl({
               }}
               className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
             >
-              Change
+              {t("common.change")}
             </button>
             <button
               type="button"
@@ -200,7 +201,7 @@ export function EnginePathControl({
               onClick={() => void put(null)}
               className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
             >
-              {busy ? "Saving…" : `Use ${command} from PATH`}
+              {busy ? t("engineSetup.saving") : `Use ${command} from PATH`}
             </button>
           </>
         ) : (
@@ -245,10 +246,10 @@ export function EnginePathControl({
           className="h-8 min-w-0 flex-1 font-mono text-small"
         />
         <Button variant="secondary" size="sm" className="h-8" disabled={busy || !value.trim()} onClick={() => void put(value.trim())}>
-          {busy ? <Loader2 size={13} className="animate-spin" /> : "Save"}
+          {busy ? <Loader2 size={13} className="animate-spin" /> : t("common.save")}
         </Button>
         <Button variant="ghost" size="sm" className="h-8" disabled={busy} onClick={() => setEditing(false)}>
-          Cancel
+          {t("common.cancel")}
         </Button>
       </div>
       {error && (
@@ -273,7 +274,7 @@ export function CopyCommand({ command, className }: { command: string; className
         "flex w-full items-center gap-2 rounded-lg bg-muted px-2.5 py-1.5 text-left transition-colors duration-150 hover:bg-accent active:scale-[0.99]",
         className,
       )}
-      title="Copy to clipboard"
+      title={t("engineSetup.copyToClipboard")}
     >
       <code className="min-w-0 flex-1 truncate font-mono text-small text-foreground">{command}</code>
       {copied ? <Check size={13} className="shrink-0 text-success" /> : <Copy size={13} className="shrink-0 text-muted-foreground" />}
@@ -370,9 +371,9 @@ export function EngineSetupActions({
           <div className="flex items-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => void install()} disabled={busy}>
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-              {busy ? "Installing…" : `Install ${name}`}
+              {busy ? t("engineSetup.installing") : `Install ${name}`}
             </Button>
-            {busy && <span className="text-small text-muted-foreground">Can take a minute.</span>}
+            {busy && <span className="text-small text-muted-foreground">{t("engineSetup.canTakeAMinute")}</span>}
           </div>
         ) : (
           command && <CopyCommand command={command} />
@@ -386,7 +387,7 @@ export function EngineSetupActions({
                 className="mt-1 flex items-center gap-1 text-small text-muted-foreground hover:text-foreground"
               >
                 <ChevronRight size={11} className={cn("transition-transform duration-150", showLog && "rotate-90")} />
-                {showLog ? "Hide" : "Show"} details
+                {showLog ? t("common.hide") : t("engineSetup.show")} details
               </button>
             )}
             {showLog && (
@@ -418,7 +419,7 @@ export function EngineSetupActions({
         <HostedPlanNote kind={kind} />
         {signingIn === "opened" && (
           <div className="text-small leading-relaxed text-muted-foreground">
-            Finish in the Terminal window that opened. This updates on its own.
+            {t("engineSetup.finishInTheTerminalWindow")}
           </div>
         )}
         {signingIn === "manual" && (
@@ -490,10 +491,10 @@ export function EngineUpdateNote({ kind, name, className }: { kind: string; name
       {local ? (
         <Button size="sm" variant="secondary" className="mt-1.5 h-6 px-2 text-small" disabled={busy} onClick={() => void run()}>
           {busy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-          {busy ? "Updating…" : `Update ${name}`}
+          {busy ? t("engineSetup.updating") : `Update ${name}`}
         </Button>
       ) : (
-        <div className="mt-1 text-muted-foreground">Update it on the computer Bloks runs on.</div>
+        <div className="mt-1 text-muted-foreground">{t("engineSetup.updateItOnTheComputer")}</div>
       )}
       {note && <div className="mt-1 text-muted-foreground">{note}</div>}
     </div>

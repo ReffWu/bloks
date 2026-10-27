@@ -222,7 +222,7 @@ test("the page's links to a plan land on the Plans group", () => {
   const source = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
   const limits = source("../src/components/usage/UsageLimits.tsx");
   const page = source("../src/components/UsagePage.tsx");
-  assert.match(limits, /<Group id=\{PLANS_ID\} title="Plans"/, "the Plans group lost its anchor");
+  assert.match(limits, /<Group id=\{PLANS_ID\} title=\{t\("usageLimits.plans"\)\}/, "the Plans group lost its anchor");
   assert.match(page, /getElementById\(PLANS_ID\)/, "the page no longer scrolls to the Plans group");
   // one reading for the page, so the headline and Limits never disagree
   assert.equal((limits.match(/"\/api\/plan-usage"/g) ?? []).length, 1);

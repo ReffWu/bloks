@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown } from "@/components/icons";
 import { X } from "@/components/icons";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 /** How much a notice is asking for. Urgent ones block the work. */
 export type NoticeTone = "urgent" | "warn" | "info";
@@ -129,8 +130,8 @@ function Row({ notice: n }: { notice: Notice }) {
           <button
             type="button"
             onClick={n.onDismiss}
-            aria-label={n.dismissLabel ?? "Dismiss"}
-            title={n.dismissLabel ?? "Dismiss"}
+            aria-label={n.dismissLabel ?? t("common.dismiss")}
+            title={n.dismissLabel ?? t("common.dismiss")}
             className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground active:scale-95"
           >
             <X size={13} />
@@ -163,7 +164,7 @@ export function NoticeTray({ notices, className }: { notices: Notice[]; classNam
   if (!sorted.length) return null;
   return (
     <section
-      aria-label="Notices"
+      aria-label={t("tray.notices")}
       className={cn(
         "relative mx-3 max-h-[45vh] overflow-y-auto overscroll-contain rounded-t-2xl border border-b-0 bg-card pb-3 shadow-[0_-1px_3px_var(--shadow-color)] sm:mx-4",
         className,
@@ -181,7 +182,7 @@ export function NoticeTray({ notices, className }: { notices: Notice[]; classNam
           aria-expanded={expanded}
           className="flex h-8 w-full items-center gap-1.5 border-t border-border/70 pl-[38px] text-left text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
         >
-          {expanded ? "Show less" : `+${hidden} more`}
+          {expanded ? t("tray.showLess") : `+${hidden} more`}
           <ChevronDown
             size={12}
             className={cn("transition-transform duration-200 ease-out", expanded && "rotate-180")}

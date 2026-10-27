@@ -39,6 +39,7 @@ import { openWorkspaceDialog } from "@/lib/workspaces";
 import { WakingStrip } from "@/components/WakingStrip";
 import { HostingMoveToasts } from "@/components/hosting/HostingMoveToasts";
 import { MovedBanner } from "@/components/hosting/MovedBanner";
+import { t } from "@/lib/i18n";
 
 /**
  * Whatever went wrong, said over every view as an error toast. It used to
@@ -169,21 +170,21 @@ function Shell() {
             // loaded, and truly empty: the next step, not a spinner that
             // never stops
             <>
-              <div className="text-lead font-medium text-foreground">No agents yet</div>
+              <div className="text-lead font-medium text-foreground">{t("app.noAgentsYet")}</div>
               <div className="max-w-[300px] text-center text-body leading-relaxed">
-                An agent has a job, like researcher or writer. Make your first one.
+                {t("app.anAgentHasAJob")}
               </div>
-              <Button onClick={() => dispatch({ type: "toggleNewAgent", open: true })}>New agent</Button>
+              <Button onClick={() => dispatch({ type: "toggleNewAgent", open: true })}>{t("app.newAgent")}</Button>
             </>
           ) : (
             <>
               <Loader2 size={20} className="animate-spin" />
-              <div className="text-ui">{state.connected ? "Loading your agents…" : "Connecting to Bloks…"}</div>
+              <div className="text-ui">{state.connected ? t("app.loadingYourAgents") : t("app.connectingToBloks")}</div>
               {/* a developer hint; someone who installed the app has no
                   command to run and should not be told one */}
               {!state.connected && import.meta.env.DEV && (
                 <div className="text-small">
-                  Start it with <code className="rounded bg-muted px-1.5 py-0.5">pnpm dev:server</code>
+                  Start it with <code className="rounded bg-muted px-1.5 py-0.5">{t("app.pnpmDevServer")}</code>
                 </div>
               )}
             </>

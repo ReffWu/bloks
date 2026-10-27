@@ -20,6 +20,7 @@ import { askerWords, foldWords, type Asker, type TurnFold } from "@/lib/turnFold
 import { kindOf } from "@/lib/tool-summary";
 import { goalNoteForPerson } from "@/lib/goalNote";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 /** How recent a fold's newest row must be for it to count as a turn
  * that ended just now: the last call can come well before the reply. */
@@ -97,7 +98,7 @@ export function TurnFoldLine({
           <>
             <button
               onClick={() => onOpenExchange?.(linked)}
-              title="Open the exchange"
+              title={t("turnFold.openTheExchange")}
               className="flex min-w-0 max-w-[50%] shrink-0 items-center gap-1.5 rounded-md py-0.5 transition-colors duration-150 hover:text-foreground"
             >
               {askedBy && <AgentAvatar bot={askedBy} size={16} className="shrink-0" />}
@@ -116,7 +117,7 @@ export function TurnFoldLine({
           {messaged.length > 0 && (
             <span className="flex shrink-0 items-center gap-1" title={`Messaged ${names.join(", ")}`}>
               <span aria-hidden>·</span>
-              <span className="sr-only">messaged</span>
+              <span className="sr-only">{t("turnFold.messaged")}</span>
               {messaged.map((peer) => peer.bot && <AgentAvatar key={peer.peerId} bot={peer.bot} size={16} />)}
               {/* one is named; several are faces, and names where a face is gone */}
               {messaged.length === 1 ? (
@@ -133,7 +134,7 @@ export function TurnFoldLine({
               )}
             </span>
           )}
-          {fold.replied && <span className="shrink-0">· replied</span>}
+          {fold.replied && <span className="shrink-0">{t("turnFold.replied")}</span>}
           <ChevronRight size={12} className={cn("shrink-0 transition-transform duration-200", open && "rotate-90")} />
         </button>
         {/* The same work again, laid out in time, beside the chat so the
@@ -145,10 +146,10 @@ export function TurnFoldLine({
             <span aria-hidden>·</span>
             <button
               onClick={onOpenTrace}
-              title="See this turn's timeline"
+              title={t("turnFold.seeThisTurnsTimeline")}
               className="rounded-md py-0.5 transition-colors duration-150 hover:text-foreground"
             >
-              Timeline
+              {t("turnFold.timeline")}
             </button>
           </span>
         )}

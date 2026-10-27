@@ -31,6 +31,7 @@ import {
   uploadingPending,
   type PendingImage,
 } from "@/lib/pendingImages";
+import { t } from "@/lib/i18n";
 
 const STAGE: Record<PendingImage["stage"], string> = {
   preparing: "Preparing",
@@ -101,7 +102,7 @@ export function AttachmentChip({
         {stage ? STAGE[stage] : shown ? formatBytes(shown.bytes) : ""}
       </span>
       {stage === "failed" && onRetry && (
-        <button type="button" onClick={onRetry} className={chipButton} aria-label={`Retry ${name}`} title="Retry">
+        <button type="button" onClick={onRetry} className={chipButton} aria-label={`Retry ${name}`} title={t("composerAttachments.retry")}>
           <RefreshCw size={12} />
         </button>
       )}

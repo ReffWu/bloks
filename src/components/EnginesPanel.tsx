@@ -21,6 +21,7 @@ import { EngineReport } from "./EngineReport";
 import { EnginePauses } from "./EnginePauses";
 import { EngineOutdatedActions, EnginePathControl, EngineSetupActions, EngineUpdateNote } from "./EngineSetup";
 import { TeamSignInNotice } from "./TeamSignInNotice";
+import { t } from "@/lib/i18n";
 
 const AUTH_NOTE: Record<ProviderRow["auth"], string> = {
   oauth: "Browser sign-in",
@@ -52,13 +53,13 @@ function KeyForm({ provider, onDone }: { provider: ProviderRow; onDone: () => vo
             if (e.key === "Enter") save();
             if (e.key === "Escape") onDone();
           }}
-          placeholder={provider.keyPrefix ? `${provider.keyPrefix}…` : "Paste your key"}
+          placeholder={provider.keyPrefix ? `${provider.keyPrefix}…` : t("enginesPanel.pasteYourKey")}
           autoComplete="off"
           className="h-8 text-body"
         />
         <Button variant="secondary" onClick={save} disabled={!key.trim()} className="w-[72px]">
           <Check size={13} />
-          Save
+          {t("common.save")}
         </Button>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2">
@@ -71,7 +72,7 @@ function KeyForm({ provider, onDone }: { provider: ProviderRow; onDone: () => vo
           rel="noreferrer"
           className="flex shrink-0 items-center gap-1 text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
         >
-          Get one <ExternalLink size={10} />
+          {t("enginesPanel.getOne")} <ExternalLink size={10} />
         </a>
       </div>
     </div>
@@ -140,18 +141,18 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
             {/* installed without a login cannot answer, so it is not
                 "Connected", however green that would look */}
             {down
-              ? (instance!.snapshot.reason ?? "Unavailable")
+              ? (instance!.snapshot.reason ?? t("enginesPanel.unavailable"))
               : provider.needsSignIn
-                ? "Installed, not signed in"
+                ? t("enginesPanel.installedNotSignedIn")
                 : provider.connected
-                  ? "Connected"
+                  ? t("common.connected")
                   : AUTH_NOTE[provider.auth]}
           </div>
         </div>
 
         {provider.auth === "cli" ? (
           <span className="shrink-0 text-small text-muted-foreground">
-            {provider.connected || provider.outdated ? "" : "Not found"}
+            {provider.connected || provider.outdated ? "" : t("enginesPanel.notFound")}
           </span>
         ) : provider.connected ? (
           <Button
@@ -160,20 +161,20 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
             onClick={() => dispatch({ type: "disconnectProvider", kind: provider.kind })}
             className="shrink-0 text-muted-foreground hover:text-destructive"
           >
-            Disconnect
+            {t("common.disconnect")}
           </Button>
         ) : (
           <Button variant="secondary" size="sm" onClick={act} disabled={signingIn} className="shrink-0">
             {signingIn ? (
               <Loader2 size={13} className="animate-spin" />
             ) : provider.auth === "oauth" ? (
-              "Sign in"
+              t("enginesPanel.signIn")
             ) : provider.auth === "none" ? (
-              "Enable"
+              t("enginesPanel.enable")
             ) : (
               <>
                 <Plus size={13} />
-                Key
+                {t("enginesPanel.key")}
               </>
             )}
           </Button>
@@ -191,7 +192,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
           onClick={() => dispatch({ type: "openUsage", section: "limits" })}
           className="ml-10 mt-1 text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
         >
-          Monthly spending limit
+          {t("enginesPanel.monthlySpendingLimit")}
         </button>
       )}
       {provider.auth === "cli" && provider.outdated && (
@@ -274,21 +275,21 @@ export function EnginesPanel() {
       <div className="mb-9 overflow-hidden rounded-2xl border bg-card last:mb-0">
         <div className="px-4 pb-3 pt-4">
           <div className="flex items-baseline justify-between gap-2">
-            <div className="text-ui font-semibold text-foreground">Your engines</div>
+            <div className="text-ui font-semibold text-foreground">{t("enginesPanel.yourEngines")}</div>
             <div className="text-small text-muted-foreground">{connected} connected</div>
           </div>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-            What your agents run on. Keys stay on this machine.
+            {t("enginesPanel.whatYourAgentsRunOn")}
           </div>
         </div>
         <Group
-          title="Agents"
-          note="Can run commands and work with files."
+          title={t("common.agents")}
+          note={t("enginesPanel.canRunCommandsAndWork")}
           rows={agents}
         />
         <Group
-          title="Chat models"
-          note="Chat only. Cannot act on your computer."
+          title={t("enginesPanel.chatModels")}
+          note={t("enginesPanel.chatOnlyCannotActOn")}
           rows={chat}
         />
       </div>

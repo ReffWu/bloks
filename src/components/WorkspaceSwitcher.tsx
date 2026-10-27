@@ -45,6 +45,7 @@ import {
 } from "@/lib/workspaces";
 import type { WorkspaceInfo, WorkspacesState } from "@/types/bridge";
 import { WorkspaceMark } from "./WorkspaceMark";
+import { t } from "@/lib/i18n";
 
 /** Goes to another workspace, saying so if it cannot. */
 export async function goToWorkspace(id: string, options?: { open?: "join" }) {
@@ -134,7 +135,7 @@ function WorkspaceRow({
       ref={rowRef}
       value={ws.id}
       disabled={starting && !here}
-      aria-roledescription="Workspace, can be reordered"
+      aria-roledescription={t("workspaceSwitcher.workspaceCanBeReordered")}
       onPointerDown={(e) => onHold(e, index)}
       onKeyDown={(e) => {
         if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
@@ -176,20 +177,20 @@ function WorkspaceRow({
     >
       <WorkspaceMark mark={ws.mark} logo={ws.logo} size={24} />
       <span className="min-w-0 flex-1 truncate">{ws.name}</span>
-      {ws.lanOnly && <Wifi size={13} className="shrink-0 text-muted-foreground" aria-label="Only on its owner's network" />}
+      {ws.lanOnly && <Wifi size={13} className="shrink-0 text-muted-foreground" aria-label={t("workspaceSwitcher.onlyOnItsOwnersNetwork")} />}
       {hasWaiting(ws, current) && (
-        <span className="size-1.5 shrink-0 rounded-full bg-brand-ink" role="img" aria-label="Something is waiting" />
+        <span className="size-1.5 shrink-0 rounded-full bg-brand-ink" role="img" aria-label={t("workspaceSwitcher.somethingIsWaiting")} />
       )}
-      {ws.mute.muted && !here && <BellOff size={13} className="shrink-0 text-muted-foreground" aria-label="Muted" />}
+      {ws.mute.muted && !here && <BellOff size={13} className="shrink-0 text-muted-foreground" aria-label={t("workspaceSwitcher.muted")} />}
       {starting ? (
         <span className="flex shrink-0 items-center gap-1.5 text-small font-normal text-muted-foreground">
           <Loader2 size={12} className="animate-spin" />
-          Starting
+          {t("workspaceSwitcher.starting")}
         </span>
       ) : failed ? (
         <span className="flex shrink-0 items-center gap-1 text-small font-normal text-destructive" title={ws.problem ?? undefined}>
           <RefreshCw size={12} />
-          Couldn't start
+          {t("workspaceSwitcher.couldntStart")}
         </span>
       ) : here ? null : (
         <>
@@ -444,7 +445,7 @@ export function WorkspaceSwitcher({
         >
           <WorkspaceMark mark={current.mark} logo={current.logo} size={18} />
           <span className="min-w-0 truncate">{current.name}</span>
-          {current.mute.muted && <BellOff size={12} className="shrink-0 text-muted-foreground" aria-label="Muted" />}
+          {current.mute.muted && <BellOff size={12} className="shrink-0 text-muted-foreground" aria-label={t("workspaceSwitcher.muted")} />}
           <span className="relative flex shrink-0">
             <ChevronsUpDown size={12} strokeWidth={2} className="text-muted-foreground" />
             {/* something waiting in another workspace: the dot that says
@@ -453,7 +454,7 @@ export function WorkspaceSwitcher({
               <span
                 className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-brand-ink ring-2 ring-sidebar"
                 role="img"
-                aria-label="Something is waiting in another workspace"
+                aria-label={t("workspaceSwitcher.somethingIsWaitingInAnother")}
               />
             )}
           </span>
@@ -472,12 +473,12 @@ export function WorkspaceSwitcher({
           e.preventDefault();
         }}
       >
-        <DropdownMenuLabel className="px-2.5 pb-1.5 pt-2" title="Hold a workspace to drag it, or press Option and an arrow key">
-          Workspaces
+        <DropdownMenuLabel className="px-2.5 pb-1.5 pt-2" title={t("workspaceSwitcher.holdAWorkspaceToDrag")}>
+          {t("workspaceSwitcher.workspaces")}
         </DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={s.current}
-          aria-description="Hold a workspace and drag it to reorder, or press Option with the up or down arrow."
+          aria-description={t("workspaceSwitcher.holdAWorkspaceAndDrag")}
           onValueChange={(id) => {
             const target = s.workspaces.find((w) => w.id === id);
             if (target && target.status !== "failed" && id !== s.current) void goToWorkspace(id);
@@ -492,14 +493,14 @@ export function WorkspaceSwitcher({
             openWorkspaceDialog("join");
           }}>
           <LogIn />
-          Join a workspace
+          {t("workspaceSwitcher.joinAWorkspace")}
         </DropdownMenuItem>
         <DropdownMenuItem className="gap-2.5 rounded-[9px] py-2 text-ui font-medium" onSelect={() => {
             toDialog.current = true;
             openWorkspaceDialog("new");
           }}>
           <Plus />
-          New workspace
+          {t("workspaceSwitcher.newWorkspace")}
         </DropdownMenuItem>
         <DropdownMenuSeparator className="mx-1 my-1.5" />
         {reach && <p className="max-w-[270px] text-pretty px-2.5 pb-1.5 pt-0.5 text-small text-muted-foreground">{reach}</p>}
@@ -508,7 +509,7 @@ export function WorkspaceSwitcher({
           onSelect={() => (onSettings ? onSettings() : store?.dispatch({ type: "toggleAppSettings", open: true, page: "workspace:general" }))}
         >
           <Settings />
-          Workspace settings
+          {t("workspaceSwitcher.workspaceSettings")}
         </DropdownMenuItem>
         {/* the plan is the person's, for every workspace here; only the
             owner's window has the page, so a joined one does not offer it */}
@@ -519,7 +520,7 @@ export function WorkspaceSwitcher({
           >
             <Sparkles />
             Plan
-            <span className="ml-auto pl-3 text-small font-normal text-muted-foreground">{s.plan === "team" ? "Bloks Team" : s.plan === "cloud" ? "Bloks Cloud" : s.plan === null ? "Self-hosted" : ""}</span>
+            <span className="ml-auto pl-3 text-small font-normal text-muted-foreground">{s.plan === "team" ? t("workspaceSwitcher.bloksTeam") : s.plan === "cloud" ? t("workspaceSwitcher.bloksCloud") : s.plan === null ? t("workspaceSwitcher.selfHosted") : ""}</span>
           </DropdownMenuItem>
         )}
         <DropdownMenuSub>
@@ -528,14 +529,14 @@ export function WorkspaceSwitcher({
             value={current.mute.muted ? "On" : undefined}
             className="gap-2.5 rounded-[9px] py-2 text-ui font-medium"
           >
-            Mute
+            {t("workspaceSwitcher.mute")}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-[230px] rounded-[14px] p-1.5">
             {muted && (
               <>
                 <DropdownMenuLabel className="px-2.5 pb-1 pt-1.5 font-normal">{muted}</DropdownMenuLabel>
                 <DropdownMenuItem className="rounded-[9px]" onSelect={() => void mute("off")}>
-                  Turn notifications back on
+                  {t("workspaceSwitcher.turnNotificationsBackOn")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="mx-1 my-1.5" />
               </>

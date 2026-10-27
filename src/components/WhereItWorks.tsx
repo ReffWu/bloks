@@ -35,6 +35,7 @@ import { cn } from "@/lib/cn";
 import { placeLine, type PlaceState, type Workplace, type WorkplaceStatus } from "@/lib/workplace";
 import { HealthLine, type Health } from "./ConnectionKit";
 import { SettingRow, SettingsSelect } from "./SettingsLayout";
+import { t } from "@/lib/i18n";
 
 interface TestCheck {
   id: string;
@@ -248,7 +249,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
 
   if (!view || !draft) {
     return (
-      <SettingRow label="Where it works" description="Where its engine runs, with its commands and files.">
+      <SettingRow label={t("whereItWorks.whereItWorks")} description={t("whereItWorks.whereItsEngineRunsWith")}>
         {error ? <p className="mt-2 text-small text-destructive">{error}</p> : <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" />}
       </SettingRow>
     );
@@ -360,16 +361,16 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
 
   return (
     <SettingRow
-      label="Where it works"
+      label={t("whereItWorks.whereItWorks")}
       description={
         savedPlace
           ? `Its engine, commands and files are ${savedPlace.kind === "ssh" ? `on ${where} over SSH` : `in ${where}`}, not on this computer.`
-          : "Its engine, commands and files are on this computer. A container keeps it apart; SSH puts it on another machine."
+          : t("whereItWorks.itsEngineCommandsAndFiles")
       }
       control={status && savedPlace && !dirty ? <HealthLine tone={TONES[status.state]} label={STATE_WORDS[status.state]} title={status.detail ?? placeLine(status, false) ?? undefined} /> : null}
     >
       <Segmented<Kind>
-        aria-label="Where it works"
+        aria-label={t("whereItWorks.whereItWorks")}
         className="mt-3 max-w-[420px]"
         value={draft.kind}
         onChange={(kind) => set({ kind })}
@@ -384,7 +385,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
       {draft.kind === "docker" && (
         <div className="mt-4 space-y-4">
           <Segmented<"image" | "container">
-            aria-label="Which container"
+            aria-label={t("whereItWorks.whichContainer")}
             size="sm"
             className="max-w-[420px]"
             value={draft.source}
@@ -396,14 +397,14 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {draft.source === "image" && (
-              <Field label="Image" htmlFor={`${ids}-image`} hint="It needs the engine installed, or Node to install it with.">
+              <Field label={t("whereItWorks.image")} htmlFor={`${ids}-image`} hint={t("whereItWorks.itNeedsTheEngineInstalled")}>
                 <Input id={`${ids}-image`} className={field} value={draft.image} spellCheck={false} onChange={(e) => set({ image: e.target.value })} />
               </Field>
             )}
             <Field
-              label={draft.source === "image" ? "Container name" : "Container"}
+              label={draft.source === "image" ? t("whereItWorks.containerName") : t("whereItWorks.container")}
               htmlFor={`${ids}-name`}
-              hint={draft.source === "image" ? "Bloks makes it, and only ever stops or removes one it made." : "Running already. Bloks only runs commands in it."}
+              hint={draft.source === "image" ? t("whereItWorks.bloksMakesItAndOnly") : t("whereItWorks.runningAlreadyBloksOnlyRuns")}
             >
               <Input id={`${ids}-name`} className={field} value={draft.name} spellCheck={false} onChange={(e) => set({ name: e.target.value })} />
             </Field>
@@ -411,9 +412,9 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
 
           {draft.source === "image" && (
             <div>
-              <div className="mb-1 text-small font-medium text-foreground">Working folder</div>
+              <div className="mb-1 text-small font-medium text-foreground">{t("common.workingFolder")}</div>
               <Segmented<"mount" | "copy">
-                aria-label="Working folder"
+                aria-label={t("common.workingFolder")}
                 size="sm"
                 className="max-w-[420px]"
                 value={draft.folder}
@@ -437,26 +438,26 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
             </div>
           )}
 
-          <Field label="Folder in the container" htmlFor={`${ids}-path`}>
+          <Field label={t("whereItWorks.folderInTheContainer")} htmlFor={`${ids}-path`}>
             <Input id={`${ids}-path`} className={field} value={draft.containerPath} spellCheck={false} onChange={(e) => set({ containerPath: e.target.value })} />
           </Field>
 
           {draft.source === "image" && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="CPUs" htmlFor={`${ids}-cpus`}>
-                  <Input id={`${ids}-cpus`} className={field} inputMode="decimal" placeholder="No limit" value={draft.cpus} onChange={(e) => set({ cpus: e.target.value })} />
+                <Field label={t("whereItWorks.cpus")} htmlFor={`${ids}-cpus`}>
+                  <Input id={`${ids}-cpus`} className={field} inputMode="decimal" placeholder={t("whereItWorks.noLimit")} value={draft.cpus} onChange={(e) => set({ cpus: e.target.value })} />
                 </Field>
-                <Field label="Memory, GB" htmlFor={`${ids}-mem`}>
-                  <Input id={`${ids}-mem`} className={field} inputMode="decimal" placeholder="No limit" value={draft.memoryGb} onChange={(e) => set({ memoryGb: e.target.value })} />
+                <Field label={t("whereItWorks.memoryGb")} htmlFor={`${ids}-mem`}>
+                  <Input id={`${ids}-mem`} className={field} inputMode="decimal" placeholder={t("whereItWorks.noLimit")} value={draft.memoryGb} onChange={(e) => set({ memoryGb: e.target.value })} />
                 </Field>
               </div>
               <label className="flex items-start justify-between gap-4">
                 <span className="min-w-0">
-                  <span className="block text-body font-medium text-foreground">Network</span>
+                  <span className="block text-body font-medium text-foreground">{t("whereItWorks.network")}</span>
                   <span className="block text-pretty text-small text-muted-foreground">
                     {draft.network
-                      ? "On: it can reach the internet and your network."
+                      ? t("whereItWorks.onItCanReachThe")
                       : `Off: it reaches only Bloks${view.lineHosts?.length ? ` and ${view.engine.name}'s own service (${view.lineHosts.join(", ")})` : ""}. Needs Node in the image.`}
                   </span>
                 </span>
@@ -464,12 +465,12 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
                   checked={draft.network}
                   disabled={draft.network && !view.networkOff.ok}
                   onCheckedChange={(network) => set({ network })}
-                  aria-label="Network"
+                  aria-label={t("whereItWorks.network")}
                 />
               </label>
               {!view.networkOff.ok && <Note>{(view.networkOff as { why: string }).why}</Note>}
               <div className="flex flex-wrap items-end justify-between gap-3">
-                <Field label="Stop the container" htmlFor={`${ids}-idle`}>
+                <Field label={t("whereItWorks.stopTheContainer")} htmlFor={`${ids}-idle`}>
                   <SettingsSelect id={`${ids}-idle`} className="w-[220px]" value={String(draft.idleMinutes)} onChange={(e) => set({ idleMinutes: Number(e.target.value) })}>
                     {IDLE_CHOICES.map(([minutes, label]) => (
                       <option key={minutes} value={minutes}>
@@ -480,7 +481,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
                 </Field>
                 <label className="flex items-center gap-2 pb-1 text-body text-muted-foreground">
                   Remove it instead, so each start is fresh
-                  <Switch checked={draft.autoRemove} disabled={draft.idleMinutes === 0} onCheckedChange={(autoRemove) => set({ autoRemove })} aria-label="Remove it instead of stopping it" />
+                  <Switch checked={draft.autoRemove} disabled={draft.idleMinutes === 0} onCheckedChange={(autoRemove) => set({ autoRemove })} aria-label={t("whereItWorks.removeItInsteadOfStopping")} />
                 </label>
               </div>
             </>
@@ -490,7 +491,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
 
       {draft.kind === "ssh" && (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_96px]">
-          <Field label="Host" htmlFor={`${ids}-host`} hint="A Host from ~/.ssh/config, or user@host. Bloks signs in with your SSH keys.">
+          <Field label={t("whereItWorks.host")} htmlFor={`${ids}-host`} hint={t("whereItWorks.aHostFromSshConfig")}>
             <Input
               id={`${ids}-host`}
               className={field}
@@ -507,10 +508,10 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
               ))}
             </datalist>
           </Field>
-          <Field label="Port" htmlFor={`${ids}-port`}>
+          <Field label={t("whereItWorks.port")} htmlFor={`${ids}-port`}>
             <Input id={`${ids}-port`} className={field} inputMode="numeric" placeholder="22" value={draft.port} onChange={(e) => set({ port: e.target.value })} />
           </Field>
-          <Field label="Folder there" htmlFor={`${ids}-there`} hint="Made on the first turn if it is not there." className="sm:col-span-2">
+          <Field label={t("whereItWorks.folderThere")} htmlFor={`${ids}-there`} hint={t("whereItWorks.madeOnTheFirstTurn")} className="sm:col-span-2">
             <Input id={`${ids}-there`} className={field} value={draft.sshPath} spellCheck={false} onChange={(e) => set({ sshPath: e.target.value })} />
           </Field>
         </div>
@@ -525,14 +526,14 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
             className="flex items-center gap-1 rounded text-small text-muted-foreground transition-colors hover:text-foreground"
           >
             <ChevronRight size={11} className={cn("transition-transform", more && "rotate-90")} />
-            Engine command there
+            {t("whereItWorks.engineCommandThere")}
           </button>
           {more && (
             <div className="mt-2 max-w-[360px]">
               <Input
-                aria-label="Engine command there"
+                aria-label={t("whereItWorks.engineCommandThere")}
                 className={field}
-                placeholder={view.engine.driverKind === "claudeAgent" ? "claude" : view.engine.driverKind === "codex" ? "codex" : "Its usual name"}
+                placeholder={view.engine.driverKind === "claudeAgent" ? "claude" : view.engine.driverKind === "codex" ? "codex" : t("whereItWorks.itsUsualName")}
                 value={draft.command}
                 spellCheck={false}
                 onChange={(e) => set({ command: e.target.value })}
@@ -554,7 +555,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
           {remote && (
             <Button variant="secondary" size="sm" disabled={busy !== null || off} onClick={test}>
               {busy === "test" && <Loader2 size={12} className="animate-spin" />}
-              {busy === "test" ? (draft.kind === "docker" ? "Testing, a first image can take minutes" : "Testing") : "Test"}
+              {busy === "test" ? (draft.kind === "docker" ? t("whereItWorks.testingAFirstImageCan") : t("whereItWorks.testing")) : t("whereItWorks.test")}
             </Button>
           )}
           {!dirty && madeHere && status && (status.state === "ready" || status.state === "idle") && (
@@ -585,11 +586,11 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
               <li key={check.id + check.label} className="flex items-start gap-2 text-body">
                 <span className="mt-[3px] shrink-0">
                   {check.ok === true ? (
-                    <Check size={13} className="text-success" aria-label="Fine" />
+                    <Check size={13} className="text-success" aria-label={t("whereItWorks.fine")} />
                   ) : check.ok === false ? (
-                    <X size={13} className="text-destructive" aria-label="Missing" />
+                    <X size={13} className="text-destructive" aria-label={t("whereItWorks.missing")} />
                   ) : (
-                    <Minus size={13} className="text-muted-foreground" aria-label="Not checked" />
+                    <Minus size={13} className="text-muted-foreground" aria-label={t("whereItWorks.notChecked")} />
                   )}
                 </span>
                 <span className={cn("min-w-0", check.ok === false ? "text-foreground" : "text-muted-foreground")}>{check.label}</span>
@@ -605,17 +606,17 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
               ))}
             </div>
           )}
-          {report.ok && report.problems.length === 0 && <p className="mt-2 text-small text-success">Ready. {dirty ? "Save to send its next message there." : ""}</p>}
+          {report.ok && report.problems.length === 0 && <p className="mt-2 text-small text-success">Ready. {dirty ? t("whereItWorks.saveToSendItsNext") : ""}</p>}
           {(report.signIn || report.canCopySignIn) && (
             <div className="mt-3 flex flex-wrap gap-2">
               {report.signIn && (
                 <Button variant="secondary" size="sm" disabled={busy !== null} onClick={signInThere}>
                   <LogIn size={12} />
-                  Sign in there
+                  {t("whereItWorks.signInThere")}
                 </Button>
               )}
               {report.canCopySignIn && (
-                <Button variant="outline" size="sm" disabled={busy !== null || dirty} title={dirty ? "Save first" : undefined} onClick={() => void copySignIn()}>
+                <Button variant="outline" size="sm" disabled={busy !== null || dirty} title={dirty ? t("whereItWorks.saveFirst") : undefined} onClick={() => void copySignIn()}>
                   {busy === "copy" ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
                   Copy my sign-in…
                 </Button>
@@ -628,10 +629,10 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
       {savedPlace && !dirty && (
         <Note>
           {view.filesHere
-            ? "Undo and rewind work on the mounted folder, as they do here. "
-            : "Undo and rewind's file restore are off for it: its files are not on this computer. "}
+            ? t("whereItWorks.undoAndRewindWorkOn")
+            : t("whereItWorks.undoAndRewindsFileRestore")}
           Rehearsals and shared rooms run only on this computer, so they are off for it. Files it saves in its outbox come back as cards when each turn ends, and{" "}
-          {view.seen?.node === false ? "without Node there, its bloks command and memory notes cannot run." : "its bloks command and memory reach Bloks through a door that opens only for its turn."}{" "}
+          {view.seen?.node === false ? t("whereItWorks.withoutNodeThereItsBloks") : t("whereItWorks.itsBloksCommandAndMemory")}{" "}
           The Terminal button still opens a terminal on this computer.
           {view.seen?.copied?.length ? ` Your sign-in was copied there on ${new Date(view.seen.copied.at(-1)!.at).toLocaleDateString()}.` : ""}
         </Note>

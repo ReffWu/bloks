@@ -43,6 +43,7 @@ import { fileURLToPath } from "node:url";
 
 import { normalizeBadgeCount, resolveWindowState } from "./window-state.mjs";
 import { appMenuTemplate, TAB_COMMANDS } from "./app-menu.mjs";
+import { menuLanguage, menuWords } from "./menu-words.mjs";
 import { drainWait } from "./drain-wait.mjs";
 import { mayLookAgain, newestBeforeInstall, updateFrame } from "./update-check.mjs";
 import { markInstall, restartIntoUpdate, takeInstallMark, within } from "./update-restart.mjs";
@@ -103,6 +104,7 @@ import {
   rerollMark,
   setCurrent,
   setSameAccent,
+  setLanguage,
   setNotch,
   settle,
   shownMark,
@@ -1919,6 +1921,19 @@ handle("prefs:theme", (_event, theme) => {
   registry = { ...registry, prefs: { ...registry.prefs, theme } };
   saveRegistry();
 });
+// The language is the person's as well. A choice made in one window is
+// told to every other, and the menu bar is built again in it at once.
+handle("prefs:language", (event, language) => {
+  if (!registry) return;
+  const next = setLanguage(registry, language);
+  if (next === registry) return;
+  registry = next;
+  saveRegistry();
+  installAppMenu();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed() && win.webContents !== event.sender) win.webContents.send("prefs:language", registry.prefs.language ?? "system");
+  }
+});
 handle("prefs:accent", (event, accent) => {
   const id = senderWorkspace(event);
   if (!registry || !id || typeof accent !== "string") return;
@@ -1955,7 +1970,7 @@ ipcMain.on("workspaces:boot", (event) => {
   // returnValue answers the moment it is set, so it is set once
   const ws = fromOurPage(event) && registry ? entryOf(senderWorkspace(event)) : null;
   event.returnValue = ws
-    ? { theme: registry.prefs.theme, accent: accentOf(registry, ws.id), sameAccent: registry.prefs.sameAccent, workspace: { id: ws.id, kind: ws.kind, name: ws.name, mark: shownMark(ws) } }
+    ? { theme: registry.prefs.theme, language: registry.prefs.language ?? null, accent: accentOf(registry, ws.id), sameAccent: registry.prefs.sameAccent, workspace: { id: ws.id, kind: ws.kind, name: ws.name, mark: shownMark(ws) } }
     : null;
 });
 
@@ -2047,6 +2062,7 @@ function installContextMenu(win) {
     if (!params.isEditable && !params.selectionText && !params.linkURL && !params.misspelledWord)
       return;
     const items = [];
+    const w = mainWords();
     if (params.misspelledWord) {
       for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
         items.push({
@@ -2058,24 +2074,24 @@ function installContextMenu(win) {
     }
     if (params.linkURL) {
       items.push(
-        { label: "Copy Link", click: () => clipboard.writeText(params.linkURL) },
+        { label: w("menu.copyLink"), click: () => clipboard.writeText(params.linkURL) },
         { type: "separator" },
       );
     }
     if (params.isEditable) {
       items.push(
-        { role: "undo", enabled: params.editFlags.canUndo },
-        { role: "redo", enabled: params.editFlags.canRedo },
+        { role: "undo", label: w("menu.undo"), enabled: params.editFlags.canUndo },
+        { role: "redo", label: w("menu.redo"), enabled: params.editFlags.canRedo },
         { type: "separator" },
-        { role: "cut", enabled: params.editFlags.canCut },
-        { role: "copy", enabled: params.editFlags.canCopy },
-        { role: "paste", enabled: params.editFlags.canPaste },
-        { role: "pasteAndMatchStyle", enabled: params.editFlags.canPaste },
+        { role: "cut", label: w("menu.cut"), enabled: params.editFlags.canCut },
+        { role: "copy", label: w("menu.copy"), enabled: params.editFlags.canCopy },
+        { role: "paste", label: w("menu.paste"), enabled: params.editFlags.canPaste },
+        { role: "pasteAndMatchStyle", label: w("menu.pasteAndMatchStyle"), enabled: params.editFlags.canPaste },
         { type: "separator" },
-        { role: "selectAll", enabled: params.editFlags.canSelectAll },
+        { role: "selectAll", label: w("menu.selectAll"), enabled: params.editFlags.canSelectAll },
       );
     } else {
-      items.push({ role: "copy", enabled: params.editFlags.canCopy });
+      items.push({ role: "copy", label: w("menu.copy"), enabled: params.editFlags.canCopy });
     }
     Menu.buildFromTemplate(items).popup({ window: win, frame: params.frame });
   });
@@ -3597,6 +3613,27 @@ async function restoreQuickShortcut() {
   }
 }
 
+/** The catalogues the menus read (electron/menu-words.mjs): the
+ * interface's own, carried into Resources by the packaged app. */
+const LOCALES_DIR = () => (app.isPackaged ? path.join(process.resourcesPath, "locales") : path.join(HERE, "..", "src", "locales"));
+
+/** The person's words for the main process: their choice, or the
+ * system's languages under "System". */
+function mainWords() {
+  const code = menuLanguage(registry?.prefs?.language ?? null, app.getPreferredSystemLanguages?.() ?? [app.getLocale()]);
+  return menuWords(LOCALES_DIR(), code);
+}
+
+function installAppMenu() {
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(appMenuTemplate({ name: app.name, packaged: app.isPackaged, command: menuCommand, words: mainWords() })),
+  );
+}
+
 app.whenReady().then(async () => {
   if (process.platform === "darwin") app.dock.setIcon(APP_ICON);
 
@@ -3605,13 +3642,7 @@ app.whenReady().then(async () => {
   // reachable from the UI. macOS keeps a menu: the hidden-inset titlebar
   // and the platform conventions expect one, and it is the stock one with
   // Settings added (electron/app-menu.mjs).
-  if (process.platform === "darwin") {
-    Menu.setApplicationMenu(
-      Menu.buildFromTemplate(appMenuTemplate({ name: app.name, packaged: app.isPackaged, command: menuCommand })),
-    );
-  } else {
-    Menu.setApplicationMenu(null);
-  }
+  installAppMenu();
 
   // getDisplayMedia in the renderer routed through here keeps the whole
   // capture inside the app's processes, which is the path macOS reliably
@@ -3653,6 +3684,8 @@ app.whenReady().then(async () => {
   } else if (HOSTS_SERVERS) {
     await openWorkspaces();
   }
+  // again, now that the list says which language the person chose
+  if (registry) installAppMenu();
   createWindow();
   // the island in the notch, once there is a workspace for it to show
   notch.sync(notchOn());

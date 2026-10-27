@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { api } from "@/state/store";
 import { membersApi, tintOf, initials, type Member } from "@/lib/members";
 import { roomAccessBody, roomAudienceLine } from "@/lib/memberRules";
+import { t } from "@/lib/i18n";
 
 interface RoomRow {
   id: string;
@@ -55,11 +56,11 @@ export function RoomAudience({ roomId, className }: { roomId: string; className?
   return (
     <section className={className}>
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-small font-medium text-muted-foreground">From the workspace</span>
+        <span className="text-small font-medium text-muted-foreground">{t("roomAudience.fromTheWorkspace")}</span>
         {saving && <Loader2 size={13} className="animate-spin text-muted-foreground" />}
       </div>
       <Segmented
-        aria-label="Who from the workspace is in this room"
+        aria-label={t("roomAudience.whoFromTheWorkspaceIs")}
         value={room.audience}
         onChange={(audience) => void save(audience, [...chosen])}
         options={[
@@ -78,7 +79,7 @@ export function RoomAudience({ roomId, className }: { roomId: string; className?
                   {initials(m.name)}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{m.name}</span>
-                {m.role === "admin" && <span className="text-small text-muted-foreground">Admin</span>}
+                {m.role === "admin" && <span className="text-small text-muted-foreground">{t("roomAudience.admin")}</span>}
                 <input
                   type="checkbox"
                   className="peer sr-only"

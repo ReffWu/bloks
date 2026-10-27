@@ -30,6 +30,7 @@ import {
   type CheckupReport,
 } from "@/lib/securityCheckup";
 import { SettingsGroup } from "./SettingsLayout";
+import { t } from "@/lib/i18n";
 
 const LEVEL: Record<CheckupLevel, { label: string; className: string }> = {
   ok: { label: "OK", className: "bg-success/10 text-success" },
@@ -130,7 +131,7 @@ function Row({ finding }: { finding: CheckupFinding }) {
               {fix.label}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => openAgent(item.id)}>
-              Open
+              {t("common.open")}
             </Button>
           </>
         );
@@ -163,7 +164,7 @@ function Row({ finding }: { finding: CheckupFinding }) {
               Forget {item.name}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setForgetting(null)}>
-              Keep
+              {t("common.keep")}
             </Button>
           </>
         ) : (
@@ -257,19 +258,19 @@ export function SecurityCheckup() {
           {error ? (
             error === "not from here" ? (
               // the one part of it that is the person's from anywhere
-              "Open the checkup on the computer Bloks runs on. Saved secrets are listed, and forgotten, in Apps and keys."
+              t("securityCheckup.openTheCheckupOnThe")
             ) : (
               <>
                 <span className="min-w-0 flex-1">Couldn't run the checkup: {error}</span>
                 <Button size="sm" variant="secondary" onClick={() => void refreshCheckup()}>
-                  Try again
+                  {t("common.tryAgain")}
                 </Button>
               </>
             )
           ) : (
             <>
               <Loader2 size={14} className="animate-spin" />
-              Checking…
+              {t("common.checking")}
             </>
           )}
         </div>

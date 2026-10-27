@@ -11,13 +11,14 @@ import type { UpdateState } from "@/types/bridge";
 import { drainingLine } from "../UpdateCard";
 import { SettingRow, SettingsGroup } from "../SettingsLayout";
 import { ServerUpdateRow, useServerUpdate } from "./ServerUpdate";
+import { t } from "@/lib/i18n";
 
 /** The small mark a hosted workspace wears in Settings, so nobody wonders
  * why the Mac's own options are not there. */
 export function HostedMark() {
   return (
     <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-caption font-medium text-muted-foreground">
-      Hosted
+      {t("aboutPage.hosted")}
     </span>
   );
 }
@@ -87,7 +88,7 @@ export function AboutPage() {
 
   return (
     <>
-    <SettingsGroup title="Version">
+    <SettingsGroup title={t("aboutPage.version")}>
       {hosted && (
         <SettingRow
           label={
@@ -95,7 +96,7 @@ export function AboutPage() {
               This workspace <HostedMark />
             </>
           }
-          description="It runs on a machine hosted for you, not on your Mac. Its browser and its virtual desktop are your agents' computer."
+          description={t("aboutPage.itRunsOnAMachine")}
         />
       )}
       {/* A browser has no app of its own to update; the server row below
@@ -108,7 +109,7 @@ export function AboutPage() {
           control={
             update.state === "ready" ? (
               <Button size="sm" disabled={Boolean(update.draining)} onClick={() => void window.bloks?.updateInstall?.()}>
-                Restart to update
+                {t("aboutPage.restartToUpdate")}
               </Button>
             ) : (
               <Button
@@ -117,7 +118,7 @@ export function AboutPage() {
                 disabled={!window.bloks || update.state === "checking" || update.state === "downloading"}
                 onClick={() => void window.bloks?.updateCheck?.().then(setUpdate)}
               >
-                Check for updates
+                {t("aboutPage.checkForUpdates")}
               </Button>
             )
           }
@@ -125,10 +126,10 @@ export function AboutPage() {
       )}
       <ServerUpdateRow state={server} />
     </SettingsGroup>
-    <SettingsGroup title="Help">
+    <SettingsGroup title={t("aboutPage.help")}>
       <SettingRow
-        label="Something broken, or missing?"
-        description="Opens a GitHub issue."
+        label={t("aboutPage.somethingBrokenOrMissing")}
+        description={t("aboutPage.opensAGithubIssue")}
         control={
           <Button size="sm" variant="secondary" asChild>
             <a
@@ -136,7 +137,7 @@ export function AboutPage() {
               target="_blank"
               rel="noreferrer"
             >
-              Send feedback
+              {t("aboutPage.sendFeedback")}
             </a>
           </Button>
         }
@@ -172,18 +173,18 @@ function Diagnostics() {
   };
   return (
     <SettingRow
-      label="Diagnostics"
-      info="Versions, connection states, which keys are set (yes or no) and agent counts. Never the keys, and anything that looks like one is removed."
-      description="A short report to paste into a bug report."
+      label={t("aboutPage.diagnostics")}
+      info={t("aboutPage.versionsConnectionStatesWhichKeys")}
+      description={t("aboutPage.aShortReportToPaste")}
       error={failed ? "Couldn't build the report. Is the server running?" : null}
       control={
         <Button size="sm" variant="secondary" onClick={() => void copy()} className="min-w-[128px]">
           {copied ? (
             <>
-              <Check size={14} /> Copied
+              <Check size={14} /> {t("common.copied")}
             </>
           ) : (
-            "Copy diagnostics"
+            t("aboutPage.copyDiagnostics")
           )}
         </Button>
       }

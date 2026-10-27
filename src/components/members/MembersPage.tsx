@@ -49,6 +49,7 @@ import { RequestCard } from "./RequestCard";
 import { NeedsTeam, UpgradeButton, UpgradeLink } from "../TeamLock";
 import { AlertTriangle } from "@/components/icons";
 import { distinctNames } from "@/lib/names";
+import { t } from "@/lib/i18n";
 
 const DEVICE_WORD = { iphone: "iPhone", mac: "Mac", browser: "Browser" } as const;
 /** How long a newcomer's row says "New". */
@@ -261,12 +262,12 @@ export function MembersPage({
         <div className="flex items-center justify-between gap-6">
           {/* the same heading every Settings page has, with the one thing
               this page offers beside it */}
-          <h1 className="text-balance text-heading font-semibold text-foreground">Members</h1>
+          <h1 className="text-balance text-heading font-semibold text-foreground">{t("common.members")}</h1>
           {manage && !locked && (
             <div className="flex shrink-0 flex-col items-end gap-1.5">
               <Button size="lg" onClick={() => setInviting(true)} disabled={!teamOn}>
                 <Plus size={16} />
-                Invite someone
+                {t("membersMembersPage.inviteSomeone")}
               </Button>
               {/* while paused, the banner below says it once, with the way */}
               {!teamOn && !data.paused && <NeedsTeam />}
@@ -275,19 +276,19 @@ export function MembersPage({
         </div>
         <p className="max-w-[560px] text-pretty text-body leading-relaxed text-muted-foreground">
           People who can use {ws.name}: its agents, rooms and memory.{" "}
-          {joining?.approveEach === false ? "The right code lets people straight in." : "Nobody gets in until you say so."}
+          {joining?.approveEach === false ? t("membersMembersPage.theRightCodeLetsPeople") : t("membersMembersPage.nobodyGetsInUntilYou")}
         </p>
       </div>
 
       {manage && locked && (
-        <section aria-label="Bloks Team" className="flex items-start gap-4 rounded-2xl border bg-card p-6 max-sm:flex-col max-sm:p-5">
+        <section aria-label={t("membersMembersPage.bloksTeam")} className="flex items-start gap-4 rounded-2xl border bg-card p-6 max-sm:flex-col max-sm:p-5">
           <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-ink" aria-hidden>
             <Users size={20} />
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <h2 className="text-pretty text-ui font-semibold text-foreground">Bring people into {ws.name}</h2>
             <p className="max-w-[52ch] text-pretty text-body leading-relaxed text-muted-foreground">
-              With Bloks Team, invite people to use its agents, rooms and memory beside you. Each has their own conversations, you choose what they can reach and spend, and nobody gets in until you say so.
+              {t("membersMembersPage.withBloksTeamInvitePeople")}
             </p>
           </div>
           <UpgradeButton />
@@ -300,7 +301,7 @@ export function MembersPage({
         <div role="status" className="flex items-start gap-3 rounded-[14px] border border-warning/30 bg-warning/5 px-4 py-3.5">
           <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="text-pretty text-ui font-medium text-foreground">Members are paused</span>
+            <span className="text-pretty text-ui font-medium text-foreground">{t("membersMembersPage.membersArePaused")}</span>
             <span className="text-pretty text-body leading-relaxed text-muted-foreground">
               {ws.name} needs Bloks Team for members. Until it is back on Team, nobody here besides you can open it. Nothing is deleted: everyone and everything they had come back with Team.
             </span>
@@ -334,8 +335,8 @@ export function MembersPage({
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search members"
-                aria-label="Search members"
+                placeholder={t("membersMembersPage.searchMembers")}
+                aria-label={t("membersMembersPage.searchMembers")}
                 className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
               />
             </label>
@@ -349,11 +350,11 @@ export function MembersPage({
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="truncate text-ui font-medium text-foreground">
                   {data.owner.name}
-                  {owner && <span className="font-normal text-muted-foreground"> (you)</span>}
+                  {owner && <span className="font-normal text-muted-foreground"> {t("membersMembersPage.you")}</span>}
                 </span>
                 <span className="text-body text-muted-foreground">Owner of {ws.name} · this computer</span>
               </div>
-              <span className="rounded-full bg-brand-soft px-2.5 py-1 text-small font-semibold text-brand-ink">Owner</span>
+              <span className="rounded-full bg-brand-soft px-2.5 py-1 text-small font-semibold text-brand-ink">{t("membersMembersPage.owner")}</span>
             </div>
           )}
           {members.map((m) => (
@@ -370,20 +371,20 @@ export function MembersPage({
             />
           ))}
           {query && !members.length && !ownerMatches && (
-            <p className="px-[18px] py-4 text-body text-muted-foreground">Nobody here is called that.</p>
+            <p className="px-[18px] py-4 text-body text-muted-foreground">{t("membersMembersPage.nobodyHereIsCalledThat")}</p>
           )}
         </Card>
         {!manage && <p className="px-0.5 text-pretty text-small text-muted-foreground">{data.privacy.line}</p>}
       </Section>
 
       {manage && joining && !locked && (
-        <Section title="Joining">
+        <Section title={t("membersMembersPage.joining")}>
           <Card>
             <div className="flex items-center gap-4 px-[18px] py-4">
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-ui font-medium text-foreground">Join password</span>
+                <span className="text-ui font-medium text-foreground">{t("membersMembersPage.joinPassword")}</span>
                 <span className="text-pretty text-body leading-relaxed text-muted-foreground">
-                  Asked for after the invite. It is never inside the invite, so share it another way: say it, or text it.
+                  {t("membersMembersPage.askedForAfterTheInvite")}
                 </span>
               </div>
               {joining.password && <span className="shrink-0 text-body text-muted-foreground">Set {shortDate(joining.password.setAt)}</span>}
@@ -391,47 +392,47 @@ export function MembersPage({
                 (joining.password ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">Change</Button>
+                      <Button variant="outline" size="sm">{t("common.change")}</Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onSelect={() => setPasswordOpen(true)}>Change password</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setPasswordOpen(true)}>{t("membersMembersPage.changePassword")}</DropdownMenuItem>
                       <DropdownMenuItem variant="destructive" onSelect={() => void clearPassword()}>
-                        Remove password
+                        {t("membersMembersPage.removePassword")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 ) : (
                   <Button variant="outline" size="sm" onClick={() => setPasswordOpen(true)}>
-                    Set
+                    {t("membersMembersPage.set")}
                   </Button>
                 ))}
             </div>
             <label className="flex items-center gap-4 px-[18px] py-4">
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-ui font-medium text-foreground">Approve each person</span>
+                <span className="text-ui font-medium text-foreground">{t("membersMembersPage.approveEachPerson")}</span>
                 <span className="text-pretty text-body text-muted-foreground">
-                  {joining.approveEach ? "You check four words with them before they are in." : "The right code and password let people straight in."}
+                  {joining.approveEach ? t("membersMembersPage.youCheckFourWordsWith") : t("membersMembersPage.theRightCodeAndPassword")}
                 </span>
               </div>
               <Switch
                 checked={joining.approveEach}
                 disabled={!owner}
                 onCheckedChange={(on) => void run(() => membersApi.setJoining({ approveEach: on }))}
-                aria-label="Approve each person"
+                aria-label={t("membersMembersPage.approveEachPerson")}
               />
             </label>
             <label className="flex items-center gap-4 px-[18px] py-4">
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-ui font-medium text-foreground">Owner and admins can read members' private conversations</span>
+                <span className="text-ui font-medium text-foreground">{t("membersMembersPage.ownerAndAdminsCanRead")}</span>
                 <span className="text-pretty text-body text-muted-foreground">
-                  Off: what a member says to an agent one to one is theirs alone. Members are told which way this is set.
+                  {t("membersMembersPage.offWhatAMemberSays")}
                 </span>
               </div>
               <Switch
                 checked={joining.privateReadable}
                 disabled={!owner}
                 onCheckedChange={(on) => void run(() => membersApi.setJoining({ privateReadable: on }))}
-                aria-label="Owner and admins can read members' private conversations"
+                aria-label={t("membersMembersPage.ownerAndAdminsCanRead")}
               />
             </label>
           </Card>
@@ -439,7 +440,7 @@ export function MembersPage({
       )}
 
       {manage && agents && data.members.length > 0 && agents.some((a) => !a.solo) && (
-        <Section title="Team agents">
+        <Section title={t("membersMembersPage.teamAgents")}>
           <Card>
             {agents
               .filter((a) => !a.solo)
@@ -448,7 +449,7 @@ export function MembersPage({
                   <span className="flex-1 truncate text-ui text-foreground">{a.name}</span>
                   <span className="shrink-0 text-body text-muted-foreground">{accessWords(a, data.members)}</span>
                   <Button variant="ghost" size="sm" onClick={() => setAccessFor(a)} aria-label={`Who can use ${a.name}`}>
-                    Change
+                    {t("common.change")}
                   </Button>
                 </div>
               ))}
@@ -458,8 +459,8 @@ export function MembersPage({
 
       {manage && !locked && (
         <Section
-          title="Invitations"
-          aside={<span className="text-body tabular-nums text-muted-foreground">{invites.length ? `${invites.length} waiting` : "None waiting"}</span>}
+          title={t("membersMembersPage.invitations")}
+          aside={<span className="text-body tabular-nums text-muted-foreground">{invites.length ? `${invites.length} waiting` : t("membersMembersPage.noneWaiting")}</span>}
         >
           {invites.length ? (
             <Card>
@@ -469,19 +470,19 @@ export function MembersPage({
                     <UserPlus size={16} />
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate text-ui font-medium text-foreground">{inv.name ?? "Anyone with the code"}</span>
+                    <span className="truncate text-ui font-medium text-foreground">{inv.name ?? t("membersMembersPage.anyoneWithTheCode")}</span>
                     <span className="text-body text-muted-foreground">
                       {ROLE_NAME[inv.role]} · {expiresIn(inv.expiresAt)}
-                      {!inv.online && " · this network only"}
+                      {!inv.online && t("membersMembersPage.thisNetworkOnly")}
                     </span>
                   </div>
                   <span className="shrink-0 select-all font-mono text-ui font-semibold tracking-[0.06em] text-foreground tabular-nums max-sm:hidden">{inv.code}</span>
                   <Button variant="ghost" size="sm" onClick={() => copy(inv.id, inv.link)} aria-label={`Copy the link for ${inv.name ?? "this invite"}`}>
                     {copied === inv.id ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-                    <span aria-live="polite">{copied === inv.id ? "Copied" : "Copy"}</span>
+                    <span aria-live="polite">{copied === inv.id ? t("common.copied") : t("common.copy")}</span>
                   </Button>
                   <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => void cancelInvite(inv)}>
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                 </div>
               ))}
@@ -489,11 +490,11 @@ export function MembersPage({
           ) : (
             <div className="flex flex-col items-center gap-3 rounded-[14px] border border-dashed px-6 py-[22px] text-center">
               <p className="text-pretty text-ui leading-relaxed text-muted-foreground">
-                Each invite works once and lasts 24 hours. Invite someone to get a code, a QR and a link.
+                {t("membersMembersPage.eachInviteWorksOnceAnd")}
               </p>
               {teamOn ? (
                 <Button variant="secondary" size="sm" onClick={() => setInviting(true)}>
-                  Invite someone
+                  {t("membersMembersPage.inviteSomeone")}
                 </Button>
               ) : (
                 <NeedsTeam />
@@ -580,10 +581,10 @@ function MemberRow({
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-center gap-1.5 text-ui font-medium text-foreground">
           <span className="truncate">{m.name}</span>
-          {you && <span className="font-normal text-muted-foreground">(you)</span>}
+          {you && <span className="font-normal text-muted-foreground">{t("membersMembersPage.you")}</span>}
           {isNew && (
             <span className="animate-pop-in rounded-full px-2 py-0.5 text-caption font-semibold" style={{ background: `color-mix(in srgb, ${mark} 18%, transparent)`, color: mark }}>
-              New
+              {t("common.new")}
             </span>
           )}
         </span>
@@ -591,7 +592,7 @@ function MemberRow({
         {usage.length > 0 && (
           <span className={cn("truncate text-small tabular-nums", atLimit ? "text-destructive" : "text-muted-foreground")}>
             {usage.join(" · ")}
-            {atLimit && " · at limit"}
+            {atLimit && t("membersMembersPage.atLimit")}
           </span>
         )}
       </div>
@@ -605,8 +606,8 @@ function MemberRow({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuRadioGroup value={m.role} onValueChange={(v) => onRole(v as "member" | "admin")}>
-                <DropdownMenuRadioItem value="member">Member</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="admin">Admin</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="member">{t("membersMembersPage.member")}</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="admin">{t("membersMembersPage.admin")}</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -617,13 +618,13 @@ function MemberRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onLimits}>Limits and engines...</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onLimits}>{t("membersMembersPage.limitsAndEngines")}</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onRole(m.role === "admin" ? "member" : "admin")}>
-                {m.role === "admin" ? "Make a Member" : "Make an Admin"}
+                {m.role === "admin" ? t("membersMembersPage.makeAMember") : t("membersMembersPage.makeAnAdmin")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={onRemove}>
-                Remove from workspace
+                {t("membersMembersPage.removeFromWorkspace")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

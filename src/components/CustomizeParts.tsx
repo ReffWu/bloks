@@ -8,6 +8,7 @@ import { Settings } from "@/components/icons";
 import { Skeleton, SkeletonAvatar, SkeletonGroup } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { TitleTools } from "./SideColumn";
+import { t } from "@/lib/i18n";
 
 /** The tile an item's mark sits on, the same for an app and a skill. */
 export function Tile({ children }: { children: React.ReactNode }) {
@@ -66,16 +67,16 @@ export function PageHeader({
         </label>
         <button
           onClick={onRefresh}
-          aria-label="Refresh"
-          title="Refresh"
+          aria-label={t("customizeParts.refresh")}
+          title={t("customizeParts.refresh")}
           className={cn(pill, "size-9 justify-center text-muted-foreground hover:bg-accent hover:text-foreground")}
         >
           <RefreshCw size={16} className={cn(refreshing && "animate-spin motion-reduce:animate-none")} />
         </button>
         <button
           onClick={onSettings}
-          aria-label="Settings"
-          title="Settings"
+          aria-label={t("common.settings")}
+          title={t("common.settings")}
           className={cn(pill, "size-9 justify-center text-muted-foreground hover:bg-accent hover:text-foreground")}
         >
           <Settings size={16} />

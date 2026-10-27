@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { stamp } from "@/lib/when";
+import { t } from "@/lib/i18n";
 
 type What = { family?: string; driver?: string; instanceId?: string; model?: string };
 
@@ -129,15 +130,15 @@ export function EnginePauses() {
       <div className="px-4 pb-3 pt-4">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <div className="text-ui font-semibold text-foreground">Pauses</div>
+            <div className="text-ui font-semibold text-foreground">{t("enginePauses.pauses")}</div>
             <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-              Pause an engine or model for a while. Agents use their backup, or wait until it ends.
+              {t("enginePauses.pauseAnEngineOrModel")}
             </div>
           </div>
           {!adding && (
             <Button variant="secondary" size="sm" onClick={() => setAdding(true)} className="shrink-0">
               <Pause size={13} />
-              Pause
+              {t("common.pause")}
             </Button>
           )}
         </div>
@@ -152,33 +153,33 @@ export function EnginePauses() {
           <div className="min-w-0 flex-1">
             <div className="text-ui font-medium text-foreground">{p.label}</div>
             <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-              {p.agents === "all" ? "Every agent" : (p.agentNames ?? p.agents).join(", ")}, until {stamp(p.until)}
+              {p.agents === "all" ? t("enginePauses.everyAgent") : (p.agentNames ?? p.agents).join(", ")}, until {stamp(p.until)}
               {p.byName ? ` · ${p.byName} paused itself` : ""}
               {p.running ? ` · ${p.running} running ${p.running === 1 ? "task finishes" : "tasks finish"} first` : ""}
             </div>
             {p.note && <div className="mt-0.5 text-small text-muted-foreground">{p.note}</div>}
           </div>
           <Button variant="ghost" size="sm" onClick={() => end(p.id)} className="shrink-0 text-muted-foreground hover:text-foreground">
-            End now
+            {t("enginePauses.endNow")}
           </Button>
         </div>
       ))}
 
       {data.pauses.length === 0 && !adding && (
-        <div className="border-t px-4 py-3 text-body text-muted-foreground">Nothing is paused.</div>
+        <div className="border-t px-4 py-3 text-body text-muted-foreground">{t("enginePauses.nothingIsPaused")}</div>
       )}
 
       {adding && (
         <div className="flex flex-col gap-2.5 border-t px-4 py-3 text-body">
           <label className="flex items-center justify-between gap-3 text-muted-foreground">
-            <span>What</span>
+            <span>{t("enginePauses.what")}</span>
             <select
               autoFocus
               value={choice}
               onChange={(e) => setChoice(e.target.value)}
               className="min-w-0 max-w-[70%] rounded-md border bg-background px-2 py-1 text-body text-foreground"
             >
-              <option value="">Choose an engine or a model</option>
+              <option value="">{t("enginePauses.chooseAnEngineOrA")}</option>
               {groups.map(([group, rows]) => (
                 <optgroup key={group} label={group}>
                   {rows.map((c) => (
@@ -191,14 +192,14 @@ export function EnginePauses() {
             </select>
           </label>
           <label className="flex items-center justify-between gap-3 text-muted-foreground">
-            <span>For</span>
+            <span>{t("enginePauses.for")}</span>
             <select
               value={everyone ? "all" : "some"}
               onChange={(e) => setEveryone(e.target.value === "all")}
               className="rounded-md border bg-background px-2 py-1 text-body text-foreground"
             >
-              <option value="all">Every agent</option>
-              <option value="some">Agents I choose</option>
+              <option value="all">{t("enginePauses.everyAgent")}</option>
+              <option value="some">{t("enginePauses.agentsIChoose")}</option>
             </select>
           </label>
           {!everyone && (
@@ -224,7 +225,7 @@ export function EnginePauses() {
             </div>
           )}
           <label className="flex items-center justify-between gap-3 text-muted-foreground">
-            <span>How long</span>
+            <span>{t("enginePauses.howLong")}</span>
             <select
               value={minutes}
               onChange={(e) => setMinutes(Number(e.target.value))}
@@ -241,16 +242,16 @@ export function EnginePauses() {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             maxLength={200}
-            placeholder="Why (optional)"
+            placeholder={t("enginePauses.whyOptional")}
             className="h-8 text-body"
           />
           <label className="flex items-center justify-between gap-3 text-muted-foreground">
-            <span>Also stop what's running now</span>
-            <Switch checked={stopRunning} onCheckedChange={setStopRunning} aria-label="Also stop what's running now" />
+            <span>{t("enginePauses.alsoStopWhatsRunningNow")}</span>
+            <Switch checked={stopRunning} onCheckedChange={setStopRunning} aria-label={t("enginePauses.alsoStopWhatsRunningNow")} />
           </label>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setAdding(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button variant="secondary" size="sm" onClick={add} disabled={busy || !picked || (!everyone && !chosen.length)}>
               Pause until {stamp(Date.now() + minutes * 60_000)}

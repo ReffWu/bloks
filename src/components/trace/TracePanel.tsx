@@ -18,6 +18,7 @@ import { clockOffset, traceClockOffset, traceCovers, type TraceAsk } from "@/lib
 import { usePageVisible } from "@/lib/pageVisible";
 import { useEscape } from "@/lib/useEscape";
 import { TraceWaterfall } from "./TraceWaterfall";
+import { t } from "@/lib/i18n";
 
 export type { TraceAsk } from "@/lib/traceView";
 
@@ -93,17 +94,17 @@ export function TracePanel({
 
   return (
     <aside
-      aria-label="Timeline"
+      aria-label={t("tracePanel.timeline")}
       className="fixed inset-0 z-50 flex w-full animate-panel-in flex-col bg-background md:static md:z-auto md:h-full md:w-[520px] md:max-w-[50%] md:shrink-0 md:border-l"
     >
       <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b pl-4 pr-2">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="text-ui font-semibold text-foreground">Timeline</span>
+          <span className="text-ui font-semibold text-foreground">{t("tracePanel.timeline")}</span>
           {/* live: the one dot that says it is still being written */}
-          {running && <span aria-label="Live" className="size-1.5 shrink-0 rounded-full bg-success motion-safe:animate-pulse" />}
+          {running && <span aria-label={t("tracePanel.live")} className="size-1.5 shrink-0 rounded-full bg-success motion-safe:animate-pulse" />}
           <span className="truncate text-small text-muted-foreground">{conversation}</span>
         </span>
-        <Button variant="ghost" size="icon-sm" aria-label="Close the timeline" onClick={onClose}>
+        <Button variant="ghost" size="icon-sm" aria-label={t("tracePanel.closeTheTimeline")} onClick={onClose}>
           <X size={16} />
         </Button>
       </div>
@@ -116,8 +117,8 @@ export function TracePanel({
             : !read
               ? ""
               : !trace
-                ? "No turn to show yet. The timeline starts with the next one."
-                : "This turn's timeline is not kept any more."}
+                ? t("tracePanel.noTurnToShowYet")
+                : t("tracePanel.thisTurnsTimelineIsNot")}
         </div>
       )}
     </aside>

@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
+import { t } from "@/lib/i18n";
 
 interface JobOffer {
   botId: string;
@@ -110,22 +111,22 @@ export function JobBoard() {
       <div className="mt-4 rounded-2xl border bg-card p-4">
         <div className="flex items-center gap-2 text-ui font-semibold text-foreground">
           <Briefcase size={15} className="text-muted-foreground" />
-          Post a job
+          {t("jobBoard.postAJob")}
         </div>
         <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-          Say what needs doing. The best-suited agent is asked first.
+          {t("jobBoard.sayWhatNeedsDoingThe")}
         </div>
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && post()}
-          placeholder="Write the launch note"
+          placeholder={t("jobBoard.writeTheLaunchNote")}
           className="mt-3"
         />
         <Textarea
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
-          placeholder="Details (optional)"
+          placeholder={t("jobBoard.detailsOptional")}
           rows={2}
           className="mt-2 resize-none"
         />
@@ -149,12 +150,12 @@ export function JobBoard() {
         {jobs === null && (
           <div className="flex items-center gap-2 rounded-2xl border bg-card px-4 py-6 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
-            Loading
+            {t("common.loading2")}
           </div>
         )}
         {jobs?.length === 0 && (
           <div className="px-4 py-10 text-center text-body text-muted-foreground">
-            No jobs yet.
+            {t("jobBoard.noJobsYet")}
           </div>
         )}
         {jobs?.map((job) => {
@@ -194,14 +195,14 @@ export function JobBoard() {
                         dispatch({ type: "select", id: agent.id, lane: job.threadId });
                       }}
                     >
-                      Watch
+                      {t("jobBoard.watch")}
                     </Button>
                   )}
                   {job.state !== "claimed" && (
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      title={job.offers.length ? "Offer again" : "Offer it"}
+                      title={job.offers.length ? t("jobBoard.offerAgain") : t("jobBoard.offerIt")}
                       onClick={() =>
                         act(`/api/jobs/${job.id}/offer`, {
                           method: "POST",
@@ -215,7 +216,7 @@ export function JobBoard() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    title={job.state === "claimed" ? "Cancel" : "Remove"}
+                    title={job.state === "claimed" ? t("common.cancel") : t("common.remove")}
                     onClick={() => act(`/api/jobs/${job.id}`, { method: "DELETE" })}
                   >
                     <Trash2 size={13} />
@@ -242,7 +243,7 @@ export function JobBoard() {
 
               {job.state === "open" && job.offers.length > 0 && (
                 <div className="mt-2 rounded-lg bg-muted/50 px-2.5 py-1.5 text-small text-muted-foreground">
-                  Everyone has been asked. Offer it again to retry.
+                  {t("jobBoard.everyoneHasBeenAskedOffer")}
                 </div>
               )}
 

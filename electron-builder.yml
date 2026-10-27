@@ -44,6 +44,11 @@ extraResources:
   # the packaged app while working perfectly from source.
   - from: bin
     to: bin
+  # The interface's catalogues, for the menu bar's words in the person's
+  # language (electron/menu-words.mjs); the page has them in its bundle.
+  - from: src/locales
+    to: locales
+    filter: ["*.json"]
 
 # bloks://team/<slug>, from "Add to Bloks" on the website's team gallery
 protocols:

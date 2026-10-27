@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
+import { t } from "@/lib/i18n";
 
 type Engine = "claude" | "codex";
 
@@ -122,7 +123,7 @@ export function PastSessionsPrivacyLine({ className }: { className?: string }) {
       <ShieldCheck size={16} className="mt-px shrink-0 text-success" />
       <div className="min-w-0 text-body leading-relaxed">
         <div className="font-medium text-foreground">Nothing leaves {thisComputer()}, and your sessions are only read, never changed.</div>
-        <div className="text-muted-foreground">Lines that look like keys or passwords stay behind. Nothing is added until you choose.</div>
+        <div className="text-muted-foreground">{t("pastSessions.linesThatLookLikeKeys")}</div>
       </div>
     </div>
   );
@@ -228,7 +229,7 @@ function Transcript({ session }: { session: Reviewed }) {
             </li>
           ) : (
             <li key={i} className="text-small leading-relaxed">
-              <span className="font-medium text-foreground">{row.role === "user" ? "You" : engine}: </span>
+              <span className="font-medium text-foreground">{row.role === "user" ? t("pastSessions.you") : engine}: </span>
               <span className="whitespace-pre-wrap break-words text-foreground/90">{row.text.length > 1200 ? `${row.text.slice(0, 1200)}…` : row.text}</span>
             </li>
           ),
@@ -260,7 +261,7 @@ function ReviewRow({ session, result, onOpen }: { session: Reviewed; result?: Re
           <li className="text-muted-foreground">{plural(session.removed, "line that looked like a key or a password stays", "lines that looked like keys or passwords stay")} behind.</li>
         )}
         {session.left > 0 && <li className="text-muted-foreground">The earliest {plural(session.left, "row is", "rows are")} left out, to keep it to the latest.</li>}
-        {session.imported && <li className="text-warning">Already a conversation here, so it will not come over again.</li>}
+        {session.imported && <li className="text-warning">{t("pastSessions.alreadyAConversationHereSo")}</li>}
       </ul>
       <button
         type="button"
@@ -269,15 +270,15 @@ function ReviewRow({ session, result, onOpen }: { session: Reviewed; result?: Re
         className="mt-1.5 flex items-center gap-1 rounded-md text-small text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronRight size={12} className={cn("transition-transform duration-150", open && "rotate-90")} />
-        {open ? "Hide what comes over" : "Show what comes over"}
+        {open ? t("pastSessions.hideWhatComesOver") : t("pastSessions.showWhatComesOver")}
       </button>
       {open && <Transcript session={session} />}
       {result && (
         <div className={cn("mt-1.5 flex flex-wrap items-center gap-2 text-small", result.ok ? "text-success" : "text-destructive")} aria-live="polite">
-          {result.ok ? "Brought over." : `Not brought over: ${result.error}`}
+          {result.ok ? t("pastSessions.broughtOver") : `Not brought over: ${result.error}`}
           {result.ok && result.laneId && onOpen && (
             <Button size="sm" variant="secondary" onClick={() => onOpen(result)}>
-              Open
+              {t("common.open")}
             </Button>
           )}
         </div>
@@ -376,7 +377,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
   if (listing === null) {
     return (
       <div className="flex items-center gap-2 py-6 text-body text-muted-foreground">
-        <Loader2 size={15} className="animate-spin" /> Looking for past sessions…
+        <Loader2 size={15} className="animate-spin" /> {t("pastSessions.lookingForPastSessions")}
       </div>
     );
   }
@@ -389,7 +390,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
       <div className="flex flex-col">
         <div className="mb-3 flex items-center gap-2">
           <Button size="sm" variant="ghost" onClick={() => setReview(null)} disabled={busy !== null}>
-            <ArrowLeft size={14} /> Back
+            <ArrowLeft size={14} /> {t("common.back")}
           </Button>
           <h2 className="min-w-0 truncate text-ui font-semibold text-foreground">
             {"botId" in review.to
@@ -401,7 +402,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
         </div>
         {going > room && !done && (
           <div className="mb-3 rounded-xl bg-warning/10 px-3 py-2.5 text-body leading-relaxed text-foreground">
-            {"botId" in review.to ? review.to.name : "This agent"} has room for {plural(room, "more conversation", "more conversations")}, so the rest will not come over. Close a few
+            {"botId" in review.to ? review.to.name : t("pastSessions.thisAgent")} has room for {plural(room, "more conversation", "more conversations")}, so the rest will not come over. Close a few
             of its conversations first, or go back and choose a new agent.
           </div>
         )}
@@ -423,10 +424,10 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
             >
               {busy === "import" ? (
                 <>
-                  <Loader2 size={14} className="animate-spin" /> Bringing over…
+                  <Loader2 size={14} className="animate-spin" /> {t("pastSessions.bringingOver")}
                 </>
               ) : going === 0 ? (
-                "Nothing new to bring over"
+                t("pastSessions.nothingNewToBringOver")
               ) : (
                 `Bring over ${plural(going, "conversation", "conversations")}`
               )}
@@ -440,12 +441,12 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
   if (!listing.projects.length) {
     return (
       <div className="rounded-2xl border bg-card p-4">
-        <div className="text-ui font-medium text-foreground">{problem ? `Couldn't look: ${problem}` : "No past sessions found"}</div>
+        <div className="text-ui font-medium text-foreground">{problem ? `Couldn't look: ${problem}` : t("pastSessions.noPastSessionsFound")}</div>
         <div className="mt-1 text-body leading-relaxed text-muted-foreground">
-          Bloks looks in ~/.claude/projects for Claude Code and ~/.codex/sessions for Codex.
+          {t("pastSessions.bloksLooksInClaudeProjects")}
         </div>
         <Button size="sm" variant="secondary" className="mt-3" onClick={look}>
-          Look again
+          {t("pastSessions.lookAgain")}
         </Button>
       </div>
     );
@@ -488,7 +489,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
         {problem && <div className="text-small text-destructive">{problem}</div>}
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="past-sessions-to" className="text-body text-muted-foreground">
-            Bring to
+            {t("pastSessions.bringTo")}
           </label>
           <select
             id="past-sessions-to"
@@ -496,7 +497,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
             onChange={(e) => setTo(e.target.value)}
             className="h-8 min-w-0 max-w-full rounded-md border bg-background px-2 text-body text-foreground"
           >
-            <option value="hire">A new agent for each folder</option>
+            <option value="hire">{t("pastSessions.aNewAgentForEach")}</option>
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>
                 {agent.name}
@@ -512,10 +513,10 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
           >
             {busy === "review" ? (
               <>
-                <Loader2 size={14} className="animate-spin" /> Reading…
+                <Loader2 size={14} className="animate-spin" /> {t("pastSessions.reading")}
               </>
             ) : count === 0 ? (
-              "Nothing selected"
+              t("pastSessions.nothingSelected")
             ) : (
               `Review ${plural(count, "conversation", "conversations")}`
             )}

@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { cn } from "@/lib/cn";
 import { EmptyState, PanelHeader, SkeletonRows } from "./OverviewParts";
+import { t } from "@/lib/i18n";
 
 interface FolderStanding {
   path: string;
@@ -78,17 +79,17 @@ export function ProjectsPanel() {
   };
 
   return (
-    <section aria-label="Projects" className="flex min-w-0 flex-col">
+    <section aria-label={t("projectsPanel.projects")} className="flex min-w-0 flex-col">
       <PanelHeader
         icon={<FolderKanban size={17} />}
-        title="Projects"
-        hint={editing ? "Its folders, people and brief." : "Open one to see only its people and folders."}
+        title={t("projectsPanel.projects")}
+        hint={editing ? t("projectsPanel.itsFoldersPeopleAndBrief") : t("projectsPanel.openOneToSeeOnly")}
         actions={
           // an empty list offers the same thing in its own words, once
           !editing && projects?.length ? (
             <Button variant="ghost" size="sm" onClick={() => setEditing("new")}>
               <Plus size={13} />
-              New
+              {t("common.new")}
             </Button>
           ) : undefined
         }
@@ -111,17 +112,17 @@ export function ProjectsPanel() {
             onCancel={() => setEditing(null)}
           />
         ) : projects === null ? (
-          error ? null : <SkeletonRows rows={2} label="Loading projects" />
+          error ? null : <SkeletonRows rows={2} label={t("projectsPanel.loadingProjects")} />
         ) : projects.length === 0 ? (
           <EmptyState
             action={
               <Button variant="secondary" size="sm" onClick={() => setEditing("new")}>
                 <Plus size={13} />
-                New project
+                {t("projectsPanel.newProject")}
               </Button>
             }
           >
-            A project gathers folders, people and a shared brief, so opening it shows only that work.
+            {t("projectsPanel.aProjectGathersFoldersPeople")}
           </EmptyState>
         ) : (
           <div className="flex flex-col gap-2">
@@ -145,18 +146,18 @@ export function ProjectsPanel() {
                           {project.name}
                         </span>
                         {state.projectId === project.id && (
-                          <span className="shrink-0 text-caption text-brand-ink">open</span>
+                          <span className="shrink-0 text-caption text-brand-ink">{t("projectsPanel.open")}</span>
                         )}
                       </div>
                       <div className="mt-0.5 text-small text-muted-foreground">
                         {members.length
                           ? members.map((b) => b!.name).join(", ")
-                          : "nobody on it yet"}
+                          : t("projectsPanel.nobodyOnItYet")}
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <Button variant="ghost" size="sm" onClick={() => setEditing(project)}>
-                        Edit
+                        {t("common.edit")}
                       </Button>
                       <Button
                         variant={state.projectId === project.id ? "ghost" : "secondary"}
@@ -167,7 +168,7 @@ export function ProjectsPanel() {
                             : open(project)
                         }
                       >
-                        {state.projectId === project.id ? "Leave" : "Open"}
+                        {state.projectId === project.id ? t("projectsPanel.leave") : t("common.open")}
                       </Button>
                     </div>
                   </div>
@@ -202,7 +203,7 @@ export function ProjectsPanel() {
 
                   {project.broken && (
                     <div className="mt-2 rounded-xl bg-warning/10 px-3 py-2 text-small leading-relaxed text-warning">
-                      Nothing runs here until those folders are back or you pick new ones.
+                      {t("projectsPanel.nothingRunsHereUntilThose")}
                     </div>
                   )}
                 </div>
@@ -260,7 +261,7 @@ function ProjectForm({
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
         <BlokAvatar color={color} shape={shape} expression="focused" size={36} />
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Launch week" autoFocus />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("projectsPanel.launchWeek")} autoFocus />
       </div>
 
       <div className="flex flex-wrap gap-1">
@@ -298,7 +299,7 @@ function ProjectForm({
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           rows={3}
-          placeholder="Ship small, ship often. Prefer the boring option."
+          placeholder={t("projectsPanel.shipSmallShipOftenPrefer")}
           className="mt-1 resize-none"
         />
       </label>
@@ -310,7 +311,7 @@ function ProjectForm({
             value={folders}
             onChange={(e) => setFolders(e.target.value)}
             rows={2}
-            placeholder="/Users/you/src/api"
+            placeholder={t("projectsPanel.usersYouSrcApi")}
             className="resize-none font-mono text-small"
           />
           <BrowseFolderButton
@@ -326,13 +327,13 @@ function ProjectForm({
         <Input
           value={include}
           onChange={(e) => setInclude(e.target.value)}
-          placeholder="src/**, docs/*.md"
+          placeholder={t("projectsPanel.srcDocsMd")}
           className="mt-1 font-mono text-small"
         />
       </label>
 
       <div>
-        <div className="text-body text-muted-foreground">Who is on it</div>
+        <div className="text-body text-muted-foreground">{t("projectsPanel.whoIsOnIt")}</div>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {state.bots
             .filter((b) => !b.hidden)
@@ -359,11 +360,11 @@ function ProjectForm({
 
       <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button disabled={saving || !name.trim()} onClick={save}>
           {saving && <Loader2 size={12} className="animate-spin" />}
-          {project ? "Save" : "Create"}
+          {project ? t("common.save") : t("projectsPanel.create")}
         </Button>
       </div>
     </div>

@@ -11,6 +11,7 @@ import { TriangleAlert, X } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { TEAM_WARNING_KEY, teamSignInWarning } from "@/lib/credits";
 import { useStore, type Bot } from "@/state/store";
+import { t } from "@/lib/i18n";
 
 function dismissed(): boolean {
   try {
@@ -48,7 +49,7 @@ export function TeamSignInNotice({ bot, className }: { bot?: Bot; className?: st
       <button
         type="button"
         onClick={dismiss}
-        aria-label="Dismiss"
+        aria-label={t("common.dismiss")}
         className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
       >
         <X size={13} />

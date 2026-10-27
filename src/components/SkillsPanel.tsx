@@ -18,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { DiffLines, type DiffLine } from "./DiffLines";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { MAX_SKILL_CHARS, skillLength } from "@/lib/skillLength";
+import { t } from "@/lib/i18n";
 
 /** How long the instructions are against the limit, red once over it. */
 function LengthCount({ length }: { length: number }) {
@@ -80,13 +81,12 @@ function ReviewImport({
       <div className="flex items-start gap-2.5 rounded-xl bg-warning/10 px-3 py-2.5">
         <ShieldAlert size={15} className="mt-0.5 shrink-0 text-warning" />
         <div className="text-body leading-relaxed text-warning">
-          Agents using this skill follow these instructions. Read them first, and only add skills
-          you trust.
+          {t("skillsPanel.agentsUsingThisSkillFollow")}
         </div>
       </div>
 
       <label className="mt-3 block">
-        <div className="mb-1.5 text-body font-medium text-muted-foreground">Name</div>
+        <div className="mb-1.5 text-body font-medium text-muted-foreground">{t("common.name")}</div>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -95,7 +95,7 @@ function ReviewImport({
       </label>
 
       <div className="mb-1.5 mt-3 text-body font-medium text-muted-foreground">
-        Instructions
+        {t("common.instructions")}
       </div>
       <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/50 p-3 font-mono text-small leading-relaxed text-foreground">
         {draft.markdown}
@@ -110,10 +110,10 @@ function ReviewImport({
 
       <div className="mt-3 flex gap-2">
         <Button variant="secondary" onClick={onBack} className="flex-1">
-          Back
+          {t("common.back")}
         </Button>
         <Button onClick={install} disabled={saving || tooLong} className="flex-1">
-          {saving ? <Loader2 size={13} className="animate-spin" /> : "Install skill"}
+          {saving ? <Loader2 size={13} className="animate-spin" /> : t("skillsPanel.installSkill")}
         </Button>
       </div>
     </div>
@@ -156,7 +156,7 @@ export function AddSkill({
         className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed py-6 transition-colors duration-150 hover:border-ring/50 hover:bg-accent/50"
       >
         <FileText size={18} className="text-muted-foreground" />
-        <span className="text-body font-medium text-foreground">Drop a .md file, or click to choose</span>
+        <span className="text-body font-medium text-foreground">{t("skillsPanel.dropAMdFileOr")}</span>
       </button>
       <input
         ref={fileRef}
@@ -178,7 +178,7 @@ export function AddSkill({
       <Textarea
         value={markdown}
         onChange={(e) => setMarkdown(e.target.value)}
-        placeholder={`Use this when…\n\n1. First step\n2. Second step\n\nNot for: when to leave this alone.\nReturn: what to hand back.\nApproval: what needs a human first.`}
+        placeholder={t("skillsPanel.useThisWhen1First")}
         className="min-h-[180px] flex-1 resize-none font-mono text-small leading-relaxed"
       />
       <div className="mt-1.5 text-right">
@@ -187,14 +187,14 @@ export function AddSkill({
 
       <div className="mt-3 flex gap-2">
         <Button variant="secondary" onClick={onBack} className="flex-1">
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button
           disabled={!markdown.trim()}
           onClick={() => setReview({ name: nameFor(markdown, fileName), markdown })}
           className="flex-1"
         >
-          Review
+          {t("common.review")}
         </Button>
       </div>
     </div>
@@ -215,8 +215,8 @@ export function AddSkillDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[84vh] max-w-[620px] flex-col">
-        <DialogTitle>Add a skill</DialogTitle>
-        <DialogDescription>Drop a Markdown file, or write one.</DialogDescription>
+        <DialogTitle>{t("skillsPanel.addASkill")}</DialogTitle>
+        <DialogDescription>{t("skillsPanel.dropAMarkdownFileOr")}</DialogDescription>
         <div className="mt-4 flex min-h-0 flex-1 flex-col">
           <AddSkill
             onBack={() => onOpenChange(false)}
@@ -328,13 +328,13 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           From {fromWhom(proposal)}
           {proposal.trigger ? `, ${BECAUSE_OF[proposal.trigger]}` : ""}.
           {patch && proposal.base !== undefined && ` Against ${proposal.base === 0 ? "the built-in text" : `version ${proposal.base}`}.`}{" "}
-          {open ? "Hide" : "Show"}
+          {open ? t("common.hide") : t("skillsPanel.show")}
         </div>
       </button>
 
       {patch && proposal.builtin && (
         <div className="mt-2 text-small leading-relaxed text-muted-foreground">
-          Keeping this makes the built-in skill your own copy, with its versions from the text as it ships.
+          {t("skillsPanel.keepingThisMakesTheBuilt")}
         </div>
       )}
 
@@ -342,7 +342,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           would land on top of it should say so before it is approved. */}
       {proposal.overwritesEdits && (
         <div className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-small leading-relaxed text-warning">
-          Keeping this replaces your own edits to this skill.
+          {t("skillsPanel.keepingThisReplacesYourOwn")}
         </div>
       )}
 
@@ -350,7 +350,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
         <div role="status" className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-small leading-relaxed text-warning">
           {proposal.movedOn
             ? `Written against version ${proposal.base}, and the skill is version ${proposal.current} now. Keeping it as it is would undo that change. Edit it to keep your own text, or discard it.`
-            : "The skill changed since this was suggested. Discard it."}
+            : t("skillsPanel.theSkillChangedSinceThis")}
         </div>
       )}
 
@@ -364,7 +364,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
               onClick={() => setEditing(true)}
               className="mt-1.5 text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
-              Edit before keeping
+              {t("skillsPanel.editBeforeKeeping")}
             </button>
           )}
         </div>
@@ -375,7 +375,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           <Input value={name} onChange={(e) => setName(e.target.value)} className="text-body" />
           <Input
             value={description}
-            placeholder="When to use it"
+            placeholder={t("skillsPanel.whenToUseIt")}
             onChange={(e) => setDescription(e.target.value)}
             className="text-body"
           />
@@ -395,10 +395,10 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           disabled={busy || !name.trim() || !body.trim() || (patch && proposal.stale && !editing)}
           onClick={() => act(true)}
         >
-          Keep it
+          {t("skillsPanel.keepIt")}
         </Button>
         <Button variant="ghost" size="sm" disabled={busy} onClick={() => act(false)}>
-          Discard
+          {t("common.discard")}
         </Button>
       </div>
     </div>

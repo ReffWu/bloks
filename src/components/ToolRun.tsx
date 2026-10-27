@@ -28,6 +28,7 @@ import type { Message } from "@/state/store";
 import { repeatedIn, runningCall, summarize, toolLabel } from "@/lib/tool-summary";
 import { Elapsed } from "./chat/Live";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 type Tool = NonNullable<Message["tool"]>;
 type CallState = "running" | "done" | "failed" | "stopped";
@@ -83,7 +84,7 @@ function Call({ message, onRail }: { message: Message; onRail?: boolean }) {
   return (
     <div
       className={cn("min-w-0 max-w-full text-small", failed ? "text-destructive" : "text-muted-foreground")}
-      title={state === "stopped" ? "Stopped before it finished" : undefined}
+      title={state === "stopped" ? t("toolRun.stoppedBeforeItFinished") : undefined}
     >
       <div className={cn("flex min-w-0 items-center gap-2 py-0.5", onRail && "-ml-[6.5px]")}>
         {/* on the rail the mark sits over the line, on the page's colour */}
@@ -114,7 +115,7 @@ function Call({ message, onRail }: { message: Message; onRail?: boolean }) {
           )}
           {failed && (
             <span className="text-caption text-muted-foreground">
-              {tool.command ? "Failed. Its output went to the agent, not here." : "This step failed."}
+              {tool.command ? t("toolRun.failedItsOutputWentTo") : t("toolRun.thisStepFailed")}
             </span>
           )}
         </div>
@@ -129,7 +130,7 @@ function Repeated({ count }: { count: number }) {
   return (
     <span
       className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-caption font-medium text-warning"
-      title="Same call, same inputs, again and again. It may be stuck. Nothing was stopped."
+      title={t("toolRun.sameCallSameInputsAgain")}
     >
       <Repeat size={11} aria-hidden />
       Repeated {count} times

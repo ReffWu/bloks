@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { appsTrouble } from "@/lib/mcpApps";
 import { plural } from "@/lib/plural";
+import { t } from "@/lib/i18n";
 
 interface McpApp {
   uri: string;
@@ -63,7 +64,7 @@ export function McpAppsCard() {
     return (
       <div className="mt-4 flex items-center gap-2 rounded-2xl border bg-card p-4 text-body text-muted-foreground">
         <Loader2 size={14} className="animate-spin" />
-        Looking for apps
+        {t("mcpApps.lookingForApps")}
       </div>
     );
   }
@@ -74,13 +75,13 @@ export function McpAppsCard() {
 
   return (
     <div className="mt-4 rounded-2xl border bg-card p-4">
-      <div className="text-ui font-semibold text-foreground">Apps</div>
+      <div className="text-ui font-semibold text-foreground">{t("mcpApps.apps")}</div>
       <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-        Apps from your MCP servers. They run sealed off from the internet and from Bloks.
+        {t("mcpApps.appsFromYourMcpServers")}
       </div>
       {servers.length === 0 ? (
         <div className="mt-3 px-3 py-6 text-center text-small text-muted-foreground">
-          No MCP servers yet. Use Add to connect one.
+          {t("mcpApps.noMcpServersYetUse")}
         </div>
       ) : (
         <div className="mt-3 flex flex-col gap-2">
@@ -132,7 +133,7 @@ function ServerApps({
         </span>
         <Button variant="ghost" size="sm" disabled={asking} onClick={ask}>
           {asking ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
-          {apps === null ? "Check" : "Check again"}
+          {apps === null ? t("mcpApps.check") : t("common.checkAgain")}
         </Button>
       </div>
 
@@ -231,13 +232,13 @@ function AppFrame({
   return (
     <div className="mt-4 flex flex-col overflow-hidden rounded-2xl border bg-card">
       <div className="flex h-[42px] shrink-0 items-center gap-2 border-b px-2.5">
-        <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back">
+        <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label={t("common.back")}>
           <ArrowLeft size={15} />
         </Button>
         <span className="min-w-0 flex-1 truncate text-body font-medium text-foreground">{app.name}</span>
         <span className="shrink-0 truncate text-small text-muted-foreground">{server.name}</span>
         {busy && <Loader2 size={13} className="shrink-0 animate-spin text-muted-foreground" />}
-        <Button variant="ghost" size="icon-sm" onClick={load} aria-label="Reload app">
+        <Button variant="ghost" size="icon-sm" onClick={load} aria-label={t("mcpApps.reloadApp")}>
           <RotateCw size={13} />
         </Button>
       </div>

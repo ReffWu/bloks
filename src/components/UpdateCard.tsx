@@ -23,6 +23,7 @@ import type { UpdateState } from "@/types/bridge";
 import { cn } from "@/lib/cn";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { t } from "@/lib/i18n";
 
 const DISMISSED = "bloks.updateCardDismissed";
 
@@ -135,7 +136,7 @@ function UpdateCard() {
         <div className="relative px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-body font-medium text-foreground">
             <RefreshCw size={12} className="animate-spin text-brand-ink motion-reduce:animate-none" />
-            Restarting to update
+            {t("updateCard.restartingToUpdate")}
           </div>
           <p className="mt-0.5 text-small leading-snug text-muted-foreground">{drainingLine(draining)}</p>
           <div className="mt-1.5 flex items-center gap-3">
@@ -146,17 +147,17 @@ function UpdateCard() {
               }}
               className="rounded-md text-body font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80"
             >
-              Restart now
+              {t("updateCard.restartNow")}
             </button>
             <button
               onClick={() => void window.bloks?.updateLater?.()}
               className="rounded-md text-body font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
           <p className="mt-1 text-small leading-snug text-muted-foreground">
-            Anything still running picks up after the restart.
+            {t("updateCard.anythingStillRunningPicksUp")}
           </p>
         </div>
       </div>
@@ -169,22 +170,22 @@ function UpdateCard() {
         <div className="relative px-3 py-2.5">
           <button
             onClick={() => void window.bloks?.updateNotInstalledSeen?.()}
-            aria-label="Dismiss"
-            title="Dismiss"
+            aria-label={t("common.dismiss")}
+            title={t("common.dismiss")}
             className="absolute right-1.5 top-1.5 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
           >
             <X size={12} />
           </button>
-          <div className="pr-5 text-body font-medium text-foreground">The update did not install</div>
+          <div className="pr-5 text-body font-medium text-foreground">{t("updateCard.theUpdateDidNotInstall")}</div>
           <p className="mt-0.5 text-small leading-snug text-muted-foreground">
-            Bloks is still on {missed.from}. {ready ? "Try again, or get" : "Get"} the installer from{" "}
+            Bloks is still on {missed.from}. {ready ? t("updateCard.tryAgainOrGet") : t("updateCard.get")} the installer from{" "}
             <a
               href="https://bloks.dev"
               target="_blank"
               rel="noreferrer"
               className="font-medium underline underline-offset-2 hover:text-foreground"
             >
-              bloks.dev
+              {t("updateCard.bloksDev")}
             </a>
             .
           </p>
@@ -195,7 +196,7 @@ function UpdateCard() {
               className="mt-1.5 flex items-center gap-1.5 rounded-md text-body font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80 disabled:opacity-60"
             >
               <RefreshCw size={12} className={cn(restarting && "animate-spin motion-reduce:animate-none")} />
-              {restarting ? "Relaunching…" : "Try again"}
+              {restarting ? t("updateCard.relaunching") : t("common.tryAgain")}
             </button>
           )}
         </div>
@@ -208,15 +209,15 @@ function UpdateCard() {
       <div className="relative px-3 py-2.5">
         <button
           onClick={dismiss}
-          aria-label="Dismiss"
-          title="Not now"
+          aria-label={t("common.dismiss")}
+          title={t("common.notNow")}
           className="absolute right-1.5 top-1.5 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
         >
           <X size={12} />
         </button>
-        <div className="pr-5 text-body font-medium text-foreground">New version available</div>
+        <div className="pr-5 text-body font-medium text-foreground">{t("updateCard.newVersionAvailable")}</div>
         <p className="mt-0.5 text-small leading-snug text-muted-foreground">
-          {version ? `Bloks ${version} is` : "An update is"} downloaded. Relaunch to update.
+          {version ? `Bloks ${version} is` : t("updateCard.anUpdateIs")} downloaded. Relaunch to update.
         </p>
         <button
           onClick={relaunch}
@@ -224,7 +225,7 @@ function UpdateCard() {
           className="mt-1.5 flex items-center gap-1.5 rounded-md text-body font-medium text-brand-ink transition-opacity duration-150 hover:opacity-80 disabled:opacity-60"
         >
           <RefreshCw size={12} className={cn(restarting && "animate-spin motion-reduce:animate-none")} />
-          {restarting ? "Relaunching…" : "Relaunch"}
+          {restarting ? t("updateCard.relaunching") : t("updateCard.relaunch")}
         </button>
       </div>
     </div>

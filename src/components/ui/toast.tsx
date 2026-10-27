@@ -22,6 +22,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, Info, TriangleAlert, X } from "@/components/icons";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export type ToastKind = "info" | "success" | "error";
 
@@ -163,7 +164,7 @@ export function Toaster() {
         {words.assertive}
       </div>
       <section
-        aria-label="Notifications"
+        aria-label={t("toast.notifications")}
         // Below the header and off to the right on a desktop, over the
         // transcript's empty margin, so a toast never sits on the chat's
         // name or the composer's Send. A phone has no margin to spare, so
@@ -250,7 +251,7 @@ function ToastRow({ item, paused }: { item: ToastItem; paused: boolean }) {
         )}
         <button
           type="button"
-          aria-label="Dismiss"
+          aria-label={t("common.dismiss")}
           onClick={() => dismiss(item.id)}
           className="flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color,transform] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
         >

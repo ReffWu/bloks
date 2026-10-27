@@ -8,6 +8,7 @@
 import { Cloud } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { useTicking, useWake, wakeProgress } from "@/lib/waking";
+import { t } from "@/lib/i18n";
 
 /** `follow` for the strip shown before the store's event stream is open,
  * which then hears the wait on a line of its own. */
@@ -22,7 +23,7 @@ export function WakingStrip({ className, follow = false }: { className?: string;
       className={cn("relative flex h-8 shrink-0 items-center justify-center gap-2 px-4 text-small text-muted-foreground", className)}
     >
       <Cloud size={14} aria-hidden className="shrink-0" />
-      <span className="truncate">Waking your hosted workspace…</span>
+      <span className="truncate">{t("wakingStrip.wakingYourHostedWorkspace")}</span>
       {/* how far along it probably is: quick at first, slower as it goes,
           and only the workspace answering finishes it */}
       <div aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">

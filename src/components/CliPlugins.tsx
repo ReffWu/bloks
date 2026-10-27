@@ -37,6 +37,7 @@ import { cn } from "@/lib/cn";
 import { AgentAvatar } from "./Avatar";
 import { BackLink } from "./McpServers";
 import { GitHubMark } from "./ProviderIcons";
+import { t } from "@/lib/i18n";
 
 // ── what the server says (server/cli-plugins.ts, server/connections.ts) ──
 
@@ -187,7 +188,7 @@ function Command({ text }: { text: string }) {
         }}
         className="shrink-0 text-body text-muted-foreground transition-colors hover:text-foreground"
       >
-        Copy
+        {t("common.copy")}
       </button>
     </div>
   );
@@ -238,7 +239,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
           </span>
           <div className="min-w-0">
             <h2 className="truncate text-display font-semibold text-foreground">GitHub</h2>
-            <p className="mt-0.5 text-ui text-muted-foreground">CLI plugin: git and gh on this computer</p>
+            <p className="mt-0.5 text-ui text-muted-foreground">{t("cliPlugins.cliPluginGitAndGh")}</p>
           </div>
         </div>
         {plugin && (
@@ -255,42 +256,42 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
 
       <div className="mt-7 flex flex-col gap-4">
         <Section
-          title="This computer"
-          says="Checked with the same PATH and home folder agents run with, so ready here is ready for them."
+          title={t("cliPlugins.thisComputer")}
+          says={t("cliPlugins.checkedWithTheSamePath")}
         >
           {plugins === null ? (
             <div className="flex items-center gap-2 text-body text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" /> Looking for git and gh
+              <Loader2 size={14} className="animate-spin" /> {t("cliPlugins.lookingForGitAndGh")}
             </div>
           ) : !plugin || !status ? (
-            <p className="text-body text-muted-foreground">{error ?? "Not checked yet."}</p>
+            <p className="text-body text-muted-foreground">{error ?? t("cliPlugins.notCheckedYet")}</p>
           ) : (
             <>
               <div className="grid grid-cols-[auto_120px_minmax(0,1fr)] items-center gap-x-3 gap-y-3 text-ui">
                 <Dot on={status.git.found} />
-                <span className="text-muted-foreground">git</span>
+                <span className="text-muted-foreground">{t("cliPlugins.git")}</span>
                 <span className="truncate text-foreground">
                   {status.git.found ? (
                     <>
                       {status.git.version} <span className="text-muted-foreground">· {status.git.path}</span>
                     </>
                   ) : (
-                    (status.git.problem ?? "Not installed")
+                    (status.git.problem ?? t("cliPlugins.notInstalled"))
                   )}
                 </span>
                 <Dot on={status.gh.found} />
-                <span className="text-muted-foreground">gh</span>
+                <span className="text-muted-foreground">{t("cliPlugins.gh")}</span>
                 <span className="truncate text-foreground">
                   {status.gh.found ? (
                     <>
                       {status.gh.version} <span className="text-muted-foreground">· {status.gh.path}</span>
                     </>
                   ) : (
-                    (status.gh.problem ?? "Not installed")
+                    (status.gh.problem ?? t("cliPlugins.notInstalled"))
                   )}
                 </span>
                 <Dot on={status.gh.found ? Boolean(status.account?.ok) : null} />
-                <span className="text-muted-foreground">Signed in</span>
+                <span className="text-muted-foreground">{t("cliPlugins.signedIn")}</span>
                 <span className="truncate text-foreground">
                   {status.account ? (
                     <>
@@ -301,15 +302,15 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                       </span>
                     </>
                   ) : status.gh.found ? (
-                    "Not signed in"
+                    t("cliPlugins.notSignedIn")
                   ) : (
-                    <span className="text-muted-foreground">Needs gh</span>
+                    <span className="text-muted-foreground">{t("cliPlugins.needsGh")}</span>
                   )}
                 </span>
                 <Dot on={status.gitUsesGh} />
-                <span className="text-muted-foreground">Git sign-in</span>
+                <span className="text-muted-foreground">{t("cliPlugins.gitSignIn")}</span>
                 <span className="truncate text-foreground">
-                  {status.gitUsesGh === true ? "git asks gh for github.com" : status.gitUsesGh === false ? "git does not ask gh yet" : <span className="text-muted-foreground">Needs git and gh</span>}
+                  {status.gitUsesGh === true ? t("cliPlugins.gitAsksGhForGithub") : status.gitUsesGh === false ? t("cliPlugins.gitDoesNotAskGh") : <span className="text-muted-foreground">{t("cliPlugins.needsGitAndGh")}</span>}
                 </span>
               </div>
               {status.account?.scopes && (
@@ -332,7 +333,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                       <Button size="sm" variant="outline" asChild>
                         <a href={next.url} target="_blank" rel="noreferrer">
                           <ExternalLink size={13} />
-                          cli.github.com
+                          {t("cliPlugins.cliGithubCom")}
                         </a>
                       </Button>
                     )}
@@ -346,7 +347,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                         disabled={busy !== null}
                       >
                         <SquareTerminal size={13} />
-                        Sign in in Terminal
+                        {t("cliPlugins.signInInTerminal")}
                       </Button>
                     )}
                     {next.kind === "setup-git" && (
@@ -359,7 +360,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                   {next.command && <Command text={next.command} />}
                   {next.kind === "sign-in" && (
                     <p className="mt-2 text-pretty text-body text-muted-foreground">
-                      On a computer you reach over SSH, run it there and pick the device code: gh shows a code to type at github.com/login/device from any browser.
+                      {t("cliPlugins.onAComputerYouReach")}
                     </p>
                   )}
                 </div>
@@ -375,14 +376,14 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
         </Section>
 
         <Section
-          title="Agents use gh"
-          says="Agents are told gh is signed in and to use git and gh as usual: clone, branch, push, and gh pr create. They act as this account, with its repository permissions and branch protection."
+          title={t("cliPlugins.agentsUseGh")}
+          says={t("cliPlugins.agentsAreToldGhIs")}
           aside={
             plugin && (
               <Switch
                 checked={plugin.enabled}
                 disabled={busy !== null}
-                aria-label="Agents use gh"
+                aria-label={t("cliPlugins.agentsUseGh")}
                 onCheckedChange={(on) =>
                   void act("enable", "/api/cli-plugins/github", { method: "PUT", body: JSON.stringify({ enabled: on }) }).then((r) => {
                     if (r && !on) toast("Agents are no longer told about gh", { description: "gh stays signed in on this computer. Run gh auth logout to sign it out." });
@@ -395,13 +396,13 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
           <div className="flex gap-3 rounded-xl bg-muted/50 px-4 py-3 text-body text-muted-foreground">
             <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
             <p className="text-pretty">
-              Bloks keeps no copy of gh's sign-in, and it cannot keep it from an agent either: anything an agent runs, runs as you, and gh hands its token to whoever asks with gh auth token. For agents that should never hold a token, use a protected connection below.
+              {t("cliPlugins.bloksKeepsNoCopyOf")}
             </p>
           </div>
         </Section>
 
         <Section
-          title="Protected connection"
+          title={t("cliPlugins.protectedConnection")}
           says="A token Bloks keeps and adds to an agent's requests itself. Agents you grant it clone, fetch and push over https://github.com and call the GitHub API through an address of their own that lasts one turn. They never see the token."
           aside={
             connection && (
@@ -427,24 +428,24 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                 className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-body font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
               >
                 <Trash2 size={14} />
-                Disconnect
+                {t("common.disconnect")}
               </button>
             )
           }
         >
           {connections === null ? (
             <div className="flex items-center gap-2 text-body text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" /> Loading
+              <Loader2 size={14} className="animate-spin" /> {t("common.loading2")}
             </div>
           ) : !connection ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="flex items-center gap-2 text-ui text-muted-foreground">
                 <Lock size={15} />
-                Not connected
+                {t("cliPlugins.notConnected")}
               </span>
               <Button onClick={() => setAdding(true)}>
                 <Plus size={14} />
-                Add a token
+                {t("cliPlugins.addAToken")}
               </Button>
             </div>
           ) : (
@@ -452,13 +453,13 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
           )}
         </Section>
 
-        <Section title="What is protected">
+        <Section title={t("cliPlugins.whatIsProtected")}>
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-pretty text-body text-muted-foreground">
-            <li>A protected token is never in an agent's environment, prompt, files or output. Bloks adds it to requests to github.com and api.github.com only, and takes it back out of anything GitHub answers.</li>
-            <li>An agent's address works for its own turn, for the hosts above, and only while its grant stands. Read only can clone and fetch but not push or change anything.</li>
-            <li>Adding keys, deploy keys, collaborators, members or webhooks is never sent, whatever the grant, since each would outlast taking the grant back.</li>
-            <li>An agent can still misuse what it was granted: read access reads everything the token can, and read and write can push and open or close what the token can. Give the token only the repositories and permissions the work needs.</li>
-            <li>The token is kept in Bloks' settings file on this computer, beside your other keys. An agent working as you could read that file if you let it read outside its folders, and gh's own sign-in, while it is here, is open to any agent with a shell.</li>
+            <li>{t("cliPlugins.aProtectedTokenIsNever")}</li>
+            <li>{t("cliPlugins.anAgentsAddressWorksFor")}</li>
+            <li>{t("cliPlugins.addingKeysDeployKeysCollaborators")}</li>
+            <li>{t("cliPlugins.anAgentCanStillMisuse")}</li>
+            <li>{t("cliPlugins.theTokenIsKeptIn")}</li>
           </ul>
         </Section>
       </div>
@@ -524,7 +525,7 @@ function ConnectionBody({
         <span className="flex min-w-0 items-center gap-2 text-ui text-foreground">
           <Dot on />
           <span className="truncate">
-            {connection.account ? `@${connection.account}` : "Connected"}
+            {connection.account ? `@${connection.account}` : t("common.connected")}
             <span className="text-muted-foreground">
               {" "}
               · added {stamp(connection.addedAt)}
@@ -557,15 +558,15 @@ function ConnectionBody({
         <div className="flex gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-body text-foreground">
           <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
           <p className="text-pretty">
-            gh is also signed in on this computer, and agents are told to use it. While it is, an agent with a shell can reach that sign-in whatever you choose here. For the token to be the only way in, turn Agents use gh off and sign gh out.
+            {t("cliPlugins.ghIsAlsoSignedIn")}
           </p>
         </div>
       )}
 
       <div>
-        <h4 className="text-ui font-semibold text-foreground">Agents</h4>
+        <h4 className="text-ui font-semibold text-foreground">{t("common.agents")}</h4>
         {agents.length === 0 ? (
-          <p className="mt-2 text-body text-muted-foreground">No agents yet.</p>
+          <p className="mt-2 text-body text-muted-foreground">{t("cliPlugins.noAgentsYet")}</p>
         ) : (
           <div className="mt-2 flex flex-col divide-y">
             {agents.map((bot) => (
@@ -588,27 +589,27 @@ function ConnectionBody({
 
       <div>
         <div className="flex items-center justify-between gap-3">
-          <h4 className="text-ui font-semibold text-foreground">Recent use</h4>
+          <h4 className="text-ui font-semibold text-foreground">{t("cliPlugins.recentUse")}</h4>
           <button onClick={loadLines} className="text-body text-muted-foreground transition-colors hover:text-foreground">
-            Refresh
+            {t("cliPlugins.refresh")}
           </button>
         </div>
         {lines === null ? (
-          <p className="mt-2 text-body text-muted-foreground">Loading</p>
+          <p className="mt-2 text-body text-muted-foreground">{t("common.loading2")}</p>
         ) : lines.length === 0 ? (
-          <p className="mt-2 text-body text-muted-foreground">Nothing yet. Each request an agent makes through the connection, sent or refused, shows here.</p>
+          <p className="mt-2 text-body text-muted-foreground">{t("cliPlugins.nothingYetEachRequestAn")}</p>
         ) : (
           <ul className="mt-2 flex max-h-[280px] flex-col divide-y overflow-y-auto rounded-xl border">
             {lines.map((line, i) => (
               <li key={`${line.at}-${i}`} className="flex items-baseline gap-3 px-3.5 py-2 text-body">
                 <span className="w-[72px] shrink-0 tabular-nums text-muted-foreground">{stamp(line.at)}</span>
-                <span className="w-[88px] shrink-0 truncate text-foreground">{line.agent ?? "An agent"}</span>
+                <span className="w-[88px] shrink-0 truncate text-foreground">{line.agent ?? t("common.anAgent")}</span>
                 <span className="min-w-0 flex-1 truncate font-mono text-small text-foreground" title={line.reason ?? line.what}>
                   {line.what}
                   {line.reason && <span className="font-sans text-muted-foreground"> · {line.reason}</span>}
                 </span>
                 <span className={cn("shrink-0 tabular-nums", line.outcome === "refused" ? "text-destructive" : "text-muted-foreground")}>
-                  {line.outcome === "refused" ? "Refused" : line.status}
+                  {line.outcome === "refused" ? t("cliPlugins.refused") : line.status}
                 </span>
               </li>
             ))}
@@ -658,9 +659,9 @@ function AddTokenDialog({
         <span className="flex size-11 items-center justify-center rounded-2xl border bg-card">
           <GitHubMark size={22} />
         </span>
-        <DialogTitle className="mt-4">Add a GitHub token</DialogTitle>
+        <DialogTitle className="mt-4">{t("cliPlugins.addAGithubToken")}</DialogTitle>
         <DialogDescription>
-          Bloks keeps it on this computer and adds it to agents' GitHub requests itself. No agent ever sees it.
+          {t("cliPlugins.bloksKeepsItOnThis")}
         </DialogDescription>
         <ol className="mt-5 flex list-decimal flex-col gap-1.5 pl-5 text-pretty text-body text-muted-foreground">
           <li>
@@ -670,8 +671,8 @@ function AddTokenDialog({
             </a>
             , for only the repositories agents should work on.
           </li>
-          <li>Give it Contents (read and write) to push, and Pull requests (read and write) to open them; Metadata comes with it.</li>
-          <li>Paste it here.</li>
+          <li>{t("cliPlugins.giveItContentsReadAnd")}</li>
+          <li>{t("cliPlugins.pasteItHere")}</li>
         </ol>
         <Input
           type="password"
@@ -682,8 +683,8 @@ function AddTokenDialog({
           onKeyDown={(e) => {
             if (e.key === "Enter" && token.trim() && !busy) add();
           }}
-          placeholder="github_pat_…"
-          aria-label="GitHub token"
+          placeholder={t("cliPlugins.githubPat")}
+          aria-label={t("cliPlugins.githubToken")}
           className="mt-5 h-10 rounded-xl font-mono text-body"
         />
         {error && (
@@ -693,7 +694,7 @@ function AddTokenDialog({
         )}
         <div className="mt-6 flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={add} disabled={!token.trim() || busy}>
             {busy && <Loader2 size={14} className="animate-spin" />}

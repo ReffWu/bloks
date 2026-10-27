@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fixtureScript, fixtureTrace } from "@/lib/traceView";
 import { useTheme } from "@/lib/theme";
 import { TraceWaterfall } from "./TraceWaterfall";
+import { t } from "@/lib/i18n";
 
 export function TraceDemo() {
   const { resolvedTheme, setTheme } = useTheme();
@@ -23,10 +24,10 @@ export function TraceDemo() {
       {/* as wide as the panel beside a conversation (TracePanel.tsx) */}
       <aside className="flex w-[520px] max-w-full flex-col overflow-hidden rounded-xl border bg-background">
         <div className="flex h-11 shrink-0 items-center justify-between border-b pl-4 pr-2">
-          <span className="text-ui font-semibold text-foreground">Timeline</span>
+          <span className="text-ui font-semibold text-foreground">{t("traceDemo.timeline")}</span>
           <span className="flex gap-1 text-small text-muted-foreground">
             <button className="rounded-md px-2 py-1 hover:bg-accent" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
-              {resolvedTheme === "dark" ? "Light" : "Dark"}
+              {resolvedTheme === "dark" ? t("traceDemo.light") : t("traceDemo.dark")}
             </button>
             <button
               className="rounded-md px-2 py-1 hover:bg-accent"
@@ -35,7 +36,7 @@ export function TraceDemo() {
                 setNow(Date.now());
               }}
             >
-              Replay
+              {t("traceDemo.replay")}
             </button>
           </span>
         </div>

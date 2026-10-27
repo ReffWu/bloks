@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { MemberPicker, RoomPreview, useModelLabel } from "../NewRoomDialog";
 import { leadNote, MIN_MEMBERS, roomCandidates, rosterPatch, togglePicked } from "@/lib/roomEdit";
 import { roomLead } from "@/lib/roomLead";
+import { t } from "@/lib/i18n";
 
 export function RoomAgentsDialog({ blok, onClose }: { blok: Blok; onClose: () => void }) {
   const { state, dispatch } = useStore();
@@ -62,7 +63,7 @@ export function RoomAgentsDialog({ blok, onClose }: { blok: Blok; onClose: () =>
         <header className="border-b px-6 pb-4 pt-5 pr-14">
           <DialogTitle className="truncate text-heading">Agents in {blok.name}</DialogTitle>
           <DialogDescription className="mt-0.5">
-            Add or remove agents. The conversation so far stays as it is.
+            {t("roomAgentsDialog.addOrRemoveAgentsThe")}
           </DialogDescription>
         </header>
 
@@ -79,7 +80,7 @@ export function RoomAgentsDialog({ blok, onClose }: { blok: Blok; onClose: () =>
             />
           </div>
           <aside
-            aria-label="The room"
+            aria-label={t("roomAgentsDialog.theRoom")}
             className="flex flex-col border-t bg-sidebar/50 md:min-h-0 md:border-l md:border-t-0"
           >
             <div className="flex-1 px-5 py-5 md:overflow-y-auto">
@@ -97,14 +98,14 @@ export function RoomAgentsDialog({ blok, onClose }: { blok: Blok; onClose: () =>
           <div className="mr-auto min-w-0 text-destructive">{error}</div>
           <div className="flex gap-2 max-sm:w-full">
             <Button variant="secondary" onClick={onClose} className="max-sm:flex-1">
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={save}
               disabled={!change || picked.length < MIN_MEMBERS || saving}
               className="min-w-[112px] max-sm:flex-1"
             >
-              {saving ? "Saving…" : picked.length < MIN_MEMBERS ? `Pick ${MIN_MEMBERS - picked.length} more` : "Save"}
+              {saving ? t("roomAgentsDialog.saving") : picked.length < MIN_MEMBERS ? `Pick ${MIN_MEMBERS - picked.length} more` : t("common.save")}
             </Button>
           </div>
         </footer>

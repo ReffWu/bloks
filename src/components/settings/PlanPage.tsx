@@ -83,6 +83,7 @@ import { SettingRow, SettingsEmpty, SettingsGroup } from "../SettingsLayout";
 import { goToWorkspace } from "../WorkspaceSwitcher";
 import { MoveToHostingCard } from "./MoveToHosting";
 import { HostingMove } from "../hosting/HostingMove";
+import { t } from "@/lib/i18n";
 
 const CLOUD_KEY = /^blok_live_[0-9a-f]{32}$/;
 const easeOut = [0.23, 1, 0.32, 1] as const;
@@ -157,7 +158,7 @@ function TryAgain({ busy }: { busy: boolean }) {
       className="inline-flex items-center gap-1 rounded font-medium text-foreground underline-offset-2 outline-none hover:underline disabled:opacity-60"
     >
       <RefreshCw size={11} className={cn(busy && "animate-spin")} aria-hidden />
-      {busy ? "Trying" : "Try again"}
+      {busy ? t("planPage.trying") : t("common.tryAgain")}
     </button>
   );
 }
@@ -188,7 +189,7 @@ function PlanMoment({ words, at, here }: { words: string; at: number; here: bool
       <span className="min-w-0">
         <span className="block text-lead font-semibold text-foreground">{words}</span>
         <span className="block text-pretty text-body text-muted-foreground">
-          {here ? "Everything it includes is on now, in every workspace on this computer." : "Everything it includes is on now."}
+          {here ? t("planPage.everythingItIncludesIsOn") : t("planPage.everythingItIncludesIsOnNow")}
         </span>
       </span>
     </motion.div>
@@ -219,7 +220,7 @@ function Headline({
     <div className="flex flex-wrap items-start gap-x-4 gap-y-4">
       <PlanGlyph planKeyOf={glyph} />
       <div className="min-w-0 flex-1 basis-[240px]">
-        <div className="text-small font-medium text-muted-foreground">Your plan</div>
+        <div className="text-small font-medium text-muted-foreground">{t("planPage.yourPlan")}</div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <h2 className="min-w-0 text-balance text-display font-semibold text-foreground">{name}</h2>
           {pill}
@@ -318,7 +319,7 @@ function PlanCard({
   const pill: { tone: Health; label: string } | null = refused ? { tone: "issue", label: "Key not recognised" } : status ? { tone: status.tone, label: status.label } : null;
   const facts = account ? factsOf(account) : [];
   return (
-    <section aria-label="Your plan" className="mb-9 overflow-hidden rounded-2xl border bg-card">
+    <section aria-label={t("planPage.yourPlan")} className="mb-9 overflow-hidden rounded-2xl border bg-card">
       <div className="p-6 max-sm:p-5">
         <Headline
           glyph={key}
@@ -354,7 +355,7 @@ function PlanCard({
             <TriangleAlert size={16} className="shrink-0 text-warning" />
             <span className="min-w-0 flex-1 basis-[220px] text-pretty text-body text-foreground">{status.line}</span>
             <Button size="sm" variant="brand" disabled={managing} onClick={onManage}>
-              {managing ? <Loader2 size={13} className="animate-spin" /> : "Update your card"}
+              {managing ? <Loader2 size={13} className="animate-spin" /> : t("planPage.updateYourCard")}
             </Button>
           </div>
         )}
@@ -369,7 +370,7 @@ function PlanCard({
           <p role="status" className="mt-3 text-pretty text-small text-muted-foreground">
             Billing is ready to open.{" "}
             <a href={ready} target="_blank" rel="noopener noreferrer" onClick={onReadyOpened} className="font-medium text-foreground underline underline-offset-2">
-              Open billing
+              {t("planPage.openBilling")}
             </a>
           </p>
         )}
@@ -393,7 +394,7 @@ function FreeCard({ onActivated, stale, loading, here }: { onActivated: () => vo
   const [open, setOpen] = useState(false);
   if (!here) {
     return (
-      <section aria-label="Your plan" className="mb-9 overflow-hidden rounded-2xl border bg-card">
+      <section aria-label={t("planPage.yourPlan")} className="mb-9 overflow-hidden rounded-2xl border bg-card">
         <div className="p-6 max-sm:p-5">
           <Headline glyph="free" name="Self-hosted" facts="This workspace runs on its own engines and keys." />
           {stale && <OldLine words={stale} loading={loading} className="mt-4" />}
@@ -403,11 +404,11 @@ function FreeCard({ onActivated, stale, loading, here }: { onActivated: () => vo
     );
   }
   return (
-    <section aria-label="Your plan" className="mb-9 overflow-hidden rounded-2xl border bg-card">
+    <section aria-label={t("planPage.yourPlan")} className="mb-9 overflow-hidden rounded-2xl border bg-card">
       <div className="p-6 max-sm:p-5">
         <Headline glyph="free" name="Self-hosted" facts="Bloks runs right here, on your own engines and keys." />
         <p className="mt-4 max-w-[60ch] text-pretty text-body text-muted-foreground">
-          Add a plan when you want your workspaces online, people in them, or Bloks AI.
+          {t("planPage.addAPlanWhenYou")}
         </p>
         <ul className="mt-4 grid gap-2 @xl:grid-cols-3 @xl:gap-4">
           {SELF_HOSTED_POINTS.map((point) => (
@@ -430,13 +431,13 @@ function FreeCard({ onActivated, stale, loading, here }: { onActivated: () => vo
               transition={{ duration: 0.2, ease: easeOut }}
               className="py-2"
             >
-              <KeyField action="Activate" hint="It's in your confirmation email." onDone={onActivated} onCancel={() => setOpen(false)} autoFocus />
+              <KeyField action="Activate" hint={t("planPage.itsInYourConfirmationEmail")} onDone={onActivated} onCancel={() => setOpen(false)} autoFocus />
             </motion.div>
           ) : (
             <motion.div key="ask" className="flex flex-wrap items-center justify-between gap-3" exit={{ opacity: 0, transition: { duration: 0.1 } }}>
-              <span className="text-small text-muted-foreground">Have a Bloks key from bloks.dev?</span>
+              <span className="text-small text-muted-foreground">{t("planPage.haveABloksKeyFrom")}</span>
               <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-                Enter your key
+                {t("planPage.enterYourKey")}
               </Button>
             </motion.div>
           )}
@@ -488,7 +489,7 @@ function KeyField({
       <div className="flex items-start gap-2">
         <SecretField
           id="plan-key"
-          label="Bloks key"
+          label={t("planPage.bloksKey")}
           value={key}
           onChange={(value) => {
             setKey(value);
@@ -505,7 +506,7 @@ function KeyField({
         </Button>
         {onCancel && (
           <Button size="sm" variant="ghost" className="mt-[22px] h-8" disabled={busy} onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </Button>
         )}
       </div>
@@ -514,7 +515,7 @@ function KeyField({
           {error}
         </p>
       ) : (
-        <p className="mt-1 text-pretty text-small text-muted-foreground">{ws ? `${ws.name} goes online with it.` : "This workspace goes online with it."}</p>
+        <p className="mt-1 text-pretty text-small text-muted-foreground">{ws ? `${ws.name} goes online with it.` : t("planPage.thisWorkspaceGoesOnlineWith")}</p>
       )}
     </div>
   );
@@ -567,14 +568,14 @@ function KeyFooter({ snapshot, onChanged }: { snapshot: PlanSnapshot; onChanged:
   return (
     <footer data-setting-row="bloks-key" className="border-t bg-muted/30 px-6 py-3 transition-colors duration-700 max-sm:px-5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-small font-medium text-muted-foreground">Bloks key</span>
-        <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-small text-foreground">{snapshot.licence.masked ?? "blok_live_••••"}</code>
+        <span className="text-small font-medium text-muted-foreground">{t("planPage.bloksKey")}</span>
+        <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-small text-foreground">{snapshot.licence.masked ?? t("planPage.blokLive")}</code>
         <span className="min-w-0 flex-1 basis-[200px] truncate text-small text-muted-foreground">
-          {snapshot.account?.email ? `${snapshot.account.email} · one key for every workspace here` : "One key for every workspace here"}
+          {snapshot.account?.email ? `${snapshot.account.email} · one key for every workspace here` : t("planPage.oneKeyForEveryWorkspace")}
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon-sm" variant="ghost" aria-label="Key options" title="Key options" disabled={removing}>
+            <Button size="icon-sm" variant="ghost" aria-label={t("planPage.keyOptions")} title={t("planPage.keyOptions")} disabled={removing}>
               {removing ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={16} />}
             </Button>
           </DropdownMenuTrigger>
@@ -591,7 +592,7 @@ function KeyFooter({ snapshot, onChanged }: { snapshot: PlanSnapshot; onChanged:
             {canCopy && (
               <DropdownMenuItem onSelect={() => void copy()}>
                 <Copy />
-                Copy key
+                {t("planPage.copyKey")}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
@@ -601,12 +602,12 @@ function KeyFooter({ snapshot, onChanged }: { snapshot: PlanSnapshot; onChanged:
               }}
             >
               <Repeat />
-              Replace key
+              {t("planPage.replaceKey")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={() => void remove()}>
               <Trash2 />
-              Remove from this computer
+              {t("planPage.removeFromThisComputer")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -628,7 +629,7 @@ function KeyFooter({ snapshot, onChanged }: { snapshot: PlanSnapshot; onChanged:
           >
             <KeyField
               action="Use this key"
-              hint="The computer it was on stops reaching your phone."
+              hint={t("planPage.theComputerItWasOn")}
               autoFocus
               onCancel={() => setReplacing(false)}
               onDone={() => {
@@ -741,12 +742,12 @@ function WhatYouHave({ snapshot, relay, ai, here }: { snapshot: PlanSnapshot; re
         <Tile
           key="spaces"
           rowId="workspaces-online"
-          label="Workspaces online"
+          label={t("planPage.workspacesOnline")}
           quiet
           value="None yet"
           line={
             <button type="button" className={cn(link, "inline-flex items-center gap-0.5")} onClick={() => go("workspace:online")}>
-              Put this one online
+              {t("planPage.putThisOneOnline")}
               <ArrowRight size={12} aria-hidden />
             </button>
           }
@@ -754,16 +755,16 @@ function WhatYouHave({ snapshot, relay, ai, here }: { snapshot: PlanSnapshot; re
       );
     }
     if (spaces.limit === null) {
-      return <Tile key="spaces" rowId="workspaces-online" label="Workspaces online" value={<OfCount n={spaces.online} unit="online" />} line="No limit on your plan" />;
+      return <Tile key="spaces" rowId="workspaces-online" label={t("planPage.workspacesOnline")} value={<OfCount n={spaces.online} unit="online" />} line="No limit on your plan" />;
     }
     const left = Math.max(0, spaces.limit - spaces.online);
     return (
       <Tile
         key="spaces"
         rowId="workspaces-online"
-        label="Workspaces online"
+        label={t("planPage.workspacesOnline")}
         value={<OfCount n={spaces.online} of={spaces.limit} />}
-        meter={<Meter label="Workspaces online" share={spaces.online / Math.max(1, spaces.limit)} value={spaces.online} max={spaces.limit} />}
+        meter={<Meter label={t("planPage.workspacesOnline")} share={spaces.online / Math.max(1, spaces.limit)} value={spaces.online} max={spaces.limit} />}
         line={left > 0 ? `${left} more can go online` : "All in use. Turning one off frees its place."}
       />
     );
@@ -776,14 +777,14 @@ function WhatYouHave({ snapshot, relay, ai, here }: { snapshot: PlanSnapshot; re
       <Tile
         key="members"
         rowId="members"
-        label="Members"
+        label={t("common.members")}
         value={<OfCount n={members.count} of={members.limit > 0 ? members.limit : undefined} />}
-        meter={members.limit > 0 && <Meter label="Members" share={members.count / members.limit} value={members.count} max={members.limit} />}
+        meter={members.limit > 0 && <Meter label={t("common.members")} share={members.count / members.limit} value={members.count} max={members.limit} />}
         line="In this workspace, besides you"
       />,
     );
   } else {
-    tiles.push(<Tile key="members" rowId="members" label="Members" quiet value="Not included" line="Comes with Bloks Team" />);
+    tiles.push(<Tile key="members" rowId="members" label={t("common.members")} quiet value="Not included" line="Comes with Bloks Team" />);
   }
 
   // Bloks AI: the allowance as a meter of what is used, and when it resets
@@ -810,11 +811,11 @@ function WhatYouHave({ snapshot, relay, ai, here }: { snapshot: PlanSnapshot; re
           ) : (
             <>
               {percentText(used)}
-              <span className="text-body font-normal text-muted-foreground"> used</span>
+              <span className="text-body font-normal text-muted-foreground"> {t("planPage.used")}</span>
             </>
           )
         }
-        meter={reading && <Meter label="Bloks AI used this month" share={used / 100} value={Math.round(used)} max={100} warn={empty || status.low} />}
+        meter={reading && <Meter label={t("planPage.bloksAiUsedThisMonth")} share={used / 100} value={Math.round(used)} max={100} warn={empty || status.low} />}
         line={
           status.refused ? (
             <span className="text-warning">{status.refused.message}</span>
@@ -830,7 +831,7 @@ function WhatYouHave({ snapshot, relay, ai, here }: { snapshot: PlanSnapshot; re
                   fragment and nobody types it again there; elsewhere the
                   key is not this device's to add */}
               <button type="button" title={TOP_UP_WORDS} className={link} onClick={() => void (here ? openOffer(status.checkoutUrl) : openSite(status.checkoutUrl))}>
-                Top up
+                {t("planPage.topUp")}
               </button>
             </>
           )
@@ -855,14 +856,14 @@ function WhatYouHave({ snapshot, relay, ai, here }: { snapshot: PlanSnapshot; re
   const cols = tiles.length >= 3 ? "@xl:grid-cols-3" : tiles.length === 2 ? "@xl:grid-cols-2" : "";
   return (
     <SettingsGroup
-      title="What you have"
+      title={t("planPage.whatYouHave")}
       action={
         // the offers are on the computer this workspace runs on
         here &&
         locked &&
         ladder.some((o) => o.onSale && o.cta) && (
           <button type="button" className={cn(link, "inline-flex items-center gap-0.5 text-small")} onClick={toOptions}>
-            Upgrade
+            {t("planPage.upgrade")}
             <ArrowDown size={12} aria-hidden />
           </button>
         )
@@ -870,7 +871,7 @@ function WhatYouHave({ snapshot, relay, ai, here }: { snapshot: PlanSnapshot; re
     >
       <dl className={cn("grid divide-y @xl:divide-x @xl:divide-y-0", cols)}>{tiles}</dl>
       {account?.sharedRoom === true && account.plan === "cloud" && (
-        <SettingRow label="Shared room" description="One room shared with guests of its own, kept from when Bloks Cloud included it." control={<HealthLine tone="on" label="Included" />} />
+        <SettingRow label={t("planPage.sharedRoom")} description={t("planPage.oneRoomSharedWithGuests")} control={<HealthLine tone="on" label={t("planPage.included")} />} />
       )}
     </SettingsGroup>
   );
@@ -881,8 +882,8 @@ function WhatYouHave({ snapshot, relay, ai, here }: { snapshot: PlanSnapshot; re
  * the agents onto the machine), handed in as `below`. */
 function HostingGroup({ hosting, state, below }: { hosting: NonNullable<ReturnType<typeof hostingWords>>; state: string | null; below?: React.ReactNode }) {
   return (
-    <section aria-label="Hosting" className="mb-9 last:mb-0">
-      <SettingsGroup title="Hosting" className={below ? "mb-3" : "mb-0"}>
+    <section aria-label={t("planPage.hosting")} className="mb-9 last:mb-0">
+      <SettingsGroup title={t("planPage.hosting")} className={below ? "mb-3" : "mb-0"}>
         <HostingRow hosting={hosting} state={state} />
       </SettingsGroup>
       {below}
@@ -1005,7 +1006,7 @@ function HostingRow({ hosting, state }: { hosting: NonNullable<ReturnType<typeof
             {listed ? (
               <Button size="sm" className="gap-1.5" onClick={() => void goToWorkspace(listed.id)}>
                 <Server size={14} />
-                Open your hosted workspace
+                {t("planPage.openYourHostedWorkspace")}
               </Button>
             ) : (
               canList && (
@@ -1028,13 +1029,13 @@ function HostingRow({ hosting, state }: { hosting: NonNullable<ReturnType<typeof
                 disabled={busy !== null}
                 onClick={() => void pairHere()}
               >
-                Pair this computer again
+                {t("planPage.pairThisComputerAgain")}
               </button>
             )}
           </div>
           {waking && busy && (
             <p role="status" className="text-pretty text-small text-muted-foreground">
-              Your hosted workspace is waking up. This takes a few seconds, sometimes a minute or two.
+              {t("planPage.yourHostedWorkspaceIsWaking")}
             </p>
           )}
           {error && (
@@ -1044,24 +1045,24 @@ function HostingRow({ hosting, state }: { hosting: NonNullable<ReturnType<typeof
           )}
           {phone && (
             <div className="flex flex-wrap items-start gap-4 rounded-xl bg-muted/60 p-3">
-              <div className="shrink-0 rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5" aria-label="Pairing QR code">
+              <div className="shrink-0 rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5" aria-label={t("planPage.pairingQrCode")}>
                 {phone.qr ? (
-                  <img src={phone.qr} alt="Scan with the Bloks app on your iPhone" className="size-[152px]" />
+                  <img src={phone.qr} alt={t("planPage.scanWithTheBloksApp")} className="size-[152px]" />
                 ) : (
-                  <div className="flex size-[152px] items-center justify-center text-caption text-neutral-500">QR unavailable</div>
+                  <div className="flex size-[152px] items-center justify-center text-caption text-neutral-500">{t("planPage.qrUnavailable")}</div>
                 )}
               </div>
               <div className="min-w-[180px] flex-1 text-small leading-relaxed text-muted-foreground">
-                <p className="text-pretty text-foreground">Scan this with your iPhone's camera, or open the link in the Bloks app.</p>
-                <p className="mt-1 text-pretty">Anyone who opens it in time becomes one of your devices, so keep it to yourself.</p>
+                <p className="text-pretty text-foreground">{t("planPage.scanThisWithYourIphones")}</p>
+                <p className="mt-1 text-pretty">{t("planPage.anyoneWhoOpensItIn")}</p>
                 <p className="mt-1 tabular-nums">Works once. Expires in {countdown(phone.expiresAt, now)}.</p>
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => void copy()}>
                     {copied ? <Check size={13} /> : <Copy size={13} />}
-                    {copied ? "Copied" : "Copy the link"}
+                    {copied ? t("common.copied") : t("planPage.copyTheLink")}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setPhone(null)}>
-                    Done
+                    {t("common.done")}
                   </Button>
                 </div>
               </div>
@@ -1123,7 +1124,7 @@ function SoonCard({ offer }: { offer: Offer }) {
     <article className="min-w-0 rounded-2xl border bg-muted/30 px-5 py-4 @xl:col-span-2">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <h3 className="text-ui font-semibold text-foreground">{offer.name}</h3>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-small font-medium text-muted-foreground">Coming soon</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-small font-medium text-muted-foreground">{t("planPage.comingSoon")}</span>
       </div>
       {offer.tagline && <p className="mt-0.5 text-pretty text-body text-muted-foreground">{offer.tagline}</p>}
     </article>
@@ -1184,7 +1185,7 @@ function YourOptions({ snapshot, loading, retryShown, hostingCard }: { snapshot:
               )}
             </p>
             <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => openSite(`${snapshot.site}/pricing`)}>
-              See plans
+              {t("planPage.seePlans")}
               <ArrowUpRight size={13} />
             </Button>
           </div>
@@ -1206,7 +1207,7 @@ function YourOptions({ snapshot, loading, retryShown, hostingCard }: { snapshot:
       </div>
       {onSale.some((o) => o.cta) && (
         <p className="mt-2.5 px-1 text-pretty text-small text-muted-foreground">
-          Each opens bloks.dev in your browser{snapshot.licence.present && window.bloks ? ", with your key, so there is nothing to type" : ""}. Come back here when you are done.
+          Each opens bloks.dev in your browser{snapshot.licence.present && window.bloks ? t("planPage.withYourKeySoThere") : ""}. Come back here when you are done.
         </p>
       )}
     </section>
@@ -1219,7 +1220,7 @@ function YourOptions({ snapshot, loading, retryShown, hostingCard }: { snapshot:
  * includes, and two offers, where each will land. */
 function PlanSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading your plan" className="@container">
+    <div aria-busy="true" aria-label={t("planPage.loadingYourPlan")} className="@container">
       <div className="mb-9 overflow-hidden rounded-2xl border bg-card">
         <div className="flex items-start gap-4 p-6 max-sm:p-5">
           <Skeleton className="size-12 rounded-xl" />
@@ -1311,11 +1312,11 @@ export function PlanPage() {
         <SettingsGroup>
           <SettingsEmpty
             icon={problem.kind === "refused" ? <Lock size={18} /> : <TriangleAlert size={18} />}
-            title={problem.kind === "refused" ? "Your plan isn't shown here" : "Couldn't load your plan"}
+            title={problem.kind === "refused" ? t("planPage.yourPlanIsntShownHere") : t("planPage.couldntLoadYourPlan")}
             body={problem.words}
             action={
               <Button size="sm" variant="secondary" onClick={() => void loadPlan(true)}>
-                Try again
+                {t("common.tryAgain")}
               </Button>
             }
           />

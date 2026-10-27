@@ -18,6 +18,7 @@ import { membersApi, whenWords, type Invite, type Workspace, type WorkspaceRole 
 import { needsName } from "@/lib/yourName";
 import { askYourName } from "@/components/YourNameDialog";
 import { WorkspaceMark } from "@/components/WorkspaceMark";
+import { t } from "@/lib/i18n";
 
 const ROLE_LINE: Record<WorkspaceRole, string> = {
   member: "Members use the agents, rooms and memory. Admins can also invite and manage people.",
@@ -62,7 +63,7 @@ function CopyButton({ copied, onClick, label, className }: { copied: boolean; on
   return (
     <Button variant="secondary" size="sm" onClick={onClick} aria-label={copied ? `${label} copied` : `Copy ${label}`} className={cn("min-w-[78px]", className)}>
       {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-      <span aria-live="polite">{copied ? "Copied" : "Copy"}</span>
+      <span aria-live="polite">{copied ? t("common.copied") : t("common.copy")}</span>
     </Button>
   );
 }
@@ -184,7 +185,7 @@ export function InviteSheet({
         <div className="flex items-center gap-3 px-[22px] pb-1.5 pt-5">
           <WorkspaceMark mark={workspace.mark} size={28} />
           <DialogTitle className="flex-1 text-balance">Invite to {workspace.name}</DialogTitle>
-          <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" size="icon-sm" aria-label={t("common.close")} onClick={() => onOpenChange(false)}>
             <X size={16} />
           </Button>
         </div>
@@ -192,12 +193,12 @@ export function InviteSheet({
         <div className="flex items-end gap-3.5 px-[22px] pb-1 pt-3.5">
           <label className="flex min-w-0 flex-1 flex-col gap-1.5 text-small text-muted-foreground">
             Who is it for? (optional)
-            <Input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="A name, for you" maxLength={40} autoComplete="off" />
+            <Input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("inviteSheet.aNameForYou")} maxLength={40} autoComplete="off" />
           </label>
           <div className="flex flex-col gap-1.5">
-            <span className="text-small text-muted-foreground">Joins as</span>
+            <span className="text-small text-muted-foreground">{t("inviteSheet.joinsAs")}</span>
             <Segmented
-              aria-label="Role"
+              aria-label={t("inviteSheet.role")}
               value={role}
               onChange={changeRole}
               className="h-9"
@@ -214,11 +215,11 @@ export function InviteSheet({
           <div className="flex flex-col items-center gap-2.5">
             <div className="relative grid size-[196px] place-items-center rounded-[14px] bg-white">
               {qr ? (
-                <svg width="172" height="172" viewBox={`0 0 ${qr.size} ${qr.size}`} shapeRendering="crispEdges" role="img" aria-label="QR code for this invite">
+                <svg width="172" height="172" viewBox={`0 0 ${qr.size} ${qr.size}`} shapeRendering="crispEdges" role="img" aria-label={t("inviteSheet.qrCodeForThisInvite")}>
                   <path d={qr.d} fill="#0b0c0e" />
                 </svg>
               ) : (
-                <div className="size-[172px] animate-pulse rounded-lg bg-black/5" aria-label="Making the invite" />
+                <div className="size-[172px] animate-pulse rounded-lg bg-black/5" aria-label={t("inviteSheet.makingTheInvite")} />
               )}
               {qr && (
                 <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[11px] shadow-[0_0_0_4px_#fff]">
@@ -226,12 +227,12 @@ export function InviteSheet({
                 </span>
               )}
             </div>
-            <span className="text-small text-muted-foreground">Scan with the iPhone camera</span>
+            <span className="text-small text-muted-foreground">{t("inviteSheet.scanWithTheIphoneCamera")}</span>
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col gap-[18px] self-stretch">
             <div className="flex flex-col gap-2">
-              <span className="text-small text-muted-foreground">Code</span>
+              <span className="text-small text-muted-foreground">{t("inviteSheet.code")}</span>
               <div className="flex items-center gap-2.5">
                 <span className="select-all font-mono text-[30px] font-semibold leading-none tracking-[0.08em] text-foreground tabular-nums" aria-label={invite ? `Code ${invite.code.split("").join(" ")}` : undefined}>
                   {invite ? (
@@ -246,11 +247,11 @@ export function InviteSheet({
                 </span>
                 <CopyButton className="ml-auto" copied={copied === "code"} label="code" onClick={() => invite && copy("code", invite.code)} />
               </div>
-              <span className="text-small text-muted-foreground">Easy to read out: no 0, O, 1, I or L.</span>
+              <span className="text-small text-muted-foreground">{t("inviteSheet.easyToReadOutNo")}</span>
             </div>
             <div className="h-px bg-border" />
             <div className="flex flex-col gap-2">
-              <span className="text-small text-muted-foreground">Link</span>
+              <span className="text-small text-muted-foreground">{t("inviteSheet.link")}</span>
               <div className="flex items-center gap-2">
                 <span className="flex h-[34px] min-w-0 flex-1 items-center truncate rounded-lg border bg-background px-3 font-mono text-body text-foreground/80">
                   {invite ? invite.link.replace(/^https:\/\//, "") : ""}
@@ -258,11 +259,11 @@ export function InviteSheet({
                 <CopyButton copied={copied === "link"} label="link" onClick={() => invite && copy("link", invite.link)} />
                 <Button size="sm" onClick={() => void share()} disabled={!invite} className="h-[34px]">
                   <Upload size={14} />
-                  Share
+                  {t("inviteSheet.share")}
                 </Button>
               </div>
               <span className="text-small text-muted-foreground">
-                {online && !online.available ? online.why : "Shows as an invite card in Messages, Slack and WhatsApp."}
+                {online && !online.available ? online.why : t("inviteSheet.showsAsAnInviteCard")}
               </span>
             </div>
           </div>
@@ -287,13 +288,13 @@ export function InviteSheet({
           <span className="flex-1 text-pretty text-small text-muted-foreground">
             {invite
               ? `Works once. Expires ${whenWords(invite.expiresAt)}. ${approveEach ? `You approve ${name.trim() || "them"} before ${whoLower === "they" ? "they are" : `${whoLower} is`} in.` : `The right code${passwordSet ? " and password" : ""} lets ${name.trim() || "them"} straight in.`}`
-              : "Making the invite..."}
+              : t("inviteSheet.makingTheInvite2")}
           </span>
           <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => void cancelInvite()}>
-            Cancel invite
+            {t("inviteSheet.cancelInvite")}
           </Button>
           <Button size="lg" onClick={() => onOpenChange(false)}>
-            Done
+            {t("common.done")}
           </Button>
         </div>
       </DialogContent>

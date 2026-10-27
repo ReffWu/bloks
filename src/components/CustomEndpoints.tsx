@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export interface CustomKeyRow {
   id: string;
@@ -44,11 +45,11 @@ function ToolsSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) =>
         This model can use tools
         <span className="block text-small text-muted-foreground">
           {on
-            ? "Agents can use Bloks tools here. Turn off if it refuses them."
-            : "Chat only. Turn on if the model supports tool calls."}
+            ? t("customEndpoints.agentsCanUseBloksTools")
+            : t("customEndpoints.chatOnlyTurnOnIf")}
         </span>
       </span>
-      <Switch checked={on} onCheckedChange={onChange} aria-label="This model can use tools" />
+      <Switch checked={on} onCheckedChange={onChange} aria-label={t("customEndpoints.thisModelCanUseTools")} />
     </label>
   );
 }
@@ -63,11 +64,11 @@ function SeesImages({ on, onChange }: { on: boolean; onChange: (on: boolean) => 
         Sees images
         <span className="block text-small text-muted-foreground">
           {on
-            ? "Attached images go to the model. Turn off if it can't see them."
-            : "Images stay out. Turn on if the model can see them."}
+            ? t("customEndpoints.attachedImagesGoToThe")
+            : t("customEndpoints.imagesStayOutTurnOn")}
         </span>
       </span>
-      <Switch checked={on} onCheckedChange={onChange} aria-label="Sees images" />
+      <Switch checked={on} onCheckedChange={onChange} aria-label={t("customEndpoints.seesImages")} />
     </label>
   );
 }
@@ -183,15 +184,15 @@ export function CustomEndpoints() {
       <div className="px-4 pb-3 pt-4">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <div className="text-ui font-semibold text-foreground">Your endpoints</div>
+            <div className="text-ui font-semibold text-foreground">{t("customEndpoints.yourEndpoints")}</div>
             <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-              Any OpenAI-compatible host.
+              {t("customEndpoints.anyOpenaiCompatibleHost")}
             </div>
           </div>
           {!adding && (
             <Button variant="secondary" size="sm" onClick={() => setAdding(true)} className="shrink-0">
               <Plus size={13} />
-              Add
+              {t("common.add")}
             </Button>
           )}
         </div>
@@ -203,7 +204,7 @@ export function CustomEndpoints() {
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="truncate text-ui font-medium text-foreground">{endpoint.name}</span>
-                {!endpoint.tools && <span className="shrink-0 text-caption text-muted-foreground">Chat only</span>}
+                {!endpoint.tools && <span className="shrink-0 text-caption text-muted-foreground">{t("customEndpoints.chatOnly")}</span>}
               </div>
               <div className="truncate text-small text-muted-foreground">{endpoint.url}</div>
             </div>
@@ -217,7 +218,7 @@ export function CustomEndpoints() {
               }
               className="shrink-0 text-muted-foreground hover:text-destructive"
             >
-              Remove
+              {t("common.remove")}
             </Button>
           </div>
 
@@ -233,9 +234,9 @@ export function CustomEndpoints() {
                   className={cn("size-1.5 rounded-full", cred.active ? "bg-success" : "bg-muted-foreground/30")}
                 />
                 <span className="min-w-0 flex-1 truncate text-body text-foreground">
-                  {cred.label || (endpoint.keys.length > 1 ? `Key ${index + 1}` : "API key")}
+                  {cred.label || (endpoint.keys.length > 1 ? `Key ${index + 1}` : t("customEndpoints.apiKey"))}
                   {cred.active && (
-                    <span className="ml-1.5 text-caption font-normal text-success">In use</span>
+                    <span className="ml-1.5 text-caption font-normal text-success">{t("customEndpoints.inUse")}</span>
                   )}
                 </span>
                 {!cred.active && (
@@ -249,7 +250,7 @@ export function CustomEndpoints() {
                     }
                     className="shrink-0 text-small text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    Use
+                    {t("customEndpoints.use")}
                   </button>
                 )}
                 <button
@@ -260,7 +261,7 @@ export function CustomEndpoints() {
                       .then(({ endpoints: rows }) => apply(rows))
                       .catch((e: Error) => setError(e.message))
                   }
-                  title="Remove key"
+                  title={t("customEndpoints.removeKey")}
                   className="shrink-0 rounded-lg p-1 text-muted-foreground/60 transition-colors hover:text-destructive"
                 >
                   <Trash2 size={12} />
@@ -281,7 +282,7 @@ export function CustomEndpoints() {
                     if (e.key === "Enter") addKey(endpoint.id);
                     if (e.key === "Escape") setKeyFor(null);
                   }}
-                  placeholder="Another key"
+                  placeholder={t("customEndpoints.anotherKey")}
                   autoComplete="off"
                   className="h-8 text-body"
                 />
@@ -292,13 +293,13 @@ export function CustomEndpoints() {
                   className="w-[72px]"
                 >
                   <Check size={13} />
-                  Save
+                  {t("common.save")}
                 </Button>
               </div>
               <Input
                 value={extraLabel}
                 onChange={(e) => setExtraLabel(e.target.value)}
-                placeholder="Label (optional)"
+                placeholder={t("customEndpoints.labelOptional")}
                 className="h-8 text-body"
               />
             </div>
@@ -310,7 +311,7 @@ export function CustomEndpoints() {
               }}
               className="mt-2 text-small text-muted-foreground transition-colors hover:text-foreground"
             >
-              Add another key
+              {t("customEndpoints.addAnotherKey")}
             </button>
           )}
         </div>
@@ -318,7 +319,7 @@ export function CustomEndpoints() {
 
       {endpoints !== null && endpoints.length === 0 && !adding && (
         <div className="border-t px-4 py-3 text-body text-muted-foreground">
-          Nothing added yet. Works with LiteLLM, vLLM or a proxy.
+          {t("customEndpoints.nothingAddedYetWorksWith")}
         </div>
       )}
 
@@ -329,13 +330,13 @@ export function CustomEndpoints() {
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Name, e.g. Together"
+              placeholder={t("customEndpoints.nameEGTogether")}
               className="h-8 text-body"
             />
             <Input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="Base URL, usually ending in /v1"
+              placeholder={t("customEndpoints.baseUrlUsuallyEndingIn")}
               className="h-8 text-body"
             />
             <Input
@@ -343,14 +344,14 @@ export function CustomEndpoints() {
               value={key}
               onChange={(e) => setKey(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && add()}
-              placeholder="API key"
+              placeholder={t("customEndpoints.apiKey")}
               autoComplete="off"
               className="h-8 text-body"
             />
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Key label (optional)"
+              placeholder={t("customEndpoints.keyLabelOptional")}
               className="h-8 text-body"
             />
             <ToolsSwitch on={newTools} onChange={setNewTools} />
@@ -364,7 +365,7 @@ export function CustomEndpoints() {
                   setError(null);
                 }}
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 variant="secondary"
@@ -373,7 +374,7 @@ export function CustomEndpoints() {
                 disabled={busy || !name.trim() || !url.trim() || !key.trim()}
               >
                 <Check size={13} />
-                Save
+                {t("common.save")}
               </Button>
             </div>
           </div>

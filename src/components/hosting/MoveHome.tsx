@@ -17,6 +17,7 @@ import { STILL_PAID_LINE, countsWords, keyGroups } from "@/lib/hostingMove";
 import type { HostingMoveState, HostingMoveTarget } from "@/types/bridge";
 import { SettingRow, SettingsGroup, SettingsSelect } from "../SettingsLayout";
 import { said, useHostingMove } from "./useHostingMove";
+import { t } from "@/lib/i18n";
 
 /** `only` keeps the list to one hosted workspace: its own Settings. */
 export function MoveHome({ state: given, only }: { state?: HostingMoveState; only?: string }) {
@@ -64,11 +65,11 @@ export function MoveHome({ state: given, only }: { state?: HostingMoveState; onl
 
   return (
     <SettingsGroup
-      title="Move to this Mac"
+      title={t("moveHome.moveToThisMac")}
       action={
         hosted.length > 1 ? (
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => void moveAll()}>
-            Move all to this Mac
+            {t("moveHome.moveAllToThisMac")}
           </Button>
         ) : undefined
       }
@@ -133,18 +134,18 @@ function HomeRow({ hosted, state, targets, busy }: { hosted: { id: string; name:
   return (
     <SettingRow
       label={hosted.name}
-      description="Bring everything in it to this Mac, to run here."
+      description={t("moveHome.bringEverythingInItTo")}
       control={
         <Button size="sm" className="gap-1.5" disabled={busy || asking} onClick={() => void go()}>
           <Monitor size={14} />
-          Move to this Mac
+          {t("moveHome.moveToThisMac")}
         </Button>
       }
     >
       {options.length > 1 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label htmlFor={`land-${hosted.id}`} className="text-body text-muted-foreground">
-            Where it goes
+            {t("moveHome.whereItGoes")}
           </label>
           <SettingsSelect id={`land-${hosted.id}`} value={pick.key} onChange={(e) => setChosen(e.target.value)} className="min-w-[240px]">
             {options.map((o) => (

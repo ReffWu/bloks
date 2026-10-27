@@ -89,6 +89,7 @@ import { GeneralPage } from "./settings/GeneralPage";
 import { PlanPage } from "./settings/PlanPage";
 import { AboutYouPage, AppsPage, ComputersPage, RulesPage, VoicesPage } from "./settings/pages";
 import { BrowserPage } from "./settings/BrowserPage";
+import { t } from "@/lib/i18n";
 
 type Icon = React.ComponentType<{ size?: number; className?: string }>;
 
@@ -433,12 +434,12 @@ export function AppSettingsPanel() {
 
   return (
     <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background md:flex-row">
-      <SideColumn id="settings" size={SETTINGS_COLUMN} as="nav" label="Settings" className="border-b bg-sidebar/60 md:border-b-0">
+      <SideColumn id="settings" size={SETTINGS_COLUMN} as="nav" label={t("common.settings")} className="border-b bg-sidebar/60 md:border-b-0">
         {/* No back button of its own: the title bar's Back (or Esc) leaves,
             and on a phone the pill's drawer does; the room on the left
             there is the pill's. */}
         <div className="flex h-[52px] items-center gap-2 px-4 max-md:pl-16">
-          <span className="text-lead font-semibold text-foreground">Settings</span>
+          <span className="text-lead font-semibold text-foreground">{t("common.settings")}</span>
           {state.config?.hosted?.on && <HostedMark />}
         </div>
         <div className="px-3 pb-2">
@@ -461,15 +462,15 @@ export function AppSettingsPanel() {
                   list.current?.querySelector<HTMLButtonElement>("[data-nav-item]")?.focus();
                 }
               }}
-              placeholder="Search settings"
-              aria-label="Search settings"
+              placeholder={t("appSettingsPanel.searchSettings")}
+              aria-label={t("appSettingsPanel.searchSettings")}
               aria-controls="settings-pages"
               className="w-full bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
             />
             {query && (
               <button
                 type="button"
-                aria-label="Clear search"
+                aria-label={t("appSettingsPanel.clearSearch")}
                 onClick={() => {
                   setQuery("");
                   search.current?.focus();
@@ -509,7 +510,7 @@ export function AppSettingsPanel() {
             <div className="flex flex-col gap-1 px-3 py-6 text-body text-muted-foreground">
               <span>Nothing matches “{query.trim()}”.</span>
               <button type="button" onClick={() => setQuery("")} className="w-fit rounded text-small font-medium text-foreground underline-offset-2 hover:underline">
-                Clear the search
+                {t("appSettingsPanel.clearTheSearch")}
               </button>
             </div>
           )}
@@ -519,7 +520,7 @@ export function AppSettingsPanel() {
         {folded && (
           <SideTabs
             column="settings"
-            label="Settings"
+            label={t("common.settings")}
             groups={tabGroups}
             current={pageId}
             onPick={(id) => go(id)}
@@ -527,8 +528,8 @@ export function AppSettingsPanel() {
               <button
                 type="button"
                 onClick={searchInList}
-                aria-label="Search settings"
-                title="Search settings"
+                aria-label={t("appSettingsPanel.searchSettings")}
+                title={t("appSettingsPanel.searchSettings")}
                 className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
               >
                 <SearchIcon size={15} />

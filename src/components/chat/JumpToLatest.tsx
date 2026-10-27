@@ -10,6 +10,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowDown } from "@/components/icons";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export function JumpToLatest({
   show,
@@ -38,8 +39,8 @@ export function JumpToLatest({
             <button
               type="button"
               onClick={onJump}
-              aria-label={fresh > 0 ? `${fresh} new, jump to latest` : "Jump to latest"}
-              title="Jump to latest"
+              aria-label={fresh > 0 ? `${fresh} new, jump to latest` : t("jumpToLatest.jumpToLatest")}
+              title={t("jumpToLatest.jumpToLatest")}
               className={cn(
                 "flex h-8 items-center gap-1.5 rounded-full border text-small font-medium transition-[background-color,scale] duration-150 ease-out active:scale-[0.96]",
                 // news is said in the colour of your own messages, so it

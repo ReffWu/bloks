@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { SettingRow } from "../SettingsLayout";
+import { t } from "@/lib/i18n";
 
 type Phase = "downloading" | "unpacking" | "draining" | "restarting" | "failed" | "cancelled";
 
@@ -210,7 +211,7 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
             This server is older than Bloks 3.0.14, so it can't be checked or updated from here, and updating this app doesn't update it.
             Update it by hand once, on the computer it runs on; after that, new versions can be installed from this page.{" "}
             <a href="https://bloks.dev/docs#server" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">
-              How to update it
+              {t("serverUpdate.howToUpdateIt")}
             </a>
           </>
         }
@@ -249,11 +250,11 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
 
   const control = fixed ? null : active && job?.phase !== "restarting" ? (
     <Button size="sm" variant="secondary" disabled={busy} onClick={() => void cancel()}>
-      Call off
+      {t("serverUpdate.callOff")}
     </Button>
   ) : restartingTo || job?.phase === "restarting" ? (
     <Button size="sm" variant="secondary" disabled>
-      <Loader2 size={14} className="animate-spin" /> Restarting
+      <Loader2 size={14} className="animate-spin" /> {t("serverUpdate.restarting")}
     </Button>
   ) : looked?.newer && latest && how.canInstall && latest.checksum ? (
     <Button size="sm" disabled={busy} onClick={() => void install(latest.version)}>
@@ -261,7 +262,7 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
     </Button>
   ) : (
     <Button size="sm" variant="secondary" disabled={busy} onClick={() => void check()}>
-      {busy ? "Checking…" : "Check for updates"}
+      {busy ? t("common.checking") : t("serverUpdate.checkForUpdates")}
     </Button>
   );
 
@@ -292,7 +293,7 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
                 {latest.notes}
               </div>
               <a href={latest.page} target="_blank" rel="noreferrer" className="mt-1.5 inline-block text-small text-muted-foreground underline underline-offset-2 hover:text-foreground">
-                Release page
+                {t("serverUpdate.releasePage")}
               </a>
             </details>
           )}
@@ -307,7 +308,7 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
             </div>
           )}
           {how.canInstall && !latest.checksum && (
-            <div className="text-small text-muted-foreground">This release publishes no checksum for its server, so it can only be installed by hand.</div>
+            <div className="text-small text-muted-foreground">{t("serverUpdate.thisReleasePublishesNoChecksum")}</div>
           )}
         </div>
       )}

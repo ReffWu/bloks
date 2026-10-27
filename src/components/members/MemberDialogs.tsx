@@ -11,12 +11,13 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { initials, membersApi, tintOf, type AgentAccessRow, type Member, type MemberLimit } from "@/lib/members";
+import { t } from "@/lib/i18n";
 
 function Footer({ busy, onCancel, label, disabled }: { busy: boolean; onCancel: () => void; label: string; disabled?: boolean }) {
   return (
     <div className="mt-5 flex justify-end gap-2">
       <Button variant="secondary" onClick={onCancel}>
-        Cancel
+        {t("common.cancel")}
       </Button>
       <Button type="submit" disabled={busy || disabled}>
         {busy && <Loader2 size={14} className="animate-spin" />}
@@ -58,9 +59,9 @@ export function PasswordDialog({ open, onOpenChange, changing, onSaved }: { open
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[calc(100%-2rem)] max-w-[420px]">
         <form onSubmit={(e) => void save(e)}>
-          <DialogTitle>{changing ? "Change the join password" : "Set a join password"}</DialogTitle>
+          <DialogTitle>{changing ? t("memberDialogs.changeTheJoinPassword") : t("memberDialogs.setAJoinPassword")}</DialogTitle>
           <DialogDescription>
-            Asked for after the invite, and never inside it, so share it another way: say it, or text it. People already in are not affected.
+            {t("memberDialogs.askedForAfterTheInvite")}
           </DialogDescription>
           <label className="mt-4 flex flex-col gap-1.5 text-small text-muted-foreground">
             Join password
@@ -76,7 +77,7 @@ export function PasswordDialog({ open, onOpenChange, changing, onSaved }: { open
               />
               <button
                 type="button"
-                aria-label={shown ? "Hide the password" : "Show the password"}
+                aria-label={shown ? t("memberDialogs.hideThePassword") : t("memberDialogs.showThePassword")}
                 aria-pressed={shown}
                 onClick={() => setShown((s) => !s)}
                 className="absolute right-1.5 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
@@ -86,9 +87,9 @@ export function PasswordDialog({ open, onOpenChange, changing, onSaved }: { open
             </div>
           </label>
           <p className={cn("mt-1.5 text-small", error ? "text-destructive" : "text-muted-foreground")} role={error ? "alert" : undefined}>
-            {error ?? "At least 4 characters. Something easy to say out loud works well."}
+            {error ?? t("memberDialogs.atLeast4CharactersSomething")}
           </p>
-          <Footer busy={busy} onCancel={() => onOpenChange(false)} label={changing ? "Change password" : "Set password"} disabled={value.trim().length < 4} />
+          <Footer busy={busy} onCancel={() => onOpenChange(false)} label={changing ? t("memberDialogs.changePassword") : t("memberDialogs.setPassword")} disabled={value.trim().length < 4} />
         </form>
       </DialogContent>
     </Dialog>
@@ -162,13 +163,13 @@ export function LimitsDialog({
               Monthly API spending
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ui text-muted-foreground">$</span>
-                <Input inputMode="decimal" value={usd} onChange={(e) => setUsd(e.target.value)} placeholder="No limit" className="pl-6 tabular-nums" />
+                <Input inputMode="decimal" value={usd} onChange={(e) => setUsd(e.target.value)} placeholder={t("memberDialogs.noLimit")} className="pl-6 tabular-nums" />
               </div>
             </label>
             <label className="flex flex-col gap-1.5 text-small text-muted-foreground">
               Bloks AI share a month
               <div className="relative">
-                <Input inputMode="decimal" value={ai} onChange={(e) => setAi(e.target.value)} placeholder="No limit" className="pr-7 tabular-nums" />
+                <Input inputMode="decimal" value={ai} onChange={(e) => setAi(e.target.value)} placeholder={t("memberDialogs.noLimit")} className="pr-7 tabular-nums" />
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ui text-muted-foreground">%</span>
               </div>
             </label>
@@ -179,8 +180,8 @@ export function LimitsDialog({
           </div>
           <div className="mt-4 rounded-xl border">
             <label className="flex items-center gap-3 px-3.5 py-3">
-              <span className="flex-1 text-ui text-foreground">Any engine for solo agents</span>
-              <Switch checked={anyEngine} onCheckedChange={setAnyEngine} aria-label="Any engine for solo agents" />
+              <span className="flex-1 text-ui text-foreground">{t("memberDialogs.anyEngineForSoloAgents")}</span>
+              <Switch checked={anyEngine} onCheckedChange={setAnyEngine} aria-label={t("memberDialogs.anyEngineForSoloAgents")} />
             </label>
             {!anyEngine && (
               <div className="flex flex-col gap-1 border-t px-3.5 py-2.5">
@@ -195,7 +196,7 @@ export function LimitsDialog({
                     {engine.name}
                   </label>
                 ))}
-                {!engines.length && <span className="py-1 text-body text-muted-foreground">No engines are set up yet.</span>}
+                {!engines.length && <span className="py-1 text-body text-muted-foreground">{t("memberDialogs.noEnginesAreSetUp")}</span>}
               </div>
             )}
           </div>
@@ -209,7 +210,7 @@ export function LimitsDialog({
               This month so far: ${member.spend.usd.toFixed(2)} on API keys{member.spend.aiPercent !== null ? `, ${member.spend.aiPercent}% of Bloks AI` : ""}.
             </p>
           )}
-          <Footer busy={busy} onCancel={() => onOpenChange(false)} label="Save limits" />
+          <Footer busy={busy} onCancel={() => onOpenChange(false)} label={t("memberDialogs.saveLimits")} />
         </form>
       </DialogContent>
     </Dialog>
@@ -269,7 +270,7 @@ export function AgentAccessDialog({
             The people in {agent?.name}'s team conversation. Anyone in a room with {agent?.name} can still talk to it there, and have a private conversation with it.
           </DialogDescription>
           <Segmented
-            aria-label="Who can use this agent"
+            aria-label={t("memberDialogs.whoCanUseThisAgent")}
             className="mt-4"
             value={mode}
             onChange={setMode}
@@ -296,13 +297,13 @@ export function AgentAccessDialog({
                   />
                 </label>
               ))}
-              {!members.length && <span className="px-3.5 py-3 text-body text-muted-foreground">Nobody else is in the workspace yet.</span>}
+              {!members.length && <span className="px-3.5 py-3 text-body text-muted-foreground">{t("memberDialogs.nobodyElseIsInThe")}</span>}
             </div>
           )}
           {owner && (
             <label className="mt-3 flex items-center gap-3 rounded-xl border px-3.5 py-3">
-              <span className="flex-1 text-ui text-foreground">Admins always have access</span>
-              <Switch checked={admins} onCheckedChange={setAdmins} aria-label="Admins always have access" />
+              <span className="flex-1 text-ui text-foreground">{t("memberDialogs.adminsAlwaysHaveAccess")}</span>
+              <Switch checked={admins} onCheckedChange={setAdmins} aria-label={t("memberDialogs.adminsAlwaysHaveAccess")} />
             </label>
           )}
           {error && (
@@ -310,7 +311,7 @@ export function AgentAccessDialog({
               {error}
             </p>
           )}
-          <Footer busy={busy} onCancel={() => onOpenChange(false)} label="Save" />
+          <Footer busy={busy} onCancel={() => onOpenChange(false)} label={t("common.save")} />
         </form>
       </DialogContent>
     </Dialog>

@@ -20,6 +20,7 @@ import { GroupMessage, PersonAvatar, SeenBy } from "@/components/chat/Group";
 import { QuietCheckIns, richText } from "@/components/chat/Bubble";
 import { formatTime } from "@/state/store";
 import { quietRunAt } from "@/lib/transcript";
+import { t } from "@/lib/i18n";
 
 export function AgentFace({ agent, size }: { agent: { id: string; name: string; color: string; shape: string | null }; size: number }) {
   return (
@@ -41,7 +42,7 @@ export function OnlyYou({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-px text-caption font-medium text-muted-foreground", className)}>
       <Lock size={10} strokeWidth={2.2} aria-hidden />
-      Only you
+      {t("memberParts.onlyYou")}
     </span>
   );
 }
@@ -171,7 +172,7 @@ export function Transcript({ messages, me, people, owner, shared, agentName, str
         ) : busy ? (
           <div className="flex items-center gap-2 text-body text-muted-foreground" role="status">
             <Loader2 size={14} className="animate-spin" />
-            Working on it
+            {t("memberParts.workingOnIt")}
           </div>
         ) : null}
       </div>
@@ -231,7 +232,7 @@ function Line({
             {human ? m.text : <Markdownish text={m.text ?? ""} />}
           </>
         }
-        under={mine && m.queued ? <span className="mt-1 px-1 text-caption text-muted-foreground">Waiting for the reply before it</span> : undefined}
+        under={mine && m.queued ? <span className="mt-1 px-1 text-caption text-muted-foreground">{t("memberParts.waitingForTheReplyBefore")}</span> : undefined}
         receipts={receipts}
       />
     );
@@ -245,7 +246,7 @@ function Line({
           <div className="max-w-[82%] whitespace-pre-wrap rounded-2xl bg-secondary px-4 py-2.5 text-lead text-foreground [overflow-wrap:anywhere] sm:max-w-[68%]">
             {m.text}
           </div>
-          {m.queued && <span className="mt-1 px-1 text-caption text-muted-foreground">Waiting for the reply before it</span>}
+          {m.queued && <span className="mt-1 px-1 text-caption text-muted-foreground">{t("memberParts.waitingForTheReplyBefore")}</span>}
         </div>
       );
     }
@@ -372,7 +373,7 @@ function CardLine({
       )}
       {state === "done" && (
         <span className="text-body text-muted-foreground">
-          {card.answered ? `${card.answeredBy ? `${card.answeredBy}: ` : ""}${card.answered}` : card.closed ?? "Closed"}
+          {card.answered ? `${card.answeredBy ? `${card.answeredBy}: ` : ""}${card.answered}` : card.closed ?? t("memberParts.closed")}
         </span>
       )}
       {error && <span role="alert" className="text-small text-destructive">{error}</span>}
@@ -455,7 +456,7 @@ export function MemberComposer({
               <AlertTriangle size={14} className={cn("mt-0.5 shrink-0", stopped ? "text-destructive" : "text-warning")} />
               <span className="flex-1 text-pretty">{notice.text}</span>
               {!stopped && (
-                <button type="button" aria-label="Put this away" onClick={() => setHidden(notice.text)} className="rounded p-0.5 text-muted-foreground hover:text-foreground">
+                <button type="button" aria-label={t("memberParts.putThisAway")} onClick={() => setHidden(notice.text)} className="rounded p-0.5 text-muted-foreground hover:text-foreground">
                   <X size={13} />
                 </button>
               )}
@@ -475,13 +476,13 @@ export function MemberComposer({
                 void send();
               }
             }}
-            placeholder={stopped ? "Your requests here are stopped for now" : placeholder}
+            placeholder={stopped ? t("memberParts.yourRequestsHereAreStopped") : placeholder}
             aria-label={placeholder}
             className="max-h-[220px] min-h-6 flex-1 resize-none bg-transparent py-1.5 text-lead text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
           />
           <Button
             size="icon"
-            aria-label="Send"
+            aria-label={t("memberParts.send")}
             disabled={!text.trim() || sending || stopped}
             onClick={() => void send()}
             className="size-8 shrink-0 rounded-full"

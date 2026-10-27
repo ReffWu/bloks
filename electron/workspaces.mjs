@@ -186,6 +186,9 @@ export function parseRegistry(text) {
       notch: raw?.prefs?.notch !== false,
       // what the person is called in every workspace of their own
       ownerName: cleanPersonName(raw?.prefs?.ownerName) || null,
+      // the language the interface and the menu bar are read in; none
+      // is "System", whatever the OS speaks
+      language: LANGUAGE_CODES.includes(raw?.prefs?.language) ? raw.prefs.language : null,
     },
     workspaces: sorted(workspaces),
   };
@@ -253,6 +256,17 @@ export function setSameAccent(registry, id, on, showing) {
     };
   }
   return { registry: next, accent: accentOf(next, id) };
+}
+
+/** The languages a person may choose (src/lib/i18n.ts LANGUAGES). */
+export const LANGUAGE_CODES = Object.freeze(["en", "es", "fr", "de", "pt-BR", "ja", "zh-CN"]);
+
+/** Settings, General, Language: a language's code, or "system" for none.
+ * Anything else leaves the choice as it was. */
+export function setLanguage(registry, language) {
+  const next = language === "system" ? null : LANGUAGE_CODES.includes(language) ? language : undefined;
+  if (next === undefined || (registry.prefs.language ?? null) === next) return registry;
+  return { ...registry, prefs: { ...registry.prefs, language: next } };
 }
 
 /** "Show working agents in the notch" (electron/notch.mjs), on or off.

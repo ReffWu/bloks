@@ -23,6 +23,7 @@ import { AgentAvatar } from "./Avatar";
 import { Markdownish } from "./Markdown";
 import { queuedLine, stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 interface ExchangeEntry {
   id: string;
@@ -66,7 +67,7 @@ export function AgentExchangeRow({
     <div className={cn("flex justify-start", fresh && "animate-receive-in")} data-agent-row={botId}>
       <button
         onClick={() => onOpen(note.peerId, message.id, message.text ?? "")}
-        title="Open the exchange"
+        title={t("agentExchange.openTheExchange")}
         className="group flex max-w-[82%] min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-left text-body text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-[0.99] sm:max-w-[68%]"
       >
         <Icon size={13} className={cn("shrink-0", failed ? "text-destructive" : "text-brand")} />
@@ -100,7 +101,7 @@ export function AfterAgentLink({ peerId, peerName, onOpen }: { peerId: string; p
     <div className="mb-1 flex justify-start">
       <button
         onClick={onOpen}
-        title="Open the exchange"
+        title={t("agentExchange.openTheExchange")}
         className="flex items-center gap-1 rounded-md px-1 text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         <CornerDownRight size={11} className="shrink-0" />
@@ -159,13 +160,13 @@ export function AgentExchangeDialog({
           {me && <AgentAvatar bot={me} size={20} />}
           {peer && <AgentAvatar bot={peer} size={20} className="-ml-2 ring-2 ring-background" />}
           <DialogTitle className="min-w-0 flex-1 truncate text-ui">
-            {me?.name ?? "This agent"} and {peer?.name ?? "the other agent"}
+            {me?.name ?? t("agentExchange.thisAgent")} and {peer?.name ?? t("agentExchange.theOtherAgent")}
           </DialogTitle>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {error && <p className="text-body text-destructive">{error}</p>}
-          {!error && entries === null && <p className="text-body text-muted-foreground">Loading…</p>}
-          {entries?.length === 0 && <p className="text-body text-muted-foreground">Nothing between them yet.</p>}
+          {!error && entries === null && <p className="text-body text-muted-foreground">{t("common.loading")}</p>}
+          {entries?.length === 0 && <p className="text-body text-muted-foreground">{t("agentExchange.nothingBetweenThemYet")}</p>}
           <div className="flex flex-col gap-3">
             {entries?.map((entry, index) => {
               const who = avatarOf(entry.from);
@@ -184,8 +185,8 @@ export function AgentExchangeDialog({
                     <span className="font-medium text-foreground">{entry.fromName}</span>
                     {/* context, not a message: it stayed in the speaker's own chat */}
                     <span>{entry.dir === "take-back" ? `took back waiting messages to ${entry.toName}` : entry.dir === "reply" ? `in its own chat, not sent to ${entry.toName}` : `to ${entry.toName}`}</span>
-                    {entry.status === "failed" && <span className="text-destructive">not delivered</span>}
-                    {entry.status === "uncertain" && <span>may not have arrived</span>}
+                    {entry.status === "failed" && <span className="text-destructive">{t("agentExchange.notDelivered")}</span>}
+                    {entry.status === "uncertain" && <span>{t("agentExchange.mayNotHaveArrived")}</span>}
                     <span className="ml-auto shrink-0 tabular-nums">{stamp(entry.at)}</span>
                   </div>
                   {newLane && (

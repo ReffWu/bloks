@@ -38,6 +38,7 @@ import {
 } from "@/lib/backups";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import { MoveWorkspace } from "./MoveWorkspace";
+import { t } from "@/lib/i18n";
 
 interface Status {
   folder: string;
@@ -88,8 +89,8 @@ function Elsewhere() {
   return (
     <SettingsGroup>
       <SettingRow
-        label="Backups are on the computer running Bloks"
-        description="Open Bloks there to back up or restore."
+        label={t("backupsSection.backupsAreOnTheComputer")}
+        description={t("backupsSection.openBloksThereToBack")}
       />
     </SettingsGroup>
   );
@@ -182,7 +183,7 @@ function Backups() {
     if (error) return <div className="px-1 py-6 text-body text-destructive">{error}</div>;
     // the page's own outline, so nothing jumps when it arrives
     return (
-      <SkeletonGroup label="Loading backups">
+      <SkeletonGroup label={t("backupsSection.loadingBackups")}>
         {[1, 3, 2].map((rows, i) => (
           <section key={i} className="mb-9">
             <div className="mb-2.5 flex h-5 items-center px-1">
@@ -212,15 +213,15 @@ function Backups() {
   return (
     <>
       <RestoreBanner status={status} note={restartNote} onCancel={() => void api("/api/backups/restore", { method: "DELETE" }).then(load)} />
-      <SettingsGroup title="Automatically">
+      <SettingsGroup title={t("backupsSection.automatically")}>
         <AutoBackup status={status} onChange={setStatus} />
       </SettingsGroup>
-      <SettingsGroup title="Back up now">
+      <SettingsGroup title={t("backupsSection.backUpNow")}>
         <BackUpNow busy={working} folder={status.folder} onDone={load} />
       </SettingsGroup>
-      <SettingsGroup title={status.backups.length ? `Backups (${status.backups.length})` : "Backups"}>
+      <SettingsGroup title={status.backups.length ? `Backups (${status.backups.length})` : t("backupsSection.backups")}>
         {status.backups.length === 0 ? (
-          <SettingRow label="No backups yet" description={`They are kept in ${status.folder}.`} />
+          <SettingRow label={t("backupsSection.noBackupsYet")} description={`They are kept in ${status.folder}.`} />
         ) : (
           status.backups.map((backup) => (
             <BackupRow
@@ -282,7 +283,7 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
         </div>
         {restore.phase === "draining" && (
           <Button size="sm" variant="secondary" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </Button>
         )}
       </div>
@@ -311,7 +312,7 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
               Your previous workspace is in <span className="break-all font-mono text-small">{last.aside}</span>.
             </>
           )}
-          {last.keys === "kept" ? " Keys on this computer were kept." : " Its saved keys were restored too."}
+          {last.keys === "kept" ? t("backupsSection.keysOnThisComputerWere") : t("backupsSection.itsSavedKeysWereRestored")}
         </div>
       </div>
     );
@@ -330,10 +331,10 @@ function AutoBackup({ status, onChange }: { status: Status; onChange: (s: Status
   };
   return (
     <SettingRow
-      label="Back up every day"
-      info="Made once a day while Bloks is open and idle, without saved keys or Undo history. Backups you make yourself stay until you delete them."
+      label={t("backupsSection.backUpEveryDay")}
+      info={t("backupsSection.madeOnceADayWhile")}
       description={`Keeps the newest ${status.keep}, in ${status.folder}.`}
-      control={<Switch aria-label="Back up every day" checked={status.auto} disabled={saving} onCheckedChange={set} />}
+      control={<Switch aria-label={t("backupsSection.backUpEveryDay")} checked={status.auto} disabled={saving} onCheckedChange={set} />}
     />
   );
 }
@@ -371,14 +372,14 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
   return (
     <>
       <SettingRow
-        label="Include Undo history"
-        description="Lets you undo agent changes after a restore. Can make backups much bigger."
-        control={<Switch aria-label="Include Undo history" checked={undo} onCheckedChange={setUndo} />}
+        label={t("backupsSection.includeUndoHistory")}
+        description={t("backupsSection.letsYouUndoAgentChanges")}
+        control={<Switch aria-label={t("backupsSection.includeUndoHistory")} checked={undo} onCheckedChange={setUndo} />}
       />
       <SettingRow
-        label="Seal with a passphrase"
-        description="Without it, nobody can open the backup, not even Bloks."
-        control={<Switch aria-label="Seal with a passphrase" checked={seal} onCheckedChange={setSeal} />}
+        label={t("backupsSection.sealWithAPassphrase")}
+        description={t("backupsSection.withoutItNobodyCanOpen")}
+        control={<Switch aria-label={t("backupsSection.sealWithAPassphrase")} checked={seal} onCheckedChange={setSeal} />}
       >
         {seal && (
           <div className="mt-3 flex flex-col gap-2">
@@ -386,16 +387,16 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
               <Input
                 type="password"
                 autoComplete="new-password"
-                aria-label="Passphrase"
-                placeholder="Passphrase"
+                aria-label={t("backupsSection.passphrase")}
+                placeholder={t("backupsSection.passphrase")}
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
               />
               <Input
                 type="password"
                 autoComplete="new-password"
-                aria-label="Confirm passphrase"
-                placeholder="Confirm passphrase"
+                aria-label={t("backupsSection.confirmPassphrase")}
+                placeholder={t("backupsSection.confirmPassphrase")}
                 value={again}
                 onChange={(e) => setAgain(e.target.value)}
               />
@@ -403,19 +404,18 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
             {passphrase && problem && <div className="text-small text-muted-foreground">{problem}</div>}
             <div className="flex items-center gap-3 pt-1">
               <div className="min-w-0 flex-1">
-                <div className="text-body font-medium text-foreground">Include saved keys</div>
+                <div className="text-body font-medium text-foreground">{t("backupsSection.includeSavedKeys")}</div>
                 <div className="mt-0.5 text-pretty text-small leading-relaxed text-muted-foreground">
-                  Engine keys, tokens and paired devices, ready to go on another computer. Only in sealed
-                  backups.
+                  {t("backupsSection.engineKeysTokensAndPaired")}
                 </div>
               </div>
-              <Switch aria-label="Include saved keys" checked={keys} onCheckedChange={setKeys} />
+              <Switch aria-label={t("backupsSection.includeSavedKeys")} checked={keys} onCheckedChange={setKeys} />
             </div>
           </div>
         )}
       </SettingRow>
       <SettingRow
-        label="Back up now"
+        label={t("backupsSection.backUpNow")}
         description={
           result ? (
             <span className={result.ok ? "text-success" : "text-destructive"}>{result.text}</span>
@@ -426,7 +426,7 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
         control={
           <Button variant="brand" size="sm" disabled={busy || working || Boolean(problem)} onClick={start} className="min-w-[112px]">
             {working ? <Loader2 size={13} className="animate-spin" /> : null}
-            {working ? "Backing up" : "Back up now"}
+            {working ? t("backupsSection.backingUp") : t("backupsSection.backUpNow")}
           </Button>
         }
       />
@@ -503,7 +503,7 @@ function BackupRow({
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="text-ui font-medium text-foreground">{when(backup.created)}</span>
         {label && <span className="rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">{label}</span>}
-        {backup.encrypted && <Lock size={12} aria-label="Sealed with a passphrase" className="text-muted-foreground" />}
+        {backup.encrypted && <Lock size={12} aria-label={t("backupsSection.sealedWithAPassphrase")} className="text-muted-foreground" />}
       </div>
       <div className={cn("mt-0.5 text-pretty text-body leading-relaxed", backup.damaged ? "text-destructive" : "text-muted-foreground")}>
         {backupDetails(backup)}
@@ -525,17 +525,17 @@ function BackupRow({
             type="password"
             autoComplete="off"
             autoFocus
-            aria-label="Passphrase for this backup"
-            placeholder="Passphrase for this backup"
+            aria-label={t("backupsSection.passphraseForThisBackup")}
+            placeholder={t("backupsSection.passphraseForThisBackup")}
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
           />
           <div className="flex gap-1.5">
             <Button variant="brand" type="submit" size="sm" className="h-9" disabled={!passphrase || checking}>
-              Verify
+              {t("backupsSection.verify")}
             </Button>
             <Button size="sm" variant="ghost" className="h-9" onClick={() => setAsking(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
           </div>
         </form>
@@ -553,11 +553,11 @@ function BackupRow({
         </Button>
         <Button size="sm" variant="secondary" disabled={busy || backup.damaged} onClick={onRestore}>
           <RotateCcw size={13} />
-          Restore…
+          {t("backupsSection.restore")}
         </Button>
         <Button size="sm" variant="ghost" className="hover:text-destructive" disabled={busy} onClick={remove}>
           <Trash2 size={13} />
-          Delete
+          {t("common.delete")}
         </Button>
       </div>
     </div>
@@ -599,7 +599,7 @@ function RestoreDialog({
   return (
     <Dialog open onOpenChange={(open) => !open && !starting && onClose()}>
       <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] max-w-[480px] overflow-y-auto">
-        <DialogTitle>Restore this backup?</DialogTitle>
+        <DialogTitle>{t("backupsSection.restoreThisBackup")}</DialogTitle>
         <DialogDescription>
           Everything in Bloks goes back to how it was {whenSaid(backup.created)}: agents, rooms, conversations, skills
           and settings.
@@ -621,8 +621,8 @@ function RestoreDialog({
             type="password"
             autoComplete="off"
             autoFocus
-            aria-label="Passphrase for this backup"
-            placeholder="Passphrase for this backup"
+            aria-label={t("backupsSection.passphraseForThisBackup")}
+            placeholder={t("backupsSection.passphraseForThisBackup")}
             className="mt-4"
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
@@ -634,7 +634,7 @@ function RestoreDialog({
         {problem && <div className="mt-3 text-body text-destructive">{problem}</div>}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button variant="secondary" disabled={starting} onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button variant="destructive" disabled={starting || (backup.encrypted && !passphrase)} onClick={() => void start()}>
             {starting ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}

@@ -27,6 +27,7 @@ import {
   type Health,
   type Step,
 } from "./ConnectionKit";
+import { t } from "@/lib/i18n";
 
 interface Status {
   configured: boolean;
@@ -182,7 +183,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
         <ConnectionHeader
           icon={<MessageCircle size={14} className="shrink-0 text-muted-foreground" />}
           title="Telegram"
-          says="Each agent gets its own bot. Set one up in that agent's settings."
+          says={t("telegramSection.eachAgentGetsItsOwn")}
         />
         {bots.length > 0 && (
           <div className="mt-3 flex flex-col gap-1">
@@ -195,12 +196,12 @@ export function TelegramSection({ botId }: { botId?: string }) {
                   className="flex min-w-0 items-center gap-3 rounded-lg px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-accent/60"
                 >
                   <span className="min-w-0 flex-1 truncate text-body text-foreground">
-                    {state.bots.find((bot) => bot.id === connected.botId)?.name ?? "Agent"}
+                    {state.bots.find((bot) => bot.id === connected.botId)?.name ?? t("common.agent")}
                     <span className="ml-1.5 text-muted-foreground">
-                      {connected.username ? `@${connected.username}` : "Telegram settings"}
+                      {connected.username ? `@${connected.username}` : t("telegramSection.telegramSettings")}
                     </span>
                   </span>
-                  {h && <HealthLine tone={h.tone} label={connected.needsOwnerPairing ? "Needs pairing again" : h.label} />}
+                  {h && <HealthLine tone={h.tone} label={connected.needsOwnerPairing ? t("telegramSection.needsPairingAgain") : h.label} />}
                 </button>
               );
             })}
@@ -210,17 +211,17 @@ export function TelegramSection({ botId }: { botId?: string }) {
           <div className="mt-3 rounded-lg bg-warning/10 px-3 py-2.5 text-body leading-relaxed text-foreground">
             <p>{status.migrationError}</p>
             <select
-              aria-label="Agent for previous Telegram bot"
+              aria-label={t("telegramSection.agentForPreviousTelegramBot")}
               value={migrationAgent}
               onChange={(e) => setMigrationAgent(e.target.value)}
               className="mt-2 h-8 w-full rounded-lg border bg-background px-2 text-body text-foreground"
             >
-              <option value="">Choose an agent</option>
+              <option value="">{t("telegramSection.chooseAnAgent")}</option>
               {state.bots.filter((bot) => !bot.hidden).map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
             </select>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Button variant="brand" size="sm" disabled={busy || !migrationAgent} onClick={() => post({ botId: migrationAgent, migrate: true })}>Use previous bot</Button>
-              <Button size="sm" variant="secondary" disabled={busy} onClick={() => post({ discardPending: true })}>Remove previous bot</Button>
+              <Button variant="brand" size="sm" disabled={busy || !migrationAgent} onClick={() => post({ botId: migrationAgent, migrate: true })}>{t("telegramSection.usePreviousBot")}</Button>
+              <Button size="sm" variant="secondary" disabled={busy} onClick={() => post({ discardPending: true })}>{t("telegramSection.removePreviousBot")}</Button>
             </div>
           </div>
         )}
@@ -240,18 +241,18 @@ export function TelegramSection({ botId }: { botId?: string }) {
     <div className="flex max-w-[460px] items-start gap-1.5">
       <SecretField
         id={`telegram-token-${botId}`}
-        label="Bot token"
+        label={t("telegramSection.botToken")}
         value={token}
         onChange={setToken}
         shape={BOT_TOKEN}
-        hint="Looks like 123456789:AAH..., from BotFather."
-        placeholder="Paste the token"
+        hint={t("telegramSection.looksLike123456789AahFrom")}
+        placeholder={t("common.pasteTheToken")}
         onEnter={saveToken}
         quietLabel={!status?.configured}
         className="min-w-0 flex-1"
       />
       <Button variant="brand" size="sm" className={cn("h-8", status?.configured && "mt-[22px]")} disabled={busy || !token.trim()} onClick={saveToken}>
-        {busy ? "Checking" : status?.configured ? "Save" : "Connect"}
+        {busy ? t("telegramSection.checking") : status?.configured ? t("common.save") : t("common.connect")}
       </Button>
     </div>
   );
@@ -268,12 +269,12 @@ export function TelegramSection({ botId }: { botId?: string }) {
           body: (
             <>
               <StepNote>
-                In Telegram, message @BotFather and send <code className="rounded bg-muted px-1 font-mono">/newbot</code>.
+                In Telegram, message @BotFather and send <code className="rounded bg-muted px-1 font-mono">{t("telegramSection.newbot")}</code>.
                 Pick a name, and it replies with a token.
               </StepNote>
               <Button asChild size="sm" variant="secondary" className="mt-2">
                 <a href="https://t.me/BotFather" target="_blank" rel="noreferrer">
-                  Open BotFather
+                  {t("telegramSection.openBotfather")}
                   <ExternalLink size={12} />
                 </a>
               </Button>
@@ -295,7 +296,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
           body: status.pairing ? (
             <>
               <StepNote>
-                {(status.upgradeNotices?.length ?? 0) > 0 ? "Pair yourself again. " : ""}
+                {(status.upgradeNotices?.length ?? 0) > 0 ? t("telegramSection.pairYourselfAgain") : ""}
                 Send this word to {handle} in a private chat. Keep it to yourself: whoever sends it first owns the bot.
               </StepNote>
               <div className="mt-2 max-w-[280px]">
@@ -310,18 +311,18 @@ export function TelegramSection({ botId }: { botId?: string }) {
                     </a>
                   </Button>
                 )}
-                <span className="text-small text-muted-foreground">This ticks when it arrives.</span>
+                <span className="text-small text-muted-foreground">{t("telegramSection.thisTicksWhenItArrives")}</span>
               </div>
             </>
           ) : (
             <>
               <StepNote>
                 {(status.upgradeNotices?.length ?? 0) > 0
-                  ? "Pair yourself as the owner again, so the bot answers you."
-                  : "So the bot answers you. Others can message it to ask to be let in."}
+                  ? t("telegramSection.pairYourselfAsTheOwner")
+                  : t("telegramSection.soTheBotAnswersYou")}
               </StepNote>
               <Button className="mt-2" size="sm" variant="secondary" disabled={busy} onClick={() => post({ pair: true })}>
-                Get a pairing word
+                {t("telegramSection.getAPairingWord")}
               </Button>
             </>
           ),
@@ -338,7 +339,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
         health={h && <HealthLine tone={h.tone} label={h.label} />}
         control={
           status?.configured && (
-            <Switch aria-label="Enable Telegram bot" checked={status.enabled} disabled={busy} onCheckedChange={(enabled) => post({ enabled })} />
+            <Switch aria-label={t("telegramSection.enableTelegramBot")} checked={status.enabled} disabled={busy} onCheckedChange={(enabled) => post({ enabled })} />
           )
         }
       />
@@ -354,7 +355,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
         )}
       </AnimatePresence>
 
-      {settingUp && !justPaired && <Checklist label="Set up Telegram" steps={steps} />}
+      {settingUp && !justPaired && <Checklist label={t("telegramSection.setUpTelegram")} steps={steps} />}
 
       {status?.configured && !settingUp && botLink && (
         <a
@@ -372,7 +373,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
 
       {(status?.people?.length ?? 0) > 0 && (
         <div className="mt-4 border-t pt-3">
-          <div className="text-body font-semibold text-foreground">People on Telegram</div>
+          <div className="text-body font-semibold text-foreground">{t("telegramSection.peopleOnTelegram")}</div>
           <div className="mt-1.5 flex flex-col">
             {status!.people!.map((person) => (
               <div key={person.id} className="flex items-start justify-between gap-3 py-2">
@@ -385,7 +386,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
                         person.state === "allowed" ? "bg-success/10 text-success" : person.state === "pending" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground",
                       )}
                     >
-                      {person.full ? "Full access" : PERSON_STATE[person.state]}
+                      {person.full ? t("telegramSection.fullAccess") : PERSON_STATE[person.state]}
                     </span>
                   </span>
                   {/* a first name is chosen freely; the id and username are not */}
@@ -400,19 +401,19 @@ export function TelegramSection({ botId }: { botId?: string }) {
                 </span>
                 <div className="flex shrink-0 gap-1">
                   {person.state !== "allowed" && (
-                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => post({ personId: person.id, action: "allow" })}>Let in</Button>
+                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => post({ personId: person.id, action: "allow" })}>{t("telegramSection.letIn")}</Button>
                   )}
                   {person.state === "allowed" && !person.full && (
-                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => void giveFullAccess(person, agentName)}>Give full access</Button>
+                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => void giveFullAccess(person, agentName)}>{t("telegramSection.giveFullAccess")}</Button>
                   )}
                   {person.full && (
-                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "restricted" })}>Restrict</Button>
+                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "restricted" })}>{t("telegramSection.restrict")}</Button>
                   )}
                   {person.state === "pending" && (
-                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "decline" })}>Not now</Button>
+                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "decline" })}>{t("common.notNow")}</Button>
                   )}
                   {(person.state === "allowed" || person.state === "pending") && (
-                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "remove" })}>Take out</Button>
+                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "remove" })}>{t("telegramSection.takeOut")}</Button>
                   )}
                 </div>
               </div>
@@ -423,35 +424,35 @@ export function TelegramSection({ botId }: { botId?: string }) {
       {status?.configured && status.ownerPaired && (
         <div className="mt-4 flex items-start justify-between gap-3 border-t pt-3">
           <span className="min-w-0">
-            <span className="block text-body font-semibold text-foreground">Answer in groups</span>
+            <span className="block text-body font-semibold text-foreground">{t("telegramSection.answerInGroups")}</span>
             <span className="mt-0.5 block text-small leading-relaxed text-muted-foreground">
               {status.groups
-                ? "In groups, mention this bot or reply to one of its messages. Mentions need privacy mode off or the bot to be an admin. Group replies are visible to every member, including people you have not let in. Other people's group requests stay restricted, even if you granted them full access privately. Your own group requests keep your normal context and permissions."
+                ? t("telegramSection.inGroupsMentionThisBot")
                 : `Off. ${handle} ignores every group message, yours included.`}
             </span>
           </span>
           <Switch
-            aria-label="Answer in Telegram groups"
+            aria-label={t("telegramSection.answerInTelegramGroups")}
             checked={status.groups === true}
             disabled={busy}
             onCheckedChange={(on) => (on ? void answerInGroups(agentName, handle) : post({ groups: false }))}
           />
         </div>
       )}
-      {status?.admissionFull && <p className="mt-2 text-small text-warning">The waiting list is full. Decide on someone waiting, or take someone out, to make room.</p>}
-      {status?.upgradeNotices?.some((n) => ["uncertain", "failed"].includes(n.state)) && <p className="mt-2 text-small text-warning">Some old chats may not know their pairing ended. Ask those people to message the bot to be let in again.</p>}
+      {status?.admissionFull && <p className="mt-2 text-small text-warning">{t("telegramSection.theWaitingListIsFull")}</p>}
+      {status?.upgradeNotices?.some((n) => ["uncertain", "failed"].includes(n.state)) && <p className="mt-2 text-small text-warning">{t("telegramSection.someOldChatsMayNot")}</p>}
 
       {status?.configured && (
         <div className="mt-4 border-t pt-3">
           <p className="text-small leading-relaxed text-muted-foreground">
-            {status.voiceVendor ? `Voice messages are transcribed by ${status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs"} with your speech key.` : "Voice messages need an OpenAI or ElevenLabs key. Without one, the bot asks for text."}
+            {status.voiceVendor ? `Voice messages are transcribed by ${status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs"} with your speech key.` : t("telegramSection.voiceMessagesNeedAnOpenai")}
           </p>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-small text-muted-foreground">
             <button disabled={busy} onClick={() => { setToken(""); setEditingToken(!editingToken); }} className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline">
-              {editingToken ? "Keep this token" : "Change token"}
+              {editingToken ? t("telegramSection.keepThisToken") : t("telegramSection.changeToken")}
             </button>
-            {status.paired > 0 && <button disabled={busy} onClick={() => post({ unpair: true, enabled: false })} className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline">Unpair chats</button>}
-            <button disabled={busy} onClick={() => post({ forget: true })} className="underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline">Remove bot</button>
+            {status.paired > 0 && <button disabled={busy} onClick={() => post({ unpair: true, enabled: false })} className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline">{t("telegramSection.unpairChats")}</button>}
+            <button disabled={busy} onClick={() => post({ forget: true })} className="underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline">{t("telegramSection.removeBot")}</button>
           </div>
         </div>
       )}

@@ -23,6 +23,7 @@ import { toast } from "@/components/ui/toast";
 import { ContextRing, RING_FROM, type TaskChipData } from "./TaskStrip";
 import { contextTitle, measuredContext } from "@/lib/contextCard";
 import { rovingTo } from "@/lib/conversationKeys";
+import { t } from "@/lib/i18n";
 
 /** The one spring for things that open in place: quick, and no bounce,
  * because a list that overshoots reads as unsure of its own height. */
@@ -147,7 +148,7 @@ function LaneMenu({
         })}
       <div className="mx-2 my-1 h-px bg-border" />
       {busy ? (
-        <div className="px-2.5 py-1.5 text-small text-muted-foreground">Stop it before closing</div>
+        <div className="px-2.5 py-1.5 text-small text-muted-foreground">{t("sidebarParts.stopItBeforeClosing")}</div>
       ) : (
         item(
           <X size={15} />,
@@ -187,7 +188,7 @@ function LaneRename({ title, onDone }: { title: string; onDone: (next: string | 
       autoFocus
       value={value}
       maxLength={40}
-      aria-label="Rename this conversation"
+      aria-label={t("sidebarParts.renameThisConversation")}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setValue(e.target.value)}
       onBlur={() => {

@@ -20,6 +20,7 @@ import { AgentAvatar } from "./Avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { platformOf } from "@/lib/shortcuts";
+import { t } from "@/lib/i18n";
 
 // room for the traffic lights, which sit over this header on a Mac
 const isElectron = navigator.userAgent.includes("Electron");
@@ -103,7 +104,7 @@ function SideChat({ bot }: { bot: Bot }) {
             </div>
           ))}
           {live.busy && (
-            <div className="self-start px-1 text-small text-muted-foreground">Working…</div>
+            <div className="self-start px-1 text-small text-muted-foreground">{t("desktopOverlay.working")}</div>
           )}
           <div ref={endRef} />
         </div>
@@ -286,7 +287,7 @@ export function DesktopOverlay({
       >
         <div className="flex items-center gap-1.5 pl-1">
           <GripHorizontal size={13} className="text-muted-foreground/50" />
-          <span className="text-small font-medium text-muted-foreground">Chat</span>
+          <span className="text-small font-medium text-muted-foreground">{t("desktopOverlay.chat")}</span>
         </div>
         <div onPointerDown={(e) => e.stopPropagation()}>{dockButtons}</div>
       </div>
@@ -295,7 +296,7 @@ export function DesktopOverlay({
         <div
           onPointerDown={beginCornerResize}
           className="absolute bottom-0 right-0 size-4 cursor-nwse-resize"
-          title="Resize"
+          title={t("desktopOverlay.resize")}
         >
           <div className="absolute bottom-1 right-1 size-2 rounded-sm border-b-2 border-r-2 border-muted-foreground/40" />
         </div>
@@ -335,12 +336,12 @@ export function DesktopOverlay({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <a href={url} target="_blank" rel="noreferrer" title="Open in browser">
-            <Button variant="ghost" size="icon-sm" aria-label="Open in browser">
+          <a href={url} target="_blank" rel="noreferrer" title={t("desktopOverlay.openInBrowser")}>
+            <Button variant="ghost" size="icon-sm" aria-label={t("desktopOverlay.openInBrowser")}>
               <ExternalLink size={15} />
             </Button>
           </a>
-          <Button variant="secondary" size="icon-sm" aria-label="Close desktop view" onClick={onClose}>
+          <Button variant="secondary" size="icon-sm" aria-label={t("desktopOverlay.closeDesktopView")} onClick={onClose}>
             <X size={16} />
           </Button>
         </div>

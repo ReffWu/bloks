@@ -15,6 +15,7 @@ import type { Bot } from "@/state/store";
 import { AgentAvatar } from "@/components/Avatar";
 import { cn } from "@/lib/cn";
 import { useDismiss } from "./Shell";
+import { t } from "@/lib/i18n";
 
 /** Others an agent can be compared with in one rehearsal. */
 export const MAX_COMPARE = 2;
@@ -90,13 +91,13 @@ export function ComparePicker({
                 ref={search}
                 value={words}
                 onChange={(e) => setWords(e.target.value)}
-                placeholder="Search agents"
-                aria-label="Search agents"
+                placeholder={t("comparePicker.searchAgents")}
+                aria-label={t("comparePicker.searchAgents")}
                 className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
               />
             </label>
           )}
-          <ul role="listbox" aria-multiselectable="true" aria-label="Compare with" className="max-h-64 overflow-y-auto">
+          <ul role="listbox" aria-multiselectable="true" aria-label={t("comparePicker.compareWith")} className="max-h-64 overflow-y-auto">
             {shown.map((b) => {
               const on = chosen.includes(b.id);
               const locked = full && !on;
@@ -127,13 +128,13 @@ export function ComparePicker({
                 </li>
               );
             })}
-            {shown.length === 0 && <li className="px-2 py-3 text-center text-small text-muted-foreground">No agent called that.</li>}
+            {shown.length === 0 && <li className="px-2 py-3 text-center text-small text-muted-foreground">{t("comparePicker.noAgentCalledThat")}</li>}
           </ul>
           <div className="mt-1 flex items-center justify-between border-t px-2 pt-1.5 text-small text-muted-foreground">
-            <span>{full ? "That's the most at once." : "Pick up to two."}</span>
+            <span>{full ? t("comparePicker.thatsTheMostAtOnce") : t("comparePicker.pickUpToTwo")}</span>
             {chosen.length > 0 && (
               <button type="button" onClick={() => onChange([])} className="rounded-md px-1.5 py-0.5 transition-colors duration-150 hover:bg-accent hover:text-foreground">
-                Clear
+                {t("common.clear")}
               </button>
             )}
           </div>

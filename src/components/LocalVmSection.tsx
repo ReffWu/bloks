@@ -23,6 +23,7 @@ import { thisComputer } from "@/lib/thisComputer";
 import { usePageVisible } from "@/lib/pageVisible";
 import { HealthLine, type Health } from "./ConnectionKit";
 import { SettingsGroup } from "./SettingsLayout";
+import { t } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -130,7 +131,7 @@ export function LocalVmSection() {
         {
           done: s.runtime !== null,
           title: "Install a container runtime",
-          body: <Hint>Apple's container CLI or Docker Desktop.</Hint>,
+          body: <Hint>{t("localVmSection.applesContainerCliOrDocker")}</Hint>,
         },
         {
           done: s.daemonUp,
@@ -138,10 +139,10 @@ export function LocalVmSection() {
           body:
             s.runtime === "container" ? (
               <Hint>
-                Run <code className="rounded bg-muted px-1 font-mono text-small text-foreground">container system start</code> in a terminal.
+                Run <code className="rounded bg-muted px-1 font-mono text-small text-foreground">{t("localVmSection.containerSystemStart")}</code> in a terminal.
               </Hint>
             ) : s.runtime ? (
-              <Hint>Open Docker and wait for it to start.</Hint>
+              <Hint>{t("localVmSection.openDockerAndWaitFor")}</Hint>
             ) : null,
         },
         {
@@ -149,14 +150,14 @@ export function LocalVmSection() {
           title: "Prepare the Cua desktop",
           body: (
             <>
-              <Hint>A one-time download.</Hint>
+              <Hint>{t("localVmSection.aOneTimeDownload")}</Hint>
               {s.daemonUp && (
                 <Button variant="brand" size="sm" className="mt-3" disabled={acting !== null} onClick={() => act("prepare")}>
                   {acting === "prepare" && <Loader2 size={12} className="animate-spin" />}
-                  {acting === "prepare" ? "Preparing, takes a few minutes" : "Prepare Cua desktop"}
+                  {acting === "prepare" ? t("localVmSection.preparingTakesAFewMinutes") : t("localVmSection.prepareCuaDesktop")}
                 </Button>
               )}
-              <CommandReveal label="Show download command" command={s.commands.pull} />
+              <CommandReveal label={t("localVmSection.showDownloadCommand")} command={s.commands.pull} />
             </>
           ),
         },
@@ -170,7 +171,7 @@ export function LocalVmSection() {
               {s.imageReady &&
                 (staleOrStopped ? (
                   <>
-                    <Hint>Files in its workspace are kept. Everything else resets.</Hint>
+                    <Hint>{t("localVmSection.filesInItsWorkspaceAre")}</Hint>
                     <Button
                       variant="destructive"
                       size="sm"
@@ -197,10 +198,10 @@ export function LocalVmSection() {
                 ) : (
                   <div className="mt-1 flex items-center gap-1.5 text-body text-muted-foreground">
                     <Loader2 size={12} className="animate-spin" />
-                    {s.problem ?? "Waiting for the desktop…"}
+                    {s.problem ?? t("localVmSection.waitingForTheDesktop")}
                   </div>
                 ))}
-              <CommandReveal label="Show command" command={s.commands.run} />
+              <CommandReveal label={t("localVmSection.showCommand")} command={s.commands.run} />
             </>
           ),
         },
@@ -223,12 +224,12 @@ export function LocalVmSection() {
 
   return (
     <SettingsGroup
-      title="Local VM"
+      title={t("localVmSection.localVm")}
       description={`A free Linux desktop on ${thisComputer()}, kept apart from yours.`}
       action={
         <>
           {health && <HealthLine tone={health.tone} label={health.label} />}
-          <Button variant="ghost" size="icon-sm" onClick={load} aria-label="Check again" title="Check again">
+          <Button variant="ghost" size="icon-sm" onClick={load} aria-label={t("common.checkAgain")} title={t("common.checkAgain")}>
             <RefreshCw size={13} />
           </Button>
         </>
@@ -242,14 +243,14 @@ export function LocalVmSection() {
         ) : s.ready ? (
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
             <div className="min-w-0 text-body text-foreground">
-              {s.inUseBy ? `${s.inUseBy} is using it.` : "Ready for any agent that needs a computer."}
+              {s.inUseBy ? `${s.inUseBy} is using it.` : t("localVmSection.readyForAnyAgentThat")}
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {s.viewerUrl && (
                 <Button variant="secondary" size="sm" asChild>
                   <a href={s.viewerUrl} target="_blank" rel="noreferrer">
                     <ExternalLink size={12} />
-                    Watch its screen
+                    {t("localVmSection.watchItsScreen")}
                   </a>
                 </Button>
               )}
@@ -267,7 +268,7 @@ export function LocalVmSection() {
                   })
                 }
               >
-                Remove
+                {t("common.remove")}
               </Button>
             </div>
           </div>
@@ -293,7 +294,7 @@ export function LocalVmSection() {
         <details className="group">
           <summary className="flex cursor-pointer list-none items-center gap-1 px-5 py-2.5 text-small text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
             <ChevronRight size={12} className="transition-transform duration-150 group-open:rotate-90" />
-            Details
+            {t("localVmSection.details")}
           </summary>
           <div className="px-5 pb-4 pl-[37px] text-small leading-relaxed text-muted-foreground">
             <p className="text-pretty">

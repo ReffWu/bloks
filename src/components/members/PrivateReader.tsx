@@ -13,6 +13,7 @@ import { api } from "@/state/store";
 import { shortDate, tintOf, initials } from "@/lib/members";
 import type { MemberMessage } from "@/lib/memberRules";
 import { Transcript } from "@/components/member/MemberParts";
+import { t } from "@/lib/i18n";
 
 interface PrivateConversation {
   threadId: string;
@@ -43,7 +44,7 @@ export function PrivateReader({ botId, botName }: { botId: string; botName: stri
   return (
     <section className="pt-12">
       <div className="mb-4 px-1">
-        <h2 className="text-title font-semibold text-foreground">Private conversations</h2>
+        <h2 className="text-title font-semibold text-foreground">{t("privateReader.privateConversations")}</h2>
         <p className="mt-1 text-pretty text-body text-muted-foreground">
           Members' own conversations with {botName}, to read only. {list.line}
         </p>

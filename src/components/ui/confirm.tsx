@@ -13,6 +13,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { t } from "@/lib/i18n";
 
 export interface ConfirmOptions {
   /** The question, short: "Delete this backup?" */
@@ -118,7 +119,7 @@ export function ConfirmHost() {
           )}
           <div className="mt-5 flex justify-end gap-2">
             <Button ref={safe} variant="secondary" onClick={() => asking.answer(false)}>
-              {asking.cancelLabel ?? "Cancel"}
+              {asking.cancelLabel ?? t("common.cancel")}
             </Button>
             <Button
               ref={go}
@@ -126,7 +127,7 @@ export function ConfirmHost() {
               className={asking.destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined}
               onClick={() => asking.answer(true)}
             >
-              {asking.confirmLabel ?? "Continue"}
+              {asking.confirmLabel ?? t("common.continue")}
             </Button>
           </div>
         </DialogContent>

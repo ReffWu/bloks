@@ -30,6 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import { useConnectors } from "@/lib/useConnectors";
+import { t } from "@/lib/i18n";
 
 export interface AppRun {
   at: number;
@@ -230,14 +231,14 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
     return (
       <div className="mt-6 flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3.5 py-3 text-body text-foreground">
         <div className="flex items-center gap-2 font-medium">
-          <AlertTriangle size={14} className="text-warning" /> App watchers need your Composio project key
+          <AlertTriangle size={14} className="text-warning" /> {t("appWatch.appWatchersNeedYourComposio")}
         </div>
         <div className="text-muted-foreground">
-          The key that starts ak_, as well as the Connect key. Composio sends events from the accounts connected in that project.
+          {t("appWatch.theKeyThatStartsAk")}
         </div>
         <div>
           <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })}>
-            Open Apps and keys
+            {t("appWatch.openAppsAndKeys")}
           </Button>
         </div>
       </div>
@@ -258,7 +259,7 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
       <div key={f.key} className="flex flex-col gap-1">
         <label htmlFor={id} className="text-body text-foreground">
           {f.title}
-          {f.required && <span className="text-muted-foreground"> (needed)</span>}
+          {f.required && <span className="text-muted-foreground"> {t("appWatch.needed")}</span>}
         </label>
         {f.type === "boolean" ? (
           <Switch id={id} checked={value === true} onCheckedChange={(on) => set(on)} aria-label={f.title} />
@@ -269,7 +270,7 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
             onChange={(e) => set(e.target.value)}
             className="h-9 rounded-xl border border-input bg-background px-2.5 text-body text-foreground outline-none focus:border-ring/60"
           >
-            <option value="">Choose</option>
+            <option value="">{t("appWatch.choose")}</option>
             {f.options.map((o) => (
               <option key={o} value={o}>
                 {o}
@@ -298,8 +299,8 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
 
   return (
     <>
-      <div className="mt-6 mb-2 text-body font-medium text-foreground">Which app</div>
-      <div role="radiogroup" aria-label="Which app" className="flex flex-wrap gap-1.5">
+      <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("appWatch.whichApp")}</div>
+      <div role="radiogroup" aria-label={t("appWatch.whichApp")} className="flex flex-wrap gap-1.5">
         {connectors.installed.map((card) => (
           <button key={card.slug} type="button" role="radio" aria-checked={toolkit === card.slug} onClick={() => setToolkit(card.slug)} className={chip(toolkit === card.slug)}>
             <ServiceIcon card={card} size={18} />
@@ -317,16 +318,16 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
               }
             }}
             onBlur={() => other.trim() && setToolkit(other.trim().toLowerCase())}
-            placeholder="Another app"
-            aria-label="Another app, by its Composio name"
-            title="Another app, by its Composio name, such as asana"
+            placeholder={t("appWatch.anotherApp")}
+            aria-label={t("appWatch.anotherAppByItsComposio")}
+            title={t("appWatch.anotherAppByItsComposioName")}
             spellCheck={false}
             className="h-8 w-[150px] rounded-full text-small"
           />
         </div>
       </div>
       {connectors.installed.length === 0 && (
-        <div className="mt-2 text-small text-muted-foreground">No apps connected in Bloks yet. Connect one in Plugins, or name one that is connected in your Composio project.</div>
+        <div className="mt-2 text-small text-muted-foreground">{t("appWatch.noAppsConnectedInBloks")}</div>
       )}
 
       {toolkit && (
@@ -341,7 +342,7 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
           ) : types.length === 0 ? (
             <div className="text-body text-muted-foreground">{appLabel} has no events Composio can send. Pick another app.</div>
           ) : (
-            <div role="radiogroup" aria-label="Which event" className="flex max-h-[260px] flex-col gap-1 overflow-y-auto rounded-xl border p-1">
+            <div role="radiogroup" aria-label={t("appWatch.whichEvent")} className="flex max-h-[260px] flex-col gap-1 overflow-y-auto rounded-xl border p-1">
               {types.map((t) => {
                 const on = trigger === t.slug;
                 return (
@@ -374,11 +375,11 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
           <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0, transition: { duration: 0.2, ease } }} exit={{ opacity: 0, transition: { duration: 0.1 } }}>
             {type.fields.length > 0 && (
               <>
-                <div className="mt-6 mb-2 text-body font-medium text-foreground">What it watches</div>
+                <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("appWatch.whatItWatches")}</div>
                 <div className="grid gap-3 sm:grid-cols-2">{type.fields.map(field)}</div>
               </>
             )}
-            <div className="mt-6 mb-2 text-body font-medium text-foreground">Which account</div>
+            <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("appWatch.whichAccount")}</div>
             {accounts === null ? (
               <div className="flex items-center gap-2 text-body text-muted-foreground">
                 <Loader2 size={14} className="animate-spin" /> Looking for {appLabel} accounts
@@ -388,7 +389,7 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
                 No {appLabel} account is connected in your Composio project yet. Connect one there, then pick this again.
               </div>
             ) : (
-              <div role="radiogroup" aria-label="Which account" className="flex flex-wrap gap-1.5">
+              <div role="radiogroup" aria-label={t("appWatch.whichAccount")} className="flex flex-wrap gap-1.5">
                 {accounts.map((a) => (
                   <button key={a.id} type="button" role="radio" aria-checked={accountId === a.id} onClick={() => setAccountId(a.id)} className={chip(accountId === a.id)}>
                     {accountId === a.id ? <Check size={13} /> : <span className="size-[13px]" />}
@@ -398,10 +399,10 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
               </div>
             )}
             <label className="mt-6 mb-2 block text-body font-medium text-foreground" htmlFor="app-filter">
-              Only when it mentions <span className="font-normal text-muted-foreground">(optional)</span>
+              Only when it mentions <span className="font-normal text-muted-foreground">{t("appWatch.optional")}</span>
             </label>
-            <Input id="app-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Acme, invoice" className="rounded-xl text-body" />
-            <div className="mt-1.5 text-small text-muted-foreground">Whole words, any one of them, checked before any agent is woken.</div>
+            <Input id="app-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("appWatch.acmeInvoice")} className="rounded-xl text-body" />
+            <div className="mt-1.5 text-small text-muted-foreground">{t("appWatch.wholeWordsAnyOneOf")}</div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -469,13 +470,13 @@ export function AppWatchDetail({
       {app.proposal && (
         <div className="flex flex-col gap-2 rounded-xl border border-brand/30 bg-brand-soft px-3.5 py-3 text-body text-foreground">
           <div className="font-medium">{app.proposal.name} proposed this watcher</div>
-          <div className="text-muted-foreground">Nothing listens, and nothing is set up at Composio, until you say yes.</div>
+          <div className="text-muted-foreground">{t("appWatch.nothingListensAndNothingIs")}</div>
           <div className="flex gap-2">
             <Button size="sm" disabled={busy !== null} onClick={() => call("confirm", `/api/watchers/${w.id}/confirm`, { method: "POST", body: "{}" })}>
               {busy === "confirm" ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} Start watching
             </Button>
             <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => call("decline", `/api/watchers/${w.id}/decline`, { method: "POST", body: "{}" })}>
-              Not now
+              {t("common.notNow")}
             </Button>
           </div>
         </div>
@@ -489,11 +490,11 @@ export function AppWatchDetail({
           <div className="mt-0.5 text-body text-muted-foreground">When {appWhen(app)}.</div>
           {app.madeBy && (
             <div className="mt-1 text-small text-muted-foreground">
-              Set up by {app.madeBy.name}, an admin. Its turns go to {bot?.name ?? "the agent"}'s team conversation, as theirs.
+              Set up by {app.madeBy.name}, an admin. Its turns go to {bot?.name ?? t("appWatch.theAgent")}'s team conversation, as theirs.
             </div>
           )}
         </div>
-        <Switch checked={w.enabled} disabled={Boolean(app.proposal) || busy !== null} onCheckedChange={(on) => patch({ enabled: on })} aria-label="Listening" />
+        <Switch checked={w.enabled} disabled={Boolean(app.proposal) || busy !== null} onCheckedChange={(on) => patch({ enabled: on })} aria-label={t("appWatch.listening")} />
       </div>
 
       <div
@@ -505,13 +506,13 @@ export function AppWatchDetail({
       >
         {status.text}
         {w.enabled && !app.proposal && apps?.listening === "live" && !apps.catchesUp && (
-          <span className="text-muted-foreground"> While Bloks is closed nothing is heard, and that time shows below as missed.</span>
+          <span className="text-muted-foreground"> {t("appWatch.whileBloksIsClosedNothing")}</span>
         )}
       </div>
 
       {Object.keys(app.config).length > 0 && (
         <div className="flex flex-col gap-1">
-          <div className="text-body text-muted-foreground">What it watches</div>
+          <div className="text-body text-muted-foreground">{t("appWatch.whatItWatches")}</div>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-body">
             {Object.entries(app.config).map(([k, v]) => (
               <div key={k} className="contents">
@@ -529,12 +530,12 @@ export function AppWatchDetail({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           onBlur={() => filter.trim() !== (app.filter ?? []).join(", ") && patch({ filter: filter.trim() })}
-          placeholder="Every event"
+          placeholder={t("appWatch.everyEvent")}
           className="text-body text-foreground"
         />
       </label>
       <label className="flex flex-col gap-1.5 text-body text-muted-foreground">
-        What {bot?.name ?? "the agent"} does when it happens
+        What {bot?.name ?? t("appWatch.theAgent")} does when it happens
         <Textarea
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
@@ -549,10 +550,10 @@ export function AppWatchDetail({
             value={thread}
             onChange={(e) => setThread(e.target.value)}
             onBlur={() => thread.trim() !== (w.thread ?? "") && patch({ thread: thread.trim() })}
-            placeholder="General"
+            placeholder={t("common.general")}
             className="text-body text-foreground"
           />
-          <span className="text-small">Leave blank for the main chat. A new name starts a new one.</span>
+          <span className="text-small">{t("appWatch.leaveBlankForTheMain")}</span>
         </label>
       )}
       <div className="flex flex-wrap items-end gap-3 text-body text-muted-foreground">
@@ -582,9 +583,9 @@ export function AppWatchDetail({
       {w.lastError && !app.paused && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{w.lastError}</div>}
 
       <div>
-        <div className="mb-1.5 text-small font-medium text-muted-foreground">What it heard</div>
+        <div className="mb-1.5 text-small font-medium text-muted-foreground">{t("appWatch.whatItHeard")}</div>
         {app.runs.length === 0 ? (
-          <div className="text-body text-muted-foreground">Nothing yet.</div>
+          <div className="text-body text-muted-foreground">{t("appWatch.nothingYet")}</div>
         ) : (
           <ul className="flex flex-col gap-1">
             {app.runs.map((r) => (
@@ -601,7 +602,7 @@ export function AppWatchDetail({
                 <span className={cn("min-w-0 flex-1 text-foreground", r.outcome === "missed" ? "text-pretty" : "truncate")}>{r.summary}</span>
                 {r.laneId && bot && (
                   <button className="shrink-0 text-small text-muted-foreground underline underline-offset-2 hover:text-foreground" onClick={() => open(r.laneId)}>
-                    Open
+                    {t("common.open")}
                   </button>
                 )}
               </li>
@@ -621,7 +622,7 @@ export function AppWatchDetail({
           disabled={busy !== null}
           onClick={() => call("delete", `/api/watchers/${w.id}`, { method: "DELETE" })}
         >
-          <Trash2 size={13} /> Stop watching
+          <Trash2 size={13} /> {t("appWatch.stopWatching")}
         </Button>
       </div>
       {note && <div className="text-body text-muted-foreground">{note}</div>}
@@ -656,7 +657,7 @@ export function AppWatchCard({ plan, answered }: { plan: AppWatchPlan; answered?
   return (
     <div className="w-full max-w-[560px] animate-rise-in overflow-hidden rounded-2xl border bg-card shadow-[0_1px_3px_var(--shadow-color)]">
       <div className="px-4 pt-4">
-        <div className="text-caption font-semibold uppercase tracking-[0.1em] text-brand-ink">{started ? "Watching" : answered ? "Not watching" : "Proposed watcher"}</div>
+        <div className="text-caption font-semibold uppercase tracking-[0.1em] text-brand-ink">{started ? t("appWatch.watching") : answered ? t("appWatch.notWatching") : t("appWatch.proposedWatcher")}</div>
         <div className="mt-1 text-lead font-semibold text-foreground">
           {plan.agentName} wants to act on {plan.appName}
         </div>
@@ -683,10 +684,10 @@ export function AppWatchCard({ plan, answered }: { plan: AppWatchPlan; answered?
       <div className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-3">
         {started ? (
           <span className="flex items-center gap-1.5 text-body text-muted-foreground">
-            <Check size={14} /> Watching. Change or stop it in Automations, Watchers.
+            <Check size={14} /> {t("appWatch.watchingChangeOrStopIt")}
           </span>
         ) : answered ? (
-          <span className="text-body text-muted-foreground">{answered === "Withdrawn" ? `${plan.agentName} withdrew it.` : "Not watching."}</span>
+          <span className="text-body text-muted-foreground">{answered === "Withdrawn" ? `${plan.agentName} withdrew it.` : t("appWatch.notWatching2")}</span>
         ) : (
           <>
             <button
@@ -702,7 +703,7 @@ export function AppWatchCard({ plan, answered }: { plan: AppWatchPlan; answered?
               disabled={busy !== null}
               className="rounded-xl px-3 py-2 text-ui text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:opacity-60"
             >
-              Not now
+              {t("common.notNow")}
             </button>
             <span className="text-small text-muted-foreground">What {plan.appName} sends reaches {plan.agentName} as data, never as instructions.</span>
           </>

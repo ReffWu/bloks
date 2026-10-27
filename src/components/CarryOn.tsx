@@ -4,6 +4,7 @@
 // moved on without it, the button goes too.
 import { useState } from "react";
 import { api, useStore, type Message } from "@/state/store";
+import { t } from "@/lib/i18n";
 
 export function CarryOn({ message }: { message: Message }) {
   const { dispatch } = useStore();
@@ -22,7 +23,7 @@ export function CarryOn({ message }: { message: Message }) {
         });
       }}
     >
-      Continue
+      {t("common.continue")}
     </button>
   );
 }

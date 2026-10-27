@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Check } from "@/components/icons";
 import { ACCENT_EVENT, ACCENTS, chooseAccent, onFill, storedAccent } from "@/lib/accent";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export function AccentPicker() {
   const [chosen, setChosen] = useState(() => storedAccent().id);
@@ -15,7 +16,7 @@ export function AccentPicker() {
     return () => window.removeEventListener(ACCENT_EVENT, follow);
   }, []);
   return (
-    <div role="radiogroup" aria-label="Accent" className="flex flex-wrap items-center gap-2">
+    <div role="radiogroup" aria-label={t("accentPicker.accent")} className="flex flex-wrap items-center gap-2">
       {ACCENTS.map((accent) => {
         const on = accent.id === chosen;
         return (

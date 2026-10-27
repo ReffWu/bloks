@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 const COMPOSIO = "https://composio.dev";
 
@@ -71,15 +72,15 @@ function KeyBody({
   return (
     <>
       <Marks card={card} cards={cards} />
-      <DialogTitle className="mt-4">{card ? `Connect ${card.label}` : "Connect your apps"}</DialogTitle>
+      <DialogTitle className="mt-4">{card ? `Connect ${card.label}` : t("composioKeyDialog.connectYourApps")}</DialogTitle>
       <DialogDescription>
         {card
           ? `Add your Composio key once, then sign in to ${card.label}.`
-          : "One Composio key connects every app, for every agent."}
+          : t("composioKeyDialog.oneComposioKeyConnectsEvery")}
       </DialogDescription>
 
       <Segmented
-        aria-label="Add a key, or how to get one"
+        aria-label={t("composioKeyDialog.addAKeyOrHow")}
         value={tab}
         onChange={(next) => (next === "key" ? toKey() : setTab(next))}
         options={[
@@ -186,7 +187,7 @@ function KeyField({
   return (
     <div>
       <label htmlFor="composio-connect-key" className="text-body font-medium text-foreground">
-        Connect key
+        {t("composioKeyDialog.connectKey")}
       </label>
       <Input
         id="composio-connect-key"
@@ -198,7 +199,7 @@ function KeyField({
           setRefusal(null);
         }}
         onKeyDown={(e) => e.key === "Enter" && save()}
-        placeholder="ck_…"
+        placeholder={t("composioKeyDialog.ck")}
         autoComplete="off"
         spellCheck={false}
         autoFocus
@@ -212,23 +213,23 @@ function KeyField({
         aria-live="polite"
         className={cn("mt-1.5 min-h-5 text-small", done ? TONE.good : refusal ? TONE.bad : TONE[shape.tone])}
       >
-        {done ? (connecting ? `Saved. Opening ${connecting} sign-in.` : "Saved.") : refusal ? `${refusal}.`.replace(/\.\.$/, ".") : shape.text}
+        {done ? (connecting ? `Saved. Opening ${connecting} sign-in.` : t("composioKeyDialog.saved")) : refusal ? `${refusal}.`.replace(/\.\.$/, ".") : shape.text}
       </p>
       <Button size="lg" onClick={save} disabled={saving || done || blocked} className="mt-3 w-full">
         {saving ? (
           <>
             <Loader2 size={15} className="animate-spin motion-reduce:animate-none" />
-            Checking with Composio
+            {t("composioKeyDialog.checkingWithComposio")}
           </>
         ) : done ? (
           <>
             <Check size={15} />
-            Saved
+            {t("common.saved")}
           </>
         ) : connecting ? (
           `Save and connect ${connecting}`
         ) : (
-          "Save"
+          t("common.save")
         )}
       </Button>
     </div>
@@ -264,14 +265,14 @@ function CatalogueKey() {
         onClick={() => setOpen(true)}
         className="mt-4 text-left text-small text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
       >
-        {has ? "Project API key saved. Replace it" : "Have a project API key (ak_)? It shows the full catalogue"}
+        {has ? t("composioKeyDialog.projectApiKeySavedReplace") : t("composioKeyDialog.haveAProjectApiKey")}
       </button>
     );
   }
   return (
     <div className="mt-4 animate-fade-in">
       <label htmlFor="composio-project-key" className="text-small font-medium text-foreground">
-        Project API key
+        {t("composioKeyDialog.projectApiKey")}
       </label>
       <div className="mt-1 flex gap-2">
         <Input
@@ -283,17 +284,17 @@ function CatalogueKey() {
             setVerdict(null);
           }}
           onKeyDown={(e) => e.key === "Enter" && save()}
-          placeholder="ak_…"
+          placeholder={t("composioKeyDialog.ak")}
           autoComplete="off"
           spellCheck={false}
           className="h-8 text-body"
         />
         <Button variant="secondary" onClick={save} disabled={saving || !value.trim()} className="w-[72px]">
-          {saving ? <Loader2 size={13} className="animate-spin motion-reduce:animate-none" /> : "Save"}
+          {saving ? <Loader2 size={13} className="animate-spin motion-reduce:animate-none" /> : t("common.save")}
         </Button>
       </div>
       <p aria-live="polite" className={cn("mt-1.5 text-small", verdict ? (verdict.ok ? TONE.good : TONE.bad) : TONE.quiet)}>
-        {verdict ? verdict.text : "Optional. It shows every app. Connections work without it."}
+        {verdict ? verdict.text : t("composioKeyDialog.optionalItShowsEveryApp")}
       </p>
     </div>
   );
@@ -315,24 +316,24 @@ function HowTo({ onDone }: { onDone: () => void }) {
               rel="noreferrer"
               className="-my-1 inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-body font-medium text-foreground transition-colors hover:bg-accent"
             >
-              Open
+              {t("common.open")}
               <ExternalLink size={13} />
             </a>
           }
         >
-          Open composio.dev and sign in.
+          {t("composioKeyDialog.openComposioDevAndSign")}
         </Step>
         <Step n={2}>
-          Switch to <Em>For You</Em>, then open <Em>Settings</Em> and <Em>Sessions &amp; API Key</Em>.
+          Switch to <Em>{t("composioKeyDialog.forYou")}</Em>, then open <Em>{t("common.settings")}</Em> and <Em>{t("composioKeyDialog.sessionsApiKey")}</Em>.
         </Step>
         <Step n={3}>
-          Copy <Em>Your API Key</Em>. It starts with{" "}
-          <code className="rounded bg-muted px-1 py-px font-mono text-small text-foreground">ck_</code>.
+          Copy <Em>{t("composioKeyDialog.yourApiKey")}</Em>. It starts with{" "}
+          <code className="rounded bg-muted px-1 py-px font-mono text-small text-foreground">{t("composioKeyDialog.ck2")}</code>.
         </Step>
-        <Step n={4}>Paste it in Add key and press Save.</Step>
+        <Step n={4}>{t("composioKeyDialog.pasteItInAddKey")}</Step>
       </ol>
       <Button variant="secondary" onClick={onDone} className="mt-4 w-full" size="lg">
-        I have my key
+        {t("composioKeyDialog.iHaveMyKey")}
       </Button>
     </div>
   );

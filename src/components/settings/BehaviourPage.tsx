@@ -18,6 +18,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Slider, numberStops } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { SettingRow, SettingsGroup, SettingsSelect } from "../SettingsLayout";
+import { t } from "@/lib/i18n";
 
 /**
  * How a long conversation is kept inside the model's window.
@@ -42,10 +43,10 @@ function Compaction() {
 
   return (
     <SettingRow
-      label="Summarise as you go"
-      info="Long chats get summarised to keep fitting. Off: all at once when full, with a short pause. On: a little after each reply, so no pause, but the provider can't reuse its cache, which costs more on some. Your own messages are never summarised."
-      description="Summarise a little after each reply, not all at once."
-      control={<Switch aria-label="Summarise as you go" checked={on} disabled={saving} onCheckedChange={set} />}
+      label={t("behaviourPage.summariseAsYouGo")}
+      info={t("behaviourPage.longChatsGetSummarisedTo")}
+      description={t("behaviourPage.summariseALittleAfterEach")}
+      control={<Switch aria-label={t("behaviourPage.summariseAsYouGo")} checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
 }
@@ -70,10 +71,10 @@ function IdleCompaction() {
 
   return (
     <SettingRow
-      label="Compact while idle"
-      info="Claude Code keeps a chat cached for an hour. The first message after that re-sends the whole chat, which costs the most. With this on, a Claude Code chat over 100k tokens that has been quiet for 55 minutes is compacted while still cached. Some detail is lost, and the chat marks where."
-      description="Compact long Claude Code chats before their cache expires."
-      control={<Switch aria-label="Compact while idle" checked={on} disabled={saving} onCheckedChange={set} />}
+      label={t("behaviourPage.compactWhileIdle")}
+      info={t("behaviourPage.claudeCodeKeepsAChat")}
+      description={t("behaviourPage.compactLongClaudeCodeChats")}
+      control={<Switch aria-label={t("behaviourPage.compactWhileIdle")} checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
 }
@@ -102,9 +103,9 @@ function SharedChanges() {
 
   return (
     <SettingRow
-      label="Show other changed files"
-      description="Also show files that changed while an agent was working, not only its own."
-      control={<Switch aria-label="Show other changed files" checked={on} disabled={saving} onCheckedChange={set} />}
+      label={t("behaviourPage.showOtherChangedFiles")}
+      description={t("behaviourPage.alsoShowFilesThatChanged")}
+      control={<Switch aria-label={t("behaviourPage.showOtherChangedFiles")} checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
 }
@@ -131,13 +132,13 @@ function BeforeTurnCompaction() {
 
   return (
     <SettingRow
-      label="Compact long chats"
-      info="Claude Code, Codex and Pi re-send the whole chat with every tool call, so one reply in a long chat can use millions of tokens. Past this size, or 60% of the model's limit, the chat is compacted before your next message. The chat marks where."
-      description="For Claude Code, Codex and Pi. Compact before the next message once a chat reaches this size."
+      label={t("behaviourPage.compactLongChats")}
+      info={t("behaviourPage.claudeCodeCodexAndPi")}
+      description={t("behaviourPage.forClaudeCodeCodexAnd")}
     >
       <div className="mt-3">
         <Slider
-          aria-label="Compact long chats"
+          aria-label={t("behaviourPage.compactLongChats")}
           className="max-w-[420px]"
           stops={BEFORE_TURN_CEILINGS}
           value={BEFORE_TURN_CEILINGS.some((o) => o.value === ceiling) ? ceiling : "200000"}
@@ -177,13 +178,13 @@ function SilentCallLimit() {
 
   return (
     <SettingRow
-      label="Stop stuck tool calls"
-      info="Sometimes a command waits on something that never answers. After this long with no progress, Bloks stops the reply and tells you and the agent which call it was. Thinking, writing and commands that keep reporting are never cut short. Time waiting on your approval doesn't count."
-      description="Stop when one call makes no progress for this long."
+      label={t("behaviourPage.stopStuckToolCalls")}
+      info={t("behaviourPage.sometimesACommandWaitsOn")}
+      description={t("behaviourPage.stopWhenOneCallMakes")}
     >
       <div className="mt-3">
         <Slider
-          aria-label="Stop stuck tool calls"
+          aria-label={t("behaviourPage.stopStuckToolCalls")}
           className="max-w-[420px]"
           stops={SILENT_CALL_LIMITS}
           value={SILENT_CALL_LIMITS.some((o) => o.value === minutes) ? minutes : "15"}
@@ -219,14 +220,14 @@ function ProposeSkills() {
 
   return (
     <SettingRow
-      label="Suggest skills"
-      info="Nothing changes on its own. New skills and changes to yours wait in Skills, with the reason, for you to keep, edit or dismiss. Each check is a call to the agent's own model, two when it changes a skill you have, on your plan or key."
+      label={t("behaviourPage.suggestSkills")}
+      info={t("behaviourPage.nothingChangesOnItsOwn")}
       description={SKILL_LEARNING.find((o) => o.value === learn)?.says}
       error={error}
     >
       <div className="mt-3 max-w-[460px]">
         <Segmented<SkillLearning>
-          aria-label="Suggest skills"
+          aria-label={t("behaviourPage.suggestSkills")}
           size="sm"
           value={learn}
           onChange={(next) => !saving && next !== learn && set(next)}
@@ -276,13 +277,13 @@ function AgentTurnLimit() {
   };
   return (
     <SettingRow
-      label="Agent-to-agent limit"
-      description="Agents stop after this many replies to each other, so they can't use up your plan on their own. Your next message resets the count."
+      label={t("behaviourPage.agentToAgentLimit")}
+      description={t("behaviourPage.agentsStopAfterThisMany")}
       error={error}
     >
       <div className="mt-3">
         <Slider
-          aria-label="Most agent replies in a row"
+          aria-label={t("behaviourPage.mostAgentRepliesInA")}
           className="max-w-[460px]"
           stops={TURN_LIMIT_STOPS}
           value={stored}
@@ -326,19 +327,19 @@ function TaskBudget() {
         : `Each task agents name gets ${limit} ${limit === 1 ? "reply" : "replies"} in a row, and all of them together stop at ${stored}.`;
   return (
     <SettingRow
-      label="Separate tasks"
-      info="Agents can name the task when they hand work on. With this set, a reviewer moving from one task to the next isn't stopped as if it were one long exchange. Calling the same work by another name doesn't get past the total, and your next message resets both counts."
+      label={t("behaviourPage.separateTasks")}
+      info={t("behaviourPage.agentsCanNameTheTask")}
       description={description}
       error={error}
       control={
         <SettingsSelect
-          aria-label="Most agent replies in a row across separate tasks"
+          aria-label={t("behaviourPage.mostAgentRepliesInARow")}
           value={stored === null ? "off" : String(stored)}
           disabled={saving}
           onChange={(e) => save(e.target.value === "off" ? null : Number(e.target.value))}
           className="w-[220px]"
         >
-          <option value="off">Off</option>
+          <option value="off">{t("common.off")}</option>
           {choices.map((n) => (
             <option key={n} value={n}>
               {n} replies in total
@@ -374,26 +375,26 @@ function IncidentDesk() {
   return (
     <>
       <SettingRow
-        label="Incident desk"
-        info="When a reply fails, a tool call gets stuck, or a routine, watcher or workflow fails, whoever leads gets a quiet turn to deal with it: try it once more, pass it to a teammate, or ask you. Nothing is tried again more than once, and if many things fail in an hour you get one summary instead of a card each."
-        description="Hand failures to a lead, and show you what needs you."
-        control={<Switch aria-label="Incident desk" checked={desk.enabled} disabled={saving} onCheckedChange={(enabled) => save({ enabled })} />}
+        label={t("behaviourPage.incidentDesk")}
+        info={t("behaviourPage.whenAReplyFailsA")}
+        description={t("behaviourPage.handFailuresToALead")}
+        control={<Switch aria-label={t("behaviourPage.incidentDesk")} checked={desk.enabled} disabled={saving} onCheckedChange={(enabled) => save({ enabled })} />}
         error={error}
       />
       {desk.enabled && (
         <SettingRow
-          label="Who leads incidents"
-          description="In a room, the room's lead goes first. Elsewhere, this."
+          label={t("behaviourPage.whoLeadsIncidents")}
+          description={t("behaviourPage.inARoomTheRooms")}
           control={
             <SettingsSelect
-              aria-label="Who leads incidents"
+              aria-label={t("behaviourPage.whoLeadsIncidents")}
               value={desk.lead}
               disabled={saving}
               onChange={(e) => save({ lead: e.target.value })}
               className="w-[220px]"
             >
-              <option value="auto">The most senior agent</option>
-              <option value="person">Always me</option>
+              <option value="auto">{t("behaviourPage.theMostSeniorAgent")}</option>
+              <option value="person">{t("behaviourPage.alwaysMe")}</option>
               {agents.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -428,14 +429,14 @@ function MidTurnMessages() {
   };
   return (
     <SettingRow
-      label="Messages while an agent works"
-      info="A stop stops the agent. A correction or an answer goes into what it is doing, or restarts it if its engine can't take words midway. Each agent can choose for itself in its own settings."
+      label={t("behaviourPage.messagesWhileAnAgentWorks")}
+      info={t("behaviourPage.aStopStopsTheAgent")}
       description={modeWords(mode).says}
       error={error}
     >
       <div className="mt-3 max-w-[460px]">
         <Segmented<DeliveryMode>
-          aria-label="Messages while an agent works"
+          aria-label={t("behaviourPage.messagesWhileAnAgentWorks")}
           size="sm"
           value={mode}
           onChange={(next) => !saving && next !== mode && save({ mode: next })}
@@ -446,9 +447,9 @@ function MidTurnMessages() {
         // Only for words the rules cannot read, and only on an agent whose
         // own engine has a small model; each ask is one small call.
         <label className="mt-3 flex max-w-[460px] items-center justify-between gap-3">
-          <span className="text-body text-muted-foreground">When unsure, ask the agent's small model</span>
+          <span className="text-body text-muted-foreground">{t("behaviourPage.whenUnsureAskTheAgents")}</span>
           <Switch
-            aria-label="When unsure, ask the agent's small model"
+            aria-label={t("behaviourPage.whenUnsureAskTheAgents")}
             checked={askModel}
             disabled={saving}
             onCheckedChange={(on: boolean) => save({ askModel: on })}
@@ -520,24 +521,24 @@ function RoomRouter() {
   const gone = Boolean(chosen && choices && !picked);
   return (
     <SettingRow
-      label="Auto picks with"
-      info="In a room set to Auto, a message that names nobody goes first to a small model, which picks who answers from each agent's name, role and brief and the last few messages. It has 2.5 seconds; if it runs out, is unsure or can't be reached, the lead answers. Naming someone with @ never asks it."
-      description={gone ? "That engine is no longer here, so Auto rooms are on their lead. Choose another." : routerCost(picked)}
+      label={t("behaviourPage.autoPicksWith")}
+      info={t("behaviourPage.inARoomSetTo")}
+      description={gone ? t("behaviourPage.thatEngineIsNoLonger") : routerCost(picked)}
       error={error}
       control={
         <SettingsSelect
-          aria-label="Auto picks with"
+          aria-label={t("behaviourPage.autoPicksWith")}
           value={chosen ?? "room"}
           disabled={saving || choices === null}
           onChange={(e) => save(e.target.value === "room" ? null : e.target.value)}
           className="w-[220px]"
         >
-          <option value="room">The room's own engines</option>
-          {gone && chosen && <option value={chosen}>An engine since removed</option>}
+          <option value="room">{t("behaviourPage.theRoomsOwnEngines")}</option>
+          {gone && chosen && <option value={chosen}>{t("behaviourPage.anEngineSinceRemoved")}</option>}
           {(choices ?? []).map((c) => (
             <option key={c.id} value={c.id}>
               {c.model ? `${c.name}, ${c.model}` : c.name}
-              {c.ready ? "" : " (not signed in)"}
+              {c.ready ? "" : t("behaviourPage.notSignedIn")}
             </option>
           ))}
         </SettingsSelect>
@@ -568,7 +569,7 @@ function BackgroundWork() {
   };
   return (
     <SettingsGroup
-      title="Background work an agent starts"
+      title={t("behaviourPage.backgroundWorkAnAgentStarts")}
       footnote={
         <>
           For agents on Claude Code. While it waits, what you send goes into that turn or waits for it like any other, and a
@@ -580,7 +581,7 @@ function BackgroundWork() {
     >
       <div
         role="radiogroup"
-        aria-label="Background work an agent starts"
+        aria-label={t("behaviourPage.backgroundWorkAnAgentStarts")}
         data-setting-row={rowKey("Background work an agent starts")}
         className="flex flex-col divide-y transition-colors duration-700"
       >
@@ -642,10 +643,10 @@ function RecallBeforeTurn() {
 
   return (
     <SettingRow
-      label="Bring up other conversations"
-      info="Bloks searches the agent's other chats and notes for close matches to your message. Up to three short notes go with that message only, each saying where it came from, and your message shows what was added. Rooms and email from people you haven't listed never get them."
-      description="Remind an agent what it said elsewhere that matches your message."
-      control={<Switch aria-label="Bring up other conversations" checked={on} disabled={saving} onCheckedChange={set} />}
+      label={t("behaviourPage.bringUpOtherConversations")}
+      info={t("behaviourPage.bloksSearchesTheAgentsOther")}
+      description={t("behaviourPage.remindAnAgentWhatIt")}
+      control={<Switch aria-label={t("behaviourPage.bringUpOtherConversations")} checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
 }
@@ -671,10 +672,10 @@ function MemoryTidy() {
 
   return (
     <SettingRow
-      label="Tidy memory every night"
-      info="Between 1 and 5 in the morning, while an agent is idle: notes marked (until a date) go after that date, repeats are merged, and anything contradicted moves to an archive with why. Each night's changes are in that agent's Memory page, with Undo, and the morning brief mentions them."
-      description="Keep each agent's notes short and current while you sleep."
-      control={<Switch aria-label="Tidy memory every night" checked={on} disabled={saving} onCheckedChange={set} />}
+      label={t("behaviourPage.tidyMemoryEveryNight")}
+      info={t("behaviourPage.between1And5In")}
+      description={t("behaviourPage.keepEachAgentsNotesShort")}
+      control={<Switch aria-label={t("behaviourPage.tidyMemoryEveryNight")} checked={on} disabled={saving} onCheckedChange={set} />}
     />
   );
 }
@@ -682,12 +683,12 @@ function MemoryTidy() {
 export function BehaviourPage() {
   return (
     <>
-      <SettingsGroup title="Memory and learning">
+      <SettingsGroup title={t("behaviourPage.memoryAndLearning")}>
         <RecallBeforeTurn />
         <MemoryTidy />
         <ProposeSkills />
       </SettingsGroup>
-      <SettingsGroup title="While an agent works">
+      <SettingsGroup title={t("behaviourPage.whileAnAgentWorks")}>
         <MidTurnMessages />
         <AgentTurnLimit />
         <TaskBudget />
@@ -695,15 +696,15 @@ export function BehaviourPage() {
         <SharedChanges />
       </SettingsGroup>
       <BackgroundWork />
-      <SettingsGroup title="Rooms" footnote="Each room chooses who answers in its own menu: everyone, only the lead, or Auto.">
+      <SettingsGroup title={t("behaviourPage.rooms")} footnote={t("behaviourPage.eachRoomChoosesWhoAnswers")}>
         <RoomRouter />
       </SettingsGroup>
-      <SettingsGroup title="When something fails">
+      <SettingsGroup title={t("behaviourPage.whenSomethingFails")}>
         <IncidentDesk />
       </SettingsGroup>
       <SettingsGroup
-        title="Long conversations"
-        footnote="Your own messages are never summarised. Where a conversation was compacted, it says so."
+        title={t("behaviourPage.longConversations")}
+        footnote={t("behaviourPage.yourOwnMessagesAreNever")}
       >
         <BeforeTurnCompaction />
         <Compaction />

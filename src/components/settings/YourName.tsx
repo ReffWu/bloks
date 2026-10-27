@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { useStore } from "@/state/store";
 import { readYourName, saveYourName } from "@/lib/yourName";
 import { SettingRow } from "../SettingsLayout";
+import { t } from "@/lib/i18n";
 
 export function YourName() {
   const { state } = useStore();
@@ -58,16 +59,16 @@ export function YourName() {
 
   return (
     <SettingRow
-      label="Your name"
+      label={t("common.yourName")}
       htmlFor="your-name"
-      description="What your agents call you, and what everyone you let in sees."
+      description={t("settingsYourName.whatYourAgentsCallYou")}
       control={
         <Input
           id="your-name"
           value={draft}
           maxLength={40}
           autoComplete="name"
-          placeholder="Not set"
+          placeholder={t("settingsYourName.notSet")}
           onFocus={(e) => {
             if (saved || draft || !suggested) return;
             offered.current = true;

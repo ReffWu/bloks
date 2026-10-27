@@ -50,6 +50,7 @@ import {
   runsOnDay,
   type DraftSchedule,
 } from "@/lib/checkIns";
+import { t } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -198,7 +199,7 @@ export function RoutinesDialog({
           <>
             <div className="flex h-[52px] shrink-0 items-center gap-2 border-b px-5">
               <CalendarClock size={16} className="text-muted-foreground" />
-              <DialogTitle className="text-lead">Routines</DialogTitle>
+              <DialogTitle className="text-lead">{t("common.routines")}</DialogTitle>
             </div>
             <div className="flex-1 overflow-y-auto px-5 pb-5">
               {error && (
@@ -208,12 +209,12 @@ export function RoutinesDialog({
               )}
 
               {routines === null ? (
-                <div className="py-10 text-center text-body text-muted-foreground">Loading…</div>
+                <div className="py-10 text-center text-body text-muted-foreground">{t("common.loading")}</div>
               ) : routines.length === 0 ? (
                 <div className="py-10 text-center">
-                  <div className="text-ui font-medium text-foreground">Nothing scheduled yet</div>
+                  <div className="text-ui font-medium text-foreground">{t("routinesDialog.nothingScheduledYet")}</div>
                   <div className="mx-auto mt-1 max-w-[300px] text-body text-muted-foreground">
-                    Tasks your agents run on a schedule.
+                    {t("routinesDialog.tasksYourAgentsRunOn")}
                   </div>
                 </div>
               ) : (
@@ -238,7 +239,7 @@ export function RoutinesDialog({
                                   routine.enabled ? "text-foreground" : "text-muted-foreground",
                                 )}
                               >
-                                {target?.name ?? "Unknown target"}
+                                {target?.name ?? t("routinesDialog.unknownTarget")}
                               </span>
                               <span className={cn("text-small text-muted-foreground", routine.every ? "min-w-0 truncate" : "shrink-0")}>
                                 {routine.every
@@ -273,11 +274,11 @@ export function RoutinesDialog({
                           <Button
                             variant="ghost"
                             size="sm"
-                            title="Run once now"
+                            title={t("routinesDialog.runOnceNow")}
                             onClick={() => write(api(`/api/routines/${routine.id}/run`, { method: "POST" }))}
                           >
                             <Play size={11} />
-                            Run now
+                            {t("common.runNow")}
                           </Button>
                           <Button
                             variant="ghost"
@@ -285,7 +286,7 @@ export function RoutinesDialog({
                             onClick={() => write(api(`/api/routines/${routine.id}`, { method: "DELETE" }))}
                           >
                             <Trash2 size={11} />
-                            Delete
+                            {t("common.delete")}
                           </Button>
                         </div>
                       </div>
@@ -296,7 +297,7 @@ export function RoutinesDialog({
 
               <Button className="mt-4 w-full" variant="secondary" onClick={startNew}>
                 <Plus size={13} />
-                New routine
+                {t("routinesDialog.newRoutine")}
               </Button>
               <div className="mt-2 text-caption leading-relaxed text-muted-foreground/70">
                 Routines run while Bloks is open. Runs missed while {thisComputer()} sleeps are skipped.
@@ -622,14 +623,14 @@ function CreateForm({
       }}
     >
       <header className="shrink-0 border-b pb-4 pl-4 pr-14 pt-5 sm:pl-6">
-        <DialogTitle className="text-heading">New routine</DialogTitle>
-        <DialogDescription className="mt-0.5">Something an agent does for you, on a schedule.</DialogDescription>
+        <DialogTitle className="text-heading">{t("routinesDialog.newRoutine")}</DialogTitle>
+        <DialogDescription className="mt-0.5">{t("routinesDialog.somethingAnAgentDoesFor")}</DialogDescription>
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,1fr)_300px] md:overflow-hidden">
         <div className="min-w-0 px-4 pb-6 pt-5 sm:px-6 md:overflow-y-auto">
           {/* starting points: a whole routine in one press */}
-          <div className="mb-2 text-body font-medium text-muted-foreground">Start from</div>
+          <div className="mb-2 text-body font-medium text-muted-foreground">{t("routinesDialog.startFrom")}</div>
           <div className="flex flex-wrap gap-2 sm:grid sm:grid-cols-3">
             {STARTERS.filter((s) => forAgent || !s.agentOnly).map((s, i) => {
               const Icon = s.icon;
@@ -673,11 +674,11 @@ function CreateForm({
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
               autoFocus
-              aria-label="What should it do?"
+              aria-label={t("routinesDialog.whatShouldItDo")}
               placeholder={
                 target
                   ? `What should ${target.name} do? e.g. Summarise yesterday's inbox and flag anything urgent`
-                  : "What should it do?"
+                  : t("routinesDialog.whatShouldItDo")
               }
               className="block w-full resize-none bg-transparent px-2.5 pb-1 pt-2 text-ui leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
             />
@@ -686,7 +687,7 @@ function CreateForm({
           {/* the schedule, said as a sentence whose parts can be tapped */}
           <p className="mt-6 text-pretty text-title leading-9 sm:text-heading sm:font-normal sm:leading-10 text-muted-foreground">
             {pinnedTargetId || !target ? (
-              <span className="font-medium text-foreground">{target?.name ?? "Someone"}</span>
+              <span className="font-medium text-foreground">{target?.name ?? t("routinesDialog.someone")}</span>
             ) : (
               <Token part="who" active={part} onOpen={setPart}>
                 {target.name}
@@ -722,7 +723,7 @@ function CreateForm({
                   <>
                     ,{" "}
                     <Token part="voice" active={part} onOpen={setPart}>
-                      {quiet ? "speaking up only if it matters" : "and tell you how it went"}
+                      {quiet ? t("routinesDialog.speakingUpOnlyIfIt") : t("routinesDialog.andTellYouHowIt")}
                     </Token>
                     .
                   </>
@@ -738,7 +739,7 @@ function CreateForm({
             <AnimatePresence mode="wait" initial={false}>
               <motion.div key={part === "time" && checkIn ? "hours" : part} {...swap}>
                 <div className="mb-3 text-small font-medium text-muted-foreground">
-                  {part === "time" && checkIn ? "Which hours" : PART_TITLES[part]}
+                  {part === "time" && checkIn ? t("routinesDialog.whichHours") : PART_TITLES[part]}
                 </div>
                 {part === "who" && (
                   <div className="grid max-h-[188px] grid-cols-1 gap-1.5 overflow-y-auto pr-0.5 sm:grid-cols-2">
@@ -779,8 +780,8 @@ function CreateForm({
                       maxLength={60}
                       onChange={(e) => setName(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && !e.metaKey && !e.ctrlKey && setPart("when")}
-                      placeholder="e.g. Morning digest"
-                      aria-label="Name"
+                      placeholder={t("routinesDialog.eGMorningDigest")}
+                      aria-label={t("common.name")}
                       className="rounded-xl text-body"
                     />
                     <div className="mt-2 text-small text-muted-foreground">
@@ -790,7 +791,7 @@ function CreateForm({
                         onClick={() => promptRef.current?.focus()}
                         className="font-medium text-foreground underline-offset-2 hover:underline"
                       >
-                        Edit what it does
+                        {t("routinesDialog.editWhatItDoes")}
                       </button>
                     </div>
                   </>
@@ -799,7 +800,7 @@ function CreateForm({
                 {part === "when" && (
                   <>
                     <Segmented
-                      aria-label="How often"
+                      aria-label={t("routinesDialog.howOften")}
                       size="sm"
                       className="w-full sm:w-fit"
                       value={shownMode}
@@ -818,7 +819,7 @@ function CreateForm({
                             const key = dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + ahead));
                             return (
                               <Chip key={ahead} on={date === key} onClick={() => setDate(key)}>
-                                {ahead === 0 ? "Today" : "Tomorrow"}
+                                {ahead === 0 ? t("routinesDialog.today") : t("routinesDialog.tomorrow")}
                               </Chip>
                             );
                           })}
@@ -827,16 +828,16 @@ function CreateForm({
                             value={date}
                             min={dateKey(now)}
                             onChange={(e) => e.target.value && setDate(e.target.value)}
-                            aria-label="Date"
+                            aria-label={t("routinesDialog.date")}
                             className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-body text-foreground outline-none transition-[border-color] duration-150 focus:border-ring/60"
                           />
                         </div>
                       )}
                       {shownMode === "every" && (
                         <>
-                          <Slider aria-label="How often" stops={EVERY_STOPS} value={every} onChange={setEvery} onCommit={setEvery} />
+                          <Slider aria-label={t("routinesDialog.howOften")} stops={EVERY_STOPS} value={every} onChange={setEvery} onCommit={setEvery} />
                           <div className="mt-1 text-small text-muted-foreground">
-                            Check-ins stay silent unless something needs you.
+                            {t("routinesDialog.checkInsStaySilentUnless")}
                           </div>
                         </>
                       )}
@@ -855,7 +856,7 @@ function CreateForm({
                       type="time"
                       value={time}
                       onChange={(e) => setTime(e.target.value)}
-                      aria-label="Exact time"
+                      aria-label={t("routinesDialog.exactTime")}
                       className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-body text-foreground outline-none transition-[border-color] duration-150 focus:border-ring/60"
                     />
                   </div>
@@ -864,7 +865,7 @@ function CreateForm({
                 {part === "time" && checkIn && (
                   <>
                     <Segmented
-                      aria-label="Which hours"
+                      aria-label={t("routinesDialog.whichHours")}
                       size="sm"
                       className="w-full sm:w-fit"
                       value={
@@ -896,7 +897,7 @@ function CreateForm({
                           setKeepsHours(true);
                           setFrom(e.target.value);
                         }}
-                        aria-label="From"
+                        aria-label={t("routinesDialog.from")}
                         className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-body text-foreground outline-none transition-[border-color] duration-150 focus:border-ring/60"
                       />
                       to
@@ -907,7 +908,7 @@ function CreateForm({
                           setKeepsHours(true);
                           setTo(e.target.value);
                         }}
-                        aria-label="To"
+                        aria-label={t("routinesDialog.to")}
                         className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-body text-foreground outline-none transition-[border-color] duration-150 focus:border-ring/60"
                       />
                     </div>
@@ -917,7 +918,7 @@ function CreateForm({
                 {part === "days" && <DaysEditor days={days} setDays={setDays} />}
 
                 {part === "voice" && (
-                  <div role="radiogroup" aria-label="When it speaks up" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div role="radiogroup" aria-label={t("routinesDialog.whenItSpeaksUp")} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {[
                       { on: !quiet, title: "Every time", line: "Says what it did after each run.", pick: () => setQuiet(false) },
                       { on: quiet, title: "Only if it matters", line: "Stays quiet unless something needs you.", pick: () => setQuiet(true) },
@@ -953,7 +954,7 @@ function CreateForm({
                 className="flex items-center gap-1.5 rounded-md py-1 text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
               >
                 <ChevronDown size={14} className={cn("transition-transform duration-200 ease-out motion-reduce:transition-none", more && "rotate-180")} />
-                More options
+                {t("routinesDialog.moreOptions")}
               </button>
               <AnimatePresence initial={false}>
                 {more && (
@@ -965,9 +966,9 @@ function CreateForm({
                   >
                     {!checkIn && (
                       <div>
-                        <div className="mb-1 text-body font-medium text-foreground">How long it takes</div>
-                        <div className="mb-2 text-small text-muted-foreground">The time it holds on the calendar.</div>
-                        <Slider aria-label="How long it takes" stops={DURATION_STOPS} value={durationMin} onChange={setDurationMin} onCommit={setDurationMin} />
+                        <div className="mb-1 text-body font-medium text-foreground">{t("routinesDialog.howLongItTakes")}</div>
+                        <div className="mb-2 text-small text-muted-foreground">{t("routinesDialog.theTimeItHoldsOn")}</div>
+                        <Slider aria-label={t("routinesDialog.howLongItTakes")} stops={DURATION_STOPS} value={durationMin} onChange={setDurationMin} onCommit={setDurationMin} />
                       </div>
                     )}
                     {forAgent && target && (
@@ -977,9 +978,9 @@ function CreateForm({
                             so: this is the screen the run is handed, and
                             the run's commands and files are on this
                             computer whichever is picked (GitHub 388). */}
-                        <div className="mb-2 text-body font-medium text-foreground">Computer</div>
+                        <div className="mb-2 text-body font-medium text-foreground">{t("routinesDialog.computer")}</div>
                         <Segmented
-                          aria-label="Computer"
+                          aria-label={t("routinesDialog.computer")}
                           size="sm"
                           className="w-full sm:w-fit"
                           value={runsOn}
@@ -993,11 +994,11 @@ function CreateForm({
                         />
                         <div className="mt-1.5 text-small text-muted-foreground">
                           {runsOn === "cloud"
-                            ? "A cloud box to see and click."
+                            ? t("routinesDialog.aCloudBoxToSee")
                             : runsOn === "local"
                               ? `${ThisComputer()}'s own screen.`
                               : runsOn === "off"
-                                ? "No screen to see or click."
+                                ? t("routinesDialog.noScreenToSeeOr")
                                 : `${target.name}'s usual computer.`}
                           {state.instances.find((i) => i.instanceId === target.bot?.modelSelection?.instanceId)?.driverKind === "boxAgent"
                             ? ""
@@ -1007,17 +1008,17 @@ function CreateForm({
                     )}
                     {forAgent && (
                       <div>
-                        <div className="mb-2 text-body font-medium text-foreground">Conversation</div>
+                        <div className="mb-2 text-body font-medium text-foreground">{t("routinesDialog.conversation")}</div>
                         <Input
                           value={thread}
                           maxLength={40}
                           onChange={(e) => setThread(e.target.value)}
-                          placeholder="General"
-                          aria-label="Conversation"
+                          placeholder={t("common.general")}
+                          aria-label={t("routinesDialog.conversation")}
                           className="max-w-[260px] rounded-xl text-body"
                         />
                         <div className="mt-1.5 text-small text-muted-foreground">
-                          Leave blank for the main chat. Routines in different chats run side by side.
+                          {t("routinesDialog.leaveBlankForTheMain")}
                         </div>
                       </div>
                     )}
@@ -1029,11 +1030,11 @@ function CreateForm({
         </div>
 
         {/* the routine as it will run, redrawn with every change */}
-        <aside aria-label="Preview" className="flex flex-col border-t bg-sidebar/50 px-5 py-5 md:min-h-0 md:overflow-y-auto md:border-l md:border-t-0">
-          <div className="mb-3 text-body font-medium text-muted-foreground">The week ahead</div>
+        <aside aria-label={t("common.preview")} className="flex flex-col border-t bg-sidebar/50 px-5 py-5 md:min-h-0 md:overflow-y-auto md:border-l md:border-t-0">
+          <div className="mb-3 text-body font-medium text-muted-foreground">{t("routinesDialog.theWeekAhead")}</div>
           <WeekAhead schedule={schedule} now={now} next={firstRun} />
 
-          <div className="mb-2 mt-6 text-body font-medium text-muted-foreground">Next runs</div>
+          <div className="mb-2 mt-6 text-body font-medium text-muted-foreground">{t("routinesDialog.nextRuns")}</div>
           {upcoming.length ? (
             <ol className="flex flex-col gap-1.5">
               {upcoming.map((at, i) => (
@@ -1046,16 +1047,16 @@ function CreateForm({
               ))}
             </ol>
           ) : (
-            <div className="text-body text-muted-foreground">Nothing coming up.</div>
+            <div className="text-body text-muted-foreground">{t("routinesDialog.nothingComingUp")}</div>
           )}
 
           <div className="mb-2 mt-6 text-body font-medium text-muted-foreground">
-            {target ? `What ${target.name} is asked` : "What it is asked"}
+            {target ? `What ${target.name} is asked` : t("routinesDialog.whatItIsAsked")}
           </div>
           <div className="rounded-xl border bg-card px-3 py-2.5">
             {name.trim() && <div className="mb-0.5 truncate text-small font-medium text-foreground">{name.trim()}</div>}
             <div className={cn("line-clamp-5 whitespace-pre-wrap text-body leading-relaxed", prompt.trim() ? "text-foreground" : "text-muted-foreground")}>
-              {prompt.trim() || "Write it on the left, or start from one of the three."}
+              {prompt.trim() || t("routinesDialog.writeItOnTheLeft")}
             </div>
           </div>
 
@@ -1075,11 +1076,11 @@ function CreateForm({
           {footerNote}
         </span>
         <Button variant="ghost" size="lg" onClick={onBack} className="max-sm:mr-auto">
-          Back
+          {t("common.back")}
         </Button>
         <Button size="lg" disabled={!ready || saving} onClick={() => void save()}>
           {saving ? <Loader2 size={15} className="animate-spin" /> : <CalendarClock size={15} />}
-          {saving ? "Scheduling" : "Schedule it"}
+          {saving ? t("routinesDialog.scheduling") : t("routinesDialog.scheduleIt")}
         </Button>
       </div>
     </div>
@@ -1154,7 +1155,7 @@ function DaysEditor({ days, setDays }: { days: number[]; setDays: (days: number[
   return (
     <>
       <Segmented
-        aria-label="Which days"
+        aria-label={t("routinesDialog.whichDays")}
         size="sm"
         className="w-full sm:w-fit"
         value={set}
@@ -1165,7 +1166,7 @@ function DaysEditor({ days, setDays }: { days: number[]; setDays: (days: number[
           { value: "weekends", label: "Weekends" },
         ]}
       />
-      <div className="mt-3 flex gap-1.5" role="group" aria-label="Days">
+      <div className="mt-3 flex gap-1.5" role="group" aria-label={t("routinesDialog.days")}>
         {DAY_LABELS.map((label, day) => {
           const on = days.length === 0 || days.includes(day);
           return (

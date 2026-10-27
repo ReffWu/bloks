@@ -19,6 +19,7 @@ import { clock, turnStartedAt, workingLineOwed, REPLY_HOLD_MS } from "@/lib/tran
 import { runningCall, stepWords } from "@/lib/tool-summary";
 import { showsSpeedStatus, speedStatusLine, type CodexSpeedStatus } from "@/lib/codexSpeed";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
@@ -304,7 +305,7 @@ export function WorkingLine({
             <>
               <span aria-hidden>·</span>
               <span data-codex-speed-status title={speedStatusLine(fast) ?? undefined} className="shrink-0">
-                Codex {fast.choice.resolved === "fast" ? "Fast" : "Standard"}
+                Codex {fast.choice.resolved === "fast" ? t("live.fast") : t("live.standard")}
               </span>
             </>
           )}
@@ -314,10 +315,10 @@ export function WorkingLine({
               <button
                 type="button"
                 onClick={onStop}
-                title={escHint ? "Stop the agent" : "Stop the agent. Esc does the same from the message box."}
+                title={escHint ? t("live.stopTheAgent") : t("live.stopTheAgentEscDoes")}
                 className="shrink-0 rounded-md transition-colors duration-150 hover:text-foreground"
               >
-                {escHint ? "Esc to stop" : "Stop"}
+                {escHint ? t("live.escToStop") : t("common.stop")}
               </button>
             </>
           )}
@@ -338,7 +339,7 @@ export function ScreenFrame({ png, mime }: { png: string; mime?: string }) {
     <div className="flex animate-rise-in justify-start">
       <img
         src={`data:${safeMime};base64,${png}`}
-        alt="Agent screen"
+        alt={t("live.agentScreen")}
         className="max-w-[82%] rounded-xl border sm:max-w-[68%]"
       />
     </div>
@@ -368,7 +369,7 @@ export function LiveBrowser({ botId, frame }: { botId: string; frame: { png: str
         </div>
         <img
           src={`data:${safeMime};base64,${frame.png}`}
-          alt="The agent's browser"
+          alt={t("live.theAgentsBrowser")}
           className="block w-full cursor-pointer"
           onClick={(e) => {
             const box = e.currentTarget.getBoundingClientRect();
@@ -386,8 +387,8 @@ export function LiveBrowser({ botId, frame }: { botId: string; frame: { png: str
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Type here, Enter to send"
-            aria-label="Type into the agent's browser"
+            placeholder={t("live.typeHereEnterToSend")}
+            aria-label={t("live.typeIntoTheAgentsBrowser")}
             className="w-full bg-transparent px-2.5 py-1.5 text-body outline-none placeholder:text-muted-foreground"
           />
         </form>

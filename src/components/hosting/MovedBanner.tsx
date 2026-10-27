@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { said, useHostingMove } from "./useHostingMove";
+import { t } from "@/lib/i18n";
 
 interface Mark {
   to: "hosted" | "mac";
@@ -81,18 +82,18 @@ export function MovedBannerView({ mark, hostedId }: { mark: Mark; hostedId: stri
       <span className="flex shrink-0 items-center gap-2">
         {mark.pending ? (
           <Button size="sm" variant="ghost" className="h-7" onClick={() => void said(window.bloks?.hostingMoveStop?.("later")).catch(() => {})}>
-            Not now
+            {t("common.notNow")}
           </Button>
         ) : (
           <>
             {goTo && window.bloks?.workspaceSwitch && (
               <Button size="sm" variant="secondary" className="h-7" onClick={open}>
-                {mark.to === "hosted" ? "Open hosted" : `Open ${mark.name}`}
+                {mark.to === "hosted" ? t("movedBanner.openHosted") : `Open ${mark.name}`}
               </Button>
             )}
             {here && window.bloks?.hostingMoveRemoveCopy && (
               <Button size="sm" variant="ghost" className="h-7" onClick={() => void remove()}>
-                Remove from this Mac
+                {t("movedBanner.removeFromThisMac")}
               </Button>
             )}
           </>

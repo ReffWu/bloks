@@ -34,6 +34,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
+import { t } from "@/lib/i18n";
 
 export function CatalogReview({
   review,
@@ -72,7 +73,7 @@ function Origin({ review }: { review: Review }) {
     <p className="flex items-start gap-1.5 text-small text-warning">
       <ShieldAlert size={13} className="mt-[2px] shrink-0" />
       <span>
-        {review.origin === "link" ? `From ${review.host ?? "a link"}, not the catalogue.` : "From a file you chose, not the catalogue."} Read what
+        {review.origin === "link" ? `From ${review.host ?? "a link"}, not the catalogue.` : t("catalogReview.fromAFileYouChose")} Read what
         it does before installing.
       </span>
     </p>
@@ -201,7 +202,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
             <Segmented
               size="sm"
               className="mt-2.5"
-              aria-label="How to install"
+              aria-label={t("catalogReview.howToInstall")}
               value={mode}
               onChange={(next) => setMode(next)}
               options={[
@@ -213,9 +214,9 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
         )}
 
         {updating ? (
-          <Section title="What changes" count={update.changes.length}>
+          <Section title={t("catalogReview.whatChanges")} count={update.changes.length}>
             {update.changes.length === 0 ? (
-              <p className="text-body text-muted-foreground">Nothing that changes what is installed.</p>
+              <p className="text-body text-muted-foreground">{t("catalogReview.nothingThatChangesWhatIs")}</p>
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {update.changes.map((change, i) => (
@@ -226,7 +227,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
                         change.kind === "added" ? "bg-success/15 text-success" : change.kind === "removed" ? "bg-muted text-muted-foreground" : "bg-brand/15 text-brand-ink",
                       )}
                     >
-                      {change.kind === "added" ? "New" : change.kind === "removed" ? "Gone" : "Changed"}
+                      {change.kind === "added" ? t("common.new") : change.kind === "removed" ? t("catalogReview.gone") : t("catalogReview.changed")}
                     </span>
                     <span className="min-w-0">
                       <span className="font-medium text-foreground">{change.title}</span>
@@ -237,7 +238,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
               </ul>
             )}
             <p className="mt-2.5 text-small leading-relaxed text-muted-foreground">
-              Agents you changed since installing keep your version. Nothing is removed: a member or routine the new version drops stays where it is.
+              {t("catalogReview.agentsYouChangedSinceInstalling")}
             </p>
             {update.diff && update.diff.length > 0 && (
               <div className="mt-2">
@@ -248,7 +249,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
                   className="flex items-center gap-1 text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 >
                   <ChevronDown size={12} className={cn("transition-transform duration-150", showDiff && "rotate-180")} />
-                  {showDiff ? "Hide the file's changes" : "Show the file's changes"}
+                  {showDiff ? t("catalogReview.hideTheFilesChanges") : t("catalogReview.showTheFilesChanges")}
                 </button>
                 {showDiff && (
                   <div className="mt-2 max-h-[280px] overflow-auto rounded-xl border bg-card py-2">
@@ -260,7 +261,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
           </Section>
         ) : (
           <>
-            <Section title="New agents" count={plan.agents.length}>
+            <Section title={t("catalogReview.newAgents")} count={plan.agents.length}>
               <div className="flex flex-col gap-1.5">
                 {plan.agents.map((agent, i) => (
                   <div key={i} className="flex items-start gap-3 rounded-xl border bg-card px-3 py-2">
@@ -269,7 +270,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
                       <span className="flex items-center gap-1.5 text-body font-medium text-foreground">
                         {names[i]}
                         <span className="font-normal text-muted-foreground">· {agent.title}</span>
-                        {agent.seniority === 5 && <Crown size={11} className="shrink-0 text-brand-ink" aria-label="Leads" />}
+                        {agent.seniority === 5 && <Crown size={11} className="shrink-0 text-brand-ink" aria-label={t("catalogReview.leads")} />}
                       </span>
                       <span className="line-clamp-2 text-small text-muted-foreground">{agent.description}</span>
                     </span>
@@ -277,7 +278,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
                 ))}
               </div>
             </Section>
-            <Section title="Room">
+            <Section title={t("catalogReview.room")}>
               <p className="text-body text-foreground">
                 {plan.room.name}
                 <span className="text-muted-foreground">, with these {plan.agents.length} agents in it.</span>
@@ -287,11 +288,11 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
         )}
 
         {plan.skills.length > 0 && (
-          <Section title="Skills" count={plan.skills.length}>
+          <Section title={t("common.skills")} count={plan.skills.length}>
             {newSkills > 0 && (
               <p className="mb-2 flex items-start gap-1.5 text-small leading-relaxed text-warning">
                 <ShieldAlert size={13} className="mt-[2px] shrink-0" />
-                Agents follow a skill's instructions in every turn. Open each new one and read it before installing.
+                {t("catalogReview.agentsFollowASkillsInstructions")}
               </p>
             )}
             <div className="flex flex-col gap-1.5">
@@ -304,7 +305,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
 
         {/* an update lists its new routines among the changes above */}
         {!updating && plan.routines.length > 0 && (
-          <Section title="Routines" count={plan.routines.length}>
+          <Section title={t("common.routines")} count={plan.routines.length}>
             <div className="flex flex-col gap-1.5">
               {plan.routines.map((routine, i) => (
                 <div key={i} className="flex items-start gap-3 rounded-xl border bg-card px-3 py-2">
@@ -314,12 +315,12 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
                       <span className="truncate text-body font-medium text-foreground">{routine.name ?? routine.summary}</span>
                       <span className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-caption font-medium text-muted-foreground">
                         <Pause size={9} />
-                        Paused
+                        {t("common.paused")}
                       </span>
                     </span>
                     <span className="block text-small text-muted-foreground">
                       {routine.name ? `${routine.summary}, ` : ""}
-                      {routine.target === "room" ? "to the room" : `for the ${routine.target}`}
+                      {routine.target === "room" ? t("catalogReview.toTheRoom") : `for the ${routine.target}`}
                     </span>
                     <span className="mt-0.5 line-clamp-2 text-small text-foreground/80">{routine.prompt}</span>
                   </span>
@@ -327,7 +328,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
               ))}
             </div>
             <p className="mt-2 text-small leading-relaxed text-muted-foreground">
-              They start paused. Switch each on in Automations when you are ready.
+              {t("catalogReview.theyStartPausedSwitchEach")}
             </p>
           </Section>
         )}
@@ -337,7 +338,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
             <Lock size={14} className="mt-[3px] shrink-0 text-muted-foreground" />
             <p className="text-body leading-relaxed text-foreground">
               New agents start with connected apps, the browser and tool servers off.
-              <span className="text-muted-foreground"> Turn on what each one needs in its settings.</span>
+              <span className="text-muted-foreground"> {t("catalogReview.turnOnWhatEachOne")}</span>
             </p>
           </div>
         )}
@@ -355,10 +356,10 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
         </span>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={install} disabled={busy}>
-            {busy ? (updating ? "Updating…" : "Installing…") : updating ? "Update" : "Install"}
+            {busy ? (updating ? t("catalogReview.updating") : t("catalogReview.installing")) : updating ? t("catalogReview.update") : t("catalogReview.install")}
           </Button>
         </div>
       </div>
@@ -405,7 +406,7 @@ function SkillBody({ review, onClose, onInstalled }: { review: SkillReview; onCl
         <div className="flex items-start gap-2.5 rounded-xl bg-warning/10 px-3 py-2.5">
           <ShieldAlert size={15} className="mt-0.5 shrink-0 text-warning" />
           <p className="text-body leading-relaxed text-warning">
-            Agents using this skill follow these instructions in every turn. Read them first, and only add skills you trust.
+            {t("catalogReview.agentsUsingThisSkillFollow")}
           </p>
         </div>
 
@@ -425,13 +426,13 @@ function SkillBody({ review, onClose, onInstalled }: { review: SkillReview; onCl
         )}
 
         {plan.diff ? (
-          <Section title="What changes">
+          <Section title={t("catalogReview.whatChanges")}>
             <div className="max-h-[360px] overflow-auto rounded-xl border bg-card py-2">
               <DiffLines lines={plan.diff} />
             </div>
           </Section>
         ) : (
-          <Section title="Instructions">
+          <Section title={t("common.instructions")}>
             <div className="max-h-[400px] overflow-auto rounded-xl border bg-card px-3.5 py-3 text-body leading-relaxed">
               <Markdownish text={plan.skill.body} />
             </div>
@@ -444,7 +445,7 @@ function SkillBody({ review, onClose, onInstalled }: { review: SkillReview; onCl
         <span className="text-small text-muted-foreground">Version {plan.skill.version}</span>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={install}
@@ -453,7 +454,7 @@ function SkillBody({ review, onClose, onInstalled }: { review: SkillReview; onCl
             className={cn(plan.standing.destructive && "text-warning hover:text-warning")}
           >
             {plan.standing.destructive && !busy && <TriangleAlert size={13} />}
-            {busy ? "Installing…" : (action ?? "Installed")}
+            {busy ? t("catalogReview.installing") : (action ?? t("catalogReview.installed"))}
           </Button>
         </div>
       </div>

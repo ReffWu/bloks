@@ -17,6 +17,7 @@ import { RulesPanel } from "../RulesPanel";
 import { SavedSecrets } from "../SavedSecrets";
 import { UseFromOtherApps } from "../UseFromOtherApps";
 import { SavedMark, SettingRow, SettingsGroup } from "../SettingsLayout";
+import { t } from "@/lib/i18n";
 
 export function AboutYouPage() {
   const { state, dispatch } = useStore();
@@ -53,7 +54,7 @@ export function AboutYouPage() {
   return (
     <SettingsGroup>
       <SettingRow
-        label="What every agent knows about you"
+        label={t("pages.whatEveryAgentKnowsAbout")}
         htmlFor="about-you"
         description={`Optional. Stays on ${thisComputer()} and is never shown to people in your rooms.`}
         control={<SavedMark on={justSaved} />}
@@ -62,7 +63,7 @@ export function AboutYouPage() {
           id="about-you"
           value={value}
           onChange={(e) => save(e.target.value)}
-          placeholder="I'm a founder building a local-first agent app. Keep replies short and skip the preamble."
+          placeholder={t("pages.imAFounderBuildingA")}
           className="mt-3 min-h-[120px] resize-y text-body"
         />
         {/* the same field Memory's About you edits, beside the notes your
@@ -72,7 +73,7 @@ export function AboutYouPage() {
           onClick={() => dispatch({ type: "openMemory", target: "you" })}
           className="mt-2.5 rounded text-body text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
-          See what agents have learned in Memory
+          {t("pages.seeWhatAgentsHaveLearned")}
         </button>
       </SettingRow>
     </SettingsGroup>
@@ -103,11 +104,10 @@ function OpenAIKeyHint() {
           Found an OpenAI API key from {sourceName(speech.openaiAvailable)}
         </div>
         <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-          Bloks can use it for voices, billed to that key per character. Nothing is used
-          until you say so.
+          {t("pages.bloksCanUseItFor")}
         </div>
         <Button size="sm" variant="brand" className="mt-2" onClick={() => setConsent(true)}>
-          Use that key for voices
+          {t("pages.useThatKeyForVoices")}
         </Button>
       </div>
     );
@@ -117,7 +117,7 @@ function OpenAIKeyHint() {
       <div className="mt-2 flex items-center gap-2 text-small text-success">
         Using the API key from {sourceName(speech.openaiSource)} for voices.
         <button type="button" className="rounded text-muted-foreground underline hover:text-foreground" onClick={() => setConsent(false)}>
-          Stop using it
+          {t("pages.stopUsingIt")}
         </button>
       </div>
     );
@@ -160,7 +160,7 @@ function WorkspaceApprovals() {
   };
 
   return (
-    <SettingsGroup title="How much agents ask" footnote="Each agent can change this in its own settings. Shared rooms always ask.">
+    <SettingsGroup title={t("pages.howMuchAgentsAsk")} footnote={t("pages.eachAgentCanChangeThis")}>
       <div className="p-4">
         <ApprovalsChooser value={mode} onChange={(next) => void choose(next)} />
         <div className="mt-3 flex items-center gap-3 text-body text-muted-foreground">
@@ -189,18 +189,18 @@ export function VoicesPage() {
   return (
     <>
       <SettingsGroup
-        title="Keys"
-        footnote={mac ? "Any one key works. The Mac's own voices need none." : "Any one key works. Mac voices need Bloks running on a Mac."}
+        title={t("pages.keys")}
+        footnote={mac ? t("pages.anyOneKeyWorksThe") : t("pages.anyOneKeyWorksMac")}
       >
-        <ApiKeyRow section="elevenlabs" label="ElevenLabs API key" placeholder="sk_…" />
-        <ApiKeyRow section="openaiSpeech" label="OpenAI API key" description="Used for speech only." placeholder="sk-…">
+        <ApiKeyRow section="elevenlabs" label={t("pages.elevenlabsApiKey")} placeholder={t("pages.sk")} />
+        <ApiKeyRow section="openaiSpeech" label={t("pages.openaiApiKey")} description={t("pages.usedForSpeechOnly")} placeholder={t("pages.skEllipsis")}>
           <OpenAIKeyHint />
         </ApiKeyRow>
         <ApiKeyRow
           section="fishSpeech"
-          label="Fish Audio API key"
-          description="Your own cloned voices, and Fish Audio's most used ones."
-          placeholder="Paste your key"
+          label={t("pages.fishAudioApiKey")}
+          description={t("pages.yourOwnClonedVoicesAnd")}
+          placeholder={t("pages.pasteYourKey")}
           info={{
             text: "Make a key in your Fish Audio account's API section. Voices you made there show first in each agent's voice list.",
             linkLabel: "Get a key at fish.audio",
@@ -209,12 +209,12 @@ export function VoicesPage() {
         />
         <ApiKeyRow
           section="xaiSpeech"
-          label="xAI API key"
-          description={grok ? "Optional. Voices use your Grok key from Engines until you add one here." : "Grok's voices. A Grok key in Engines works too."}
-          placeholder="xai-…"
+          label={t("pages.xaiApiKey")}
+          description={grok ? t("pages.optionalVoicesUseYourGrok") : t("pages.groksVoicesAGrokKey")}
+          placeholder={t("pages.xai")}
         />
       </SettingsGroup>
-      <SettingsGroup title="On your own machine" footnote="Replies read aloud go only to this address, as text.">
+      <SettingsGroup title={t("pages.onYourOwnMachine")} footnote={t("pages.repliesReadAloudGoOnly")}>
         <ChatterboxRow />
       </SettingsGroup>
     </>
@@ -253,13 +253,13 @@ function ChatterboxRow() {
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="min-w-0 flex-1 basis-[220px]">
           <label htmlFor="chatterbox-url" className="text-ui font-medium text-foreground">
-            Chatterbox server
+            {t("pages.chatterboxServer")}
           </label>
           <div className="mt-0.5 text-pretty text-body text-muted-foreground">
             {saved ? (
               <code className="font-mono text-small text-foreground">{saved}</code>
             ) : (
-              "A Chatterbox server you run. No key, no account."
+              t("pages.aChatterboxServerYouRun")
             )}
           </div>
         </div>
@@ -271,7 +271,7 @@ function ChatterboxRow() {
             </span>
             {!editing && (
               <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setValue(saved); setEditing(true); }}>
-                Change
+                {t("common.change")}
               </Button>
             )}
             <Button
@@ -279,10 +279,10 @@ function ChatterboxRow() {
               size="sm"
               disabled={busy}
               onClick={() => put("")}
-              aria-label="Remove the Chatterbox server"
+              aria-label={t("pages.removeTheChatterboxServer")}
               className="hover:bg-destructive/10 hover:text-destructive"
             >
-              Remove
+              {t("common.remove")}
             </Button>
           </div>
         )}
@@ -310,11 +310,11 @@ function ChatterboxRow() {
             className="h-8 min-w-0 flex-1 font-mono text-body"
           />
           <Button variant={value.trim() ? "brand" : "secondary"} onClick={() => put(value.trim())} disabled={busy || !value.trim()}>
-            {busy ? <Loader2 size={13} className="animate-spin" /> : "Save"}
+            {busy ? <Loader2 size={13} className="animate-spin" /> : t("common.save")}
           </Button>
           {editing && (
             <Button variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
-              Cancel
+              {t("common.cancel")}
             </Button>
           )}
         </div>
@@ -342,12 +342,12 @@ export function RulesPage() {
 export function AppsPage() {
   return (
     <>
-      <SettingsGroup title="Composio" footnote="Keys stay on this computer.">
+      <SettingsGroup title="Composio" footnote={t("pages.keysStayOnThisComputer")}>
         <ApiKeyRow
           section="composio"
-          label="Composio Connect key"
-          description="Links accounts like Slack and Gmail."
-          placeholder="ck_…"
+          label={t("pages.composioConnectKey")}
+          description={t("pages.linksAccountsLikeSlackAnd")}
+          placeholder={t("pages.ck")}
           info={{
             text: "The Connect key starts with ck_. It's checked when you save it.",
             linkLabel: "Get a Connect key at composio.dev",
@@ -356,9 +356,9 @@ export function AppsPage() {
         />
         <ApiKeyRow
           section="composioApi"
-          label="Composio API key"
-          description="Optional. Lets you browse the full app catalog and start agents on events in your apps."
-          placeholder="ak_…"
+          label={t("pages.composioApiKey")}
+          description={t("pages.optionalLetsYouBrowseThe")}
+          placeholder={t("pages.ak")}
           info={{
             text: "A project API key, starting with ak_. Connections work without it. App watchers need it, and watch the accounts connected in that project.",
           }}
@@ -378,28 +378,28 @@ export function ComputersPage() {
   const { state } = useStore();
   if (state.config?.hosted?.on) {
     return (
-      <SettingsGroup title="This machine">
+      <SettingsGroup title={t("pages.thisMachine")}>
         <SettingRow
-          label="Browser and virtual desktop"
+          label={t("pages.browserAndVirtualDesktop")}
           description={
             state.config.hosted.desktop
-              ? "Agents work in this machine's browser and on its virtual desktop. Watch the desktop from an agent's Computer panel."
-              : "Agents work in this machine's browser. No virtual desktop is set up to watch."
+              ? t("pages.agentsWorkInThisMachines")
+              : t("pages.agentsWorkInThisMachinesBrowser")
           }
         />
-        <SettingRow label="Cloud computer and Local VM" description="Not offered here: this machine is the agents' computer already." />
+        <SettingRow label={t("pages.cloudComputerAndLocalVm")} description={t("pages.notOfferedHereThisMachine")} />
       </SettingsGroup>
     );
   }
   return (
     <>
       <LocalVmSection />
-      <SettingsGroup title="Cloud computer" footnote="Boat is paid after its trial.">
+      <SettingsGroup title={t("pages.cloudComputer")} footnote={t("pages.boatIsPaidAfterIts")}>
         <ApiKeyRow
           section="box"
-          label="Boat API key"
-          description="A private Linux computer in the cloud."
-          placeholder="Paste your Boat API key"
+          label={t("pages.boatApiKey")}
+          description={t("pages.aPrivateLinuxComputerIn")}
+          placeholder={t("pages.pasteYourBoatApiKey")}
           info={{
             text: "With a desktop and a terminal, for agents that need a computer of their own. Boat was called Box before.",
             linkLabel: "Open the Boat API key guide",

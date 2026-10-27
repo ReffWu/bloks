@@ -22,6 +22,7 @@ import { RoomAudience } from "./members/RoomAudience";
 import { useWorkspaceFrames } from "@/lib/members";
 import { askYourName } from "./YourNameDialog";
 import { needsName, readYourName } from "@/lib/yourName";
+import { t } from "@/lib/i18n";
 
 interface PendingInvite {
   id: string;
@@ -176,8 +177,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
       <DialogContent className="max-h-[86vh] max-w-[480px] overflow-y-auto">
         <DialogTitle className="text-lead font-semibold">Share {blok.name}</DialogTitle>
         <DialogDescription className="mt-1 text-body leading-relaxed text-muted-foreground">
-          Invite people to talk to this room's agents. Agents run on this computer, and anything that
-          touches your accounts, files or computer waits for you.
+          {t("sharePanel.invitePeopleToTalkTo")}
         </DialogDescription>
 
         {error && (
@@ -193,14 +193,14 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
           </div>
         ) : !data.plan ? (
           <div className="mt-4 rounded-2xl border bg-card p-4 text-body leading-relaxed text-muted-foreground">
-            Inviting someone to this room alone needs Bloks Cloud. Turn it on in Settings, under Plan.
+            {t("sharePanel.invitingSomeoneToThisRoom")}
           </div>
         ) : data.sharedRoom === false && !shared ? (
           // a Cloud licence from after sharing rooms became Team's
           <div className="mt-4 flex flex-col gap-2 rounded-2xl border bg-card p-4">
-            <span className="text-ui font-medium text-foreground">Sharing rooms needs Bloks Team</span>
+            <span className="text-ui font-medium text-foreground">{t("sharePanel.sharingRoomsNeedsBloksTeam")}</span>
             <span className="text-pretty text-body leading-relaxed text-muted-foreground">
-              Bloks Team lets people into rooms and into the whole workspace.
+              {t("sharePanel.bloksTeamLetsPeopleInto")}
             </span>
             <UpgradeLink className="self-start text-body" />
           </div>
@@ -209,13 +209,13 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
             <label className="block text-body font-medium text-foreground">
               Your name
               <span className="mt-0.5 block text-small font-normal text-muted-foreground">
-                Everyone you let in sees it. It is your name in every room.
+                {t("sharePanel.everyoneYouLetInSees")}
               </span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={40}
-                placeholder="Your name"
+                placeholder={t("common.yourName")}
                 className="mt-1.5 w-full rounded-lg border bg-background px-3 py-2 text-ui outline-none focus:border-foreground/30"
               />
             </label>
@@ -257,7 +257,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                     disabled={busy !== null}
                     onClick={() => act(`out-${inv.id}`, () => api(`/api/invites/${inv.id}/decline`, { method: "POST" }))}
                   >
-                    Decline
+                    {t("common.decline")}
                   </Button>
                 </div>
               </div>
@@ -270,7 +270,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                   {k.name} wants to talk to the agents from {PLATFORM[k.platform]}
                 </div>
                 <div className="mt-1 text-small text-muted-foreground">
-                  They named an agent in {data.chat.link?.channelName ?? "the linked channel"}. Agents only answer
+                  They named an agent in {data.chat.link?.channelName ?? t("sharePanel.theLinkedChannel")}. Agents only answer
                   them once you let them in.
                 </div>
                 <div className="mt-3 flex gap-2">
@@ -287,7 +287,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                     disabled={busy !== null}
                     onClick={() => act(`kout-${k.id}`, () => api(`/api/knocks/${k.id}/decline`, { method: "POST" }))}
                   >
-                    Decline
+                    {t("common.decline")}
                   </Button>
                 </div>
               </div>
@@ -296,19 +296,19 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
             {/* inviting: a room shared before keeps its guests, and only
                 Team, or a licence that holds a shared room, lets more in */}
             <section>
-              <SectionTitle>Invite someone</SectionTitle>
+              <SectionTitle>{t("sharePanel.inviteSomeone")}</SectionTitle>
               {data.sharedRoom === false ? (
-                <NeedsTeam what="Sharing rooms needs Bloks Team" />
+                <NeedsTeam what={t("sharePanel.sharingRoomsNeedsBloksTeam")} />
               ) : (
               <div className="flex gap-2">
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value as "collaborator" | "viewer")}
                   className="rounded-lg border bg-background px-2 text-body"
-                  aria-label="Their role"
+                  aria-label={t("sharePanel.theirRole")}
                 >
-                  <option value="collaborator">Collaborator: can talk and answer</option>
-                  <option value="viewer">Viewer: can read</option>
+                  <option value="collaborator">{t("sharePanel.collaboratorCanTalkAndAnswer")}</option>
+                  <option value="viewer">{t("sharePanel.viewerCanRead")}</option>
                 </select>
                 <Button className="flex-1" disabled={busy === "invite"} onClick={invite}>
                   {busy === "invite" && <Loader2 size={14} className="animate-spin" />}
@@ -320,14 +320,14 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                 <div className="mt-3 flex gap-3 rounded-2xl border bg-card p-3">
                   {link.qr && (
                     <div className="shrink-0 rounded-xl bg-white p-1.5">
-                      <img src={link.qr} alt="Invite QR code" className="size-[112px]" />
+                      <img src={link.qr} alt={t("sharePanel.inviteQrCode")} className="size-[112px]" />
                     </div>
                   )}
                   <div className="min-w-0 flex-1 text-small leading-relaxed text-muted-foreground">
                     For one person. Works once, for 24 hours. You still approve who gets in.
                     <Button size="sm" variant="secondary" className="mt-2 w-full" onClick={copy}>
                       {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-                      {copied ? "Copied" : "Copy link"}
+                      {copied ? t("common.copied") : t("sharePanel.copyLink")}
                     </Button>
                   </div>
                 </div>
@@ -343,7 +343,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                       <Button
                         size="icon-sm"
                         variant="ghost"
-                        title="Cancel this invite"
+                        title={t("sharePanel.cancelThisInvite")}
                         onClick={() => act(`x-${inv.id}`, () => api(`/api/invites/${inv.id}`, { method: "DELETE" }))}
                       >
                         <X size={13} />
@@ -357,11 +357,11 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
 
             {/* who is in */}
             <section>
-              <SectionTitle>In this room</SectionTitle>
+              <SectionTitle>{t("sharePanel.inThisRoom")}</SectionTitle>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-body">
                   <span className="text-foreground">{data.hostName} (you)</span>
-                  <span className="text-small text-muted-foreground">Owner</span>
+                  <span className="text-small text-muted-foreground">{t("sharePanel.owner")}</span>
                 </div>
                 {data.people.map((p) => (
                   <div key={p.id} className="flex items-center justify-between gap-2 text-body">
@@ -383,8 +383,8 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                         className="rounded-md border bg-background px-1.5 py-0.5 text-small"
                         aria-label={`${p.name}'s role`}
                       >
-                        <option value="collaborator">Collaborator</option>
-                        <option value="viewer">Viewer</option>
+                        <option value="collaborator">{t("sharePanel.collaborator")}</option>
+                        <option value="viewer">{t("sharePanel.viewer")}</option>
                       </select>
                       <Button
                         size="icon-sm"
@@ -404,29 +404,29 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
 
             {/* how the room behaves */}
             <section>
-              <SectionTitle>Room settings</SectionTitle>
+              <SectionTitle>{t("sharePanel.roomSettings")}</SectionTitle>
               <div className="space-y-3">
                 <Toggle
-                  label="New people see the whole history"
-                  hint="Off: only from when they joined. Applies to everyone in the room."
+                  label={t("sharePanel.newPeopleSeeTheWhole")}
+                  hint={t("sharePanel.offOnlyFromWhenThey")}
                   checked={shared.history === "all"}
                   onChange={(on) => share({ history: on ? "all" : "join" })}
                 />
                 <Toggle
-                  label="Collaborators can invite"
-                  hint="They can make invite links. You still let every person in."
+                  label={t("sharePanel.collaboratorsCanInvite")}
+                  hint={t("sharePanel.theyCanMakeInviteLinks")}
                   checked={shared.collaboratorsInvite}
                   onChange={(on) => share({ collaboratorsInvite: on })}
                 />
                 <Toggle
-                  label="Show what agents' tools did"
-                  hint="Off: people see that an agent searched or read a file, not what."
+                  label={t("sharePanel.showWhatAgentsToolsDid")}
+                  hint={t("sharePanel.offPeopleSeeThatAn")}
                   checked={shared.activityDetail}
                   onChange={(on) => share({ activityDetail: on })}
                 />
                 <Toggle
-                  label="Agents can work with files in this room's folder"
-                  hint="Off: agents in this room can only talk. Your own files stay out either way."
+                  label={t("sharePanel.agentsCanWorkWithFiles")}
+                  hint={t("sharePanel.offAgentsInThisRoom")}
                   checked={shared.tools === "desk"}
                   onChange={(on) => share({ tools: on ? "desk" : "conversation" })}
                 />
@@ -439,13 +439,13 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
 
             {/* what it costs */}
             <section>
-              <SectionTitle>Spending</SectionTitle>
-              <div className="text-body text-foreground">Monthly cap for this room</div>
+              <SectionTitle>{t("sharePanel.spending")}</SectionTitle>
+              <div className="text-body text-foreground">{t("sharePanel.monthlyCapForThisRoom")}</div>
               <div className="text-small leading-snug text-muted-foreground">
-                Agents here use your engines. At the cap, they pause until next month or until you raise it.
+                {t("sharePanel.agentsHereUseYourEngines")}
               </div>
               <Slider
-                aria-label="Monthly cap"
+                aria-label={t("sharePanel.monthlyCap")}
                 className="mt-3"
                 stops={capStops(shared.spendCap ?? 0)}
                 value={shared.spendCap ?? 0}
@@ -454,7 +454,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
               {data.spend && (
                 <div className="mt-3 rounded-xl border bg-card px-3 py-2.5">
                   <div className="flex items-baseline justify-between text-body">
-                    <span className="text-muted-foreground">This month</span>
+                    <span className="text-muted-foreground">{t("sharePanel.thisMonth")}</span>
                     <span className="font-medium tabular-nums text-foreground">
                       {usd(data.spend.total)}
                       {data.spend.cap > 0 && <span className="text-muted-foreground"> of ${data.spend.cap}</span>}
@@ -479,7 +479,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                     </div>
                   )}
                   <div className="mt-1.5 text-caption leading-snug text-muted-foreground">
-                    Estimated, by who asked.
+                    {t("sharePanel.estimatedByWhoAsked")}
                   </div>
                 </div>
               )}
@@ -489,7 +489,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
               {confirmStop ? (
                 <div className="space-y-2">
                   <div className="text-body text-muted-foreground">
-                    Everyone leaves the room and their access ends now. The conversation stays with you.
+                    {t("sharePanel.everyoneLeavesTheRoomAnd")}
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -504,16 +504,16 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                         })
                       }
                     >
-                      Stop sharing
+                      {t("sharePanel.stopSharing")}
                     </Button>
                     <Button variant="ghost" onClick={() => setConfirmStop(false)}>
-                      Keep sharing
+                      {t("sharePanel.keepSharing")}
                     </Button>
                   </div>
                 </div>
               ) : (
                 <Button variant="ghost" className="w-full text-destructive" onClick={() => setConfirmStop(true)}>
-                  Stop sharing this room
+                  {t("sharePanel.stopSharingThisRoom")}
                 </Button>
               )}
             </section>
@@ -557,13 +557,13 @@ function ChatLinkSection({
 
   return (
     <section>
-      <SectionTitle>Chat channel</SectionTitle>
+      <SectionTitle>{t("sharePanel.chatChannel")}</SectionTitle>
       {link ? (
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 text-body text-foreground">
             Linked to <span className="font-medium">{link.channelName}</span> in {PLATFORM[link.platform]}
             <div className="text-small leading-snug text-muted-foreground">
-              Messages show in both places. People there name an agent to talk to it, once you let them in.
+              {t("sharePanel.messagesShowInBothPlaces")}
             </div>
           </div>
           <Button
@@ -572,17 +572,17 @@ function ChatLinkSection({
             disabled={busy}
             onClick={() => act("unlink", () => api(`/api/bloks/${blokId}/chat`, { method: "DELETE" }))}
           >
-            Unlink
+            {t("sharePanel.unlink")}
           </Button>
         </div>
       ) : data.chat.connected.length === 0 ? (
         <div className="text-small leading-snug text-muted-foreground">
-          Bring this room into Slack, Discord, WhatsApp or Signal. Connect one in Settings, under Chat and email.
+          {t("sharePanel.bringThisRoomIntoSlack")}
         </div>
       ) : (
         <div className="space-y-2">
           <div className="text-small leading-snug text-muted-foreground">
-            Bring this room into a channel. Agents only answer people you let in, when they name an agent.
+            {t("sharePanel.bringThisRoomIntoA")}
           </div>
           <div className="flex flex-wrap gap-2">
             {data.chat.connected.map((p) => (
@@ -594,7 +594,7 @@ function ChatLinkSection({
           {platform && channels === null && !error && (
             <div className="text-small text-muted-foreground">
               <Loader2 size={12} className="mr-1 inline animate-spin" />
-              Finding channels
+              {t("sharePanel.findingChannels")}
             </div>
           )}
           {platform && channels && (
@@ -610,9 +610,9 @@ function ChatLinkSection({
                   value={channelId}
                   onChange={(e) => setChannelId(e.target.value)}
                   className="min-w-0 flex-1 rounded-lg border bg-background px-2 text-body"
-                  aria-label="Channel"
+                  aria-label={t("sharePanel.channel")}
                 >
-                  <option value="">Pick a channel</option>
+                  <option value="">{t("sharePanel.pickAChannel")}</option>
                   {channels.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -635,7 +635,7 @@ function ChatLinkSection({
                     )
                   }
                 >
-                  Link
+                  {t("sharePanel.link")}
                 </Button>
               </div>
             )
@@ -672,7 +672,7 @@ function OwnerToolsSection({
 
   return (
     <section>
-      <SectionTitle>Your tools</SectionTitle>
+      <SectionTitle>{t("sharePanel.yourTools")}</SectionTitle>
       {!team ? (
         <div className="text-small leading-snug text-muted-foreground">
           With Bloks Team, agents here can ask to use your apps, a browser or your computer. You approve
@@ -683,18 +683,18 @@ function OwnerToolsSection({
             rel="noreferrer"
             className="font-medium text-foreground underline underline-offset-2"
           >
-            Move to Team
+            {t("sharePanel.moveToTeam")}
           </a>
         </div>
       ) : (
         <div className="space-y-3">
           <div className="text-small leading-snug text-muted-foreground">
-            Agents here can ask to use what you turn on. You approve every use, whatever your rules say.
+            {t("sharePanel.agentsHereCanAskTo")}
           </div>
           {data.available.connectors && (
             <Toggle
-              label="Connected apps"
-              hint="Email, calendar and other connected apps."
+              label={t("sharePanel.connectedApps")}
+              hint={t("sharePanel.emailCalendarAndOtherConnected")}
               checked={Boolean(tools.connectors)}
               disabled={busy}
               onChange={(on) => set({ connectors: on })}
@@ -704,7 +704,7 @@ function OwnerToolsSection({
             <Toggle
               key={server.id}
               label={server.name}
-              hint="An MCP server, for agents that have it."
+              hint={t("sharePanel.anMcpServerForAgents")}
               checked={Boolean(tools.mcp?.includes(server.id))}
               disabled={busy}
               onChange={(on) =>
@@ -717,24 +717,24 @@ function OwnerToolsSection({
             />
           ))}
           <Toggle
-            label="A browser"
-            hint="A separate browser, not signed in to your accounts."
+            label={t("sharePanel.aBrowser")}
+            hint={t("sharePanel.aSeparateBrowserNotSigned")}
             checked={Boolean(tools.browser)}
             disabled={busy}
             onChange={(on) => set({ browser: on })}
           />
           {data.available.computer && (
             <Toggle
-              label="Your computer"
-              hint="The computer your agents use. You approve every action."
+              label={t("sharePanel.yourComputer")}
+              hint={t("sharePanel.theComputerYourAgentsUse")}
               checked={Boolean(tools.computer)}
               disabled={busy}
               onChange={(on) => set({ computer: on })}
             />
           )}
           <Toggle
-            label="Collaborators can approve"
-            hint="They can approve requests, except their own."
+            label={t("sharePanel.collaboratorsCanApprove")}
+            hint={t("sharePanel.theyCanApproveRequestsExcept")}
             checked={Boolean(shared.collaboratorsApprove)}
             disabled={busy}
             onChange={(on) => share({ collaboratorsApprove: on })}
@@ -792,7 +792,7 @@ function PlanLine({ data }: { data: PeopleResponse }) {
         rel="noreferrer"
         className="font-medium text-foreground underline underline-offset-2"
       >
-        Move to Team
+        {t("sharePanel.moveToTeam")}
       </a>
     </div>
   );

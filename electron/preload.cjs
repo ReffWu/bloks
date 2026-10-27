@@ -45,6 +45,13 @@ const boot = (() => {
       if (mine) ipcRenderer.invoke("prefs:theme", mine).catch(() => {});
     }
     if (said.accent) localStorage.setItem("bloks-accent", said.accent);
+    // the language the same way, except that none kept means "System",
+    // which is what an empty storage already says
+    if (said.language) localStorage.setItem("bloks-language", said.language);
+    else {
+      const mine = localStorage.getItem("bloks-language");
+      if (mine) ipcRenderer.invoke("prefs:language", mine).catch(() => {});
+    }
   } catch {
     /* storage refused; the page falls back to its defaults */
   }
@@ -90,6 +97,8 @@ contextBridge.exposeInMainWorld("bloks", {
   hostingMoveTargets: () => ipcRenderer.invoke("hosting:move-targets"),
   hostingMovePreview: (id) => ipcRenderer.invoke("hosting:move-preview", id),
   prefsTheme: (theme) => ipcRenderer.invoke("prefs:theme", theme),
+  prefsLanguage: (language) => ipcRenderer.invoke("prefs:language", language),
+  onLanguage: subscription("prefs:language"),
   prefsAccent: (accent) => ipcRenderer.invoke("prefs:accent", accent),
   prefsSameAccent: (on, showing) => ipcRenderer.invoke("prefs:same-accent", on, showing),
   prefsNotch: (on) => ipcRenderer.invoke("prefs:notch", on),

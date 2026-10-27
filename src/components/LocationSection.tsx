@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { thisComputer } from "@/lib/thisComputer";
 import { api, useStore } from "@/state/store";
 import { ConnectionError, ConnectionHeader, HealthLine, type Health } from "./ConnectionKit";
+import { t } from "@/lib/i18n";
 
 type Sharing = "on" | "paused" | "off";
 
@@ -117,9 +118,9 @@ export function LocationSection() {
     <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0" data-setting-row="location">
       <ConnectionHeader
         icon={<MapPin size={14} className="shrink-0 text-muted-foreground" />}
-        title="Location"
+        title={t("locationSection.location")}
         info={`${thisComputer().replace(/^t/, "T")} keeps only the last place, never a trail, and members never see it. Turn sharing on, pause it or stop it on your iPhone, in Settings, Location. Forget clears what is kept here; to stop new places arriving, stop sharing on the phone.`}
-        says="Lets your agents know roughly where you are."
+        says={t("locationSection.letsYourAgentsKnowRoughly")}
         health={health && <HealthLine tone={health.tone} label={health.label} />}
       />
       <ConnectionError>{error}</ConnectionError>
@@ -141,7 +142,7 @@ export function LocationSection() {
             size="sm"
             disabled={forgetting}
             onClick={forget}
-            aria-label="Forget the last place"
+            aria-label={t("locationSection.forgetTheLastPlace")}
             className="hover:bg-destructive/10 hover:text-destructive"
           >
             {forgetting && <Loader2 size={13} className="animate-spin" />}

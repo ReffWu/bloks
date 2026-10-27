@@ -57,6 +57,7 @@ import {
   type SetupSource,
 } from "@/lib/setupReview";
 import { thisComputer } from "@/lib/thisComputer";
+import { t } from "@/lib/i18n";
 
 export type { SetupItem, SetupReview, SetupSource } from "@/lib/setupReview";
 
@@ -162,9 +163,9 @@ export function SetupPrivacyLine({ where, className }: { where: SetupWhere | nul
               {/* only said once the server has said it is this computer */}
               {where?.here
                 ? `Nothing leaves ${thisComputer()}, and no key or password is copied unless you tick it.`
-                : "No key or password is copied unless you tick it."}
+                : t("bringYourSetup.noKeyOrPasswordIs")}
             </div>
-            <div className="text-muted-foreground">Nothing is added until you choose, and an import can be undone.</div>
+            <div className="text-muted-foreground">{t("bringYourSetup.nothingIsAddedUntilYou")}</div>
           </>
         )}
       </div>
@@ -176,7 +177,7 @@ function StatusChip({ status }: { status: SetupItem["status"] }) {
   if (status === "imported") {
     return (
       <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-caption text-muted-foreground">
-        <Check size={11} /> Brought over
+        <Check size={11} /> {t("bringYourSetup.broughtOver")}
       </span>
     );
   }
@@ -187,7 +188,7 @@ function StatusChip({ status }: { status: SetupItem["status"] }) {
         status === "new" ? "bg-brand-soft text-brand-ink" : "bg-warning/10 text-warning",
       )}
     >
-      {status === "new" ? "New" : "Changed"}
+      {status === "new" ? t("common.new") : t("bringYourSetup.changed")}
     </span>
   );
 }
@@ -240,9 +241,9 @@ function WhereItGoes({ item, source, choice, onChange }: { item: SetupItem; sour
             className="w-auto"
           />
         ) : (
-          <span className="text-small text-muted-foreground">Memory of</span>
+          <span className="text-small text-muted-foreground">{t("bringYourSetup.memoryOf")}</span>
         )}
-        {item.destinations.length > 1 && <span className="text-small text-muted-foreground">for</span>}
+        {item.destinations.length > 1 && <span className="text-small text-muted-foreground">{t("bringYourSetup.for")}</span>}
         <AgentPicker
           value={choice.botId}
           agentName={source.agentName}
@@ -256,7 +257,7 @@ function WhereItGoes({ item, source, choice, onChange }: { item: SetupItem; sour
     return (
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-small text-muted-foreground">
-          {item.kind === "setting" ? `On ${item.setting?.engineName ?? "its engine"}, for` : "Answers as"}
+          {item.kind === "setting" ? `On ${item.setting?.engineName ?? "its engine"}, for` : t("bringYourSetup.answersAs")}
         </span>
         <AgentPicker
           value={choice.botId}
@@ -290,7 +291,7 @@ function ConflictChoice({ item, choice, onChange }: { item: SetupItem; choice: C
           className="w-auto"
         />
       ) : (
-        <span className="text-small text-muted-foreground">This one is added beside it, under a name of its own.</span>
+        <span className="text-small text-muted-foreground">{t("bringYourSetup.thisOneIsAddedBeside")}</span>
       )}
     </div>
   );
@@ -307,7 +308,7 @@ function SecretFields({ item, choice, onChange }: { item: SetupItem; choice: Cho
     <div className="flex flex-col gap-2 rounded-lg border bg-background/60 px-2.5 py-2.5">
       <div className="flex items-center gap-1.5 text-small font-medium text-foreground">
         <Lock size={12} className="text-muted-foreground" />
-        {slots.some((s) => s.required) ? "Needs" : "Values it uses"}
+        {slots.some((s) => s.required) ? t("bringYourSetup.needs") : t("bringYourSetup.valuesItUses")}
       </div>
       {slots.map((slot) => {
         const copying = Boolean(choice.copy?.[slot.id]);
@@ -317,7 +318,7 @@ function SecretFields({ item, choice, onChange }: { item: SetupItem; choice: Cho
             <div className="flex flex-wrap items-center gap-2">
               <label htmlFor={fieldId} className="w-full font-mono text-caption text-foreground/80 sm:w-[38%] sm:truncate">
                 {slot.name}
-                {slot.required && <span className="text-muted-foreground"> (required)</span>}
+                {slot.required && <span className="text-muted-foreground"> {t("bringYourSetup.required")}</span>}
               </label>
               <Input
                 id={fieldId}
@@ -327,7 +328,7 @@ function SecretFields({ item, choice, onChange }: { item: SetupItem; choice: Cho
                 disabled={copying}
                 value={copying ? "" : (choice.typed?.[slot.id] ?? "")}
                 onChange={(e) => onChange({ ...choice, typed: { ...choice.typed, [slot.id]: e.target.value } })}
-                placeholder={copying ? "Copied on import" : slot.required ? "Paste it here" : "Paste it, or leave it empty"}
+                placeholder={copying ? t("bringYourSetup.copiedOnImport") : slot.required ? t("bringYourSetup.pasteItHere") : t("bringYourSetup.pasteItOrLeaveIt")}
                 className="h-8 min-w-0 flex-1 rounded-lg font-mono text-body"
               />
             </div>
@@ -431,7 +432,7 @@ function ItemRow({
             className="mt-1.5 flex items-center gap-1 rounded-md text-small text-muted-foreground transition-colors hover:text-foreground"
           >
             <ChevronRight size={12} className={cn("transition-transform duration-150", open && "rotate-90")} />
-            {open ? "Hide preview" : "Preview"}
+            {open ? t("bringYourSetup.hidePreview") : t("common.preview")}
           </button>
         )}
         {open && (
@@ -494,7 +495,7 @@ function UndoImport({
   if (done) {
     return (
       <div className="flex flex-col gap-1 text-body text-foreground" aria-live="polite">
-        <div>{done.undone ? `Took back ${plural(done.undone, "change")}.` : "Nothing needed taking back."}</div>
+        <div>{done.undone ? `Took back ${plural(done.undone, "change")}.` : t("bringYourSetup.nothingNeededTakingBack")}</div>
         {done.kept.length > 0 && (
           <ul className="flex flex-col gap-0.5">
             {done.kept.map((k) => (
@@ -512,7 +513,7 @@ function UndoImport({
       <span>{lead}</span>
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => void undo()}>
         {busy ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
-        {busy ? "Undoing…" : "Undo"}
+        {busy ? t("bringYourSetup.undoing") : t("bringYourSetup.undo")}
       </Button>
       {problem && <span className="text-small text-destructive">{problem}</span>}
     </div>
@@ -620,7 +621,7 @@ export function SetupReviewList({
         Found in{" "}
         {review.sources.map((source, i) => (
           <span key={source.id}>
-            {i > 0 && (i === review.sources.length - 1 ? " and " : ", ")}
+            {i > 0 && (i === review.sources.length - 1 ? t("bringYourSetup.and") : ", ")}
             <span className="text-foreground">{source.name}</span> <span className="font-mono text-caption">{source.folder}</span>
           </span>
         ))}
@@ -647,7 +648,7 @@ export function SetupReviewList({
                     onClick={() => setAll(keys, on < keys.length)}
                     className="shrink-0 rounded-md px-1.5 py-0.5 text-small text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
-                    {on < keys.length ? "Select all" : "Select none"}
+                    {on < keys.length ? t("bringYourSetup.selectAll") : t("bringYourSetup.selectNone")}
                   </button>
                 )}
               </div>
@@ -708,14 +709,14 @@ export function SetupReviewList({
               setResults({});
               setUndone(true);
             }}
-            lead="Not what you wanted?"
+            lead={t("bringYourSetup.notWhatYouWanted")}
           />
         )}
         {needsKeys && !compact && (
           <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground">
             Some servers still need a key.
             <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })}>
-              Add keys
+              {t("bringYourSetup.addKeys")}
             </Button>
           </div>
         )}
@@ -731,10 +732,10 @@ export function SetupReviewList({
           >
             {busy ? (
               <>
-                <Loader2 size={14} className="animate-spin" /> Bringing over…
+                <Loader2 size={14} className="animate-spin" /> {t("bringYourSetup.bringingOver")}
               </>
             ) : picked.length === 0 ? (
-              "Nothing selected"
+              t("bringYourSetup.nothingSelected")
             ) : (
               `Bring over ${plural(picked.length, "item")}`
             )}
@@ -753,13 +754,13 @@ export function BringYourSetupPage() {
       {!error && <SetupPrivacyLine where={where} />}
       {review === null ? (
         <div className="flex items-center gap-2 py-6 text-body text-muted-foreground">
-          <Loader2 size={15} className="animate-spin" /> Looking…
+          <Loader2 size={15} className="animate-spin" /> {t("bringYourSetup.looking")}
         </div>
       ) : error ? (
         <div className="rounded-2xl border bg-card p-4 text-body text-destructive">Couldn't check: {error}</div>
       ) : review.sources.length === 0 ? (
         <div className="rounded-2xl border bg-card p-4">
-          <div className="text-ui font-medium text-foreground">Nothing found to bring over</div>
+          <div className="text-ui font-medium text-foreground">{t("bringYourSetup.nothingFoundToBringOver")}</div>
           <div className="mt-1 text-body leading-relaxed text-muted-foreground">
             Bloks checks {where && !where.here ? `${where.computer} ` : ""}for Claude Code, Codex, Cursor, OpenClaw and Hermes.
           </div>
@@ -769,7 +770,7 @@ export function BringYourSetupPage() {
             </div>
           )}
           <Button size="sm" variant="secondary" className="mt-3" onClick={reload}>
-            Look again
+            {t("bringYourSetup.lookAgain")}
           </Button>
         </div>
       ) : (

@@ -18,6 +18,7 @@ import type { Bot, Message, RoomPerson } from "@/state/reducer";
 import { AgentAvatar } from "./Avatar";
 import { splitAttachments } from "@/lib/attachments";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 function when(at: number): string {
   if (!at) return "";
@@ -86,9 +87,9 @@ export function ForumLens({
         <span className="mb-2 flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground">
           <MessageSquare size={16} />
         </span>
-        <span className="text-ui font-medium text-foreground">No topics yet</span>
+        <span className="text-ui font-medium text-foreground">{t("forumLens.noTopicsYet")}</span>
         <span className="max-w-[280px] text-pretty text-body text-muted-foreground">
-          What is said here shows as topics, with replies gathered under each.
+          {t("forumLens.whatIsSaidHereShows")}
         </span>
       </div>
     );
@@ -152,7 +153,7 @@ function ThreadRow({
             {open ? (thread.root.text ?? preview(thread.root)) : preview(thread.root)}
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-x-2 text-small text-muted-foreground">
-            {replies ? <span className="text-brand-ink">{replies}</span> : <span>no replies yet</span>}
+            {replies ? <span className="text-brand-ink">{replies}</span> : <span>{t("forumLens.noRepliesYet")}</span>}
             {thread.participants.length > 1 && <span>· {thread.participants.join(", ")}</span>}
             {thread.replies.length > 0 && <span>· last {when(thread.lastAt)}</span>}
           </span>
@@ -166,7 +167,7 @@ function ThreadRow({
         <div className="border-t px-3 pb-3 pt-2">
           {thread.replies.length === 0 ? (
             <p className="py-2 text-body text-muted-foreground">
-              Nobody has answered this yet.
+              {t("forumLens.nobodyHasAnsweredThisYet")}
             </p>
           ) : (
             <div className="flex flex-col gap-2.5">
@@ -195,7 +196,7 @@ function ThreadRow({
             onClick={() => onOpenInStream(thread.root.id)}
             className="mt-3 rounded-lg px-2 py-1 text-small text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
           >
-            Find it in the stream
+            {t("forumLens.findItInTheStream")}
           </button>
         </div>
       )}

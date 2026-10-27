@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { axisFigure, figureOf, longDay, niceTicks, shortDay, valueOf, type UsageDay, type UsageMetric } from "@/lib/usagePage";
+import { t } from "@/lib/i18n";
 
 export interface ChartLine {
   id: string;
@@ -189,8 +190,8 @@ export function UsageChart({
         <caption>{label}</caption>
         <thead>
           <tr>
-            <th scope="col">Day</th>
-            <th scope="col">Total</th>
+            <th scope="col">{t("usageChart.day")}</th>
+            <th scope="col">{t("usageChart.total")}</th>
             {lines.map((line) => (
               <th key={line.id} scope="col">
                 {line.name}

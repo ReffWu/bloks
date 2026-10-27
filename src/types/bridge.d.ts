@@ -268,6 +268,11 @@ declare global {
       hostingMovePreview?(id: string): Promise<WorkspaceAnswer & { counts?: HostingMoveCounts | null; keys?: HostingMoveKey[] }>;
       /** The theme is the person's, kept across every workspace. */
       prefsTheme?(theme: "light" | "dark" | "system"): Promise<void>;
+      /** The language is the person's too ("system" or a language's code);
+       * the menu bar is rebuilt in it. */
+      prefsLanguage?(language: string): Promise<void>;
+      /** A language chosen in another workspace's window. */
+      onLanguage?(handler: (language: string) => void): () => void;
       /** The accent is this workspace's own. */
       prefsAccent?(accent: string): Promise<void>;
       /** Turns the one accent for every workspace on or off; answers the

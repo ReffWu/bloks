@@ -23,6 +23,7 @@ import { planName, planRows, type PlanRow, type PlanUsage } from "@/lib/contextC
 import { TOP_UP_WORDS, percentText, renewsLine, type BloksAiStatus } from "@/lib/credits";
 import { resetLine } from "@/lib/usageNotice";
 import { PRICES_NOTE, estimatedMoney, money, onPlan, perMillionText, topsUpLine, type SpendLimitRow } from "@/lib/usagePage";
+import { t } from "@/lib/i18n";
 
 /** A share as a bar. Warning colour near the end, where it matters. */
 function Bar({ fill, tone = "brand", label }: { fill: number; tone?: "brand" | "warning" | "destructive"; label: string }) {
@@ -147,7 +148,7 @@ function PlanCards({ plans, badgeFor }: { plans: Record<string, PlanUsage> | nul
   if (!engines.length) return null;
   const now = Date.now();
   return (
-    <Group id={PLANS_ID} title="Plans" note="What a Claude or ChatGPT plan has left, as the engine said on its last turn.">
+    <Group id={PLANS_ID} title={t("usageLimits.plans")} note={t("usageLimits.whatAClaudeOrChatgpt")}>
       {engines.map((engine) => {
         const plan = plans?.[engine.instanceId] ?? null;
         const rows = planRows(plan, now);
@@ -163,7 +164,7 @@ function PlanCards({ plans, badgeFor }: { plans: Record<string, PlanUsage> | nul
               rows.map((row) => <PlanLine key={row.id} row={row} />)
             ) : (
               <p className="text-pretty text-small text-muted-foreground">
-                {plans === null ? "Reading..." : `Nothing heard yet. ${engine.displayName} says what its plan has left as it answers.`}
+                {plans === null ? t("usageLimits.reading") : `Nothing heard yet. ${engine.displayName} says what its plan has left as it answers.`}
               </p>
             )}
           </LimitCard>
@@ -193,7 +194,7 @@ function BloksAiCard({ badge }: { badge: string | null }) {
   const daily = status.dailyLimitPercent ?? null;
   const renews = renewsLine(status.renewsAt);
   return (
-    <Group title="Bloks AI" note="Your Bloks AI allowance, as shares of the month and of a day.">
+    <Group title="Bloks AI" note={t("usageLimits.yourBloksAiAllowanceAs")}>
       <LimitCard
         driverKind="bloks"
         title="Bloks AI"
@@ -206,14 +207,14 @@ function BloksAiCard({ badge }: { badge: string | null }) {
             title={TOP_UP_WORDS}
             className="inline-flex h-7 shrink-0 items-center rounded-md border px-2.5 text-body font-medium text-foreground transition-[background-color,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]"
           >
-            Top up
+            {t("usageLimits.topUp")}
           </a>
         }
       >
         {status.connected && used !== null ? (
           <>
             <LimitLine
-              label="This month"
+              label={t("usageLimits.thisMonth")}
               fill={used / 100}
               tone={status.low || used >= 100 ? "warning" : "brand"}
               used={`${percentText(used)} used`}
@@ -221,7 +222,7 @@ function BloksAiCard({ badge }: { badge: string | null }) {
             />
             {today !== null && daily !== null && (
               <LimitLine
-                label="Today"
+                label={t("usageLimits.today")}
                 fill={today / daily}
                 tone={today >= daily ? "destructive" : today / daily >= 0.8 ? "warning" : "brand"}
                 used={`${percentText((today / daily) * 100)} of today's limit`}
@@ -230,7 +231,7 @@ function BloksAiCard({ badge }: { badge: string | null }) {
             )}
           </>
         ) : (
-          <p className="text-small text-muted-foreground">{status.problem ?? "What is left could not be read just now."}</p>
+          <p className="text-small text-muted-foreground">{status.problem ?? t("usageLimits.whatIsLeftCouldNot")}</p>
         )}
         <p className="text-caption text-muted-foreground">{TOP_UP_WORDS}</p>
       </LimitCard>
@@ -355,14 +356,14 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
       aside={
         !editing && (
           <Button size="sm" variant={row.reached ? "default" : "outline"} onClick={open} className="h-7">
-            {row.limit === null ? "Set limit" : row.reached ? "Raise limit" : "Edit"}
+            {row.limit === null ? t("usageLimits.setLimit") : row.reached ? t("usageLimits.raiseLimit") : t("common.edit")}
           </Button>
         )
       }
     >
       {row.limit !== null ? (
         <LimitLine
-          label="This month"
+          label={t("usageLimits.thisMonth")}
           fill={row.spent / row.limit}
           tone={tone}
           used={`${spentText} of ${money(row.limit)}`}
@@ -370,8 +371,8 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
         />
       ) : (
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-body text-foreground">This month</span>
-          <span className="text-small tabular-nums text-muted-foreground">{row.priced ? spentText : "Nothing priced yet"}</span>
+          <span className="text-body text-foreground">{t("usageLimits.thisMonth")}</span>
+          <span className="text-small tabular-nums text-muted-foreground">{row.priced ? spentText : t("usageLimits.nothingPricedYet")}</span>
         </div>
       )}
       {estimate && <p className="text-pretty text-small text-muted-foreground">{estimate}</p>}
@@ -385,7 +386,7 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
         </p>
       )}
       {row.limit === null && row.reportsPrice && !editing && (
-        <p className="text-small text-muted-foreground">No limit. It runs until the provider stops it.</p>
+        <p className="text-small text-muted-foreground">{t("usageLimits.noLimitItRunsUntil")}</p>
       )}
       {editing && (
         <form
@@ -397,7 +398,7 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
         >
           <div className="flex flex-col gap-2">
             <label htmlFor={`limit-${row.instanceId}`} className="text-small text-muted-foreground">
-              Monthly limit in US dollars
+              {t("usageLimits.monthlyLimitInUsDollars")}
             </label>
             <div className="flex flex-wrap items-center gap-2">
               <DollarInput
@@ -422,17 +423,17 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
                   disabled={busy}
                   onClick={() => save({ usd: null }, `Limit removed from ${row.name}`)}
                 >
-                  Remove limit
+                  {t("usageLimits.removeLimit")}
                 </Button>
               )}
             </div>
           </div>
           <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 text-small text-muted-foreground">Your own price, for a host of yours or a model the list does not have</legend>
+            <legend className="mb-2 text-small text-muted-foreground">{t("usageLimits.yourOwnPriceForA")}</legend>
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               <div className="flex flex-col gap-1">
                 <label htmlFor={`price-in-${row.instanceId}`} className="text-caption text-muted-foreground">
-                  Price per million input tokens
+                  {t("usageLimits.pricePerMillionInputTokens")}
                 </label>
                 <DollarInput
                   id={`price-in-${row.instanceId}`}
@@ -449,7 +450,7 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
               </div>
               <div className="flex flex-col gap-1">
                 <label htmlFor={`price-out-${row.instanceId}`} className="text-caption text-muted-foreground">
-                  Per million output tokens
+                  {t("usageLimits.perMillionOutputTokens")}
                 </label>
                 <DollarInput
                   id={`price-out-${row.instanceId}`}
@@ -469,10 +470,10 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
           </fieldset>
           <div className="flex items-center gap-2">
             <Button type="submit" size="sm" className="h-8" disabled={busy}>
-              {busy ? <Loader2 size={13} className="animate-spin" /> : "Save"}
+              {busy ? <Loader2 size={13} className="animate-spin" /> : t("common.save")}
             </Button>
             <Button type="button" size="sm" variant="ghost" className="h-8" onClick={close}>
-              Cancel
+              {t("common.cancel")}
             </Button>
           </div>
           {error && (
@@ -502,18 +503,18 @@ function SpendCards({ badgeFor }: { badgeFor: (instanceId: string) => string | n
   if (rows === null) return null;
   return (
     <Group
-      title="Spending limits"
-      note="A monthly limit on an engine that runs on your own API key. At the limit, new turns on it pause until you raise it or the month turns. A turn already running finishes."
+      title={t("usageLimits.spendingLimits")}
+      note={t("usageLimits.aMonthlyLimitOnAn")}
     >
       {rows.length ? (
         rows.map((row) => <SpendCard key={row.instanceId} row={row} badge={badgeFor(row.instanceId)} onSaved={setRows} />)
       ) : (
         <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-4 md:col-span-2">
           <p className="text-pretty text-small text-muted-foreground">
-            No engine here runs on a key of your own. Connect one with an API key to give it a monthly limit.
+            {t("usageLimits.noEngineHereRunsOn")}
           </p>
           <Button size="sm" variant="outline" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "engines" })}>
-            Open engines
+            {t("usageLimits.openEngines")}
           </Button>
         </div>
       )}

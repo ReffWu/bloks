@@ -25,6 +25,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import { APPROVAL_MODES, useWorkspaceApprovals } from "./ApprovalsChooser";
 import { effortChoice } from "@/lib/effort";
+import { t } from "@/lib/i18n";
 
 export function AgentDefaults() {
   const { state, dispatch } = useStore();
@@ -72,11 +73,11 @@ export function AgentDefaults() {
 
   return (
     <>
-      <SettingsGroup title="Where they start">
+      <SettingsGroup title={t("agentDefaults.whereTheyStart")}>
         <SettingRow
-          label="Working folder"
-          info="Applied when an agent is made. Only you can change these, not your agents. Team hires keep their team's model but take the rest."
-          description={error ? <span className="text-destructive">{error}</span> : "Existing agents keep their own settings."}
+          label={t("common.workingFolder")}
+          info={t("agentDefaults.appliedWhenAnAgentIs")}
+          description={error ? <span className="text-destructive">{error}</span> : t("agentDefaults.existingAgentsKeepTheirOwn")}
           control={
             <span
               className={cn(
@@ -85,7 +86,7 @@ export function AgentDefaults() {
               )}
               aria-live="polite"
             >
-              <Check size={12} /> Saved
+              <Check size={12} /> {t("common.saved")}
             </span>
           }
         >
@@ -94,9 +95,9 @@ export function AgentDefaults() {
               value={folder}
               onChange={(e) => setFolder(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && saveFolder(folder)}
-              placeholder="Their own workspace"
+              placeholder={t("agentDefaults.theirOwnWorkspace")}
               spellCheck={false}
-              aria-label="Working folder for new agents"
+              aria-label={t("agentDefaults.workingFolderForNewAgents")}
               className="h-8 font-mono text-small"
             />
             <BrowseFolderButton
@@ -111,28 +112,28 @@ export function AgentDefaults() {
               disabled={folder.trim() === (saved.cwd ?? "")}
               onClick={() => saveFolder(folder)}
             >
-              Save
+              {t("common.save")}
             </Button>
           </div>
         </SettingRow>
         <SettingRow
-          label="Model"
+          label={t("agentDefaults.model")}
           control={
             <ModelPicker
               value={saved.modelSelection ?? null}
               onPick={(selection) => save({ modelSelection: selection ?? undefined })}
-              noneLabel="Engine default"
+              noneLabel={t("agentDefaults.engineDefault")}
             />
           }
         />
         <SettingRow
-          label="Reasoning effort"
+          label={t("agentDefaults.reasoningEffort")}
           description={effort.note ?? undefined}
           control={
             effort.levels.length > 0 && (
               <Segmented
                 size="sm"
-                aria-label="Reasoning effort"
+                aria-label={t("agentDefaults.reasoningEffort")}
                 value={effort.value}
                 onChange={(next) => save({ effort: next })}
                 options={effort.options}
@@ -141,17 +142,17 @@ export function AgentDefaults() {
           }
         />
       </SettingsGroup>
-      <SettingsGroup title="What they may do">
+      <SettingsGroup title={t("agentDefaults.whatTheyMayDo")}>
         <SettingRow
-          label="Approvals"
+          label={t("agentDefaults.approvals")}
           description={
             approvals
               ? `New agents start on ${APPROVAL_MODES.find((m) => m.id === approvals.mode)?.label ?? approvals.mode}.`
-              : "How much a new agent does before asking you."
+              : t("agentDefaults.howMuchANewAgent")
           }
           control={
             <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "rules" })}>
-              Change in Rules and approvals
+              {t("agentDefaults.changeInRulesAndApprovals")}
             </Button>
           }
         />
@@ -161,7 +162,7 @@ export function AgentDefaults() {
           onClick={() => save({ cwd: undefined, modelSelection: undefined, effort: undefined })}
           className="px-1 text-body text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
         >
-          Reset to defaults
+          {t("agentDefaults.resetToDefaults")}
         </button>
       )}
     </>

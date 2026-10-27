@@ -45,6 +45,7 @@ import { BeatHeading, BeatLabel, PreviewCard, Stepper, beat, settleEase } from "
 import { Input } from "@/components/ui/input";
 import { firstName } from "@/lib/names";
 import { readYourName, saveYourName } from "@/lib/yourName";
+import { t } from "@/lib/i18n";
 
 type InstanceRow = {
   instanceId: string;
@@ -491,9 +492,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       >
         <div className="justify-self-start">
           {at > 0 && stage !== "team" ? (
-            <Button variant="ghost" onClick={back} aria-label="Back" className="max-sm:px-2">
+            <Button variant="ghost" onClick={back} aria-label={t("common.back")} className="max-sm:px-2">
               <ArrowLeft size={15} />
-              <span className="max-sm:hidden">Back</span>
+              <span className="max-sm:hidden">{t("common.back")}</span>
             </Button>
           ) : returning ? null : (
             <span className="flex h-8 items-center px-2">
@@ -518,8 +519,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <div className="justify-self-end">
           {stage !== "team" && !returning && (
             <Button variant="ghost" onClick={() => finish("app")} className="max-sm:px-2">
-              <span className="max-sm:hidden">Skip for now</span>
-              <span className="sm:hidden">Skip</span>
+              <span className="max-sm:hidden">{t("common.skipForNow")}</span>
+              <span className="sm:hidden">{t("onboarding.skip")}</span>
             </Button>
           )}
         </div>
@@ -567,7 +568,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <motion.div key="setup" {...beat}>
               <Column>
                 <BeatHeading
-                  title="Bring your setup"
+                  title={t("onboarding.bringYourSetup")}
                   says={`Found ${setup.where && !setup.where.here ? `on ${setup.where.computer} ` : ""}in ${setup.review.sources.map((s) => s.name).join(", ")}. Tick what to bring over, now or later in Settings.`}
                 />
                 <SetupPrivacyLine where={setup.where} />
@@ -587,7 +588,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <motion.div key="history" {...beat}>
               <Column>
                 <BeatHeading
-                  title="Bring your past conversations"
+                  title={t("onboarding.bringYourPastConversations")}
                   says={`Your ${[places?.claude && "Claude Code", places?.codex && "Codex"].filter(Boolean).join(" and ")} conversations, by project. Pick any to carry on here, now or later in Settings.`}
                 />
                 <PastSessionsPrivacyLine />
@@ -624,18 +625,18 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   <ReadyDot state={!instances ? "checking" : ready ? "ready" : "missing"} />
                   <span className={cn("truncate", instances && !ready ? "text-warning" : "text-muted-foreground")}>
                     {!instances
-                      ? "Looking for engines"
+                      ? t("onboarding.lookingForEngines")
                       : readyEngine
                         ? `${readyEngine.name} is ready`
-                        : "No engine ready yet, agents can't reply"}
+                        : t("onboarding.noEngineReadyYetAgents")}
                   </span>
                 </span>
-                <Button variant="ghost" size="lg" onClick={() => void checkEngines()} className="max-sm:px-3" aria-label="Check again">
+                <Button variant="ghost" size="lg" onClick={() => void checkEngines()} className="max-sm:px-3" aria-label={t("common.checkAgain")}>
                   <RefreshCw size={14} className={cn(checking && "animate-spin")} />
-                  <span className="max-sm:hidden">Check again</span>
+                  <span className="max-sm:hidden">{t("common.checkAgain")}</span>
                 </Button>
                 <Button size="lg" onClick={next}>
-                  {ready || !instances ? "Continue" : "Continue anyway"}
+                  {ready || !instances ? t("common.continue") : t("onboarding.continueAnyway")}
                   <ArrowRight size={15} />
                 </Button>
               </>
@@ -665,11 +666,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                     {hireNote ??
                       (hired.length
                         ? `${namesOf(hired.map((h) => AGENT_TEMPLATES.find((t) => t.id === h.template)?.name ?? "An agent"))} added`
-                        : "Add any that fit. You can make your own later.")}
+                        : t("onboarding.addAnyThatFitYou"))}
                   </span>
                 </span>
                 <Button size="lg" onClick={next} disabled={hiring.length > 0}>
-                  Continue
+                  {t("common.continue")}
                   <ArrowRight size={15} />
                 </Button>
               </>
@@ -677,10 +678,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             {stage === "name" && (
               <>
                 <span className={cn("mr-auto min-w-0 truncate text-body", nameNote ? "text-destructive" : "text-muted-foreground max-sm:invisible")}>
-                  {nameNote ?? "Optional. Change it any time in Settings."}
+                  {nameNote ?? t("onboarding.optionalChangeItAnyTime")}
                 </span>
                 <Button variant="ghost" size="lg" onClick={next} disabled={savingName}>
-                  Skip this
+                  {t("onboarding.skipThis")}
                 </Button>
                 <Button size="lg" disabled={savingName} onClick={() => void chooseName()}>
                   {savingName && <Loader2 size={15} className="animate-spin" />}
@@ -692,7 +693,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             {stage === "approvals" && (
               <>
                 <span className={cn("mr-auto min-w-0 truncate text-body", approvalsNote ? "text-warning" : "text-muted-foreground max-sm:invisible")}>
-                  {approvalsNote ?? "You can change this any time in Settings."}
+                  {approvalsNote ?? t("onboarding.youCanChangeThisAny")}
                 </span>
                 <Button size="lg" disabled={savingApprovals} onClick={() => void chooseApprovals()}>
                   {savingApprovals && <Loader2 size={15} className="animate-spin" />}
@@ -704,16 +705,16 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             {stage === "setup" && (
               <>
                 <span className="mr-auto min-w-0 truncate text-body text-muted-foreground max-sm:invisible">
-                  Everything here is in Settings too.
+                  {t("onboarding.everythingHereIsInSettings")}
                 </span>
                 {brought ? (
                   <Button size="lg" onClick={next}>
-                    Continue
+                    {t("common.continue")}
                     <ArrowRight size={15} />
                   </Button>
                 ) : (
                   <Button variant="ghost" size="lg" onClick={next}>
-                    Skip this
+                    {t("onboarding.skipThis")}
                   </Button>
                 )}
               </>
@@ -721,16 +722,16 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             {stage === "history" && (
               <>
                 <span className="mr-auto min-w-0 truncate text-body text-muted-foreground max-sm:invisible">
-                  This is in Settings too, under Past conversations.
+                  {t("onboarding.thisIsInSettingsToo")}
                 </span>
                 {broughtHistory ? (
                   <Button size="lg" onClick={next}>
-                    Continue
+                    {t("common.continue")}
                     <ArrowRight size={15} />
                   </Button>
                 ) : (
                   <Button variant="ghost" size="lg" onClick={next}>
-                    Skip this
+                    {t("onboarding.skipThis")}
                   </Button>
                 )}
               </>
@@ -738,10 +739,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             {stage === "permissions" && (
               <>
                 <span className="mr-auto min-w-0 truncate text-body text-muted-foreground max-sm:invisible">
-                  All optional. Nothing is used until you need it.
+                  {t("onboarding.allOptionalNothingIsUsed")}
                 </span>
                 <Button size="lg" onClick={next}>
-                  Continue
+                  {t("common.continue")}
                   <ArrowRight size={15} />
                 </Button>
               </>
@@ -810,7 +811,7 @@ function WelcomeBack({
   return (
     <div className="mx-auto flex w-full max-w-[460px] flex-col items-center px-5 pb-12 pt-[12vh] text-center">
       <BloksLogo />
-      <h1 className="mt-8 text-balance text-display font-semibold text-foreground">Welcome back</h1>
+      <h1 className="mt-8 text-balance text-display font-semibold text-foreground">{t("onboarding.welcomeBack")}</h1>
       <p className="mt-2 text-pretty text-ui text-muted-foreground">
         {ThisComputer()} already has a Bloks workspace: {prior.agents} {prior.agents === 1 ? "agent" : "agents"}
         {prior.rooms > 0 && `, ${prior.rooms} ${prior.rooms === 1 ? "room" : "rooms"}`} and {prior.messages.toLocaleString()}{" "}
@@ -818,17 +819,17 @@ function WelcomeBack({
       </p>
       <div className="mt-8 flex w-full flex-col gap-2">
         <Button size="lg" onClick={onContinue} disabled={resetting}>
-          Continue where I left off
+          {t("onboarding.continueWhereILeftOff")}
         </Button>
         <Button size="lg" variant="secondary" onClick={onStartFresh} disabled={resetting}>
-          {resetting ? "Starting fresh…" : "Start fresh"}
+          {resetting ? t("onboarding.startingFresh") : t("onboarding.startFresh")}
         </Button>
       </div>
       {resetNote ? (
         <p className="mt-4 text-small leading-relaxed text-warning">{resetNote}</p>
       ) : (
         <p className="mt-4 text-small leading-relaxed text-muted-foreground">
-          Starting fresh moves the old workspace to a dated folder. Nothing is deleted, and keys and engines stay set up.
+          {t("onboarding.startingFreshMovesTheOld")}
         </p>
       )}
     </div>
@@ -864,13 +865,13 @@ export function EnginesBeat({
   return (
     <Column>
       <BeatHeading
-        title="Let's check your engines"
+        title={t("onboarding.letsCheckYourEngines")}
         says={`Agents run on the AI tools already on ${thisComputer()}. Everything stays local.`}
       />
       <EngineCard engine={lead} state={readiness(lead.kind)} version={versionOf(lead.kind)} onChanged={onChanged} large />
 
       <section className="mt-10">
-        <BeatLabel aside={<span className="text-small text-muted-foreground">Optional</span>}>More engines</BeatLabel>
+        <BeatLabel aside={<span className="text-small text-muted-foreground">{t("onboarding.optional")}</span>}>{t("onboarding.moreEngines")}</BeatLabel>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {more.map((engine, i) => (
             <motion.div
@@ -890,8 +891,7 @@ export function EnginesBeat({
         // a CLI is the best engine, not the only one: without any of them
         // there is still a way in
         <p className="mt-6 text-pretty text-body leading-relaxed text-muted-foreground">
-          None of these? Continue and connect Gemini, Grok, Kimi, Llama or OpenRouter in Settings. They can chat but not
-          run commands.
+          {t("onboarding.noneOfTheseContinueAnd")}
         </p>
       )}
     </Column>
@@ -1044,7 +1044,7 @@ export function AgentsBeat({
       <div className="max-w-[720px]">
         <BeatHeading title={title} says={says} />
       </div>
-      <div role="group" aria-label="Kinds of work" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div role="group" aria-label={t("onboarding.kindsOfWork")} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {WORK_TYPES.map((option) => {
           const on = work.includes(option.id);
           return (
@@ -1073,8 +1073,8 @@ export function AgentsBeat({
       </div>
 
       <section className="mt-10">
-        <BeatLabel aside={<span className="text-small text-muted-foreground max-sm:hidden">Each comes with its role written</span>}>
-          {work.length ? "Suggested for you" : "A good place to start"}
+        <BeatLabel aside={<span className="text-small text-muted-foreground max-sm:hidden">{t("onboarding.eachComesWithItsRole")}</span>}>
+          {work.length ? t("onboarding.suggestedForYou") : t("onboarding.aGoodPlaceToStart")}
         </BeatLabel>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <AnimatePresence mode="popLayout" initial={false}>
@@ -1102,12 +1102,12 @@ export function AgentsBeat({
                       added ? (
                         <div className="flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-soft text-ui font-medium text-brand-ink">
                           <Check size={15} strokeWidth={2.5} />
-                          Added
+                          {t("onboarding.added")}
                         </div>
                       ) : (
                         <Button variant="secondary" size="lg" className="w-full" disabled={adding} onClick={() => onHire(template)}>
                           {adding ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-                          {adding ? "Adding" : `Add ${template.name}`}
+                          {adding ? t("onboarding.adding") : `Add ${template.name}`}
                         </Button>
                       )
                     }
@@ -1152,8 +1152,8 @@ function NameBeat({
     <div className="mx-auto grid w-full max-w-[1080px] grid-cols-1 gap-8 px-5 pb-12 pt-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-14 lg:pt-10">
       <div className="min-w-0">
         <BeatHeading
-          title="What should your agents call you?"
-          says="They use it when they talk to you. Anyone you invite later sees it too."
+          title={t("onboarding.whatShouldYourAgentsCall")}
+          says={t("onboarding.theyUseItWhenThey")}
         />
         <form
           onSubmit={(e) => {
@@ -1162,24 +1162,24 @@ function NameBeat({
           }}
         >
           <label className="flex max-w-[420px] flex-col gap-2">
-            <span className="text-small font-medium text-muted-foreground">Your name</span>
+            <span className="text-small font-medium text-muted-foreground">{t("common.yourName")}</span>
             <Input
               ref={field}
               value={name}
               maxLength={40}
               autoComplete="name"
-              placeholder="Your name"
+              placeholder={t("common.yourName")}
               onChange={(e) => onChange(e.target.value)}
               className="h-11 rounded-[12px] text-lead"
             />
           </label>
         </form>
       </div>
-      <aside aria-label="How it will read">
+      <aside aria-label={t("onboarding.howItWillRead")}>
         <div className="lg:sticky lg:top-6">
           <div className="overflow-hidden rounded-3xl border bg-card shadow-[0_12px_40px_-16px_var(--shadow-color)]">
             <div className="px-5 pb-5 pt-5">
-              <div className="text-small font-medium text-muted-foreground">How it will read</div>
+              <div className="text-small font-medium text-muted-foreground">{t("onboarding.howItWillRead")}</div>
               <div className="mt-3 flex items-end gap-2">
                 <BlokAvatar color={agent.color} shape={agent.shape ?? "star"} expression="friendly" size={22} />
                 <div className="min-w-0 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-body leading-relaxed text-foreground">
@@ -1188,7 +1188,7 @@ function NameBeat({
                       Good to meet you, <span className="font-semibold">{first}</span>. Tell me what you're working on.
                     </>
                   ) : (
-                    "Good to meet you. Tell me what you're working on."
+                    t("onboarding.goodToMeetYouTell")
                   )}
                 </div>
               </div>
@@ -1235,10 +1235,10 @@ function ApprovalsBeat({
   return (
     <div className="mx-auto grid w-full max-w-[1080px] grid-cols-1 gap-8 px-5 pb-12 pt-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-14 lg:pt-10">
       <div className="min-w-0">
-        <BeatHeading title="How much should your agents ask?" says="Where every agent starts. Change it for one agent, or for all, any time." />
+        <BeatHeading title={t("onboarding.howMuchShouldYourAgents")} says={t("onboarding.whereEveryAgentStartsChange")} />
         <ApprovalsChooser value={value} onChange={onChange} />
       </div>
-      <aside aria-label="What you would see">
+      <aside aria-label={t("onboarding.whatYouWouldSee")}>
         <div className="lg:sticky lg:top-6">
           <ApprovalSample mode={value} agent={agent} />
         </div>
@@ -1253,11 +1253,11 @@ function ApprovalSample({ mode, agent }: { mode: ApprovalMode; agent: { name: st
   return (
     <div className="overflow-hidden rounded-3xl border bg-card shadow-[0_12px_40px_-16px_var(--shadow-color)]">
       <div className="px-5 pb-5 pt-5">
-        <div className="text-small font-medium text-muted-foreground">What you would see</div>
+        <div className="text-small font-medium text-muted-foreground">{t("onboarding.whatYouWouldSee")}</div>
         <div className="mt-3 flex items-end gap-2">
           <BlokAvatar color={agent.color} shape={agent.shape ?? "star"} expression="friendly" size={22} />
           <div className="min-w-0 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-body leading-relaxed text-foreground">
-            I'll tidy notes.md and check the tests still pass.
+            {t("onboarding.illTidyNotesMdAnd")}
           </div>
         </div>
         <div className="mt-1 pl-[30px] text-caption text-muted-foreground">{agent.name}</div>
@@ -1279,7 +1279,7 @@ function ApprovalSample({ mode, agent }: { mode: ApprovalMode; agent: { name: st
                     // drawn like the approval card in the chat, without
                     // the buttons doing anything: this is a picture of it
                     <div className="rounded-2xl border bg-card p-3 shadow-[0_1px_3px_var(--shadow-color)]">
-                      <div className="text-caption font-semibold uppercase tracking-[0.1em] text-warning">Approval</div>
+                      <div className="text-caption font-semibold uppercase tracking-[0.1em] text-warning">{t("onboarding.approval")}</div>
                       <div className="mt-0.5 text-ui font-semibold text-foreground">{step.asks}</div>
                       <div aria-hidden className="mt-2 flex gap-1.5">
                         {["Allow", "Deny"].map((option, i) => (
@@ -1298,7 +1298,7 @@ function ApprovalSample({ mode, agent }: { mode: ApprovalMode; agent: { name: st
                         <Check size={10} strokeWidth={3} />
                       </span>
                       {step.did}
-                      {step.id === "run" && mode === "auto" && <span className="text-small text-muted-foreground/80">in the sandbox</span>}
+                      {step.id === "run" && mode === "auto" && <span className="text-small text-muted-foreground/80">{t("onboarding.inTheSandbox")}</span>}
                     </div>
                   )}
                 </motion.li>
@@ -1332,19 +1332,19 @@ function PermissionsBeat({
 }) {
   return (
     <Column>
-      <BeatHeading title="Two permissions" says="All optional. Nothing is used until you need it." />
+      <BeatHeading title={t("onboarding.twoPermissions")} says={t("onboarding.allOptionalNothingIsUsed")} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <PermissionCard
           icon={<Mic size={20} />}
-          title="Microphone and speech"
-          detail="Dictate messages, transcribed on device."
+          title={t("onboarding.microphoneAndSpeech")}
+          detail={t("onboarding.dictateMessagesTranscribedOnDevice")}
           status={perms?.mic}
           onEnable={() => window.bloks?.permRequestMic?.().then(() => window.bloks?.permStatus?.().then(setPerms))}
           onOpenSettings={() => window.bloks?.permOpenSettings?.("mic")}
         />
         <PermissionCard
           icon={<Monitor size={20} />}
-          title="Screen preview"
+          title={t("onboarding.screenPreview")}
           detail={`Shows ${thisComputer()}'s screen in the Computer panel when an agent works locally.`}
           status={perms?.screen}
           onEnable={() =>
@@ -1388,15 +1388,15 @@ function PermissionCard({
         {granted ? (
           <span className="inline-flex h-7 items-center gap-1.5 text-body font-medium text-success">
             <Check size={14} strokeWidth={2.5} />
-            Allowed
+            {t("onboarding.allowed")}
           </span>
         ) : status === "denied" || status === "restricted" ? (
           <Button variant="secondary" size="sm" onClick={onOpenSettings}>
-            Open Settings
+            {t("onboarding.openSettings")}
           </Button>
         ) : (
           <Button variant="secondary" size="sm" onClick={onEnable}>
-            Enable
+            {t("onboarding.enable")}
           </Button>
         )}
       </div>
@@ -1462,7 +1462,7 @@ function TeamBeat({
         className="flex w-full flex-col items-center"
       >
         <h1 className="mt-10 text-balance text-display font-semibold text-foreground">
-          {first ? "Meet your team" : nova ? `${nova.name} is ready` : "You're all set"}
+          {first ? t("onboarding.meetYourTeam") : nova ? `${nova.name} is ready` : t("onboarding.youreAllSet")}
         </h1>
         <p className="mt-2 max-w-[460px] text-pretty text-ui text-muted-foreground">
           {first
@@ -1471,7 +1471,7 @@ function TeamBeat({
               : `${namesOf(made.map((b) => b.name))} are ready. Each has a hello waiting for you.`
             : nova
               ? `Give an agent a job of its own. ${nova.name} can help in the meantime.`
-              : "Give an agent a job of its own."}
+              : t("onboarding.giveAnAgentAJob")}
         </p>
         <div className="mt-8 flex w-full max-w-[320px] flex-col gap-2">
           {first ? (
@@ -1482,7 +1482,7 @@ function TeamBeat({
           ) : (
             <>
               <Button ref={go} size="lg" variant="brand" onClick={() => onFinish("picker")}>
-                Make your first agent
+                {t("onboarding.makeYourFirstAgent")}
                 <ArrowRight size={15} />
               </Button>
               {nova && (

@@ -17,6 +17,7 @@ import { EngineSetupActions } from "@/components/EngineSetup";
 import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
 import { toast } from "@/components/ui/toast";
 import { refusalToShow, runsOnCredits } from "@/lib/credits";
+import { t } from "@/lib/i18n";
 
 /**
  * The lane mail from senders the person has not listed is answered in.
@@ -68,16 +69,16 @@ export function useApprovalsNotice(bot: Bot, pending: Message[] | undefined): No
     hint: caution,
     actions: (
       <>
-        <TrayButton onClick={() => answerAll(pending, "Deny")}>Deny all</TrayButton>
+        <TrayButton onClick={() => answerAll(pending, "Deny")}>{t("banners.denyAll")}</TrayButton>
         {allowable.length > 0 && (
           <TrayButton strong onClick={() => answerAll(allowable, "Allow")}>
             {risky.length ? (
               <>
-                Allow <span className="max-sm:hidden">the other </span>
+                Allow <span className="max-sm:hidden">{t("banners.theOther")} </span>
                 {allowable.length}
               </>
             ) : (
-              "Allow all"
+              t("banners.allowAll")
             )}
           </TrayButton>
         )}
@@ -143,15 +144,15 @@ export function useSuggestionNotice(bot: Bot): Notice | null {
     hint: `${first.title} ${first.what.replace(/`/g, "")}`,
     actions: (
       <>
-        <TrayButton onClick={() => void dismiss(first.id)}>Not now</TrayButton>
+        <TrayButton onClick={() => void dismiss(first.id)}>{t("common.notNow")}</TrayButton>
         {first.forEveryone && (
           <TrayButton strong={!forThis} onClick={() => takeSuggestion(accept, first, "everyone")}>
-            Allow for everyone
+            {t("banners.allowForEveryone")}
           </TrayButton>
         )}
         {forThis && (
           <TrayButton strong onClick={() => takeSuggestion(accept, first, "agent")}>
-            Allow <span className="max-sm:hidden">for this agent</span>
+            Allow <span className="max-sm:hidden">{t("banners.forThisAgent")}</span>
           </TrayButton>
         )}
       </>
@@ -180,7 +181,7 @@ export function useOtherLanesNotice(bot: Bot): Notice | null {
         ? `"${first.title}" is waiting on you.`
         : `${waiting.length} other conversations are waiting on you.`,
     actions: (
-      <TrayButton onClick={() => dispatch({ type: "selectTask", botId: bot.id, taskId: first.id })}>Open</TrayButton>
+      <TrayButton onClick={() => dispatch({ type: "selectTask", botId: bot.id, taskId: first.id })}>{t("common.open")}</TrayButton>
     ),
   };
 }
@@ -288,7 +289,7 @@ export function useEngineNotice(bot: Bot): Notice | null {
           onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "engines" })}
           className="mt-1.5 underline underline-offset-2 transition-colors duration-150 hover:text-foreground"
         >
-          Engine settings
+          {t("banners.engineSettings")}
         </button>
       </div>
     ),
@@ -327,7 +328,7 @@ export function useCreditsNotice(bot: Bot): Notice | null {
     hint: showing.message,
     actions: checkout ? (
       <TrayButton strong onClick={() => window.open(checkout, "_blank", "noopener")}>
-        Top up
+        {t("banners.topUp")}
       </TrayButton>
     ) : undefined,
     onDismiss: () => setDismissedAt(showing.at),

@@ -62,6 +62,7 @@ import { useDictation, VoiceMeter } from "./Dictation";
 import { ReachMenu } from "./ReachMenu";
 import { reachOf } from "./reach";
 import { answersOf } from "@/lib/roomRoute";
+import { t } from "@/lib/i18n";
 
 /** Fade whichever edges have more text beyond them, the marks too. */
 function shadeEdges(el: HTMLTextAreaElement) {
@@ -157,7 +158,7 @@ function ReplyTag({ draft, onClear }: { draft: ReplyDraft; onClear: () => void }
         type="button"
         onClick={onClear}
         className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors duration-150 hover:bg-background/60 hover:text-foreground"
-        aria-label="Cancel reply"
+        aria-label={t("roomComposer.cancelReply")}
       >
         <X size={12} />
       </button>
@@ -516,10 +517,10 @@ export function RoomComposer({
                 setBlockedRecovery(null);
               }}
             >
-              Discard
+              {t("common.discard")}
             </TrayButton>
             <TrayButton strong onClick={() => restore(item.id)}>
-              Restore
+              {t("roomComposer.restore")}
             </TrayButton>
           </>
         ),
@@ -579,7 +580,7 @@ export function RoomComposer({
       popover={
         matches.length > 0 && (
           <div className="animate-pop-in origin-bottom overflow-hidden rounded-xl border bg-popover shadow-lg shadow-(color:--shadow-color)">
-            <div role="listbox" aria-label="People in this room" className="p-1">
+            <div role="listbox" aria-label={t("roomComposer.peopleInThisRoom")} className="p-1">
               {matches.map((m, i) => (
                 <button
                   key={m.id}
@@ -601,13 +602,13 @@ export function RoomComposer({
                   <span className="text-body font-medium text-foreground">{m.label ?? m.name}</span>
                   {m.title && <span className="min-w-0 truncate text-small text-muted-foreground">{m.title}</span>}
                   {m.bot && m.id === lead?.id && answering.length > 1 && (
-                    <span className="ml-auto shrink-0 text-caption text-muted-foreground">Lead</span>
+                    <span className="ml-auto shrink-0 text-caption text-muted-foreground">{t("roomComposer.lead")}</span>
                   )}
                 </button>
               ))}
             </div>
             <div className="border-t px-3 py-1.5 text-caption text-muted-foreground max-sm:hidden" aria-hidden>
-              ↑↓ pick · Tab insert · Esc close
+              {t("roomComposer.pickTabInsertEscClose")}
             </div>
           </div>
         )
@@ -625,7 +626,7 @@ export function RoomComposer({
               e.target.value = "";
             }}
           />
-          <BoxButton title="Attach a file or image" onClick={() => pickerRef.current?.click()}>
+          <BoxButton title={t("roomComposer.attachAFileOrImage")} onClick={() => pickerRef.current?.click()}>
             <Plus size={18} />
           </BoxButton>
         </>
@@ -633,7 +634,7 @@ export function RoomComposer({
       trail={
         <>
           <BoxButton
-            title={dictation.recording ? "Stop dictation (Esc)" : "Dictate"}
+            title={dictation.recording ? t("roomComposer.stopDictationEsc") : t("roomComposer.dictate")}
             onClick={() => void dictation.toggle()}
             className={cn(
               dictation.recording &&
@@ -645,7 +646,7 @@ export function RoomComposer({
           <SendStop
             mode={canSend ? "send" : busy ? "stop" : "idle"}
             sendLabel={busy ? `Send, ${modKey()}Enter stops the room first` : "Send"}
-            stopLabel="Stop the room (Esc)"
+            stopLabel={t("roomComposer.stopTheRoomEsc")}
             onSend={() => send()}
             onStop={stopAll}
           />
@@ -757,7 +758,7 @@ export function RoomComposer({
           }}
           placeholder={
             dictation.recording
-              ? "Listening…"
+              ? t("roomComposer.listening")
               : replyTo
                 ? `Reply to ${replyTo.author}`
                 : `Message ${blok.name}, or @name someone`

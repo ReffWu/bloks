@@ -17,6 +17,7 @@ import { chordLabel, platformOf, shortcutSheet } from "@/lib/shortcuts";
 import { stepRow, type SidebarRow } from "@/lib/sidebarStep";
 import { useEscape } from "@/lib/useEscape";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 /** Key chords as small caps, drawn like the esc in the palette. */
 export function Keys({ keys, className }: { keys: string[]; className?: string }) {
@@ -132,12 +133,12 @@ function ShortcutsSheet() {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Keyboard shortcuts"
+        aria-label={t("shortcuts.keyboardShortcuts")}
         className="flex max-h-[84vh] w-[720px] max-w-full flex-col overflow-hidden rounded-2xl border bg-popover shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
-          <div className="text-lead font-semibold text-foreground">Keyboard shortcuts</div>
+          <div className="text-lead font-semibold text-foreground">{t("shortcuts.keyboardShortcuts")}</div>
           <Keys keys={[chordLabel(["Esc"], platform)]} />
         </div>
         <div className="min-h-0 gap-x-8 overflow-y-auto px-5 pb-1 pt-4 sm:columns-2">

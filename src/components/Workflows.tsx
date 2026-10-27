@@ -59,6 +59,7 @@ import { Slider, type SliderStop } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
+import { t } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -416,10 +417,10 @@ export function Workflows() {
     <div className="mx-auto flex max-w-[860px] flex-col gap-3 px-1 py-4">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
         <p className="max-w-[560px] text-body leading-relaxed text-muted-foreground">
-          Work in steps. Each step passes its result on, and any step can wait for your OK.
+          {t("workflows.workInStepsEachStep")}
         </p>
         <Button size="sm" className="shrink-0" onClick={() => setEditing("new")}>
-          <Plus size={14} /> New workflow
+          <Plus size={14} /> {t("workflows.newWorkflow")}
         </Button>
       </div>
 
@@ -429,7 +430,7 @@ export function Workflows() {
 
       {workflows?.length === 0 && (
         <div className="px-4 py-10 text-center">
-          <div className="text-ui text-foreground">No workflows yet.</div>
+          <div className="text-ui text-foreground">{t("workflows.noWorkflowsYet")}</div>
         </div>
       )}
 
@@ -503,7 +504,7 @@ function WorkflowCard({
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-label={open ? `Hide steps in ${workflow.name}` : `Show steps in ${workflow.name}`}
-          title={open ? "Hide steps" : "Show steps"}
+          title={open ? t("workflows.hideSteps") : t("workflows.showSteps")}
           className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
         >
           {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -512,7 +513,7 @@ function WorkflowCard({
           <div className="flex items-center gap-2">
             <span className="truncate text-ui font-semibold text-foreground">{workflow.name}</span>
             {!workflow.enabled && (
-              <span className="rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">off</span>
+              <span className="rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">{t("workflows.off")}</span>
             )}
           </div>
           <div className="mt-0.5 text-body text-muted-foreground">{workflow.summary}</div>
@@ -522,7 +523,7 @@ function WorkflowCard({
           {waiting?.waiting && (
             <div className="mt-2 flex items-center gap-1.5 text-body text-warning">
               <Hourglass size={13} />
-              Waiting for you. It {waiting.waiting.onTimeout === "continue" ? "carries on" : "stops"}{" "}
+              Waiting for you. It {waiting.waiting.onTimeout === "continue" ? t("workflows.carriesOn") : "stops"}{" "}
               {until(waiting.waiting.until)}.
             </div>
           )}
@@ -542,7 +543,7 @@ function WorkflowCard({
                 .catch((e: Error) => onError(e.message))
             }
           />
-          <Button variant="ghost" size="icon-sm" title="Run now" disabled={busy} onClick={run}>
+          <Button variant="ghost" size="icon-sm" title={t("common.runNow")} disabled={busy} onClick={run}>
             <Play size={14} />
           </Button>
         </div>
@@ -572,7 +573,7 @@ function WorkflowCard({
 
           <div className="mt-3 flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={onEdit}>
-              Edit
+              {t("common.edit")}
             </Button>
             <Button
               variant="ghost"
@@ -592,14 +593,14 @@ function WorkflowCard({
                   .catch((e: Error) => onError(e.message));
               }}
             >
-              <Trash2 size={13} /> Delete
+              <Trash2 size={13} /> {t("common.delete")}
             </Button>
           </div>
 
           {runs.length > 0 && (
             <div className="mt-3 border-t pt-3">
               <div className="text-small font-medium text-muted-foreground">
-                Runs
+                {t("workflows.runs")}
               </div>
               <div className="mt-1.5 flex flex-col gap-2">
                 {runs.slice(0, 6).map((entry) => (
@@ -956,12 +957,12 @@ function Editor({
               <WorkflowIcon size={17} />
             </span>
             <div className="min-w-0 flex-1">
-              <DialogTitle className="sr-only">{draft.id ? "Edit workflow" : "New workflow"}</DialogTitle>
+              <DialogTitle className="sr-only">{draft.id ? t("workflows.editWorkflow") : t("workflows.newWorkflow")}</DialogTitle>
               <input
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                placeholder="Name this workflow"
-                aria-label="Name"
+                placeholder={t("workflows.nameThisWorkflow")}
+                aria-label={t("common.name")}
                 spellCheck={false}
                 maxLength={80}
                 className="w-full bg-transparent text-title font-semibold tracking-tight text-foreground outline-none placeholder:font-normal placeholder:text-muted-foreground"
@@ -970,7 +971,7 @@ function Editor({
                 {describeDraft(draft, bots, rooms)}
               </DialogDescription>
             </div>
-            <Button variant="ghost" size="icon" aria-label="Close" onClick={close}>
+            <Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={close}>
               <X size={17} />
             </Button>
           </header>
@@ -978,7 +979,7 @@ function Editor({
           {/* Side by side, each column scrolls on its own; stacked on a
               phone, the whole sheet scrolls and the footer stays put. */}
           <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[320px_minmax(0,1fr)] md:overflow-hidden">
-            <aside aria-label="The flow" className="border-b bg-sidebar/50 md:min-h-0 md:overflow-y-auto md:border-b-0 md:border-r">
+            <aside aria-label={t("workflows.theFlow")} className="border-b bg-sidebar/50 md:min-h-0 md:overflow-y-auto md:border-b-0 md:border-r">
               <div className="px-4 py-4 md:px-5 md:py-5">
                 <Chain
                   draft={draft}
@@ -1015,7 +1016,7 @@ function Editor({
               </div>
             </aside>
 
-            <section aria-label="Edit" className="md:min-h-0 md:overflow-y-auto">
+            <section aria-label={t("common.edit")} className="md:min-h-0 md:overflow-y-auto">
               <div className="mx-auto w-full max-w-[640px] px-4 py-5 sm:px-7 sm:py-7">
                 <AnimatePresence mode="wait" initial={false}>
                   {selected === "trigger" || !step ? (
@@ -1070,21 +1071,21 @@ function Editor({
                 className="flex flex-wrap items-center gap-2 border-t bg-sidebar/50 px-4 py-2.5 sm:px-6"
               >
                 <label htmlFor="try-sample" className="text-body text-muted-foreground">
-                  Try it with
+                  {t("workflows.tryItWith")}
                 </label>
                 <Input
                   id="try-sample"
                   autoFocus
                   value={sample}
                   onChange={(e) => setSample(e.target.value)}
-                  placeholder={draft.trigger.kind === "webhook" ? "What the webhook might send" : "A message to test with"}
+                  placeholder={draft.trigger.kind === "webhook" ? t("workflows.whatTheWebhookMightSend") : t("workflows.aMessageToTestWith")}
                   className="h-8 min-w-[180px] flex-1 bg-background text-body"
                 />
                 <Button type="submit" size="sm" disabled={busy}>
-                  <Play size={12} /> Run it
+                  <Play size={12} /> {t("workflows.runIt")}
                 </Button>
                 <Button type="button" variant="ghost" size="sm" onClick={() => setAsking(false)}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
               </motion.form>
             )}
@@ -1105,12 +1106,12 @@ function Editor({
                 disabled={busy || (run !== null && !settled)}
                 onClick={() => ready() && (readsTrigger ? setAsking((v) => !v) : startTry(""))}
                 className="max-sm:flex-1"
-                title={draft.id && !held ? "Saves, then runs it once for real" : "Saves it switched off, then runs it once for real"}
+                title={draft.id && !held ? t("workflows.savesThenRunsItOnce") : t("workflows.savesItSwitchedOffThen")}
               >
-                <Play size={13} /> Try it
+                <Play size={13} /> {t("workflows.tryIt")}
               </Button>
               <Button disabled={busy} onClick={save} className="min-w-[96px] max-sm:flex-1">
-                {draft.id && !held ? (dirty ? "Save" : "Done") : "Create"}
+                {draft.id && !held ? (dirty ? t("common.save") : t("common.done")) : t("workflows.create")}
               </Button>
             </div>
           </footer>
@@ -1186,9 +1187,9 @@ function Chain({
   return (
     <>
       {/* wide: a column */}
-      <ol aria-label="Steps" className="hidden md:block">
+      <ol aria-label={t("common.steps")} className="hidden md:block">
         <li>
-          <div className="mb-2 text-small font-medium text-muted-foreground">When</div>
+          <div className="mb-2 text-small font-medium text-muted-foreground">{t("workflows.when")}</div>
           <TriggerNode
             trigger={draft.trigger}
             sentence={triggerSentence(draft.trigger, bots, rooms)}
@@ -1242,14 +1243,14 @@ function Chain({
             <span className="flex size-8 items-center justify-center rounded-lg bg-muted">
               <Plus size={14} />
             </span>
-            {full ? "That is the most steps one holds" : "Add a step"}
+            {full ? t("workflows.thatIsTheMostSteps") : t("workflows.addAStep")}
           </button>
         </li>
       </ol>
 
       {/* narrow: a strip */}
-      <div ref={strip} aria-label="Steps" role="list" className="-mx-4 flex items-center overflow-x-auto px-4 py-1.5 [scrollbar-width:none] md:hidden">
-        <StripNode on={selected === "trigger"} onSelect={() => onSelect("trigger")} warn={loud && Boolean(missing.trigger)} label="When">
+      <div ref={strip} aria-label={t("common.steps")} role="list" className="-mx-4 flex items-center overflow-x-auto px-4 py-1.5 [scrollbar-width:none] md:hidden">
+        <StripNode on={selected === "trigger"} onSelect={() => onSelect("trigger")} warn={loud && Boolean(missing.trigger)} label={t("workflows.when")}>
           <TriggerGlyph kind={draft.trigger.kind} size={24} />
         </StripNode>
         {draft.steps.map((step, i) => (
@@ -1264,7 +1265,7 @@ function Chain({
         <button
           onClick={onAdd}
           disabled={full}
-          aria-label="Add a step"
+          aria-label={t("workflows.addAStep")}
           className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-dashed text-muted-foreground outline-none transition-[background-color,scale] duration-150 active:scale-95 disabled:opacity-50"
         >
           <Plus size={15} />
@@ -1346,7 +1347,7 @@ function TriggerNode({
       <span className="min-w-0 flex-1">
         <span className="block truncate text-body font-medium text-foreground">{sentence}</span>
         <span className={cn("block truncate text-small", problem && loud ? "text-warning" : "text-muted-foreground")}>
-          {problem ?? (trigger.kind === "manual" ? "From the list, or Try it" : trigger.from === "anyone" ? "Agents count too" : "Only you set it off")}
+          {problem ?? (trigger.kind === "manual" ? t("workflows.fromTheListOrTry") : trigger.from === "anyone" ? t("workflows.agentsCountToo") : t("workflows.onlyYouSetItOff"))}
         </span>
       </span>
       {lit && <NodeMark state="ok" />}
@@ -1427,7 +1428,7 @@ function StripNode({
     <button
       onClick={onSelect}
       aria-current={on ? "step" : undefined}
-      aria-label={label === "When" ? "What sets it off" : `Step ${label}`}
+      aria-label={label === "When" ? t("workflows.whatSetsItOff") : `Step ${label}`}
       className={cn(
         "relative flex shrink-0 items-center gap-1.5 rounded-xl border px-2 py-1.5 outline-none transition-[border-color,background-color,scale] duration-150 active:scale-95",
         on ? "border-foreground/15 bg-card shadow-[0_1px_3px_var(--shadow-color)]" : "border-transparent",
@@ -1450,7 +1451,7 @@ function NodeMark({ state, small }: { state: RunStep["state"]; small?: boolean }
   const icon = small ? 8 : 11;
   if (state === "running") {
     return (
-      <span className={cn("flex shrink-0 items-center justify-center", box)} aria-label="Running">
+      <span className={cn("flex shrink-0 items-center justify-center", box)} aria-label={t("workflows.running")}>
         <motion.span
           className="size-2 rounded-full bg-brand"
           animate={reduce ? { opacity: 1 } : { opacity: [0.35, 1, 0.35] }}
@@ -1500,22 +1501,22 @@ function TryPanel({
   return (
     <div className="rounded-2xl border bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-small font-medium text-foreground">This try</span>
+        <span className="text-small font-medium text-foreground">{t("workflows.thisTry")}</span>
         {/* Hiding a run that is still going stops following it here, not
             the run: it carries on, and shows in the list like any other. */}
         <button onClick={onDismiss} className="text-small text-muted-foreground transition-colors duration-150 hover:text-foreground">
-          {done ? "Clear" : "Hide"}
+          {done ? t("common.clear") : t("common.hide")}
         </button>
       </div>
       {run.state === "waiting" && (
         <div className="mb-2.5 rounded-xl bg-warning/10 px-3 py-2.5">
-          <div className="text-body text-foreground">Waiting for your answer.</div>
+          <div className="text-body text-foreground">{t("workflows.waitingForYourAnswer")}</div>
           <div className="mt-2 flex gap-2">
             <Button size="sm" onClick={() => onAnswer("Approve")}>
-              <Check size={12} /> Approve
+              <Check size={12} /> {t("common.approve")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => onAnswer("Decline")}>
-              Decline
+              {t("common.decline")}
             </Button>
           </div>
         </div>
@@ -1580,9 +1581,9 @@ function TriggerPane({
   const watches = trigger.kind === "message" || trigger.kind === "reaction";
   return (
     <>
-      <PaneHeading eyebrow="When" title="What sets it off" />
+      <PaneHeading eyebrow={t("workflows.when")} title={t("workflows.whatSetsItOff")} />
 
-      <div role="radiogroup" aria-label="What sets it off" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div role="radiogroup" aria-label={t("workflows.whatSetsItOff")} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {TRIGGER_KINDS.map((option) => (
           <PickCard
             key={option.kind}
@@ -1597,7 +1598,7 @@ function TriggerPane({
 
       {watches && (
         <>
-          <Section title="Where to watch" aside={<Needs problem={problem} field="where" loud={loud} />} className="mt-8">
+          <Section title={t("workflows.whereToWatch")} aside={<Needs problem={problem} field="where" loud={loud} />} className="mt-8">
             <PlacePicker
               value={trigger.targetId}
               agents={bots}
@@ -1608,17 +1609,17 @@ function TriggerPane({
           </Section>
 
           {trigger.kind === "message" ? (
-            <Section title="Only if it mentions" aside={<span className="text-small text-muted-foreground">Optional</span>}>
+            <Section title={t("workflows.onlyIfItMentions")} aside={<span className="text-small text-muted-foreground">{t("workflows.optional")}</span>}>
               <Input
                 value={trigger.contains ?? ""}
                 placeholder="invoice"
                 onChange={(e) => onChange({ ...trigger, contains: e.target.value })}
                 className="h-10 rounded-xl bg-card"
               />
-              <p className="mt-1.5 text-small text-muted-foreground">Leave empty for any message.</p>
+              <p className="mt-1.5 text-small text-muted-foreground">{t("workflows.leaveEmptyForAnyMessage")}</p>
             </Section>
           ) : (
-            <Section title="Which emoji" aside={<Needs problem={problem} field="emoji" loud={loud} />}>
+            <Section title={t("workflows.whichEmoji")} aside={<Needs problem={problem} field="emoji" loud={loud} />}>
               <div className="flex flex-wrap items-center gap-1.5">
                 {EMOJI.map((emoji) => (
                   <button
@@ -1637,8 +1638,8 @@ function TriggerPane({
                 ))}
                 <Input
                   value={EMOJI.includes(trigger.emoji ?? "") ? "" : (trigger.emoji ?? "")}
-                  placeholder="Another"
-                  aria-label="Another emoji"
+                  placeholder={t("workflows.another")}
+                  aria-label={t("workflows.anotherEmoji")}
                   onChange={(e) => onChange({ ...trigger, emoji: e.target.value })}
                   className="h-10 w-[104px] rounded-xl bg-card text-center"
                 />
@@ -1651,13 +1652,13 @@ function TriggerPane({
               itself off, forever. */}
           <label className="mt-8 flex items-center justify-between gap-4 rounded-xl border bg-card px-3.5 py-3">
             <span className="min-w-0">
-              <span className="block text-body font-medium text-foreground">Agents can set it off too</span>
+              <span className="block text-body font-medium text-foreground">{t("workflows.agentsCanSetItOff")}</span>
               <span className="block text-small leading-relaxed text-muted-foreground">
-                Off by default, so it can't keep setting itself off.
+                {t("workflows.offByDefaultSoIt")}
               </span>
             </span>
             <Switch
-              aria-label="Agents can set it off too"
+              aria-label={t("workflows.agentsCanSetItOff")}
               checked={trigger.from === "anyone"}
               onCheckedChange={(on) => onChange({ ...trigger, from: on ? "anyone" : "user" })}
             />
@@ -1673,7 +1674,7 @@ function TriggerPane({
       )}
       {trigger.kind === "manual" && (
         <p className="mt-6 text-pretty text-body leading-relaxed text-muted-foreground">
-          Run it from the list, or press Try it below to run it now.
+          {t("workflows.runItFromTheList")}
         </p>
       )}
     </>
@@ -1720,16 +1721,16 @@ function StepPane({
     <>
       <PaneHeading
         eyebrow={`Step ${index + 1} of ${count}`}
-        title={step.action === "ask" ? "Ask an agent" : step.action === "post" ? "Post in a room" : "Ask you"}
+        title={step.action === "ask" ? t("workflows.askAnAgent") : step.action === "post" ? t("workflows.postInARoom") : t("workflows.askYou")}
         aside={
           <div className="flex shrink-0 items-center gap-0.5">
-            <Button variant="ghost" size="icon-sm" aria-label="Move up" title="Move up" disabled={index === 0} onClick={() => onMove(-1)}>
+            <Button variant="ghost" size="icon-sm" aria-label={t("workflows.moveUp")} title={t("workflows.moveUp")} disabled={index === 0} onClick={() => onMove(-1)}>
               <ChevronUp size={15} />
             </Button>
-            <Button variant="ghost" size="icon-sm" aria-label="Move down" title="Move down" disabled={index === count - 1} onClick={() => onMove(1)}>
+            <Button variant="ghost" size="icon-sm" aria-label={t("workflows.moveDown")} title={t("workflows.moveDown")} disabled={index === count - 1} onClick={() => onMove(1)}>
               <ChevronDown size={15} />
             </Button>
-            <Button variant="ghost" size="icon-sm" aria-label="Remove step" title="Remove step" disabled={count === 1} onClick={onRemove}>
+            <Button variant="ghost" size="icon-sm" aria-label={t("workflows.removeStep")} title={t("workflows.removeStep")} disabled={count === 1} onClick={onRemove}>
               <Trash2 size={14} />
             </Button>
           </div>
@@ -1737,7 +1738,7 @@ function StepPane({
       />
 
       <Segmented
-        aria-label="What this step does"
+        aria-label={t("workflows.whatThisStepDoes")}
         value={step.action}
         onChange={(action) => action !== step.action && onChange({ action, targetId: "" })}
         options={[
@@ -1748,16 +1749,16 @@ function StepPane({
       />
 
       {step.action === "ask" && (
-        <Section title="Who" className="mt-8" aside={<Needs problem={problem} field="target" loud={loud} />}>
+        <Section title={t("workflows.who")} className="mt-8" aside={<Needs problem={problem} field="target" loud={loud} />}>
           <AgentPicker value={step.targetId} agents={bots} onPick={(id) => onChange({ targetId: id })} />
         </Section>
       )}
       {step.action === "post" && (
-        <Section title="Where" className="mt-8" aside={<Needs problem={problem} field="target" loud={loud} />}>
+        <Section title={t("workflows.where")} className="mt-8" aside={<Needs problem={problem} field="target" loud={loud} />}>
           {rooms.length === 0 ? (
-            <p className="text-body text-muted-foreground">No rooms yet. Make one, then come back.</p>
+            <p className="text-body text-muted-foreground">{t("workflows.noRoomsYetMakeOne")}</p>
           ) : (
-            <div role="radiogroup" aria-label="Room" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div role="radiogroup" aria-label={t("workflows.room")} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {rooms.map((room) => (
                 <PickCard
                   key={room.id}
@@ -1782,16 +1783,16 @@ function StepPane({
           aria-label={title}
           placeholder={
             step.action === "approve"
-              ? "Send the refund to this customer?"
+              ? t("workflows.sendTheRefundToThis")
               : step.action === "post"
-                ? "Here is today's summary."
-                : "Sort this message: urgent, normal or ignore."
+                ? t("workflows.hereIsTodaysSummary")
+                : t("workflows.sortThisMessageUrgentNormal")
           }
           className="min-h-[96px] rounded-xl border bg-card px-3.5 py-2.5 text-ui leading-relaxed shadow-[0_1px_2px_var(--shadow-color)] transition-[border-color] duration-150 focus-within:border-ring/50"
         />
         {offered.length > 0 && (
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            <span className="mr-0.5 text-small text-muted-foreground">Add</span>
+            <span className="mr-0.5 text-small text-muted-foreground">{t("common.add")}</span>
             {offered.map((ref) => (
               <button
                 key={ref.token}
@@ -1810,12 +1811,12 @@ function StepPane({
 
       {step.action === "approve" && (
         <>
-          <Section title="How long it waits">
+          <Section title={t("workflows.howLongItWaits")}>
             <WaitSlider value={step.timeoutMin ?? 24 * 60} onChange={(timeoutMin) => onChange({ timeoutMin })} />
           </Section>
-          <Section title="If nobody answers">
+          <Section title={t("workflows.ifNobodyAnswers")}>
             <Segmented
-              aria-label="If nobody answers"
+              aria-label={t("workflows.ifNobodyAnswers")}
               className="max-w-[320px]"
               value={step.onTimeout === "continue" ? "continue" : "stop"}
               onChange={(onTimeout) => onChange({ onTimeout })}
@@ -1826,12 +1827,12 @@ function StepPane({
             />
             <p className="mt-2 text-small leading-relaxed text-muted-foreground">
               {step.onTimeout === "continue"
-                ? "Silence counts as a yes. Use it only for steps that are safe to run."
-                : "Silence counts as a no, which is the safe choice."}
+                ? t("workflows.silenceCountsAsAYes")
+                : t("workflows.silenceCountsAsANo")}
             </p>
           </Section>
-          <Section title="Where to ask you" aside={<Needs problem={problem} field="target" loud={loud} />}>
-            <div role="radiogroup" aria-label="Where to ask you" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Section title={t("workflows.whereToAskYou")} aside={<Needs problem={problem} field="target" loud={loud} />}>
+            <div role="radiogroup" aria-label={t("workflows.whereToAskYou")} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <PickCard
                 on={!step.targetId}
                 onPick={() => onChange({ targetId: "" })}
@@ -1840,7 +1841,7 @@ function StepPane({
                     <CornerDownRight size={14} />
                   </span>
                 }
-                title="Where it got to"
+                title={t("workflows.whereItGotTo")}
                 line={fallbackAsk ? `In ${fallbackAsk}` : "Nowhere yet, so pick an agent"}
               />
               {bots.map((bot) => (
@@ -1858,7 +1859,7 @@ function StepPane({
         </>
       )}
 
-      <Section title="Condition" aside={<Needs problem={problem} field="condition" loud={loud} />}>
+      <Section title={t("workflows.condition")} aside={<Needs problem={problem} field="condition" loud={loud} />}>
         <ConditionEditor when={step.when} options={conditions} labelFor={labelFor} onChange={(next) => onChange({ when: next })} />
       </Section>
     </>
@@ -1941,8 +1942,8 @@ function useSearch<T extends { name: string; title?: string }>(list: T[]) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Find"
-          aria-label="Find"
+          placeholder={t("workflows.find")}
+          aria-label={t("workflows.find")}
           className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
         />
       </label>
@@ -1952,11 +1953,11 @@ function useSearch<T extends { name: string; title?: string }>(list: T[]) {
 
 function AgentPicker({ value, agents, onPick }: { value?: string; agents: Bot[]; onPick: (id: string) => void }) {
   const { shown, box, query } = useSearch(agents);
-  if (!agents.length) return <p className="text-body text-muted-foreground">No agents yet.</p>;
+  if (!agents.length) return <p className="text-body text-muted-foreground">{t("workflows.noAgentsYet")}</p>;
   return (
     <>
       {box}
-      <div role="radiogroup" aria-label="Agent" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div role="radiogroup" aria-label={t("common.agent")} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {shown.map((bot) => (
           <PickCard
             key={bot.id}
@@ -2001,8 +2002,8 @@ function PlacePicker({
       {(["agent", "room"] as const).map((kind) =>
         group(kind).length ? (
           <div key={kind} className="mb-3 last:mb-0">
-            <div className="mb-1.5 text-small text-muted-foreground">{kind === "agent" ? "A chat with an agent" : "A room"}</div>
-            <div role="radiogroup" aria-label={kind === "agent" ? "Agent" : "Room"} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="mb-1.5 text-small text-muted-foreground">{kind === "agent" ? t("workflows.aChatWithAnAgent") : t("workflows.aRoom")}</div>
+            <div role="radiogroup" aria-label={kind === "agent" ? t("common.agent") : t("workflows.room")} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {group(kind).map((place) => {
                 const bot = place.kind === "agent" ? allBots.find((b) => b.id === place.id) : undefined;
                 const room = place.kind === "room" ? rooms.find((r) => r.id === place.id) : undefined;
@@ -2061,7 +2062,7 @@ function WaitSlider({ value, onChange }: { value: number; onChange: (minutes: nu
   // does not grow a horizontal scrollbar when the wait is long.
   return (
     <div className="-mx-1 overflow-x-clip px-1">
-      <Slider aria-label="How long it waits" stops={stops} value={value} onChange={onChange} onCommit={onChange} />
+      <Slider aria-label={t("workflows.howLongItWaits")} stops={stops} value={value} onChange={onChange} onCommit={onChange} />
     </div>
   );
 }
@@ -2084,7 +2085,7 @@ function ConditionEditor({
   const fresh = useRef(false);
   if (!condition) {
     if (!options.length) {
-      return <p className="text-body text-muted-foreground">Always runs. There is nothing earlier to check yet.</p>;
+      return <p className="text-body text-muted-foreground">{t("workflows.alwaysRunsThereIsNothing")}</p>;
     }
     return (
       <button
@@ -2095,7 +2096,7 @@ function ConditionEditor({
         className="flex items-center gap-2 rounded-xl border border-dashed px-3 py-2 text-body text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent/50 hover:text-foreground active:scale-[0.985]"
       >
         <CornerDownRight size={14} />
-        Only run this step if…
+        {t("workflows.onlyRunThisStepIf")}
       </button>
     );
   }
@@ -2112,7 +2113,7 @@ function ConditionEditor({
       transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
       className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border bg-card px-3 py-2.5 text-ui"
     >
-      <span className="text-muted-foreground">Only if</span>
+      <span className="text-muted-foreground">{t("workflows.onlyIf")}</span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className={cn(CHOICE, "max-w-full")}>
@@ -2158,12 +2159,12 @@ function ConditionEditor({
           labelFor={labelFor}
           multiline={false}
           autoFocus={fresh.current}
-          aria-label="Words to look for"
+          aria-label={t("workflows.wordsToLookFor")}
           placeholder="urgent"
           className="min-w-[120px] flex-1 rounded-lg border border-input bg-background px-2.5 py-1 text-ui transition-[border-color] duration-150 focus-within:border-ring/60"
         />
       )}
-      <Button variant="ghost" size="icon-sm" aria-label="Remove condition" title="Remove condition" className="ml-auto" onClick={() => onChange(undefined)}>
+      <Button variant="ghost" size="icon-sm" aria-label={t("workflows.removeCondition")} title={t("workflows.removeCondition")} className="ml-auto" onClick={() => onChange(undefined)}>
         <X size={13} />
       </Button>
     </motion.div>

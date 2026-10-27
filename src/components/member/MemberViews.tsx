@@ -26,6 +26,7 @@ import { seedReads } from "@/lib/readReceipts";
 import { distinctNames } from "@/lib/names";
 import { ownerOrNull } from "@/lib/yourName";
 import { AgentFace, MemberComposer, OnlyYou, PersonFace, Transcript } from "./MemberParts";
+import { t } from "@/lib/i18n";
 
 /** A list of messages with one more folded in: added, or put in place of
  * the one with its id. */
@@ -114,7 +115,7 @@ export function AgentView({
   const streaming = useStreaming(data?.threadId ?? null);
 
   const lanes = [
-    ...(agent.team && !agent.solo ? [{ value: "team" as const, label: <><Users size={13} />Team</> }] : []),
+    ...(agent.team && !agent.solo ? [{ value: "team" as const, label: <><Users size={13} />{t("memberViews.team")}</> }] : []),
     ...(agent.private && !agent.solo ? [{ value: "private" as const, label: "Private" }] : []),
   ];
   const team = lane === "team" && !agent.solo;
@@ -142,9 +143,9 @@ export function AgentView({
           {agent.solo && <OnlyYou className="self-center" />}
         </div>
         {lanes.length > 1 && (
-          <Segmented aria-label="Conversation" size="sm" value={lane} onChange={(v) => onLane(v)} options={lanes} className="w-full sm:w-[190px]" />
+          <Segmented aria-label={t("memberViews.conversation")} size="sm" value={lane} onChange={(v) => onLane(v)} options={lanes} className="w-full sm:w-[190px]" />
         )}
-        {lanes.length === 1 && !agent.solo && <span className="text-body text-muted-foreground">{lane === "team" ? "Team" : "Private"}</span>}
+        {lanes.length === 1 && !agent.solo && <span className="text-body text-muted-foreground">{lane === "team" ? t("memberViews.team") : t("memberViews.private")}</span>}
         {agent.solo && agent.mine && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -262,7 +263,7 @@ export function RoomView({
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b px-5">
-        <h1 className="min-w-0 flex-1 truncate text-ui font-semibold text-foreground">{data?.room.name ?? "Room"}</h1>
+        <h1 className="min-w-0 flex-1 truncate text-ui font-semibold text-foreground">{data?.room.name ?? t("memberViews.room")}</h1>
         {data && (
           <div className="flex items-center -space-x-1" aria-label={`${data.room.agents.length} agents and ${data.room.people.length + 1} people`}>
             {data.room.agents.slice(0, 4).map((a) => (

@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { quietButton } from "./composer/Shell";
+import { t } from "@/lib/i18n";
 
 /** A catalog older than this says nothing about Fast today. */
 const CATALOG_FRESH_MS = 300_000;
@@ -73,11 +74,11 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
   return (
     <section
       className={cn("rounded-2xl border bg-card p-4", className)}
-      aria-label={bot ? "Agent Codex speed" : "Workspace Codex speed"}
+      aria-label={bot ? t("codexSpeed.agentCodexSpeed") : t("codexSpeed.workspaceCodexSpeed")}
     >
-      <div className="text-ui font-semibold text-foreground">Codex speed</div>
+      <div className="text-ui font-semibold text-foreground">{t("codexSpeed.codexSpeed")}</div>
       <div className="mt-0.5 text-body text-muted-foreground">
-        {bot ? "For this agent on Codex. " : "For every agent on Codex, unless set per agent. "}
+        {bot ? t("codexSpeed.forThisAgentOnCodex") : t("codexSpeed.forEveryAgentOnCodex")}
         Fast answers sooner and uses more:{" "}
         <a
           className="underline underline-offset-2 hover:text-foreground"
@@ -85,11 +86,11 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
           target="_blank"
           rel="noreferrer"
         >
-          2.5x included usage, 2x purchased credits
+          {t("codexSpeed.n25xIncludedUsage2x")}
         </a>
         .
       </div>
-      <div className="mt-3 flex gap-1 rounded-xl bg-muted p-1" role="radiogroup" aria-label="Codex speed">
+      <div className="mt-3 flex gap-1 rounded-xl bg-muted p-1" role="radiogroup" aria-label={t("codexSpeed.codexSpeed")}>
         {options.map(([value, label]) => {
           const unavailable = value === "fast" && noFastModel;
           return (
@@ -112,11 +113,11 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
         })}
       </div>
       {noFastModel && (
-        <p className="mt-2 text-small text-muted-foreground">Fast isn't offered for this model.</p>
+        <p className="mt-2 text-small text-muted-foreground">{t("codexSpeed.fastIsntOfferedForThis")}</p>
       )}
       {remote && (
         <p className="mt-2 text-small text-muted-foreground">
-          Box and Boat run Codex at Standard only. Fast messages there won't send.
+          {t("codexSpeed.boxAndBoatRunCodex")}
         </p>
       )}
       {error && (
@@ -170,7 +171,7 @@ export function CodexSpeedMenu({ bot }: { bot: Bot }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          title={noFast ? "Fast isn't offered for this model. Messages won't send." : `Codex speed: ${label}`}
+          title={noFast ? t("codexSpeed.fastIsntOfferedForThisModel") : `Codex speed: ${label}`}
           aria-label={`Codex speed: ${label}`}
           className={cn(quietButton, "shrink-0", noFast && "text-warning hover:text-warning aria-expanded:text-warning")}
         >
@@ -179,7 +180,7 @@ export function CodexSpeedMenu({ bot }: { bot: Bot }) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" sideOffset={6} className="w-[260px] max-w-[calc(100vw-24px)]">
-        <DropdownMenuLabel>Codex speed</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("codexSpeed.codexSpeed")}</DropdownMenuLabel>
         {options.map((option) => {
           const on = choice.override === option.value;
           const unavailable = option.value === "fast" && noFast;
@@ -198,7 +199,7 @@ export function CodexSpeedMenu({ bot }: { bot: Bot }) {
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">{option.label}</span>
                 <span className="block text-small leading-snug text-muted-foreground">
-                  {unavailable ? "Not offered for this model." : option.hint}
+                  {unavailable ? t("codexSpeed.notOfferedForThisModel") : option.hint}
                 </span>
               </span>
             </DropdownMenuItem>

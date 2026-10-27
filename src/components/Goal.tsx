@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider, numberStops } from "@/components/ui/slider";
+import { t } from "@/lib/i18n";
 
 function goalPath(botId: string, taskId: string) {
   return `/api/bots/${botId}/tasks/${taskId}/goal`;
@@ -65,7 +66,7 @@ export function useGoalNotice(bot: Bot): Notice | null {
     // two lines, and the whole of it is on hover
     title: (
       <span aria-live="polite">
-        <span className="font-medium">Goal</span> {goal.text}
+        <span className="font-medium">{t("goal.goal")}</span> {goal.text}
       </span>
     ),
     detail: error ? <span className="text-destructive">{error}</span> : <span className="tabular-nums">{goalState(goal)}</span>,
@@ -126,10 +127,10 @@ export function GoalDialog() {
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
       <DialogContent className="w-[calc(100vw-32px)] max-w-[460px]">
-        <DialogTitle>Set a goal</DialogTitle>
+        <DialogTitle>{t("goal.setAGoal")}</DialogTitle>
         <DialogDescription>
           {bot.name} keeps going until it's done, needs you, or runs out of steps.
-          {going && " This replaces the current goal."}
+          {going && t("goal.thisReplacesTheCurrentGoal")}
         </DialogDescription>
         <form
           className="mt-4 flex flex-col gap-3.5"
@@ -139,7 +140,7 @@ export function GoalDialog() {
           }}
         >
           <label className="flex flex-col gap-1.5">
-            <span className="text-body font-medium text-foreground">What does done look like?</span>
+            <span className="text-body font-medium text-foreground">{t("goal.whatDoesDoneLookLike")}</span>
             <Textarea
               autoFocus
               value={text}
@@ -152,12 +153,12 @@ export function GoalDialog() {
               }}
               maxLength={2_000}
               rows={3}
-              placeholder="The importer handles every file in samples/, and the README says how to run it"
+              placeholder={t("goal.theImporterHandlesEveryFile")}
             />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-body font-medium text-foreground">
-              Check <span className="font-normal text-muted-foreground">(optional)</span>
+              Check <span className="font-normal text-muted-foreground">{t("goal.optional")}</span>
             </span>
             <Input
               value={check}
@@ -166,24 +167,24 @@ export function GoalDialog() {
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
-              placeholder="pnpm test"
+              placeholder={t("goal.pnpmTest")}
               className="font-mono text-body"
             />
             <span className="text-small leading-relaxed text-muted-foreground">
-              Runs after each step, for up to 5 minutes. Done only when it exits 0.
+              {t("goal.runsAfterEachStepFor")}
             </span>
           </label>
           <div className="flex flex-col gap-2">
-            <span className="text-body font-medium text-foreground">Step limit</span>
-            <Slider aria-label="Step limit" stops={GOAL_STEPS} value={turns} onChange={setTurns} onCommit={setTurns} />
+            <span className="text-body font-medium text-foreground">{t("goal.stepLimit")}</span>
+            <Slider aria-label={t("goal.stepLimit")} stops={GOAL_STEPS} value={turns} onChange={setTurns} onCommit={setTurns} />
           </div>
           {error && <div className="text-body text-destructive">{error}</div>}
           <div className="mt-1 flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={close}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={!text.trim() || saving}>
-              Start
+              {t("goal.start")}
             </Button>
           </div>
         </form>

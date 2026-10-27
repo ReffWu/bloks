@@ -22,6 +22,7 @@ import { RoutinesDialog } from "./RoutinesDialog";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
+import { t } from "@/lib/i18n";
 
 export interface RoutineRun {
   id: string;
@@ -138,7 +139,7 @@ export function RoutinesSection({
         <>
           <div className="flex items-center gap-2 text-ui font-semibold text-foreground">
             <CalendarClock size={15} className="text-muted-foreground" />
-            Routines
+            {t("common.routines")}
           </div>
           <div className="mt-0.5 text-body text-muted-foreground">
             What {targetName} does on a schedule.
@@ -189,11 +190,11 @@ export function RoutinesSection({
               <Button
                 variant="ghost"
                 size="sm"
-                title="Run once now"
+                title={t("routinesSection.runOnceNow")}
                 onClick={() => write(api(`/api/routines/${routine.id}/run`, { method: "POST" }))}
               >
                 <Play size={11} />
-                Run now
+                {t("common.runNow")}
               </Button>
               <Button
                 variant="ghost"
@@ -201,7 +202,7 @@ export function RoutinesSection({
                 onClick={() => write(api(`/api/routines/${routine.id}`, { method: "DELETE" }))}
               >
                 <Trash2 size={11} />
-                Delete
+                {t("common.delete")}
               </Button>
             </div>
           </div>
@@ -209,14 +210,14 @@ export function RoutinesSection({
 
         {routines?.length === 0 && !adding && (
           <div className="px-3 py-6 text-center text-small text-muted-foreground">
-            Nothing scheduled yet.
+            {t("routinesSection.nothingScheduledYet")}
           </div>
         )}
       </div>
 
       <Button variant="secondary" className="mt-3 w-full" onClick={() => setAdding(true)}>
         <Plus size={13} />
-        New routine
+        {t("routinesSection.newRoutine")}
       </Button>
       {adding && (
         <RoutinesDialog

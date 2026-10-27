@@ -30,6 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { useRuleSuggestions } from "@/lib/ruleSuggestions";
 import { SuggestionWhat, takeSuggestion } from "@/components/chat/Banners";
+import { t } from "@/lib/i18n";
 
 type Effect = "allow" | "deny";
 type Field = "tool" | "command" | "path" | "url" | "agent";
@@ -118,20 +119,19 @@ export function RulesPanel() {
       <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-ui font-semibold text-foreground">Your rules</div>
+            <div className="text-ui font-semibold text-foreground">{t("rulesPanel.yourRules")}</div>
             <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-              These answer permission requests for you. Anything they do not cover still comes to
-              you.
+              {t("rulesPanel.theseAnswerPermissionRequestsFor")}
             </div>
           </div>
           {!adding && (
             <Button variant="secondary" size="sm" className="shrink-0" onClick={() => setAdding(true)}>
-              <Plus size={13} /> New rule
+              <Plus size={13} /> {t("rulesPanel.newRule")}
             </Button>
           )}
         </div>
         <div className="mt-2.5 rounded-xl bg-muted/50 px-3 py-2 text-small leading-relaxed text-muted-foreground">
-          Refuse always wins over allow.
+          {t("rulesPanel.refuseAlwaysWinsOverAllow")}
         </div>
       </div>
 
@@ -154,9 +154,9 @@ export function RulesPanel() {
 
       {rules?.length === 0 && !adding && (
         <div className="mt-3 px-4 py-10 text-center">
-          <div className="text-body text-foreground">No rules yet.</div>
+          <div className="text-body text-foreground">{t("rulesPanel.noRulesYet")}</div>
           <div className="mx-auto mt-1 max-w-[380px] text-body leading-relaxed text-muted-foreground">
-            Add one when you keep answering the same question.
+            {t("rulesPanel.addOneWhenYouKeep")}
           </div>
         </div>
       )}
@@ -181,15 +181,15 @@ export function RulesPanel() {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="text-body text-foreground">
-                  {rule.effect === "deny" ? "Refuse" : "Allow"} when{" "}
+                  {rule.effect === "deny" ? t("rulesPanel.refuse") : t("rulesPanel.allow")} when{" "}
                   {FIELD_WORDS.find(([f]) => f === rule.field)?.[1] ?? rule.field}{" "}
                   {[...OP_WORDS, ...NARROW_WORDS].find(([o]) => o === rule.op)?.[1] ?? rule.op}{" "}
                   <span className="font-mono text-small">{rule.value}</span>
                 </div>
                 <div className="mt-0.5 text-small text-muted-foreground">
-                  {rule.botId ? `Only ${nameOf(rule.botId)}` : "Every agent"}
+                  {rule.botId ? `Only ${nameOf(rule.botId)}` : t("rulesPanel.everyAgent")}
                   {rule.tool ? `, only ${rule.tool}` : ""}
-                  {rule.enabled ? "" : " · off"}
+                  {rule.enabled ? "" : t("rulesPanel.off")}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -205,7 +205,7 @@ export function RulesPanel() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Remove rule"
+                  aria-label={t("rulesPanel.removeRule")}
                   onClick={() =>
                     api(`/api/rules/${rule.id}`, { method: "DELETE" })
                       .then(load)
@@ -269,11 +269,11 @@ function RuleForm({
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {choice === "deny" ? "Refuse" : "Allow"}
+              {choice === "deny" ? t("rulesPanel.refuse") : t("rulesPanel.allow")}
             </button>
           ))}
         </div>
-        <span className="text-body text-muted-foreground">when</span>
+        <span className="text-body text-muted-foreground">{t("rulesPanel.when")}</span>
         <select value={field} onChange={(e) => setField(e.target.value as Field)} className={select}>
           {FIELD_WORDS.map(([f, words]) => (
             <option key={f} value={f}>
@@ -297,9 +297,9 @@ function RuleForm({
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        <span className="text-body text-muted-foreground">for</span>
+        <span className="text-body text-muted-foreground">{t("rulesPanel.for")}</span>
         <select value={botId} onChange={(e) => setBotId(e.target.value)} className={select}>
-          <option value="">every agent</option>
+          <option value="">{t("rulesPanel.everyAgent2")}</option>
           {bots.map((bot) => (
             <option key={bot.id} value={bot.id}>
               only {bot.name}
@@ -312,10 +312,10 @@ function RuleForm({
 
       <div className="mt-3 flex items-center gap-2">
         <Button variant="brand" size="sm" disabled={busy || !value.trim()} onClick={save}>
-          Add rule
+          {t("rulesPanel.addRule")}
         </Button>
         <Button variant="ghost" size="sm" onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
       </div>
     </div>
@@ -331,8 +331,8 @@ function Suggested() {
   const { suggestions, accept, dismiss } = useRuleSuggestions();
   if (!suggestions.length) return null;
   return (
-    <div className="mt-3 flex flex-col gap-1.5" aria-label="Suggested rules">
-      <div className="px-1 text-small font-medium text-muted-foreground">You keep approving these</div>
+    <div className="mt-3 flex flex-col gap-1.5" aria-label={t("rulesPanel.suggestedRules")}>
+      <div className="px-1 text-small font-medium text-muted-foreground">{t("rulesPanel.youKeepApprovingThese")}</div>
       {suggestions.map((s) => (
         <div key={s.id} className="flex animate-rise-in items-start gap-2.5 rounded-xl border bg-card px-3 py-2.5">
           <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand-ink">
@@ -352,11 +352,11 @@ function Suggested() {
               )}
               {s.forEveryone && (
                 <Button size="sm" variant={s.forAgent ? "secondary" : "default"} onClick={() => takeSuggestion(accept, s, "everyone")}>
-                  Allow for everyone
+                  {t("rulesPanel.allowForEveryone")}
                 </Button>
               )}
               <Button size="sm" variant="ghost" onClick={() => void dismiss(s.id)}>
-                Not now
+                {t("common.notNow")}
               </Button>
             </div>
           </div>

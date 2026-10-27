@@ -79,6 +79,7 @@ import { effortChoice } from "@/lib/effort";
 import { SideColumn, SideTabs } from "./SideColumn";
 import { WhereItWorksCard } from "./WhereItWorks";
 import { placePhrase } from "@/lib/workplace";
+import { t } from "@/lib/i18n";
 
 type Patch = Partial<
   Pick<
@@ -192,7 +193,7 @@ function Saved({ shown }: { shown: boolean }) {
         shown ? "opacity-100" : "opacity-0",
       )}
     >
-      <Check size={12} /> Saved
+      <Check size={12} /> {t("common.saved")}
     </span>
   );
 }
@@ -279,8 +280,8 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
             it room. */}
         <div className="titlebar-drag flex h-[52px] shrink-0 items-center gap-2.5 px-4 max-md:pl-16">
           <AgentAvatar bot={bot} size={22} />
-          <span className="min-w-0 truncate text-ui font-semibold text-foreground">{bot.name || "Unnamed"}</span>
-          <span className="shrink-0 text-body text-muted-foreground">Settings</span>
+          <span className="min-w-0 truncate text-ui font-semibold text-foreground">{bot.name || t("settingsPanel.unnamed")}</span>
+          <span className="shrink-0 text-body text-muted-foreground">{t("common.settings")}</span>
         </div>
         <div className="flex gap-0.5 overflow-x-auto px-2 pb-2 [scrollbar-width:none] md:flex-1 md:flex-col md:overflow-y-auto md:pb-4 md:pt-1 [&::-webkit-scrollbar]:hidden">
           {SECTIONS.map((section) => {
@@ -349,28 +350,28 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
             />
 
             <div className="mt-12">
-              <Section id="identity" title="Identity">
+              <Section id="identity" title={t("settingsPanel.identity")}>
                 <LookCard bot={bot} patch={patch} />
                 <Group>
                   <SettingRow
-                    label="Instructions"
+                    label={t("common.instructions")}
                     htmlFor="agent-instructions"
-                    description="It reads these before every reply."
+                    description={t("settingsPanel.itReadsTheseBeforeEvery")}
                   >
                     <Textarea
                       id="agent-instructions"
                       className="mt-3 min-h-[132px] resize-y text-ui leading-relaxed"
-                      placeholder="What this agent is for, how it should behave"
+                      placeholder={t("settingsPanel.whatThisAgentIsFor")}
                       value={bot.description}
                       onChange={(e) => patch({ description: e.target.value })}
                     />
                   </SettingRow>
                   <SettingRow
-                    label="Seniority"
-                    description="In a room, the most senior agent leads, unless the room crowns another."
+                    label={t("settingsPanel.seniority")}
+                    description={t("settingsPanel.inARoomTheMost")}
                   >
                     <Segmented
-                      aria-label="Seniority"
+                      aria-label={t("settingsPanel.seniority")}
                       className="mt-3 max-w-[360px]"
                       value={seniority >= 4 ? "5" : seniority === 3 ? "3" : "1"}
                       onChange={(level) => patch({ seniority: Number(level) })}
@@ -384,11 +385,11 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 </Group>
               </Section>
 
-              <Section id="engine" title="Engine">
+              <Section id="engine" title={t("common.engine")}>
                 <Group>
                   <SettingRow
-                    label="Model"
-                    description="Changes apply from the next message."
+                    label={t("settingsPanel.model")}
+                    description={t("settingsPanel.changesApplyFromTheNext")}
                     control={
                       <div className="rounded-lg border bg-background">
                         <ModelPicker bot={bot} />
@@ -397,10 +398,10 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                   >
                     <TeamSignInNotice bot={bot} className="mt-3" />
                   </SettingRow>
-                  <SettingRow label="Reasoning effort" description={effort.note ?? "How hard it thinks, where the model supports it."}>
+                  <SettingRow label={t("settingsPanel.reasoningEffort")} description={effort.note ?? t("settingsPanel.howHardItThinksWhere")}>
                     {effort.levels.length > 0 && (
                       <Segmented
-                        aria-label="Reasoning effort"
+                        aria-label={t("settingsPanel.reasoningEffort")}
                         className="mt-3 max-w-[480px]"
                         value={effort.value}
                         // null, not left out: a patch without the key would
@@ -411,15 +412,15 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                     )}
                   </SettingRow>
                   <SettingRow
-                    label="Backup engine"
-                    description="Takes over if the main model hits a limit or fails, then hands back when it can."
+                    label={t("settingsPanel.backupEngine")}
+                    description={t("settingsPanel.takesOverIfTheMain")}
                     control={
                       <div className="rounded-lg border bg-background">
                         <ModelPicker
                           bot={bot}
                           value={bot.backupSelection ?? null}
                           onPick={(selection) => patch({ backupSelection: selection })}
-                          noneLabel="No backup"
+                          noneLabel={t("settingsPanel.noBackup")}
                           exclude={bot.modelSelection}
                         />
                       </div>
@@ -430,8 +431,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                         will not try it (backupFor) */}
                     {sameEngineBackup(bot.modelSelection, bot.backupSelection) && (
                       <Note>
-                        Same engine as the main model, so it cannot cover usage limits, credit or sign-in problems. Pick
-                        another engine for that.
+                        {t("settingsPanel.sameEngineAsTheMain")}
                       </Note>
                     )}
                   </SettingRow>
@@ -440,13 +440,13 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                     // and a plugin's session-start text lands in the agent's own
                     // context. Some agents are better off without any of it.
                     <SettingRow
-                      label="Plugin hooks"
-                      description="Let Claude Code run your plugin and settings hooks for this agent."
+                      label={t("settingsPanel.pluginHooks")}
+                      description={t("settingsPanel.letClaudeCodeRunYour")}
                       control={
                         <Switch
                           checked={bot.engineHooks !== false}
                           onCheckedChange={(on: boolean) => patch({ engineHooks: on })}
-                          aria-label="Plugin hooks"
+                          aria-label={t("settingsPanel.pluginHooks")}
                         />
                       }
                     />
@@ -464,7 +464,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 {suggestion && <EngineSuggestionCard s={suggestion} compact />}
               </Section>
 
-              <Section id="behaviour" title="Behaviour and approvals">
+              <Section id="behaviour" title={t("settingsPanel.behaviourAndApprovals")}>
                 <AgentAccessCard botId={bot.id} />
                 <ApprovalsCard bot={bot} />
                 <Group>
@@ -475,7 +475,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 <AnswersCard bot={bot} patch={patch} />
               </Section>
 
-              <Section id="tools" title="Tools">
+              <Section id="tools" title={t("settingsPanel.tools")}>
                 <Group>
                   <ConnectedAppsRow bot={bot} patch={patch} />
                   <BrowserRow bot={bot} patch={patch} />
@@ -485,28 +485,28 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 <SkillsCard bot={bot} />
               </Section>
 
-              <Section id="memory" title="Memory">
+              <Section id="memory" title={t("common.memory")}>
                 <MemorySummary bot={bot} />
                 <Group>
                   <RecallRow bot={bot} patch={patch} />
                 </Group>
               </Section>
 
-              <Section id="reach" title="Voice and chat apps">
+              <Section id="reach" title={t("settingsPanel.voiceAndChatApps")}>
                 <VoiceCard bot={bot} />
                 <TelegramSection key={bot.id} botId={bot.id} />
                 <SignalSection key={`signal-${bot.id}`} botId={bot.id} />
               </Section>
 
-              <Section id="notifications" title="Notifications">
+              <Section id="notifications" title={t("settingsPanel.notifications")}>
                 <Group>
                   <SettingRow
-                    label="Notify me when it replies"
+                    label={t("settingsPanel.notifyMeWhenItReplies")}
                     control={
                       <Switch
                         checked={bot.notifications}
                         onCheckedChange={(notifications) => patch({ notifications })}
-                        aria-label="Notifications"
+                        aria-label={t("settingsPanel.notifications")}
                       />
                     }
                   >
@@ -514,18 +514,17 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                         on deserves to know what it does and does not cover,
                         rather than discovering the shape of it over a week. */}
                     <Note>
-                      Approvals always notify you. In a room, agents only notify you when they name you. Nothing
-                      notifies you about the chat on your screen.
+                      {t("settingsPanel.approvalsAlwaysNotifyYouIn")}
                     </Note>
                   </SettingRow>
                 </Group>
               </Section>
 
-              <Section id="schedules" title="Schedules">
+              <Section id="schedules" title={t("settingsPanel.schedules")}>
                 <RoutinesSection targetId={bot.id} targetKind="agent" targetName={bot.name} bare />
               </Section>
 
-              <Section id="export" title="Signature and export">
+              <Section id="export" title={t("settingsPanel.signatureAndExport")}>
                 <Group>
                   <SignatureRow bot={bot} />
                   <ExportRow bot={bot} />
@@ -534,7 +533,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
 
               {/* members' private conversations, only while the owner may read them */}
               <PrivateReader botId={bot.id} botName={bot.name} />
-              <Section id="danger" title="Danger zone">
+              <Section id="danger" title={t("settingsPanel.dangerZone")}>
                 <DangerZone bot={bot} />
               </Section>
             </div>
@@ -566,8 +565,8 @@ function Hero({
     <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
       <button
         onClick={() => onJump("identity")}
-        aria-label="Change the look"
-        title="Change the look"
+        aria-label={t("settingsPanel.changeTheLook")}
+        title={t("settingsPanel.changeTheLook")}
         className="group relative shrink-0 self-start rounded-[26px] outline-none transition-transform duration-150 ease-out active:scale-[0.97]"
       >
         {/* a new look lands with a small settle, not a cut */}
@@ -594,22 +593,22 @@ function Hero({
             <input
               value={bot.name}
               onChange={(e) => patch({ name: e.target.value })}
-              placeholder="Name your agent"
-              aria-label="Name"
+              placeholder={t("settingsPanel.nameYourAgent")}
+              aria-label={t("common.name")}
               spellCheck={false}
               className="-mx-2 block w-[calc(100%+1rem)] min-w-0 truncate rounded-lg bg-transparent px-2 py-0.5 text-display font-semibold text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 hover:bg-accent/50 focus:bg-accent/60"
             />
             <input
               value={bot.title}
               onChange={(e) => patch({ title: e.target.value })}
-              placeholder="What this agent does, in a line"
-              aria-label="Title"
+              placeholder={t("settingsPanel.whatThisAgentDoesIn")}
+              aria-label={t("settingsPanel.title")}
               className="-mx-2 mt-0.5 block w-[calc(100%+1rem)] min-w-0 truncate rounded-lg bg-transparent px-2 py-1 text-lead text-muted-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 hover:bg-accent/50 focus:bg-accent/60 focus:text-foreground"
             />
           </div>
           <Button variant="secondary" onClick={onChat} className="mt-1.5 shrink-0" title={`Back to the chat with ${bot.name}`}>
             <MessageCircle size={15} />
-            <span className="max-sm:hidden">Open chat</span>
+            <span className="max-sm:hidden">{t("settingsPanel.openChat")}</span>
           </Button>
         </div>
         {/* the few things worth knowing at a glance, each a way to the
@@ -690,12 +689,12 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
             </motion.span>
           </div>
           <div className="flex flex-wrap justify-center gap-1">
-            <Button variant="ghost" size="sm" onClick={shuffle} title="Random color and shape">
+            <Button variant="ghost" size="sm" onClick={shuffle} title={t("settingsPanel.randomColorAndShape")}>
               <RefreshCw size={13} />
-              Shuffle
+              {t("settingsPanel.shuffle")}
             </Button>
             <label className="flex h-7 cursor-pointer items-center rounded-md px-2.5 text-body font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground has-[:focus-visible]:bg-accent">
-              {bot.avatarAt ? "Change photo" : "Use a photo"}
+              {bot.avatarAt ? t("settingsPanel.changePhoto") : t("settingsPanel.useAPhoto")}
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
@@ -715,7 +714,7 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
                   api(`/api/bots/${bot.id}/avatar`, { method: "DELETE" }).catch(() => {});
                 }}
               >
-                Remove photo
+                {t("settingsPanel.removePhoto")}
               </Button>
             )}
           </div>
@@ -724,7 +723,7 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
         <div className="min-w-0 flex-1">
           <div className="mb-3 flex items-center gap-2">
             <Segmented
-              aria-label="What to change"
+              aria-label={t("settingsPanel.whatToChange")}
               size="sm"
               className="w-[240px] max-w-full"
               value={tab}
@@ -739,22 +738,22 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
               variant="ghost"
               size="sm"
               className="ml-auto"
-              title="Back to the green star"
+              title={t("settingsPanel.backToTheGreenStar")}
               onClick={() => patch({ color: "green", shape: "star", mascotExpression: null })}
             >
               <RotateCcw size={13} />
-              Reset
+              {t("settingsPanel.reset")}
             </Button>
           </div>
 
           {bot.avatarAt && (
             <p className="mb-3 text-pretty text-small leading-relaxed text-muted-foreground">
-              The photo replaces this face. Remove it to bring the face back.
+              {t("settingsPanel.thePhotoReplacesThisFace")}
             </p>
           )}
 
           {tab === "shape" && (
-            <div role="radiogroup" aria-label="Shape" className="flex flex-wrap gap-1.5">
+            <div role="radiogroup" aria-label={t("settingsPanel.shape")} className="flex flex-wrap gap-1.5">
               {BLOK_SHAPES.map((shape) => (
                 <button
                   key={shape}
@@ -772,7 +771,7 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
           )}
 
           {tab === "color" && (
-            <div role="radiogroup" aria-label="Color" className="flex flex-wrap gap-3 p-1">
+            <div role="radiogroup" aria-label={t("settingsPanel.color")} className="flex flex-wrap gap-3 p-1">
               {BLOK_COLOR_NAMES.map((color) => (
                 <button
                   key={color}
@@ -792,7 +791,7 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
           )}
 
           {tab === "face" && (
-            <div role="radiogroup" aria-label="Face" className="flex flex-wrap gap-1.5">
+            <div role="radiogroup" aria-label={t("settingsPanel.face")} className="flex flex-wrap gap-1.5">
               {BLOK_EXPRESSIONS.map((expression) => (
                 <button
                   key={expression}
@@ -853,14 +852,14 @@ function ApprovalsCard({ bot }: { bot: Bot }) {
   return (
     <Group>
       <SettingRow
-        label="How much it asks"
+        label={t("settingsPanel.howMuchItAsks")}
         info={RULES_AND_MODES}
-        description="Giving it more freedom asks you to confirm it is you."
+        description={t("settingsPanel.givingItMoreFreedomAsks")}
       >
         <div className="mt-3">
           <ApprovalsChooser value={mode} onChange={(next) => void choose(next)} compact />
         </div>
-        {refused && <div className="mt-2 text-small text-warning">Not confirmed. Nothing changed.</div>}
+        {refused && <div className="mt-2 text-small text-warning">{t("settingsPanel.notConfirmedNothingChanged")}</div>}
       </SettingRow>
     </Group>
   );
@@ -887,10 +886,10 @@ function WorkingFolderCard({ bot }: { bot: Bot }) {
   return (
     <Group>
       <SettingRow
-        label="Working folder"
+        label={t("common.workingFolder")}
         htmlFor="agent-folder"
-        info="Pick a project folder, or leave it empty to use its own workspace. A reply already under way finishes where it started. Rehearsals, and conversations brought over from another app, keep their own folder."
-        description="Where its conversations run. A change applies to each one from its next message, in a new session there that is told the conversation so far."
+        info={t("settingsPanel.pickAProjectFolderOr")}
+        description={t("settingsPanel.whereItsConversationsRunA")}
         control={<Saved shown={saved} />}
       >
         <div className="mt-3 flex gap-2">
@@ -899,7 +898,7 @@ function WorkingFolderCard({ bot }: { bot: Bot }) {
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && save(value.trim() || null)}
-            placeholder="Its own workspace"
+            placeholder={t("settingsPanel.itsOwnWorkspace")}
             spellCheck={false}
             className="h-8 font-mono text-small"
           />
@@ -916,7 +915,7 @@ function WorkingFolderCard({ bot }: { bot: Bot }) {
             disabled={value.trim() === (bot.cwd ?? "")}
             onClick={() => save(value.trim() || null)}
           >
-            Save
+            {t("common.save")}
           </Button>
         </div>
         {error && <div className="mt-1.5 text-small text-destructive">{error}</div>}
@@ -958,12 +957,12 @@ function DeliveryRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   const shown = modeWords(own ?? workspace);
   return (
     <SettingRow
-      label="Messages while it works"
+      label={t("settingsPanel.messagesWhileItWorks")}
       description={own ? shown.says : `Same as your other agents: ${shown.label}. ${shown.says}`}
     >
       <div className="mt-3 max-w-[460px]">
         <Segmented<"default" | DeliveryMode>
-          aria-label="Messages while it works"
+          aria-label={t("settingsPanel.messagesWhileItWorks")}
           size="sm"
           value={own ?? "default"}
           onChange={(next) => patch({ delivery: next === "default" ? null : next })}
@@ -990,16 +989,16 @@ function BackgroundWorkRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void
   const shown = backgroundWords(own ?? workspace.value);
   return (
     <SettingRow
-      label="Background work it starts"
+      label={t("settingsPanel.backgroundWorkItStarts")}
       description={own ? shown.says : `Same as your other agents: ${workspace.label}. ${workspace.says}`}
       control={
         <SettingsSelect
-          aria-label="Background work it starts"
+          aria-label={t("settingsPanel.backgroundWorkItStarts")}
           value={own ?? "default"}
           onChange={(e) => patch({ backgroundWork: e.target.value === "default" ? null : (e.target.value as BackgroundWork) })}
           className="w-[240px]"
         >
-          <option value="default">Use the workspace setting</option>
+          <option value="default">{t("settingsPanel.useTheWorkspaceSetting")}</option>
           {BACKGROUND_WORK.map((choice) => (
             <option key={choice.value} value={choice.value}>
               {choice.label}
@@ -1017,8 +1016,8 @@ function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   return (
     <Group>
       <SettingRow
-        label="Interactive answers"
-        description="Cards, tables, charts and buttons right in the chat, instead of long paragraphs."
+        label={t("settingsPanel.interactiveAnswers")}
+        description={t("settingsPanel.cardsTablesChartsAndButtons")}
         control={
           <Switch
             checked={interactive}
@@ -1029,8 +1028,8 @@ function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
         }
       />
       <SettingRow
-        label="Answers"
-        description="Turn one off and it answers in plain text instead."
+        label={t("settingsPanel.answers")}
+        description={t("settingsPanel.turnOneOffAndIt")}
       >
         <div className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
           {COMPONENTS.map(([kind, label]) => {
@@ -1064,20 +1063,20 @@ function ConnectedAppsRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void 
   const allowed = bot.composio !== false;
   return (
     <SettingRow
-      label="Connected apps"
+      label={t("settingsPanel.connectedApps")}
       description={
         configured
           ? allowed
-            ? "It can use your connected apps: Slack, Gmail and the rest."
-            : "Blocked from your connected apps."
-          : "Add a Composio key in Settings, Apps and keys."
+            ? t("settingsPanel.itCanUseYourConnected")
+            : t("settingsPanel.blockedFromYourConnectedApps")
+          : t("settingsPanel.addAComposioKeyIn")
       }
       control={
         <Switch
           checked={allowed}
           disabled={!configured && allowed === false}
           onCheckedChange={(on) => patch({ composio: on })}
-          aria-label="Connected apps"
+          aria-label={t("settingsPanel.connectedApps")}
         />
       }
     />
@@ -1124,27 +1123,27 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
 
   return (
     <SettingRow
-      label="Its own browser"
+      label={t("settingsPanel.itsOwnBrowser")}
       description={
         on
-          ? "A browser of its own, signed in separately from yours."
-          : "For web tasks like comparing prices or filling in forms."
+          ? t("settingsPanel.aBrowserOfItsOwn")
+          : t("settingsPanel.forWebTasksLikeComparing")
       }
-      control={<Switch checked={on} onCheckedChange={(next) => patch({ browser: next })} aria-label="Its own browser" />}
+      control={<Switch checked={on} onCheckedChange={(next) => patch({ browser: next })} aria-label={t("settingsPanel.itsOwnBrowser")} />}
     >
       {/* Sign-ins are borrowed per site rather than wholesale: an agent
           that checks a delivery has no business holding the bank. */}
       {on && sources.length > 0 && (
         <div className="mt-3 rounded-xl bg-muted/50 p-3">
-          <div className="text-body font-medium text-foreground">Borrow a sign-in</div>
+          <div className="text-body font-medium text-foreground">{t("settingsPanel.borrowASignIn")}</div>
           <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-            Only sign-ins for the sites you name are copied. Your keychain may ask first.
+            {t("settingsPanel.onlySignInsForThe")}
           </div>
           <Input
             value={sites}
             onChange={(e) => setSites(e.target.value)}
-            placeholder="amazon.com, ebay.com"
-            aria-label="Sites to borrow a sign-in for"
+            placeholder={t("settingsPanel.amazonComEbayCom")}
+            aria-label={t("settingsPanel.sitesToBorrowASign")}
             className="mt-2 h-8 bg-background text-body"
           />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -1157,7 +1156,7 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
                 disabled={importing || !sites.trim()}
                 onClick={() => borrow(browser)}
               >
-                {importing ? "Borrowing…" : `From ${browser}`}
+                {importing ? t("settingsPanel.borrowing") : `From ${browser}`}
               </Button>
             ))}
             {result && <span className="text-small text-muted-foreground">{result}</span>}
@@ -1190,10 +1189,10 @@ function ComputerRow({ bot, patch, onBox }: { bot: Bot; patch: (p: Patch) => voi
   const elsewhere = bot.workplaceStatus ? placePhrase(bot.workplaceStatus) : null;
   return (
     <SettingRow
-      label="Computer"
+      label={t("settingsPanel.computer")}
       description={
         hosted
-          ? "This machine's browser and virtual desktop, or none."
+          ? t("settingsPanel.thisMachinesBrowserAndVirtual")
           : bot.computer
             ? computerMeaning(where, onBox, elsewhere)
             : `${computerMeaning(where, onBox, elsewhere)} Automatic uses your cloud box if you have one, otherwise ${ownScreen ? `${where}'s screen` : "none"}.`
@@ -1204,7 +1203,7 @@ function ComputerRow({ bot, patch, onBox }: { bot: Bot; patch: (p: Patch) => voi
           <Switch
             checked={!bot.computer}
             onCheckedChange={(on) => patch({ computer: on ? null : firstPickedComputer(computers) })}
-            aria-label="Choose the computer automatically"
+            aria-label={t("settingsPanel.chooseTheComputerAutomatically")}
           />
         </label>
       }
@@ -1216,20 +1215,20 @@ function ComputerRow({ bot, patch, onBox }: { bot: Bot; patch: (p: Patch) => voi
       {!hosted && !bot.computer && !state.config?.box?.configured && (
         <Note>
           {ownScreen
-            ? "No cloud box is set up, so Automatic uses this computer."
-            : "No cloud box is set up, so Automatic gives it no screen. Its commands and files still run here. For a screen, turn Automatic off and choose Local VM, a free Linux desktop here."}{" "}
+            ? t("settingsPanel.noCloudBoxIsSet")
+            : t("settingsPanel.noCloudBoxIsSetUp")}{" "}
           <button
             className="font-medium text-foreground underline-offset-2 hover:underline"
             onClick={() => dispatch({ type: "toggleComputer", open: true })}
           >
-            Set one up
+            {t("settingsPanel.setOneUp")}
           </button>
         </Note>
       )}
       {bot.computer && (
         <div
           role="radiogroup"
-          aria-label="Computer"
+          aria-label={t("settingsPanel.computer")}
           className={cn("mt-3 grid grid-cols-2 gap-1 rounded-[10px] bg-muted p-0.5", options.length > 2 && "sm:grid-cols-4")}
         >
           {options.map(([mode, label]) => (
@@ -1263,7 +1262,7 @@ function McpAttachCard({ bot }: { bot: Bot }) {
 
   return (
     <Group>
-      <SettingRow label="MCP servers" description="Servers this agent can use." />
+      <SettingRow label={t("settingsPanel.mcpServers")} description={t("settingsPanel.serversThisAgentCanUse")} />
       {servers.map((server: McpServerRow) => {
         const on = attached.includes(server.id);
         return (
@@ -1337,15 +1336,15 @@ function SkillsCard({ bot }: { bot: Bot }) {
         }
         control={
           <Button variant="ghost" size="sm" onClick={() => dispatch({ type: "openCustomize", tab: "skills" })}>
-            Manage
+            {t("settingsPanel.manage")}
           </Button>
         }
       >
         <div className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
           {library === null ? (
-            <div className="py-2 text-body text-muted-foreground">Loading…</div>
+            <div className="py-2 text-body text-muted-foreground">{t("common.loading")}</div>
           ) : library.length === 0 ? (
-            <div className="py-2 text-body text-muted-foreground">No skills installed yet.</div>
+            <div className="py-2 text-body text-muted-foreground">{t("settingsPanel.noSkillsInstalledYet")}</div>
           ) : (
             library.map((skill) => {
               const on = attached.includes(skill.id);
@@ -1385,7 +1384,7 @@ function SkillsCard({ bot }: { bot: Bot }) {
       <SettingRow
         label={
           <>
-            Written for {bot.name || "this agent"}
+            Written for {bot.name || t("settingsPanel.thisAgent")}
             <span className="font-normal tabular-nums text-muted-foreground">{written.length}</span>
           </>
         }
@@ -1398,8 +1397,8 @@ function SkillsCard({ bot }: { bot: Bot }) {
                 <button
                   onClick={() => setWritten(written.filter((_, j) => j !== i))}
                   className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity duration-150 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-                  title="Remove skill"
-                  aria-label="Remove skill"
+                  title={t("settingsPanel.removeSkill")}
+                  aria-label={t("settingsPanel.removeSkill")}
                 >
                   <X size={13} />
                 </button>
@@ -1412,11 +1411,11 @@ function SkillsCard({ bot }: { bot: Bot }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && add()}
-            placeholder="Add a skill: when to use it, and what to return"
-            aria-label="New skill"
+            placeholder={t("settingsPanel.addASkillWhenTo")}
+            aria-label={t("settingsPanel.newSkill")}
             className="h-8 text-body"
           />
-          <Button variant="secondary" size="icon" onClick={add} disabled={!draft.trim()} title="Add" aria-label="Add skill">
+          <Button variant="secondary" size="icon" onClick={add} disabled={!draft.trim()} title={t("common.add")} aria-label={t("settingsPanel.addSkill")}>
             <Plus size={14} />
           </Button>
         </div>
@@ -1486,7 +1485,7 @@ function MemorySummary({ bot }: { bot: Bot }) {
           </div>
           <div
             role="meter"
-            aria-label="Memory used"
+            aria-label={t("settingsPanel.memoryUsed")}
             aria-valuemin={0}
             aria-valuemax={MEMORY_LINES}
             aria-valuenow={info?.lines ?? 0}
@@ -1500,8 +1499,8 @@ function MemorySummary({ bot }: { bot: Bot }) {
             />
           </div>
           <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-body text-muted-foreground">
-            {info && <span>{info.topics ? plural(info.topics, "topic file") : "No topic files"}</span>}
-            <span>{last ? `Last changed ${stamp(last.at)} by ${who}` : info?.lines ? "No changes recorded yet" : "Nothing remembered yet"}</span>
+            {info && <span>{info.topics ? plural(info.topics, "topic file") : t("settingsPanel.noTopicFiles")}</span>}
+            <span>{last ? `Last changed ${stamp(last.at)} by ${who}` : info?.lines ? t("settingsPanel.noChangesRecordedYet") : t("settingsPanel.nothingRememberedYet")}</span>
           </div>
           {info?.truncated && (
             <div className="mt-2 text-small text-warning">
@@ -1516,7 +1515,7 @@ function MemorySummary({ bot }: { bot: Bot }) {
           onClick={() => dispatch({ type: "openMemory", target: bot.id })}
         >
           <BookOpen size={14} />
-          Open memory
+          {t("settingsPanel.openMemory")}
         </Button>
       </div>
     </div>
@@ -1533,18 +1532,18 @@ function RecallRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   const everywhere = state.config?.recall?.beforeTurn !== false;
   return (
     <SettingRow
-      label="Bring up other conversations"
+      label={t("settingsPanel.bringUpOtherConversations")}
       description={
         everywhere
           ? `Gives ${bot.name || "it"} up to three close matches from its other chats and notes, shown under your message.`
-          : "Off for every agent in Settings, Behaviour."
+          : t("settingsPanel.offForEveryAgentIn")
       }
       control={
         <Switch
           checked={everywhere && bot.recallBeforeTurn !== false}
           disabled={!everywhere}
           onCheckedChange={(on: boolean) => patch({ recallBeforeTurn: on })}
-          aria-label="Bring up other conversations"
+          aria-label={t("settingsPanel.bringUpOtherConversations")}
         />
       }
     />
@@ -1571,12 +1570,12 @@ function SignatureRow({ bot }: { bot: Bot }) {
   const short = `${print.slice(0, 8)}…${print.slice(-4)}`;
   return (
     <SettingRow
-      label="Signature"
+      label={t("settingsPanel.signature")}
       description={`${bot.name} signs what it does, so you can check it later. Its private key never leaves ${thisComputer()}.`}
     >
       <button
         onClick={() => setFull((v) => !v)}
-        title={full ? "Show less" : "Show all"}
+        title={full ? t("settingsPanel.showLess") : t("settingsPanel.showAll")}
         className="mt-3 w-full rounded-xl bg-muted/60 px-3 py-2 text-left font-mono text-small leading-relaxed text-foreground transition-colors duration-150 hover:bg-muted"
       >
         {full ? <span className="break-all">{print}</span> : short}
@@ -1617,17 +1616,17 @@ function ExportRow({ bot }: { bot: Bot }) {
   return (
     <SettingRow
       label={`Take ${bot.name || "it"} with you`}
-      description="One file with its role, look, skills and memory. Open it in Bloks on another machine."
+      description={t("settingsPanel.oneFileWithItsRole")}
       control={
         <Button variant="secondary" size="sm" disabled={busy} onClick={save}>
           <Download size={13} />
-          {busy ? "Saving" : "Export"}
+          {busy ? t("settingsPanel.saving") : t("settingsPanel.export")}
         </Button>
       }
     >
       {error && <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-small text-destructive">{error}</div>}
       <Note>
-        Conversations and keys stay here.
+        {t("settingsPanel.conversationsAndKeysStayHere")}
       </Note>
     </SettingRow>
   );
@@ -1675,21 +1674,21 @@ function DangerZone({ bot }: { bot: Bot }) {
       <Group className="border-destructive/25">
         <SettingRow
           label={`Archive ${name}`}
-          description="Stops it and hides it. Everything is kept. Restore it from Archived agents in the sidebar."
+          description={t("settingsPanel.stopsItAndHidesIt")}
           control={
             <Button variant="outline" onClick={() => setAsking("archive")}>
               <Archive size={14} />
-              Archive
+              {t("settingsPanel.archive")}
             </Button>
           }
         />
         <SettingRow
           label={`Delete ${name} for good`}
-          description="Deletes its conversations and signing key. This cannot be undone."
+          description={t("settingsPanel.deletesItsConversationsAndSigning")}
           control={
             <Button variant="destructive" onClick={() => setAsking("delete")}>
               <Trash2 size={14} />
-              Delete
+              {t("common.delete")}
             </Button>
           }
         />
@@ -1703,21 +1702,21 @@ function DangerZone({ bot }: { bot: Bot }) {
               <DialogTitle>{asking === "delete" ? `Delete ${name} for good?` : `Archive ${name}?`}</DialogTitle>
               <DialogDescription>
                 {asking === "delete"
-                  ? "Deletes its conversations and signing key. Past signed records stay readable. This cannot be undone."
-                  : "It stops and leaves the list. Everything is kept, and you can restore it from Archived agents."}
+                  ? t("settingsPanel.deletesItsConversationsAndSigningKey")
+                  : t("settingsPanel.itStopsAndLeavesThe")}
               </DialogDescription>
             </div>
           </div>
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="secondary" autoFocus onClick={() => setAsking(null)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               variant={asking === "delete" ? "destructive" : "default"}
               className={asking === "delete" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined}
               onClick={go}
             >
-              {asking === "delete" ? "Delete for good" : "Archive"}
+              {asking === "delete" ? t("settingsPanel.deleteForGood") : t("settingsPanel.archive")}
             </Button>
           </div>
         </DialogContent>

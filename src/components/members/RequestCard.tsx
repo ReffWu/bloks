@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Loader2 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { DEVICE_NAME, initials, ROLE_NAME, tintOf, type JoinRequest } from "@/lib/members";
+import { t } from "@/lib/i18n";
 
 function ago(at: number, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
@@ -82,7 +83,7 @@ export function RequestCard({
 
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="min-w-[200px] flex-1 text-pretty text-small text-muted-foreground">
-          If any word is different, decline: someone else may have the invite.
+          {t("requestCard.ifAnyWordIsDifferent")}
         </span>
         <Button variant="outline" size="lg" disabled={busy !== null} onClick={() => void act("out", onDecline)}>
           {busy === "out" && <Loader2 size={14} className="animate-spin" />}

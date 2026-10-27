@@ -20,6 +20,7 @@ import { useStore } from "@/state/store";
 import { routeAction } from "@/lib/genui/actions";
 import { LabelProvider, useGenUiTarget, useLabelBook } from "./host";
 import { genuiLibrary } from "./library";
+import { t } from "@/lib/i18n";
 
 /** Set inside a drawn answer. Markdown in a TextContent that holds a
  * fence of its own draws it as code: an answer does not nest answers. */
@@ -49,14 +50,14 @@ function Undrawn({ code }: { code: string }) {
   return (
     <div className="rounded-xl border border-dashed px-3.5 py-2.5 text-small text-muted-foreground">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span>This part of the answer couldn't be drawn.</span>
+        <span>{t("genUIBlock.thisPartOfTheAnswer")}</span>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           className="font-medium text-foreground underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground"
         >
-          {open ? "Hide it" : "Show what was written"}
+          {open ? t("genUIBlock.hideIt") : t("genUIBlock.showWhatWasWritten")}
         </button>
       </div>
       {open && (

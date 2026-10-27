@@ -37,6 +37,7 @@ import { plural } from "@/lib/plural";
 import { roomLead } from "@/lib/roomLead";
 import { ROOM_ANSWERS, answersWords, type RoomAnswers } from "@/lib/roomRoute";
 import { MAX_MEMBERS, roomCandidates, togglePicked } from "@/lib/roomEdit";
+import { t } from "@/lib/i18n";
 
 interface GalleryTeam {
   slug: string;
@@ -206,15 +207,15 @@ export function NewRoomDialog() {
       <DialogContent className="flex max-h-[min(860px,92vh)] w-[calc(100vw-24px)] max-w-[960px] flex-col gap-0 overflow-hidden p-0">
         <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b px-6 pb-4 pt-5 pr-14">
           <div className="min-w-0">
-            <DialogTitle className="text-heading">New room</DialogTitle>
+            <DialogTitle className="text-heading">{t("newRoomDialog.newRoom")}</DialogTitle>
             <DialogDescription className="mt-0.5">
               {preset
                 ? `A fresh start with the same team. ${preset.from} stays as it is.`
-                : "Agents work together here. Tap a crown to choose the lead."}
+                : t("newRoomDialog.agentsWorkTogetherHereTap")}
             </DialogDescription>
           </div>
           <Segmented
-            aria-label="Start from"
+            aria-label={t("newRoomDialog.startFrom")}
             className="w-[260px] max-w-full"
             value={tab}
             onChange={setTab}
@@ -233,14 +234,14 @@ export function NewRoomDialog() {
             <div className="flex flex-col md:min-h-0 md:overflow-y-auto">
               <div className="px-6 pt-5">
                 <label className="mb-1.5 block text-body font-medium text-muted-foreground" htmlFor="room-name">
-                  Name
+                  {t("common.name")}
                 </label>
                 <Input
                   id="room-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && create()}
-                  placeholder={defaultName || "e.g. Launch week"}
+                  placeholder={defaultName || t("newRoomDialog.eGLaunchWeek")}
                   autoFocus
                   className="h-10 rounded-xl text-lead"
                 />
@@ -258,7 +259,7 @@ export function NewRoomDialog() {
 
             {/* the room, taking shape */}
             <aside
-              aria-label="The room"
+              aria-label={t("newRoomDialog.theRoom")}
               className="flex flex-col border-t bg-sidebar/50 md:min-h-0 md:border-l md:border-t-0"
             >
               <div className="flex-1 px-5 py-5 md:overflow-y-auto">
@@ -271,9 +272,9 @@ export function NewRoomDialog() {
                 />
 
                 <div className="mt-5">
-                  <div className="mb-1.5 text-body font-medium text-muted-foreground">Who answers</div>
+                  <div className="mb-1.5 text-body font-medium text-muted-foreground">{t("newRoomDialog.whoAnswers")}</div>
                   <Segmented
-                    aria-label="Who answers"
+                    aria-label={t("newRoomDialog.whoAnswers")}
                     size="sm"
                     value={answers}
                     onChange={setAnswers}
@@ -281,31 +282,31 @@ export function NewRoomDialog() {
                   />
                   <p className="mt-1.5 text-pretty text-small leading-relaxed text-muted-foreground">
                     {answers === "lead"
-                      ? "Only the lead answers. Use @name to ask someone else."
+                      ? t("newRoomDialog.onlyTheLeadAnswersUse")
                       : answers === "auto"
-                        ? "A small model picks who fits each message, and the lead answers when it can't. Use @name to choose yourself."
-                        : "Everyone answers. Use @name to ask one of them."}
+                        ? t("newRoomDialog.aSmallModelPicksWho")
+                        : t("newRoomDialog.everyoneAnswersUseNameTo")}
                   </p>
                 </div>
 
                 <div className="mt-4">
                   <div className="mb-1.5 flex items-center gap-1.5 text-body font-medium text-muted-foreground">
                     <FolderOpen size={13} />
-                    Shared folder
+                    {t("newRoomDialog.sharedFolder")}
                   </div>
                   <div className="flex gap-1.5">
                     <Input
                       value={folder}
                       onChange={(e) => setFolder(e.target.value)}
-                      placeholder="Optional. Each uses its own"
+                      placeholder={t("newRoomDialog.optionalEachUsesItsOwn")}
                       spellCheck={false}
-                      aria-label="Shared folder"
+                      aria-label={t("newRoomDialog.sharedFolder")}
                       className="h-8 rounded-lg bg-background font-mono text-small"
                     />
                     <BrowseFolderButton onPick={setFolder} />
                   </div>
                   <p className="mt-1.5 text-pretty text-small leading-relaxed text-muted-foreground">
-                    Where members work. Fixed once the room starts.
+                    {t("newRoomDialog.whereMembersWorkFixedOnce")}
                   </p>
                 </div>
               </div>
@@ -319,9 +320,9 @@ export function NewRoomDialog() {
                   <FolderOpen size={18} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-ui font-medium text-foreground">Scout a project folder</div>
+                  <div className="text-ui font-medium text-foreground">{t("newRoomDialog.scoutAProjectFolder")}</div>
                   <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-                    Pick a repo and get a team built for it.
+                    {t("newRoomDialog.pickARepoAndGet")}
                   </div>
                   {scoutError && <div className="mt-1 text-small text-destructive">{scoutError}</div>}
                 </div>
@@ -330,18 +331,18 @@ export function NewRoomDialog() {
             )}
 
             {saved && saved.length > 0 && (
-              <Shelf title="My teams">
+              <Shelf title={t("newRoomDialog.myTeams")}>
                 {saved.map((team) => (
                   <div key={team.id} className="group relative">
                     <TeamCard
                       name={team.name}
-                      blurb="Saved from one of your rooms."
+                      blurb={t("newRoomDialog.savedFromOneOfYour")}
                       members={team.members as HireableTeam["members"]}
                       onHire={() => hire({ name: team.name, members: team.members as HireableTeam["members"] })}
                     />
                     <button
                       onClick={() => removeSaved(team.id)}
-                      title="Remove from library"
+                      title={t("newRoomDialog.removeFromLibrary")}
                       aria-label={`Remove ${team.name} from the library`}
                       className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
                     >
@@ -352,14 +353,14 @@ export function NewRoomDialog() {
               </Shelf>
             )}
 
-            <Shelf title="Premade">
+            <Shelf title={t("newRoomDialog.premade")}>
               {TEAM_LIBRARY.map((team) => (
                 <TeamCard key={team.slug} name={team.name} blurb={team.blurb} members={team.members} onHire={() => hire(team)} />
               ))}
             </Shelf>
 
             <Shelf
-              title="From the gallery"
+              title={t("newRoomDialog.fromTheGallery")}
               aside={
                 <a
                   href="https://bloks.dev/teams/"
@@ -367,15 +368,15 @@ export function NewRoomDialog() {
                   rel="noreferrer"
                   className="text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 >
-                  bloks.dev/teams
+                  {t("newRoomDialog.bloksDevTeams")}
                 </a>
               }
             >
               {galleryTeams === null ? (
-                <div className="col-span-full p-4 text-body text-muted-foreground">Loading the gallery</div>
+                <div className="col-span-full p-4 text-body text-muted-foreground">{t("newRoomDialog.loadingTheGallery")}</div>
               ) : galleryTeams.length === 0 ? (
                 <div className="col-span-full p-4 text-body text-muted-foreground">
-                  {galleryError ? "Couldn't reach the gallery." : "Nothing in the gallery yet."}
+                  {galleryError ? t("newRoomDialog.couldntReachTheGallery") : t("newRoomDialog.nothingInTheGalleryYet")}
                 </div>
               ) : (
                 galleryTeams.map((team) => (
@@ -401,7 +402,7 @@ export function NewRoomDialog() {
                 }}
                 className="underline underline-offset-2 hover:text-foreground"
               >
-                More teams, with their skills and routines, in the Catalogue
+                {t("newRoomDialog.moreTeamsWithTheirSkills")}
               </button>
               .
             </p>
@@ -432,10 +433,10 @@ export function NewRoomDialog() {
           {tab === "agents" && (
             <div className="flex gap-2 max-sm:w-full">
               <Button variant="secondary" onClick={close} className="max-sm:flex-1">
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button onClick={create} disabled={picked.length < 2 || creating !== false} className="min-w-[132px] max-sm:flex-1">
-                {creating !== false ? "Opening…" : picked.length < 2 ? `Pick ${2 - picked.length} more` : "Create room"}
+                {creating !== false ? t("newRoomDialog.opening") : picked.length < 2 ? `Pick ${2 - picked.length} more` : t("newRoomDialog.createRoom")}
               </Button>
             </div>
           )}
@@ -500,14 +501,14 @@ export function MemberPicker({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Find an agent"
-              aria-label="Find an agent"
+              placeholder={t("newRoomDialog.findAnAgent")}
+              aria-label={t("newRoomDialog.findAnAgent")}
               className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
             />
           </label>
         )}
       </div>
-      <div role="group" aria-label="Members" className="grid grid-cols-1 gap-1.5 px-6 pb-6 sm:grid-cols-2">
+      <div role="group" aria-label={t("common.members")} className="grid grid-cols-1 gap-1.5 px-6 pb-6 sm:grid-cols-2">
         {shown.map((agent) => {
           const on = picked.includes(agent.id);
           const full = !on && picked.length >= MAX_MEMBERS;
@@ -542,7 +543,7 @@ export function MemberPicker({
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-ui font-medium text-foreground">{agent.name}</span>
                 <span className="block truncate text-small text-muted-foreground">
-                  {agent.archivedAt ? "Archived" : agent.title || "No stated role"}
+                  {agent.archivedAt ? t("newRoomDialog.archived") : agent.title || t("newRoomDialog.noStatedRole")}
                 </span>
               </span>
               <span className="max-w-[96px] shrink-0 truncate rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">
@@ -562,7 +563,7 @@ export function MemberPicker({
         })}
         {shown.length === 0 && (
           <p className="col-span-full py-6 text-center text-body text-muted-foreground">
-            {agents.length ? `No agent matches “${query.trim()}”.` : "No agents yet. Try the team library."}
+            {agents.length ? `No agent matches “${query.trim()}”.` : t("newRoomDialog.noAgentsYetTryThe")}
           </p>
         )}
       </div>
@@ -598,7 +599,7 @@ export function RoomPreview({
           <Users size={14} />
         </span>
         <span className={cn("min-w-0 truncate text-lead font-semibold tracking-tight", name ? "text-foreground" : "text-muted-foreground")}>
-          {name || "Your room"}
+          {name || t("newRoomDialog.yourRoom")}
         </span>
       </div>
 
@@ -612,7 +613,7 @@ export function RoomPreview({
                 ))}
               </div>
               <p className="max-w-[220px] text-pretty text-body leading-relaxed text-muted-foreground">
-                Pick two or more agents, then crown a lead.
+                {t("newRoomDialog.pickTwoOrMoreAgents")}
               </p>
             </div>
           ) : (
@@ -646,7 +647,7 @@ export function RoomPreview({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-ui font-medium text-foreground">{lead.name}</span>
                     <span className="block truncate text-small text-muted-foreground">
-                      {ready ? "Leads and decides" : "Pick one more"}
+                      {ready ? t("newRoomDialog.leadsAndDecides") : t("newRoomDialog.pickOneMore")}
                     </span>
                   </span>
                   <span className="max-w-[90px] shrink-0 truncate text-caption text-muted-foreground">{modelLabel(lead)}</span>
@@ -694,7 +695,7 @@ export function RoomPreview({
 
       {ready && (
         <p className="mt-3 border-t pt-3 text-pretty text-small leading-relaxed text-muted-foreground">
-          Tap a crown to change the lead. Give the lead your best model and the rest cheaper ones.
+          {t("newRoomDialog.tapACrownToChange")}
         </p>
       )}
     </div>
@@ -719,7 +720,7 @@ function CrownButton({
       type="button"
       aria-pressed={on}
       aria-label={on ? `${name} leads` : `Make ${name} the lead`}
-      title={on ? "Leads" : "Make lead"}
+      title={on ? t("newRoomDialog.leads") : t("newRoomDialog.makeLead")}
       onClick={onPick}
       className={cn(
         "flex size-7 shrink-0 items-center justify-center rounded-full outline-none transition-[background-color,color,opacity,scale] duration-150 ease-out active:scale-90",

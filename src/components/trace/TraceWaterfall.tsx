@@ -55,6 +55,7 @@ import { cn } from "@/lib/cn";
 import { useLiveText, useTraceClock, type TraceClock } from "./clock";
 import { RollingNumber } from "./RollingNumber";
 import { BarGlyph, colorHex, kindWord, Legend, SpanDetail, Spinner, StepIcon } from "./parts";
+import { t } from "@/lib/i18n";
 
 export type { TraceGroup } from "@/lib/traceView";
 
@@ -230,7 +231,7 @@ export function TraceWaterfall({ groups, now, variant = "panel", className }: Tr
           {/* the ruler, held at the top while the rows scroll under it */}
           <div className={cn("sticky top-0 z-10 flex border-b", island ? "bg-black" : "bg-background")} style={{ height: RULER_H }}>
             <div className="flex shrink-0 items-center px-3 text-caption text-muted-foreground" style={{ width: size.tree }}>
-              Steps
+              {t("common.steps")}
             </div>
             <div ref={rulerRef} className="trace-timeline trace-ruler relative min-w-0 flex-1 border-l text-caption tabular-nums text-muted-foreground">
               {ticks.map((tick) => (
@@ -325,7 +326,7 @@ export function TraceWaterfall({ groups, now, variant = "panel", className }: Tr
               {running && <span className="trace-playhead z-[1]" />}
             </div>
           </div>
-          {!rows.length && <div className="px-3 py-6 text-center text-small text-muted-foreground">Nothing has happened yet.</div>}
+          {!rows.length && <div className="px-3 py-6 text-center text-small text-muted-foreground">{t("traceWaterfall.nothingHasHappenedYet")}</div>}
         </div>
         {!island && <Legend color={lead} className="border-t px-3 py-2" />}
       </div>
@@ -597,7 +598,7 @@ const TrackRow = memo(function TrackRow({
                 transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 34 }}
                 className="rounded-full bg-warning/12 px-1.5 text-micro font-medium leading-[16px] text-warning ring-1 ring-warning/25 ring-inset"
               >
-                Slowest
+                {t("traceWaterfall.slowest")}
               </motion.span>
             )}
           </span>

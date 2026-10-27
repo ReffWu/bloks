@@ -48,6 +48,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
+import { t } from "@/lib/i18n";
 
 /** Where contributors are pointed, from the page's footer. */
 const GUIDE_URL = "https://github.com/hamedgitty/bloks/blob/main/catalog/README.md";
@@ -175,7 +176,7 @@ export function CatalogPage({
       );
     }
     const s = item.standing;
-    if (!s.action) return <Check size={16} className="mr-2 text-muted-foreground" aria-label="Installed" />;
+    if (!s.action) return <Check size={16} className="mr-2 text-muted-foreground" aria-label={t("catalogPage.installed")} />;
     if (s.state === "available") {
       return (
         <button onClick={() => void reviewItem(item)} aria-label={`Install ${item.title}`} title={`Install ${item.title}`} className={ROUND}>
@@ -206,29 +207,29 @@ export function CatalogPage({
 
   const header = (
     <PageHeader
-      title="Catalogue"
-      says="Ready teams and skills. Each is reviewed with you before anything is installed."
+      title={t("catalogPage.catalogue")}
+      says={t("catalogPage.readyTeamsAndSkillsEach")}
       search={search}
       onSearch={setSearch}
       searchRef={searchRef}
-      placeholder="Search the catalogue"
+      placeholder={t("catalogPage.searchTheCatalogue")}
       onRefresh={() => void load(true)}
       refreshing={loading}
       onSettings={() => setSourceOpen(true)}
       add={
         <DropdownMenu>
           <DropdownMenuTrigger className={cn(pill, "gap-1 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}>
-            Install
+            {t("catalogPage.install")}
             <ChevronDown size={14} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-[220px]">
             <DropdownMenuItem onClick={() => setLinkOpen({})}>
               <Globe />
-              From a link
+              {t("catalogPage.fromALink")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => fileRef.current?.click()}>
               <Upload />
-              From a file
+              {t("catalogPage.fromAFile")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -317,7 +318,7 @@ export function CatalogPage({
       />
 
       {kindTags.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-1.5" role="group" aria-label="Filter by tag">
+        <div className="mt-4 flex flex-wrap gap-1.5" role="group" aria-label={t("catalogPage.filterByTag")}>
           {kindTags.map((tag) => {
             const on = tags.includes(tag);
             return (
@@ -342,7 +343,7 @@ export function CatalogPage({
           <Info size={15} className="mt-[3px] shrink-0 text-muted-foreground" />
           <p className="text-body text-foreground">
             Offline. Showing the catalogue as of {fetchedWords(data.fetchedAt)}.
-            <span className="text-muted-foreground"> Items kept on this computer still install.</span>
+            <span className="text-muted-foreground"> {t("catalogPage.itemsKeptOnThisComputer")}</span>
           </p>
         </div>
       )}
@@ -351,7 +352,7 @@ export function CatalogPage({
           <span className="text-body text-destructive">{error}</span>
           {!data && (
             <Button variant="secondary" size="sm" onClick={() => void load(true)}>
-              Try again
+              {t("common.tryAgain")}
             </Button>
           )}
         </div>
@@ -360,10 +361,10 @@ export function CatalogPage({
       <SectionTitle
         aside={data && <span className="text-body tabular-nums text-muted-foreground">{search || tags.length ? `${matching.length} found` : plural(matching.length, kind === "team" ? "team" : "skill")}</span>}
       >
-        {search || tags.length ? "Results" : kind === "team" ? "Teams" : "Skills"}
+        {search || tags.length ? t("catalogPage.results") : kind === "team" ? t("catalogPage.teams") : t("common.skills")}
       </SectionTitle>
       {data === null && !error ? (
-        <GridSkeleton label="Loading the catalogue" count={8} />
+        <GridSkeleton label={t("catalogPage.loadingTheCatalogue")} count={8} />
       ) : data && matching.length === 0 ? (
         <p className="py-10 text-ui text-muted-foreground">
           {search || tags.length ? `Nothing matches${search ? ` “${search.trim()}”` : " those tags"}.` : `The catalogue has no ${kind === "team" ? "teams" : "skills"} yet.`}
@@ -386,9 +387,9 @@ export function CatalogPage({
       {data && (
         <p className="mt-10 text-body leading-relaxed text-muted-foreground">
           From {host}
-          {data.source.custom ? ", a catalogue you chose" : ""}. Anyone can add a team or a skill by pull request:{" "}
+          {data.source.custom ? t("catalogPage.aCatalogueYouChose") : ""}. Anyone can add a team or a skill by pull request:{" "}
           <a href={GUIDE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground">
-            how to contribute
+            {t("catalogPage.howToContribute")}
             <ExternalLink size={12} />
           </a>
           .
@@ -437,7 +438,7 @@ function ItemPage({
         className="-ml-1 mb-5 flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         <ArrowLeft size={15} />
-        Catalogue
+        {t("catalogPage.catalogue")}
       </button>
       <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
         <div className="flex min-w-0 items-start gap-4">
@@ -464,17 +465,17 @@ function ItemPage({
               className={cn(s.destructive && "text-warning hover:text-warning")}
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : s.destructive ? <TriangleAlert size={14} /> : null}
-              {s.action === "Install" ? "Review and install" : `Review and ${s.action.toLowerCase()}`}
+              {s.action === "Install" ? t("catalogPage.reviewAndInstall") : `Review and ${s.action.toLowerCase()}`}
             </Button>
           ) : (
             <>
               <span className="flex items-center gap-1.5 text-body text-muted-foreground">
                 <Check size={15} />
-                Installed
+                {t("catalogPage.installed")}
               </span>
               {row.kind === "team" && (
                 <Button variant="secondary" size="lg" disabled={busy} onClick={() => onInstall(row)}>
-                  Install again
+                  {t("catalogPage.installAgain")}
                 </Button>
               )}
             </>
@@ -493,14 +494,14 @@ function ItemPage({
       {!detail && !error && (
         <div className="mt-10 flex items-center gap-2 text-body text-muted-foreground">
           <Loader2 size={14} className="animate-spin" />
-          Loading
+          {t("common.loading2")}
         </div>
       )}
 
       {detail?.team && !raw && <TeamDetail team={detail.team} skillTitles={skillTitles} />}
       {detail?.skill && !raw && (
         <>
-          <SectionTitle>Instructions</SectionTitle>
+          <SectionTitle>{t("common.instructions")}</SectionTitle>
           <div className="mt-3 max-w-[760px] text-ui leading-relaxed">
             <Markdownish text={detail.skill.body} />
           </div>
@@ -508,7 +509,7 @@ function ItemPage({
       )}
       {detail && raw && (
         <>
-          <SectionTitle>The file</SectionTitle>
+          <SectionTitle>{t("catalogPage.theFile")}</SectionTitle>
           <pre className="mt-3 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/40 p-4 font-mono text-small leading-relaxed text-foreground">{detail.text}</pre>
         </>
       )}
@@ -518,7 +519,7 @@ function ItemPage({
           className="mt-8 flex items-center gap-1.5 text-body text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline"
         >
           <FileText size={14} />
-          {raw ? "Show it laid out" : "Show the file"}
+          {raw ? t("catalogPage.showItLaidOut") : t("catalogPage.showTheFile")}
         </button>
       )}
     </>
@@ -532,7 +533,7 @@ function TeamDetail({ team, skillTitles }: { team: TeamFile; skillTitles: Map<st
   ];
   return (
     <>
-      <SectionTitle aside={<span className="text-body tabular-nums text-muted-foreground">{team.members.length}</span>}>Members</SectionTitle>
+      <SectionTitle aside={<span className="text-body tabular-nums text-muted-foreground">{team.members.length}</span>}>{t("common.members")}</SectionTitle>
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
         {team.members.map((member, i) => (
           <article key={i} className="rounded-2xl border bg-card p-4">
@@ -540,7 +541,7 @@ function TeamDetail({ team, skillTitles }: { team: TeamFile; skillTitles: Map<st
               <BlokAvatar color={member.color} shape={member.shape} size={34} />
               <h3 className="flex min-w-0 items-center gap-1.5 text-ui font-semibold text-foreground">
                 <span className="truncate">{member.title}</span>
-                {member.seniority === 5 && <Crown size={12} className="shrink-0 text-brand-ink" aria-label="Leads" />}
+                {member.seniority === 5 && <Crown size={12} className="shrink-0 text-brand-ink" aria-label={t("catalogPage.leads")} />}
               </h3>
             </div>
             <p className="mt-2.5 whitespace-pre-line text-body leading-relaxed text-foreground/90">{member.description}</p>
@@ -566,7 +567,7 @@ function TeamDetail({ team, skillTitles }: { team: TeamFile; skillTitles: Map<st
       </div>
       {routines.length > 0 && (
         <>
-          <SectionTitle aside={<span className="text-body text-muted-foreground">Start paused</span>}>Routines</SectionTitle>
+          <SectionTitle aside={<span className="text-body text-muted-foreground">{t("catalogPage.startPaused")}</span>}>{t("common.routines")}</SectionTitle>
           <div className="mt-2 flex flex-col">
             {routines.map((r, i) => (
               <div key={i} className={cn("flex flex-col gap-0.5 py-3", i > 0 && "border-t")}>
@@ -575,7 +576,7 @@ function TeamDetail({ team, skillTitles }: { team: TeamFile; skillTitles: Map<st
                   <span className="font-normal text-muted-foreground">
                     {" "}
                     · {r.name ? `${when(r.days, r.time)}, ` : ""}
-                    {r.target === "The room" ? "to the room" : `for the ${r.target}`}
+                    {r.target === "The room" ? t("catalogPage.toTheRoom") : `for the ${r.target}`}
                   </span>
                 </span>
                 <span className="text-body text-muted-foreground">{r.prompt}</span>
@@ -609,9 +610,9 @@ function InstallFromLink({
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-[520px]">
-        <DialogTitle>Install from a link</DialogTitle>
+        <DialogTitle>{t("catalogPage.installFromALink")}</DialogTitle>
         <DialogDescription>
-          A team's .md file or a skill's SKILL.md, on https. A GitHub page for the file works too. You will see what it installs first.
+          {t("catalogPage.aTeamsMdFileOr")}
         </DialogDescription>
         <form
           className="mt-4"
@@ -625,7 +626,7 @@ function InstallFromLink({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://github.com/…/SKILL.md"
-            aria-label="Link to a team or a skill"
+            aria-label={t("catalogPage.linkToATeamOr")}
             inputMode="url"
             spellCheck={false}
           />
@@ -633,14 +634,14 @@ function InstallFromLink({
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
             <Button type="button" variant="ghost" onClick={onFile} disabled={busy}>
               <Upload size={14} />
-              Choose a file instead
+              {t("catalogPage.chooseAFileInstead")}
             </Button>
             <div className="flex gap-2">
               <Button type="button" variant="secondary" onClick={onClose}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="submit" disabled={!url.trim() || busy}>
-                {busy ? <Loader2 size={13} className="animate-spin" /> : "Review"}
+                {busy ? <Loader2 size={13} className="animate-spin" /> : t("common.review")}
               </Button>
             </div>
           </div>
@@ -678,9 +679,9 @@ function SourceDialog({ onClose, onChanged }: { onClose: () => void; onChanged: 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-[520px]">
-        <DialogTitle>Catalogue source</DialogTitle>
+        <DialogTitle>{t("catalogPage.catalogueSource")}</DialogTitle>
         <DialogDescription>
-          The Bloks catalogue is read from its repository on GitHub. Point at another catalogue's index.json to use one you or your team keep.
+          {t("catalogPage.theBloksCatalogueIsRead")}
         </DialogDescription>
         {source?.fromEnvironment ? (
           <p className="mt-4 rounded-xl bg-muted/60 px-3 py-2.5 text-body text-foreground">
@@ -698,20 +699,20 @@ function SourceDialog({ onClose, onChanged }: { onClose: () => void; onChanged: 
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder={source?.default ?? "https://…/index.json"}
-              aria-label="Catalogue index address"
+              aria-label={t("catalogPage.catalogueIndexAddress")}
               spellCheck={false}
             />
             {error && <p className="mt-2 text-small text-destructive">{error}</p>}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
               <Button type="button" variant="ghost" disabled={saving || !source || source.url === source.default} onClick={() => save("")}>
-                Use the Bloks catalogue
+                {t("catalogPage.useTheBloksCatalogue")}
               </Button>
               <div className="flex gap-2">
                 <Button type="button" variant="secondary" onClick={onClose}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <Button type="submit" disabled={saving || !source}>
-                  Save
+                  {t("common.save")}
                 </Button>
               </div>
             </div>

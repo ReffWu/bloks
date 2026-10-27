@@ -40,6 +40,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 type List = "apps" | "mcps" | "clis" | "skills";
 
@@ -159,10 +160,10 @@ export function PluginSettings() {
         <div className="mt-6 flex items-center gap-2 text-ui text-muted-foreground">
           {connectors.cards === null ? (
             <>
-              <Loader2 size={14} className="animate-spin" /> Loading
+              <Loader2 size={14} className="animate-spin" /> {t("common.loading2")}
             </>
           ) : (
-            "App not found."
+            t("pluginSettings.appNotFound")
           )}
         </div>
       </div>
@@ -183,7 +184,7 @@ export function PluginSettings() {
     ) : (
       <div>
         <BackLink onBack={() => setFocus(null)} />
-        <p className="mt-6 text-ui text-muted-foreground">{skills === null ? "Loading" : "Skill not found."}</p>
+        <p className="mt-6 text-ui text-muted-foreground">{skills === null ? t("common.loading2") : t("pluginSettings.skillNotFound")}</p>
       </div>
     );
   }
@@ -201,29 +202,29 @@ export function PluginSettings() {
     <div>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-display font-semibold text-foreground">Plugins</h2>
-          <p className="mt-1.5 text-ui text-muted-foreground">Manage apps, MCP servers, CLIs and skills.</p>
+          <h2 className="text-display font-semibold text-foreground">{t("common.plugins")}</h2>
+          <p className="mt-1.5 text-ui text-muted-foreground">{t("pluginSettings.manageAppsMcpServersClis")}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => dispatch({ type: "openCustomize", tab: list === "skills" ? "skills" : "plugins" })}
             className={cn(pill, "border bg-card px-4 text-body font-medium text-foreground hover:bg-accent")}
           >
-            Browse directory
+            {t("pluginSettings.browseDirectory")}
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger className={cn(pill, "gap-1 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}>
-              Add
+              {t("common.add")}
               <ChevronDown size={14} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[220px]">
               <DropdownMenuItem onClick={() => setAddingServer(true)}>
                 <Puzzle />
-                Add custom MCP server
+                {t("pluginSettings.addCustomMcpServer")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setAddingSkill(true)}>
                 <Sparkles />
-                Add a skill
+                {t("pluginSettings.addASkill")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -265,8 +266,8 @@ export function PluginSettings() {
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={list === "apps" ? "Search apps" : list === "mcps" ? "Search MCP servers" : list === "clis" ? "Search CLIs" : "Search skills"}
-            aria-label="Search"
+            placeholder={list === "apps" ? t("pluginSettings.searchApps") : list === "mcps" ? t("pluginSettings.searchMcpServers") : list === "clis" ? t("pluginSettings.searchClis") : t("pluginSettings.searchSkills")}
+            aria-label={t("common.search")}
             className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>
@@ -280,15 +281,15 @@ export function PluginSettings() {
             <Empty>
               Connecting apps needs a Composio key.{" "}
               <button onClick={() => connectors.askForKey()} className="text-foreground underline underline-offset-2">
-                Add a key
+                {t("pluginSettings.addAKey")}
               </button>
             </Empty>
           ) : apps.length === 0 ? (
             <Empty>
-              {q ? `No connected apps match “${query.trim()}”.` : "No apps connected yet."}{" "}
+              {q ? `No connected apps match “${query.trim()}”.` : t("pluginSettings.noAppsConnectedYet")}{" "}
               {!q && (
                 <button onClick={() => dispatch({ type: "openCustomize", tab: "plugins" })} className="text-foreground underline underline-offset-2">
-                  Browse the directory
+                  {t("pluginSettings.browseTheDirectory")}
                 </button>
               )}
             </Empty>
@@ -311,7 +312,7 @@ export function PluginSettings() {
                       aria-label={`${card.label} settings`}
                       className="flex items-center gap-2 text-body text-muted-foreground"
                     >
-                      Connected
+                      {t("common.connected")}
                       <ChevronRight size={16} />
                     </button>
                   }
@@ -325,16 +326,16 @@ export function PluginSettings() {
             <Loading />
           ) : shownServers.length === 0 ? (
             <Empty>
-              {q ? `No servers match “${query.trim()}”.` : "No MCP servers yet."}{" "}
+              {q ? `No servers match “${query.trim()}”.` : t("pluginSettings.noMcpServersYet")}{" "}
               {!q && (
                 <button onClick={() => setAddingServer(true)} className="text-foreground underline underline-offset-2">
-                  Add one
+                  {t("pluginSettings.addOne")}
                 </button>
               )}
             </Empty>
           ) : (
             <>
-              <h3 className="mb-2.5 text-ui font-semibold text-foreground">Servers</h3>
+              <h3 className="mb-2.5 text-ui font-semibold text-foreground">{t("pluginSettings.servers")}</h3>
               <Card>
                 {shownServers.map((server) => {
                   const n = agents.filter((b) => b.mcpServers?.includes(server.id)).length;
@@ -356,14 +357,14 @@ export function PluginSettings() {
                               onClick={() => setFocus({ kind: "mcp", id: server.id })}
                               className="rounded-lg border px-2.5 py-1 text-body font-medium text-foreground transition-colors hover:bg-accent"
                             >
-                              Finish setup
+                              {t("pluginSettings.finishSetup")}
                             </button>
                           )}
                           <span className="text-body tabular-nums text-muted-foreground">{usedBy(n)}</span>
                           <button
                             onClick={() => setFocus({ kind: "mcp", id: server.id })}
                             aria-label={`${server.name} settings`}
-                            title="Settings"
+                            title={t("common.settings")}
                             className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                           >
                             <Settings size={16} />
@@ -386,7 +387,7 @@ export function PluginSettings() {
             <Empty>{`No CLIs match “${query.trim()}”.`}</Empty>
           ) : (
             <>
-              <p className="mb-2.5 text-pretty text-body text-muted-foreground">Tools on this computer that agents use from their shell.</p>
+              <p className="mb-2.5 text-pretty text-body text-muted-foreground">{t("pluginSettings.toolsOnThisComputerThat")}</p>
               <Card>
                 {shownClis.map((plugin) => (
                   <Row
@@ -405,7 +406,7 @@ export function PluginSettings() {
                         aria-label={`${plugin.name} settings`}
                         className="flex shrink-0 items-center gap-2 text-body text-muted-foreground"
                       >
-                        {plugin.enabled ? "On" : "Off"}
+                        {plugin.enabled ? t("pluginSettings.on") : t("common.off")}
                         <ChevronRight size={16} />
                       </button>
                     }
@@ -419,7 +420,7 @@ export function PluginSettings() {
           (skills === null ? (
             <Loading />
           ) : shownSkills.length === 0 ? (
-            <Empty>{q ? `No skills match “${query.trim()}”.` : "No skills yet."}</Empty>
+            <Empty>{q ? `No skills match “${query.trim()}”.` : t("pluginSettings.noSkillsYet")}</Empty>
           ) : (
             <Card>
               {shownSkills.map((skill) => {
@@ -433,7 +434,7 @@ export function PluginSettings() {
                     line={skill.description}
                     aside={
                       <span className="flex shrink-0 items-center gap-3 text-body text-muted-foreground">
-                        <span>{skill.source === "builtin" ? "Built in" : `Yours, version ${skill.revision ?? 1}`}</span>
+                        <span>{skill.source === "builtin" ? t("pluginSettings.builtIn") : `Yours, version ${skill.revision ?? 1}`}</span>
                         {skill.uses ? <span className="tabular-nums">{skill.uses} {skill.uses === 1 ? "use" : "uses"}</span> : null}
                         <span className="tabular-nums">{usedBy(n)}</span>
                         <ChevronRight size={16} />
@@ -463,7 +464,7 @@ export function PluginSettings() {
 function Loading() {
   return (
     <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
-      <Loader2 size={14} className="animate-spin" /> Loading
+      <Loader2 size={14} className="animate-spin" /> {t("common.loading2")}
     </div>
   );
 }
@@ -512,7 +513,7 @@ function AppSettings({
             onClick={() => dispatch({ type: "openCustomize", tab: "plugins", app: card.slug })}
             className={cn(pill, "border bg-card px-4 text-body font-medium text-foreground hover:bg-accent")}
           >
-            View details
+            {t("pluginSettings.viewDetails")}
           </button>
           {connected && (
             <button
@@ -520,18 +521,18 @@ function AppSettings({
               className={cn(pill, "gap-1.5 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}
             >
               <MessageSquare size={15} />
-              Try now
+              {t("pluginSettings.tryNow")}
             </button>
           )}
         </div>
       </div>
 
       <div className="mt-7 flex flex-col gap-4">
-        <Section title="Connection">
+        <Section title={t("pluginSettings.connection")}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="flex items-center gap-2 text-ui text-foreground">
               <span className={cn("size-2 rounded-full", connected ? "bg-success" : "bg-muted-foreground/50")} />
-              {connected ? "Connected" : "Not connected"}
+              {connected ? t("common.connected") : t("pluginSettings.notConnected")}
             </span>
             <span className="flex items-center gap-2">
               {busy && <Loader2 size={15} className="animate-spin text-muted-foreground" />}
@@ -541,7 +542,7 @@ function AppSettings({
                 className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-body font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-40"
               >
                 {connected ? <RefreshCw size={14} /> : <Plus size={14} />}
-                {connected ? "Sign in again" : "Connect"}
+                {connected ? t("pluginSettings.signInAgain") : t("common.connect")}
               </button>
               {connected && (
                 <button
@@ -550,7 +551,7 @@ function AppSettings({
                   className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-body font-medium text-destructive transition-colors hover:bg-destructive/10"
                 >
                   <Trash2 size={14} />
-                  Disconnect
+                  {t("common.disconnect")}
                 </button>
               )}
             </span>
@@ -558,8 +559,8 @@ function AppSettings({
         </Section>
 
         <Section
-          title="Agents that can use apps"
-          says="Each switch covers all connected apps."
+          title={t("pluginSettings.agentsThatCanUseApps")}
+          says={t("pluginSettings.eachSwitchCoversAllConnected")}
         >
           <div className="flex flex-col divide-y">
             {agents.map((bot) => (
@@ -618,7 +619,7 @@ function SkillSettings({
           <Tile size={14}>{skill.source === "builtin" ? <Lock size={20} /> : <Sparkles size={22} />}</Tile>
           <div className="min-w-0">
             <h2 className="truncate text-display font-semibold text-foreground">{skill.name}</h2>
-            <p className="mt-0.5 text-ui text-muted-foreground">{skill.source === "builtin" ? "Built in" : "Yours"}</p>
+            <p className="mt-0.5 text-ui text-muted-foreground">{skill.source === "builtin" ? t("pluginSettings.builtIn") : t("pluginSettings.yours")}</p>
           </div>
         </div>
         {skill.source === "user" && (
@@ -627,14 +628,14 @@ function SkillSettings({
             className="flex h-9 items-center gap-1.5 rounded-xl bg-destructive/10 px-3.5 text-ui font-medium text-destructive transition-colors hover:bg-destructive/15"
           >
             <Trash2 size={15} />
-            Remove
+            {t("common.remove")}
           </button>
         )}
       </div>
       {skill.description && <p className="mt-4 text-pretty text-ui text-foreground">{skill.description}</p>}
 
       <div className="mt-6 flex flex-col gap-4">
-        <Section title="Agents that use it">
+        <Section title={t("pluginSettings.agentsThatUseIt")}>
           <div className="flex flex-col divide-y">
             {agents.map((bot) => {
               const ids = bot.skillIds ?? [];
@@ -659,7 +660,7 @@ function SkillSettings({
             })}
           </div>
         </Section>
-        <Section title="Instructions">
+        <Section title={t("common.instructions")}>
           <SkillDetail skill={skill} onChanged={onChanged} />
         </Section>
       </div>

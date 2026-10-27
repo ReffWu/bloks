@@ -31,6 +31,7 @@ import { stamp } from "@/lib/when";
 import { MAX_SKILL_CHARS } from "@/lib/skillLength";
 import { DiffLines, type DiffLine } from "./DiffLines";
 import { SettingsSelect } from "./SettingsLayout";
+import { t } from "@/lib/i18n";
 
 export interface Author {
   kind: "person" | "agent" | "proposal" | "catalog" | "import" | "file" | "migration" | "builtin";
@@ -147,7 +148,7 @@ export function SkillDetail({ skill, onChanged }: { skill: Skill; onChanged: (ne
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Segmented<"text" | "history">
-          aria-label="Show"
+          aria-label={t("skillVersions.show")}
           size="sm"
           value={view}
           onChange={(next) => {
@@ -160,7 +161,7 @@ export function SkillDetail({ skill, onChanged }: { skill: Skill; onChanged: (ne
           ]}
         />
         <span className="text-small text-muted-foreground">
-          {builtin ? "Built in" : `Version ${skill.revision ?? 1}`}. {usageWords(skill.uses ?? 0, skill.corrected ?? 0, skill.lastUsed ?? null)}
+          {builtin ? t("skillVersions.builtIn") : `Version ${skill.revision ?? 1}`}. {usageWords(skill.uses ?? 0, skill.corrected ?? 0, skill.lastUsed ?? null)}
         </span>
       </div>
 
@@ -187,13 +188,13 @@ export function SkillDetail({ skill, onChanged }: { skill: Skill; onChanged: (ne
                     Make it yours
                   </Button>
                   <span className="text-small text-muted-foreground">
-                    Built-in skills stay as they ship. Your copy keeps every version.
+                    {t("skillVersions.builtInSkillsStayAs")}
                   </span>
                 </>
               ) : (
                 <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
                   <Pencil size={13} />
-                  Edit
+                  {t("common.edit")}
                 </Button>
               )}
             </div>
@@ -238,11 +239,11 @@ function SkillEditor({ skill, onCancel, onSaved }: { skill: Skill; onCancel: () 
   return (
     <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2">
       <label className="block">
-        <span className="mb-1 block text-small font-medium text-muted-foreground">Name</span>
+        <span className="mb-1 block text-small font-medium text-muted-foreground">{t("common.name")}</span>
         <Input value={name} onChange={(e) => setName(e.target.value)} className="text-body" />
       </label>
       <label className="block">
-        <span className="mb-1 block text-small font-medium text-muted-foreground">When to use it</span>
+        <span className="mb-1 block text-small font-medium text-muted-foreground">{t("skillVersions.whenToUseIt")}</span>
         <Input value={description} onChange={(e) => setDescription(e.target.value)} className="text-body" />
       </label>
       <label className="flex min-h-0 flex-1 flex-col">
@@ -257,11 +258,11 @@ function SkillEditor({ skill, onCancel, onSaved }: { skill: Skill; onCancel: () 
         />
       </label>
       <label className="block">
-        <span className="mb-1 block text-small font-medium text-muted-foreground">What changed</span>
+        <span className="mb-1 block text-small font-medium text-muted-foreground">{t("skillVersions.whatChanged")}</span>
         <Input
           value={why}
           maxLength={200}
-          placeholder="One line, for the history"
+          placeholder={t("skillVersions.oneLineForTheHistory")}
           onChange={(e) => setWhy(e.target.value)}
           className="text-body"
         />
@@ -273,10 +274,10 @@ function SkillEditor({ skill, onCancel, onSaved }: { skill: Skill; onCancel: () 
       )}
       <div className="mt-1 flex gap-2">
         <Button size="sm" disabled={saving || !changed || !body.trim() || !name.trim() || tooLong} onClick={save}>
-          {saving ? <Loader2 size={13} className="animate-spin" /> : "Save as a new version"}
+          {saving ? <Loader2 size={13} className="animate-spin" /> : t("skillVersions.saveAsANewVersion")}
         </Button>
         <Button size="sm" variant="ghost" disabled={saving} onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
       </div>
     </div>
@@ -361,7 +362,7 @@ function SkillHistory({
     return (
       <div className="mt-4 flex items-center gap-2 text-body text-muted-foreground" role="status">
         <Loader2 size={14} className="animate-spin" />
-        Loading versions
+        {t("skillVersions.loadingVersions")}
       </div>
     );
   }
@@ -370,13 +371,12 @@ function SkillHistory({
       <div className="mt-4 flex flex-col items-start gap-3 rounded-xl border border-dashed p-4">
         <History size={18} className="text-muted-foreground" />
         <p className="text-body text-muted-foreground">
-          Built-in skills ship with Bloks and stay as they are. Make it yours to change it: your copy keeps every
-          version, starting from this one.
+          {t("skillVersions.builtInSkillsShipWith")}
         </p>
         {onMakeOwn && (
           <Button size="sm" variant="secondary" onClick={onMakeOwn}>
             <Pencil size={13} />
-            Make it yours
+            {t("skillVersions.makeItYours")}
           </Button>
         )}
       </div>
@@ -387,7 +387,7 @@ function SkillHistory({
   const others = rows.filter((r) => r.n !== picked);
   return (
     <div className="mt-3 grid min-h-0 flex-1 grid-cols-1 gap-3 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
-      <ol aria-label="Versions" className="flex max-h-[220px] flex-col gap-1 overflow-auto md:max-h-[440px]">
+      <ol aria-label={t("skillVersions.versions")} className="flex max-h-[220px] flex-col gap-1 overflow-auto md:max-h-[440px]">
         {rows.map((row) => (
           <li key={row.n}>
             <button
@@ -401,7 +401,7 @@ function SkillHistory({
               <div className="flex items-center gap-2">
                 <span className="text-body font-medium text-foreground">{versionWord(row.n)}</span>
                 {row.n === history.current && (
-                  <span className="rounded-full bg-brand/15 px-1.5 text-caption font-semibold text-brand-ink">Now</span>
+                  <span className="rounded-full bg-brand/15 px-1.5 text-caption font-semibold text-brand-ink">{t("skillVersions.now")}</span>
                 )}
                 <span className="ml-auto shrink-0 text-caption text-muted-foreground">{stamp(row.at)}</span>
               </div>
@@ -435,29 +435,29 @@ function SkillHistory({
                 <label className="ml-auto flex items-center gap-2 text-small text-muted-foreground">
                   Compared with
                   <SettingsSelect
-                    aria-label="Compare with"
+                    aria-label={t("skillVersions.compareWith")}
                     value={base === null ? "" : String(base)}
                     onChange={(e) => setAgainst(e.target.value === "" ? null : Number(e.target.value))}
                     className="w-[150px]"
                   >
-                    {base === null && <option value="">Nothing earlier</option>}
+                    {base === null && <option value="">{t("skillVersions.nothingEarlier")}</option>}
                     {others.map((r) => (
                       <option key={r.n} value={r.n}>
                         {versionWord(r.n)}
                       </option>
                     ))}
-                    {history.shipped && !rows.some((r) => r.n === 0) && <option value="0">As it ships</option>}
+                    {history.shipped && !rows.some((r) => r.n === 0) && <option value="0">{t("skillVersions.asItShips")}</option>}
                   </SettingsSelect>
                 </label>
               )}
             </div>
-            <div className="mt-2 min-h-[160px] flex-1 overflow-auto rounded-lg border bg-background py-2" aria-label="What changed" role="region">
+            <div className="mt-2 min-h-[160px] flex-1 overflow-auto rounded-lg border bg-background py-2" aria-label={t("skillVersions.whatChanged")} role="region">
               {base === null ? (
-                <p className="px-4 text-small text-muted-foreground">The first version there is. Nothing to compare it with.</p>
+                <p className="px-4 text-small text-muted-foreground">{t("skillVersions.theFirstVersionThereIs")}</p>
               ) : diffError ? (
                 <p className="px-4 text-small text-destructive">{diffError}</p>
               ) : !diff ? (
-                <p className="px-4 text-small text-muted-foreground">Comparing</p>
+                <p className="px-4 text-small text-muted-foreground">{t("skillVersions.comparing")}</p>
               ) : (
                 <>
                   {base > picked! && (
@@ -474,11 +474,11 @@ function SkillHistory({
                     <p className="px-4 pb-1 text-small text-foreground">When to use it changed to “{diff.description.to}”.</p>
                   )}
                   {diff.tooBig ? (
-                    <p className="px-4 text-small text-muted-foreground">Too large to compare line by line.</p>
+                    <p className="px-4 text-small text-muted-foreground">{t("skillVersions.tooLargeToCompareLine")}</p>
                   ) : diff.lines.some((l) => l.kind === "add" || l.kind === "del") ? (
                     <DiffLines lines={diff.lines} />
                   ) : (
-                    !diff.name && !diff.description && <p className="px-4 text-small text-muted-foreground">The instructions are the same.</p>
+                    !diff.name && !diff.description && <p className="px-4 text-small text-muted-foreground">{t("skillVersions.theInstructionsAreTheSame")}</p>
                   )}
                 </>
               )}
@@ -493,7 +493,7 @@ function SkillHistory({
               {history.shipped && chosen.n === history.current && (
                 <Button size="sm" variant="ghost" disabled={restoring} onClick={() => void restore(0)}>
                   <RotateCcw size={13} />
-                  Back to the built-in text
+                  {t("skillVersions.backToTheBuiltIn")}
                 </Button>
               )}
               <span className="text-small text-muted-foreground">

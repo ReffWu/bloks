@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { EmptyState, PanelHeader, SkeletonRows, SubHead } from "./OverviewParts";
 import { activityContext, type Fill } from "@/lib/contextCard";
+import { t } from "@/lib/i18n";
 
 export interface Spend {
   turns: number;
@@ -268,15 +269,15 @@ export function ActivityPanel() {
   const last = state.bots.find((b) => b.id === state.selectedId && !b.hidden) ?? state.bots.find((b) => !b.hidden);
 
   return (
-    <section aria-label="Activity" className="flex min-w-0 flex-col">
+    <section aria-label={t("activity.activity")} className="flex min-w-0 flex-col">
       <PanelHeader
         icon={<ActivityIcon size={17} />}
-        title="Activity"
-        hint={view === "map" ? "Your whole team. Click anyone to open them." : "What's running, and today's cost."}
+        title={t("activity.activity")}
+        hint={view === "map" ? t("activity.yourWholeTeamClickAnyone") : t("activity.whatsRunningAndTodaysCost")}
         actions={
           <Segmented
             size="sm"
-            aria-label="Show as"
+            aria-label={t("activity.showAs")}
             value={view}
             onChange={setView}
             options={[
@@ -317,7 +318,7 @@ export function ActivityPanel() {
               <span className="text-foreground">{money(activity.today.cost, (activity.today.estimated ?? 0) > 0)}</span> spent where known
             </span>
           ) : (
-            <span>Cost unavailable</span>
+            <span>{t("activity.costUnavailable")}</span>
           )}
         </div>
       )}
@@ -329,7 +330,7 @@ export function ActivityPanel() {
       )}
 
       <div className={cn("mt-5 min-h-0 flex-1", view === "map" && "hidden")}>
-        {!activity && !error && <SkeletonRows rows={3} label="Loading activity" />}
+        {!activity && !error && <SkeletonRows rows={3} label={t("activity.loadingActivity")} />}
 
         {quiet && (
           <div className="mb-5">
@@ -341,18 +342,18 @@ export function ActivityPanel() {
                   </Button>
                 ) : (
                   <Button variant="secondary" size="sm" onClick={() => dispatch({ type: "toggleNewAgent", open: true })}>
-                    Make an agent
+                    {t("activity.makeAnAgent")}
                   </Button>
                 )
               }
             >
-              Nothing running or waiting. Ask an agent for something and it shows up here.
+              {t("activity.nothingRunningOrWaitingAsk")}
             </EmptyState>
           </div>
         )}
 
         {activity?.waiting.length ? (
-          <Section title="Waiting for you">
+          <Section title={t("activity.waitingForYou")}>
             {activity.waiting.map((row) => (
               <Row
                 key={row.messageId}
@@ -372,7 +373,7 @@ export function ActivityPanel() {
                   row.runId ? (
                     <>
                       <Button size="sm" disabled={busy === row.runId} onClick={() => answer(row, true)}>
-                        <Check size={13} /> Approve
+                        <Check size={13} /> {t("common.approve")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -380,12 +381,12 @@ export function ActivityPanel() {
                         disabled={busy === row.runId}
                         onClick={() => answer(row, false)}
                       >
-                        Decline
+                        {t("common.decline")}
                       </Button>
                     </>
                   ) : (
                     <Button variant="secondary" size="sm" onClick={() => goTo(row)}>
-                      Answer it
+                      {t("activity.answerIt")}
                     </Button>
                   )
                 }
@@ -395,7 +396,7 @@ export function ActivityPanel() {
         ) : null}
 
         {activity?.incidents?.length ? (
-          <Section title="Something failed">
+          <Section title={t("activity.somethingFailed")}>
             {activity.incidents.map((row) => (
               <Row
                 key={row.id}
@@ -420,11 +421,11 @@ export function ActivityPanel() {
                   <>
                     {(row.where.botId || row.where.roomId) && (
                       <Button variant="secondary" size="sm" onClick={() => openIncident(row)}>
-                        Open
+                        {t("common.open")}
                       </Button>
                     )}
                     <Button variant="ghost" size="sm" disabled={busy === row.id} onClick={() => resolve(row)}>
-                      Mark resolved
+                      {t("activity.markResolved")}
                     </Button>
                   </>
                 }
@@ -434,7 +435,7 @@ export function ActivityPanel() {
         ) : null}
 
         {activity?.failing?.length ? (
-          <Section title="Stopped for failing">
+          <Section title={t("activity.stoppedForFailing")}>
             {activity.failing.map((row) => {
               const who = row.botId ?? row.targetId;
               return (
@@ -462,10 +463,10 @@ export function ActivityPanel() {
                           dispatch({ type: "toggleRoutines", open: true, tab: row.kind === "routine" ? "schedules" : "watchers", focus: { kind: row.kind, id: row.id } })
                         }
                       >
-                        Fix it
+                        {t("activity.fixIt")}
                       </Button>
                       <Button variant="ghost" size="sm" disabled={busy === row.id} onClick={() => pauseFailing(row)}>
-                        Pause
+                        {t("common.pause")}
                       </Button>
                     </>
                   }
@@ -476,7 +477,7 @@ export function ActivityPanel() {
         ) : null}
 
         {activity?.paused?.length ? (
-          <Section title="You have the wheel">
+          <Section title={t("activity.youHaveTheWheel")}>
             {activity.paused.map((row) => (
               <Row
                 key={row.botId}
@@ -504,7 +505,7 @@ export function ActivityPanel() {
                         .finally(() => setBusy(null));
                     }}
                   >
-                    Hand it back
+                    {t("activity.handItBack")}
                   </Button>
                 }
               />
@@ -513,7 +514,7 @@ export function ActivityPanel() {
         ) : null}
 
         {activity?.running.length ? (
-          <Section title="Running">
+          <Section title={t("activity.running")}>
             {activity.running.map((row) => (
               <Row
                 key={row.threadId}
@@ -535,12 +536,12 @@ export function ActivityPanel() {
                 actions={
                   <>
                     <Button variant="secondary" size="sm" onClick={() => goTo(row)}>
-                      Open
+                      {t("common.open")}
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      title="Stop"
+                      title={t("common.stop")}
                       disabled={busy === row.threadId}
                       onClick={() => stop(row)}
                     >
@@ -554,7 +555,7 @@ export function ActivityPanel() {
         ) : null}
 
         {activity?.agents.length ? (
-          <Section title="Today, by agent">
+          <Section title={t("activity.todayByAgent")}>
             {activity.agents.map((row) => (
               <Row
                 key={row.botId}

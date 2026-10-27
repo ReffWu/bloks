@@ -6,6 +6,7 @@
 // glance, and a glance should not move everything above the box.
 import { cn } from "@/lib/cn";
 import { grouped, type Command } from "@/lib/slashCommands";
+import { t } from "@/lib/i18n";
 
 export function SlashMenu({
   label,
@@ -73,7 +74,7 @@ export function SlashMenu({
       </div>
       {offered.length > 0 && (
         <div className="border-t px-3 py-1.5 text-caption text-muted-foreground max-sm:hidden" aria-hidden>
-          ↑↓ pick · Tab insert · Esc close
+          {t("slashMenu.pickTabInsertEscClose")}
         </div>
       )}
     </div>

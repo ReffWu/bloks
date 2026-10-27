@@ -66,6 +66,7 @@ import { keysFor, platformOf } from "@/lib/shortcuts";
 import { confirm } from "@/components/ui/confirm";
 import { createPortal } from "react-dom";
 import { useTitlebarSlot } from "@/lib/titlebarSlot";
+import { t } from "@/lib/i18n";
 
 /**
  * Which messages should animate in: ones that arrive while you're
@@ -812,7 +813,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             {!group && (m.telegramPerson || m.telegramGroup) && <div className="mb-1 text-small text-muted-foreground">Message from {telegramSpeaker(m)!.name} (Telegram)</div>}
             {!group && m.telegramDelegate && <div className="mb-1 text-small text-muted-foreground">Message from {m.telegramDelegate.name} (Telegram, full access)</div>}
             {!group && m.role === "user" && m.author && <div className="mb-1 text-small font-medium text-muted-foreground">{personName(m.author)}</div>}
-            {m.telegramSent && <div className="mb-1 text-small text-muted-foreground">To {m.telegramSent.name} (Telegram): {m.telegramSent.state === "sent" ? "sent" : m.telegramSent.state === "sending" ? "sending" : m.telegramSent.state === "failed" ? "failed" : "delivery uncertain"}</div>}
+            {m.telegramSent && <div className="mb-1 text-small text-muted-foreground">To {m.telegramSent.name} (Telegram): {m.telegramSent.state === "sent" ? "sent" : m.telegramSent.state === "sending" ? "sending" : m.telegramSent.state === "failed" ? "failed" : t("chatView.deliveryUncertain")}</div>}
             {after && (
               <AfterAgentLink
                 peerId={after.peerId}
@@ -869,7 +870,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           onClick={() => dispatch({ type: "toggleSettings" })}
           className="absolute left-1/2 flex min-w-0 -translate-x-1/2 items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors duration-150 hover:bg-accent"
           style={{ maxWidth: `calc(100% - ${headerSide * 2}px)` }}
-          title="Agent settings"
+          title={t("chatView.agentSettings")}
         >
           <AgentAvatar bot={bot} size={28} />
           <span className="flex min-w-0 items-baseline gap-2 text-left">
@@ -883,7 +884,7 @@ export function ChatView({ bot }: { bot: Bot }) {
                 title={bot.workplaceStatus?.detail}
               >
                 {working && !placeTrouble(bot.workplaceStatus) ? (
-                  <WorkingClock threadKey={threadKey} working={working} messages={said} label={placeNow ?? "Working"} />
+                  <WorkingClock threadKey={threadKey} working={working} messages={said} label={placeNow ?? t("chatView.working")} />
                 ) : (
                   (placeNow ?? bot.title)
                 )}
@@ -901,8 +902,8 @@ export function ChatView({ bot }: { bot: Bot }) {
               variant="ghost"
               size="icon"
               onClick={() => dispatch({ type: "openMeeting", botId: bot.id })}
-              title="Take meeting notes"
-              aria-label="Meeting notes"
+              title={t("chatView.takeMeetingNotes")}
+              aria-label={t("chatView.meetingNotes")}
             >
               <AudioLines size={17} />
             </Button>
@@ -913,7 +914,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             onClick={() => setTerminalOpen((open) => !open)}
             className={cn(terminalOpen && "bg-accent text-foreground")}
             title={`Terminal in ${bot.name}'s folder  ${keysFor("terminalToggle", platformOf())[0]}`}
-            aria-label="Terminal"
+            aria-label={t("chatView.terminal")}
             aria-pressed={terminalOpen}
           >
             <SquareTerminal size={17} />
@@ -924,8 +925,8 @@ export function ChatView({ bot }: { bot: Bot }) {
               size="icon"
               onClick={() => setBrowserPanel({ open: !browserPanel.open })}
               className={cn("relative", browserPanel.open && "bg-accent text-foreground")}
-              title={someoneBrowsing && browserState?.control.by === "agent" ? `Browser: ${browserState.control.name} is browsing` : "Browser"}
-              aria-label="Browser"
+              title={someoneBrowsing && browserState?.control.by === "agent" ? `Browser: ${browserState.control.name} is browsing` : t("chatView.browser")}
+              aria-label={t("chatView.browser")}
               aria-pressed={browserPanel.open}
             >
               <Globe size={17} />
@@ -939,7 +940,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             size="icon"
             onClick={() => dispatch({ type: "toggleComputer" })}
             className={cn(state.computerOpen && "bg-accent text-foreground")}
-            title="Agent computer"
+            title={t("chatView.agentComputer")}
           >
             <Monitor size={17} />
           </Button>
@@ -994,22 +995,22 @@ export function ChatView({ bot }: { bot: Bot }) {
                 setHitAt((at) => stepHit(at, hits.length, e.shiftKey ? -1 : 1));
               }
             }}
-            placeholder="Find in this conversation"
-            aria-label="Find in this conversation"
+            placeholder={t("chatView.findInThisConversation")}
+            aria-label={t("chatView.findInThisConversation")}
             className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
           />
           <span aria-live="polite" className="shrink-0 text-small tabular-nums text-muted-foreground">
             {query.trim().length < 2
               ? ""
               : hits.length === 0
-                ? "No matches"
+                ? t("chatView.noMatches")
                 : `${Math.min(hitAt, hits.length - 1) + 1} of ${hits.length}`}
           </span>
           <div className="flex shrink-0 items-center gap-0.5">
             <button
               onClick={() => setHitAt((at) => stepHit(at, hits.length, -1))}
               disabled={hits.length === 0}
-              aria-label="Previous match"
+              aria-label={t("chatView.previousMatch")}
               title={`Previous match  ${keysFor("findStep", platformOf())[1]}`}
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
@@ -1018,7 +1019,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             <button
               onClick={() => setHitAt((at) => stepHit(at, hits.length, 1))}
               disabled={hits.length === 0}
-              aria-label="Next match"
+              aria-label={t("chatView.nextMatch")}
               title={`Next match  ${keysFor("findStep", platformOf())[0]}`}
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
@@ -1026,7 +1027,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             </button>
             <button
               onClick={closeFind}
-              aria-label="Close find"
+              aria-label={t("chatView.closeFind")}
               title={`Close  ${keysFor("close", platformOf())[0]}`}
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >

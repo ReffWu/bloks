@@ -50,6 +50,7 @@ import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
 import { FoldedSwitchBar, FoldedSwitchSlot, SideColumn, SideSwitch } from "./SideColumn";
 import { shareAsFile } from "@/lib/shareFile";
 import { GridItem, GridSkeleton, MoreLine, PageHeader, pill, Pills, ROUND, SectionTitle, Tile } from "./CustomizeParts";
+import { t } from "@/lib/i18n";
 
 /** An app's mark: its own artwork, then its site's icon, then a letter,
  * because one broken image in a grid of logos looks worse than a letter. */
@@ -161,15 +162,15 @@ function PluginsPage({
       <DropdownMenuContent align="end" className="min-w-[180px]">
         <DropdownMenuItem onClick={() => tryNow(card)}>
           <MessageSquare />
-          Try now
+          {t("customize.tryNow")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => dispatch({ type: "openPluginSettings", focus: { kind: "app", id: card.slug } })}>
           <Settings />
-          Manage
+          {t("customize.manage")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => disconnect(card.slug)} className="text-destructive focus:text-destructive">
           <Trash2 />
-          Delete
+          {t("common.delete")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -178,12 +179,12 @@ function PluginsPage({
   return (
     <>
       <PageHeader
-        title="Plugins"
-        says="Connect apps your agents can use."
+        title={t("common.plugins")}
+        says={t("customize.connectAppsYourAgentsCan")}
         search={search}
         onSearch={setSearch}
         searchRef={searchRef}
-        placeholder="Search plugins"
+        placeholder={t("customize.searchPlugins")}
         onRefresh={() => void refreshStatus(ordered.map((c) => c.slug).slice(0, 40))}
         refreshing={refreshing}
         onSettings={toSettings}
@@ -192,17 +193,17 @@ function PluginsPage({
             <DropdownMenuTrigger
               className={cn(pill, "gap-1 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}
             >
-              Add
+              {t("common.add")}
               <ChevronDown size={14} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[220px]">
               <DropdownMenuItem onClick={() => setAddingServer(true)}>
                 <Puzzle />
-                Add custom MCP server
+                {t("customize.addCustomMcpServer")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setAddingSkill(true)}>
                 <Sparkles />
-                Add a skill
+                {t("customize.addASkill")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -228,13 +229,13 @@ function PluginsPage({
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
               <span className="text-ui text-foreground">
                 Add a Composio key to connect apps.
-                <span className="text-muted-foreground"> One key works for every agent.</span>
+                <span className="text-muted-foreground"> {t("customize.oneKeyWorksForEvery")}</span>
               </span>
               <button
                 onClick={() => askForKey()}
                 className={cn(pill, "h-8 bg-foreground px-3.5 text-body font-medium text-background hover:opacity-90")}
               >
-                Add a key
+                {t("customize.addAKey")}
               </button>
             </div>
           )}
@@ -242,7 +243,7 @@ function PluginsPage({
             <p className="mt-5 text-body text-muted-foreground">
               Showing popular apps.{" "}
               <button onClick={toKeys} className="underline underline-offset-2 hover:text-foreground">
-                Add a Composio API key
+                {t("customize.addAComposioApiKey")}
               </button>{" "}
               to see them all.
             </p>
@@ -251,7 +252,7 @@ function PluginsPage({
 
           {unfinished.length > 0 && !q && (
             <>
-              <SectionTitle>Needs setup</SectionTitle>
+              <SectionTitle>{t("customize.needsSetup")}</SectionTitle>
               <div className="flex flex-col">
                 {unfinished.map((server) => (
                   <GridItem
@@ -268,7 +269,7 @@ function PluginsPage({
                         onClick={() => dispatch({ type: "openPluginSettings", focus: { kind: "mcp", id: server.id } })}
                         className="h-8 rounded-lg border px-3 text-body font-medium text-foreground transition-colors hover:bg-accent"
                       >
-                        Finish setup
+                        {t("customize.finishSetup")}
                       </button>
                     }
                   />
@@ -279,7 +280,7 @@ function PluginsPage({
 
           {installed.length > 0 && !q && (
             <>
-              <SectionTitle>Connected</SectionTitle>
+              <SectionTitle>{t("common.connected")}</SectionTitle>
               <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
                 {installed.map((card) => (
                   <GridItem
@@ -307,10 +308,10 @@ function PluginsPage({
               )
             }
           >
-            {q ? "Results" : installed.length ? "More apps" : "Popular"}
+            {q ? t("customize.results") : installed.length ? t("customize.moreApps") : t("customize.popular")}
           </SectionTitle>
           {cards === null ? (
-            <GridSkeleton label="Loading the catalogue" count={8} />
+            <GridSkeleton label={t("customize.loadingTheCatalogue")} count={8} />
           ) : matching.length === 0 ? (
             <p className="py-10 text-ui text-muted-foreground">No apps match “{search.trim()}”.</p>
           ) : (
@@ -424,12 +425,12 @@ function SkillsPage({
   return (
     <>
       <PageHeader
-        title="Skills"
-        says="Reusable instructions your agents can pick up."
+        title={t("common.skills")}
+        says={t("customize.reusableInstructionsYourAgentsCan")}
         search={search}
         onSearch={setSearch}
         searchRef={searchRef}
-        placeholder="Search skills"
+        placeholder={t("customize.searchSkills")}
         onRefresh={() => void load()}
         refreshing={loading}
         onSettings={() => dispatch({ type: "toggleAppSettings", open: true, page: "general" })}
@@ -438,17 +439,17 @@ function SkillsPage({
             <DropdownMenuTrigger
               className={cn(pill, "gap-1 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}
             >
-              Add
+              {t("common.add")}
               <ChevronDown size={14} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[220px]">
               <DropdownMenuItem onClick={() => setAdding(true)}>
                 <Plus />
-                Write or import a skill
+                {t("customize.writeOrImportASkill")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => openCatalog(dispatch, "skill")}>
                 <Sparkles />
-                Browse the catalogue
+                {t("customize.browseTheCatalogue")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -458,20 +459,20 @@ function SkillsPage({
       {updates > 0 && !q && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
           <span className="text-ui text-foreground">
-            {updates === 1 ? "A skill you installed has an update" : `${updates} skills you installed have updates`} in the catalogue.
+            {updates === 1 ? t("customize.aSkillYouInstalledHas") : `${updates} skills you installed have updates`} in the catalogue.
           </span>
           <button
             onClick={() => openCatalog(dispatch, "skill")}
             className={cn(pill, "h-8 bg-foreground px-3.5 text-body font-medium text-background hover:opacity-90")}
           >
-            Review
+            {t("common.review")}
           </button>
         </div>
       )}
 
           {proposals.length > 0 && !q && (
             <>
-              <SectionTitle>Suggested from your chats</SectionTitle>
+              <SectionTitle>{t("customize.suggestedFromYourChats")}</SectionTitle>
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 {proposals.map((proposal) => (
                   <ProposedSkill key={proposal.id} proposal={proposal} onDone={() => void load()} />
@@ -481,10 +482,10 @@ function SkillsPage({
           )}
 
           {skills === null ? (
-            <GridSkeleton label="Loading skills" className="mt-6" />
+            <GridSkeleton label={t("customize.loadingSkills")} className="mt-6" />
           ) : groups.length === 0 ? (
             <p className="mt-10 text-ui text-muted-foreground">
-              {q ? `No skills match “${search.trim()}”.` : "No skills yet. Add one, or browse the catalogue."}
+              {q ? `No skills match “${search.trim()}”.` : t("customize.noSkillsYetAddOne")}
             </p>
           ) : (
             groups.map((group) => {
@@ -520,7 +521,7 @@ function SkillsPage({
                               {skill.uses} {skill.uses === 1 ? "use" : "uses"}
                             </span>
                           ) : (
-                            <Check size={16} className="mr-2 text-muted-foreground" aria-label="Installed" />
+                            <Check size={16} className="mr-2 text-muted-foreground" aria-label={t("customize.installed")} />
                           )
                         }
                       />
@@ -538,7 +539,7 @@ function SkillsPage({
           )}
           <p className="mt-10 text-body text-muted-foreground">
             Attach skills in an agent's settings. Stored in{" "}
-            <code className="rounded bg-muted px-1 py-px font-mono text-small">~/.bloks/skills</code>.
+            <code className="rounded bg-muted px-1 py-px font-mono text-small">{t("customize.bloksSkills")}</code>.
           </p>
 
       <AddSkillDialog open={adding} onOpenChange={setAdding} onInstalled={() => void load()} />
@@ -560,7 +561,7 @@ function SkillsPage({
               </div>
               <div className="mt-4 flex items-center justify-between gap-3">
                 <span className="text-body text-muted-foreground">
-                  {open.source === "builtin" ? "Built in" : "Yours"}
+                  {open.source === "builtin" ? t("customize.builtIn") : t("customize.yours")}
                 </span>
                 <div className="flex items-center gap-1">
                   {/* the catalogue's SKILL.md, keys and addresses taken out */}
@@ -573,7 +574,7 @@ function SkillsPage({
                     className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
                   >
                     <Download size={14} />
-                    Share as file
+                    {t("customize.shareAsFile")}
                   </button>
                   {open.source === "user" && (
                     <button
@@ -581,7 +582,7 @@ function SkillsPage({
                       className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body text-destructive transition-colors duration-150 hover:bg-destructive/10"
                     >
                       <Trash2 size={14} />
-                      Remove
+                      {t("common.remove")}
                     </button>
                   )}
                 </div>
@@ -637,27 +638,27 @@ function CustomizeSidebar({
   onSearch: () => void;
 }) {
   return (
-    <SideColumn id="plugins" size={CUSTOMIZE_COLUMN} label="Customize" className="hidden h-full bg-sidebar md:flex">
+    <SideColumn id="plugins" size={CUSTOMIZE_COLUMN} label={t("customize.customize")} className="hidden h-full bg-sidebar md:flex">
       <div className="titlebar-drag flex h-[52px] shrink-0 items-center justify-between pl-4 pr-2.5">
-        <span className="text-lead font-semibold text-foreground">Customize</span>
+        <span className="text-lead font-semibold text-foreground">{t("customize.customize")}</span>
         <button
           onClick={onSearch}
-          aria-label={tab === "plugins" ? "Search plugins" : tab === "skills" ? "Search skills" : "Search the catalogue"}
-          title="Search"
+          aria-label={tab === "plugins" ? t("customize.searchPlugins") : tab === "skills" ? t("customize.searchSkills") : t("customize.searchTheCatalogue")}
+          title={t("common.search")}
           className="flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
         >
           <Search size={16} />
         </button>
       </div>
       <nav className="flex flex-col gap-0.5 px-2">
-        <NavRow active={tab === "plugins"} icon={<Puzzle size={17} />} label="Plugins" onClick={() => setTab("plugins")} />
-        <NavRow active={tab === "skills"} icon={<Sparkles size={17} />} label="Skills" onClick={() => setTab("skills")} />
-        <NavRow active={tab === "catalog"} icon={<LayoutGrid size={17} />} label="Catalogue" onClick={() => setTab("catalog")} />
+        <NavRow active={tab === "plugins"} icon={<Puzzle size={17} />} label={t("common.plugins")} onClick={() => setTab("plugins")} />
+        <NavRow active={tab === "skills"} icon={<Sparkles size={17} />} label={t("common.skills")} onClick={() => setTab("skills")} />
+        <NavRow active={tab === "catalog"} icon={<LayoutGrid size={17} />} label={t("customize.catalogue")} onClick={() => setTab("catalog")} />
       </nav>
-      <div className="mt-6 px-4 pb-1.5 text-body text-muted-foreground">Installed</div>
+      <div className="mt-6 px-4 pb-1.5 text-body text-muted-foreground">{t("customize.installed")}</div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {installed.length === 0 ? (
-          <p className="px-2.5 text-body leading-relaxed text-muted-foreground/80">Apps you connect show up here.</p>
+          <p className="px-2.5 text-body leading-relaxed text-muted-foreground/80">{t("customize.appsYouConnectShowUp")}</p>
         ) : (
           installed.map((card) => (
             <NavRow key={card.slug} active={false} icon={<ServiceIcon card={card} size={16} />} label={card.label} onClick={() => onPickApp(card)} />
@@ -724,7 +725,7 @@ export function CustomizeView() {
                 folded ? (
                   <SideSwitch
                     column="plugins"
-                    label="Customize"
+                    label={t("customize.customize")}
                     current={tab}
                     onPick={(id) => setTab(id as CustomizeTab)}
                     items={[

@@ -31,6 +31,7 @@ import {
   type Health,
   type Step,
 } from "./ConnectionKit";
+import { t } from "@/lib/i18n";
 
 interface Person {
   id: string;
@@ -112,10 +113,10 @@ function DaemonFields({ daemon, onSaved }: { daemon: Daemon; onSaved: (next: Dae
         <CopyRow value={daemon.command} />
       </div>
       <div className="mt-2 flex max-w-[460px] items-center gap-1.5">
-        <label htmlFor="signal-daemon" className="sr-only">signal-cli address</label>
+        <label htmlFor="signal-daemon" className="sr-only">{t("signalSection.signalCliAddress")}</label>
         <Input id="signal-daemon" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} className="h-8 min-w-0 flex-1 font-mono text-small" spellCheck={false} />
         <Button size="sm" variant="secondary" className="h-8" disabled={busy || !url.trim()} onClick={save}>
-          {busy ? "Checking" : "Check"}
+          {busy ? t("signalSection.checking") : t("signalSection.check")}
         </Button>
       </div>
       <ConnectionError>{error}</ConnectionError>
@@ -219,9 +220,9 @@ export function SignalSection({ botId }: { botId?: string }) {
         <ConnectionHeader
           icon={<MessageDots size={14} className="shrink-0 text-muted-foreground" />}
           title="Signal"
-          says="Each agent answers on a Signal account of its own. Set one up in that agent's settings."
-          info="Bloks talks to signal-cli on this computer, linked to the account like Signal Desktop. signal-cli keeps the account's keys in its own folder; Bloks never has them."
-          health={daemon && <HealthLine tone={tone} label={daemon.reachable ? "signal-cli running" : "signal-cli not running"} />}
+          says={t("signalSection.eachAgentAnswersOnA")}
+          info={t("signalSection.bloksTalksToSignalCli")}
+          health={daemon && <HealthLine tone={tone} label={daemon.reachable ? t("signalSection.signalCliRunning") : t("signalSection.signalCliNotRunning")} />}
         />
         {bots.length > 0 && (
           <div className="mt-3 flex flex-col gap-1">
@@ -232,17 +233,17 @@ export function SignalSection({ botId }: { botId?: string }) {
                 className="flex min-w-0 items-center gap-3 rounded-lg px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-accent/60 focus-visible:bg-accent/60"
               >
                 <span className="min-w-0 flex-1 truncate text-body text-foreground">
-                  {state.bots.find((bot) => bot.id === b.botId)?.name ?? "Agent"}
-                  <span className="ml-1.5 text-muted-foreground">{b.account ?? "Signal settings"}</span>
+                  {state.bots.find((bot) => bot.id === b.botId)?.name ?? t("common.agent")}
+                  <span className="ml-1.5 text-muted-foreground">{b.account ?? t("signalSection.signalSettings")}</span>
                 </span>
-                <HealthLine tone={!b.enabled ? "off" : b.ownerPaired ? "on" : "wait"} label={!b.enabled ? "Off" : b.ownerPaired ? "Paired" : "Needs pairing"} />
+                <HealthLine tone={!b.enabled ? "off" : b.ownerPaired ? "on" : "wait"} label={!b.enabled ? t("common.off") : b.ownerPaired ? t("signalSection.paired") : t("signalSection.needsPairing")} />
               </button>
             ))}
           </div>
         )}
         {daemon && (
           <div className="mt-4 border-t pt-3">
-            <div className="text-body font-semibold text-foreground">signal-cli on this computer</div>
+            <div className="text-body font-semibold text-foreground">{t("signalSection.signalCliOnThisComputer")}</div>
             <p className="mt-0.5 text-small leading-relaxed text-muted-foreground">
               {daemon.reachable ? `Answering at ${daemon.daemon}.` : `Install it with ${INSTALL}, then keep this running in Terminal:`}
             </p>
@@ -268,11 +269,11 @@ export function SignalSection({ botId }: { botId?: string }) {
           summary: "Installed",
           body: (
             <>
-              <StepNote>In Terminal, with Homebrew. It is the open source client Bloks talks to; it keeps the account's keys on this computer.</StepNote>
+              <StepNote>{t("signalSection.inTerminalWithHomebrewIt")}</StepNote>
               <div className="mt-2 max-w-[460px]"><CopyRow value={INSTALL} /></div>
               <Button asChild size="sm" variant="secondary" className="mt-2">
                 <a href="https://github.com/AsamK/signal-cli" target="_blank" rel="noreferrer">
-                  About signal-cli
+                  {t("signalSection.aboutSignalCli")}
                   <ExternalLink size={12} />
                 </a>
               </Button>
@@ -286,7 +287,7 @@ export function SignalSection({ botId }: { botId?: string }) {
           summary: `Answering at ${daemon.daemon}`,
           body: (
             <>
-              <StepNote>Run this and leave it open. This ticks when Bloks can reach it.</StepNote>
+              <StepNote>{t("signalSection.runThisAndLeaveIt")}</StepNote>
               <DaemonFields daemon={daemon} onSaved={(next) => setDaemon({ ...daemon, ...next })} />
             </>
           ),
@@ -306,12 +307,12 @@ export function SignalSection({ botId }: { botId?: string }) {
                 <div className="mt-3 flex flex-wrap items-start gap-4">
                   {/* the code always sits on white; a themed code is one a camera cannot read */}
                   <div className="flex size-[148px] shrink-0 items-center justify-center rounded-lg bg-white p-2 shadow-sm ring-1 ring-black/5">
-                    {qr ? <img src={qr} alt="Code to scan in Signal to link this computer" className="size-[132px]" /> : <Loader2 size={16} className="animate-spin text-neutral-400" />}
+                    {qr ? <img src={qr} alt={t("signalSection.codeToScanInSignal")} className="size-[132px]" /> : <Loader2 size={16} className="animate-spin text-neutral-400" />}
                   </div>
                   <div className="min-w-[200px] flex-1">
-                    <StepNote>In Signal on that phone, open Settings, Linked devices, Link new device, and scan this. This ticks when it links.</StepNote>
+                    <StepNote>{t("signalSection.inSignalOnThatPhone")}</StepNote>
                     <button disabled={busy} onClick={() => post({ cancelLink: true })} className="mt-2 text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline">
-                      Not now
+                      {t("common.notNow")}
                     </button>
                   </div>
                 </div>
@@ -323,18 +324,18 @@ export function SignalSection({ botId }: { botId?: string }) {
                   </Button>
                   {free.length > 0 && (
                     <select
-                      aria-label="Use an account signal-cli already has"
+                      aria-label={t("signalSection.useAnAccountSignalCli")}
                       value=""
                       onChange={(e) => e.target.value && post({ account: e.target.value })}
                       className="h-8 rounded-lg border bg-background px-2 text-body text-foreground"
                     >
-                      <option value="">Or use one already linked</option>
+                      <option value="">{t("signalSection.orUseOneAlreadyLinked")}</option>
                       {free.map((a) => <option key={a.account} value={a.account}>{a.account}</option>)}
                     </select>
                   )}
                 </div>
               )}
-              {status.link?.state === "failed" && <p className="mt-2 text-small text-warning">{status.link.error ?? "That link did not finish."} Try again.</p>}
+              {status.link?.state === "failed" && <p className="mt-2 text-small text-warning">{status.link.error ?? t("signalSection.thatLinkDidNotFinish")} Try again.</p>}
             </>
           ),
         },
@@ -350,12 +351,12 @@ export function SignalSection({ botId }: { botId?: string }) {
                 Keep it to yourself: whoever sends it first is the owner.
               </StepNote>
               <div className="mt-2 max-w-[280px]"><CopyRow value={status.pairing} big /></div>
-              <span className="mt-2 block text-small text-muted-foreground">This ticks when it arrives.</span>
+              <span className="mt-2 block text-small text-muted-foreground">{t("signalSection.thisTicksWhenItArrives")}</span>
             </>
           ) : (
             <>
               <StepNote>So {agentName} knows which messages are yours.</StepNote>
-              <Button className="mt-2" size="sm" variant="secondary" disabled={busy} onClick={() => post({ pair: true })}>Get a pairing word</Button>
+              <Button className="mt-2" size="sm" variant="secondary" disabled={busy} onClick={() => post({ pair: true })}>{t("signalSection.getAPairingWord")}</Button>
             </>
           ),
         },
@@ -368,9 +369,9 @@ export function SignalSection({ botId }: { botId?: string }) {
         icon={<MessageDots size={14} className="shrink-0 text-muted-foreground" />}
         title="Signal"
         says={`Message ${agentName} on Signal.`}
-        info="signal-cli on this computer is linked to the account like Signal Desktop, and keeps its keys in its own folder. Bloks never has them."
+        info={t("signalSection.signalCliOnThisComputerIs")}
         health={h && <HealthLine tone={h.tone} label={h.label} title={status?.connection.detail} />}
-        control={status?.configured && <Switch aria-label="Answer on Signal" checked={status.enabled} disabled={busy} onCheckedChange={(enabled) => post({ enabled })} />}
+        control={status?.configured && <Switch aria-label={t("signalSection.answerOnSignal")} checked={status.enabled} disabled={busy} onCheckedChange={(enabled) => post({ enabled })} />}
       />
 
       <AnimatePresence initial={false}>
@@ -378,19 +379,19 @@ export function SignalSection({ botId }: { botId?: string }) {
           <PairedMoment
             key="paired"
             icon={<MessageDots size={18} />}
-            title={status.ownerSelf ? "Paired in your Note to Self" : `You own ${status.account}`}
+            title={status.ownerSelf ? t("signalSection.pairedInYourNoteTo") : `You own ${status.account}`}
             detail={status.ownerSelf ? `Write to ${agentName} there.` : `Messages to it now reach ${agentName}.`}
           />
         )}
       </AnimatePresence>
 
-      {!status && !error && <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" aria-label="Loading" />}
+      {!status && !error && <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" aria-label={t("common.loading2")} />}
       {status && !status.configured && !opened ? (
         <Button size="sm" variant="secondary" className="mt-3" onClick={() => { setOpened(true); load(); }}>
-          Set up Signal
+          {t("signalSection.setUpSignal")}
         </Button>
       ) : (
-        settingUp && !justPaired && <Checklist label="Set up Signal" steps={steps} />
+        settingUp && !justPaired && <Checklist label={t("signalSection.setUpSignal")} steps={steps} />
       )}
 
       {status?.configured && status.ownerPaired && (
@@ -404,7 +405,7 @@ export function SignalSection({ botId }: { botId?: string }) {
 
       {status && !status.ownerSelf && status.people.length > 0 && (
         <div className="mt-4 border-t pt-3">
-          <div className="text-body font-semibold text-foreground">People on Signal</div>
+          <div className="text-body font-semibold text-foreground">{t("signalSection.peopleOnSignal")}</div>
           {!status.engineReady && (
             <p className="mt-0.5 text-small leading-relaxed text-warning">
               {agentName} answers people without full access only on Claude Code or an API model.
@@ -422,12 +423,12 @@ export function SignalSection({ botId }: { botId?: string }) {
                         person.state === "allowed" ? "bg-success/10 text-success" : person.state === "pending" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground",
                       )}
                     >
-                      {person.full ? "Full access" : PERSON_STATE[person.state]}
+                      {person.full ? t("signalSection.fullAccess") : PERSON_STATE[person.state]}
                     </span>
                   </span>
                   {/* a profile name is chosen freely; the number is not */}
                   <span className="block text-caption text-muted-foreground">
-                    {person.number ?? "Number not shared"}
+                    {person.number ?? t("signalSection.numberNotShared")}
                     {person.sameName ? ". Someone else here has the same name" : ""}
                   </span>
                   {person.first && <span className="block break-words text-caption text-muted-foreground">They wrote: {person.first}</span>}
@@ -438,28 +439,28 @@ export function SignalSection({ botId }: { botId?: string }) {
                   )}
                 </span>
                 <div className="flex shrink-0 flex-wrap gap-1">
-                  {person.state !== "allowed" && <Button size="sm" variant="secondary" disabled={busy} onClick={() => post({ personId: person.id, action: "allow" })}>Let in</Button>}
-                  {person.state === "allowed" && !person.full && <Button size="sm" variant="secondary" disabled={busy} onClick={() => void giveFullAccess(person, agentName)}>Give full access</Button>}
-                  {person.full && <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "restricted" })}>Restrict</Button>}
-                  {person.state === "pending" && <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "decline" })}>Not now</Button>}
-                  {(person.state === "allowed" || person.state === "pending") && <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "remove" })}>Take out</Button>}
+                  {person.state !== "allowed" && <Button size="sm" variant="secondary" disabled={busy} onClick={() => post({ personId: person.id, action: "allow" })}>{t("signalSection.letIn")}</Button>}
+                  {person.state === "allowed" && !person.full && <Button size="sm" variant="secondary" disabled={busy} onClick={() => void giveFullAccess(person, agentName)}>{t("signalSection.giveFullAccess")}</Button>}
+                  {person.full && <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "restricted" })}>{t("signalSection.restrict")}</Button>}
+                  {person.state === "pending" && <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "decline" })}>{t("common.notNow")}</Button>}
+                  {(person.state === "allowed" || person.state === "pending") && <Button size="sm" variant="ghost" disabled={busy} onClick={() => post({ personId: person.id, action: "remove" })}>{t("signalSection.takeOut")}</Button>}
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
-      {status?.admissionFull && <p className="mt-2 text-small text-warning">The waiting list is full. Decide on someone waiting, or take someone out, to make room.</p>}
+      {status?.admissionFull && <p className="mt-2 text-small text-warning">{t("signalSection.theWaitingListIsFull")}</p>}
 
       {status?.configured && (
         <div className="mt-4 border-t pt-3">
           <p className="text-small leading-relaxed text-muted-foreground">
-            {status.voiceVendor ? `Voice notes are transcribed by ${status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs"} with your speech key.` : "Voice notes need an OpenAI or ElevenLabs key. Without one, they are asked for as text."}
+            {status.voiceVendor ? `Voice notes are transcribed by ${status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs"} with your speech key.` : t("signalSection.voiceNotesNeedAnOpenai")}
           </p>
-          <ConnectionNote>To unlink this computer for good, remove it in Signal on the phone too: Settings, Linked devices.</ConnectionNote>
+          <ConnectionNote>{t("signalSection.toUnlinkThisComputerFor")}</ConnectionNote>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-small text-muted-foreground">
-            {status.ownerPaired && <button disabled={busy} onClick={() => post({ unpair: true })} className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline">Unpair me</button>}
-            <button disabled={busy} onClick={() => post({ forget: true })} className="underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline">Remove account</button>
+            {status.ownerPaired && <button disabled={busy} onClick={() => post({ unpair: true })} className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline">{t("signalSection.unpairMe")}</button>}
+            <button disabled={busy} onClick={() => post({ forget: true })} className="underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline">{t("signalSection.removeAccount")}</button>
           </div>
         </div>
       )}

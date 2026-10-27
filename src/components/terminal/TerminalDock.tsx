@@ -26,6 +26,7 @@ import {
 } from "@/lib/terminalLayout";
 import { useEscape } from "@/lib/useEscape";
 import { useTerminalLayout } from "@/lib/useTerminalSettings";
+import { t } from "@/lib/i18n";
 
 const EDGE: Record<TerminalPosition, string> = {
   left: "border-r",
@@ -199,7 +200,7 @@ function ResizeEdge({
     <div
       role="separator"
       aria-orientation={wide ? "vertical" : "horizontal"}
-      aria-label="Resize the terminal"
+      aria-label={t("terminalDock.resizeTheTerminal")}
       aria-valuenow={Math.round(size)}
       aria-valuemin={min}
       aria-valuemax={Math.round(max)}

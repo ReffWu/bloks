@@ -47,6 +47,7 @@ import {
 } from "@/lib/approvalCard";
 import { plural } from "@/lib/plural";
 import { stamp } from "@/lib/when";
+import { t } from "@/lib/i18n";
 
 type OptionCardData = NonNullable<Message["card"]>;
 
@@ -320,12 +321,12 @@ function AlwaysMenu({ scopes, onPick }: { scopes: AlwaysScope[]; onPick: (scope:
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="ml-auto gap-1 pr-2">
-          Always allow
+          {t("optionCard.alwaysAllow")}
           <ChevronDown size={13} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[300px] max-w-[calc(100vw-32px)]">
-        <DropdownMenuLabel>Allow now, and from now on</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("optionCard.allowNowAndFromNow")}</DropdownMenuLabel>
         {scopes.map((scope) => (
           <DropdownMenuItem
             key={scope.id}
@@ -336,14 +337,14 @@ function AlwaysMenu({ scopes, onPick }: { scopes: AlwaysScope[]; onPick: (scope:
               <span className="min-w-0 flex-1 truncate">{scope.label}</span>
               {scope.wide && (
                 <span className="shrink-0 rounded-full bg-warning/12 px-1.5 text-caption font-medium text-warning">
-                  All agents
+                  {t("optionCard.allAgents")}
                 </span>
               )}
             </span>
             <span className="text-small leading-snug text-muted-foreground">{scope.note}</span>
           </DropdownMenuItem>
         ))}
-        <p className="px-2.5 pb-1.5 pt-1 text-small text-muted-foreground">Saved as a rule. Remove it in Settings.</p>
+        <p className="px-2.5 pb-1.5 pt-1 text-small text-muted-foreground">{t("optionCard.savedAsARuleRemove")}</p>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -501,7 +502,7 @@ function CodeBlock({ text, cut, prompt, shade }: { text: string; cut: boolean; p
       >
         {prompt && <span className="select-none text-muted-foreground">$ </span>}
         {text}
-        {cut && <span className="text-muted-foreground" title="Bloks was only sent this much">…</span>}
+        {cut && <span className="text-muted-foreground" title={t("optionCard.bloksWasOnlySentThis")}>…</span>}
       </pre>
       <CopyButton text={text} />
       {long && <MoreToggle open={open} onToggle={() => setOpen((o) => !o)} />}
@@ -662,7 +663,7 @@ function Fields({
       {long && <MoreToggle open={open} onToggle={() => setOpen((o) => !o)} more={fields.length - 5} />}
       {/* the fields that were whole are shown; the one the cut fell in,
           and any after it, never reached Bloks */}
-      {cut && <p className="mt-1.5 text-small text-muted-foreground">The rest was cut short before it reached Bloks.</p>}
+      {cut && <p className="mt-1.5 text-small text-muted-foreground">{t("optionCard.theRestWasCutShort")}</p>}
     </div>
   );
 }
@@ -674,7 +675,7 @@ function MoreToggle({ open, onToggle, more }: { open: boolean; onToggle: () => v
       onClick={onToggle}
       className="mt-1 text-small font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
     >
-      {open ? "Show less" : more ? `Show ${more} more` : "Show all"}
+      {open ? t("optionCard.showLess") : more ? `Show ${more} more` : t("optionCard.showAll")}
     </button>
   );
 }
@@ -685,8 +686,8 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       type="button"
-      aria-label={copied ? "Copied" : "Copy"}
-      title={copied ? "Copied" : "Copy"}
+      aria-label={copied ? t("common.copied") : t("common.copy")}
+      title={copied ? t("common.copied") : t("common.copy")}
       onClick={() => {
         void navigator.clipboard?.writeText(text).then(() => {
           setCopied(true);
@@ -769,7 +770,7 @@ function QuestionCard({
         <motion.div key="open" exit={leave} className="w-full max-w-[560px]">
           <div
             role="group"
-            aria-label={workflow ? "Workflow waiting" : `${name} asks`}
+            aria-label={workflow ? t("optionCard.workflowWaiting") : `${name} asks`}
             tabIndex={0}
             onKeyDown={onKeyDown}
             className="group/card w-full animate-rise-in rounded-2xl border bg-card shadow-[0_1px_3px_var(--shadow-color)] outline-none"
@@ -786,7 +787,7 @@ function QuestionCard({
                 <div className="flex items-baseline gap-3">
                   <p className="min-w-0 flex-1 truncate text-small text-muted-foreground">
                     {workflow ? (
-                      "A workflow is waiting on you"
+                      t("optionCard.aWorkflowIsWaitingOn")
                     ) : (
                       <>
                         <span className="font-medium text-foreground">{name}</span> asks
@@ -810,8 +811,8 @@ function QuestionCard({
               {!workflow && (
                 <button
                   onClick={onDismiss}
-                  aria-label="Dismiss question"
-                  title="Dismiss"
+                  aria-label={t("optionCard.dismissQuestion")}
+                  title={t("common.dismiss")}
                   className="-mr-1.5 -mt-0.5 shrink-0 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
                 >
                   <X size={15} />
@@ -853,8 +854,8 @@ function QuestionCard({
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.nativeEvent.isComposing) send();
                     }}
-                    placeholder={card.options.length ? "Or answer in your own words" : "Type your answer"}
-                    aria-label="Your answer"
+                    placeholder={card.options.length ? t("optionCard.orAnswerInYourOwn") : t("optionCard.typeYourAnswer")}
+                    aria-label={t("optionCard.yourAnswer")}
                     className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
                   />
                   <Button
@@ -862,7 +863,7 @@ function QuestionCard({
                     variant={custom.trim() ? "brand" : "ghost"}
                     disabled={!custom.trim()}
                     onClick={send}
-                    aria-label="Send answer"
+                    aria-label={t("optionCard.sendAnswer")}
                     className="size-7 rounded-lg"
                   >
                     <ArrowUp size={14} />
@@ -905,7 +906,7 @@ function SettledQuestion({
         <>
           {(closed || !said) && (
             <span className="shrink-0 font-medium text-foreground/80">
-              {closed ? "Not answered" : card.answeredBy ? `${card.answeredBy} answered` : "Answered"}
+              {closed ? t("optionCard.notAnswered") : card.answeredBy ? `${card.answeredBy} answered` : t("optionCard.answered")}
             </span>
           )}
           <span className="min-w-0 truncate">{question}</span>
@@ -979,7 +980,7 @@ function TeamProposal({
     <div className="w-full max-w-[560px] animate-rise-in overflow-hidden rounded-2xl border bg-card shadow-[0_1px_3px_var(--shadow-color)]">
       <div className="px-4 pt-4">
         <div className="text-caption font-semibold uppercase tracking-[0.1em] text-brand-ink">
-          {hired ? "Team hired" : "Proposed team"}
+          {hired ? t("optionCard.teamHired") : t("optionCard.proposedTeam")}
         </div>
         <div className="mt-1 text-lead font-semibold text-foreground">
           {leadName} wants {plural(plan.members.length, "person", "people")} for “{plan.room}”
@@ -1028,7 +1029,7 @@ function TeamProposal({
             onClick={() => setOpen((v) => !v)}
             className="text-small font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
-            {open ? "Hide brief" : "Show brief"}
+            {open ? t("optionCard.hideBrief") : t("optionCard.showBrief")}
           </button>
           {open && (
             <p className="mt-2 whitespace-pre-wrap text-body leading-relaxed text-muted-foreground">
@@ -1044,20 +1045,20 @@ function TeamProposal({
             Hired. {leadName} has briefed them in the room.
           </span>
         ) : settled ? (
-          <span className="text-body text-muted-foreground">Declined.</span>
+          <span className="text-body text-muted-foreground">{t("optionCard.declined")}</span>
         ) : (
           <>
             <button
               onClick={onHire}
               className="rounded-xl bg-brand-ink px-3.5 py-2 text-ui font-medium text-brand-foreground transition-[transform,filter] duration-150 hover:brightness-95 active:scale-[0.98]"
             >
-              Hire the team
+              {t("optionCard.hireTheTeam")}
             </button>
             <button
               onClick={onDecline}
               className="rounded-xl px-3 py-2 text-ui text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
             >
-              Not now
+              {t("common.notNow")}
             </button>
           </>
         )}

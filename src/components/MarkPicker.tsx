@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { CHOICE_COLORS, CHOICE_PATTERNS, sameMark, type Mark } from "@/lib/workspaceMark";
 import { WorkspaceMark } from "./WorkspaceMark";
+import { t } from "@/lib/i18n";
 
 /** What each colour is called, for a screen reader and a tooltip. */
 const COLOR_NAMES: Record<string, string> = {
@@ -117,7 +118,7 @@ export function MarkPicker({
       <div
         ref={colorRow}
         role="radiogroup"
-        aria-label="Colour"
+        aria-label={t("markPicker.colour")}
         className={ROW}
         onKeyDown={arrows(CHOICE_COLORS.length, colorAt, (i, dir) => {
           const free = freeFrom(CHOICE_COLORS.length, i, dir, (j) => ({ color: CHOICE_COLORS[j]!, pattern }));
@@ -159,7 +160,7 @@ export function MarkPicker({
       <div
         ref={shapeRow}
         role="radiogroup"
-        aria-label="Shape"
+        aria-label={t("markPicker.shape")}
         className={ROW}
         onKeyDown={arrows(patterns.length, patternAt, (i, dir) => {
           const free = freeFrom(patterns.length, i, dir, (j) => ({ color, pattern: patterns[j]! }));
@@ -228,7 +229,7 @@ export function MarkActions({
       {onShuffle && (
         <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" disabled={disabled} onClick={onShuffle}>
           <RefreshCw size={13} />
-          Shuffle
+          {t("markPicker.shuffle")}
         </Button>
       )}
       {showDefault && (
@@ -241,7 +242,7 @@ export function MarkActions({
           onClick={() => onChange(defaultMark)}
         >
           <RotateCcw size={13} />
-          Default
+          {t("markPicker.default")}
         </Button>
       )}
     </div>

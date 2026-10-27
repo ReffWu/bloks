@@ -54,6 +54,7 @@ import {
   type BrowserDo,
   type BrowserTab,
 } from "@/lib/appBrowser";
+import { t } from "@/lib/i18n";
 
 /** The server's word on the Mac's browser, for a page that is not on it;
  * its "browser.app" frames keep it fresh after this. */
@@ -169,7 +170,7 @@ function Edge({ width, room, onDrag, onDone }: { width: number; room: number; on
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize the browser"
+      aria-label={t("browserPanel.resizeTheBrowser")}
       aria-valuenow={Math.round(width)}
       tabIndex={0}
       onPointerDown={(e) => {
@@ -253,33 +254,33 @@ function BrowserPanel({ resizing, botNames }: { resizing: boolean; botNames?: Re
   const nameOf = (botId: string, fallback: string) => botNames?.[botId] ?? fallback;
 
   return (
-    <div ref={setRoot} role="region" aria-label="Bloks browser" className="flex h-full min-h-0 w-full min-w-0 flex-col bg-card">
+    <div ref={setRoot} role="region" aria-label={t("browserPanel.bloksBrowser")} className="flex h-full min-h-0 w-full min-w-0 flex-col bg-card">
       <div className="flex h-[38px] shrink-0 items-center gap-1 px-1.5">
         <Tabs tabs={tabs} activeId={state?.activeTabId ?? null} faces={store.bots} nameOf={nameOf} />
-        <HeaderButton label="New tab" onClick={() => void act("newTab")}>
+        <HeaderButton label={t("browserPanel.newTab")} onClick={() => void act("newTab")}>
           <Plus size={16} />
         </HeaderButton>
         <div className="min-w-2 flex-1 self-stretch" />
-        <HeaderButton label="Hide the browser (its tabs stay open)" onClick={close}>
+        <HeaderButton label={t("browserPanel.hideTheBrowserItsTabs")} onClick={close}>
           <X size={16} />
         </HeaderButton>
       </div>
 
       <div className="flex shrink-0 items-center gap-1 border-t px-1.5 py-1.5">
-        <HeaderButton label="Back" disabled={!active?.canGoBack} onClick={() => void act("back")}>
+        <HeaderButton label={t("common.back")} disabled={!active?.canGoBack} onClick={() => void act("back")}>
           <ArrowLeft size={15} />
         </HeaderButton>
-        <HeaderButton label="Forward" disabled={!active?.canGoForward} onClick={() => void act("forward")}>
+        <HeaderButton label={t("browserPanel.forward")} disabled={!active?.canGoForward} onClick={() => void act("forward")}>
           <ArrowRight size={15} />
         </HeaderButton>
-        <HeaderButton label={active?.loading ? "Stop loading" : "Reload"} disabled={!active} onClick={() => void act(active?.loading ? "stop" : "reload")}>
+        <HeaderButton label={active?.loading ? t("browserPanel.stopLoading") : t("browserPanel.reload")} disabled={!active} onClick={() => void act(active?.loading ? "stop" : "reload")}>
           {active?.loading ? <X size={15} /> : <RotateCw size={15} />}
         </HeaderButton>
         <AddressBar key={active?.id ?? "none"} tab={active} />
-        <HeaderButton label="Open this page in your browser" disabled={!hostLabel(active?.url)} onClick={() => void act("openExternal")}>
+        <HeaderButton label={t("browserPanel.openThisPageInYour")} disabled={!hostLabel(active?.url)} onClick={() => void act("openExternal")}>
           <ExternalLink size={15} />
         </HeaderButton>
-        <HeaderButton label="Downloads" pressed={shelf} onClick={() => setShelf((s) => !s)} className="relative">
+        <HeaderButton label={t("browserPanel.downloads")} pressed={shelf} onClick={() => setShelf((s) => !s)} className="relative">
           <Download size={15} />
           {state?.downloads.some((d) => d.state === "progressing") && (
             <span aria-hidden className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-brand" />
@@ -305,7 +306,7 @@ function BrowserPanel({ resizing, botNames }: { resizing: boolean; botNames?: Re
           )}
           <span className="min-w-0 flex-1 truncate">{line.text}</span>
           <Button size="sm" variant={line.action === "takeOver" ? "secondary" : "brand"} className="h-6 shrink-0 px-2.5 text-small" onClick={() => void act(line.action)}>
-            {line.action === "takeOver" ? "Take over" : "Give back"}
+            {line.action === "takeOver" ? t("browserPanel.takeOver") : t("browserPanel.giveBack")}
           </Button>
         </div>
       )}
@@ -318,14 +319,14 @@ function BrowserPanel({ resizing, botNames }: { resizing: boolean; botNames?: Re
             <div className="mb-1 flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground">
               <Globe size={18} />
             </div>
-            <p className="text-ui font-medium text-foreground">Nothing open yet</p>
+            <p className="text-ui font-medium text-foreground">{t("browserPanel.nothingOpenYet")}</p>
             <p className="max-w-[40ch] text-pretty text-body text-muted-foreground">
-              Type an address above, or ask an agent to look something up. You can watch it work here and take over at any time.
+              {t("browserPanel.typeAnAddressAboveOr")}
             </p>
           </div>
         ) : over ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-small text-muted-foreground">
-            The page is hidden while this is open.
+            {t("browserPanel.thePageIsHiddenWhile")}
           </div>
         ) : null}
       </div>
@@ -357,7 +358,7 @@ function Tabs({
     document.getElementById(`browser-tab-${next}`)?.focus();
   };
   return (
-    <div role="tablist" aria-label="Browser tabs" className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" onKeyDown={onKeyDown}>
+    <div role="tablist" aria-label={t("browserPanel.browserTabs")} className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]" onKeyDown={onKeyDown}>
       {tabs.map((tab) => {
         const open = tab.id === activeId;
         const label = tabLabel(tab);
@@ -434,7 +435,7 @@ function AddressBar({ tab }: { tab: BrowserTab | null }) {
       }}
     >
       {isSecure(tab?.url) && typed === null ? (
-        <Lock size={12} className="shrink-0 text-muted-foreground" aria-label="Secure connection" />
+        <Lock size={12} className="shrink-0 text-muted-foreground" aria-label={t("browserPanel.secureConnection")} />
       ) : (
         <Globe size={12} className="shrink-0 text-muted-foreground" aria-hidden />
       )}
@@ -453,8 +454,8 @@ function AddressBar({ tab }: { tab: BrowserTab | null }) {
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
-        placeholder="Search or type an address"
-        aria-label="Address"
+        placeholder={t("browserPanel.searchOrTypeAnAddress")}
+        aria-label={t("common.address")}
         className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
       />
     </form>
@@ -463,23 +464,23 @@ function AddressBar({ tab }: { tab: BrowserTab | null }) {
 
 function Shelf({ downloads, onClose }: { downloads: AppBrowserState["downloads"]; onClose: () => void }) {
   return (
-    <section aria-label="Downloads" className="max-h-[40%] shrink-0 overflow-y-auto border-t bg-card px-2 pb-2 pt-1.5">
+    <section aria-label={t("browserPanel.downloads")} className="max-h-[40%] shrink-0 overflow-y-auto border-t bg-card px-2 pb-2 pt-1.5">
       <div className="flex items-center gap-1 px-1 pb-1.5">
-        <h2 className="flex-1 text-small font-medium text-muted-foreground">Downloads</h2>
+        <h2 className="flex-1 text-small font-medium text-muted-foreground">{t("browserPanel.downloads")}</h2>
         <Button size="sm" variant="ghost" className="h-6 px-2 text-small" onClick={() => void act("openDownloads")}>
-          <FolderOpen size={13} /> Folder
+          <FolderOpen size={13} /> {t("browserPanel.folder")}
         </Button>
         {downloads.some((d) => d.state !== "progressing") && (
           <Button size="sm" variant="ghost" className="h-6 px-2 text-small" onClick={() => void act("clearDownloads")}>
-            Clear
+            {t("common.clear")}
           </Button>
         )}
-        <HeaderButton label="Hide downloads" onClick={onClose} className="size-6">
+        <HeaderButton label={t("browserPanel.hideDownloads")} onClick={onClose} className="size-6">
           <X size={13} />
         </HeaderButton>
       </div>
       {downloads.length === 0 ? (
-        <p className="px-1 pb-1 text-small text-muted-foreground">Files you or an agent download land here, in this workspace's own folder.</p>
+        <p className="px-1 pb-1 text-small text-muted-foreground">{t("browserPanel.filesYouOrAnAgent")}</p>
       ) : (
         <ul className="flex flex-col gap-1.5">
           {downloads.map((d) => (
@@ -499,9 +500,9 @@ function Shelf({ downloads, onClose }: { downloads: AppBrowserState["downloads"]
               {d.state === "completed" && (
                 <div className="flex shrink-0 items-center gap-0.5">
                   <Button size="sm" variant="ghost" className="h-6 px-2 text-small" onClick={() => void act("openDownload", d.id)}>
-                    Open
+                    {t("common.open")}
                   </Button>
-                  <HeaderButton label={platformOf() === "mac" ? "Show in Finder" : "Show in folder"} onClick={() => void act("revealDownload", d.id)} className="size-6">
+                  <HeaderButton label={platformOf() === "mac" ? t("browserPanel.showInFinder") : t("browserPanel.showInFolder")} onClick={() => void act("revealDownload", d.id)} className="size-6">
                     <FolderOpen size={13} />
                   </HeaderButton>
                 </div>
@@ -583,5 +584,5 @@ function Thumb({ jpeg }: { jpeg: string | null }): ReactNode {
       </span>
     );
   }
-  return <img src={`data:image/jpeg;base64,${jpeg}`} alt="The page on the Mac" className="h-12 w-20 shrink-0 rounded-lg border object-cover object-top" />;
+  return <img src={`data:image/jpeg;base64,${jpeg}`} alt={t("browserPanel.thePageOnTheMac")} className="h-12 w-20 shrink-0 rounded-lg border object-cover object-top" />;
 }

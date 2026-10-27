@@ -11,6 +11,7 @@ import { api } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { SettingsGroup } from "./SettingsLayout";
+import { t } from "@/lib/i18n";
 
 interface McpConfig {
   command: string;
@@ -59,13 +60,13 @@ export function UseFromOtherApps() {
 
   return (
     <SettingsGroup
-      title="Use Bloks from other AI apps"
-      description="Claude, Cursor and other MCP apps can give your agents work and read their chats. Bloks must be running."
-      footnote="Approvals, deleting and settings stay here."
+      title={t("useFromOtherApps.useBloksFromOtherAi")}
+      description={t("useFromOtherApps.claudeCursorAndOtherMcp")}
+      footnote={t("useFromOtherApps.approvalsDeletingAndSettingsStay")}
     >
       <div data-setting-row="use-bloks-from-other-ai-apps" className="p-5 transition-colors duration-700">
         <Segmented<Which>
-          aria-label="Which app"
+          aria-label={t("useFromOtherApps.whichApp")}
           size="sm"
           value={which}
           onChange={(next) => {
@@ -95,11 +96,11 @@ export function UseFromOtherApps() {
             <Button
               variant="ghost"
               size="sm"
-              aria-label={copied ? "Copied" : `Copy the ${app.label} setup`}
+              aria-label={copied ? t("common.copied") : `Copy the ${app.label} setup`}
               onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
             >
               {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? t("common.copied") : t("common.copy")}
             </Button>
           </div>
           <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-all p-3 font-mono text-small text-foreground">{text}</pre>

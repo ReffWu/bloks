@@ -20,4 +20,6 @@ export function appMenuTemplate(options: {
   name: string;
   packaged: boolean;
   command: (word: MenuCommand) => void;
+  /** Each label in the person's language (electron/menu-words.mjs). */
+  words: (key: string, params?: Record<string, string>) => string;
 }): MenuTemplateItem[];

@@ -20,6 +20,7 @@ import { InlineMarkdown } from "./Markdown";
 import { TableScroll } from "./TableScroll";
 import { useRef, useState } from "react";
 import { api, useStore, type Message } from "@/state/store";
+import { t } from "@/lib/i18n";
 
 interface Bar {
   label: string;
@@ -237,7 +238,7 @@ function Decision({ component, onChoose, chosen, pending }: {
             <span className="min-w-0 flex-1">
               <span className="block break-words text-body text-foreground [overflow-wrap:anywhere]">
                 {option.label}
-                {option.pick && <span className="ml-2 text-caption text-brand-ink">Recommended</span>}
+                {option.pick && <span className="ml-2 text-caption text-brand-ink">{t("gallery.recommended")}</span>}
               </span>
               {option.detail && (
                 <span className="mt-0.5 block break-words text-small leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">

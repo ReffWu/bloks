@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { routeSpokenToRoom } from "@/lib/spokenRouting";
 import { thisComputer } from "@/lib/thisComputer";
+import { t } from "@/lib/i18n";
 
 interface VoiceOption {
   provider: VoiceProvider;
@@ -165,16 +166,16 @@ export function VoiceCard({ bot }: { bot: Bot }) {
     <div className="mt-4 rounded-2xl border bg-card p-4">
       <button className="flex w-full items-center justify-between text-left" onClick={() => setOpen(!open)}>
         <div>
-          <div className="text-ui font-semibold text-foreground">Voice</div>
+          <div className="text-ui font-semibold text-foreground">{t("voice.voice")}</div>
           <div className="mt-0.5 text-body text-muted-foreground">
             {!configured
-              ? "Add a voice key or a Chatterbox server in Settings, Voices first."
+              ? t("voice.addAVoiceKeyOr")
               : bot.voice
                 ? `Speaks as ${bot.voice.name ?? bot.voice.id} · calls enabled`
-                : "Pick a voice to call this agent."}
+                : t("voice.pickAVoiceToCall")}
           </div>
         </div>
-        <span className="text-small text-muted-foreground">{open ? "Hide" : "Choose"}</span>
+        <span className="text-small text-muted-foreground">{open ? t("common.hide") : t("voice.choose")}</span>
       </button>
 
       {open && (
@@ -183,10 +184,10 @@ export function VoiceCard({ bot }: { bot: Bot }) {
             <div className="mb-2 flex items-center gap-2">
               <Button size="sm" variant="secondary" onClick={preview} disabled={previewing}>
                 <Volume2 size={13} />
-                {previewing ? "Playing…" : "Preview"}
+                {previewing ? t("voice.playing") : t("common.preview")}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => choose(null)}>
-                Remove voice
+                {t("voice.removeVoice")}
               </Button>
               <label className="ml-auto flex items-center gap-1.5 text-small text-muted-foreground">
                 <input
@@ -205,7 +206,7 @@ export function VoiceCard({ bot }: { bot: Bot }) {
             </div>
           )}
           {offered.length > 1 && (
-            <div role="tablist" aria-label="Voices from" className="mb-2 flex flex-wrap gap-1">
+            <div role="tablist" aria-label={t("voice.voicesFrom")} className="mb-2 flex flex-wrap gap-1">
               {offered.map(([provider, label]) => (
                 <button
                   key={provider}
@@ -225,11 +226,11 @@ export function VoiceCard({ bot }: { bot: Bot }) {
           )}
           <div role={offered.length > 1 ? "tabpanel" : undefined} className="flex max-h-[240px] flex-col gap-0.5 overflow-y-auto">
             {voices === null && !error && (
-              <div className="py-3 text-body text-muted-foreground">Loading voices…</div>
+              <div className="py-3 text-body text-muted-foreground">{t("voice.loadingVoices")}</div>
             )}
             {voices?.length === 0 && (
               <div className="py-3 text-body text-muted-foreground">
-                No voices available. Check your keys in Settings, Voices.
+                {t("voice.noVoicesAvailableCheckYour")}
               </div>
             )}
             {listed.map((voice) => {
@@ -444,7 +445,7 @@ export function CallOverlay({ bot, onClose }: { bot: Bot; onClose: () => void })
   return (
     <div className="fixed inset-0 z-50 flex animate-fade-in flex-col items-center justify-center bg-background/95 backdrop-blur-sm">
       <span className="absolute right-5 top-5 rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-caption font-semibold uppercase tracking-wider text-warning">
-        Beta
+        {t("voice.beta")}
       </span>
       <div className="flex flex-col items-center gap-5">
         <div
@@ -468,7 +469,7 @@ export function CallOverlay({ bot, onClose }: { bot: Bot; onClose: () => void })
           {callState === "speaking" && (
             <button
               onClick={bargeIn}
-              title="Interrupt and talk"
+              title={t("voice.interruptAndTalk")}
               className="flex size-14 items-center justify-center rounded-full border bg-card text-foreground shadow-sm transition-transform active:scale-95"
             >
               <Mic size={20} />
@@ -482,12 +483,12 @@ export function CallOverlay({ bot, onClose }: { bot: Bot; onClose: () => void })
                 finishUtterance(heardRef.current);
               }}
             >
-              Done talking
+              {t("voice.doneTalking")}
             </Button>
           )}
           <button
             onClick={hangUp}
-            title="End call"
+            title={t("voice.endCall")}
             className="flex size-14 items-center justify-center rounded-full bg-destructive text-white shadow-md transition-transform active:scale-95"
           >
             <PhoneOff size={20} />
@@ -708,7 +709,7 @@ export function GroupCallOverlay({
   return (
     <div className="fixed inset-0 z-50 flex animate-fade-in flex-col items-center justify-center bg-background/95 backdrop-blur-sm">
       <span className="absolute right-5 top-5 rounded-full border border-warning/50 bg-warning/10 px-2 py-0.5 text-caption font-semibold uppercase tracking-wider text-warning">
-        Beta
+        {t("voice.beta")}
       </span>
       <div className="flex flex-col items-center gap-6">
         <div className="flex items-end gap-3">
@@ -743,7 +744,7 @@ export function GroupCallOverlay({
           {callState === "speaking" && (
             <button
               onClick={interrupt}
-              title="Interrupt and talk"
+              title={t("voice.interruptAndTalk")}
               className="flex size-14 items-center justify-center rounded-full border bg-card text-foreground shadow-sm transition-transform active:scale-95"
             >
               <Mic size={20} />
@@ -757,12 +758,12 @@ export function GroupCallOverlay({
                 finishUtterance(heardRef.current);
               }}
             >
-              Done talking
+              {t("voice.doneTalking")}
             </Button>
           )}
           <button
             onClick={hangUp}
-            title="End call"
+            title={t("voice.endCall")}
             className="flex size-14 items-center justify-center rounded-full bg-destructive text-white shadow-md transition-transform active:scale-95"
           >
             <PhoneOff size={20} />

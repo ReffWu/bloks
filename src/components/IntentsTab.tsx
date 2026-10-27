@@ -28,6 +28,7 @@ import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { AUTOMATIONS_LIST, AUTOMATIONS_LIST_SIZE, useColumnFolded } from "@/lib/sideColumn";
 import { ShowColumn, SideColumn } from "./SideColumn";
+import { t } from "@/lib/i18n";
 
 type ActionKind = "note" | "mention" | "message";
 
@@ -143,23 +144,23 @@ function IntentForm({ value, onChange }: { value: Fields; onChange: (next: Field
   return (
     <div className="flex flex-col">
       <label className="mb-2 text-body font-medium text-foreground" htmlFor="intent-phrases">
-        When any of these come up
+        {t("intentsTab.whenAnyOfTheseCome")}
       </label>
       <Input
         id="intent-phrases"
         value={value.phrases}
         onChange={(e) => set({ phrases: e.target.value })}
-        placeholder="launch date, launch day"
+        placeholder={t("intentsTab.launchDateLaunchDay")}
         spellCheck={false}
         className="rounded-xl text-body"
       />
       <span className="mt-1.5 text-small text-muted-foreground">
-        Commas between phrases. Whole words in any case; end a word with * for its other endings, like refund*.
+        {t("intentsTab.commasBetweenPhrasesWholeWords")}
       </span>
 
-      <div className="mt-6 mb-2 text-body font-medium text-foreground">Where it listens</div>
+      <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("intentsTab.whereItListens")}</div>
       <Segmented
-        aria-label="Where it listens"
+        aria-label={t("intentsTab.whereItListens")}
         className="max-w-[360px]"
         value={value.everywhere ? "everywhere" : "chosen"}
         onChange={(v) => set({ everywhere: v === "everywhere" })}
@@ -178,7 +179,7 @@ function IntentForm({ value, onChange }: { value: Fields; onChange: (next: Field
             transition={{ duration: 0.12 }}
             className="mt-2 text-small text-muted-foreground"
           >
-            Every conversation with your agents, and every room you have not shared with other people.
+            {t("intentsTab.everyConversationWithYourAgents")}
           </motion.p>
         ) : (
           <motion.div
@@ -188,7 +189,7 @@ function IntentForm({ value, onChange }: { value: Fields; onChange: (next: Field
             exit={{ opacity: 0, transition: { duration: 0.1 } }}
             className="mt-3 flex flex-wrap gap-1.5"
             role="group"
-            aria-label="Places it listens"
+            aria-label={t("intentsTab.placesItListens")}
           >
             {bots.map((b) => (
               <button key={b.id} type="button" aria-pressed={value.agents.includes(b.id)} onClick={() => set({ agents: toggle(value.agents, b.id) })} className={chip(value.agents.includes(b.id))}>
@@ -206,8 +207,8 @@ function IntentForm({ value, onChange }: { value: Fields; onChange: (next: Field
         )}
       </AnimatePresence>
 
-      <div className="mt-6 mb-2 text-body font-medium text-foreground">What happens</div>
-      <div role="radiogroup" aria-label="What happens" className="grid grid-cols-3 gap-2">
+      <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("intentsTab.whatHappens")}</div>
+      <div role="radiogroup" aria-label={t("intentsTab.whatHappens")} className="grid grid-cols-3 gap-2">
         {(Object.keys(KIND) as ActionKind[]).map((k) => {
           const Icon = KIND[k].icon;
           const on = value.kind === k;
@@ -232,7 +233,7 @@ function IntentForm({ value, onChange }: { value: Fields; onChange: (next: Field
         })}
       </div>
       {value.kind !== "note" && (
-        <div role="radiogroup" aria-label="Which agent" className="mt-3 flex flex-wrap gap-1.5">
+        <div role="radiogroup" aria-label={t("intentsTab.whichAgent")} className="mt-3 flex flex-wrap gap-1.5">
           {bots.map((b) => (
             <button key={b.id} type="button" role="radio" aria-checked={value.botId === b.id} onClick={() => set({ botId: b.id })} className={chip(value.botId === b.id)}>
               <AgentAvatar bot={b} size={22} />
@@ -253,14 +254,14 @@ function IntentForm({ value, onChange }: { value: Fields; onChange: (next: Field
       />
       {value.kind === "mention" && (
         <span className="mt-1.5 text-small text-muted-foreground">
-          In a room they are in, they are woken there. Anywhere else they are sent what was said.
+          {t("intentsTab.inARoomTheyAre")}
         </span>
       )}
 
       <label className="mt-6 mb-2 text-body text-muted-foreground" htmlFor="intent-name">
-        Name (optional)
+        {t("intentsTab.nameOptional")}
       </label>
-      <Input id="intent-name" value={value.name} onChange={(e) => set({ name: e.target.value })} placeholder="Launch date" className="max-w-[360px] rounded-xl text-body" />
+      <Input id="intent-name" value={value.name} onChange={(e) => set({ name: e.target.value })} placeholder={t("intentsTab.launchDate")} className="max-w-[360px] rounded-xl text-body" />
     </div>
   );
 }
@@ -301,8 +302,8 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
         }
       }}
     >
-      <h2 className="text-heading font-semibold text-foreground">New intent</h2>
-      <p className="mt-1 mb-6 text-body text-muted-foreground">Whenever something comes up in a conversation, do one small thing about it.</p>
+      <h2 className="text-heading font-semibold text-foreground">{t("intentsTab.newIntent")}</h2>
+      <p className="mt-1 mb-6 text-body text-muted-foreground">{t("intentsTab.wheneverSomethingComesUpIn")}</p>
       <IntentForm value={fields} onChange={setFields} />
       <div className="mt-6 flex items-start gap-3 rounded-xl bg-muted/60 px-3.5 py-3">
         <Zap size={16} className="mt-0.5 shrink-0 text-brand-ink" />
@@ -312,7 +313,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
       <div className="mt-5 flex items-center gap-3">
         <Button size="lg" disabled={busy || Boolean(why)} onClick={make}>
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />}
-          {busy ? "Starting" : "Start listening"}
+          {busy ? t("intentsTab.starting") : t("intentsTab.startListening")}
         </Button>
         {why && <span className="text-small text-muted-foreground">{why}</span>}
       </div>
@@ -374,15 +375,15 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
         <div className="flex flex-col gap-2 rounded-xl border border-brand/40 bg-brand-soft px-3.5 py-3 text-body text-foreground">
           <div className="flex items-center gap-2 font-medium">
             {proposer ? <AgentAvatar bot={proposer} size={20} /> : <Zap size={14} className="text-brand-ink" />}
-            {row.by.kind === "agent" ? row.by.name : "An agent"} suggests this
+            {row.by.kind === "agent" ? row.by.name : t("common.anAgent")} suggests this
           </div>
-          <div className="text-muted-foreground">It does nothing until you approve it. Check what it listens for and what it does.</div>
+          <div className="text-muted-foreground">{t("intentsTab.itDoesNothingUntilYou")}</div>
           <div className="flex gap-2">
             <Button size="sm" onClick={() => void patch({ approve: true }, "Approved")}>
-              Approve
+              {t("common.approve")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => void remove()}>
-              Decline
+              {t("common.decline")}
             </Button>
           </div>
         </div>
@@ -394,7 +395,7 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
           </div>
           <p className="mt-1 text-pretty text-body text-muted-foreground">{readback(fieldsOf(row), names)}</p>
         </div>
-        {row.status === "active" && <Switch checked={row.enabled} onCheckedChange={(on) => void patch({ enabled: on })} aria-label="Listening" />}
+        {row.status === "active" && <Switch checked={row.enabled} onCheckedChange={(on) => void patch({ enabled: on })} aria-label={t("intentsTab.listening")} />}
       </div>
       {row.status === "active" && (
         <div
@@ -405,12 +406,12 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
         >
           <span>
             {row.state === "expired"
-              ? "Stopped listening: 90 days are up."
+              ? t("intentsTab.stoppedListening90DaysAre")
               : `Listens for ${left} more ${left === 1 ? "day" : "days"}. Fired ${row.firesToday} of 3 times today.`}
           </span>
           {(row.state === "expired" || left <= 14) && (
             <Button size="sm" variant="secondary" onClick={() => void patch({ renew: true }, "Renewed for 90 days")}>
-              Renew
+              {t("intentsTab.renew")}
             </Button>
           )}
         </div>
@@ -424,16 +425,16 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
             Save changes
           </Button>
           <Button variant="ghost" onClick={() => setFields(fieldsOf(row))}>
-            Discard
+            {t("common.discard")}
           </Button>
           {why && <span className="text-small text-muted-foreground">{why}</span>}
         </div>
       )}
 
       <div>
-        <div className="mb-1.5 text-small font-medium text-muted-foreground">Fired</div>
+        <div className="mb-1.5 text-small font-medium text-muted-foreground">{t("intentsTab.fired")}</div>
         {row.fires.length === 0 ? (
-          <div className="text-body text-muted-foreground">Not yet.</div>
+          <div className="text-body text-muted-foreground">{t("intentsTab.notYet")}</div>
         ) : (
           <ul className="flex flex-col gap-1">
             {row.fires.map((fire) => (
@@ -442,7 +443,7 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
                 <button onClick={() => open(fire.threadId)} className="min-w-0 flex-1 truncate text-left text-foreground hover:underline hover:underline-offset-2">
                   {fire.excerpt}
                 </button>
-                {fire.error && <span className="shrink-0 text-warning" title={fire.error}>Did not go through</span>}
+                {fire.error && <span className="shrink-0 text-warning" title={fire.error}>{t("intentsTab.didNotGoThrough")}</span>}
               </li>
             ))}
           </ul>
@@ -450,7 +451,7 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
       </div>
       <div>
         <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => void remove()}>
-          <Trash2 size={13} /> {row.status === "proposed" ? "Decline" : "Delete"}
+          <Trash2 size={13} /> {row.status === "proposed" ? t("common.decline") : t("common.delete")}
         </Button>
       </div>
     </div>
@@ -475,11 +476,11 @@ export function IntentsTab() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <SideColumn id={AUTOMATIONS_LIST} size={AUTOMATIONS_LIST_SIZE} label="Intents" className="max-h-[200px] w-full border-b md:max-h-none md:border-b-0">
+      <SideColumn id={AUTOMATIONS_LIST} size={AUTOMATIONS_LIST_SIZE} label={t("intentsTab.intents")} className="max-h-[200px] w-full border-b md:max-h-none md:border-b-0">
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
-          <span className="text-small font-medium text-muted-foreground">Intents</span>
+          <span className="text-small font-medium text-muted-foreground">{t("intentsTab.intents")}</span>
           <button onClick={() => setSelected("new")} className="rounded-lg px-1.5 py-1 text-small text-muted-foreground hover:bg-accent hover:text-foreground">
-            + New
+            {t("intentsTab.new")}
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -522,7 +523,7 @@ export function IntentsTab() {
       </SideColumn>
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
         {/* the list folded away: the way back to it, named for what it lists */}
-        {folded && <ShowColumn id={AUTOMATIONS_LIST} text="Intents" label="Show the list" className="-ml-2 -mt-2 mb-3" />}
+        {folded && <ShowColumn id={AUTOMATIONS_LIST} text="Intents" label={t("intentsTab.showTheList")} className="-ml-2 -mt-2 mb-3" />}
         {rows === null ? null : showing === "new" ? (
           <Draft
             onMade={(id) => {

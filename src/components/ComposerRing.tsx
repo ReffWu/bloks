@@ -32,6 +32,7 @@ import {
 } from "@/lib/contextCard";
 import { ContextRing } from "./TaskStrip";
 import { useDismiss } from "./composer/Shell";
+import { t } from "@/lib/i18n";
 
 /** Past this the ring and its bar take the warning colour. */
 const NEAR = 0.8;
@@ -136,8 +137,8 @@ export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open
     <div ref={ref} className="shrink-0">
       <button
         type="button"
-        aria-label={context ? ringLabel(context) : "Context and usage"}
-        title={context ? ringLabel(context) : "Context and usage"}
+        aria-label={context ? ringLabel(context) : t("composerRing.contextAndUsage")}
+        title={context ? ringLabel(context) : t("composerRing.contextAndUsage")}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((v) => !v)}
@@ -151,10 +152,10 @@ export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open
       {open && (
         <div
           role="dialog"
-          aria-label="Context and usage"
+          aria-label={t("composerRing.contextAndUsage")}
           className="absolute bottom-full right-0 z-30 mb-2 w-[288px] max-w-[calc(100vw-24px)] origin-bottom-right animate-pop-in overflow-hidden rounded-xl border bg-popover text-small text-popover-foreground shadow-lg shadow-(color:--shadow-color)"
         >
-          <Section title="Context" aside={card?.share}>
+          <Section title={t("composerRing.context")} aside={card?.share}>
             {context && card ? (
               <>
                 <Bar fill={context.fraction} near={near} />
@@ -163,28 +164,28 @@ export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open
                 {card.summarised && <p className="mt-1 leading-snug text-muted-foreground">{card.summarised}</p>}
               </>
             ) : (
-              <p className="mt-1 leading-snug text-muted-foreground">Not measured yet. It shows after the next reply.</p>
+              <p className="mt-1 leading-snug text-muted-foreground">{t("composerRing.notMeasuredYetItShows")}</p>
             )}
           </Section>
-          <Section title="This conversation" aside={usage && usage.turns > 0 ? repliesPhrase(usage.turns) : undefined}>
+          <Section title={t("composerRing.thisConversation")} aside={usage && usage.turns > 0 ? repliesPhrase(usage.turns) : undefined}>
             {usage && usage.turns > 0 ? (
               <>
-                <Fact label="Tokens in" value={tokensPhrase(usage.input, usage)} />
-                <Fact label="Tokens out" value={tokensPhrase(usage.output, usage)} />
+                <Fact label={t("composerRing.tokensIn")} value={tokensPhrase(usage.input, usage)} />
+                <Fact label={t("composerRing.tokensOut")} value={tokensPhrase(usage.output, usage)} />
               </>
             ) : (
-              <p className="mt-1 leading-snug text-muted-foreground">Nothing sent yet.</p>
+              <p className="mt-1 leading-snug text-muted-foreground">{t("composerRing.nothingSentYet")}</p>
             )}
           </Section>
           <Section title={`${bot.name} today`} aside={spent && spent.turns > 0 ? repliesPhrase(spent.turns) : undefined}>
             {today === null || today.failed ? (
-              <p className="mt-1 leading-snug text-muted-foreground">{today ? "Couldn't check just now." : "Checking…"}</p>
+              <p className="mt-1 leading-snug text-muted-foreground">{today ? t("composerRing.couldntCheckJustNow") : t("common.checking")}</p>
             ) : (
               <>
-                <Fact label="Spend" value={spendPhrase(spent, today.costKnown)} />
+                <Fact label={t("composerRing.spend")} value={spendPhrase(spent, today.costKnown)} />
                 {spent && spent.turns > 0 && (
                   <Fact
-                    label="Tokens"
+                    label={t("composerRing.tokens")}
                     value={spent.input + spent.output > 0 ? shortTokens(spent.input + spent.output) : "Not reported"}
                   />
                 )}
@@ -192,7 +193,7 @@ export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open
             )}
           </Section>
           {rows.length > 0 && (
-            <Section title="Plan" aside={[engine, named].filter(Boolean).join(", ") || undefined}>
+            <Section title={t("composerRing.plan")} aside={[engine, named].filter(Boolean).join(", ") || undefined}>
               {rows.map((row) => (
                 <div key={row.id} className="mt-2">
                   <div className="flex items-baseline justify-between gap-3">

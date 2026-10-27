@@ -84,6 +84,7 @@ import { onAsk, peekRoomAsk, takeAsk } from "@/lib/chatAsk";
 import { freshStartPreset } from "@/lib/roomEdit";
 import { RoomRename } from "./room/RoomRename";
 import { RoomAgentsDialog } from "./room/RoomAgentsDialog";
+import { t } from "@/lib/i18n";
 
 /** A reaction in a room is the cheapest thing anyone can say, and often
  * the right thing: agreeing with a plan should not wake six agents. */
@@ -180,7 +181,7 @@ function RoomPresence({
   const more = ordered.length - shown.length;
   return (
     <TooltipProvider delayDuration={300}>
-      <div ref={ref} role="group" aria-label="Members" className="mr-1 hidden items-center gap-1.5 sm:flex">
+      <div ref={ref} role="group" aria-label={t("common.members")} className="mr-1 hidden items-center gap-1.5 sm:flex">
         {shown.map((m) => {
           const crowned = m.id === lead?.id && members.length > 1;
           const live = working.some((w) => w.id === m.id);
@@ -228,10 +229,10 @@ function RoomPresence({
                 {crowned ? `${m.name} leads and has the final call` : m.name}
                 {crowned && answers !== "everyone" && (
                   <span className="block font-normal opacity-75">
-                    {answers === "auto" ? "Answers when Auto can't pick" : "Answers unless you @name someone"}
+                    {answers === "auto" ? t("roomView.answersWhenAutoCantPick") : t("roomView.answersUnlessYouNameSomeone")}
                   </span>
                 )}
-                {live && <span className="block font-normal opacity-75">Working now</span>}
+                {live && <span className="block font-normal opacity-75">{t("roomView.workingNow")}</span>}
               </TooltipContent>
             </Tooltip>
           );
@@ -262,7 +263,7 @@ function HandoffLine({ from, to, ask, onOpen }: { from: string; to: string; ask:
       >
         <span className="shrink-0 font-medium text-foreground/80">{from}</span>
         <span aria-hidden className="shrink-0">→</span>
-        <span className="sr-only">to</span>
+        <span className="sr-only">{t("roomView.to")}</span>
         <span className="shrink-0 font-medium text-foreground/80">
           {to}
           {ask && ":"}
@@ -314,7 +315,7 @@ function RouteLine({
           <p className="text-pretty text-small leading-snug text-muted-foreground">{words.detail}</p>
           {others.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              <span className="mr-0.5 text-small text-muted-foreground">Ask instead</span>
+              <span className="mr-0.5 text-small text-muted-foreground">{t("roomView.askInstead")}</span>
               {others.slice(0, 4).map((m) => (
                 <button
                   key={m.id}
@@ -437,7 +438,7 @@ function RoomWelcome({
           ? `Auto picks who fits each message, and ${lead.name} answers when it can't. Name someone with @ to choose yourself.`
           : answers !== "everyone" && lead
             ? `${lead.name} answers unless you name someone with @.`
-            : "Everyone can answer. Name someone with @ to ask just them."}
+            : t("roomView.everyoneCanAnswerNameSomeone")}
       </p>
     </div>
   );
@@ -510,7 +511,7 @@ function RoomMessage({
     return (
       <div className={cn("flex", message.role === "user" ? "justify-end" : "justify-start pl-9")}>
         <div className="rounded-2xl border border-dashed px-3 py-1.5 text-body italic text-muted-foreground">
-          Message taken back
+          {t("roomView.messageTakenBack")}
         </div>
       </div>
     );
@@ -1133,7 +1134,7 @@ export function RoomView({ blok }: { blok: Blok }) {
             {/* the lead first, crowned, so a phone without the faces on
                 the right still says who has the final call */}
             <span className="flex min-w-0 items-center gap-1 text-small text-muted-foreground">
-              {lead && answering.length > 1 && <Crown size={11} className="shrink-0 text-brand-ink" aria-label="Lead" />}
+              {lead && answering.length > 1 && <Crown size={11} className="shrink-0 text-brand-ink" aria-label={t("roomView.lead")} />}
               <span className="truncate">
                 {byLead(answering, lead).map((m) => m.name).join(", ")}
                 {answering.length < members.length &&
@@ -1149,8 +1150,8 @@ export function RoomView({ blok }: { blok: Blok }) {
             size="icon"
             onClick={() => setSharingOpen(true)}
             className={cn("relative", blok.sharing && "text-foreground")}
-            title={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : "Share room"}
-            aria-label={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : "Share room"}
+            title={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : t("roomView.shareRoom")}
+            aria-label={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : t("roomView.shareRoom")}
           >
             <UserPlus size={16} />
             {knocking > 0 && (
@@ -1174,8 +1175,8 @@ export function RoomView({ blok }: { blok: Blok }) {
             className={cn(lens === "forum" && "bg-accent text-foreground")}
             title={
               lens === "stream"
-                ? "View as topics"
-                : "View in order"
+                ? t("roomView.viewAsTopics")
+                : t("roomView.viewInOrder")
             }
           >
             {lens === "stream" ? <MessagesSquare size={16} /> : <Rows3 size={16} />}
@@ -1214,7 +1215,7 @@ export function RoomView({ blok }: { blok: Blok }) {
               Close {blok.name}?
             </div>
             <p className="mt-1 text-body leading-relaxed text-muted-foreground">
-              Archiving keeps everything, and you can restore it later. Deleting cannot be undone.
+              {t("roomView.archivingKeepsEverythingAndYou")}
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <Button
@@ -1223,7 +1224,7 @@ export function RoomView({ blok }: { blok: Blok }) {
                   setClosing(false);
                 }}
               >
-                Archive room
+                {t("roomView.archiveRoom")}
               </Button>
               <Button
                 variant="secondary"
@@ -1238,10 +1239,10 @@ export function RoomView({ blok }: { blok: Blok }) {
                   }).then((yes) => yes && dispatch({ type: "deleteRoom", blokId: blok.id }));
                 }}
               >
-                Delete permanently
+                {t("roomView.deletePermanently")}
               </Button>
               <Button variant="ghost" onClick={() => setClosing(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
             </div>
           </div>
@@ -1410,26 +1411,26 @@ function RoomFolderButton({ blok }: { blok: Blok }) {
         variant="ghost"
         size="icon"
         onClick={() => setOpen(!open)}
-        title={shown ? `Shared folder: ${shown}` : "Shared working folder"}
+        title={shown ? `Shared folder: ${shown}` : t("roomView.sharedWorkingFolder")}
       >
         <FolderOpen size={16} className={shown ? "text-brand-ink" : undefined} />
       </Button>
       {open && (
         <div className="absolute right-0 top-11 z-30 w-[320px] max-w-[92vw] animate-pop-in rounded-2xl border bg-popover p-3.5 shadow-xl shadow-(color:--shadow-color)">
-          <div className="text-body font-semibold text-foreground">Shared working folder</div>
+          <div className="text-body font-semibold text-foreground">{t("roomView.sharedWorkingFolder")}</div>
           {pinned ? (
             <>
               <div className="mt-1 break-all text-body text-muted-foreground">
-                {blok.pinnedCwd ?? "Each member uses its own folder."}
+                {blok.pinnedCwd ?? t("roomView.eachMemberUsesItsOwn")}
               </div>
               <div className="mt-1.5 text-small text-muted-foreground/70">
-                Set when the room started. Make a new room to use another folder.
+                {t("roomView.setWhenTheRoomStarted")}
               </div>
             </>
           ) : (
             <>
               <div className="mt-1 text-small text-muted-foreground">
-                Where members work in this room. Set it before the first task.
+                {t("roomView.whereMembersWorkInThis")}
               </div>
               <div className="mt-2 flex gap-1.5">
                 <input
@@ -1444,10 +1445,10 @@ function RoomFolderButton({ blok }: { blok: Blok }) {
               {error && <div className="mt-1.5 text-small text-destructive">{error}</div>}
               <div className="mt-2 flex justify-end gap-1.5">
                 <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <Button size="sm" onClick={save}>
-                  Save
+                  {t("common.save")}
                 </Button>
               </div>
             </>
@@ -1507,7 +1508,7 @@ function RoomMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" title="More" aria-label="More room actions">
+        <Button variant="ghost" size="icon" title={t("roomView.more")} aria-label={t("roomView.moreRoomActions")}>
           <MoreHorizontal size={16} />
         </Button>
       </DropdownMenuTrigger>
@@ -1523,20 +1524,20 @@ function RoomMenu({
       >
         <DropdownMenuItem onClick={() => (renameNext.current = true)}>
           <Pencil size={15} />
-          Rename…
+          {t("roomView.rename")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onAgents}>
           <Users size={15} />
-          Agents…
+          {t("roomView.agents")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onFreshStart}>
           <Plus size={15} />
-          New room with these agents…
+          {t("roomView.newRoomWithTheseAgents")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onRoutines}>
           <CalendarClock size={15} />
-          Routines
+          {t("common.routines")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onSave}>
           {justSaved ? <Check size={15} className="text-success" /> : <BookmarkPlus size={15} />}
@@ -1544,12 +1545,12 @@ function RoomMenu({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onExport}>
           <Download size={15} />
-          Share as file
+          {t("roomView.shareAsFile")}
         </DropdownMenuItem>
         {members.length > 1 && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger icon={<Crown size={15} />} value={answersWords(answers, null).label}>
-              Who answers
+              {t("roomView.whoAnswers")}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="w-[260px] max-w-[calc(100vw-24px)]">
               {ROOM_ANSWERS.map((value) => {
@@ -1578,7 +1579,7 @@ function RoomMenu({
         {members.length > 1 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>Lead</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("roomView.lead")}</DropdownMenuLabel>
             {members.map((m) => (
               <DropdownMenuItem
                 key={m.id}
@@ -1590,13 +1591,13 @@ function RoomMenu({
                 {m.id === lead?.id ? (
                   <Crown size={13} className="shrink-0 text-brand-ink" />
                 ) : (
-                  <span className="shrink-0 text-small text-muted-foreground">Make lead</span>
+                  <span className="shrink-0 text-small text-muted-foreground">{t("roomView.makeLead")}</span>
                 )}
               </DropdownMenuItem>
             ))}
             {blok.leadId && lead?.id === blok.leadId && (
               <DropdownMenuItem onClick={() => onLead(null)} className="text-muted-foreground">
-                Most senior leads
+                {t("roomView.mostSeniorLeads")}
               </DropdownMenuItem>
             )}
           </>
@@ -1604,7 +1605,7 @@ function RoomMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onClose} className="text-destructive focus:text-destructive">
           <Trash2 size={15} />
-          Archive or delete
+          {t("roomView.archiveOrDelete")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

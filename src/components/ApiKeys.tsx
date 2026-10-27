@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { composioKeyMistake } from "@/lib/keyShape";
 import { rowKey } from "@/lib/settingsPages";
+import { t } from "@/lib/i18n";
 
 export type ConfigSection = "composio" | "composioApi" | "box" | "elevenlabs" | "openaiSpeech" | "fishSpeech" | "xaiSpeech";
 
@@ -201,7 +202,7 @@ export function ApiKeyRow({
                 onClick={() => setReplacing(true)}
                 aria-label={`Replace the ${label}`}
               >
-                Replace
+                {t("apiKeys.replace")}
               </Button>
             )}
             <Button
@@ -212,7 +213,7 @@ export function ApiKeyRow({
               aria-label={`Remove the ${label}`}
               className="hover:bg-destructive/10 hover:text-destructive"
             >
-              {busy === "remove" ? <Loader2 size={13} className="animate-spin" /> : "Remove"}
+              {busy === "remove" ? <Loader2 size={13} className="animate-spin" /> : t("common.remove")}
             </Button>
           </div>
         )}
@@ -227,7 +228,7 @@ export function ApiKeyRow({
               rel="noreferrer"
               className="mt-1 flex w-fit items-center gap-1 rounded font-medium text-brand-ink hover:underline"
             >
-              {info.linkLabel ?? "Learn more"}
+              {info.linkLabel ?? t("apiKeys.learnMore")}
               <ExternalLink size={11} />
             </a>
           )}
@@ -251,7 +252,7 @@ export function ApiKeyRow({
                 stopReplacing();
               }
             }}
-            placeholder={replacing ? "Paste the new key" : placeholder}
+            placeholder={replacing ? t("apiKeys.pasteTheNewKey") : placeholder}
             autoFocus={replacing}
             autoComplete="off"
             spellCheck={false}
@@ -260,11 +261,11 @@ export function ApiKeyRow({
           />
           {/* the one action, and it says so only once there is a key to save */}
           <Button variant={typed ? "brand" : "secondary"} onClick={save} disabled={busy !== null || !typed}>
-            {busy === "save" ? <Loader2 size={13} className="animate-spin" /> : "Save"}
+            {busy === "save" ? <Loader2 size={13} className="animate-spin" /> : t("common.save")}
           </Button>
           {replacing && (
             <Button variant="ghost" onClick={stopReplacing} disabled={busy !== null}>
-              Cancel
+              {t("common.cancel")}
             </Button>
           )}
         </div>

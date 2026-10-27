@@ -44,6 +44,7 @@ import { SlidersHorizontal } from "@/components/icons";
 import { ResultCard, type BriefResult } from "./BriefCards";
 import { BriefCustomize, type ArrangedSection } from "./BriefCustomize";
 import { DEFAULT_SECTIONS, layoutOf } from "@/lib/briefLayout";
+import { t } from "@/lib/i18n";
 
 interface BriefPart {
   botId: string | null;
@@ -469,10 +470,10 @@ export function BriefPanel() {
   const reader = playing === null || !brief ? "" : playing === 0 ? "Overview" : brief.parts[playing]?.name ?? "";
 
   return (
-    <section aria-label="Morning brief" className="flex min-w-0 flex-col">
+    <section aria-label={t("briefPanel.morningBrief")} className="flex min-w-0 flex-col">
       <PanelHeader
         icon={<Sunrise size={17} />}
-        title="Morning brief"
+        title={t("briefPanel.morningBrief")}
         actions={
           <>
             {briefs.length > 1 && (
@@ -480,7 +481,7 @@ export function BriefPanel() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Earlier brief"
+                  aria-label={t("briefPanel.earlierBrief")}
                   disabled={index >= briefs.length - 1}
                   onClick={() => step(1)}
                 >
@@ -493,24 +494,24 @@ export function BriefPanel() {
                 >
                   {brief ? dayLabel(brief.at) : ""}
                 </span>
-                <Button variant="ghost" size="icon-sm" aria-label="Later brief" disabled={index === 0} onClick={() => step(-1)}>
+                <Button variant="ghost" size="icon-sm" aria-label={t("briefPanel.laterBrief")} disabled={index === 0} onClick={() => step(-1)}>
                   <ChevronRight size={15} />
                 </Button>
               </div>
             )}
             {brief && data?.audio && playing === null && (
-              <Button variant="secondary" size="sm" onClick={() => playFrom(0)} aria-label="Listen to the brief">
+              <Button variant="secondary" size="sm" onClick={() => playFrom(0)} aria-label={t("briefPanel.listenToTheBrief")}>
                 <Play size={13} />
-                <span className="max-sm:hidden">Listen</span>
+                <span className="max-sm:hidden">{t("briefPanel.listen")}</span>
               </Button>
             )}
             {brief && (
-              <Button variant="ghost" size="icon-sm" disabled={making} onClick={make} title="Make a fresh brief now" aria-label="Make a fresh brief now">
+              <Button variant="ghost" size="icon-sm" disabled={making} onClick={make} title={t("briefPanel.makeAFreshBriefNow")} aria-label={t("briefPanel.makeAFreshBriefNow")}>
                 {making ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
               </Button>
             )}
             {data?.sections && (
-              <Button variant="ghost" size="icon-sm" onClick={() => setCustomizing(true)} title="Customize the brief" aria-label="Customize the brief">
+              <Button variant="ghost" size="icon-sm" onClick={() => setCustomizing(true)} title={t("briefPanel.customizeTheBrief")} aria-label={t("briefPanel.customizeTheBrief")}>
                 <SlidersHorizontal size={14} />
               </Button>
             )}
@@ -522,7 +523,7 @@ export function BriefPanel() {
         {error && (
           <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-body text-destructive">
             <span className="min-w-0 flex-1">{error}</span>
-            <button onClick={() => setError(null)} aria-label="Dismiss" className="mt-0.5 shrink-0 opacity-70 transition-opacity hover:opacity-100">
+            <button onClick={() => setError(null)} aria-label={t("common.dismiss")} className="mt-0.5 shrink-0 opacity-70 transition-opacity hover:opacity-100">
               <X size={13} />
             </button>
           </div>
@@ -533,10 +534,10 @@ export function BriefPanel() {
         ) : !brief ? (
           <div className="flex flex-col items-start gap-4 py-2">
             <p className="text-balance text-heading font-semibold text-foreground">
-              {enabled ? `Your first brief comes at ${sayTime(time)}.` : "No brief yet."}
+              {enabled ? `Your first brief comes at ${sayTime(time)}.` : t("briefPanel.noBriefYet")}
             </p>
             <p className="max-w-md text-pretty text-ui leading-relaxed text-muted-foreground">
-              Each morning, a short read on what your agents did overnight and what is waiting on you.
+              {t("briefPanel.eachMorningAShortRead")}
             </p>
             <Button onClick={make} disabled={making}>
               {making ? <Loader2 size={13} className="animate-spin" /> : <Sunrise size={14} />}
@@ -577,14 +578,14 @@ export function BriefPanel() {
                     exit={{ opacity: 0, y: -4, transition: { duration: 0.12 } }}
                     className="mt-5 flex items-center gap-3 rounded-full bg-muted/70 py-1 pl-1 pr-1.5"
                     role="group"
-                    aria-label="Brief player"
+                    aria-label={t("briefPanel.briefPlayer")}
                   >
                     <Button
                       variant="ghost"
                       size="icon-sm"
                       className="rounded-full text-foreground"
                       onClick={togglePause}
-                      aria-label={paused ? "Resume" : "Pause"}
+                      aria-label={paused ? t("briefPanel.resume") : t("common.pause")}
                     >
                       {buffering && !paused ? (
                         <Loader2 size={14} className="animate-spin" />
@@ -600,7 +601,7 @@ export function BriefPanel() {
                     <span className="max-w-[9rem] truncate text-small text-muted-foreground" aria-live="polite">
                       {reader}
                     </span>
-                    <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={stop} aria-label="Stop">
+                    <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={stop} aria-label={t("common.stop")}>
                       <X size={14} />
                     </Button>
                   </motion.div>
@@ -634,11 +635,11 @@ export function BriefPanel() {
                     <div key="waiting" className={cn("mt-8 transition-opacity duration-200", closing >= 0 && dim(closing) && "opacity-45")}>
                       <SubHead className="flex items-center gap-1.5">
                         {waitingLeft ? (
-                          <>Waiting on you</>
+                          <>{t("briefPanel.waitingOnYou")}</>
                         ) : (
                           <>
                             <Check size={12} className="text-success" />
-                            All handled
+                            {t("briefPanel.allHandled")}
                           </>
                         )}
                       </SubHead>
@@ -664,7 +665,7 @@ export function BriefPanel() {
                 if (section.key === "failed" && (brief.incidents?.length || brief.failing?.length)) {
                   return (
                     <div key="failed" className={cn("mt-8 transition-opacity duration-200", closing >= 0 && dim(closing) && "opacity-45")}>
-                      <SubHead>Something failed</SubHead>
+                      <SubHead>{t("briefPanel.somethingFailed")}</SubHead>
                       <ul className="flex flex-col gap-2">
                         {(brief.incidents ?? []).map((i) => (
                           <li key={i.id} className="text-body text-foreground">
@@ -685,7 +686,7 @@ export function BriefPanel() {
                 if (section.key === "agents") {
                   return (
                     <div key="agents" className="mt-8 flex flex-col gap-8">
-                      {cards.size > 0 && brief.parts.some((p) => p.botId) && <SubHead className="-mb-6">What your agents did</SubHead>}
+                      {cards.size > 0 && brief.parts.some((p) => p.botId) && <SubHead className="-mb-6">{t("briefPanel.whatYourAgentsDid")}</SubHead>}
                       {brief.parts.map((part, at) => {
                         if (!part.botId) return null;
                         const agent = bot(part.botId);
@@ -696,7 +697,7 @@ export function BriefPanel() {
                               {agent && <AgentAvatar bot={agent} size={20} />}
                               <h3 className="text-ui font-semibold text-foreground">{part.name}</h3>
                               {agent?.title && <span className="truncate text-small text-muted-foreground">{agent.title}</span>}
-                              {reading && <AudioLines size={13} className="shrink-0 text-brand-ink" aria-label="Reading now" />}
+                              {reading && <AudioLines size={13} className="shrink-0 text-brand-ink" aria-label={t("briefPanel.readingNow")} />}
                             </div>
                             <div className="mt-2 flex flex-col gap-1.5">
                               {part.items.map((item, i) => {
@@ -736,7 +737,7 @@ export function BriefPanel() {
                     <div key="memory" className="mt-8">
                       <SubHead className="flex items-center gap-1.5">
                         <Moon size={12} />
-                        Memory, tidied overnight
+                        {t("briefPanel.memoryTidiedOvernight")}
                       </SubHead>
                       <ul className="-mx-2 flex flex-col">
                         {brief.memory!.map((line) => {
@@ -752,7 +753,7 @@ export function BriefPanel() {
                                   <span className="font-medium text-foreground">{line.name}: </span>
                                   {line.text}
                                   <span className="ml-1 whitespace-nowrap text-muted-foreground transition-colors duration-150 group-hover:text-foreground">
-                                    Review or undo
+                                    {t("briefPanel.reviewOrUndo")}
                                     <ArrowUpRight size={12} className="ml-0.5 inline-block -translate-y-px" />
                                   </span>
                                 </span>
@@ -786,8 +787,8 @@ export function BriefPanel() {
         {data && (
           <div className="mt-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-5 text-body text-muted-foreground">
             <label className="flex items-center gap-2">
-              <Switch checked={enabled} onCheckedChange={(on) => settings({ enabled: on })} aria-label="A brief every morning" />
-              {enabled ? "Every morning at" : "Daily brief is off"}
+              <Switch checked={enabled} onCheckedChange={(on) => settings({ enabled: on })} aria-label={t("briefPanel.aBriefEveryMorning")} />
+              {enabled ? t("briefPanel.everyMorningAt") : t("briefPanel.dailyBriefIsOff")}
             </label>
             {enabled && <BriefTime time={time} onChange={(t) => settings({ time: t })} />}
           </div>
@@ -844,7 +845,7 @@ function WaitingRow({
               <span className="min-w-0">
                 <span className="block text-ui text-foreground">{item.title}</span>
                 <span className="block text-small text-muted-foreground">
-                  {item.name} {item.kind === "approval" ? "wants your OK" : "has a question"}
+                  {item.name} {item.kind === "approval" ? t("briefPanel.wantsYourOk") : t("briefPanel.hasAQuestion")}
                 </span>
               </span>
             </button>
@@ -852,7 +853,7 @@ function WaitingRow({
               {item.kind === "approval" && item.requestId ? (
                 <>
                   <Button size="sm" variant="ghost" disabled={busy} onClick={() => onAnswer("deny")}>
-                    Deny
+                    {t("briefPanel.deny")}
                   </Button>
                   <Button size="sm" disabled={busy} onClick={() => onAnswer("allow")}>
                     {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={13} />}
@@ -861,7 +862,7 @@ function WaitingRow({
                 </>
               ) : (
                 <Button size="sm" variant="secondary" onClick={onOpen}>
-                  Answer
+                  {t("briefPanel.answer")}
                 </Button>
               )}
             </div>
@@ -892,7 +893,7 @@ function BriefTime({ time, onChange }: { time: string; onChange: (time: string) 
     <div className="flex flex-wrap items-center gap-2">
       <Segmented
         size="sm"
-        aria-label="Brief time"
+        aria-label={t("briefPanel.briefTime")}
         value={value}
         options={[...PRESET_TIMES.map((t) => ({ value: t, label: sayTime(t) })), { value: "other", label: "Other" }]}
         onChange={(v) => {
@@ -911,7 +912,7 @@ function BriefTime({ time, onChange }: { time: string; onChange: (time: string) 
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
           className="h-7 rounded-md border bg-background px-2 text-body tabular-nums text-foreground"
-          aria-label="Custom brief time"
+          aria-label={t("briefPanel.customBriefTime")}
         />
       )}
     </div>
@@ -921,7 +922,7 @@ function BriefTime({ time, onChange }: { time: string; onChange: (time: string) 
 /** The shape of a brief, while the real one is on its way. */
 function BriefSkeleton() {
   return (
-    <div role="status" aria-label="Loading the brief" className="flex flex-col">
+    <div role="status" aria-label={t("briefPanel.loadingTheBrief")} className="flex flex-col">
       <Bone className="h-5 w-11/12" />
       <Bone className="mt-2.5 h-5 w-3/5" />
       <Bone className="mt-4 w-2/5" />

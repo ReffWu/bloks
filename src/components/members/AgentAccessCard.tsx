@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { membersApi, useWorkspaceFrames, type AgentAccessRow, type Member } from "@/lib/members";
 import { AgentAccessDialog } from "./MemberDialogs";
 import { distinctNames } from "@/lib/names";
+import { t } from "@/lib/i18n";
 
 export function AgentAccessCard({ botId }: { botId: string }) {
   const [agent, setAgent] = useState<AgentAccessRow | null>(null);
@@ -36,13 +37,13 @@ export function AgentAccessCard({ botId }: { botId: string }) {
     <div className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
       <div className="flex items-center gap-6 px-5 py-4">
         <div className="min-w-0 flex-1">
-          <div className="text-ui font-medium text-foreground">Who can use this agent</div>
+          <div className="text-ui font-medium text-foreground">{t("agentAccessCard.whoCanUseThisAgent")}</div>
           <div className="mt-0.5 text-pretty text-body leading-relaxed text-muted-foreground">
             {summary}. Anyone in a room with {agent.name} can still talk to it there.
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-          Change
+          {t("common.change")}
         </Button>
       </div>
       <AgentAccessDialog agent={editing ? agent : null} members={members} owner={owner} onOpenChange={(o) => !o && setEditing(false)} onSaved={load} />

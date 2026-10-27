@@ -40,6 +40,7 @@ import { AgentView, RoomView } from "./MemberViews";
 import { distinctNames } from "@/lib/names";
 import { ownerOrNull } from "@/lib/yourName";
 import { AboutYouPage, MembersAdminPage, NewSoloAgentDialog, UsagePage, WorkspacePage } from "./MemberPages";
+import { t } from "@/lib/i18n";
 
 const isElectron = navigator.userAgent.includes("Electron");
 const PLACE_KEY = "bloks-member-place";
@@ -252,24 +253,24 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
   };
 
   const navigation = (
-    <nav aria-label="Agents and rooms" className="flex min-h-0 w-full flex-1 flex-col bg-sidebar">
+    <nav aria-label={t("memberApp.agentsAndRooms")} className="flex min-h-0 w-full flex-1 flex-col bg-sidebar">
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3 pt-1">
         {member && !paused && (
-          <Section title="Team agents">
+          <Section title={t("memberApp.teamAgents")}>
             {groups.team.map((a) => (
               <AgentRow key={a.id} agent={a} on={openAgent?.id === a.id} onOpen={() => go({ kind: "agent", id: a.id, lane: defaultLane(a) })} />
             ))}
-            {loaded && !groups.team.length && <Empty>No team agents are open to you yet.</Empty>}
+            {loaded && !groups.team.length && <Empty>{t("memberApp.noTeamAgentsAreOpen")}</Empty>}
           </Section>
         )}
         {member && !paused && (
           <Section
-            title="Your agents"
+            title={t("memberApp.yourAgents")}
             action={
               <button
                 type="button"
                 onClick={makeSolo}
-                aria-label="New solo agent"
+                aria-label={t("memberApp.newSoloAgent")}
                 className="grid size-6 place-items-center rounded-md text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 hover:bg-accent hover:text-foreground active:scale-[0.94]"
               >
                 <Plus size={14} />
@@ -281,22 +282,22 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
             ))}
             {loaded && !groups.mine.length && (
               <button type="button" onClick={makeSolo} className="w-full rounded-lg px-2.5 py-2 text-left text-body text-muted-foreground outline-none hover:bg-accent hover:text-foreground">
-                Make an agent only you use
+                {t("memberApp.makeAnAgentOnlyYou")}
               </button>
             )}
           </Section>
         )}
-        {!paused && <Section title="Rooms">
+        {!paused && <Section title={t("memberApp.rooms")}>
           {rooms.map((r) => (
             <Row key={r.id} on={place?.kind === "room" && place.id === r.id} onClick={() => go({ kind: "room", id: r.id })}>
               <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted text-small font-semibold text-muted-foreground" aria-hidden>
                 #
               </span>
               <span className="min-w-0 flex-1 truncate">{r.name}</span>
-              {r.role === "viewer" && <span className="text-caption text-muted-foreground">Read only</span>}
+              {r.role === "viewer" && <span className="text-caption text-muted-foreground">{t("memberApp.readOnly")}</span>}
             </Row>
           ))}
-          {loaded && !rooms.length && <Empty>You are not in any rooms yet.</Empty>}
+          {loaded && !rooms.length && <Empty>{t("memberApp.youAreNotInAny")}</Empty>}
         </Section>}
       </div>
       {pages.length > 0 && !paused && (
@@ -307,7 +308,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
               <Row key={p.page} on={place?.kind === "page" && place.page === p.page} onClick={() => go({ kind: "page", page: p.page })} small>
                 <Icon size={15} className="shrink-0 text-muted-foreground" />
                 <span className="flex-1 truncate">{p.label}</span>
-                {p.page === "usage" && usage?.stopped && <span className="size-1.5 rounded-full bg-destructive" aria-label="Your limit is reached" />}
+                {p.page === "usage" && usage?.stopped && <span className="size-1.5 rounded-full bg-destructive" aria-label={t("memberApp.yourLimitIsReached")} />}
               </Row>
             );
           })}
@@ -323,7 +324,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
           <div className={cn("shrink-0", isElectron ? "w-[78px]" : "w-4")} />
           <Dialog open={navigationOpen} onOpenChange={setNavigationOpen}>
             <DialogTrigger asChild>
-              <Button ref={navigationTrigger} variant="ghost" size="icon" className="mr-1 size-11 md:hidden" aria-label="Open navigation">
+              <Button ref={navigationTrigger} variant="ghost" size="icon" className="mr-1 size-11 md:hidden" aria-label={t("memberApp.openNavigation")}>
                 <Menu size={20} />
               </Button>
             </DialogTrigger>
@@ -342,9 +343,9 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
               }}
             >
               <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-3">
-                <DialogTitle className="text-ui">Agents and rooms</DialogTitle>
+                <DialogTitle className="text-ui">{t("memberApp.agentsAndRooms")}</DialogTitle>
                 <DialogClose asChild>
-                  <Button variant="ghost" size="icon" className="size-11" aria-label="Close navigation"><X size={20} /></Button>
+                  <Button variant="ghost" size="icon" className="size-11" aria-label={t("memberApp.closeNavigation")}><X size={20} /></Button>
                 </DialogClose>
               </div>
               {navigation}
@@ -362,7 +363,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
               <WorkspaceMark mark={workspace.workspace.mark} size={18} />
               <span className="truncate">{workspace.workspace.name}</span>
               <span className="ml-1 shrink-0 rounded-full bg-muted px-2 py-px text-small font-normal text-muted-foreground">
-                {workspace.you.role === "admin" ? "Admin" : "Member"}
+                {workspace.you.role === "admin" ? t("memberApp.admin") : t("memberApp.member")}
               </span>
             </span>
           ) : null}
@@ -407,7 +408,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
                 <WorkspacePage workspace={workspace} entry={entry} onLeave={() => void leave()} leaving={leaving} />
               )
             ) : (
-              <main className="flex flex-1 items-center justify-center text-body text-muted-foreground">Nothing is open to you here yet.</main>
+              <main className="flex flex-1 items-center justify-center text-body text-muted-foreground">{t("memberApp.nothingIsOpenToYou")}</main>
             )}
           </div>
         </div>
@@ -444,7 +445,7 @@ function PausedPanel({ workspace, line, onLeave, leaving }: { workspace: MemberW
           <h1 className="text-balance text-title font-semibold text-foreground">{workspace.workspace.name} is paused for you</h1>
           <p className="text-pretty text-ui leading-relaxed text-muted-foreground">{line}</p>
           <p className="text-pretty text-body leading-relaxed text-muted-foreground">
-            Nothing of yours is gone. Your conversations, rooms and agents come back as soon as it is on Bloks Team again.
+            {t("memberApp.nothingOfYoursIsGone")}
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={onLeave} disabled={leaving} className="text-muted-foreground">
@@ -493,14 +494,14 @@ function AgentRow({ agent, on, onOpen }: { agent: MemberAgent; on: boolean; onOp
     <Row on={on} onClick={onOpen}>
       <span className="relative shrink-0">
         <AgentFace agent={agent} size={28} />
-        {agent.busy && <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-brand-ink ring-2 ring-sidebar" aria-label="Working" />}
+        {agent.busy && <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-brand-ink ring-2 ring-sidebar" aria-label={t("memberApp.working")} />}
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate leading-tight">{agent.name}</span>
         {agent.solo ? (
           <OnlyYou className="mt-0.5 self-start" />
         ) : (
-          <span className="truncate text-small font-normal leading-tight text-muted-foreground">{agent.team ? agent.title || "Team agent" : "Through a room, privately"}</span>
+          <span className="truncate text-small font-normal leading-tight text-muted-foreground">{agent.team ? agent.title || t("memberApp.teamAgent") : t("memberApp.throughARoomPrivately")}</span>
         )}
       </span>
     </Row>

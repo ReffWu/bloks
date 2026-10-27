@@ -33,6 +33,7 @@ import {
   type Health,
   type Step,
 } from "./ConnectionKit";
+import { t } from "@/lib/i18n";
 
 type Platform = "slack" | "discord";
 
@@ -222,7 +223,7 @@ function PlatformCard({
               <>
                 <StepNote>
                   Turn on Socket Mode. Give the bot these scopes, subscribe it to the{" "}
-                  <span className="font-mono">message.channels</span> and <span className="font-mono">message.groups</span>{" "}
+                  <span className="font-mono">{t("chatSection.messageChannels")}</span> and <span className="font-mono">{t("chatSection.messageGroups")}</span>{" "}
                   events, and install it.
                 </StepNote>
                 <div className="mt-1.5 flex flex-wrap gap-1">
@@ -232,7 +233,7 @@ function PlatformCard({
                     </code>
                   ))}
                 </div>
-                <OutLink href="https://api.slack.com/apps">Open Slack apps</OutLink>
+                <OutLink href="https://api.slack.com/apps">{t("chatSection.openSlackApps")}</OutLink>
               </>
             ),
           },
@@ -243,11 +244,11 @@ function PlatformCard({
             body: (
               <SecretField
                 id="slack-bot-token"
-                label="Bot token"
+                label={t("chatSection.botToken")}
                 value={botToken}
                 onChange={setBotToken}
                 shape={SHAPE.slackBot}
-                hint="Starts with xoxb-. Under OAuth and permissions."
+                hint={t("chatSection.startsWithXoxbUnderOauth")}
                 placeholder="xoxb-..."
                 quietLabel
                 className="max-w-[420px]"
@@ -261,11 +262,11 @@ function PlatformCard({
             body: (
               <SecretField
                 id="slack-app-token"
-                label="App-level token"
+                label={t("chatSection.appLevelToken")}
                 value={appToken}
                 onChange={setAppToken}
                 shape={SHAPE.slackApp}
-                hint="Starts with xapp-. Make one with connections:write."
+                hint={t("chatSection.startsWithXappMakeOne")}
                 placeholder="xapp-..."
                 quietLabel
                 onEnter={connect}
@@ -283,10 +284,9 @@ function PlatformCard({
             body: (
               <>
                 <StepNote>
-                  In the developer portal, make an application and add a bot. Under Bot, turn on Message Content
-                  Intent. Invite it to your server with permission to read and send messages.
+                  {t("chatSection.inTheDeveloperPortalMake")}
                 </StepNote>
-                <OutLink href="https://discord.com/developers/applications">Open the developer portal</OutLink>
+                <OutLink href="https://discord.com/developers/applications">{t("chatSection.openTheDeveloperPortal")}</OutLink>
               </>
             ),
           },
@@ -297,12 +297,12 @@ function PlatformCard({
             body: (
               <SecretField
                 id="discord-token"
-                label="Bot token"
+                label={t("chatSection.botToken")}
                 value={token}
                 onChange={setToken}
                 shape={SHAPE.discord}
-                hint="A long string from the Bot page."
-                placeholder="Paste the token"
+                hint={t("chatSection.aLongStringFromThe")}
+                placeholder={t("common.pasteTheToken")}
                 quietLabel
                 onEnter={connect}
                 className="max-w-[420px]"
@@ -332,7 +332,7 @@ function PlatformCard({
             key="up"
             icon={<MessagesSquare size={18} />}
             title={`${name} is connected`}
-            detail="Pick a channel for a room in that room's Share panel."
+            detail={t("chatSection.pickAChannelForA")}
           />
         )}
       </AnimatePresence>
@@ -353,7 +353,7 @@ function PlatformCard({
             }}
             className="mt-3 text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
           >
-            Not now
+            {t("common.notNow")}
           </button>
         </>
       ) : finishing ? (
@@ -362,12 +362,12 @@ function PlatformCard({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-3">
           <span className="min-w-0 text-small text-muted-foreground">
             {!status.enabled
-              ? "Switched off."
+              ? t("chatSection.switchedOff")
               : status.state === "error"
-                ? status.detail || "Not connected."
+                ? status.detail || t("chatSection.notConnected")
                 : status.state === "connected"
-                  ? "Pick a channel for a room in its Share panel."
-                  : "Connecting."}
+                  ? t("chatSection.pickAChannelForARoom")
+                  : t("chatSection.connecting")}
           </span>
           <button
             onClick={() => post({ forget: true })}
@@ -430,8 +430,8 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
       keep: true,
       body: (
         <>
-          <StepNote>In Meta for Developers, add WhatsApp to a business app, with a phone number.</StepNote>
-          <OutLink href="https://developers.facebook.com/apps">Open Meta for Developers</OutLink>
+          <StepNote>{t("chatSection.inMetaForDevelopersAdd")}</StepNote>
+          <OutLink href="https://developers.facebook.com/apps">{t("chatSection.openMetaForDevelopers")}</OutLink>
         </>
       ),
     },
@@ -444,28 +444,28 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
         <div className="flex max-w-[420px] flex-col gap-2">
           <SecretField
             id="wa-number-id"
-            label="Phone number ID"
+            label={t("chatSection.phoneNumberId")}
             value={phoneNumberId}
             onChange={setPhoneNumberId}
             shape={SHAPE.waNumberId}
-            hint="The long number under your number, not the number itself."
+            hint={t("chatSection.theLongNumberUnderYour")}
             secret={false}
           />
           <SecretField
             id="wa-token"
-            label="Access token"
+            label={t("chatSection.accessToken")}
             value={token}
             onChange={setToken}
             shape={SHAPE.waToken}
-            hint="A permanent token from a system user."
+            hint={t("chatSection.aPermanentTokenFromA")}
           />
           <SecretField
             id="wa-secret"
-            label="App secret"
+            label={t("chatSection.appSecret")}
             value={appSecret}
             onChange={setAppSecret}
             shape={SHAPE.waSecret}
-            hint="32 letters and numbers, in App settings, Basic."
+            hint={t("chatSection.n32LettersAndNumbersIn")}
             onEnter={connect}
           />
         </div>
@@ -478,7 +478,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
       body: (
         <Button variant="brand" size="sm" disabled={busy || !ready} onClick={connect}>
           {busy ? <Loader2 size={13} className="animate-spin" /> : null}
-          {busy ? "Checking with Meta" : "Connect WhatsApp"}
+          {busy ? t("chatSection.checkingWithMeta") : t("chatSection.connectWhatsapp")}
         </Button>
       ),
     },
@@ -494,7 +494,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
       <ConnectionHeader
         icon={<MessagesSquare size={14} className="shrink-0 text-muted-foreground" />}
         title="WhatsApp"
-        says="Bring a shared room into a WhatsApp group with a WhatsApp Business number. People you let in mention the number or name an agent."
+        says={t("chatSection.bringASharedRoomInto")}
         health={<HealthLine tone={h.tone} label={h.label} />}
         control={
           status.configured && (
@@ -505,8 +505,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
 
       {(status.configured || settingUp) && (
         <ConnectionNote>
-          Needs Bloks Cloud. Messages pass through it without end-to-end encryption, because Meta sends them that way.
-          Nothing is kept.
+          {t("chatSection.needsBloksCloudMessagesPass")}
         </ConnectionNote>
       )}
 
@@ -515,19 +514,19 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
           <PairedMoment
             key="up"
             icon={<MessagesSquare size={18} />}
-            title={status.number ? `Connected as ${status.number}` : "WhatsApp is connected"}
-            detail="One last step in Meta, below."
+            title={status.number ? `Connected as ${status.number}` : t("chatSection.whatsappIsConnected")}
+            detail={t("chatSection.oneLastStepInMeta")}
           />
         )}
       </AnimatePresence>
 
       {!status.configured && !settingUp ? (
         <Button size="sm" variant="secondary" className="mt-3" onClick={() => setSettingUp(true)}>
-          Set up WhatsApp
+          {t("chatSection.setUpWhatsapp")}
         </Button>
       ) : !status.configured ? (
         <>
-          <Checklist label="Set up WhatsApp" steps={steps} />
+          <Checklist label={t("chatSection.setUpWhatsapp")} steps={steps} />
           <button
             onClick={() => {
               setSettingUp(false);
@@ -537,7 +536,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
             }}
             className="mt-3 text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
           >
-            Not now
+            {t("common.notNow")}
           </button>
         </>
       ) : (
@@ -549,22 +548,22 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
             <div className="mt-3 space-y-2">
               <div className="text-small leading-relaxed text-muted-foreground">
                 Last step, in your app's WhatsApp settings: under Webhooks, paste these two, then subscribe to{" "}
-                <span className="font-mono">messages</span>.
+                <span className="font-mono">{t("chatSection.messages")}</span>.
               </div>
-              <CopyRow label="Callback URL" value={status.webhookUrl} />
-              <CopyRow label="Verify token" value={status.verifyToken} />
+              <CopyRow label={t("chatSection.callbackUrl")} value={status.webhookUrl} />
+              <CopyRow label={t("chatSection.verifyToken")} value={status.verifyToken} />
             </div>
           )}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-3">
             <span className="min-w-0 text-small text-muted-foreground">
-              {status.number ? `As ${status.number}` : "Your business number"}
+              {status.number ? `As ${status.number}` : t("chatSection.yourBusinessNumber")}
               {status.enabled && status.state === "error" && status.detail ? `. ${status.detail}` : ""}
             </span>
             <button
               onClick={() => post({ forget: true })}
               className="text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline"
             >
-              Forget WhatsApp
+              {t("chatSection.forgetWhatsapp")}
             </button>
           </div>
         </>
@@ -613,35 +612,35 @@ function SignalRoomsCard({ status, onChange }: { status: SignalStatus; onChange:
     <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <ConnectionHeader
         icon={<MessagesSquare size={14} className="shrink-0 text-muted-foreground" />}
-        title="Signal groups"
-        says="Bring a shared room into a Signal group. People you let in name an agent to talk to it."
-        info="Through signal-cli on this computer. Use a number of its own for this: everyone in the group sees the room through it."
+        title={t("chatSection.signalGroups")}
+        says={t("chatSection.bringASharedRoomIntoA")}
+        info={t("chatSection.throughSignalCliOnThis")}
         health={<HealthLine tone={h.tone} label={h.label} />}
-        control={status.configured && <Switch aria-label="Signal groups" checked={status.enabled} disabled={busy} onCheckedChange={(on) => post({ enabled: on })} />}
+        control={status.configured && <Switch aria-label={t("chatSection.signalGroups")} checked={status.enabled} disabled={busy} onCheckedChange={(on) => post({ enabled: on })} />}
       />
       {status.configured ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-3">
           <span className="min-w-0 text-small text-muted-foreground">
-            {!status.enabled ? "Switched off." : status.state === "error" ? status.detail || "Not connected." : `Rooms go through ${status.account}. Pick a group in a room's Share panel.`}
+            {!status.enabled ? t("chatSection.switchedOff") : status.state === "error" ? status.detail || t("chatSection.notConnected") : `Rooms go through ${status.account}. Pick a group in a room's Share panel.`}
           </span>
           <button onClick={() => post({ forget: true })} className="text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline">
-            Forget Signal groups
+            {t("chatSection.forgetSignalGroups")}
           </button>
         </div>
       ) : accounts === null ? (
-        <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" aria-label="Loading" />
+        <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" aria-label={t("common.loading2")} />
       ) : accounts.length === 0 ? (
-        <ConnectionNote>Link a Signal account under an agent's settings first. Any account linked there can carry rooms too.</ConnectionNote>
+        <ConnectionNote>{t("chatSection.linkASignalAccountUnder")}</ConnectionNote>
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <select
-            aria-label="Signal account for rooms"
+            aria-label={t("chatSection.signalAccountForRooms")}
             value=""
             disabled={busy}
             onChange={(e) => e.target.value && post({ account: e.target.value })}
             className="h-8 rounded-lg border bg-background px-2 text-body text-foreground"
           >
-            <option value="">Choose an account</option>
+            <option value="">{t("chatSection.chooseAnAccount")}</option>
             {accounts.map((a) => <option key={a.account} value={a.account}>{a.account}</option>)}
           </select>
         </div>
@@ -685,19 +684,19 @@ function EmailCard() {
     <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <ConnectionHeader
         icon={<Send size={14} className="shrink-0 text-muted-foreground" />}
-        title="Email"
-        says="Give every agent an email address. Forward it anything and it replies by email."
+        title={t("chatSection.email")}
+        says={t("chatSection.giveEveryAgentAnEmail")}
         health={<HealthLine tone={h.tone} label={h.label} />}
         control={
           <Switch
             checked={status.enabled}
             disabled={busy || (!status.cloud && !status.enabled)}
             onCheckedChange={(on) => patch({ enabled: on })}
-            aria-label="Email"
+            aria-label={t("chatSection.email")}
           />
         }
       />
-      {!status.cloud && !status.enabled && <ConnectionNote>Needs Bloks Cloud. Turn it on in Settings, under Plan.</ConnectionNote>}
+      {!status.cloud && !status.enabled && <ConnectionNote>{t("chatSection.needsBloksCloudTurnIt")}</ConnectionNote>}
       {status.enabled && (
         <>
           <div className="mt-3 space-y-2">
@@ -707,15 +706,14 @@ function EmailCard() {
           </div>
           <div className="mt-3 border-t pt-3">
             <label htmlFor="email-allow" className="text-small text-muted-foreground">
-              Who can write: addresses or @domains. Left empty, anyone can, and agents reply in text only, with no
-              tools, apps, secrets, notes or past conversations (Claude Code or API models only).
+              {t("chatSection.whoCanWriteAddressesOr")}
             </label>
             <div className="mt-1.5 flex gap-2">
               <Input
                 id="email-allow"
                 value={allow}
                 onChange={(e) => setAllow(e.target.value)}
-                placeholder="you@example.com, @yourcompany.com"
+                placeholder={t("chatSection.youExampleComYourcompanyCom")}
                 className="h-8 text-body"
               />
               <Button
@@ -725,13 +723,12 @@ function EmailCard() {
                 disabled={busy}
                 onClick={() => patch({ allowFrom: allow.split(/[\s,]+/).filter(Boolean) })}
               >
-                Save
+                {t("common.save")}
               </Button>
             </div>
           </div>
           <ConnectionNote>
-            Mail passes through Bloks Cloud without end-to-end encryption. Nothing is kept. Agents only reply to
-            people who wrote to them.
+            {t("chatSection.mailPassesThroughBloksCloud")}
           </ConnectionNote>
         </>
       )}

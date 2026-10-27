@@ -10,6 +10,7 @@ import { ArrowUpRight } from "@/components/icons";
 import type { Bot } from "@/state/store";
 import { startersFor } from "@/lib/starters";
 import { AgentAvatar } from "../Avatar";
+import { t } from "@/lib/i18n";
 
 const settle = [0.23, 1, 0.32, 1] as const;
 
@@ -50,7 +51,7 @@ export function EmptyState({ bot, onStart }: { bot: Bot; onStart: (prompt: strin
           </motion.button>
         ))}
       </div>
-      <p className="mt-4 text-small text-muted-foreground">Pick one to fill the message box, or write your own.</p>
+      <p className="mt-4 text-small text-muted-foreground">{t("emptyState.pickOneToFillThe")}</p>
     </div>
   );
 }

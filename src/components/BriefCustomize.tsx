@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { SubHead } from "./OverviewParts";
 import { cn } from "@/lib/cn";
 import { moveSection, SECTION_NAMES, toggleHidden, togglePin, type LayoutSection } from "@/lib/briefLayout";
+import { t } from "@/lib/i18n";
 
 export interface ArrangedSection extends LayoutSection {
   /** "waiting", "failed", "agents", "memory", or the source's kind. */
@@ -55,14 +56,14 @@ export function BriefCustomize({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85dvh] max-w-[520px] flex-col p-0">
         <div className="px-5 pt-5">
-          <DialogTitle>Customize the brief</DialogTitle>
+          <DialogTitle>{t("briefCustomize.customizeTheBrief")}</DialogTitle>
           <DialogDescription>
-            What it shows, in what order. Pinned sections stay at the top; a routine or watcher that is hidden does not feed it.
+            {t("briefCustomize.whatItShowsInWhat")}
           </DialogDescription>
         </div>
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-5 pb-2">
-          <SubHead>Sections</SubHead>
-          <ul className="-mx-2 flex flex-col" aria-label="Sections of the brief">
+          <SubHead>{t("briefCustomize.sections")}</SubHead>
+          <ul className="-mx-2 flex flex-col" aria-label={t("briefCustomize.sectionsOfTheBrief")}>
             {sections.map((s, i) => {
               const name = s.name ?? SECTION_NAMES[s.key] ?? s.key;
               const source = s.kind === "routine" || s.kind === "watcher";
@@ -107,7 +108,7 @@ export function BriefCustomize({
                       <span className="truncate text-ui text-foreground">{name}</span>
                     </div>
                     <p className="text-small text-muted-foreground">
-                      {s.kind === "routine" ? "A routine's latest report" : s.kind === "watcher" ? "A watcher's latest change" : "Part of every brief"}
+                      {s.kind === "routine" ? t("briefCustomize.aRoutinesLatestReport") : s.kind === "watcher" ? t("briefCustomize.aWatchersLatestChange") : t("briefCustomize.partOfEveryBrief")}
                     </p>
                     {s.kind === "routine" && !s.hidden && (
                       <label className="mt-1.5 flex items-center gap-2 text-small text-muted-foreground">
@@ -117,7 +118,7 @@ export function BriefCustomize({
                           aria-label={`${name}: report only in the brief`}
                           className="scale-[0.8] origin-left"
                         />
-                        <span className="-ml-1.5">{s.briefOnly ? "Only in the brief, no notification of its own" : "Also notifies when it runs"}</span>
+                        <span className="-ml-1.5">{s.briefOnly ? t("briefCustomize.onlyInTheBriefNo") : t("briefCustomize.alsoNotifiesWhenItRuns")}</span>
                       </label>
                     )}
                   </div>
@@ -126,7 +127,7 @@ export function BriefCustomize({
                     size="icon-sm"
                     aria-label={s.pinned ? `Unpin ${name}` : `Pin ${name} to the top`}
                     aria-pressed={s.pinned}
-                    title={s.pinned ? "Pinned to the top" : "Pin to the top"}
+                    title={s.pinned ? t("briefCustomize.pinnedToTheTop") : t("briefCustomize.pinToTheTop")}
                     onClick={() => keep(togglePin(sections, s.key))}
                     className={cn(s.pinned ? "text-brand-ink" : "text-muted-foreground")}
                   >
@@ -143,21 +144,21 @@ export function BriefCustomize({
             })}
           </ul>
 
-          <SubHead className="mt-6">Notification</SubHead>
+          <SubHead className="mt-6">{t("briefCustomize.notification")}</SubHead>
           <div className="flex flex-col gap-3 pb-3 text-body text-foreground">
             <label className="flex items-start justify-between gap-4">
               <span>
                 One notification when it is ready
-                <span className="block text-small text-muted-foreground">Opens that morning's brief. Your workspace's mute and notification level still apply.</span>
+                <span className="block text-small text-muted-foreground">{t("briefCustomize.opensThatMorningsBriefYour")}</span>
               </span>
-              <Switch checked={notify} onCheckedChange={(on) => onSettings({ notify: on })} aria-label="Notify when the brief is ready" />
+              <Switch checked={notify} onCheckedChange={(on) => onSettings({ notify: on })} aria-label={t("briefCustomize.notifyWhenTheBriefIs")} />
             </label>
             <label className={cn("flex items-start justify-between gap-4 transition-opacity duration-150", !notify && "opacity-50")}>
               <span>
                 Also on a quiet morning
-                <span className="block text-small text-muted-foreground">To hear that all is clear, not only when something came in.</span>
+                <span className="block text-small text-muted-foreground">{t("briefCustomize.toHearThatAllIs")}</span>
               </span>
-              <Switch checked={allClear} disabled={!notify} onCheckedChange={(on) => onSettings({ allClear: on })} aria-label="Notify on a quiet morning too" />
+              <Switch checked={allClear} disabled={!notify} onCheckedChange={(on) => onSettings({ allClear: on })} aria-label={t("briefCustomize.notifyOnAQuietMorning")} />
             </label>
           </div>
         </div>

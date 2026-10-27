@@ -7,6 +7,7 @@
 // its own.
 import { FolderOpen } from "@/components/icons";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export function BrowseFolderButton({
   onPick,
@@ -20,8 +21,8 @@ export function BrowseFolderButton({
   return (
     <button
       type="button"
-      title="Choose a folder"
-      aria-label="Choose a folder"
+      title={t("browseFolder.chooseAFolder")}
+      aria-label={t("browseFolder.chooseAFolder")}
       onClick={() => {
         void window.bloks?.pickFolder?.().then((path) => {
           if (path) onPick(path);

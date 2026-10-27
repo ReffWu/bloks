@@ -7,6 +7,7 @@ import { toast } from "@/components/ui/toast";
 import { BLOKS_AI_LINE, keyGroups } from "@/lib/hostingMove";
 import type { HostingMoveKey } from "@/types/bridge";
 import { said } from "./useHostingMove";
+import { t } from "@/lib/i18n";
 
 export function MoveKeys({ keys, bloksAi, where }: { keys: HostingMoveKey[] | null; bloksAi: boolean; where: string }) {
   const groups = keyGroups(keys, bloksAi);
@@ -26,7 +27,7 @@ export function MoveKeys({ keys, bloksAi, where }: { keys: HostingMoveKey[] | nu
       ) : (
         <>
           <p className="text-pretty text-body text-muted-foreground">Keys stay where they were. Enter these again {where}:</p>
-          <ul aria-label="Keys to enter again" className="flex flex-col divide-y rounded-xl border">
+          <ul aria-label={t("moveKeys.keysToEnterAgain")} className="flex flex-col divide-y rounded-xl border">
             {groups.map((group) => (
               <li key={group.page} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-2.5">
                 <div className="min-w-0 flex-1 basis-[200px]">

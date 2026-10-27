@@ -8,6 +8,7 @@ import { ArrowUpRight, Lock } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { useOptionalStore } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export const TEAM_UPGRADE_URL = "https://bloks.dev/cloud/upgrade/";
 
@@ -17,7 +18,7 @@ export function NeedsTeam({ className, what }: { className?: string; what?: stri
     <span className={cn("inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-muted-foreground", className)}>
       <span className="inline-flex items-center gap-1">
         <Lock size={12} strokeWidth={2} aria-hidden />
-        {what ?? "Needs Bloks Team"}
+        {what ?? t("teamLock.needsBloksTeam")}
       </span>
       <UpgradeLink />
     </span>

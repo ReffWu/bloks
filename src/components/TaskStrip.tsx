@@ -28,6 +28,7 @@ import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
 import { contextTitle, measuredContext, type LaneContext } from "@/lib/contextCard";
 import { rovingTo } from "@/lib/conversationKeys";
+import { t } from "@/lib/i18n";
 
 export type TaskState = "working" | "needs-you" | "idle";
 
@@ -80,7 +81,7 @@ function RenameChip({ title, onDone }: { title: string; onDone: (next: string | 
       autoFocus
       value={value}
       maxLength={MAX_TITLE}
-      aria-label="Rename this conversation"
+      aria-label={t("taskStrip.renameThisConversation")}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setValue(e.target.value)}
       onBlur={finish}
@@ -193,7 +194,7 @@ export function TaskStrip({
   return (
     <div
       role="tablist"
-      aria-label="Conversations"
+      aria-label={t("taskStrip.conversations")}
       className={cn(
         "flex shrink-0 items-end gap-0 overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden",
         inTitleBar ? "h-full min-w-0 flex-1 pt-1.5 pr-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "h-[38px] bg-tab-strip px-3 pt-1.5 md:px-4",
@@ -268,10 +269,10 @@ export function TaskStrip({
               aria-label={isGeneral ? `Clear ${task.title}` : `Close ${task.title}`}
               title={
                 task.state === "working"
-                  ? "Stop it before closing"
+                  ? t("taskStrip.stopItBeforeClosing")
                   : isGeneral
-                    ? "Clear this conversation"
-                    : "Close this conversation"
+                    ? t("taskStrip.clearThisConversation")
+                    : t("taskStrip.closeThisConversation")
               }
               onClick={(e) => {
                 e.stopPropagation();
@@ -294,8 +295,8 @@ export function TaskStrip({
       {tasks.length < MAX_TASKS && (
         <button
           onClick={onNew}
-          aria-label="New conversation"
-          title="New conversation, runs alongside this one"
+          aria-label={t("taskStrip.newConversation")}
+          title={t("taskStrip.newConversationRunsAlongsideThis")}
           className="mb-1 ml-1 flex size-7 shrink-0 items-center justify-center self-center rounded-full text-muted-foreground transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.94]"
         >
           <Plus size={15} />

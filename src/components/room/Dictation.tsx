@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic } from "@/components/icons";
 import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
+import { t } from "@/lib/i18n";
 
 /** What the helper's error words mean to a person. */
 const SPEECH_TROUBLE: Record<string, string> = {
@@ -117,7 +118,7 @@ export function useDictation(text: string, onText: (next: string) => void, off =
         icon: <Mic size={14} />,
         title: error,
         actions: (denied || pane === "speech") && (
-          <TrayButton onClick={() => void window.bloks?.permOpenSettings(pane)}>Open Settings</TrayButton>
+          <TrayButton onClick={() => void window.bloks?.permOpenSettings(pane)}>{t("dictation.openSettings")}</TrayButton>
         ),
         onDismiss: () => setError(null),
       }

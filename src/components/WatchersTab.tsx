@@ -34,6 +34,7 @@ import { cn } from "@/lib/cn";
 import { intervalLabel, intervalPhrase } from "@/lib/checkIns";
 import { AUTOMATIONS_LIST, AUTOMATIONS_LIST_SIZE, useColumnFolded } from "@/lib/sideColumn";
 import { ShowColumn, SideColumn } from "./SideColumn";
+import { t } from "@/lib/i18n";
 
 type Kind = "folder" | "page" | "feed" | "check" | "place" | "app";
 
@@ -230,10 +231,10 @@ function Draft({ apps, onMade }: { apps: AppsStatus | null; onMade: (id: string)
         }
       }}
     >
-      <h2 className="text-heading font-semibold text-foreground">New watcher</h2>
-      <p className="mt-1 text-body text-muted-foreground">An agent keeps an eye on something and acts when it changes.</p>
+      <h2 className="text-heading font-semibold text-foreground">{t("watchersTab.newWatcher")}</h2>
+      <p className="mt-1 text-body text-muted-foreground">{t("watchersTab.anAgentKeepsAnEye")}</p>
 
-      <div role="radiogroup" aria-label="What to watch" className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div role="radiogroup" aria-label={t("watchersTab.whatToWatch")} className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {(Object.keys(KIND) as Kind[]).map((k, i) => {
           const Icon = KIND[k].icon;
           const on = kind === k;
@@ -287,7 +288,7 @@ function Draft({ apps, onMade }: { apps: AppsStatus | null; onMade: (id: string)
             />
             {kind === "folder" && window.bloks?.pickFolder && (
               <Button variant="secondary" onClick={pick} className="h-9 rounded-xl">
-                Choose
+                {t("watchersTab.choose")}
               </Button>
             )}
           </div>
@@ -312,8 +313,8 @@ function Draft({ apps, onMade }: { apps: AppsStatus | null; onMade: (id: string)
         )}
       </AnimatePresence>
 
-      <div className="mt-6 mb-2 text-body font-medium text-foreground">Who acts on it</div>
-      <div role="radiogroup" aria-label="Who acts on it" className="flex flex-wrap gap-1.5">
+      <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("watchersTab.whoActsOnIt")}</div>
+      <div role="radiogroup" aria-label={t("watchersTab.whoActsOnIt")} className="flex flex-wrap gap-1.5">
         {bots.map((b) => {
           const on = b.id === botId;
           return (
@@ -333,11 +334,11 @@ function Draft({ apps, onMade }: { apps: AppsStatus | null; onMade: (id: string)
             </button>
           );
         })}
-        {bots.length === 0 && <span className="text-body text-muted-foreground">No agents yet. Make one first.</span>}
+        {bots.length === 0 && <span className="text-body text-muted-foreground">{t("watchersTab.noAgentsYetMakeOne")}</span>}
       </div>
 
       <label className="mt-6 mb-2 text-body font-medium text-foreground" htmlFor="watch-instruction">
-        What {bot?.name ?? "the agent"} does when it {kind === "app" ? "happens" : "changes"}
+        What {bot?.name ?? t("watchersTab.theAgent")} does when it {kind === "app" ? "happens" : "changes"}
       </label>
       <Textarea
         id="watch-instruction"
@@ -350,18 +351,18 @@ function Draft({ apps, onMade }: { apps: AppsStatus | null; onMade: (id: string)
       {kind === "app" ? (
         <>
           <label className="mt-6 mb-2 text-body font-medium text-foreground" htmlFor="watch-thread">
-            Which chat it replies in
+            {t("watchersTab.whichChatItRepliesIn")}
           </label>
-          <Input id="watch-thread" value={thread} onChange={(e) => setThread(e.target.value)} placeholder="General" className="rounded-xl text-body" />
+          <Input id="watch-thread" value={thread} onChange={(e) => setThread(e.target.value)} placeholder={t("common.general")} className="rounded-xl text-body" />
           <div className="mt-1.5 text-small leading-relaxed text-muted-foreground">
-            Leave blank for the main chat. What the app sends reaches {bot?.name ?? "the agent"} as data from whoever caused the event, never as
+            Leave blank for the main chat. What the app sends reaches {bot?.name ?? t("watchersTab.theAgent")} as data from whoever caused the event, never as
             instructions. At most six turns an hour and thirty a day; change that once it is made.
           </div>
         </>
       ) : kind === "place" ? (
         <>
-          <div className="mt-6 mb-2 text-body font-medium text-foreground">When</div>
-          <div role="radiogroup" aria-label="When" className="flex flex-wrap gap-1.5">
+          <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("watchersTab.when")}</div>
+          <div role="radiogroup" aria-label={t("watchersTab.when")} className="flex flex-wrap gap-1.5">
             {(["arrive", "leave"] as const).map((w) => (
               <button
                 key={w}
@@ -374,22 +375,21 @@ function Draft({ apps, onMade }: { apps: AppsStatus | null; onMade: (id: string)
                   when === w ? "border-brand bg-brand-soft font-medium text-foreground" : "bg-card text-foreground/90 hover:border-foreground/20",
                 )}
               >
-                {w === "arrive" ? "When I arrive" : "When I leave"}
+                {w === "arrive" ? t("watchersTab.whenIArrive") : t("watchersTab.whenILeave")}
               </button>
             ))}
           </div>
           <div className="mt-2 text-small leading-relaxed text-muted-foreground">
-            A place as your iPhone names it (a city or a neighbourhood), or latitude,longitude for a spot. It acts when your iPhone next says where
-            you are, so Location has to be on in the Bloks app there, and a spot needs Exact position.
+            {t("watchersTab.aPlaceAsYourIphone")}
           </div>
         </>
       ) : (
         <>
-          <div className="mt-6 mb-2 text-body font-medium text-foreground">How often it looks</div>
+          <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("watchersTab.howOftenItLooks")}</div>
           {kind === "folder" ? (
-            <div className="text-body text-muted-foreground">As it changes. Folders are watched within seconds.</div>
+            <div className="text-body text-muted-foreground">{t("watchersTab.asItChangesFoldersAre")}</div>
           ) : (
-            <Slider aria-label="How often it looks" stops={lookStops(every)} value={every} onChange={setEvery} onCommit={setEvery} />
+            <Slider aria-label={t("watchersTab.howOftenItLooks")} stops={lookStops(every)} value={every} onChange={setEvery} onCommit={setEvery} />
           )}
         </>
       )}
@@ -416,18 +416,18 @@ function Draft({ apps, onMade }: { apps: AppsStatus | null; onMade: (id: string)
       <div className="mt-5 flex items-center gap-3">
         <Button size="lg" disabled={busy || !ready} onClick={make}>
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}
-          {busy ? "Starting" : "Start watching"}
+          {busy ? t("watchersTab.starting") : t("watchersTab.startWatching")}
         </Button>
         {!ready && (
           <span className="text-small text-muted-foreground">
             {kind === "app"
-              ? (app?.missing ?? (!instruction.trim() ? "Say what to do when it happens." : ""))
+              ? (app?.missing ?? (!instruction.trim() ? t("watchersTab.sayWhatToDoWhen") : ""))
               : !target.trim()
                 ? kind === "check"
-                  ? "Add the command."
+                  ? t("watchersTab.addTheCommand")
                   : `Add the ${KIND[kind].label.toLowerCase()}.`
                 : !instruction.trim()
-                  ? "Say what to do when it changes."
+                  ? t("watchersTab.sayWhatToDoWhenIt")
                   : ""}
           </span>
         )}
@@ -465,7 +465,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
       {w.kind === "check" && waiting && (
         <div className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3.5 py-3 text-body text-foreground">
           <div className="flex items-center gap-2 font-medium">
-            <ShieldCheck size={14} className="text-warning" /> {bot?.name ?? "An agent"} wants to run this command on its own
+            <ShieldCheck size={14} className="text-warning" /> {bot?.name ?? t("common.anAgent")} wants to run this command on its own
           </div>
           <code className="block break-all rounded-lg bg-background px-2.5 py-1.5 font-mono text-small">{w.target}</code>
           <div className="text-muted-foreground">
@@ -473,7 +473,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           </div>
           <div>
             <Button size="sm" onClick={() => patch({ approved: true })}>
-              Approve
+              {t("common.approve")}
             </Button>
           </div>
         </div>
@@ -487,19 +487,19 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           {w.kind === "check" && !waiting && (
             <div className="mt-1 flex items-center gap-1.5 text-small text-muted-foreground">
               <ShieldCheck size={12} />
-              {w.approvedBy === "person" ? "You approved this command." : `${bot?.name ?? "Its agent"} can run commands without asking.`}
+              {w.approvedBy === "person" ? t("watchersTab.youApprovedThisCommand") : `${bot?.name ?? "Its agent"} can run commands without asking.`}
               {w.approvedBy === "person" && (
                 <button className="underline underline-offset-2" onClick={() => patch({ approved: false })}>
-                  Withdraw
+                  {t("watchersTab.withdraw")}
                 </button>
               )}
             </div>
           )}
         </div>
-        <Switch checked={w.enabled} onCheckedChange={(on) => patch({ enabled: on })} aria-label="Watching" />
+        <Switch checked={w.enabled} onCheckedChange={(on) => patch({ enabled: on })} aria-label={t("watchersTab.watching")} />
       </div>
       <label className="flex flex-col gap-1.5 text-body text-muted-foreground">
-        What {bot?.name ?? "the agent"} does when it changes
+        What {bot?.name ?? t("watchersTab.theAgent")} does when it changes
         <Textarea
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
@@ -513,11 +513,11 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           value={thread}
           onChange={(e) => setThread(e.target.value)}
           onBlur={() => thread.trim() !== (w.thread ?? "") && patch({ thread: thread.trim() })}
-          placeholder="General"
+          placeholder={t("common.general")}
           className="text-body text-foreground"
         />
         <span className="text-small">
-          Leave blank for the main chat. A new name starts a new one.
+          {t("watchersTab.leaveBlankForTheMain")}
         </span>
       </label>
       {/* every kind can be asked to act once or stop at a time, so every
@@ -526,43 +526,43 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
         <div className="flex flex-col gap-1 text-body text-muted-foreground">
           {w.kind === "place" ? (
             <span>
-              {w.when === "leave" ? "When you leave" : "When you arrive"}
+              {w.when === "leave" ? t("watchersTab.whenYouLeave") : t("watchersTab.whenYouArrive")}
               {w.radius ? `, within ${w.radius >= 1000 ? `${Math.round(w.radius / 100) / 10} km` : `${w.radius} m`}` : ""}
-              {w.once ? ", once" : ""}
+              {w.once ? t("watchersTab.once") : ""}
               {w.until ? `, until ${new Date(w.until).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}.
             </span>
           ) : (
             w.once || w.until ? (
               <span>
-                {w.once ? "Acts once" : "Acts on every change"}
+                {w.once ? t("watchersTab.actsOnce") : t("watchersTab.actsOnEveryChange")}
                 {w.until ? `, until ${new Date(w.until).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}.
               </span>
             ) : null
           )}
           {w.done && (
             <span className="text-foreground">
-              Done {ago(w.done.at)}: {w.done.why === "once" ? "it acted once, as asked." : "its time ran out."} Switch it on to watch again.
+              Done {ago(w.done.at)}: {w.done.why === "once" ? t("watchersTab.itActedOnceAsAsked") : t("watchersTab.itsTimeRanOut")} Switch it on to watch again.
             </span>
           )}
         </div>
       )}
       {w.kind !== "folder" && w.kind !== "place" && (
         <div className="max-w-[460px]">
-          <div className="mb-1.5 text-body text-muted-foreground">How often it looks</div>
+          <div className="mb-1.5 text-body text-muted-foreground">{t("watchersTab.howOftenItLooks")}</div>
           {/* saved where the finger lets go, not at every stop on the way */}
-          <Slider aria-label="How often it looks" stops={lookStops(w.every)} value={w.every} onCommit={(every) => patch({ every })} />
+          <Slider aria-label={t("watchersTab.howOftenItLooks")} stops={lookStops(w.every)} value={w.every} onCommit={(every) => patch({ every })} />
         </div>
       )}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-body text-muted-foreground">
         <label className="flex items-center gap-1.5">
-          <Switch checked={w.mode === "rehearse"} onCheckedChange={(on) => patch({ mode: on ? "rehearse" : "act" })} aria-label="Rehearse first" />
+          <Switch checked={w.mode === "rehearse"} onCheckedChange={(on) => patch({ mode: on ? "rehearse" : "act" })} aria-label={t("watchersTab.rehearseFirst")} />
           <FlaskConical size={13} /> Try it on a copy first
         </label>
         <span>Last checked {ago(w.lastCheck)}</span>
       </div>
       {w.enabled && w.suspended === "archived" && (
         <div className="rounded-lg bg-muted px-3 py-2 text-body text-muted-foreground">
-          Paused while {bot?.name ?? "its agent"} is archived. Resumes when restored.
+          Paused while {bot?.name ?? t("watchersTab.itsAgent")} is archived. Resumes when restored.
         </div>
       )}
       {/* Stopped for failing: said apart from the last error, since it is
@@ -576,20 +576,20 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           </div>
           <div className="flex flex-wrap gap-1.5">
             <Button variant="secondary" size="sm" disabled={checking} onClick={check}>
-              Look again now
+              {t("watchersTab.lookAgainNow")}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => patch({ enabled: false })}>
-              Pause
+              {t("common.pause")}
             </Button>
           </div>
         </div>
       )}
       {w.lastError && !w.failing && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{w.lastError}</div>}
       <div>
-        <div className="mb-1.5 text-small font-medium text-muted-foreground">Triggered</div>
+        <div className="mb-1.5 text-small font-medium text-muted-foreground">{t("watchersTab.triggered")}</div>
         {w.fires.length === 0 ? (
           <div className="text-body text-muted-foreground">
-            Not yet.
+            {t("watchersTab.notYet")}
           </div>
         ) : (
           <ul className="flex flex-col gap-1">
@@ -614,7 +614,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
               dispatch({ type: "select", id: bot.id, lane: laneId });
             }}
           >
-            Open chat
+            {t("watchersTab.openChat")}
           </Button>
         )}
         <Button
@@ -623,7 +623,7 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
           className="ml-auto text-destructive hover:text-destructive"
           onClick={() => api(`/api/watchers/${w.id}`, { method: "DELETE" }).then(onChanged).catch(() => {})}
         >
-          <Trash2 size={13} /> Stop watching
+          <Trash2 size={13} /> {t("watchersTab.stopWatching")}
         </Button>
       </div>
       {note && <div className="text-body text-muted-foreground">{note}</div>}
@@ -653,11 +653,11 @@ export function WatchersTab() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <SideColumn id={AUTOMATIONS_LIST} size={AUTOMATIONS_LIST_SIZE} label="Watchers" className="max-h-[200px] w-full border-b md:max-h-none md:border-b-0">
+      <SideColumn id={AUTOMATIONS_LIST} size={AUTOMATIONS_LIST_SIZE} label={t("watchersTab.watchers")} className="max-h-[200px] w-full border-b md:max-h-none md:border-b-0">
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
-          <span className="text-small font-medium text-muted-foreground">Watching</span>
+          <span className="text-small font-medium text-muted-foreground">{t("watchersTab.watching")}</span>
           <button onClick={() => setSelected("new")} className="rounded-lg px-1.5 py-1 text-small text-muted-foreground hover:bg-accent hover:text-foreground">
-            + New
+            {t("watchersTab.new")}
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -685,18 +685,18 @@ export function WatchersTab() {
                     )}
                   >
                     {w.done
-                      ? "Done"
+                      ? t("common.done")
                       : w.suspended === "archived" && w.enabled
-                        ? "Paused while archived"
+                        ? t("watchersTab.pausedWhileArchived")
                         : (appRowStatus(w) ??
                           (!w.enabled
-                            ? "Paused"
+                            ? t("common.paused")
                             : w.failing
-                              ? "Stopped for failing"
+                              ? t("watchersTab.stoppedForFailing")
                               : waiting
-                                ? "Needs your approval"
+                                ? t("watchersTab.needsYourApproval")
                                 : w.lastError
-                                  ? "Needs a look"
+                                  ? t("watchersTab.needsALook")
                                   : w.fires[0]
                                     ? `Triggered ${ago(w.fires[0].at)}`
                                     : `Checked ${ago(w.lastCheck)}`))}
@@ -709,7 +709,7 @@ export function WatchersTab() {
       </SideColumn>
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
         {/* the list folded away: the way back to it, named for what it lists */}
-        {folded && <ShowColumn id={AUTOMATIONS_LIST} text="Watching" label="Show the list" className="-ml-2 -mt-2 mb-3" />}
+        {folded && <ShowColumn id={AUTOMATIONS_LIST} text="Watching" label={t("watchersTab.showTheList")} className="-ml-2 -mt-2 mb-3" />}
         {rows === null ? null : showing === "new" ? (
           <Draft
             apps={apps}

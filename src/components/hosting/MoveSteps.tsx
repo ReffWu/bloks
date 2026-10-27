@@ -4,13 +4,14 @@ import { Check, Loader2 } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { MOVE_STEPS, stepLabel, stepState } from "@/lib/hostingMove";
 import type { HostingMove } from "@/types/bridge";
+import { t } from "@/lib/i18n";
 
 export function MoveSteps({ move }: { move: HostingMove }) {
   // a move that stopped or failed shows where it stopped, without a spinner
   const moving = move.phase === "running" || move.phase === "waiting";
   const share = move.size > 0 ? Math.min(1, move.sent / move.size) : 0;
   return (
-    <ol aria-label="Steps" className="flex flex-col gap-2">
+    <ol aria-label={t("common.steps")} className="flex flex-col gap-2">
       {MOVE_STEPS.map(({ step }) => {
         const state = stepState(move, step);
         const now = state === "now";
@@ -47,7 +48,7 @@ export function MoveSteps({ move }: { move: HostingMove }) {
             {step === "sending" && now && move.size > 0 && (
               <div
                 role="progressbar"
-                aria-label="Sent"
+                aria-label={t("moveSteps.sent")}
                 aria-valuemin={0}
                 aria-valuemax={move.size}
                 aria-valuenow={move.sent}

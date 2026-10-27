@@ -25,6 +25,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Skeleton, SkeletonLines } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { rowKey } from "@/lib/settingsPages";
+import { t } from "@/lib/i18n";
 
 export function SettingsPageHeader({
   title,
@@ -216,7 +217,7 @@ export function SavedMark({ on }: { on: boolean }) {
     >
       {on && (
         <>
-          <Check size={12} /> Saved
+          <Check size={12} /> {t("common.saved")}
         </>
       )}
     </span>

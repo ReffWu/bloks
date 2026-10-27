@@ -18,6 +18,7 @@ import { useStore } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Markdownish } from "./Markdown";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 export interface BriefResult {
   key: string;
@@ -120,12 +121,12 @@ export function ResultCard({ result, after, onOpen }: { result: BriefResult; aft
           >
             {result.state === "running" && <Loader2 size={11} className="animate-spin" />}
             <span>{line.words}</span>
-            {after && <span className="text-muted-foreground">· came in after the brief</span>}
+            {after && <span className="text-muted-foreground">{t("briefCards.cameInAfterTheBrief")}</span>}
           </p>
         </div>
-        <span className="mt-0.5 flex shrink-0 items-center gap-1 text-small text-muted-foreground" title={result.kind === "watcher" ? "A watcher" : "A routine"}>
+        <span className="mt-0.5 flex shrink-0 items-center gap-1 text-small text-muted-foreground" title={result.kind === "watcher" ? t("briefCards.aWatcher") : t("briefCards.aRoutine")}>
           <Kind size={12} />
-          <span className="max-sm:hidden">{result.agent ?? (result.kind === "watcher" ? "Watcher" : "Routine")}</span>
+          <span className="max-sm:hidden">{result.agent ?? (result.kind === "watcher" ? t("briefCards.watcher") : t("briefCards.routine"))}</span>
         </span>
       </header>
 
@@ -150,15 +151,15 @@ export function ResultCard({ result, after, onOpen }: { result: BriefResult; aft
             onClick={() => onOpen(result)}
             className="group -mx-1 inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 font-medium text-foreground/80 transition-colors duration-150 hover:bg-accent/60 hover:text-foreground"
           >
-            {result.more ? "Read the rest" : result.state === "failed" || result.state === "late" ? "Open the conversation" : "Open the full report"}
+            {result.more ? t("briefCards.readTheRest") : result.state === "failed" || result.state === "late" ? t("briefCards.openTheConversation") : t("briefCards.openTheFullReport")}
             <ArrowUpRight size={12} className="text-muted-foreground transition-colors duration-150 group-hover:text-foreground" />
           </button>
         )}
         {result.nextAt && result.state !== "none" && <span>Next {when(result.nextAt)}</span>}
         {result.briefOnly && (
-          <span className="inline-flex items-center gap-1" title="Its reports wait here, with no notification of their own">
+          <span className="inline-flex items-center gap-1" title={t("briefCards.itsReportsWaitHereWith")}>
             <BellOff size={11} />
-            Only in the brief
+            {t("briefCards.onlyInTheBrief")}
           </span>
         )}
       </footer>

@@ -6,6 +6,7 @@
 import { useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { MAX_ROOM_NAME, nextRoomName } from "@/lib/roomEdit";
+import { t } from "@/lib/i18n";
 
 /** Enter or clicking away keeps the new name; Escape, or blank, or
  * unchanged, keeps the old one. `onDone` is told which, once. */
@@ -30,7 +31,7 @@ export function RoomRename({
       autoFocus
       value={value}
       maxLength={MAX_ROOM_NAME}
-      aria-label="Rename this room"
+      aria-label={t("roomRename.renameThisRoom")}
       spellCheck={false}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setValue(e.target.value)}

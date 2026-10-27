@@ -71,6 +71,7 @@ import {
 } from "@/lib/usagePage";
 import { ChartLegend, UsageChart, type ChartLine } from "./usage/UsageChart";
 import { PLANS_ID, PlanLine, UsageLimits, usePlanUsage } from "./usage/UsageLimits";
+import { t } from "@/lib/i18n";
 
 /** Engines drawn as lines over the total: as many as there are series
  * colours after the brand's own, which the total wears. */
@@ -194,7 +195,7 @@ function Controls({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Menu
-        label="Agent"
+        label={t("common.agent")}
         value={view.bot ?? ALL}
         onChange={(v) => set({ bot: v === ALL ? null : v })}
         options={[
@@ -209,7 +210,7 @@ function Controls({
         ]}
       />
       <Menu
-        label="Engine"
+        label={t("common.engine")}
         value={view.engine ?? ALL}
         onChange={(v) => set({ engine: v === ALL ? null : v })}
         options={[
@@ -221,13 +222,13 @@ function Controls({
       />
       <Segmented
         size="sm"
-        aria-label="Measure"
+        aria-label={t("usagePage.measure")}
         value={view.metric}
         options={METRICS}
         onChange={(metric) => set({ metric })}
       />
-      <Menu label="Span" value={view.range} onChange={(v) => set({ range: v as UsageView["range"] })} options={RANGES} />
-      <Button variant="ghost" size="icon" aria-label="Refresh" title="Refresh" onClick={onRefresh} className="size-8">
+      <Menu label={t("usagePage.span")} value={view.range} onChange={(v) => set({ range: v as UsageView["range"] })} options={RANGES} />
+      <Button variant="ghost" size="icon" aria-label={t("usagePage.refresh")} title={t("usagePage.refresh")} onClick={onRefresh} className="size-8">
         <RefreshCw size={15} className={cn(loading && "animate-spin motion-reduce:animate-none")} />
       </Button>
     </div>
@@ -254,11 +255,11 @@ function Headline({ report, view, onMetric }: { report: UsageReport; view: Usage
       </p>
       {unpriced ? (
         <>
-          <p className="text-balance text-heading font-semibold text-foreground">No price reported</p>
+          <p className="text-balance text-heading font-semibold text-foreground">{t("usagePage.noPriceReported")}</p>
           <p className="max-w-[60ch] text-pretty text-body text-muted-foreground">
             The engines in view report tokens, not prices, so there is no honest dollar figure to show.{" "}
             <button type="button" onClick={() => onMetric("tokens")} className="font-medium text-foreground underline underline-offset-2">
-              Show tokens
+              {t("usagePage.showTokens")}
             </button>
           </p>
         </>
@@ -266,7 +267,7 @@ function Headline({ report, view, onMetric }: { report: UsageReport; view: Usage
         <>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <p className="text-[40px] font-semibold leading-[44px] tabular-nums text-foreground">{figure(value, metric, estimated)}</p>
-            {metric === "tokens" && <span className="text-ui text-muted-foreground">tokens</span>}
+            {metric === "tokens" && <span className="text-ui text-muted-foreground">{t("usagePage.tokens")}</span>}
             {delta && (
               <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-small tabular-nums text-muted-foreground">
                 {delta.direction === "up" ? <ArrowUp size={12} /> : delta.direction === "down" ? <ArrowDown size={12} /> : null}
@@ -316,7 +317,7 @@ function PlanUseCard({
           <span className="text-title font-semibold tabular-nums text-foreground" title={use.tokens.toLocaleString("en-US")}>
             {shortTokens(use.tokens)}
           </span>
-          <span className="text-ui text-muted-foreground">tokens</span>
+          <span className="text-ui text-muted-foreground">{t("usagePage.tokens")}</span>
         </p>
         <p className="text-small tabular-nums text-muted-foreground">
           {turnsText(use.turns)}, {spanWords(view, days)}
@@ -325,7 +326,7 @@ function PlanUseCard({
       <div className="flex min-w-0 flex-col gap-3">
         <p className="text-small text-muted-foreground">{planTitle(use.plan)}</p>
         {reading ? (
-          <p className="text-small text-muted-foreground">Reading...</p>
+          <p className="text-small text-muted-foreground">{t("usagePage.reading")}</p>
         ) : use.windows.length ? (
           <>
             {use.windows.map((row) => (
@@ -341,7 +342,7 @@ function PlanUseCard({
           onClick={onPlans}
           className="self-start text-small font-medium text-foreground underline underline-offset-2"
         >
-          See Plans in Limits
+          {t("usagePage.seePlansInLimits")}
         </button>
       </div>
     </section>
@@ -483,7 +484,7 @@ function Breakdown({
   const fourth = metric === "tokens" ? "Turns" : "Tokens";
 
   const valueCell = (row: Line) => {
-    if (metric === "cost" && row.bloksAi) return <ToLimits label="In Limits" onLimits={onLimits} />;
+    if (metric === "cost" && row.bloksAi) return <ToLimits label={t("usagePage.inLimits")} onLimits={onLimits} />;
     // an agent that only ever ran on Bloks AI had nothing to report: it
     // runs on an allowance, which Limits shows
     if (metric === "cost" && !row.priced && row.turns > 0 && row.bloksAiTurns === row.turns) {
@@ -493,9 +494,9 @@ function Breakdown({
     // page is narrowed to it: what the plan has left is in Limits
     const plan = tab === "engine" ? row.id : view.engine;
     if (metric === "cost" && !row.priced && row.turns > 0 && plan && planWithoutPrice(names.kind(plan))) {
-      return <ToLimits label="See plan" title={seePlanTitle(names.engine(plan))} onLimits={onPlans} />;
+      return <ToLimits label={t("usagePage.seePlan")} title={seePlanTitle(names.engine(plan))} onLimits={onPlans} />;
     }
-    if (metric === "cost" && !row.priced) return <span className="text-muted-foreground">Not reported</span>;
+    if (metric === "cost" && !row.priced) return <span className="text-muted-foreground">{t("usagePage.notReported")}</span>;
     return figureOf(row, metric);
   };
   const shareOf = (row: Line) => (metric === "cost" && (!row.priced || row.bloksAi) ? 0 : valueOf(row, metric));
@@ -504,11 +505,11 @@ function Breakdown({
     <section aria-labelledby="usage-breakdown" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="usage-breakdown" className="text-lead font-semibold text-foreground">
-          Breakdown
+          {t("usagePage.breakdown")}
         </h2>
         <Segmented
           size="sm"
-          aria-label="Break down by"
+          aria-label={t("usagePage.breakDownBy")}
           value={tab}
           onChange={(next: BreakdownTab) => set({ tab: next })}
           options={[
@@ -519,15 +520,15 @@ function Breakdown({
         />
       </div>
       {sorted.length === 0 ? (
-        <p className="rounded-xl border border-dashed px-4 py-6 text-center text-body text-muted-foreground">Nothing in this span.</p>
+        <p className="rounded-xl border border-dashed px-4 py-6 text-center text-body text-muted-foreground">{t("usagePage.nothingInThisSpan")}</p>
       ) : (
         <div className="overflow-hidden rounded-xl border">
           <table className="w-full table-fixed text-body">
             <thead className="border-b bg-muted/40">
               <tr className="text-left">
-                <HeaderCell label={tab === "day" ? "Day" : tab === "agent" ? "Agent" : "Engine"} sortKey="name" sort={sort} onSort={onSort} className="pl-2.5" />
+                <HeaderCell label={tab === "day" ? t("usagePage.day") : tab === "agent" ? t("common.agent") : t("common.engine")} sortKey="name" sort={sort} onSort={onSort} className="pl-2.5" />
                 <HeaderCell label={METRICS.find((m) => m.value === metric)!.label} sortKey="value" sort={sort} onSort={onSort} className="w-[30%] text-right sm:w-[22%]" />
-                <HeaderCell label="Share" sortKey="share" sort={sort} onSort={onSort} className="hidden w-[24%] pl-3 sm:table-cell" />
+                <HeaderCell label={t("usagePage.share")} sortKey="share" sort={sort} onSort={onSort} className="hidden w-[24%] pl-3 sm:table-cell" />
                 <HeaderCell label={fourth} sortKey="tokens" sort={sort} onSort={onSort} className="w-[22%] pr-2.5 text-right sm:w-[14%]" />
               </tr>
             </thead>
@@ -598,7 +599,7 @@ function FilterChips({ view, set }: { view: UsageView; set: (patch: Partial<Usag
   if (!chips.length) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-small text-muted-foreground">Showing only</span>
+      <span className="text-small text-muted-foreground">{t("usagePage.showingOnly")}</span>
       {chips.map((chip) => (
         <button
           key={chip.key}
@@ -617,7 +618,7 @@ function FilterChips({ view, set }: { view: UsageView; set: (patch: Partial<Usag
 
 function Loading() {
   return (
-    <SkeletonGroup label="Loading usage" className="flex flex-col gap-8">
+    <SkeletonGroup label={t("usagePage.loadingUsage")} className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <Skeleton className="h-4 w-40" />
         <Skeleton className="h-10 w-48" />
@@ -638,12 +639,12 @@ function Empty({ view }: { view: UsageView }) {
   const { dispatch } = useStore();
   return (
     <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed px-6 py-14 text-center">
-      <p className="text-lead font-semibold text-foreground">Nothing used in {view.range === "month" ? "this month" : `the last ${view.range.replace("d", "")} days`}</p>
+      <p className="text-lead font-semibold text-foreground">Nothing used in {view.range === "month" ? t("usagePage.thisMonth") : `the last ${view.range.replace("d", "")} days`}</p>
       <p className="max-w-[44ch] text-pretty text-body text-muted-foreground">
-        Every turn an agent takes is counted here, by what its engine reports. Give one something to do and it shows up.
+        {t("usagePage.everyTurnAnAgentTakes")}
       </p>
       <Button className="mt-1" onClick={() => dispatch({ type: "openPage", page: null })}>
-        Go to chat
+        {t("usagePage.goToChat")}
       </Button>
     </div>
   );
@@ -711,8 +712,8 @@ export function UsagePage() {
         <div className="mx-auto w-full max-w-[1040px] px-4 pb-20 pt-9 max-md:pt-16 sm:px-6 lg:px-10">
           <motion.header {...arrive(0)} className="mb-8 flex flex-col gap-4">
             <div>
-              <h1 className="text-balance text-display font-semibold text-foreground">Usage</h1>
-              <p className="mt-1 text-pretty text-ui text-muted-foreground">What your agents used, by what each engine reports, and what is left.</p>
+              <h1 className="text-balance text-display font-semibold text-foreground">{t("usagePage.usage")}</h1>
+              <p className="mt-1 text-pretty text-ui text-muted-foreground">{t("usagePage.whatYourAgentsUsedBy")}</p>
             </div>
             <Controls view={view} set={set} report={report} loading={loading} onRefresh={refresh} />
           </motion.header>
@@ -721,7 +722,7 @@ export function UsagePage() {
             <p className="rounded-xl border border-dashed px-4 py-6 text-center text-body text-muted-foreground">
               Usage could not be read just now.{" "}
               <button type="button" onClick={refresh} className="font-medium text-foreground underline underline-offset-2">
-                Try again
+                {t("common.tryAgain")}
               </button>
             </p>
           ) : !report ? (
@@ -738,7 +739,7 @@ export function UsagePage() {
                 ))}
               </div>
               <Totals report={report} />
-              <section aria-label="By day" className="flex flex-col gap-3 rounded-xl border p-4 pb-3">
+              <section aria-label={t("usagePage.byDay")} className="flex flex-col gap-3 rounded-xl border p-4 pb-3">
                 <UsageChart
                   days={report.daily}
                   metric={view.metric}
@@ -760,9 +761,9 @@ export function UsagePage() {
           >
             <div>
               <h2 id="usage-limits-title" className="text-lead font-semibold text-foreground">
-                Limits
+                {t("usagePage.limits")}
               </h2>
-              <p className="mt-0.5 text-pretty text-body text-muted-foreground">What each plan, allowance and key of yours has left.</p>
+              <p className="mt-0.5 text-pretty text-body text-muted-foreground">{t("usagePage.whatEachPlanAllowanceAnd")}</p>
             </div>
             <UsageLimits focusBot={view.bot} plans={plans} />
           </motion.section>

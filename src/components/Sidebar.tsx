@@ -61,6 +61,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { plural } from "@/lib/plural";
+import { t } from "@/lib/i18n";
 
 
 
@@ -186,7 +187,7 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
           ))}
           {names.length === 0 && (
             <div className="px-1 py-1 text-body text-muted-foreground">
-              No sections yet.
+              {t("sidebar.noSectionsYet")}
             </div>
           )}
         </div>
@@ -201,12 +202,12 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
             autoFocus
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="New section"
+            placeholder={t("sidebar.newSection")}
             maxLength={60}
             className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-body text-foreground outline-none placeholder:text-muted-foreground focus:border-ring/60"
           />
           <Button type="submit" size="sm" variant="secondary" disabled={!draft.trim()}>
-            File
+            {t("sidebar.file")}
           </Button>
         </form>
         {filing.current && (
@@ -448,7 +449,7 @@ function BotListItem({
           <span className="flex shrink-0 items-center gap-1.5 transition-opacity duration-150 group-hover/agent:opacity-0">
             {general && <LaneRing lane={general} />}
             {general?.state === "needs-you" ? (
-              <span className="text-caption text-warning">waiting</span>
+              <span className="text-caption text-warning">{t("sidebar.waiting")}</span>
             ) : general?.state === "working" ? (
               <Loader2
                 size={12}
@@ -929,11 +930,11 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
     <DropdownMenuContent align="end" className="min-w-[160px]">
       <DropdownMenuItem onClick={() => dispatch({ type: "toggleNewAgent", open: true })}>
         <BotIcon size={15} />
-        New agent
+        {t("sidebar.newAgent")}
       </DropdownMenuItem>
       <DropdownMenuItem onClick={() => dispatch({ type: "toggleNewRoom", open: true })}>
         <Users size={15} />
-        New room
+        {t("sidebar.newRoom")}
       </DropdownMenuItem>
       {state.bots.some((b) => b.hidden) && (
         <DropdownMenuItem onClick={() => setShowArchived(true)}>
@@ -995,7 +996,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
           {row.pinned && next && !next.pinned && (
             <div
               role="separator"
-              aria-label="Pinned above, recent below"
+              aria-label={t("sidebar.pinnedAboveRecentBelow")}
               className="mx-3 my-1 h-px bg-border/70"
             />
           )}
@@ -1021,8 +1022,8 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
             <DropdownMenuTrigger asChild>
               <button
                 className="flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96] data-[state=open]:bg-accent data-[state=open]:text-foreground"
-                title="New agent or room"
-                aria-label="New agent or room"
+                title={t("sidebar.newAgentOrRoom")}
+                aria-label={t("sidebar.newAgentOrRoom")}
               >
                 <Plus size={17} strokeWidth={1.9} />
               </button>
@@ -1032,8 +1033,8 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
           <button
             onClick={openSearch}
             className="flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
-            title="Search (⌘K)"
-            aria-label="Search"
+            title={t("sidebar.searchK")}
+            aria-label={t("common.search")}
           >
             <Search size={16} strokeWidth={1.9} />
           </button>
@@ -1050,7 +1051,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
         >
           <FolderKanban size={13} className="shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate">{projectName}</span>
-          <span className="shrink-0 text-caption text-muted-foreground">leave</span>
+          <span className="shrink-0 text-caption text-muted-foreground">{t("sidebar.leave")}</span>
         </button>
       )}
 
@@ -1082,7 +1083,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                     <button
                       onClick={() => dispatch({ type: "toggleNewRoom", open: true })}
                       className="rounded p-0.5 transition-colors hover:text-foreground"
-                      title="New room"
+                      title={t("sidebar.newRoom")}
                     >
                       <Plus size={12} />
                     </button>
@@ -1097,7 +1098,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                         "rounded p-0.5 transition-colors hover:text-foreground",
                         conversations && "text-foreground",
                       )}
-                      title={conversations ? "Hide conversations" : "Show conversations"}
+                      title={conversations ? t("sidebar.hideConversations") : t("sidebar.showConversations")}
                     >
                       <ListTree size={12} />
                     </button>
@@ -1146,7 +1147,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                 <button
                   onClick={() => toggleFolded(name)}
                   aria-expanded={!isFolded}
-                  title={isFolded ? "Show section, drag to reorder" : "Fold section, drag to reorder"}
+                  title={isFolded ? t("sidebar.showSectionDragToReorder") : t("sidebar.foldSectionDragToReorder")}
                   // Drag a heading to put the sections in your own order;
                   // Alt with an arrow key does the same from the keyboard.
                   draggable
@@ -1194,7 +1195,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
             );
           })}
           {visibleBots.length === 0 && state.hydrated && (
-            <div className="px-3 py-8 text-center text-body text-muted-foreground">No agents yet. Create one with +</div>
+            <div className="px-3 py-8 text-center text-body text-muted-foreground">{t("sidebar.noAgentsYetCreateOne")}</div>
           )}
         </div>
       </div>
@@ -1207,13 +1208,13 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
 
   if (drawer) {
     return (
-      <aside aria-label="Agents and rooms" className="relative flex h-full min-w-0 flex-1 flex-col bg-sidebar">
+      <aside aria-label={t("sidebar.agentsAndRooms")} className="relative flex h-full min-w-0 flex-1 flex-col bg-sidebar">
         {body}
       </aside>
     );
   }
   return (
-    <SideColumn id={CHAT_COLUMN} size={CHAT_SIDEBAR} label="Agents and rooms" page={false} className="relative h-full bg-sidebar">
+    <SideColumn id={CHAT_COLUMN} size={CHAT_SIDEBAR} label={t("sidebar.agentsAndRooms")} page={false} className="relative h-full bg-sidebar">
       {body}
     </SideColumn>
   );
@@ -1239,9 +1240,9 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
         className="w-[420px] max-w-[92vw] animate-pop-in rounded-2xl border bg-popover p-4 shadow-2xl sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-title font-semibold text-foreground">Archived agents</div>
+        <div className="text-title font-semibold text-foreground">{t("sidebar.archivedAgents")}</div>
         <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
-          Their chats, rules and rooms are kept. Restore one to put it back to work.
+          {t("sidebar.theirChatsRulesAndRooms")}
         </div>
         <div className="mt-4 flex max-h-[50vh] flex-col gap-1 overflow-y-auto">
           {archived.map((bot) => (
@@ -1251,7 +1252,7 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
                 <span className="block truncate text-ui font-medium text-foreground">{bot.name}</span>
                 {bot.archivedBy ? (
                   <span className="block truncate text-small text-muted-foreground" title={bot.archiveNote}>
-                    Archived by {state.bots.find((b) => b.id === bot.archivedBy)?.name ?? "the agent that hired it"}
+                    Archived by {state.bots.find((b) => b.id === bot.archivedBy)?.name ?? t("sidebar.theAgentThatHiredIt")}
                     {bot.archiveNote ? `: ${bot.archiveNote}` : ""}
                   </span>
                 ) : (
@@ -1267,7 +1268,7 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
                   onClose();
                 }}
               >
-                Restore
+                {t("sidebar.restore")}
               </Button>
               {/* The only door to a real delete, and it says what goes.
                   The key is the part worth naming: every entry this agent
