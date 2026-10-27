@@ -718,6 +718,11 @@ export class AppBrowser {
     }
     let tab = command.newTab || !this.active ? null : this.active;
     if (command.action === "open") {
+      // An address goes in the agent's own tab, never over the page the
+      // person has open: theirs keeps its place, and the agent gets a
+      // tab of its own beside it.
+      const mine = tab?.by?.kind === "agent" && tab.by.botId === who.botId;
+      if (!mine) tab = null;
       const refused = refusedNavigation(command.url, { ownPorts: this.#ownPorts() });
       if (refused) return { error: refused };
       try {
@@ -725,11 +730,6 @@ export class AppBrowser {
       } catch (error) {
         if (error?.agentError) return { error: error.message };
         throw error;
-      }
-      // a tab the person was using becomes the agent's once it drives it
-      if (tab.by?.kind !== "agent" || tab.by.botId !== who.botId) {
-        tab.by = { kind: "agent", ...who };
-        this.changed();
       }
     }
     if (!tab) return { error: "no page is open. Use open with an address first." };

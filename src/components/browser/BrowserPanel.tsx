@@ -92,14 +92,23 @@ const OVER_THE_PAGE = '[role="dialog"],[role="alertdialog"],[role="menu"],[role=
 function useSomethingOver(panel: HTMLElement | null): boolean {
   const [over, setOver] = useState(false);
   useEffect(() => {
+    let frame = 0;
     const check = () => {
+      frame = 0;
       const found = [...document.querySelectorAll(OVER_THE_PAGE)].some((el) => !panel?.contains(el));
       setOver((was) => (was === found ? was : found));
     };
     check();
-    const watch = new MutationObserver(check);
+    // at most once a frame: a streaming reply changes the page constantly
+    const soon = () => {
+      if (!frame) frame = requestAnimationFrame(check);
+    };
+    const watch = new MutationObserver(soon);
     watch.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["role", "data-state"] });
-    return () => watch.disconnect();
+    return () => {
+      watch.disconnect();
+      cancelAnimationFrame(frame);
+    };
   }, [panel]);
   return over;
 }

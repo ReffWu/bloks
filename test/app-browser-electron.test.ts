@@ -310,6 +310,19 @@ test("tabs: listed, switched, closed only by whoever opened them, and kept to a 
   assert.match(answer.error ?? "", /12 tabs at most/, "said to the agent, not thrown at it");
 });
 
+test("an agent's address never replaces the page the person has open", async () => {
+  const { browser, tabs } = browserWith(SHOP);
+  browser.navigate("example.com");
+  await browser.command({ action: "open", url: SHOP.url }, IVY);
+  assert.deepEqual(browser.state().tabs.map((t) => [t.id, t.by.kind]), [["t1", "person"], ["t2", "agent"]]);
+  assert.equal(tabs[0].current.url, "https://example.com", "the person's page kept its place");
+  await browser.command({ action: "open", url: SHOP.url }, IVY);
+  assert.equal(browser.state().tabs.length, 2, "its own tab is reused");
+  // and the person sending the agent's tab somewhere makes it theirs
+  browser.navigate("example.org");
+  assert.deepEqual(browser.state().tabs.find((t) => t.id === "t2")?.by, { kind: "person" });
+});
+
 test("the person's address bar refuses what no tab may open", () => {
   const { browser, tabs } = browserWith(SHOP);
   assert.match(browser.navigate("file:///Users").error ?? "", /file: addresses/);
