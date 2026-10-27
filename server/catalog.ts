@@ -25,7 +25,7 @@ import { createHash } from "node:crypto";
 
 import { diffLines, type DiffLine } from "./checkpoints.ts";
 import { hashBody, standing, type Standing } from "./skill-registry.ts";
-import { parseTeamFile, TeamFileError, writeTeamFile, type TeamFile, type TeamFileMember, type TeamFileRoutine } from "./team-file.ts";
+import { COLORS, parseTeamFile, SHAPES, TeamFileError, writeTeamFile, type TeamFile, type TeamFileMember, type TeamFileRoutine } from "./team-file.ts";
 
 /** This repository's catalogue, as GitHub serves the raw files on main. */
 export const CATALOG_URL = "https://raw.githubusercontent.com/hamedgitty/bloks/main/catalog/index.json";
@@ -55,7 +55,20 @@ export interface CatalogItem {
   /** Bytes, and the sha256 of exactly those bytes. */
   size: number;
   sha256: string;
+  /** A team's members as the list draws them, most senior first: the
+   * faces the room will have, so a row shows who is in it rather than an
+   * icon every team shares. Only a look; names and briefs stay in the
+   * file the install reviews. */
+  faces?: CatalogFace[];
 }
+
+export interface CatalogFace {
+  color: string;
+  shape: string;
+}
+
+/** As many faces as a row has room for. */
+export const MAX_FACES = 4;
 
 export interface CatalogIndex {
   bloksCatalog: 1;
@@ -132,9 +145,24 @@ export function parseIndex(value: unknown): CatalogItem[] {
       path: itemPath(kind, id),
       size,
       sha256: sha,
+      ...(kind === "team" ? facesOf(entry.faces) : {}),
     });
   }
   return out;
+}
+
+/** The faces an index entry says a team has, kept only when each is a
+ * colour and a shape Bloks draws: the list renders them as they come. */
+function facesOf(value: unknown): { faces?: CatalogFace[] } {
+  if (!Array.isArray(value)) return {};
+  // a bounded look, then the good ones, then as many as a row draws: a
+  // bad entry early in the list never pushes a good one out
+  const faces = value
+    .slice(0, MAX_FACES * 4)
+    .filter((f): f is CatalogFace => (COLORS as string[]).includes((f as CatalogFace)?.color) && (SHAPES as string[]).includes((f as CatalogFace)?.shape))
+    .slice(0, MAX_FACES)
+    .map((f) => ({ color: f.color, shape: f.shape }));
+  return faces.length ? { faces } : {};
 }
 
 /** Whether these bytes are the item the index describes. */
@@ -401,6 +429,10 @@ export function buildIndex(files: CatalogFile[]): { index: CatalogIndex; problem
         tags: team.tags ?? [],
         ...(team.author ? { author: team.author } : {}),
         version: team.version ?? "1",
+        faces: [...team.members]
+          .sort((a, b) => b.seniority - a.seniority)
+          .slice(0, MAX_FACES)
+          .map((m) => ({ color: m.color, shape: m.shape })),
       });
     } else {
       let skill: SkillFile;
@@ -437,7 +469,7 @@ export function buildIndex(files: CatalogFile[]): { index: CatalogIndex; problem
   }
   items.sort((a, b) => (a.kind === b.kind ? a.id.localeCompare(b.id) : a.kind === "team" ? -1 : 1));
   // the fields in reading order: what it is first, how to check it last
-  const ordered = items.map(({ id, kind, title, summary, tags, author, version, path, size, sha256 }) => ({
+  const ordered = items.map(({ id, kind, title, summary, tags, author, version, faces, path, size, sha256 }) => ({
     id,
     kind,
     title,
@@ -445,6 +477,7 @@ export function buildIndex(files: CatalogFile[]): { index: CatalogIndex; problem
     tags,
     ...(author ? { author } : {}),
     version,
+    ...(faces?.length ? { faces } : {}),
     path,
     size,
     sha256,

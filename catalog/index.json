@@ -13,6 +13,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "purple",
+          "shape": "star"
+        },
+        {
+          "color": "coral",
+          "shape": "drop"
+        },
+        {
+          "color": "pink",
+          "shape": "burst"
+        },
+        {
+          "color": "teal",
+          "shape": "diamond"
+        }
+      ],
       "path": "teams/content-studio.md",
       "size": 1771,
       "sha256": "b498e98c0b3400166d0cd2acff3d913283698e6468957f747d4b8975c0a3d3fe"
@@ -29,6 +47,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "blue",
+          "shape": "diamond"
+        },
+        {
+          "color": "yellow",
+          "shape": "triangle"
+        },
+        {
+          "color": "teal",
+          "shape": "bit"
+        },
+        {
+          "color": "purple",
+          "shape": "cloud"
+        }
+      ],
       "path": "teams/data-analysis.md",
       "size": 1609,
       "sha256": "3e4c17eb2b61af2f4cd0431ff90e7d50ca84beb08edcf68ba5f5020045d52625"
@@ -45,6 +81,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "blue",
+          "shape": "diamond"
+        },
+        {
+          "color": "green",
+          "shape": "bit"
+        },
+        {
+          "color": "yellow",
+          "shape": "triangle"
+        },
+        {
+          "color": "red",
+          "shape": "invader"
+        }
+      ],
       "path": "teams/engineering-review.md",
       "size": 1646,
       "sha256": "55365faa3b038c95ed48354f439ed45588153de1bfb1bc381d9574b27ab8552a"
@@ -61,6 +115,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "blue",
+          "shape": "star"
+        },
+        {
+          "color": "purple",
+          "shape": "diamond"
+        },
+        {
+          "color": "coral",
+          "shape": "drop"
+        },
+        {
+          "color": "teal",
+          "shape": "bit"
+        }
+      ],
       "path": "teams/launch-crew.md",
       "size": 2393,
       "sha256": "6e3e662ce69b9617d76c02509ffca249133b78f59565d5c149c9b3d0dfacf507"
@@ -77,6 +149,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "purple",
+          "shape": "star"
+        },
+        {
+          "color": "cyan",
+          "shape": "cloud"
+        },
+        {
+          "color": "coral",
+          "shape": "drop"
+        },
+        {
+          "color": "red",
+          "shape": "diamond"
+        }
+      ],
       "path": "teams/newsletter-desk.md",
       "size": 1575,
       "sha256": "b85c85b6898d66fb95bd59c90b0ee2de549187dbf7e62cba0cd7149e77c9c878"
@@ -93,6 +183,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "green",
+          "shape": "star"
+        },
+        {
+          "color": "yellow",
+          "shape": "bit"
+        },
+        {
+          "color": "orange",
+          "shape": "drop"
+        },
+        {
+          "color": "cyan",
+          "shape": "cloud"
+        }
+      ],
       "path": "teams/personal-admin.md",
       "size": 2057,
       "sha256": "5da9d6d9230ffcff71453a725fc5c4913bdf4da096cbaf84c600b1303c3d29b4"
@@ -109,6 +217,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "green",
+          "shape": "star"
+        },
+        {
+          "color": "pink",
+          "shape": "cloud"
+        },
+        {
+          "color": "orange",
+          "shape": "diamond"
+        },
+        {
+          "color": "cyan",
+          "shape": "bit"
+        }
+      ],
       "path": "teams/product-discovery.md",
       "size": 1511,
       "sha256": "06f7c01fa149540b861e2461a85efb0472e6f5fd73a98bf9e5109de88b2b5789"
@@ -125,6 +251,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "blue",
+          "shape": "star"
+        },
+        {
+          "color": "cyan",
+          "shape": "cloud"
+        },
+        {
+          "color": "red",
+          "shape": "diamond"
+        },
+        {
+          "color": "yellow",
+          "shape": "triangle"
+        }
+      ],
       "path": "teams/research-desk.md",
       "size": 1804,
       "sha256": "9c117ee8865bf6aaaa9dd1d536f05c13807fe8d904c24a812c448da5dbeb67d3"
@@ -141,6 +285,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "blue",
+          "shape": "star"
+        },
+        {
+          "color": "green",
+          "shape": "diamond"
+        },
+        {
+          "color": "cyan",
+          "shape": "bit"
+        },
+        {
+          "color": "purple",
+          "shape": "triangle"
+        }
+      ],
       "path": "teams/sales-pipeline.md",
       "size": 1803,
       "sha256": "2f2b514a39e86186d1ea627414a9f1512aa5441668b417e024b706e5864f9f69"
@@ -157,6 +319,24 @@
       ],
       "author": "Bloks",
       "version": "1",
+      "faces": [
+        {
+          "color": "green",
+          "shape": "star"
+        },
+        {
+          "color": "orange",
+          "shape": "bit"
+        },
+        {
+          "color": "cyan",
+          "shape": "drop"
+        },
+        {
+          "color": "purple",
+          "shape": "cloud"
+        }
+      ],
       "path": "teams/support-desk.md",
       "size": 1954,
       "sha256": "fb7a3d7cd69ec4cd7a7a4bf1c163d83217ce0c1c8ad149a4262add16fa32c157"

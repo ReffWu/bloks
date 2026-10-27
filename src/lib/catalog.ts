@@ -31,6 +31,8 @@ export interface CatalogRow {
   version: string;
   size: number;
   sha256: string;
+  /** A team's members as their faces, most senior first. */
+  faces?: Array<{ color: string; shape: string }>;
   standing: CatalogStanding;
   /** Kept on this computer, so it installs without a connection. */
   offline: boolean;

@@ -26,6 +26,7 @@ import { Upload } from "@/components/icons";
 import { Users } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { BlokAvatar } from "./Avatar";
+import type { BlokColor, BlokShape } from "@/lib/mascot";
 import { CatalogReview } from "./CatalogReview";
 import { Markdownish } from "./Markdown";
 import { GridItem, GridSkeleton, PageHeader, pill, Pills, ROUND, SectionTitle, Tile } from "./CustomizeParts";
@@ -373,7 +374,7 @@ export function CatalogPage({
             <GridItem
               key={`${item.kind}:${item.id}`}
               onOpen={() => setOpen(item)}
-              tile={<Tile>{item.kind === "team" ? <Users size={17} /> : <Sparkles size={17} />}</Tile>}
+              tile={item.kind === "team" && item.faces?.length ? <TeamFaces faces={item.faces} /> : <Tile>{item.kind === "team" ? <Users size={17} /> : <Sparkles size={17} />}</Tile>}
               name={item.title}
               line={lineFor(item)}
               action={action(item)}
@@ -440,9 +441,13 @@ function ItemPage({
       </button>
       <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
         <div className="flex min-w-0 items-start gap-4">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl border bg-card text-muted-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-            {row.kind === "team" ? <Users size={24} /> : <Sparkles size={24} />}
-          </span>
+          {row.kind === "team" && row.faces?.length ? (
+            <TeamFaces faces={row.faces} large />
+          ) : (
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl border bg-card text-muted-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              {row.kind === "team" ? <Users size={24} /> : <Sparkles size={24} />}
+            </span>
+          )}
           <div className="min-w-0">
             <h1 className="text-balance text-display font-semibold text-foreground">{row.title}</h1>
             <p className="mt-1 text-pretty text-ui text-muted-foreground">{row.summary}</p>
@@ -714,5 +719,28 @@ function SourceDialog({ onClose, onChanged }: { onClose: () => void; onChanged: 
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** A team as the room it becomes looks in the sidebar: up to three of
+ * its members' faces, overlapping on a muted tile, most senior first.
+ * Every team sharing one icon said nothing about who is in it. */
+function TeamFaces({ faces, large = false }: { faces: NonNullable<CatalogRow["faces"]>; large?: boolean }) {
+  const shown = faces.slice(0, 3);
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center bg-muted", large ? "size-14 rounded-2xl" : "size-10 rounded-xl")} aria-hidden>
+      <span className={cn("flex", large ? "-space-x-2" : "-space-x-1.5")}>
+        {shown.map((face, i) => (
+          <BlokAvatar
+            key={i}
+            color={face.color as BlokColor}
+            shape={face.shape as BlokShape}
+            expression="friendly"
+            size={large ? 24 : 17}
+            className={cn("ring-2 ring-muted", large ? "rounded-[7px]" : "rounded-md")}
+          />
+        ))}
+      </span>
+    </span>
   );
 }

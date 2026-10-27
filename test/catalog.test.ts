@@ -129,7 +129,14 @@ describe("building and reading an index", () => {
     const { index, problems } = buildIndex(files());
     assert.deepEqual(problems, []);
     const [pair, tidy] = index.items;
-    assert.deepEqual(Object.keys(pair), ["id", "kind", "title", "summary", "tags", "author", "version", "path", "size", "sha256"]);
+    assert.deepEqual(Object.keys(pair), ["id", "kind", "title", "summary", "tags", "author", "version", "faces", "path", "size", "sha256"]);
+    assert.ok(!("faces" in tidy), "a skill has no members to draw");
+    // the members as the room will draw them, the most senior first: the
+    // writer at 5 before the editor, each in the look its place gives it
+    assert.deepEqual(pair.faces, [
+      { color: "green", shape: "star" },
+      { color: "blue", shape: "burst" },
+    ]);
     assert.equal(pair.title, "Pair");
     assert.deepEqual(pair.tags, ["writing", "test"]);
     assert.equal(pair.version, "2");
@@ -171,6 +178,34 @@ describe("building and reading an index", () => {
     });
     assert.deepEqual(items.map((i) => i.id), ["pair", "tidy"]);
     assert.throws(() => parseIndex({ nope: [] }));
+
+    // a face is drawn as it comes, so only colours and shapes Bloks has
+    // survive, at most four, and a skill never carries any
+    const [faced, skilled] = parseIndex({
+      items: [
+        {
+          ...good[0],
+          faces: [
+            { color: "green", shape: "star" },
+            { color: "url(javascript:x)", shape: "star" },
+            { color: "blue", shape: "nope" },
+            "not a face",
+            { color: "red", shape: "drop" },
+            { color: "pink", shape: "cloud" },
+            { color: "teal", shape: "bit" },
+            { color: "cyan", shape: "invader" },
+          ],
+        },
+        { ...good[1], faces: [{ color: "green", shape: "star" }] },
+      ],
+    });
+    assert.deepEqual(faced.faces, [
+      { color: "green", shape: "star" },
+      { color: "red", shape: "drop" },
+      { color: "pink", shape: "cloud" },
+      { color: "teal", shape: "bit" },
+    ]);
+    assert.ok(!("faces" in skilled));
   });
 
   test("a download that is not the bytes the index names is refused", () => {
