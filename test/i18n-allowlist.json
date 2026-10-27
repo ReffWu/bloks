@@ -1,8 +1,115 @@
 {
   "anywhere": [
-    "Bloks", "Bloks AI", "Claude", "Claude Code", "Codex", "Gemini", "Gemini CLI", "Composio", "GitHub", "Home Assistant",
-    "Telegram", "Signal", "WhatsApp", "Slack", "Gmail", "MCP", "CLI", "API", "URL", "JSON", "SSH", "Docker", "OpenAI",
-    "ElevenLabs", "iPhone", "macOS", "Esc", "Enter", "Tab", "Shift"
+    "Bloks",
+    "Bloks AI",
+    "Claude",
+    "Claude Code",
+    "Codex",
+    "Gemini",
+    "Gemini CLI",
+    "Composio",
+    "GitHub",
+    "Home Assistant",
+    "Telegram",
+    "Signal",
+    "WhatsApp",
+    "Slack",
+    "Gmail",
+    "MCP",
+    "CLI",
+    "API",
+    "URL",
+    "JSON",
+    "SSH",
+    "Docker",
+    "OpenAI",
+    "ElevenLabs",
+    "iPhone",
+    "macOS",
+    "Esc",
+    "Enter",
+    "Tab",
+    "Shift"
   ],
-  "files": {}
+  "files": {
+    "src/App.tsx": [
+      "pnpm dev:server"
+    ],
+    "src/components/CatalogPage.tsx": [
+      "https://github.com/…/SKILL.md",
+      "https://…/index.json"
+    ],
+    "src/components/ChatSection.tsx": [
+      "message.channels",
+      "message.groups",
+      "xoxb-...",
+      "xapp-...",
+      "messages"
+    ],
+    "src/components/CliPlugins.tsx": [
+      "git",
+      "gh",
+      "cli.github.com",
+      "github_pat_…"
+    ],
+    "src/components/CreditsSection.tsx": [
+      "blok_live_..."
+    ],
+    "src/components/Goal.tsx": [
+      "pnpm test"
+    ],
+    "src/components/HomeAssistantPage.tsx": [
+      "http://homeassistant.local:8123",
+      "binary_sensor.front_door"
+    ],
+    "src/components/Intro.tsx": [
+      "ck_…",
+      "dashboard.bloks.dev"
+    ],
+    "src/components/LocalVmSection.tsx": [
+      "container system start"
+    ],
+    "src/components/McpServers.tsx": [
+      "https://example.com/mcp",
+      "npx -y @example/mcp-server --flag",
+      "Bearer …"
+    ],
+    "src/components/NewRoomDialog.tsx": [
+      "bloks.dev/teams"
+    ],
+    "src/components/ProjectsPanel.tsx": [
+      "/Users/you/src/api",
+      "src/**, docs/*.md"
+    ],
+    "src/components/RemoteSection.tsx": [
+      "bloks-server",
+      "bloks-server pair"
+    ],
+    "src/components/TelegramSection.tsx": [
+      "/newbot"
+    ],
+    "src/components/UpdateCard.tsx": [
+      "bloks.dev"
+    ],
+    "src/components/WhereItWorks.tsx": [
+      "build-box",
+      "claude",
+      "codex"
+    ],
+    "src/components/settings/BrowserPage.tsx": [
+      "example.com"
+    ],
+    "src/components/settings/PlanPage.tsx": [
+      "blok_live_...",
+      "blok_live_••••"
+    ],
+    "src/components/settings/pages.tsx": [
+      "sk_…",
+      "sk-…",
+      "xai-…",
+      "http://localhost:4123",
+      "ck_…",
+      "ak_…"
+    ]
+  }
 }

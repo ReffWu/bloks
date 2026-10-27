@@ -6,7 +6,7 @@
 // each workspace's page before it draws and builds the menu bar in it.
 // "System" is the default and means whatever the OS or the browser speaks.
 import { useSyncExternalStore } from "react";
-import { getLanguage, isLanguage, matchLanguage, setLanguage, type Language, type LanguageChoice } from "./i18n";
+import { getLanguage, isLanguage, matchLanguage, setLanguage, type Language, type LanguageChoice } from "./i18n.ts";
 
 const STORAGE_KEY = "bloks-language";
 

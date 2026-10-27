@@ -270,6 +270,20 @@ export function tr(key: MessageKey, params: Record<string, ReactNode>): ReactNod
   return createElement(Fragment, null, ...parts);
 }
 
+/**
+ * The English sentence whatever the language: for what must not move
+ * with it, like a search that should still find a page by its English
+ * words, or an anchor named after a row.
+ */
+export function inEnglish(key: MessageKey, params?: Params): string {
+  const count = params?.count;
+  const text =
+    typeof count === "number" && `${key}_other` in ENGLISH
+      ? (ENGLISH[`${key}_${pluralForm(count, "en")}`] ?? ENGLISH[`${key}_other`])
+      : ENGLISH[key];
+  return text === undefined ? key : fill(text, params);
+}
+
 /** Whether `key` is one the English catalogue has, plural stems included:
  * for words chosen at run time, like a status read off the server. */
 export function hasMessage(key: string): key is MessageKey {

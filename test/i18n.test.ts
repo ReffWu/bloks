@@ -325,7 +325,7 @@ describe("the code and the catalogue", () => {
 
 const allow = readAllowlist(ROOT);
 
-test("no component draws English written inline: its words come from the catalogue", { todo: "the areas still to move" }, () => {
+test("no component draws English written inline: its words come from the catalogue", () => {
   const found = parsed
     .filter((p) => p.file.endsWith(".tsx"))
     .flatMap(({ file, source }) => inlineEnglish(file, source, allow).map((f) => `${file}:${f.line} ${JSON.stringify(f.text)}`));
