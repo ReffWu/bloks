@@ -173,6 +173,7 @@ export function WorkingLine({
   provisioning,
   speed,
   onStop,
+  onOpenTrace,
 }: {
   threadKey: string;
   working: boolean;
@@ -182,6 +183,9 @@ export function WorkingLine({
   provisioning?: boolean;
   speed?: CodexSpeedStatus;
   onStop: () => void;
+  /** Opens this turn's timeline beside the chat; the step and its clock
+   * are the way in. */
+  onOpenTrace?: () => void;
 }) {
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const inView = useInView(el);
@@ -220,6 +224,8 @@ export function WorkingLine({
       ? "Writing"
       : ((call?.tool && stepWords(call.tool)) ?? "Working");
   const fast = working && showsSpeedStatus(speed) ? speed : undefined;
+  const opens = Boolean(onOpenTrace && working && !provisioning);
+  const Opener = opens ? "button" : "span";
 
   return (
     <AnimatePresence initial={false}>
@@ -245,31 +251,43 @@ export function WorkingLine({
               )}
             />
           </span>
-          <span aria-hidden className="relative min-w-0 truncate text-foreground/80">
-            <AnimatePresence mode="popLayout" initial={false}>
-              <motion.span
-                key={step}
-                className="inline-block"
-                initial={{ opacity: 0, y: 3 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -3 }}
-                transition={{ duration: 0.16, ease: EASE_OUT }}
-              >
-                {step}
-              </motion.span>
-            </AnimatePresence>
-          </span>
           {/* the step, said to a screen reader when it changes; the
               clock beside it is read when asked, not each second */}
           <span className="sr-only" role="status">
             {step}
           </span>
-          {working && (
-            <>
-              <span aria-hidden>·</span>
-              <span className="shrink-0 tabular-nums">{clock(now - since)}</span>
-            </>
-          )}
+          {/* What it is doing and for how long is also the way to see
+              how the turn has gone so far: its timeline, beside the chat. */}
+          <Opener
+            {...(opens
+              ? { type: "button" as const, onClick: onOpenTrace, title: "See this turn's timeline", "aria-label": "See this turn's timeline" }
+              : {})}
+            className={cn(
+              "group/step flex min-w-0 items-center gap-2 rounded-md text-left",
+              opens && "transition-colors duration-150 hover:text-foreground",
+            )}
+          >
+            <span aria-hidden className="relative min-w-0 truncate text-foreground/80 transition-colors duration-150 group-hover/step:text-foreground">
+              <AnimatePresence mode="popLayout" initial={false}>
+                <motion.span
+                  key={step}
+                  className="inline-block"
+                  initial={{ opacity: 0, y: 3 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -3 }}
+                  transition={{ duration: 0.16, ease: EASE_OUT }}
+                >
+                  {step}
+                </motion.span>
+              </AnimatePresence>
+            </span>
+            {working && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="shrink-0 tabular-nums">{clock(now - since)}</span>
+              </>
+            )}
+          </Opener>
           {fast && (
             <>
               <span aria-hidden>·</span>

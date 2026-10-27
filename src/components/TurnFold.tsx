@@ -32,6 +32,7 @@ export function TurnFoldLine({
   open,
   onToggle,
   onOpenExchange,
+  onOpenTrace,
   className,
   children,
 }: {
@@ -39,6 +40,8 @@ export function TurnFoldLine({
   open: boolean;
   onToggle: () => void;
   onOpenExchange?: (asker: Extract<Asker, { by: "agent" }>) => void;
+  /** Opens the turn's timeline beside the chat. */
+  onOpenTrace?: () => void;
   className?: string;
   /** The work, drawn by whoever draws the conversation. Only when open. */
   children?: ReactNode;
@@ -85,7 +88,7 @@ export function TurnFoldLine({
     >
       <div
         className={cn(
-          "flex min-w-0 max-w-full items-center gap-1.5 text-small",
+          "group/fold flex min-w-0 max-w-full items-center gap-1.5 text-small",
           // nothing was said to the person: quiet, like a quiet check-in
           fold.alone ? "text-muted-foreground/80" : "text-muted-foreground",
         )}
@@ -133,6 +136,22 @@ export function TurnFoldLine({
           {fold.replied && <span className="shrink-0">· replied</span>}
           <ChevronRight size={12} className={cn("shrink-0 transition-transform duration-200", open && "rotate-90")} />
         </button>
+        {/* The same work again, laid out in time, beside the chat so the
+            line can stay folded. Said when the line is pointed at or
+            reached by keyboard: a page of folds each offering it at
+            rest would be a page of the same word. */}
+        {onOpenTrace && (
+          <span className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity duration-150 group-hover/fold:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+            <span aria-hidden>·</span>
+            <button
+              onClick={onOpenTrace}
+              title="See this turn's timeline"
+              className="rounded-md py-0.5 transition-colors duration-150 hover:text-foreground"
+            >
+              Timeline
+            </button>
+          </span>
+        )}
       </div>
       {open && (
         <div className="ml-[5px] mt-1.5 flex animate-fade-in flex-col gap-2.5 self-stretch border-l pl-3">{children}</div>

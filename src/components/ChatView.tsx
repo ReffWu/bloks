@@ -38,6 +38,8 @@ import { SecretCard } from "./SecretCard";
 import { ChangesCard } from "./ChangesCard";
 import { ToolRun } from "./ToolRun";
 import { TurnFoldLine } from "./TurnFold";
+import { TracePanel } from "./trace/TracePanel";
+import { askForFold, type TraceAsk } from "@/lib/traceView";
 import { MeetingPanel } from "./MeetingPanel";
 import { AudioLines } from "@/components/icons";
 import { ForwardDialog, type ReplyDraft } from "./MessageActions";
@@ -642,6 +644,12 @@ export function ChatView({ bot }: { bot: Bot }) {
 
   // the two-agent exchange opened from one of its rows, if any
   const [exchange, setExchange] = useState<{ peerId: string; messageId: string; text: string } | null>(null);
+  // A turn's timeline beside the chat (trace/TracePanel.tsx), opened from
+  // the working line or a fold, for the conversation it was opened in:
+  // moving to another one puts it away.
+  const [traceAsk, setTraceAsk] = useState<{ key: string; ask: TraceAsk } | null>(null);
+  const traceShown = traceAsk?.key === threadKey ? traceAsk.ask : null;
+  const openTrace = (ask: TraceAsk) => setTraceAsk({ key: threadKey, ask });
   const lanesInSidebar = useLanesInSidebar();
   // One conversation is the usual agent (GitHub 237): with nothing to
   // switch to, the strip would only be a "+" inviting a second. New
@@ -1039,6 +1047,7 @@ export function ChatView({ bot }: { bot: Bot }) {
                       onOpenExchange={(asker) =>
                         setExchange({ peerId: asker.peerId, messageId: asker.message.id, text: asker.message.text ?? "" })
                       }
+                      onOpenTrace={() => openTrace(askForFold(row.fold.messages))}
                     >
                       {openFolds.has(row.fold.key) && rowsOf(row.fold.messages, (offset) => row.fold.indices[offset])}
                     </TurnFoldLine>,
@@ -1075,6 +1084,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             provisioning={provisioning}
             speed={openLane?.codexDispatch}
             onStop={() => dispatch({ type: "interrupt", botId: bot.id })}
+            onOpenTrace={() => openTrace({})}
           />
         </div>
       </div>
@@ -1099,6 +1109,15 @@ export function ChatView({ bot }: { bot: Bot }) {
       />
       </div>
       {terminal.slot("right")}
+      {traceShown && (
+        <TracePanel
+          bot={bot}
+          taskId={bot.activeTaskId ?? bot.threadId}
+          ask={traceShown}
+          working={working}
+          onClose={() => setTraceAsk(null)}
+        />
+      )}
       </div>
       {terminal.overlay}
       {terminal.panel}
