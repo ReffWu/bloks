@@ -14,8 +14,7 @@
 //
 // macOS only; the other platforms build no disk image.
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { createRequire } from "node:module";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,13 +24,16 @@ if (process.platform !== "darwin") process.exit(0);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const build = path.join(root, "build");
 
-// electron-builder's own background, the dashed arrow, unchanged
-// (pnpm keeps it behind electron-builder's own dependencies, so it is
-// found the way electron-builder finds it)
-const fromBuilder = createRequire(path.join(realpathSync(path.join(root, "node_modules", "electron-builder")), "package.json"));
-const fromLib = createRequire(realpathSync(fromBuilder.resolve("app-builder-lib/package.json")));
-const dmgBuilder = path.dirname(fromLib.resolve("dmg-builder/package.json"));
-copyFileSync(path.join(dmgBuilder, "templates", "background.tiff"), path.join(build, "background.tiff"));
+// The window's art, drawn from the mark by scripts/render-dmg-background.mjs
+// at one and two pixels a point. One TIFF holding both is what Finder
+// wants: it picks the sharp one on a Retina screen.
+execFileSync("tiffutil", [
+  "-cathidpicheck",
+  path.join(build, "dmg-background.png"),
+  path.join(build, "dmg-background@2x.png"),
+  "-out",
+  path.join(build, "background.tiff"),
+]);
 
 // the volume icon, from the app icon, at every size an .icns holds
 const work = mkdtempSync(path.join(tmpdir(), "bloks-volume-"));
