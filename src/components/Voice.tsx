@@ -1,7 +1,8 @@
 // How an agent sounds, and the call you have with it.
 //
 // VoiceCard is the picker in agent settings: every voice the configured
-// vendors offer, with a one-tap preview in the agent's own voice.
+// vendors offer, one vendor at a time, with a one-tap preview in the
+// agent's own voice.
 //
 // CallOverlay is the call itself: a loop of listen → think → speak.
 // Your words go through speech recognition and become an ordinary turn;
@@ -15,7 +16,7 @@ import { Mic } from "@/components/icons";
 import { Phone } from "@/components/icons";
 import { PhoneOff } from "@/components/icons";
 import { Volume2 } from "@/components/icons";
-import { api, useStore, type Bot, type Message } from "@/state/store";
+import { api, useStore, type Bot, type Message, type VoiceProvider } from "@/state/store";
 import { BLOK_COLORS, type BlokColor } from "@/lib/mascot";
 import { AgentAvatar } from "./Avatar";
 import { Button } from "@/components/ui/button";
@@ -24,10 +25,21 @@ import { routeSpokenToRoom } from "@/lib/spokenRouting";
 import { thisComputer } from "@/lib/thisComputer";
 
 interface VoiceOption {
-  provider: "elevenlabs" | "openai" | "system";
+  provider: VoiceProvider;
   id: string;
   name: string;
 }
+
+/** Each vendor as the picker names it, in the order the server lists
+ * them: the ones somebody set up first, the Mac's own last. */
+const PROVIDERS: Array<[VoiceProvider, string]> = [
+  ["elevenlabs", "ElevenLabs"],
+  ["openai", "OpenAI"],
+  ["fish", "Fish Audio"],
+  ["xai", "xAI"],
+  ["chatterbox", "Chatterbox"],
+  ["system", "Mac"],
+];
 
 const PREVIEW_LINE = "Hi, this is how I sound. Ready when you are.";
 
@@ -107,7 +119,19 @@ export function VoiceCard({ bot }: { bot: Bot }) {
   const [voices, setVoices] = useState<VoiceOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
-  const configured = state.config?.speech?.elevenlabs || state.config?.speech?.openai || state.config?.speech?.system;
+  const [shown, setShown] = useState<VoiceProvider | null>(null);
+  const speech = state.config?.speech;
+  const configured =
+    speech?.elevenlabs || speech?.openai || speech?.fish || speech?.xai || speech?.chatterbox || speech?.system;
+  // one vendor's voices at a time: a Fish Audio list alone can run to a
+  // hundred, and the others would scroll out of reach under it
+  const offered = PROVIDERS.filter(([provider]) => voices?.some((v) => v.provider === provider));
+  const current =
+    (shown && offered.some(([p]) => p === shown) ? shown : null) ??
+    (bot.voice && offered.some(([p]) => p === bot.voice!.provider) ? bot.voice.provider : null) ??
+    offered[0]?.[0] ??
+    null;
+  const listed = (voices ?? []).filter((v) => v.provider === current);
 
   useEffect(() => {
     if (!open || voices !== null) return;
@@ -144,7 +168,7 @@ export function VoiceCard({ bot }: { bot: Bot }) {
           <div className="text-ui font-semibold text-foreground">Voice</div>
           <div className="mt-0.5 text-body text-muted-foreground">
             {!configured
-              ? "Add an ElevenLabs or OpenAI key in Settings, Voices first."
+              ? "Add a voice key or a Chatterbox server in Settings, Voices first."
               : bot.voice
                 ? `Speaks as ${bot.voice.name ?? bot.voice.id} · calls enabled`
                 : "Pick a voice to call this agent."}
@@ -180,7 +204,26 @@ export function VoiceCard({ bot }: { bot: Bot }) {
               </label>
             </div>
           )}
-          <div className="flex max-h-[240px] flex-col gap-0.5 overflow-y-auto">
+          {offered.length > 1 && (
+            <div role="tablist" aria-label="Voices from" className="mb-2 flex flex-wrap gap-1">
+              {offered.map(([provider, label]) => (
+                <button
+                  key={provider}
+                  type="button"
+                  role="tab"
+                  aria-selected={current === provider}
+                  onClick={() => setShown(provider)}
+                  className={cn(
+                    "h-7 rounded-full px-3 text-small font-medium transition-colors duration-150",
+                    current === provider ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div role={offered.length > 1 ? "tabpanel" : undefined} className="flex max-h-[240px] flex-col gap-0.5 overflow-y-auto">
             {voices === null && !error && (
               <div className="py-3 text-body text-muted-foreground">Loading voices…</div>
             )}
@@ -189,7 +232,7 @@ export function VoiceCard({ bot }: { bot: Bot }) {
                 No voices available. Check your keys in Settings, Voices.
               </div>
             )}
-            {(voices ?? []).map((voice) => {
+            {listed.map((voice) => {
               const active = bot.voice?.provider === voice.provider && bot.voice?.id === voice.id;
               return (
                 <button
@@ -211,9 +254,11 @@ export function VoiceCard({ bot }: { bot: Bot }) {
                   <span className="flex-1 truncate text-body font-medium text-foreground">
                     {voice.name}
                   </span>
-                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-micro uppercase tracking-wide text-muted-foreground">
-                    {voice.provider === "elevenlabs" ? "11L" : voice.provider === "openai" ? "OpenAI" : "Mac"}
-                  </span>
+                  {offered.length <= 1 && (
+                    <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-micro uppercase tracking-wide text-muted-foreground">
+                      {PROVIDERS.find(([p]) => p === voice.provider)?.[1] ?? voice.provider}
+                    </span>
+                  )}
                 </button>
               );
             })}

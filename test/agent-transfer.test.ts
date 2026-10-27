@@ -301,3 +301,14 @@ describe("what an import actually creates", () => {
     }
   });
 });
+
+test("a hosted vendor's voice travels with the agent; one that lives on this machine stays", () => {
+  for (const provider of ["fish", "xai"] as const) {
+    const file = round({ bot: { ...bot, voice: { provider, id: "v-1", name: "Warm" } }, exportedAt: 1, app: "3" });
+    assert.deepEqual(file.agent.voice, { provider, id: "v-1", name: "Warm" });
+  }
+  for (const provider of ["chatterbox", "system"] as const) {
+    const file = round({ bot: { ...bot, voice: { provider, id: "calm.wav" } }, exportedAt: 1, app: "3" });
+    assert.equal(file.agent.voice, undefined, provider);
+  }
+});

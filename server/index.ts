@@ -22449,6 +22449,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           box: Boolean(cfg.box?.token),
           speechElevenlabs: Boolean(speechStatus.elevenlabs),
           speechOpenai: Boolean(speechStatus.openai),
+          speechFish: Boolean(speechStatus.fish),
+          speechXai: Boolean(speechStatus.xai),
+          speechChatterbox: Boolean(speechStatus.chatterbox),
           compactionMicro: Boolean(cfg.compaction?.micro),
           compactionIdle: Boolean(cfg.compaction?.idle),
           skillsPropose: Boolean(cfg.skills?.propose),
@@ -26228,13 +26231,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const FIELDS: Record<string, { keys: string[]; max: number }> = {
         xai: { keys: ["key", "url"], max: 400 },
         composio: { keys: ["key", "apiKey", "url"], max: 400 },
-        speech: { keys: ["elevenlabsKey", "openaiKey"], max: 400 },
+        speech: { keys: ["elevenlabsKey", "openaiKey", "fishKey", "xaiKey"], max: 400 },
         box: { keys: ["token"], max: 400 },
         profile: { keys: ["about"], max: 4_000 },
       };
       const patch: Record<string, object> = {};
       // consent flags are booleans and ride outside the string loop
       let consentPatch: { useDiscoveredOpenAI: boolean } | null = null;
+      // the Chatterbox address is checked, not just length-capped: every
+      // reply read aloud goes to it (server/speech.ts normalizeChatterboxUrl)
+      let chatterboxPatch: { chatterboxUrl: string } | null = null;
       /** Sections that save themselves, so the empty-patch guard below
        * does not mistake a real write for an empty request. */
       let wroteSomething = false;
@@ -26245,6 +26251,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (body.speech && typeof body.speech === "object" && !Array.isArray(body.speech)) {
         const consent = (body.speech as Record<string, unknown>).useDiscoveredOpenAI;
         if (typeof consent === "boolean") consentPatch = { useDiscoveredOpenAI: consent };
+        const server = (body.speech as Record<string, unknown>).chatterboxUrl;
+        if (server === "" || server === null) chatterboxPatch = { chatterboxUrl: "" };
+        else if (server !== undefined) {
+          const checked = speech.normalizeChatterboxUrl(server);
+          if ("error" in checked) return json(res, 400, checked);
+          chatterboxPatch = { chatterboxUrl: checked.url };
+        }
       }
       // A boolean, not a credential, so it rides outside the string table
       // like the consent flags do.
@@ -26429,6 +26442,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       if (consentPatch) {
         patch.speech = { ...(patch.speech as object | undefined), ...consentPatch };
+      }
+      if (chatterboxPatch) {
+        patch.speech = { ...(patch.speech as object | undefined), ...chatterboxPatch };
       }
       if (!Object.keys(patch).length && !wroteSomething) {
         return json(res, 400, { error: "nothing to save" });

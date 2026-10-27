@@ -78,6 +78,8 @@ export function secretLabel(path: string, config: Record<string, unknown>): stri
     "composio.apiKey": "Composio project key",
     "speech.elevenlabsKey": "ElevenLabs key",
     "speech.openaiKey": "OpenAI speech key",
+    "speech.fishKey": "Fish Audio key",
+    "speech.xaiKey": "xAI speech key",
     "box.token": "Cloud box key",
     "chat.slack.botToken": "Slack bot token",
     "chat.slack.appToken": "Slack app token",

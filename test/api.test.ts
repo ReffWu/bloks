@@ -2316,9 +2316,19 @@ describe("agent voices", () => {
   test("without keys the catalog is honest about it: only the Mac's own voices", async () => {
     const r = await h.json("/api/speech/voices");
     const mac = process.platform === "darwin";
-    assert.deepEqual(r.configured, { elevenlabs: false, openai: false, system: mac });
-    assert.ok(r.voices.every((v: any) => v.provider === "system"), "no paid voice without its key");
-    if (!mac) assert.deepEqual(r.voices, []);
+    // Grok was connected by a test above, and xAI speaks with that key
+    // when none is saved for speech, so its voices are the one paid set here
+    assert.deepEqual(r.configured, {
+      elevenlabs: false,
+      openai: false,
+      fish: false,
+      xai: true,
+      xaiSource: "grok",
+      chatterbox: false,
+      system: mac,
+    });
+    assert.ok(r.voices.every((v: any) => v.provider === "system" || v.provider === "xai"), "no paid voice without its key");
+    if (!mac) assert.ok(r.voices.every((v: any) => v.provider === "xai"));
   });
 
   test("discovered-key consent persists as a boolean and never invents a key", async () => {

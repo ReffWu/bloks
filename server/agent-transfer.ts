@@ -13,6 +13,15 @@
 import { isEffort, type Effort } from "./effort.ts";
 import type { BlokColor, BlokExpression, BlokShape } from "./store.ts";
 
+/** The voices that mean the same thing on another machine: a hosted
+ * vendor's, spoken by whatever key is there. A Mac voice or a Chatterbox
+ * one is a file on this machine, and is left behind. */
+const PORTABLE_VOICES = ["elevenlabs", "openai", "fish", "xai"] as const;
+type PortableVoice = (typeof PORTABLE_VOICES)[number];
+function isPortableVoice(provider: unknown): provider is PortableVoice {
+  return typeof provider === "string" && (PORTABLE_VOICES as readonly string[]).includes(provider);
+}
+
 export const AGENT_FILE_KIND = "bloks.agent";
 export const AGENT_FILE_VERSION = 1;
 
@@ -107,7 +116,7 @@ export interface PortableAgent {
   backup?: { instanceId: string; model: string };
   /** Carried because how an agent sounds is part of who it is. Needs a
    * key at the other end, which the preview says out loud. */
-  voice?: { provider: "elevenlabs" | "openai"; id: string; name?: string };
+  voice?: { provider: PortableVoice; id: string; name?: string };
 }
 
 export interface PortableSkill {
@@ -149,7 +158,7 @@ export interface PackInput {
     mascotExpression?: BlokExpression | null;
     modelSelection?: { instanceId: string; model: string };
     backupSelection?: { instanceId: string; model: string } | null;
-    voice?: { provider: "elevenlabs" | "openai"; id: string; name?: string } | null;
+    voice?: { provider: string; id: string; name?: string } | null;
   };
   memory?: string;
   topics?: PortableTopic[];
@@ -212,7 +221,7 @@ export function packAgent(input: PackInput): AgentFile {
       model: String(bot.backupSelection.model).slice(0, 200),
     };
   }
-  if (bot.voice?.id && (bot.voice.provider === "elevenlabs" || bot.voice.provider === "openai")) {
+  if (bot.voice?.id && isPortableVoice(bot.voice.provider)) {
     agent.voice = {
       provider: bot.voice.provider,
       id: String(bot.voice.id).slice(0, 120),
@@ -348,7 +357,7 @@ export function parseAgentFile(value: unknown): ParseResult {
   }
   if (
     isRecord(raw.voice) &&
-    (raw.voice.provider === "elevenlabs" || raw.voice.provider === "openai") &&
+    isPortableVoice(raw.voice.provider) &&
     typeof raw.voice.id === "string" &&
     raw.voice.id
   ) {
@@ -553,7 +562,7 @@ export function profileFromFile(file: AgentFile): {
   patch: {
     effort?: Effort;
     mascotExpression?: BlokExpression;
-    voice?: { provider: "elevenlabs" | "openai"; id: string; name?: string };
+    voice?: { provider: PortableVoice; id: string; name?: string };
   };
 } {
   const a = file.agent;

@@ -18,6 +18,9 @@ export type { BlokColor, BlokShape } from "@/lib/mascot";
 /** The full pages the main rail opens besides Chat, Automations and Settings. */
 export type RailPage = "overview" | "memory" | "plugins" | "usage";
 
+/** Who speaks a voice (server/speech.ts VOICE_PROVIDERS). */
+export type VoiceProvider = "elevenlabs" | "openai" | "fish" | "xai" | "chatterbox" | "system";
+
 /** What a link into Usage asked for: one agent's numbers, and the limits
  * rather than the top of the page. `at` tells two asks for the same
  * thing apart, so the page goes there again each time. */
@@ -377,7 +380,7 @@ export interface Bot {
   /** Ids of user-registered MCP servers this agent may use. */
   mcpServers?: string[];
   /** How this agent sounds; unset means no voice yet. */
-  voice?: { provider: "elevenlabs" | "openai" | "system"; id: string; name?: string } | null;
+  voice?: { provider: VoiceProvider; id: string; name?: string } | null;
   /** Read replies aloud as they settle. */
   speakReplies?: boolean;
   /** False: Claude Code runs this agent's turns without hooks. */
@@ -432,6 +435,13 @@ export interface ConfigStatus {
     system?: boolean;
     openaiSource?: "env" | "codex";
     openaiAvailable?: "env" | "codex";
+    fish?: boolean;
+    xai?: boolean;
+    /** Which key xAI speaks with: one saved for speech, or Grok's. */
+    xaiSource?: "speech" | "grok";
+    /** A Chatterbox server of the person's own, and where it is. */
+    chatterbox?: boolean;
+    chatterboxUrl?: string;
   };
   /** Shared context for every agent, not a secret, so it round-trips;
    * `name` is what the owner is called, empty until they say. */

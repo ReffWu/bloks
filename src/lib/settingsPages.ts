@@ -161,8 +161,8 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     label: "Voices",
     group: "agents",
     description: "Give agents a voice and take calls with them.",
-    keywords: "speech elevenlabs openai tts call audio",
-    rows: ["ElevenLabs API key", "OpenAI API key"],
+    keywords: "speech elevenlabs openai fish audio xai grok chatterbox local tts call audio",
+    rows: ["ElevenLabs API key", "OpenAI API key", "Fish Audio API key", "xAI API key", "Chatterbox server"],
   },
   {
     id: "plugins",

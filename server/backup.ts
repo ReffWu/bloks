@@ -280,6 +280,8 @@ export const SECRET_PATHS = [
   "composio.apiKey",
   "speech.elevenlabsKey",
   "speech.openaiKey",
+  "speech.fishKey",
+  "speech.xaiKey",
   "box.token",
   "custom[].keys[].key",
   "chat.slack.botToken",

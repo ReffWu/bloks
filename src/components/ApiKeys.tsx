@@ -19,7 +19,7 @@ import { cn } from "@/lib/cn";
 import { composioKeyMistake } from "@/lib/keyShape";
 import { rowKey } from "@/lib/settingsPages";
 
-export type ConfigSection = "composio" | "composioApi" | "box" | "elevenlabs" | "openaiSpeech";
+export type ConfigSection = "composio" | "composioApi" | "box" | "elevenlabs" | "openaiSpeech" | "fishSpeech" | "xaiSpeech";
 
 const SECTIONS: Record<
   ConfigSection,
@@ -33,6 +33,16 @@ const SECTIONS: Record<
   openaiSpeech: {
     body: (v) => ({ speech: { openaiKey: v } }),
     flag: (c) => c.speech?.openai ?? false,
+  },
+  fishSpeech: {
+    body: (v) => ({ speech: { fishKey: v } }),
+    flag: (c) => c.speech?.fish ?? false,
+  },
+  // saved means a key of its own: speaking with the Grok engine's key is
+  // said under the row, and the field stays open for one of its own
+  xaiSpeech: {
+    body: (v) => ({ speech: { xaiKey: v } }),
+    flag: (c) => c.speech?.xaiSource === "speech",
   },
   composioApi: {
     body: (v) => ({ composio: { apiKey: v } }),

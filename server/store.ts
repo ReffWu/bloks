@@ -588,7 +588,7 @@ export interface BotRecord {
   /** Ids of user-registered MCP servers this agent may use. */
   mcpServers?: string[];
   /** How this agent sounds. Unset means it has no voice yet. */
-  voice?: { provider: "elevenlabs" | "openai"; id: string; name?: string } | null;
+  voice?: { provider: import("./speech.ts").VoiceProvider; id: string; name?: string } | null;
   /** Read replies aloud as they settle, even outside a call. Off by
    * default: speech is billed per character. */
   speakReplies?: boolean;

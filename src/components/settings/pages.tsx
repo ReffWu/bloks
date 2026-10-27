@@ -3,8 +3,10 @@
 // computer they work on. The bigger ones have files of their own beside
 // this one.
 import { useEffect, useRef, useState } from "react";
+import { Loader2 } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { thisComputer } from "@/lib/thisComputer";
 import { ApiKeyRow } from "../ApiKeys";
@@ -183,16 +185,146 @@ function WorkspaceApprovals() {
 export function VoicesPage() {
   const { state } = useStore();
   const mac = state.config?.speech?.system !== false && !state.config?.hosted?.on;
+  const grok = state.config?.speech?.xaiSource === "grok";
   return (
-    <SettingsGroup
-      title="Keys"
-      footnote={mac ? "Either key works. The Mac's own voices need none." : "Either key works. Mac voices need Bloks running on a Mac."}
-    >
-      <ApiKeyRow section="elevenlabs" label="ElevenLabs API key" placeholder="sk_…" />
-      <ApiKeyRow section="openaiSpeech" label="OpenAI API key" description="Used for speech only." placeholder="sk-…">
-        <OpenAIKeyHint />
-      </ApiKeyRow>
-    </SettingsGroup>
+    <>
+      <SettingsGroup
+        title="Keys"
+        footnote={mac ? "Any one key works. The Mac's own voices need none." : "Any one key works. Mac voices need Bloks running on a Mac."}
+      >
+        <ApiKeyRow section="elevenlabs" label="ElevenLabs API key" placeholder="sk_…" />
+        <ApiKeyRow section="openaiSpeech" label="OpenAI API key" description="Used for speech only." placeholder="sk-…">
+          <OpenAIKeyHint />
+        </ApiKeyRow>
+        <ApiKeyRow
+          section="fishSpeech"
+          label="Fish Audio API key"
+          description="Your own cloned voices, and Fish Audio's most used ones."
+          placeholder="Paste your key"
+          info={{
+            text: "Make a key in your Fish Audio account's API section. Voices you made there show first in each agent's voice list.",
+            linkLabel: "Get a key at fish.audio",
+            linkHref: "https://fish.audio",
+          }}
+        />
+        <ApiKeyRow
+          section="xaiSpeech"
+          label="xAI API key"
+          description={grok ? "Optional. Voices use your Grok key from Engines until you add one here." : "Grok's voices. A Grok key in Engines works too."}
+          placeholder="xai-…"
+        />
+      </SettingsGroup>
+      <SettingsGroup title="On your own machine" footnote="Replies read aloud go only to this address, as text.">
+        <ChatterboxRow />
+      </SettingsGroup>
+    </>
+  );
+}
+
+/**
+ * Where a Chatterbox server listens, on this computer or the local
+ * network. Not a key, so it is shown back once saved; the server checks
+ * the address is local before keeping it, and says why when it is not.
+ */
+function ChatterboxRow() {
+  const { state, dispatch } = useStore();
+  const saved = state.config?.speech?.chatterboxUrl ?? "";
+  const [value, setValue] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const open = Boolean(state.config) && (!saved || editing);
+
+  const put = (url: string) => {
+    setBusy(true);
+    setError(null);
+    api("/api/config", { method: "PUT", body: JSON.stringify({ speech: { chatterboxUrl: url } }) })
+      .then((status) => {
+        dispatch({ type: "configStatus", config: status });
+        setEditing(false);
+        setValue("");
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div data-setting-row="chatterbox-server" className="px-5 py-4">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="min-w-0 flex-1 basis-[220px]">
+          <label htmlFor="chatterbox-url" className="text-ui font-medium text-foreground">
+            Chatterbox server
+          </label>
+          <div className="mt-0.5 text-pretty text-body text-muted-foreground">
+            {saved ? (
+              <code className="font-mono text-small text-foreground">{saved}</code>
+            ) : (
+              "A Chatterbox server you run. No key, no account."
+            )}
+          </div>
+        </div>
+        {saved && (
+          <div className="-mr-2 flex shrink-0 items-center gap-0.5">
+            <span aria-live="polite" className="mr-2 inline-flex items-center gap-1.5 text-small font-medium text-success">
+              <span aria-hidden className="size-1.5 rounded-full bg-current" />
+              Saved
+            </span>
+            {!editing && (
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setValue(saved); setEditing(true); }}>
+                Change
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => put("")}
+              aria-label="Remove the Chatterbox server"
+              className="hover:bg-destructive/10 hover:text-destructive"
+            >
+              Remove
+            </Button>
+          </div>
+        )}
+      </div>
+      {open && (
+        <div className="mt-3 flex gap-2">
+          <Input
+            id="chatterbox-url"
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && value.trim()) put(value.trim());
+              if (e.key === "Escape" && editing) {
+                e.preventDefault();
+                setEditing(false);
+              }
+            }}
+            placeholder="http://localhost:4123"
+            autoComplete="off"
+            spellCheck={false}
+            aria-invalid={error ? true : undefined}
+            className="h-8 min-w-0 flex-1 font-mono text-body"
+          />
+          <Button variant={value.trim() ? "brand" : "secondary"} onClick={() => put(value.trim())} disabled={busy || !value.trim()}>
+            {busy ? <Loader2 size={13} className="animate-spin" /> : "Save"}
+          </Button>
+          {editing && (
+            <Button variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="mt-2 text-small text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 

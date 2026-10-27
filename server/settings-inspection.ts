@@ -116,6 +116,8 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
     ["composio", "apiKey", "Settings > Apps and keys > Composio API key"],
     ["speech", "elevenlabsKey", "Settings > Voices > Keys"],
     ["speech", "openaiKey", "Settings > Voices > Keys"],
+    ["speech", "fishKey", "Settings > Voices > Keys"],
+    ["speech", "xaiKey", "Settings > Voices > Keys"],
     ["box", "token", "Settings > Computers > Boat API key"],
     ["credits", "licence", "Settings > Plan > Your key"],
     ["credits", "token", "Settings > Plan > Bloks AI"],

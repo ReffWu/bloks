@@ -108,6 +108,10 @@ export async function startHarness(extraEnv: Record<string, string> = {}): Promi
         // the providers' price list (server/model-prices.ts): never the
         // real one; a test that wants a list serves its own
         BLOKS_PRICES_URL: "http://127.0.0.1:9/api/v1/models",
+        // the hosted voice vendors (server/speech.ts): never the real
+        // ones; a test that wants one serves its own
+        BLOKS_FISH_AUDIO_URL: "http://127.0.0.1:9",
+        BLOKS_XAI_SPEECH_URL: "http://127.0.0.1:9",
         BLOKS_HOSTED: "",
         // the platform a test stands the server in for (server/hosted.ts);
         // a test that wants Windows or Linux says so itself
