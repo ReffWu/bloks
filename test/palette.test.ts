@@ -224,6 +224,7 @@ describe("the rule that keeps it that way", () => {
     "src/components/SharePanel.tsx": "an invite QR code, which needs literal black on literal white to scan",
     "src/components/members/InviteSheet.tsx": "a workspace invite's QR code, which needs literal black on literal white to scan",
     "src/components/settings/PlanPage.tsx": "the QR code that pairs an iPhone with a hosted workspace, which needs literal black on literal white to scan",
+    "src/components/SignalSection.tsx": "the QR code that links signal-cli as a Signal device, which needs literal black on literal white to scan",
     "src/components/Terminal.tsx": "a fallback for when the custom property cannot be read from a canvas",
     "src/components/McpApps.tsx": "the same fallback, for a sandboxed frame",
   };

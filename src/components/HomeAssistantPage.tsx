@@ -237,7 +237,7 @@ function EntityList({ status, busy, onSave }: { status: Status; busy: boolean; o
                     disabled={busy}
                     onClick={() => toggleDomain(domain, !on)}
                     className={cn(
-                      "rounded-full border px-2.5 py-1 text-small transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                      "rounded-full border px-2.5 py-1 text-small transition-colors duration-150",
                       on ? "border-foreground/30 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                     )}
                   >
