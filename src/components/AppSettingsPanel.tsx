@@ -24,6 +24,7 @@ import {
   Archive,
   BellDot,
   Cpu,
+  Download,
   Globe,
   History,
   Info,
@@ -65,6 +66,7 @@ import {
 } from "@/lib/settingsPages";
 import { RecordPanel } from "./RecordPanel";
 import { BackupsSection } from "./BackupsSection";
+import { TrainingExportPage } from "./TrainingExport";
 import { PluginSettings } from "./PluginSettings";
 import { EnginesPanel } from "./EnginesPanel";
 import { DevicesSection } from "./DevicesSection";
@@ -118,6 +120,7 @@ const ICONS: Record<string, Icon> = {
   "bring-setup": Luggage,
   record: History,
   backups: Archive,
+  training: Download,
   about: Info,
 };
 
@@ -208,6 +211,8 @@ function PageBody({ id }: { id: string }) {
       return <RecordPanel />;
     case "backups":
       return <BackupsSection />;
+    case "training":
+      return <TrainingExportPage />;
     case "about":
       return <AboutPage />;
     default:

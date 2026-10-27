@@ -36,7 +36,7 @@ function workspace(t: { after: (fn: () => void) => void }, options?: { privateRe
   return { dir, data, source: diskSource(data, HOME) };
 }
 
-function choose(patch: Partial<ExportChoice> & Record<string, unknown> = {}): ExportChoice {
+function choose(patch: Record<string, unknown> = {}): ExportChoice {
   const choice = readChoice({ ...patch });
   assert.equal(typeof choice, "object", String(choice));
   return choice as ExportChoice;
