@@ -357,10 +357,10 @@ export function AppsPage() {
         <ApiKeyRow
           section="composioApi"
           label="Composio API key"
-          description="Optional. Lets you browse the full app catalog."
+          description="Optional. Lets you browse the full app catalog and start agents on events in your apps."
           placeholder="ak_…"
           info={{
-            text: "A project API key, starting with ak_. Connections work without it.",
+            text: "A project API key, starting with ak_. Connections work without it. App watchers need it, and watch the accounts connected in that project.",
           }}
         />
       </SettingsGroup>

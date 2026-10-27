@@ -21,8 +21,10 @@ import { Rss } from "@/components/icons";
 import { ShieldCheck } from "@/components/icons";
 import { SquareTerminal } from "@/components/icons";
 import { Trash2 } from "@/components/icons";
+import { Zap } from "@/components/icons";
 import { api, useStore } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
+import { ago, AppDraftFields, appRowStatus, AppWatchDetail, appWhen, type AppDraftValue, type AppsStatus, type AppView } from "./AppWatch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider, type SliderStop } from "@/components/ui/slider";
@@ -33,7 +35,7 @@ import { intervalLabel, intervalPhrase } from "@/lib/checkIns";
 import { AUTOMATIONS_LIST, AUTOMATIONS_LIST_SIZE, useColumnFolded } from "@/lib/sideColumn";
 import { ShowColumn, SideColumn } from "./SideColumn";
 
-type Kind = "folder" | "page" | "feed" | "check" | "place";
+type Kind = "folder" | "page" | "feed" | "check" | "place" | "app";
 
 interface WatcherRow {
   id: string;
@@ -68,6 +70,8 @@ interface WatcherRow {
   until?: number;
   /** Finished on its own: acted once, or its time ran out. */
   done?: { at: number; why: "once" | "until" };
+  /** Apps: the app, the event, and what each event became. */
+  app?: AppView;
 }
 
 const KIND: Record<
@@ -114,6 +118,14 @@ const KIND: Record<
     placeholder: "Toronto, or 43.6777,-79.6248",
     instruction: "When I land, send me the hotel address and the check-in time.",
   },
+  app: {
+    icon: Zap,
+    label: "App",
+    example: "Something happens in an app",
+    field: "Which app",
+    placeholder: "",
+    instruction: "If it is from Acme, draft a reply and tell me it is waiting.",
+  },
 };
 
 /** How often a page, a feed or a check is looked at: the steps the
@@ -144,16 +156,7 @@ function shortTarget(kind: Kind, target: string): string {
 const mayRun = (w: WatcherRow, approvals?: string) =>
   w.kind !== "check" || w.approvedBy === "person" || (w.approvedBy === "mode" && (approvals === "auto" || approvals === "full"));
 
-const ago = (at?: number) => {
-  if (!at) return "never";
-  const minutes = Math.round((Date.now() - at) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  return hours < 24 ? `${hours} h ago` : new Date(at).toLocaleDateString();
-};
-
-function Draft({ onMade }: { onMade: (id: string) => void }) {
+function Draft({ apps, onMade }: { apps: AppsStatus | null; onMade: (id: string) => void }) {
   const { state } = useStore();
   const bots = state.bots.filter((b) => !b.hidden && !b.archivedAt);
   const [botId, setBotId] = useState(bots[0]?.id ?? "");
@@ -163,19 +166,35 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // an app is picked in its own fields, and names where its turns go here
+  const [app, setApp] = useState<AppDraftValue | null>(null);
+  const [thread, setThread] = useState("");
   const pick = async () => {
     const path = await window.bloks?.pickFolder?.();
     if (path) setTarget(path);
   };
   const [every, setEvery] = useState(30);
   const bot = bots.find((b) => b.id === botId);
-  const ready = Boolean(botId && target.trim() && instruction.trim());
+  const ready = Boolean(botId && instruction.trim() && (kind === "app" ? app?.ready : target.trim()));
   const make = () => {
     if (!ready || busy) return;
     setBusy(true);
     setError(null);
     // a folder is watched as it changes, so how often means nothing to it
-    const body = { botId, kind, target, instruction, ...(kind === "folder" || kind === "place" ? {} : { every }), ...(kind === "place" ? { when } : {}) };
+    const body =
+      kind === "app" && app
+        ? {
+            botId,
+            kind,
+            instruction,
+            toolkit: app.toolkit,
+            trigger: app.trigger,
+            config: app.config,
+            ...(app.accountId ? { accountId: app.accountId } : {}),
+            ...(app.filter.trim() ? { filter: app.filter.trim() } : {}),
+            ...(thread.trim() ? { thread: thread.trim() } : {}),
+          }
+        : { botId, kind, target, instruction, ...(kind === "folder" || kind === "place" ? {} : { every }), ...(kind === "place" ? { when } : {}) };
     api("/api/watchers", { method: "POST", body: JSON.stringify(body) })
       .then((r) => onMade(r.watcher.id))
       .catch((e: Error) => setError(e.message))
@@ -195,7 +214,11 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
           ? `${who} will read ${what || "the feed"} ${often} and act on each new post.`
           : kind === "place"
             ? `${who} will act when your iPhone says you ${when === "leave" ? "left" : "arrived in"} ${what || "the place"}.`
-            : `${who} will run ${what ? `“${what}”` : "the command"} ${often} and act when it exits 0.`;
+            : kind === "app"
+              ? app?.toolkit && app.trigger
+                ? `When ${appWhen({ ...app, filter: app.filter.split(",").map((f) => f.trim()).filter(Boolean) })}, ${who} acts in ${thread.trim() ? `“${thread.trim()}”` : "the main chat"}.`
+                : `${who} will act when something happens in the app you pick.`
+              : `${who} will run ${what ? `“${what}”` : "the command"} ${often} and act when it exits 0.`;
 
   return (
     <div
@@ -210,7 +233,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
       <h2 className="text-heading font-semibold text-foreground">New watcher</h2>
       <p className="mt-1 text-body text-muted-foreground">An agent keeps an eye on something and acts when it changes.</p>
 
-      <div role="radiogroup" aria-label="What to watch" className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div role="radiogroup" aria-label="What to watch" className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {(Object.keys(KIND) as Kind[]).map((k, i) => {
           const Icon = KIND[k].icon;
           const on = kind === k;
@@ -246,24 +269,30 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
         })}
       </div>
 
-      <label className="mt-6 mb-2 text-body font-medium text-foreground" htmlFor="watch-target">
-        {KIND[kind].field}
-      </label>
-      <div className="flex gap-2">
-        <Input
-          id="watch-target"
-          value={target}
-          onChange={(e) => setTarget(e.target.value)}
-          placeholder={KIND[kind].placeholder}
-          spellCheck={false}
-          className="rounded-xl font-mono text-body"
-        />
-        {kind === "folder" && window.bloks?.pickFolder && (
-          <Button variant="secondary" onClick={pick} className="h-9 rounded-xl">
-            Choose
-          </Button>
-        )}
-      </div>
+      {kind === "app" ? (
+        <AppDraftFields apps={apps} onChange={setApp} />
+      ) : (
+        <>
+          <label className="mt-6 mb-2 text-body font-medium text-foreground" htmlFor="watch-target">
+            {KIND[kind].field}
+          </label>
+          <div className="flex gap-2">
+            <Input
+              id="watch-target"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder={KIND[kind].placeholder}
+              spellCheck={false}
+              className="rounded-xl font-mono text-body"
+            />
+            {kind === "folder" && window.bloks?.pickFolder && (
+              <Button variant="secondary" onClick={pick} className="h-9 rounded-xl">
+                Choose
+              </Button>
+            )}
+          </div>
+        </>
+      )}
       {/* a check runs a command with nobody watching; say so where the
           command is written, not after it is filed */}
       <AnimatePresence initial={false}>
@@ -308,7 +337,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
       </div>
 
       <label className="mt-6 mb-2 text-body font-medium text-foreground" htmlFor="watch-instruction">
-        What {bot?.name ?? "the agent"} does when it changes
+        What {bot?.name ?? "the agent"} does when it {kind === "app" ? "happens" : "changes"}
       </label>
       <Textarea
         id="watch-instruction"
@@ -318,7 +347,18 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
         className="min-h-[90px] rounded-xl text-body"
       />
 
-      {kind === "place" ? (
+      {kind === "app" ? (
+        <>
+          <label className="mt-6 mb-2 text-body font-medium text-foreground" htmlFor="watch-thread">
+            Which chat it replies in
+          </label>
+          <Input id="watch-thread" value={thread} onChange={(e) => setThread(e.target.value)} placeholder="General" className="rounded-xl text-body" />
+          <div className="mt-1.5 text-small leading-relaxed text-muted-foreground">
+            Leave blank for the main chat. What the app sends reaches {bot?.name ?? "the agent"} as data from whoever caused the event, never as
+            instructions. At most six turns an hour and thirty a day; change that once it is made.
+          </div>
+        </>
+      ) : kind === "place" ? (
         <>
           <div className="mt-6 mb-2 text-body font-medium text-foreground">When</div>
           <div role="radiogroup" aria-label="When" className="flex flex-wrap gap-1.5">
@@ -360,7 +400,7 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
           <motion.p
             // a new kind, agent or pace swaps the sentence; typing the
             // address only rewrites it, so it never flickers per key
-            key={`${kind}-${every}-${botId}-${when}`}
+            key={`${kind}-${every}-${botId}-${when}-${app?.trigger ?? ""}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -380,13 +420,15 @@ function Draft({ onMade }: { onMade: (id: string) => void }) {
         </Button>
         {!ready && (
           <span className="text-small text-muted-foreground">
-            {!target.trim()
-              ? kind === "check"
-                ? "Add the command."
-                : `Add the ${KIND[kind].label.toLowerCase()}.`
-              : !instruction.trim()
-                ? "Say what to do when it changes."
-                : ""}
+            {kind === "app"
+              ? (app?.missing ?? (!instruction.trim() ? "Say what to do when it happens." : ""))
+              : !target.trim()
+                ? kind === "check"
+                  ? "Add the command."
+                  : `Add the ${KIND[kind].label.toLowerCase()}.`
+                : !instruction.trim()
+                  ? "Say what to do when it changes."
+                  : ""}
           </span>
         )}
       </div>
@@ -592,11 +634,16 @@ function Detail({ w, onChanged }: { w: WatcherRow; onChanged: () => void }) {
 export function WatchersTab() {
   const { state } = useStore();
   const [rows, setRows] = useState<WatcherRow[] | null>(null);
+  // whether app watchers can hear at all, said beside every one of them
+  const [apps, setApps] = useState<AppsStatus | null>(null);
   // a card about a watcher that stopped for failing opens it here
   const [selected, setSelected] = useState<string | "new" | null>(() => (state.routinesFocus?.kind === "watcher" ? state.routinesFocus.id : null));
   const load = useCallback(() => {
     api("/api/watchers")
-      .then((r) => setRows(r.watchers ?? []))
+      .then((r) => {
+        setRows(r.watchers ?? []);
+        setApps(r.apps ?? null);
+      })
       .catch(() => setRows([]));
   }, []);
   useEffect(load, [load, state.ticks.watchers]);
@@ -631,8 +678,28 @@ export function WatchersTab() {
                     <Icon size={12} className="shrink-0 text-muted-foreground" />
                     <span className="truncate">{w.name}</span>
                   </span>
-                  <span className={cn("block truncate text-caption", waiting || w.lastError || w.failing ? "text-warning" : w.enabled ? "text-muted-foreground" : "text-muted-foreground/70")}>
-                    {w.done ? "Done" : !w.enabled ? "Paused" : w.suspended === "archived" ? "Paused while archived" : w.failing ? "Stopped for failing" : waiting ? "Needs your approval" : w.lastError ? "Needs a look" : w.fires[0] ? `Triggered ${ago(w.fires[0].at)}` : `Checked ${ago(w.lastCheck)}`}
+                  <span
+                    className={cn(
+                      "block truncate text-caption",
+                      waiting || w.lastError || w.failing || w.app?.paused || w.app?.proposal ? "text-warning" : w.enabled ? "text-muted-foreground" : "text-muted-foreground/70",
+                    )}
+                  >
+                    {w.done
+                      ? "Done"
+                      : w.suspended === "archived" && w.enabled
+                        ? "Paused while archived"
+                        : (appRowStatus(w) ??
+                          (!w.enabled
+                            ? "Paused"
+                            : w.failing
+                              ? "Stopped for failing"
+                              : waiting
+                                ? "Needs your approval"
+                                : w.lastError
+                                  ? "Needs a look"
+                                  : w.fires[0]
+                                    ? `Triggered ${ago(w.fires[0].at)}`
+                                    : `Checked ${ago(w.lastCheck)}`))}
                   </span>
                 </span>
               </button>
@@ -645,11 +712,14 @@ export function WatchersTab() {
         {folded && <ShowColumn id={AUTOMATIONS_LIST} text="Watching" label="Show the list" className="-ml-2 -mt-2 mb-3" />}
         {rows === null ? null : showing === "new" ? (
           <Draft
+            apps={apps}
             onMade={(id) => {
               setSelected(id);
               load();
             }}
           />
+        ) : showing?.kind === "app" && showing.app ? (
+          <AppWatchDetail key={showing.id} w={{ ...showing, app: showing.app }} apps={apps} onChanged={load} />
         ) : showing ? (
           <Detail key={showing.id} w={showing} onChanged={load} />
         ) : null}

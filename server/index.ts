@@ -9375,6 +9375,7 @@ async function memberAppWatchers(
       const failed = composioStatus(e);
       return json(res, failed.status, { error: failed.error });
     }
+    if (!(typeof body.name === "string" && body.name.trim()) && w.app!.triggerName) w.name = w.app!.triggerName.slice(0, 60);
     watchers.push(w);
     saveWatchers();
     syncAppDelivery();
@@ -24810,11 +24811,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           app: { ...fields!, toolkitName: appName(fields!.toolkit), runs: [], turnsAt: [], seen: [] },
         };
         const api = triggerApi();
+        // unnamed, it is called what the app calls the event, once known
+        const namedApp = typeof body.name === "string" && body.name.trim().length > 0;
         if (asAgent) {
           if (watchers.filter((x) => x.app?.proposal?.botId === asAgent.botId).length >= MAX_APP_PROPOSALS) {
             return json(res, 409, { error: `you have ${MAX_APP_PROPOSALS} app watchers waiting for an answer already; wait for one first` });
           }
           await proposeAppWatcher(w, bot, asAgent.taskId, api);
+          if (!namedApp && w.app!.triggerName) w.name = w.app!.triggerName.slice(0, 60);
           watchers.push(w);
           saveWatchers();
           broadcast({ kind: "watchers" });
@@ -24830,6 +24834,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           const failed = composioStatus(e);
           return json(res, failed.status, { error: failed.error });
         }
+        if (!namedApp && w.app!.triggerName) w.name = w.app!.triggerName.slice(0, 60);
         watchers.push(w);
         saveWatchers();
         syncAppDelivery();

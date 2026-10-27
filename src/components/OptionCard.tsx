@@ -24,6 +24,7 @@ import { Workflow } from "@/components/icons";
 import { X } from "@/components/icons";
 import { api, useStore, type Message, type TeamPlan } from "@/state/store";
 import { AgentAvatar, BlokAvatar } from "@/components/Avatar";
+import { AppWatchCard } from "@/components/AppWatch";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -95,6 +96,8 @@ export function OptionCard({
     dispatch({ type: "answerCard", botId, roomId, messageId: message.id, answer: text.trim() });
   };
   const dismiss = () => dispatch({ type: "dismissCard", botId, roomId, messageId: message.id });
+
+  if (card.appWatch) return <AppWatchCard plan={card.appWatch} answered={card.answered} />;
 
   if (card.team) {
     return (

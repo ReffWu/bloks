@@ -64,6 +64,24 @@ export interface OptionCardData {
   /** Present when a lead has proposed hiring a team. Approving it creates
    * the agents and the room they work in. */
   team?: TeamPlan;
+  /** Present when an agent proposed an app watcher (server/app-watch.ts).
+   * Answered through the watcher's own routes, never as a reply. */
+  appWatch?: AppWatchPlan;
+}
+
+/** An app watcher an agent proposed, as its card shows it. */
+export interface AppWatchPlan {
+  watcherId: string;
+  toolkit: string;
+  appName: string;
+  trigger: string;
+  eventName: string;
+  config: Record<string, string | number | boolean>;
+  filter: string[];
+  botId: string;
+  agentName: string;
+  conversation: string;
+  instruction: string;
 }
 
 /** A team a lead wants to hire, pending the user's approval. */
