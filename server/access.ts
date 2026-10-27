@@ -92,6 +92,19 @@ export function inRoom(room: RoomShape, who: Who): boolean {
   return room.audience === "everyone" || room.peopleIds.includes(who.personId);
 }
 
+/** Whether a message somebody posts in a room may be sent on to one of
+ * its agents for them: they are in the room and so is the agent, which
+ * is everything a room asks (anybody in it can talk to every agent in
+ * it). A guest of some rooms is in this one by their place in it alone,
+ * never by an audience of everyone in a workspace they are not in. What
+ * a room's Auto picks is held to this, so a chooser steered by the words
+ * it reads can still only pick someone the sender could have named. */
+export function mayAddressInRoom(room: RoomShape, agentId: string, who: Who | { kind: "guest"; personId: string }): boolean {
+  if (!room.agentIds.includes(agentId)) return false;
+  if (who.kind === "guest") return room.peopleIds.includes(who.personId);
+  return inRoom(room, who);
+}
+
 /** Whether somebody can reach an agent at all: talk to it somewhere, and
  * so open a private conversation with it. */
 export function canReach(agent: AgentShape, who: Who, world: World): boolean {

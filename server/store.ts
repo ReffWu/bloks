@@ -284,6 +284,10 @@ export interface Message {
    * that turn, the turn was stopped for it, or it waited (server/delivery.ts).
    * Absent on a message that started a turn of its own. */
   delivery?: import("./delivery.ts").Delivery;
+  /** Who a room's Auto sent a message that named nobody to, and why, or
+   * that the lead took it instead (server/room-route.ts). On the
+   * person's own message, and drawn as the quiet line above the reply. */
+  route?: import("./room-route.ts").RoomRoute;
   /** Server-only return address for a Telegram request queued during
    * drain. Preserved on edits, never accepted from a client body. */
   telegramReply?: TelegramReply;

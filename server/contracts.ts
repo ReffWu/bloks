@@ -535,6 +535,9 @@ export interface ProviderInstance {
    * every message is allowed to use (server/delivery.ts); a slower or
    * dearer one is left to the work that is worth it. */
   smallText?: boolean;
+  /** The model generateText runs on, so a setting that spends it can
+   * say which. Absent where the engine does not say. */
+  textModel?: string;
   /** The latest the engine said about its plan's limits, kept in memory
    * on the instance and null until it says anything. Optional: only an
    * engine signed in to a subscription has limits to report. For the

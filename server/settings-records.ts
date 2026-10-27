@@ -82,6 +82,8 @@ export function inspectRoomSettings(root:unknown,ctx:InspectionContext):Inspecti
   const f=fields("room",root,"Room > Settings, desk, Share and sidebar controls",ctx);
   for(const [id,fallback] of [["name",""],["section",null],["pinOrder",null]] as const)f.scalar(id,fallback);
   for(const id of ["leadOnly","archived","pinned"])f.bool(id);
+  // who answers a message naming nobody, read as the server reads it (answersOf)
+  const answers=get(root,"answers");f.add("answers",{status:"value",value:answers==="everyone"||answers==="lead"||answers==="auto"?answers:get(root,"leadOnly")===true?"lead":"everyone"},own(root,"answers").present?scalar(answers,ctx.redact):{status:"absent"});
   f.list("memberIds","agent");f.opaque("cwd");f.opaque("pinnedCwd");
   // the crowned member, as a reference like the roster; null is seniority
   const lead=get(root,"leadId"),leadValue:InspectionValue=typeof lead==="string"?{status:"value",value:ctx.reference("agent",lead)}:{status:"value",value:null};

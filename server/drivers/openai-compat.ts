@@ -1278,6 +1278,10 @@ export function openAiCompatDriver(spec: ProviderSpec, access?: CompatAccess): P
           },
         },
         smallText: Boolean(spec.small),
+        // read when asked: the live catalog can move the default after this
+        get textModel() {
+          return spec.small || models.default;
+        },
         // A one-shot is Bloks' own bookkeeping (a summary, a tidy, a title)
         // unless the caller says somebody is waiting on it.
         generateText: async (prompt: string, options?: { work?: CallTags["work"] }) => {

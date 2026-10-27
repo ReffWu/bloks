@@ -1541,6 +1541,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         },
       },
 
+      textModel: ONE_SHOT_MODEL,
       // The prompt goes in on stdin, like a turn's: a summary prompt is the
       // conversation itself, and argv is readable by every process on the
       // machine. The same variables a turn drops are dropped here, or a key

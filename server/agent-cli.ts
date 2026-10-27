@@ -270,6 +270,8 @@ export const NEVER = [
   "/api/providers",
   "/api/custom-endpoints",
   "/api/instances",
+  // which engine an Auto room spends, read for Settings and changed there
+  "/api/room-router",
   // installing software and opening Terminal are the person's to start
   "/api/engines",
   "/api/pair",

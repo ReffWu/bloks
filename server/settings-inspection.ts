@@ -99,6 +99,9 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   add("incidents", "lead", general, typeof value("incidents", "lead") === "string" ? value("incidents", "lead") : "auto");
   add("delivery", "mode", general, resolveMode(undefined, value("delivery", "mode")));
   add("delivery", "askModel", general, value("delivery", "askModel") === true);
+  // the engine an Auto room asks (server/room-route.ts), null for the
+  // room's own engines
+  add("rooms", "router", general, typeof value("rooms", "router") === "string" ? value("rooms", "router") : null);
   add("skills", "propose", general, Boolean(value("skills", "propose")));
   add("changes", "showShared", general, value("changes", "showShared") !== false);
   // Bloks credits (server/credits.ts): background work spends them only

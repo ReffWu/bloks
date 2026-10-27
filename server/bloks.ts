@@ -17,6 +17,7 @@ import { readSaved, writeFileAtomic } from "./atomic-write.ts";
 import { DATA_DIR } from "./config.ts";
 import { newId } from "./contracts.ts";
 import type { ChatLink } from "./chat-bridge.ts";
+import type { RoomAnswers } from "./room-route.ts";
 
 export interface BlokRecord {
   id: string;
@@ -33,6 +34,13 @@ export interface BlokRecord {
    * @name, so the work happens either way; what changes is that six
    * agents stop burning six turns on "thanks everyone". */
   leadOnly?: boolean;
+  /** Who answers a message that names nobody: everyone, the lead, or
+   * whoever a small model picks for it, and the lead when it cannot
+   * (server/room-route.ts). Absent on a room from before Auto, which
+   * reads leadOnly (answersOf). Kept beside it, leadOnly true for "lead"
+   * and "auto" alike, so anything that reads only leadOnly still sees
+   * whom the room falls back to. */
+  answers?: RoomAnswers;
   /** The member the person crowned for this room. Seniority is the
    * agent's everywhere, so it cannot pick a lead for one room without
    * changing that agent in every other; this can. Null or absent, or a
@@ -213,7 +221,7 @@ export class BlokStore {
 
   patch(
     id: string,
-    patch: Partial<Pick<BlokRecord, "name" | "memberIds" | "leadOnly" | "leadId" | "cwd" | "archived" | "section">>,
+    patch: Partial<Pick<BlokRecord, "name" | "memberIds" | "leadOnly" | "answers" | "leadId" | "cwd" | "archived" | "section">>,
   ): BlokRecord | null {
     const blok = this.get(id);
     if (!blok) return null;
@@ -225,7 +233,13 @@ export class BlokStore {
     // A crown on someone who left goes with them, and the room is back on
     // seniority. Kept as null so a client merging this frame drops it too.
     if (blok.leadId && !blok.memberIds.includes(blok.leadId)) blok.leadId = null;
-    if (typeof patch.leadOnly === "boolean") blok.leadOnly = patch.leadOnly;
+    // The choice of three wins when both come; the older switch alone is
+    // lead or everyone, as it always was.
+    const answers = patch.answers ?? (typeof patch.leadOnly === "boolean" ? (patch.leadOnly ? "lead" : "everyone") : undefined);
+    if (answers) {
+      blok.answers = answers;
+      blok.leadOnly = answers !== "everyone";
+    }
     if (typeof patch.archived === "boolean") blok.archived = patch.archived || undefined;
     if ("cwd" in patch) blok.cwd = patch.cwd ?? undefined;
     // null rather than gone: a room frame is merged into what a client

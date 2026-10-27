@@ -131,6 +131,7 @@ import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { MAX_TASKS, ownerLanes, shapeOf, Store, type AgentNote, type BotRecord, type Message, type NewBotProfile, type RecalledNote, type TaskRecord } from "./store.ts";
 import { addressees, audienceOf, BlokStore, currentSpend, DEFAULT_SHARING, leadOf, MAX_MEMBERS, ranksForExport, type BlokRecord, type RoomSharing } from "./bloks.ts";
+import { answersOf, pickAnswerers, RECENT_LINES, roomAnswers, routeWords, type RoomAnswers, type RoomRoute, type RouteLine } from "./room-route.ts";
 import { cleanSectionOrder, placeAt, SidebarStore, sidebarView, upgradePlaces, type Placed } from "./sidebar.ts";
 import { extractTeamPlan, MAX_HIRES, normalizePlan, TEAM_PROTOCOL, type TeamPlan } from "./teams.ts";
 import { houseStyle, HOUSE_STYLE, replyRules } from "./house-style.ts";
@@ -9729,13 +9730,16 @@ async function postToRoomNow(blok: BlokRecord, text: string, author: RoomAuthor,
   // someone it named, otherwise every reply would wake the whole room. The
   // exception is a kickoff brief, which is meant for everyone.
   let reach = forPeopleOnly ? [] : !author.botId ? ids : author.toAll ? awake.map((m) => m.id) : mentioned ? ids : [];
-  // A lead-only room narrows the unaddressed case to its lead. Naming
-  // someone still reaches exactly who was named.
-  if (blok.leadOnly && !author.botId && !mentioned && !forPeopleOnly) {
+  // A lead-only room narrows the unaddressed case to its lead, and an
+  // Auto room to whoever its chooser picks, the lead when it cannot.
+  // Naming someone still reaches exactly who was named, and never asks.
+  const answers = answersOf(blok);
+  if (answers !== "everyone" && !author.botId && !mentioned && !forPeopleOnly) {
     // the lead among those who can actually answer, or a lead-only room
     // whose lead is archived swallows every message
     const lead = leadOf(awake, blok.leadId);
     if (lead) reach = [lead.id];
+    if (answers === "auto" && lead) reach = await routeRoomMessage(blok, message, text, author, awake);
   }
   const asked = reach.filter((id) => id !== author.botId);
   const targets = asked.filter((id) => !store.bot(id)?.archivedAt);
@@ -9762,6 +9766,90 @@ async function postToRoomNow(blok: BlokRecord, text: string, author: RoomAuthor,
     Boolean(author.botId),
   );
   return message;
+}
+
+/** An engine as the person knows it, with the model its one-shot runs
+ * on: what the line above a reply and Settings both name. */
+function textEngineName(instance: ProviderInstance): string {
+  const name = instance.displayName ?? instance.driverKind;
+  return instance.textModel ? `${name} (${instance.textModel})` : name;
+}
+
+/**
+ * The engine a room's Auto asks: the one the person chose in Settings
+ * while it can still answer a short request, or by default the room's
+ * own, a small model first, in room order. The default never sends the
+ * room's words to a provider none of its agents already uses. Null when
+ * there is none, and the lead answers.
+ */
+function routerEngine(members: readonly BotRecord[]): { instance: ProviderInstance; by: string } | null {
+  const chosen = cfg.rooms?.router;
+  if (chosen) {
+    const instance = registry.get(chosen);
+    return instance?.generateText ? { instance, by: textEngineName(instance) } : null;
+  }
+  const own: ProviderInstance[] = [];
+  for (const member of members) {
+    // an engine paused for this agent is not this room's to spend
+    if (pausedOn(member, member.modelSelection)) continue;
+    const instance = registry.get(member.modelSelection.instanceId);
+    if (instance?.generateText && !own.includes(instance)) own.push(instance);
+  }
+  const pick = own.find((i) => i.smallText) ?? own[0];
+  return pick ? { instance: pick, by: textEngineName(pick) } : null;
+}
+
+/**
+ * Who an Auto room's message that names nobody goes to: one or a few of
+ * those the sender may address in this room, or the lead among them when
+ * the chooser cannot say. What was decided is kept on the message for the
+ * line above the reply, and said in the room's chat channel when it has
+ * one, since a channel cannot open the line to read why.
+ */
+async function routeRoomMessage(blok: BlokRecord, message: Message, text: string, author: RoomAuthor, awake: readonly BotRecord[]): Promise<string[]> {
+  const shape: access.RoomShape = {
+    id: blok.id,
+    agentIds: blok.memberIds,
+    audience: audienceOf(blok),
+    peopleIds: people.membersOf(blok.id).map((m) => m.personId),
+  };
+  const who: access.Who | { kind: "guest"; personId: string } = author.personId
+    ? (whoIs(author.personId) ?? { kind: "guest", personId: author.personId })
+    : { kind: "owner" };
+  const candidates = awake.filter((m) => access.mayAddressInRoom(shape, m.id, who));
+  const lead = leadOf(candidates, blok.leadId);
+  if (!lead) return [];
+  // one who could answer is no choice to make, and no call to pay for
+  if (candidates.length === 1) return [lead.id];
+
+  const said = store.messagesFor(blok.id);
+  const at = said.findIndex((m) => m.id === message.id);
+  const recent: RouteLine[] = [];
+  for (const m of (at === -1 ? said : said.slice(0, at)).slice(-RECENT_LINES * 4)) {
+    if (m.deleted || m.queued || (m.kind ?? "text") !== "text" || !m.text?.trim()) continue;
+    const from = m.role === "bot" ? (m.from ? store.bot(m.from)?.name : undefined) : m.author ? people.person(m.author)?.name : hostName();
+    // the room's own opening line has no speaker, and says nothing new
+    if (from) recent.push({ from, text: m.text });
+  }
+  const engine = routerEngine(awake);
+  const route: RoomRoute = await pickAnswerers({
+    candidates: candidates.map((m) => ({ id: m.id, name: m.name, role: m.title, brief: m.description })),
+    lead: lead.id,
+    recent: recent.slice(-RECENT_LINES),
+    text,
+    sender: author.personId ? (people.person(author.personId)?.name ?? "Someone") : hostName(),
+    ask: engine ? (prompt) => engine.instance.generateText!(prompt, { quick: true, work: "general" }) : null,
+    ...(engine ? { by: engine.by } : {}),
+  });
+
+  const patched = store.patchMessage(blok.id, message.id, { route });
+  if (patched) broadcast({ kind: "message.patch", threadId: blok.id, message: patched });
+  const link = bloks.get(blok.id)?.sharing?.chat;
+  if (link) {
+    const words = routeWords(route, (id) => store.bot(id)?.name ?? "An agent");
+    sayInChannel(link.platform, link.channelId, outbound(link.platform, { kind: "notice" }, words.chat));
+  }
+  return route.to;
 }
 
 /** `byYou` is the first round's: whoever the person's message woke is
@@ -16453,6 +16541,8 @@ function configStatus() {
     // off unless asked for: a small model asked about words the rules
     // could not read costs a call on the person's own key
     delivery: { mode: resolveMode(undefined, cfg.delivery?.mode), askModel: cfg.delivery?.askModel === true },
+    // the engine an Auto room asks, null for the room's own engines
+    rooms: { router: cfg.rooms?.router ?? null },
     changes: { showShared: cfg.changes?.showShared !== false },
     // how long a silent tool call may hold a turn, in minutes, 0 for
     // never, and whether a turn waits for its background work
@@ -22675,7 +22765,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     m = path.match(/^\/api\/bloks\/([\w-]+)$/);
     if (m && method === "PATCH") {
       const body = await readBody(req);
-      const patch: { name?: string; memberIds?: string[]; leadOnly?: boolean; leadId?: string | null; cwd?: string; archived?: boolean } = {};
+      const patch: { name?: string; memberIds?: string[]; leadOnly?: boolean; answers?: RoomAnswers; leadId?: string | null; cwd?: string; archived?: boolean } = {};
       // A name sent is a name kept or a refusal. A blank one used to be
       // taken and quietly ignored, which read as a rename that worked.
       if ("name" in body && body.name !== undefined) {
@@ -22684,6 +22774,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         patch.name = name;
       }
       if (typeof body.leadOnly === "boolean") patch.leadOnly = body.leadOnly;
+      if ("answers" in body) {
+        const answers = roomAnswers(body.answers);
+        if (!answers) return json(res, 400, { error: "answers is everyone, lead or auto" });
+        // Auto spends a call on an engine for every message that names
+        // nobody, so it is the person's to switch on. An agent may still
+        // narrow a room to its lead or open it to everyone.
+        if (answers === "auto" && asAgent) return json(res, 403, { error: "only the person can set a room to Auto" });
+        patch.answers = answers;
+      }
       if (typeof body.archived === "boolean") patch.archived = body.archived;
       // its section, its pin and its place, by the same reading as an agent's
       const placing = readArrangement(body);
@@ -26011,6 +26110,26 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (method === "GET" && path === "/api/config") {
       return json(res, 200, configStatus());
     }
+    // The engines an Auto room could ask, for Settings: every one with a
+    // one-shot call, which model that runs on, and whether it is a small
+    // one, so the choice can say what it costs before it is made.
+    if (method === "GET" && path === "/api/room-router") {
+      const described = await registry.describe();
+      const choices = described.flatMap((d) => {
+        const instance = registry.get(d.instanceId);
+        if (!instance?.generateText) return [];
+        return [{
+          id: d.instanceId,
+          name: d.displayName,
+          kind: d.driverKind,
+          model: instance.textModel ?? null,
+          small: Boolean(instance.smallText),
+          ready: d.snapshot.state === "available" && d.snapshot.authenticated !== false,
+          allowance: d.driverKind === CREDITS_KIND,
+        }];
+      });
+      return json(res, 200, { router: cfg.rooms?.router ?? null, choices });
+    }
     if ((method === "PUT" || method === "PATCH") && path === "/api/config") {
       const body = await readBody(req);
       if (body.codex !== undefined && (!isRecord(body.codex) || !isCodexSpeed(body.codex.speed) || Object.keys(body.codex).some((key) => key !== "speed"))) {
@@ -26023,6 +26142,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         (body.delivery.askModel !== undefined && typeof body.delivery.askModel !== "boolean")
       )) {
         return json(res, 400, { error: "delivery.mode is auto, interrupt or queue, and delivery.askModel is true or false" });
+      }
+      // An engine that cannot answer a short request would leave every
+      // Auto room on its lead without a word in Settings to say why.
+      if (body.rooms !== undefined && (
+        !isRecord(body.rooms) ||
+        !("router" in body.rooms) ||
+        (body.rooms.router !== null && (typeof body.rooms.router !== "string" || !registry.get(body.rooms.router)?.generateText))
+      )) {
+        return json(res, 400, { error: "rooms.router is null, or an engine that can answer a short request" });
       }
       if (isRecord(body.turns) && body.turns.backgroundWork !== undefined && !backgroundWork(body.turns.backgroundWork)) {
         return json(res, 400, { error: "turns.backgroundWork is finish or stop" });
@@ -26146,6 +26274,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         const mode = deliveryMode(body.delivery.mode);
         const askModel = typeof body.delivery.askModel === "boolean" ? body.delivery.askModel : undefined;
         Object.assign(cfg, saveConfig({ delivery: { ...(mode ? { mode } : {}), ...(askModel !== undefined ? { askModel } : {}) } }));
+        wroteSomething = true;
+      }
+      if (isRecord(body.rooms)) {
+        Object.assign(cfg, saveConfig({ rooms: { router: typeof body.rooms.router === "string" ? body.rooms.router : null } }));
         wroteSomething = true;
       }
       if (body.recall && typeof body.recall === "object" && !Array.isArray(body.recall)) {

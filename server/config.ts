@@ -217,6 +217,11 @@ export interface AppConfig {
    * agent's own small model about words its rules cannot read; off
    * unless turned on, since each ask is a call on the person's key. */
   delivery?: { mode?: "auto" | "interrupt" | "queue"; askModel?: boolean };
+  /** Rooms set to Auto (server/room-route.ts). `router` is the engine
+   * (an instance id) that picks who answers a message naming nobody;
+   * unset or null is the room's own engines, small model first, so the
+   * words go nowhere they were not already going. */
+  rooms?: { router?: string | null };
   /** Show a card for files changed during an overlapping turn even when
    * none are named as its own. On unless turned off; own-file cards stay. */
   changes?: { showShared?: boolean };
@@ -390,6 +395,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "agents",
     "incidents",
     "delivery",
+    "rooms",
     "changes",
     "telegram",
     "chat",
