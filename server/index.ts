@@ -31,7 +31,7 @@ import { inspectionRedactor } from "./settings-redaction.ts";
 import { telegramReply, type TelegramText } from "./telegram-reply.ts";
 import { TurnProgress } from "./telegram-progress.ts";
 import { inboxState, legacyBinding, migrateTelegram, ownerPairing, pairedChats, replaceTelegramToken, telegramBotName, telegramStatus, type AgentTelegram, type TelegramConfig } from "./telegram-bots.ts";
-import { isPrivateTelegramHuman, knockTelegram, migrateTelegramPeople, sameTelegramDelegate, telegramDelegateCurrent, telegramNamesakes, telegramPersonHandle, telegramSender, telegramSenderCurrent, telegramOwnerGroupCurrent, telegramReplySenderCurrent, telegramAudience, telegramSenderLabel, TELEGRAM_PEOPLE_UPGRADE, type TelegramPerson, type TelegramSender, type TelegramOwnerGroup, type TelegramDestination, type TelegramReplySender } from "./telegram-people.ts";
+import { isPrivateTelegramHuman, knockTelegram, telegramPersonName, migrateTelegramPeople, sameTelegramDelegate, telegramDelegateCurrent, telegramNamesakes, telegramPersonHandle, telegramSender, telegramSenderCurrent, telegramOwnerGroupCurrent, telegramReplySenderCurrent, telegramAudience, telegramSenderLabel, TELEGRAM_PEOPLE_UPGRADE, type TelegramPerson, type TelegramSender, type TelegramOwnerGroup, type TelegramDestination, type TelegramReplySender } from "./telegram-people.ts";
 import { CODEX_PERSON_HOLD, CODEX_PERSON_NEXT, personReplyText, personTurnHold } from "./person-turn.ts";
 import { TelegramGroupMessages, telegramQuotedContext } from "./telegram-groups.ts";
 import { isRecord, readSaved, writeFileAtomic } from "./atomic-write.ts";
@@ -16068,7 +16068,7 @@ async function pairSignal(botId: string, state: AgentSignal, message: signal.Sig
     ownerAci: message.sourceUuid,
     ...(self ? { ownerSelf: true, aci: message.sourceUuid } : { ownerSelf: undefined }),
     ...(message.sourceNumber ? { ownerNumber: message.sourceNumber } : {}),
-    ownerName: self ? "you" : message.sourceName,
+    ownerName: self ? "you" : telegramPersonName(message.sourceName),
   });
   if (knocked) closeSignalAdmissionCard(botId, knocked, "Paired as owner");
   const agent = store.bot(botId)?.name ?? "Your agent";
@@ -24449,8 +24449,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             entities: all.slice(0, 2_000).map((s) => ({
               entity_id: s.entity_id,
               domain: home.domainOf(s.entity_id),
-              name: typeof s.attributes.friendly_name === "string" ? s.attributes.friendly_name.slice(0, 120) : s.entity_id,
-              state: String(s.state).slice(0, 60),
+              name: typeof s.attributes.friendly_name === "string" ? home.clean(s.attributes.friendly_name, 120) : s.entity_id,
+              state: home.clean(String(s.state), 60),
               ...(areas.get(s.entity_id) ? { area: areas.get(s.entity_id) } : {}),
               alwaysAsks: home.alwaysAsks(s.entity_id, s),
             })),

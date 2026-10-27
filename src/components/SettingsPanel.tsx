@@ -120,7 +120,7 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: typeof User }> = [
   { id: "behaviour", label: "Behaviour", icon: SlidersHorizontal },
   { id: "tools", label: "Tools", icon: Puzzle },
   { id: "memory", label: "Memory", icon: BookOpen },
-  { id: "reach", label: "Voice and Telegram", icon: Mic },
+  { id: "reach", label: "Voice and chat apps", icon: Mic },
   { id: "notifications", label: "Notifications", icon: BellDot },
   { id: "schedules", label: "Schedules", icon: CalendarClock },
   { id: "export", label: "Signature and export", icon: Fingerprint },
@@ -482,7 +482,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 </Group>
               </Section>
 
-              <Section id="reach" title="Voice, Telegram and Signal">
+              <Section id="reach" title="Voice and chat apps">
                 <VoiceCard bot={bot} />
                 <TelegramSection key={bot.id} botId={bot.id} />
                 <SignalSection key={`signal-${bot.id}`} botId={bot.id} />
