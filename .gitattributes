@@ -1,0 +1,4 @@
+# The catalogue's index records each file's sha256, and the app checks
+# what it downloads against it. A checkout that turned these into CRLF
+# would hash differently from the bytes GitHub serves, so they stay LF.
+catalog/** text eol=lf

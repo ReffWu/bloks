@@ -1,0 +1,562 @@
+{
+  "bloksCatalog": 1,
+  "items": [
+    {
+      "id": "content-studio",
+      "kind": "team",
+      "title": "Content studio",
+      "summary": "Plans, writes and edits a steady stream of articles and posts in one voice, and keeps the calendar honest.",
+      "tags": [
+        "content",
+        "writing",
+        "marketing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/content-studio.md",
+      "size": 1771,
+      "sha256": "b498e98c0b3400166d0cd2acff3d913283698e6468957f747d4b8975c0a3d3fe"
+    },
+    {
+      "id": "data-analysis",
+      "kind": "team",
+      "title": "Data analysis",
+      "summary": "Takes a question about your numbers from a clear plan to clean data to a short report that says how sure it is.",
+      "tags": [
+        "data",
+        "analysis",
+        "research"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/data-analysis.md",
+      "size": 1609,
+      "sha256": "3e4c17eb2b61af2f4cd0431ff90e7d50ca84beb08edcf68ba5f5020045d52625"
+    },
+    {
+      "id": "engineering-review",
+      "kind": "team",
+      "title": "Engineering review",
+      "summary": "Reviews designs before they are built and code before it ships, plans the tests, and writes up what went wrong when something breaks.",
+      "tags": [
+        "engineering",
+        "review",
+        "quality"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/engineering-review.md",
+      "size": 1646,
+      "sha256": "55365faa3b038c95ed48354f439ed45588153de1bfb1bc381d9574b27ab8552a"
+    },
+    {
+      "id": "launch-crew",
+      "kind": "team",
+      "title": "Launch crew",
+      "summary": "Takes a product or feature from ready to announced: the checklist, the page, the notes and the call on whether it ships.",
+      "tags": [
+        "launch",
+        "product",
+        "marketing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/launch-crew.md",
+      "size": 2393,
+      "sha256": "6e3e662ce69b9617d76c02509ffca249133b78f59565d5c149c9b3d0dfacf507"
+    },
+    {
+      "id": "newsletter-desk",
+      "kind": "team",
+      "title": "Newsletter desk",
+      "summary": "Reads widely for you each week and turns the few things worth knowing into one short, checked issue.",
+      "tags": [
+        "content",
+        "research",
+        "writing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/newsletter-desk.md",
+      "size": 1575,
+      "sha256": "b85c85b6898d66fb95bd59c90b0ee2de549187dbf7e62cba0cd7149e77c9c878"
+    },
+    {
+      "id": "personal-admin",
+      "kind": "team",
+      "title": "Personal admin",
+      "summary": "Keeps the paperwork of a life in order: bills and renewals, deadlines, and trips, with nothing paid or booked without you.",
+      "tags": [
+        "personal",
+        "admin",
+        "planning"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/personal-admin.md",
+      "size": 2057,
+      "sha256": "5da9d6d9230ffcff71453a725fc5c4913bdf4da096cbaf84c600b1303c3d29b4"
+    },
+    {
+      "id": "product-discovery",
+      "kind": "team",
+      "title": "Product discovery",
+      "summary": "Works out what to build next from what customers do, what the numbers say and what the alternatives already offer.",
+      "tags": [
+        "product",
+        "research",
+        "customers"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/product-discovery.md",
+      "size": 1511,
+      "sha256": "06f7c01fa149540b861e2461a85efb0472e6f5fd73a98bf9e5109de88b2b5789"
+    },
+    {
+      "id": "research-desk",
+      "kind": "team",
+      "title": "Research desk",
+      "summary": "Answers hard questions with sources: reads the long documents, checks every claim and says how sure it is.",
+      "tags": [
+        "research",
+        "analysis",
+        "writing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/research-desk.md",
+      "size": 1804,
+      "sha256": "9c117ee8865bf6aaaa9dd1d536f05c13807fe8d904c24a812c448da5dbeb67d3"
+    },
+    {
+      "id": "sales-pipeline",
+      "kind": "team",
+      "title": "Sales pipeline",
+      "summary": "Qualifies leads on evidence, plans the follow-ups and drafts the proposals, with every message held for your approval.",
+      "tags": [
+        "sales",
+        "customers",
+        "writing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/sales-pipeline.md",
+      "size": 1803,
+      "sha256": "2f2b514a39e86186d1ea627414a9f1512aa5441668b417e024b706e5864f9f69"
+    },
+    {
+      "id": "support-desk",
+      "kind": "team",
+      "title": "Support desk",
+      "summary": "Drafts replies to customers, turns problems into bug reports and writes the help articles that stop the same question coming back.",
+      "tags": [
+        "support",
+        "customers",
+        "writing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "teams/support-desk.md",
+      "size": 1954,
+      "sha256": "fb7a3d7cd69ec4cd7a7a4bf1c163d83217ce0c1c8ad149a4262add16fa32c157"
+    },
+    {
+      "id": "analysis-plan",
+      "kind": "skill",
+      "title": "Analysis plan",
+      "summary": "Turn a business question into the exact numbers that would answer it, before any are computed",
+      "tags": [
+        "data",
+        "analysis",
+        "planning"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/analysis-plan/SKILL.md",
+      "size": 1183,
+      "sha256": "ec6e5924427539f694a31a263b2323d725755769e1d58ae95573c8ee9991c670"
+    },
+    {
+      "id": "bill-review",
+      "kind": "skill",
+      "title": "Bill review",
+      "summary": "Go through recurring bills and subscriptions, and flag what changed, what is unused and what renews soon",
+      "tags": [
+        "personal",
+        "money",
+        "admin"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/bill-review/SKILL.md",
+      "size": 1272,
+      "sha256": "4d0bfa1848ebe68cf4421800c253b01f5fb18747901d83db6ffe029f17f44850"
+    },
+    {
+      "id": "blog-post-draft",
+      "kind": "skill",
+      "title": "Blog post draft",
+      "summary": "Draft an article from an outline or a brief, with one point made well rather than five made thinly",
+      "tags": [
+        "content",
+        "writing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/blog-post-draft/SKILL.md",
+      "size": 1255,
+      "sha256": "53fd432548e42b063ebecbe553b6856c1a6c0403b8f9598ee46d5a7fb15430a0"
+    },
+    {
+      "id": "bug-report-triage",
+      "kind": "skill",
+      "title": "Bug report triage",
+      "summary": "Turn a customer's description of a problem into a bug report an engineer can reproduce",
+      "tags": [
+        "support",
+        "engineering",
+        "quality"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/bug-report-triage/SKILL.md",
+      "size": 1344,
+      "sha256": "a1a70e6b925e04ca076684319cbb40f905ab7ca1419dc1a5bb69845d441c598a"
+    },
+    {
+      "id": "competitor-scan",
+      "kind": "skill",
+      "title": "Competitor scan",
+      "summary": "Compare a few named alternatives on the points a buyer actually decides on",
+      "tags": [
+        "research",
+        "strategy",
+        "product"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/competitor-scan/SKILL.md",
+      "size": 1270,
+      "sha256": "595c996cc007a818e4a96595c93c16c724b0debf481e3100d28095ede20c8140"
+    },
+    {
+      "id": "content-calendar",
+      "kind": "skill",
+      "title": "Content calendar",
+      "summary": "Plan the next few weeks of content around a few themes, with an owner and a date for each piece",
+      "tags": [
+        "content",
+        "planning",
+        "marketing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/content-calendar/SKILL.md",
+      "size": 1131,
+      "sha256": "64b3c66265a71e7d1435c61a9b04283032aab42b3484ca5906aaeb02e7bd6f5b"
+    },
+    {
+      "id": "data-cleaning",
+      "kind": "skill",
+      "title": "Data cleaning",
+      "summary": "Profile a dataset, fix what is wrong in a copy, and log every change so the analysis can be trusted",
+      "tags": [
+        "data",
+        "analysis",
+        "quality"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/data-cleaning/SKILL.md",
+      "size": 1125,
+      "sha256": "d853756e1d62ad1c66fe87aaa526b442e4ebe0131762cf97de1c326ecc4b12ef"
+    },
+    {
+      "id": "deadline-tracker",
+      "kind": "skill",
+      "title": "Deadline tracker",
+      "summary": "Keep one list of dated obligations and say each week what is coming due",
+      "tags": [
+        "personal",
+        "admin",
+        "planning"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/deadline-tracker/SKILL.md",
+      "size": 1237,
+      "sha256": "7f4f68532f25acc2900fd070827bd68535749c536b0da87791e55affede1e6be"
+    },
+    {
+      "id": "design-review",
+      "kind": "skill",
+      "title": "Design review",
+      "summary": "Review a technical design before it is built, for what will break, what it costs to run and what it rules out",
+      "tags": [
+        "engineering",
+        "review",
+        "architecture"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/design-review/SKILL.md",
+      "size": 1366,
+      "sha256": "54817e2132da4fe0233fb10853b54d39469b976d806f59602f9d2b9cdbc41b12"
+    },
+    {
+      "id": "findings-report",
+      "kind": "skill",
+      "title": "Findings report",
+      "summary": "Write up an analysis with the finding first, the evidence in order of weight, and the limits said plainly",
+      "tags": [
+        "data",
+        "analysis",
+        "writing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/findings-report/SKILL.md",
+      "size": 1082,
+      "sha256": "f65b24977fb4958c0753dd7c4b9e937bf708facada25456dfbb534d9f6eb9100"
+    },
+    {
+      "id": "follow-up-plan",
+      "kind": "skill",
+      "title": "Follow-up plan",
+      "summary": "Plan the next touches with a prospect or client, each one adding something, drafted and held for approval",
+      "tags": [
+        "sales",
+        "writing",
+        "customers"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/follow-up-plan/SKILL.md",
+      "size": 1223,
+      "sha256": "20aef50039192164bc102bb7f0ffb49dfbc8dccf0e4ea2b115a78e62cfa5f5d6"
+    },
+    {
+      "id": "help-article",
+      "kind": "skill",
+      "title": "Help article",
+      "summary": "Write a help article that gets someone from their question to done in the fewest steps",
+      "tags": [
+        "support",
+        "writing",
+        "documentation"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/help-article/SKILL.md",
+      "size": 1103,
+      "sha256": "0d61a78aff3a2518e8696ae6f85748bd9b83a7b45b181d624f1de0a54a1318f1"
+    },
+    {
+      "id": "interview-synthesis",
+      "kind": "skill",
+      "title": "Interview synthesis",
+      "summary": "Turn a set of user interviews into patterns with evidence, not a list of opinions",
+      "tags": [
+        "research",
+        "product",
+        "customers"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/interview-synthesis/SKILL.md",
+      "size": 1203,
+      "sha256": "00dada2fd5b62b328a1e156b838960e67ed0aa32d109b021bf3aee136479031d"
+    },
+    {
+      "id": "landing-page-copy",
+      "kind": "skill",
+      "title": "Landing page copy",
+      "summary": "Write a landing page that says who it is for, what changes for them, and what to do next",
+      "tags": [
+        "launch",
+        "writing",
+        "marketing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/landing-page-copy/SKILL.md",
+      "size": 1250,
+      "sha256": "54ccbec6a7a8ab81bbca0aab46201e769d8b0ae24e60920674e9f5aef9c3b96f"
+    },
+    {
+      "id": "launch-checklist",
+      "kind": "skill",
+      "title": "Launch checklist",
+      "summary": "Check a launch is ready item by item, and name exactly what still blocks it",
+      "tags": [
+        "launch",
+        "product",
+        "review"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/launch-checklist/SKILL.md",
+      "size": 1337,
+      "sha256": "8e5b26dc413c862f47d0c055f65b84ca6bb439f32d0650b12d4dbf0b9e747625"
+    },
+    {
+      "id": "lead-qualification",
+      "kind": "skill",
+      "title": "Lead qualification",
+      "summary": "Decide whether a lead is worth the team's time, on evidence, before anyone writes to them",
+      "tags": [
+        "sales",
+        "research"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/lead-qualification/SKILL.md",
+      "size": 1276,
+      "sha256": "6f2c32ff00260361f901d8c833123947847ac8cceb69c04de32433f9d907d55d"
+    },
+    {
+      "id": "postmortem",
+      "kind": "skill",
+      "title": "Postmortem",
+      "summary": "Write up an incident without blame, so the same thing is less likely to happen again",
+      "tags": [
+        "engineering",
+        "reliability",
+        "incidents"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/postmortem/SKILL.md",
+      "size": 1210,
+      "sha256": "e4ff252cd4ea4ce4ed1b9b79ab6ad870b6fb1d98b1606721dd67dce0f5615c8a"
+    },
+    {
+      "id": "proposal-draft",
+      "kind": "skill",
+      "title": "Proposal draft",
+      "summary": "Draft a proposal that restates the client's problem, the approach, the price and what happens next",
+      "tags": [
+        "sales",
+        "writing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/proposal-draft/SKILL.md",
+      "size": 1208,
+      "sha256": "a1d9c1099c89d4510cef510378ba3884facd5bb1d6904375098ccd9e76e74ecf"
+    },
+    {
+      "id": "reading-notes",
+      "kind": "skill",
+      "title": "Reading notes",
+      "summary": "Reduce a long document to what it decides, what it claims and what it leaves open",
+      "tags": [
+        "research",
+        "summary",
+        "documents"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/reading-notes/SKILL.md",
+      "size": 1218,
+      "sha256": "2875f37c46091c735b26fe59887054d4718eb4c071c70047d346994649c8dde5"
+    },
+    {
+      "id": "release-notes",
+      "kind": "skill",
+      "title": "Release notes",
+      "summary": "Turn a list of changes into release notes a user reads in under a minute",
+      "tags": [
+        "launch",
+        "writing",
+        "engineering"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/release-notes/SKILL.md",
+      "size": 1379,
+      "sha256": "5b1e38df0e911b7c83d18e26ed862e96b4729576e260a98e73960c98d0c1dec6"
+    },
+    {
+      "id": "social-post-set",
+      "kind": "skill",
+      "title": "Social post set",
+      "summary": "Cut one finished piece into a small set of social posts, each standing on its own",
+      "tags": [
+        "content",
+        "social",
+        "writing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/social-post-set/SKILL.md",
+      "size": 1097,
+      "sha256": "b722f129615511476a4a5a1d6efccbf6e89a007fe86d8f0699b3d3ef6d612dd0"
+    },
+    {
+      "id": "source-check",
+      "kind": "skill",
+      "title": "Source check",
+      "summary": "Check each load-bearing claim in a draft against a primary source before it goes out",
+      "tags": [
+        "research",
+        "writing",
+        "review"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/source-check/SKILL.md",
+      "size": 1224,
+      "sha256": "80add12027784ddade5bb3aec88fae1edb91e914769e2ed105369faab42cb931"
+    },
+    {
+      "id": "support-reply",
+      "kind": "skill",
+      "title": "Support reply",
+      "summary": "Draft a reply to a customer that answers the actual question and says what happens next",
+      "tags": [
+        "support",
+        "writing",
+        "customers"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/support-reply/SKILL.md",
+      "size": 1376,
+      "sha256": "044553fb43ab82d62623e45e2b805246077e187968d795b3c47ca6ed25a8c1a3"
+    },
+    {
+      "id": "test-plan",
+      "kind": "skill",
+      "title": "Test plan",
+      "summary": "Plan the tests a change needs, aimed at how it could actually fail rather than at coverage",
+      "tags": [
+        "engineering",
+        "quality",
+        "testing"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/test-plan/SKILL.md",
+      "size": 1169,
+      "sha256": "92573243c8be650ee02561780b0b98a6d147a788e5ed4b6dd7e405f68af9274c"
+    },
+    {
+      "id": "trip-planner",
+      "kind": "skill",
+      "title": "Trip planner",
+      "summary": "Plan a trip around fixed points, with options to choose from and nothing booked",
+      "tags": [
+        "personal",
+        "travel",
+        "planning"
+      ],
+      "author": "Bloks",
+      "version": "1",
+      "path": "skills/trip-planner/SKILL.md",
+      "size": 1220,
+      "sha256": "12c951676705d078a5806c27db7060aecad0688de5b18eead9bd0d40467a0168"
+    }
+  ]
+}
