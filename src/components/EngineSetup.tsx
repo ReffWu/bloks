@@ -181,7 +181,7 @@ export function EnginePathControl({
       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-small text-muted-foreground">
         {path ? (
           <>
-            <span className="min-w-0 truncate">
+            <span className="min-w-0 truncate" title={path}>
               Runs <code className="font-mono text-foreground">{path}</code>
             </span>
             <button
