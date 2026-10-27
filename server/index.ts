@@ -43,6 +43,7 @@ import { ENGINE_PACKAGES, engineUpdates } from "./engine-updates.ts";
 import { FEATURES } from "./features.ts";
 import { ReplyNotifications, settledFrame, settledReply } from "./reply-notifications.ts";
 import { TextPreview } from "./text-preview.ts";
+import { LaneTurns, buildTrace, emptyTrace, readTurn, type LiveTraces, type Trace } from "./trace.ts";
 import { AnswerReady, answerDue, answersAllowed, attentionFrom, Viewing, viewingReport, type Attention } from "./answer-ready.ts";
 import { attentionRoute, keepAttention, readAttention, sameAttention } from "./attention.ts";
 import { LiveActivities } from "./live-activities.ts";
@@ -2402,6 +2403,45 @@ function oneModel(selection: ModelSelection): ModelSelection {
   return selection.model === BLOKS_AI_MODEL ? selection : { ...selection, model: BLOKS_AI_MODEL };
 }
 
+/** A turn's trace, priced the way its spend is (turnPrice). */
+function traceOf(events: RuntimeEvent[], now: number): Trace {
+  return buildTrace(events, { now, price: (completed) => turnPrice(completed).cost });
+}
+
+/**
+ * The trace a lane shows while it works or waits: its running turn; for
+ * a lane working with no word from its engine yet, an empty running one
+ * from when the harness started the turn; else its last turn, if one is
+ * in memory. Never the disk: this is asked for on a poll, for every lane.
+ */
+function laneTrace(laneId: string, working: boolean, now: number): Trace {
+  const current = turnTraces.current(laneId);
+  if (current) return traceOf(current, now);
+  if (working) return emptyTrace(turnStarted.get(laneId) ?? now, true, now);
+  const last = turnTraces.last(laneId);
+  return last ? traceOf(last, now) : emptyTrace(now, false, now);
+}
+
+/**
+ * Whether a lane is at work, waiting on the person, or neither.
+ *
+ * A question only counts as waiting while its turn can still hear the
+ * answer. A turn that errored out, or a server that restarted, leaves the
+ * card on screen but nobody behind it; that lane is idle, and saying
+ * otherwise sends the user to a dead door. One rule for "is this waiting
+ * on me", shared with the activity overlay (see server/activity.ts). Two
+ * rules is how a lane ends up reading as idle in one place and blocked in
+ * another, which is exactly what a workflow gate used to do: it parks on a
+ * card with no request behind it, so the old test here called it idle.
+ * A goal that is blocked waits on the person as much as a card does:
+ * nothing moves in that lane until they say something.
+ */
+function laneState(task: TaskRecord, live = liveCards()): "working" | "needs-you" | "idle" {
+  if (blockedOn(store.messagesFor(task.id), live)) return "needs-you";
+  if (task.busy) return "working";
+  return task.goal?.status === "blocked" ? "needs-you" : "idle";
+}
+
 function clientBot(bot: BotRecord | null) {
   if (!bot) return bot;
   // the old access is read once at start and means nothing to a screen
@@ -2425,24 +2465,7 @@ function clientBot(bot: BotRecord | null) {
     // renders the same truth without holding every lane's transcript.
     // Members' private conversations are theirs and never listed here.
     tasks: tasks.filter((task) => !task.personId).map((task) => {
-      // A question only counts as waiting while its turn can still hear
-      // the answer. A turn that errored out, or a server that restarted,
-      // leaves the card on screen but nobody behind it; that lane is
-      // idle, and saying otherwise sends the user to a dead door.
-      // One rule for "is this waiting on me", shared with the activity
-      // overlay (see server/activity.ts). Two rules is how a lane ends up
-      // reading as idle in one place and blocked in another, which is
-      // exactly what a workflow gate used to do: it parks on a card with
-      // no request behind it, so the old test here called it idle.
-      // A goal that is blocked waits on the person as much as a card
-      // does: nothing moves in that lane until they say something.
-      const state = blockedOn(store.messagesFor(task.id), liveCards())
-        ? "needs-you"
-        : task.busy
-          ? "working"
-          : task.goal?.status === "blocked"
-            ? "needs-you"
-            : "idle";
+      const state = laneState(task);
       // How full this lane is: the engine's own reading of its latest
       // request against its before-turn line, or the window when off.
       // Keep the engine's window when given and the table's otherwise;
@@ -4002,11 +4025,18 @@ function setAttention(next: Attention) {
 }
 
 const textPreview = new TextPreview();
+/** Each lane's running turn and the one before it, for its trace
+ * (server/trace.ts). Older turns are read back from the events file. */
+const turnTraces = new LaneTurns();
 
 bus.subscribe((event: RuntimeEvent) => {
   // Maintenance compaction (idle or before a turn) does not own a
   // command catalog: keep the latest agent turn's report.
   if (idleCompacting.has(event.threadId)) return onIdleCompaction(event);
+  // Before anything below can rewrite it: a trace reads the event as the
+  // bus published it. A compaction above is upkeep, not a turn anybody
+  // asked for, and is left out.
+  turnTraces.note(event);
   const origin = codexOrigins.get(event.threadId);
   if (event.type === "turn.started" && event.provider === "codex" && origin) origin.turnId = event.turnId;
   if (event.provider === "codex" && event.codexItem) {
@@ -6005,7 +6035,10 @@ async function interruptLane(bot: BotRecord, laneId: string) {
 function deleteLane(botId: string, laneId: string): ReturnType<typeof store.deleteTask> {
   if (claimedLanes.has(laneId)) return "busy";
   const outcome = store.deleteTask(botId, laneId);
-  if (outcome === "ok") textPreview.forget(laneId);
+  if (outcome === "ok") {
+    textPreview.forget(laneId);
+    turnTraces.forget(laneId);
+  }
   // A rehearsal's lane is the only way to its copy: closed, nothing can
   // follow up on it or apply it, so the copy goes now rather than in a week.
   const rehearsed = outcome === "ok" ? rehearsals.forTask(laneId) : undefined;
@@ -17294,6 +17327,7 @@ async function forgetAgent(bot: BotRecord, actor: "you" | null) {
   // older ones.
   for (const task of bot.tasks) {
     textPreview.forget(task.id);
+    turnTraces.forget(task.id);
     try {
       unlinkSync(join(EVENTS_DIR, `${task.id}.ndjson`));
     } catch {}
@@ -24895,6 +24929,45 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       const took = answerGate(m[1], approved, answer || "Decline");
       return json(res, took ? 200 : 409, took ? { ok: true, approved } : { error: "that question has already closed" });
+    }
+
+    // ── what a turn is doing, as a timeline (server/trace.ts) ──
+    // The owner's, like the activity below and for the same reason: it
+    // says what every agent is running. A member's device is answered by
+    // serveMember before this, and an agent's credential has no rule for
+    // either route (server/agent-cli.ts), so neither reaches them.
+    if (method === "GET" && path === "/api/trace/live") {
+      const now = Date.now();
+      const live = liveCards();
+      const agents: LiveTraces["agents"] = [];
+      for (const bot of store.bots.filter((b) => !b.archivedAt)) {
+        // members' private conversations are theirs, as on the sidebar
+        for (const task of bot.tasks.filter((t) => !t.personId)) {
+          const state = laneState(task, live);
+          if (state === "idle") continue;
+          agents.push({
+            botId: bot.id,
+            name: bot.name,
+            color: bot.color,
+            taskId: task.id,
+            taskTitle: task.title,
+            state,
+            trace: laneTrace(task.id, state === "working", now),
+          });
+        }
+      }
+      return json(res, 200, { now, agents } satisfies LiveTraces);
+    }
+    m = path.match(/^\/api\/bots\/([\w-]+)\/tasks\/([\w-]+)\/trace$/);
+    if (m && method === "GET") {
+      const lane = store.bot(m[1])?.tasks.find((t) => t.id === m![2]);
+      if (!lane) return json(res, 404, { error: "no such task" });
+      const now = Date.now();
+      const named = url.searchParams.get("turn")?.trim() || null;
+      if (named && !/^[\w.:-]{1,200}$/.test(named)) return json(res, 400, { error: "that is not a turn id" });
+      const kept = named ? turnTraces.find(lane.id, named) : (turnTraces.current(lane.id) ?? turnTraces.last(lane.id));
+      const events = kept ?? (await readTurn(join(EVENTS_DIR, `${lane.id}.ndjson`), named));
+      return json(res, 200, { trace: events ? traceOf(events, now) : null });
     }
 
     // ── what is running, and what it costs ──
