@@ -7,7 +7,7 @@
 // what each is for: what agents carry between conversations, how a turn
 // behaves while it runs and what it leaves running after, who handles a
 // failure, and what happens to a conversation that grows long.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, useStore } from "@/state/store";
 import { DEFAULT_TURN_LIMIT, MAX_TASK_BUDGET, MAX_TURN_LIMIT, MIN_TURN_LIMIT } from "@/lib/turn-limit";
 import { DELIVERY_MODES, modeWords, type DeliveryMode } from "@/lib/deliveryModes";
@@ -429,6 +429,93 @@ function MidTurnMessages() {
   );
 }
 
+/** An engine a room on Auto could ask (GET /api/room-router). */
+interface RouterChoice {
+  id: string;
+  name: string;
+  kind: string;
+  model: string | null;
+  small: boolean;
+  ready: boolean;
+  /** Bloks AI, which is paid from the plan's allowance. */
+  allowance: boolean;
+}
+
+/** What one choice costs, said before it is made. */
+function routerCost(choice: RouterChoice | null): string {
+  if (!choice) {
+    return "A small model from an engine the room's agents already use, so its messages go nowhere new. One short call for each message that names nobody.";
+  }
+  const model = choice.model ?? "its model";
+  if (choice.allowance) return `One short call to ${choice.name} for each message that names nobody, from your Bloks AI allowance.`;
+  if (choice.kind === "claudeAgent") {
+    return `One short call to ${model} for each message that names nobody, on your Claude plan. Each call starts Claude Code, which can take longer than Auto waits; then the lead answers.`;
+  }
+  if (choice.small) return `One short call to ${model} for each message that names nobody, billed to your ${choice.name} key. A small model: usually a fraction of a cent.`;
+  return `One short call to ${model} for each message that names nobody, billed like any other use of ${choice.name}. Not a small model, so it costs more and may be slower.`;
+}
+
+/**
+ * Which engine a room set to Auto asks to pick who answers
+ * (server/room-route.ts). The room's own engines unless changed: the
+ * words go nowhere they were not already going, and a person who wants
+ * one fast model for every room can name it here.
+ */
+function RoomRouter() {
+  const { state, dispatch } = useStore();
+  const chosen = state.config?.rooms?.router ?? null;
+  const [choices, setChoices] = useState<RouterChoice[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let live = true;
+    api("/api/room-router")
+      .then((r: { choices?: RouterChoice[] }) => live && setChoices(r.choices ?? []))
+      .catch(() => live && setChoices([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const save = (router: string | null) => {
+    setSaving(true);
+    setError("");
+    api("/api/config", { method: "PUT", body: JSON.stringify({ rooms: { router } }) })
+      .then((status) => dispatch({ type: "configStatus", config: status }))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
+      .finally(() => setSaving(false));
+  };
+  const picked = chosen ? (choices?.find((c) => c.id === chosen) ?? null) : null;
+  // an engine chosen and since removed still shows, so the row says why
+  // every Auto room is on its lead
+  const gone = Boolean(chosen && choices && !picked);
+  return (
+    <SettingRow
+      label="Auto picks with"
+      info="In a room set to Auto, a message that names nobody goes first to a small model, which picks who answers from each agent's name, role and brief and the last few messages. It has 2.5 seconds; if it runs out, is unsure or can't be reached, the lead answers. Naming someone with @ never asks it."
+      description={gone ? "That engine is no longer here, so Auto rooms are on their lead. Choose another." : routerCost(picked)}
+      error={error}
+      control={
+        <SettingsSelect
+          aria-label="Auto picks with"
+          value={chosen ?? "room"}
+          disabled={saving || choices === null}
+          onChange={(e) => save(e.target.value === "room" ? null : e.target.value)}
+          className="w-[220px]"
+        >
+          <option value="room">The room's own engines</option>
+          {gone && chosen && <option value={chosen}>An engine since removed</option>}
+          {(choices ?? []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.model ? `${c.name}, ${c.model}` : c.name}
+              {c.ready ? "" : " (not signed in)"}
+            </option>
+          ))}
+        </SettingsSelect>
+      }
+    />
+  );
+}
+
 /**
  * What happens to the subagents and commands an agent starts in the
  * background once its reply is done (server/background-work.ts), for
@@ -578,6 +665,9 @@ export function BehaviourPage() {
         <SharedChanges />
       </SettingsGroup>
       <BackgroundWork />
+      <SettingsGroup title="Rooms" footnote="Each room chooses who answers in its own menu: everyone, only the lead, or Auto.">
+        <RoomRouter />
+      </SettingsGroup>
       <SettingsGroup title="When something fails">
         <IncidentDesk />
       </SettingsGroup>

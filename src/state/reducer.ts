@@ -10,6 +10,7 @@ import type { BlokColor, BlokExpression, BlokShape } from "@/lib/mascot";
 import type { LaneContext } from "@/lib/contextCard";
 import type { CodexSpeed, CodexSpeedStatus } from "@/lib/codexSpeed";
 import type { Effort } from "@/lib/effort";
+import type { RoomAnswers, RoomRoute } from "@/lib/roomRoute";
 import { resolveSettingsPage } from "../lib/settingsPages.ts";
 
 export type { BlokColor, BlokShape } from "@/lib/mascot";
@@ -129,6 +130,9 @@ export interface Message {
   /** Sent while a turn ran: whether it went in, stopped the turn, or
    * waited, and the quiet line that says so (server/delivery.ts). */
   delivery?: { route: "steered" | "stopped" | "queued"; why: string; line: string };
+  /** In a room set to Auto: who a message naming nobody went to and why,
+   * or that the lead took it (server/room-route.ts). */
+  route?: RoomRoute;
   /** Queued, but still waiting when Bloks restarted and too old to send
    * on its own (server/index.ts, recoverQueued). */
   unsent?: boolean;
@@ -452,6 +456,8 @@ export interface ConfigStatus {
   /** What happens to words sent mid-turn, for agents that have not
    * chosen (server/delivery.ts). */
   delivery?: { mode: "auto" | "interrupt" | "queue"; askModel?: boolean };
+  /** The engine a room set to Auto asks; null is the room's own. */
+  rooms?: { router: string | null };
   /** Count-only cards for overlapping turns with no own files. On by default. */
   changes?: { showShared: boolean };
   /** How long a silent tool call may hold a turn, in minutes; 0 is never.
@@ -633,8 +639,12 @@ export interface Blok {
   id: string;
   name: string;
   memberIds: string[];
-  /** Unaddressed messages wake only the lead. */
+  /** Unaddressed messages wake only the lead. True for Auto as well,
+   * whose fallback is the lead; `answers` says which. */
   leadOnly?: boolean;
+  /** Who answers a message naming nobody. Absent on a room from before
+   * Auto, which reads leadOnly (answersOf in src/lib/roomRoute.ts). */
+  answers?: RoomAnswers;
   /** The member crowned for this room. Null or absent means the most
    * senior leads (src/lib/roomLead.ts). */
   leadId?: string | null;
@@ -668,7 +678,7 @@ export interface NewRoomPreset {
   name: string;
   memberIds: string[];
   leadId: string | null;
-  leadOnly: boolean;
+  answers: RoomAnswers;
   cwd?: string;
   from: string;
 }
@@ -842,9 +852,9 @@ export type Action =
   | { type: "joinRequest"; roomId: string; pending?: number }
   | { type: "roomTyping"; roomId: string; name: string; at: number }
   | { type: "blokDeleted"; blokId: string }
-  /** `leadId`, `leadOnly` and `cwd` are the room's own settings, chosen
+  /** `leadId`, `answers` and `cwd` are the room's own settings, chosen
    * as it is made rather than found in its header afterwards. */
-  | { type: "createRoom"; name: string; memberIds: string[]; leadId?: string; leadOnly?: boolean; cwd?: string }
+  | { type: "createRoom"; name: string; memberIds: string[]; leadId?: string; answers?: RoomAnswers; cwd?: string }
   | { type: "deleteRoom"; blokId: string }
   | { type: "patchRoom"; blokId: string; patch: { archived?: boolean; name?: string; section?: string | null } }
   /** Where an agent or a room sits in the sidebar: its section, whether

@@ -2,14 +2,16 @@
 // every line is attributed, because who said it is half the meaning.
 import { Notice } from "./chat/Bubble";
 import { useSettingsObservation } from "@/lib/useSettingsObservation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
 import { AlertTriangle } from "@/components/icons";
 import { BookmarkPlus } from "@/components/icons";
 import { FolderOpen } from "@/components/icons";
 import { CalendarClock } from "@/components/icons";
 import { Check } from "@/components/icons";
+import { ChevronDown } from "@/components/icons";
 import { Crown } from "@/components/icons";
+import { Sparkles } from "@/components/icons";
 import { Rows3 } from "@/components/icons";
 import { MessagesSquare } from "@/components/icons";
 import { Loader2 } from "@/components/icons";
@@ -58,8 +60,12 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ROOM_ANSWERS, answersOf, answersWords, routeWords, type RoomAnswers, type RoomRoute } from "@/lib/roomRoute";
 import { replyCounts, replyLabel } from "@/lib/threads";
 import { queuedLine } from "@/lib/when";
 import { cn } from "@/lib/cn";
@@ -155,12 +161,12 @@ function RoomPresence({
   members,
   lead,
   working,
-  leadOnly,
+  answers,
 }: {
   members: Bot[];
   lead: Bot | null;
   working: Bot[];
-  leadOnly: boolean;
+  answers: RoomAnswers;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref);
@@ -218,8 +224,10 @@ function RoomPresence({
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[240px] text-center">
                 {crowned ? `${m.name} leads and has the final call` : m.name}
-                {crowned && leadOnly && (
-                  <span className="block font-normal opacity-75">Answers unless you @name someone</span>
+                {crowned && answers !== "everyone" && (
+                  <span className="block font-normal opacity-75">
+                    {answers === "auto" ? "Answers when Auto can't pick" : "Answers unless you @name someone"}
+                  </span>
                 )}
                 {live && <span className="block font-normal opacity-75">Working now</span>}
               </TooltipContent>
@@ -259,6 +267,66 @@ function HandoffLine({ from, to, ask, onOpen }: { from: string; to: string; ask:
         </span>
         {ask && <span className="truncate">{ask}</span>}
       </button>
+    </div>
+  );
+}
+
+/** What a room on Auto chose for a message that named nobody, on the
+ * side the answer comes from: who it went to and what it read the
+ * message as, or that the lead took it. Pressed, it opens to the reason
+ * and to the others, any of whom one tap names instead. */
+function RouteLine({
+  route,
+  nameOf,
+  others,
+  onMention,
+}: {
+  route: RoomRoute;
+  nameOf: (id: string) => string;
+  /** Who else could have answered, for asking one of them instead. */
+  others: Bot[];
+  onMention: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const detailId = useId();
+  const words = routeWords(route, nameOf);
+  return (
+    <div className="mt-1 flex flex-col items-start pl-9">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={detailId}
+        onClick={() => setOpen((was) => !was)}
+        className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md py-0.5 text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
+      >
+        {route.fallback ? (
+          <Crown size={12} className="shrink-0" />
+        ) : (
+          <Sparkles size={12} className="shrink-0 text-brand-ink" />
+        )}
+        <span className="truncate">{words.line}</span>
+        <ChevronDown size={12} className={cn("shrink-0 transition-transform duration-150", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div id={detailId} className="max-w-[460px] animate-fade-in pb-1 pt-0.5">
+          <p className="text-pretty text-small leading-snug text-muted-foreground">{words.detail}</p>
+          {others.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              <span className="mr-0.5 text-small text-muted-foreground">Ask instead</span>
+              {others.slice(0, 4).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => onMention(m.name)}
+                  className="inline-flex items-center gap-1 rounded-full border bg-card py-0.5 pl-0.5 pr-2 text-small text-foreground transition-[background-color,border-color,scale] duration-150 ease-out hover:border-foreground/20 hover:bg-accent active:scale-[0.97]"
+                >
+                  <AgentAvatar bot={m} size={16} className={m.avatarAt ? undefined : "rounded-[5px]"} />@{m.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -312,13 +380,13 @@ function RoomWelcome({
   name,
   members,
   lead,
-  leadOnly,
+  answers,
   onMention,
 }: {
   name: string;
   members: Bot[];
   lead: Bot | null;
-  leadOnly: boolean;
+  answers: RoomAnswers;
   onMention: (name: string) => void;
 }) {
   const others = members.filter((m) => m.id !== lead?.id).map((m) => m.name);
@@ -363,9 +431,11 @@ function RoomWelcome({
         ))}
       </div>
       <p className="mt-3 max-w-[360px] text-pretty text-caption text-muted-foreground">
-        {leadOnly && lead
-          ? `${lead.name} answers unless you name someone with @.`
-          : "Everyone can answer. Name someone with @ to ask just them."}
+        {answers === "auto" && lead && members.length > 1
+          ? `Auto picks who fits each message, and ${lead.name} answers when it can't. Name someone with @ to choose yourself.`
+          : answers !== "everyone" && lead
+            ? `${lead.name} answers unless you name someone with @.`
+            : "Everyone can answer. Name someone with @ to ask just them."}
       </p>
     </div>
   );
@@ -957,11 +1027,13 @@ export function RoomView({ blok }: { blok: Blok }) {
     }).catch((e: Error) => dispatch({ type: "error", message: e.message }));
   };
 
-  const toggleLeadOnly = () => {
+  const answers = answersOf(blok);
+  const setAnswers = (next: RoomAnswers) => {
+    if (next === answers) return;
     api(`/api/bloks/${blok.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ leadOnly: !blok.leadOnly }),
-    }).catch(() => {});
+      body: JSON.stringify({ answers: next }),
+    }).catch((e: Error) => dispatch({ type: "error", message: e.message }));
   };
 
   // Shown at once in the header and the sidebar, and taken back with the
@@ -1031,6 +1103,14 @@ export function RoomView({ blok }: { blok: Blok }) {
             onReply={setReplyTo}
             onForward={(message, author) => setForwarding({ message, author })}
           />
+          {m.route && !m.deleted && (
+            <RouteLine
+              route={m.route}
+              nameOf={(id) => members.find((b) => b.id === id)?.name ?? "An agent"}
+              others={answering.filter((b) => !m.route!.to.includes(b.id))}
+              onMention={mention}
+            />
+          )}
           {answers && (
             <button
               onClick={() => setLensAnd("forum")}
@@ -1069,7 +1149,7 @@ export function RoomView({ blok }: { blok: Blok }) {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <RoomPresence members={answering} lead={lead} working={working} leadOnly={Boolean(blok.leadOnly)} />
+          <RoomPresence members={answering} lead={lead} working={working} answers={answers} />
           <Button
             variant="ghost"
             size="icon"
@@ -1115,7 +1195,8 @@ export function RoomView({ blok }: { blok: Blok }) {
             onRoutines={() => setShowRoutines(true)}
             onSave={saveToLibrary}
             onExport={exportManifest}
-            onLeadOnly={toggleLeadOnly}
+            answers={answers}
+            onAnswers={setAnswers}
             members={answering}
             lead={lead}
             onLead={makeLead}
@@ -1197,7 +1278,7 @@ export function RoomView({ blok }: { blok: Blok }) {
             name={blok.name}
             members={byLead(answering, lead)}
             lead={answering.length > 1 ? lead : null}
-            leadOnly={Boolean(blok.leadOnly)}
+            answers={answers}
             onMention={mention}
           />
         ) : (
@@ -1399,7 +1480,8 @@ function RoomMenu({
   onRoutines,
   onSave,
   onExport,
-  onLeadOnly,
+  answers,
+  onAnswers,
   members,
   lead,
   onLead,
@@ -1415,7 +1497,9 @@ function RoomMenu({
   onRoutines: () => void;
   onSave: () => void;
   onExport: () => void;
-  onLeadOnly: () => void;
+  /** Who answers a message naming nobody, and the way to change it. */
+  answers: RoomAnswers;
+  onAnswers: (next: RoomAnswers) => void;
   /** Those who can answer, the only ones a crown means anything on. */
   members: Bot[];
   lead: Bot | null;
@@ -1468,10 +1552,35 @@ function RoomMenu({
           <Download size={15} />
           Export team file
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onLeadOnly}>
-          <Crown size={15} />
-          {blok.leadOnly ? "Let everyone answer" : "Only the lead answers"}
-        </DropdownMenuItem>
+        {members.length > 1 && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger icon={<Crown size={15} />} value={answersWords(answers, null).label}>
+              Who answers
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-[260px] max-w-[calc(100vw-24px)]">
+              {ROOM_ANSWERS.map((value) => {
+                const words = answersWords(value, lead?.name ?? null);
+                return (
+                  <DropdownMenuItem
+                    key={value}
+                    role="menuitemradio"
+                    aria-checked={answers === value}
+                    onClick={() => onAnswers(value)}
+                    className="items-start gap-2.5 py-2 [&_svg]:text-inherit"
+                  >
+                    <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center text-brand-ink">
+                      {answers === value && <Check size={14} />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium text-foreground">{words.label}</span>
+                      <span className="block text-pretty text-small leading-snug text-muted-foreground">{words.hint}</span>
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
         {members.length > 1 && (
           <>
             <DropdownMenuSeparator />

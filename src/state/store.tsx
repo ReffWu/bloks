@@ -416,7 +416,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 settings.push(
                   api(`/api/bloks/${blok.id}`, { method: "PATCH", body: JSON.stringify(body) }).catch(showError),
                 );
-              if (action.leadOnly) patch({ leadOnly: true });
+              if (action.answers && action.answers !== "everyone") patch({ answers: action.answers });
               if (action.cwd?.trim()) patch({ cwd: action.cwd.trim() });
               return Promise.all(settings)
                 .then(() => api("/api/bloks"))

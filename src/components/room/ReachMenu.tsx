@@ -3,15 +3,18 @@
 // An agent's composer says there how much the agent asks and which model
 // it runs; a room has several of each, so neither belongs. What a room's
 // next message needs is who it reaches, and that changes as it is typed:
-// everyone, the lead, or exactly who was named. The same word opens the
-// room's one setting about it, and a way to name someone without typing.
+// everyone, the lead, whoever Auto picks, or exactly who was named. The
+// same word opens the room's one setting about it, and a way to name
+// someone without typing.
 import { Check } from "@/components/icons";
 import { Crown } from "@/components/icons";
+import { Sparkles } from "@/components/icons";
 import { Users } from "@/components/icons";
 import { api, type Blok, type Bot } from "@/state/store";
 import { AgentAvatar } from "@/components/Avatar";
 import { quietButton } from "@/components/composer/Shell";
 import { namesLine } from "@/lib/roomVoices";
+import { ROOM_ANSWERS, answersOf, answersWords, type RoomAnswers } from "@/lib/roomRoute";
 import { cn } from "@/lib/cn";
 import {
   DropdownMenu,
@@ -41,14 +44,16 @@ export function ReachMenu({
   lead: Bot | null;
   onMention: (name: string) => void;
 }) {
-  const leadOnly = Boolean(blok.leadOnly);
+  const answers = answersOf(blok);
   const named = reach.kind === "named" ? reach.ids.map((id) => members.find((m) => m.id === id)).filter(Boolean) as Bot[] : [];
   const line =
     reach.kind === "named"
       ? `To ${namesLine(named.map((m) => m.name))}`
       : reach.kind === "lead"
         ? `${lead?.name ?? "The lead"} answers`
-        : reach.kind === "people"
+        : reach.kind === "auto"
+          ? "Auto picks who answers"
+          : reach.kind === "people"
           ? "No agent answers"
           : answering.length === 1
             ? `${answering[0].name} answers`
@@ -62,23 +67,21 @@ export function ReachMenu({
       </span>
     ) : reach.kind === "lead" ? (
       <Crown size={14} className="shrink-0 text-brand-ink" />
+    ) : reach.kind === "auto" ? (
+      <Sparkles size={14} className="shrink-0 text-brand-ink" />
     ) : (
       <Users size={14} className="shrink-0" />
     );
 
-  const setLeadOnly = (next: boolean) => {
-    if (next === leadOnly) return;
-    api(`/api/bloks/${blok.id}`, { method: "PATCH", body: JSON.stringify({ leadOnly: next }) }).catch(() => {});
+  const setAnswers = (next: RoomAnswers) => {
+    if (next === answers) return;
+    api(`/api/bloks/${blok.id}`, { method: "PATCH", body: JSON.stringify({ answers: next }) }).catch(() => {});
   };
-  const choices = [
-    { on: !leadOnly, label: "Everyone", hint: "Anyone can answer. @name to ask one.", pick: () => setLeadOnly(false) },
-    {
-      on: leadOnly,
-      label: "Only the lead",
-      hint: `${lead?.name ?? "The lead"} answers unless you @name someone.`,
-      pick: () => setLeadOnly(true),
-    },
-  ];
+  const choices = ROOM_ANSWERS.map((value) => ({
+    on: answers === value,
+    ...answersWords(value, lead?.name ?? null),
+    pick: () => setAnswers(value),
+  }));
 
   return (
     <DropdownMenu>

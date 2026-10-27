@@ -4,6 +4,7 @@
 // pick members the same way and a test can read them without a screen.
 import type { Blok, Bot, NewRoomPreset } from "@/state/reducer";
 import { roomLead } from "./roomLead.ts";
+import { answersOf } from "./roomRoute.ts";
 
 /** A room holds a working group, not a crowd (MAX_MEMBERS in
  * server/bloks.ts, which refuses a ninth). */
@@ -91,7 +92,7 @@ export function freshStartPreset(room: Blok, bots: readonly Bot[]): NewRoomPrese
     name: room.name,
     memberIds,
     leadId: room.leadId && memberIds.includes(room.leadId) ? room.leadId : null,
-    leadOnly: Boolean(room.leadOnly),
+    answers: answersOf(room),
     ...(folder ? { cwd: folder } : {}),
     from: room.name,
   };

@@ -34,6 +34,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
 import { roomLead } from "@/lib/roomLead";
+import { ROOM_ANSWERS, answersWords, type RoomAnswers } from "@/lib/roomRoute";
 import { MAX_MEMBERS, roomCandidates, togglePicked } from "@/lib/roomEdit";
 
 interface GalleryTeam {
@@ -65,7 +66,7 @@ export function NewRoomDialog() {
   const [tab, setTab] = useState<"agents" | "library">("agents");
   const [name, setName] = useState(preset?.name ?? "");
   const [picked, setPicked] = useState<string[]>(preset?.memberIds ?? []);
-  const [leadOnly, setLeadOnly] = useState(preset?.leadOnly ?? false);
+  const [answers, setAnswers] = useState<RoomAnswers>(preset?.answers ?? "everyone");
   // the member whose crown was tapped; until then the most senior leads
   const [leadId, setLeadId] = useState<string | null>(preset?.leadId ?? null);
   const [folder, setFolder] = useState(preset?.cwd ?? "");
@@ -188,7 +189,7 @@ export function NewRoomDialog() {
       name: name.trim() || defaultName,
       memberIds: picked,
       ...(leadId && picked.includes(leadId) ? { leadId } : {}),
-      ...(leadOnly ? { leadOnly: true } : {}),
+      ...(answers !== "everyone" ? { answers } : {}),
       ...(folder.trim() ? { cwd: folder.trim() } : {}),
     });
   };
@@ -273,17 +274,16 @@ export function NewRoomDialog() {
                   <Segmented
                     aria-label="Who answers"
                     size="sm"
-                    value={leadOnly ? "lead" : "everyone"}
-                    onChange={(v) => setLeadOnly(v === "lead")}
-                    options={[
-                      { value: "everyone", label: "Everyone" },
-                      { value: "lead", label: "Only the lead" },
-                    ]}
+                    value={answers}
+                    onChange={setAnswers}
+                    options={ROOM_ANSWERS.map((value) => ({ value, label: answersWords(value, null).label }))}
                   />
                   <p className="mt-1.5 text-pretty text-small leading-relaxed text-muted-foreground">
-                    {leadOnly
+                    {answers === "lead"
                       ? "Only the lead answers. Use @name to ask someone else."
-                      : "Everyone answers. Use @name to ask one of them."}
+                      : answers === "auto"
+                        ? "A small model picks who fits each message, and the lead answers when it can't. Use @name to choose yourself."
+                        : "Everyone answers. Use @name to ask one of them."}
                   </p>
                 </div>
 

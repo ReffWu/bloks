@@ -5,7 +5,8 @@
 // this reads it the same way, so what the row says is what happens:
 // names count against everyone in the room, longest first and each one
 // used up, so "@Bobby Tables" never also reads as "@Bo". Nobody named
-// means everyone who can answer, or only the lead in a lead-only room.
+// means everyone who can answer, only the lead in a lead-only room, or
+// whoever Auto picks once it is sent, which the row cannot know yet.
 // In a shared room, words that name a person and no agent wake nobody.
 
 export interface Member {
@@ -16,6 +17,8 @@ export interface Member {
 export type Reach =
   | { kind: "named"; ids: string[] }
   | { kind: "lead"; id: string }
+  /** Auto picks once it is sent; `lead` answers when it cannot. */
+  | { kind: "auto"; lead: string }
   | { kind: "everyone" }
   | { kind: "people" };
 
@@ -38,12 +41,15 @@ export function reachOf(
     members,
     lead,
     leadOnly,
+    auto = false,
     people = [],
   }: {
     /** Everyone in the room, archived members too: a name is a name. */
     members: readonly Member[];
     lead: string | null;
     leadOnly: boolean;
+    /** The room is on Auto. */
+    auto?: boolean;
     /** The people a shared room is shared with, and its owner. */
     people?: readonly string[];
   },
@@ -52,6 +58,7 @@ export function reachOf(
   if (named.length) return { kind: "named", ids: named };
   const lower = text.toLowerCase();
   if (people.some((name) => name && lower.includes(`@${name.toLowerCase()}`))) return { kind: "people" };
+  if (auto && lead) return { kind: "auto", lead };
   if (leadOnly && lead) return { kind: "lead", id: lead };
   return { kind: "everyone" };
 }

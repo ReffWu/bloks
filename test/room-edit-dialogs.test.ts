@@ -96,7 +96,7 @@ test("a fresh start fills in the same team, crown, answering and folder, and lea
     name: "Launch",
     memberIds: ["bo", "ada"],
     leadId: "ada",
-    leadOnly: true,
+    answers: "lead",
     cwd: "/work/launch",
     from: "Launch",
   });
@@ -104,14 +104,16 @@ test("a fresh start fills in the same team, crown, answering and folder, and lea
   // a room whose members each used their own folder passes none on
   const plain = freshStartPreset({ ...room, leadId: "gone", leadOnly: undefined, pinnedCwd: null }, bots);
   assert.equal(plain.leadId, null);
-  assert.equal(plain.leadOnly, false);
+  assert.equal(plain.answers, "everyone");
+  // a room on Auto starts again on Auto
+  assert.equal(freshStartPreset({ ...room, answers: "auto" }, bots).answers, "auto");
   assert.equal("cwd" in plain, false);
   // a folder set but not yet pinned by a first turn still counts
   assert.equal(freshStartPreset({ ...room, pinnedCwd: undefined }, bots).cwd, "/work/old");
 });
 
 test("the preset opens the New room dialog filled in, and never outlives it", () => {
-  const preset = { name: "Launch", memberIds: ["ada", "bo"], leadId: null, leadOnly: false, from: "Launch" };
+  const preset = { name: "Launch", memberIds: ["ada", "bo"], leadId: null, answers: "everyone" as const, from: "Launch" };
   let state = reducer(initialState, { type: "toggleNewRoom", open: true, preset });
   assert.equal(state.newRoomOpen, true);
   assert.deepEqual(state.newRoomPreset, preset);

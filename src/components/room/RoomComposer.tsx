@@ -61,6 +61,7 @@ import { cn } from "@/lib/cn";
 import { useDictation, VoiceMeter } from "./Dictation";
 import { ReachMenu } from "./ReachMenu";
 import { reachOf } from "./reach";
+import { answersOf } from "@/lib/roomRoute";
 
 /** Fade whichever edges have more text beyond them, the marks too. */
 function shadeEdges(el: HTMLTextAreaElement) {
@@ -537,6 +538,8 @@ export function RoomComposer({
     members,
     lead: lead?.id ?? null,
     leadOnly: Boolean(blok.leadOnly),
+    // with only one who can answer there is nobody to choose between
+    auto: answersOf(blok) === "auto" && members.filter((m) => !m.archivedAt).length > 1,
     // only a shared room has people to name, and only there does naming
     // one and no agent keep the agents quiet
     people: blok.sharing ? [...people.map((p) => p.name), ...(ownerName ? [ownerName] : [])] : [],
