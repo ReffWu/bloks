@@ -145,7 +145,7 @@ async function withFakes(
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true, maxRetries: 5 });
   }
 }
 
@@ -312,7 +312,7 @@ test("a path is a whole path to a file that runs, and never the Cursor editor", 
     assert.match((checkEnginePath("cline", "/x\n/y", home) as any).error, /characters/);
     assert.match((checkEnginePath("cline", "", home) as any).error, /full path/);
   } finally {
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true, maxRetries: 5 });
   }
 });
 

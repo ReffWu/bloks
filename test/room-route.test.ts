@@ -242,6 +242,7 @@ test("the line said in a chat channel is a quiet one on every platform", () => {
   const line = routeWords(route, nameOf).chat;
   assert.deepEqual(
     CHAT_PLATFORMS.map((p) => outbound(p, { kind: "notice" }, line)),
-    ["_Scout picked: pricing question_", "*Scout picked: pricing question*", "_Scout picked: pricing question_"],
+    // Signal has no markdown, so its quiet line is set apart in brackets
+    ["_Scout picked: pricing question_", "*Scout picked: pricing question*", "_Scout picked: pricing question_", "(Scout picked: pricing question)"],
   );
 });
