@@ -133,6 +133,13 @@ contextBridge.exposeInMainWorld("bloks", {
   quickOpenMain: () => ipcRenderer.invoke("quick:open-main"),
   // an agent's terminal in a window of its own (electron/terminal-window.mjs)
   terminalWindow: (botId) => ipcRenderer.invoke("terminal:window", botId),
+  // the Bloks browser beside the chat (electron/app-browser.mjs): where
+  // its panel is, what the person does in it, and what it is showing
+  browserState: () => ipcRenderer.invoke("browser:state"),
+  browserBounds: (rect) => ipcRenderer.invoke("browser:bounds", rect),
+  browserDo: (action, arg) => ipcRenderer.invoke("browser:do", action, arg),
+  onBrowserState: subscription("browser:state"),
+  onBrowserReveal: subscription("browser:reveal"),
   onQuickOpened: subscription("quick:opened"),
   onNotifyActivate: subscription("notify:activate"),
   // bloks:// links from the website (electron/main.mjs)

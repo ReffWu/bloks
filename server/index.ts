@@ -113,6 +113,7 @@ import { PLAN_LIMITS, ROOM_SHARING_WORDS, membersActive, pausedWords, roomSharin
 import { OwnerPlan } from "./owner-plan.ts";
 import { PlanAccount, planRoute, type Account, type PlanRouteDeps } from "./plan-account.ts";
 import { DesktopLine } from "./desktop-line.ts";
+import { BrowserGate, browserRoute, readBrowserSettings, type BrowserSettings, type Caller as BrowserCaller, type RouteDeps as BrowserRouteDeps } from "./app-browser.ts";
 import { MintLimiter, mintPairing, othersRoute, pairCheck } from "./other-workspaces.ts";
 import { choosableMark, defaultForKind, markRoute, markView, type MarkRouteDeps } from "./workspace-mark.ts";
 import { Reads, type ReadMark } from "./reads.ts";
@@ -5224,6 +5225,7 @@ bus.subscribe((event: RuntimeEvent) => {
       if (mailQueue.length) setTimeout(() => void drainMail(), 0);
       // whatever the agent was given to act with is spent
       agentTokens.revokeTask(event.threadId);
+      if (!handedOver) appBrowserTurnEnded(event.threadId, bot.id);
       // A turn another agent started that ended well without a word to
       // the person leaves nothing to read; anything else marks the chat.
       const codexAgentTurn = event.provider === "codex" && Boolean(origin && origin.turnId === event.turnId && origin.origin === "agent");
@@ -11446,6 +11448,99 @@ const joinClient = new JoinClient(() => relayBase());
 /** Questions for the desktop app that started this server, and its
  * questions for this one (server/desktop-line.ts). No app, no line. */
 const desktopLine = new DesktopLine((process as NodeJS.Process & { parentPort?: { postMessage(message: unknown): void } }).parentPort);
+
+// ── the browser inside the Bloks window (server/app-browser.ts) ──
+// The browser is the desktop app's; this server keeps the workspace's
+// rules for it, asks the person on cards, and tells the person's other
+// clients what it is doing.
+
+/** Which sites agents may use there, and whether a new one asks first:
+ * the workspace's own, beside its config. */
+const APP_BROWSER_FILE = join(DATA_DIR, "app-browser.json");
+let appBrowserSettings: BrowserSettings = (() => {
+  try {
+    return readBrowserSettings(readSaved<Record<string, unknown>>(APP_BROWSER_FILE, {}, isRecord));
+  } catch {
+    // unreadable is the careful default, never "anything goes"
+    return readBrowserSettings({});
+  }
+})();
+
+function saveAppBrowserSettings(next: BrowserSettings) {
+  writeFileAtomic(APP_BROWSER_FILE, `${JSON.stringify(next, null, 2)}\n`, 0o600);
+  appBrowserSettings = next;
+  broadcast({ kind: "browser.settings", settings: next });
+}
+
+/** Where the app saves this workspace's downloads. The app writes there
+ * (electron/main.mjs names the same folder); this only says where. */
+const APP_BROWSER_DOWNLOADS = join(DATA_DIR, "browser-downloads");
+const appBrowserGate = new BrowserGate();
+/** What the app last said about the browser: its tabs by address and
+ * title, who drives, and the downloads. Never what is on a page. */
+let appBrowserState: { control?: { by?: string; botId?: string } } | null = null;
+let appBrowserFrame: { jpeg: string; at: number } | null = null;
+
+function noteAppBrowser(state: unknown) {
+  appBrowserState = state && typeof state === "object" ? (state as typeof appBrowserState) : null;
+  appBrowserGate.noteState(appBrowserState);
+  broadcast({ kind: "browser.app", state: appBrowserState });
+}
+
+/** A small picture of the tab on screen, for a phone looking on. Taken
+ * at most every second and a half, however many look. */
+async function appBrowserThumbnail(): Promise<{ jpeg: string; at: number } | null> {
+  if (appBrowserFrame && Date.now() - appBrowserFrame.at < 1500) return appBrowserFrame;
+  const asked = desktopLine.ask("browser.thumbnail", {}, 5_000);
+  const answer = asked ? await asked : null;
+  if (typeof answer?.jpeg !== "string" || !answer.jpeg) return null;
+  appBrowserFrame = { jpeg: answer.jpeg, at: Date.now() };
+  return appBrowserFrame;
+}
+
+/**
+ * Why a turn's credential may not drive the Bloks browser, or null when
+ * it may. The browser is signed in as the owner, so only a turn the
+ * owner started, in a conversation of the owner's: never a member's, a
+ * shared room's, an unlisted email's or a Telegram person's.
+ */
+function appBrowserRefusal(token: AgentToken): string | null {
+  const bot = store.bot(token.botId);
+  if (!bot || bot.archivedAt) return "this agent cannot use the Bloks browser";
+  const requester = laneRequester.get(token.taskId) ?? askedLast.get(token.taskId) ?? "owner";
+  const theirs = "The Bloks browser is signed in as the owner, so only a turn the owner started can use it.";
+  if (requester !== "owner") return theirs;
+  if (laneTelegramPerson.has(token.taskId) || laneTelegramGroup.has(token.taskId) || laneTelegramDelegate.has(token.taskId)) return theirs;
+  const room = activeRoom.get(token.taskId);
+  if (bloks.bloks.some((b) => b.sharing && (b.id === room || b.lanes?.[token.botId] === token.taskId))) return theirs;
+  return null;
+}
+
+/** Where each browser card is, to settle it once it is answered. */
+const appBrowserCards = new Map<string, { threadId: string; messageId: string }>();
+
+/** The card that asks, in the conversation the agent is speaking in. */
+function postAppBrowserCard(caller: Extract<BrowserCaller, { kind: "agent" }>, card: { requestId: string; title: string; subtitle: string; options: string[] }) {
+  const room = activeRoom.get(caller.taskId);
+  const threadId = room ?? caller.taskId;
+  const message = store.appendMessage(threadId, {
+    role: "bot",
+    kind: "options",
+    ...(room ? { from: caller.botId } : {}),
+    card: { title: card.title, subtitle: card.subtitle, options: card.options, requestId: card.requestId },
+  });
+  appBrowserCards.set(card.requestId, { threadId, messageId: message.id });
+  broadcast({ kind: "message", threadId, message });
+}
+
+/** The agent is done with the browser when its turn is: the panel stops
+ * saying it is browsing, and what the turn was allowed goes with it. */
+function appBrowserTurnEnded(taskId: string, botId: string) {
+  appBrowserGate.endTurn(taskId);
+  if (appBrowserState?.control?.by === "agent" && appBrowserState.control.botId === botId) {
+    void desktopLine.ask("browser", { command: { action: "done" }, driver: { botId, name: "" } }, 5_000)?.catch(() => {});
+  }
+}
 
 /** The workspace's mark, for the owner's phone (server/workspace-mark.ts):
  * the app decides, since it knows every other workspace's mark. */
@@ -19764,8 +19859,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     );
     if (!verdict.ok) return json(res, 403, { error: verdict.reason });
     // Reading is free; changing the workspace is counted, so a pair of
-    // agents cannot message each other in a circle all afternoon.
-    if (method !== "GET" && !agentTokens.spend(asAgent)) {
+    // agents cannot message each other in a circle all afternoon. A step
+    // in the Bloks browser changes nothing of the workspace's and starts
+    // nobody's turn, and a page takes dozens of them, so it is not
+    // counted: the sites and fields it may reach are its bounds
+    // (server/app-browser.ts).
+    if (method !== "GET" && path !== "/api/agent/browser" && !agentTokens.spend(asAgent)) {
       const direct = method === "POST" && path.match(/^\/api\/bots\/([\w-]+)\/messages$/);
       if (direct && direct[1] !== asAgent.botId) reservedDirect = true;
       else return json(res, 429, {
@@ -19967,6 +20066,36 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
                 : null;
       if (!answer) return json(res, 404, { error: "no such route" });
       return json(res, answer.ok === false ? (answer as unknown as { status: number }).status : 200, answer);
+    }
+
+    // ── the browser inside the Bloks window (server/app-browser.ts) ──
+    // An agent's commands, the person's view of it from any of their
+    // devices, its settings, and another app on this computer driving it.
+    if (path === "/api/agent/browser" || path === "/api/browser" || path.startsWith("/api/browser/")) {
+      const browserDeps: BrowserRouteDeps = {
+        available: () => desktopLine.available && !HOSTED,
+        ask: (payload, timeoutMs) => desktopLine.ask("browser", payload, timeoutMs),
+        settings: () => appBrowserSettings,
+        allowSite: (host) => {
+          if (!appBrowserSettings.allow.includes(host)) saveAppBrowserSettings({ ...appBrowserSettings, allow: [...appBrowserSettings.allow, host] });
+        },
+        ownPort: () => PORT,
+        gate: appBrowserGate,
+        postCard: postAppBrowserCard,
+        agent: asAgent
+          ? {
+              caller: { kind: "agent", botId: asAgent.botId, name: store.bot(asAgent.botId)?.name ?? "An agent", taskId: asAgent.taskId },
+              refused: appBrowserRefusal(asAgent),
+            }
+          : null,
+        local: local && !viaRelay,
+        lastState: () => appBrowserState,
+        saveSettings: saveAppBrowserSettings,
+        downloadsDir: () => APP_BROWSER_DOWNLOADS,
+        thumbnail: appBrowserThumbnail,
+      };
+      const answered = await browserRoute(method, path, () => readBody(req), browserDeps);
+      if (answered) return json(res, answered.status, answered.body);
     }
 
     // ── events stream ──
@@ -23095,6 +23224,25 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         const action = body.behavior === "allow" || body.message === "Let in" ? "allow" : "decline";
         await decideTelegramAdmission(bot.id, id, action);
         return json(res, 200, { ok: true });
+      }
+      // A card the Bloks browser raised (server/app-browser.ts): the
+      // person's answer lets the agent's waiting action go on, or not.
+      // The owner's own app only; an agent's credential is refused above.
+      if (requestId.startsWith("browser:")) {
+        if (asAgent) return json(res, 403, { error: "that is the person's to answer" });
+        const always = body.behavior === "answer" && typeof body.message === "string" && /^Always allow /.test(body.message);
+        const decision = body.behavior === "allow" ? "allow" : always ? "always" : "deny";
+        const heard = appBrowserGate.answer(requestId, decision);
+        const where = appBrowserCards.get(requestId);
+        appBrowserCards.delete(requestId);
+        const card = where ? store.messagesFor(where.threadId).find((msg) => msg.id === where.messageId) : undefined;
+        if (where && card?.card && !card.card.answered) {
+          const answered = !heard ? CLOSED_UNANSWERED : decision === "deny" ? (body.message === "Dismissed by user." ? "Dismissed" : "Deny") : decision === "always" ? body.message : "Allow";
+          const patched = store.patchMessage(where.threadId, card.id, { card: { ...card.card, answered } });
+          if (patched) broadcast({ kind: "message.patch", threadId: where.threadId, message: patched });
+        }
+        withYou({ bot });
+        return json(res, 200, heard ? { ok: true, outcome: "delivered" } : { ok: false, outcome: "unavailable" });
       }
       // An ask this run of Bloks never raised is not one anything is
       // waiting on: a card from before a restart, say. A new engine
@@ -28676,6 +28824,10 @@ type ParentPort = { on(event: "message", listener: (message: { data?: { kind?: u
   // a question asked or answered over the line (server/desktop-line.ts)
   if (desktopLine.heard(message?.data)) return;
   if (message?.data?.kind === "stop") shutDown();
+  // the Bloks browser's tabs and who drives them, as the app sees them
+  // (server/app-browser.ts): for the agent waiting on the person, and
+  // for the person's other clients
+  if (message?.data?.kind === "browser.state") noteAppBrowser((message.data as { state?: unknown }).state);
   // a picture of the Mac's screen, asked for by macFrame
   if (message?.data?.kind === "screen.frame") {
     const said = message.data as unknown as { id?: unknown; jpeg?: unknown };

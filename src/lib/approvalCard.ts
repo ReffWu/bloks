@@ -172,6 +172,11 @@ const RISKY: Array<[RegExp, string]> = [
   [/\bdrop\s+(table|database|schema)\b/i, "This one deletes data from a database."],
   [/\btruncate\s+table\b/i, "This one deletes data from a database."],
   [/\bchmod\s+-R\b|\bchown\s+-R\b/, "This one changes permissions on everything under a folder."],
+  // the Bloks browser's cards for a field the person decides on
+  // (server/app-browser.ts): never a yes on Enter
+  [/^Type into a password field on \S+ in the Bloks browser$/, "This one types a password into a website."],
+  [/^Type into a payment field on \S+ in the Bloks browser$/, "This one types card details into a website."],
+  [/^Upload .+ to \S+ in the Bloks browser$/, "This one hands one of your files to a website."],
 ];
 
 export function riskOf(kind: ApprovalKind, text: string | undefined): string | undefined {

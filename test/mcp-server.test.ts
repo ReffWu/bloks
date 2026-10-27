@@ -68,6 +68,18 @@ describe("bloks-mcp", () => {
     const names = result.tools.map((t: any) => t.name).sort();
     assert.deepEqual(names, [
       "ask_agent",
+      "browser_click",
+      "browser_open",
+      "browser_press",
+      "browser_read",
+      "browser_screenshot",
+      "browser_scroll",
+      "browser_select",
+      "browser_snapshot",
+      "browser_switch_tab",
+      "browser_tabs",
+      "browser_type",
+      "browser_wait",
       "list_agents",
       "list_rooms",
       "list_skills",
@@ -110,6 +122,12 @@ describe("bloks-mcp", () => {
     assert.match(answer.text, /Release notes drafted/);
     assert.match((await tool("read_conversation", { agent: "Writer" })).text, /You: Draft the release notes/);
     assert.match((await tool("search", { query: "release notes" })).text, /Writer/);
+  });
+
+  test("the Bloks browser, with no desktop app behind this workspace, says where it is", async () => {
+    const opened = await tool("browser_open", { url: "https://example.com" });
+    assert.equal(opened.isError, true);
+    assert.match(opened.text, /part of the Bloks desktop app/);
   });
 
   test("an unknown agent is a readable error, and the rest answer plainly", async () => {

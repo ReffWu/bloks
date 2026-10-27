@@ -34,6 +34,7 @@ import {
   ShareMenu,
   systemPreferences,
   utilityProcess,
+  WebContentsView,
 } from "electron";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
@@ -65,6 +66,7 @@ import {
 import { HOSTED_TARGET, OWN_LOCAL_KINDS, ServerAsks, othersFor, pairRefusal } from "./server-line.mjs";
 import { terminalQuery } from "./terminal-window.mjs";
 import { conversationTarget, createNotch, notchPlatform } from "./notch.mjs";
+import { AppBrowser, allowedForAgent, downloadName, partitionFor, refusedNavigation } from "./app-browser.mjs";
 import os from "node:os";
 
 // vendored by scripts/bundle-updater.mjs: the packaged app has no
@@ -527,6 +529,7 @@ function runFor(id) {
       handName(run);
       handMark(run);
       handAttention(run);
+      handBrowser(run);
       setStatus(run, "running");
       pointWindows(run.id);
     },
@@ -571,6 +574,7 @@ function launch(id) {
     if (up) handName(run);
     if (up) handMark(run);
     if (up) handAttention(run);
+    if (up) handBrowser(run);
     setStatus(run, up ? "running" : "failed");
     return up;
   });
@@ -842,6 +846,8 @@ async function answerServer(id, child, said) {
     else if (said.what === "attention") reply = attentionFromServer(id, said);
     else if (said.what === "workspaces") reply = await othersForPhone(id);
     else if (said.what === "pair") reply = await pairForPhone(id, said.target, said.device);
+    else if (said.what === "browser") reply = await browserCommand(id, said);
+    else if (said.what === "browser.thumbnail") reply = await browserThumbnail(id);
     else reply = { error: "The app does not answer that.", status: 404 };
   } catch (error) {
     reply = { error: String(error?.message ?? error), status: error?.status ?? 409 };
@@ -1834,6 +1840,8 @@ async function deleteWorkspace(id) {
   // out of it first, so nothing is showing a workspace on its way out
   if (shownId === ws.id) await switchWorkspace(PERSONAL_ID);
   await halt(ws.id);
+  // its browser, and every sign-in it kept, go with it
+  await forgetBrowser(ws.id).catch(() => {});
   registry = removeWorkspace(registry, ws.id).registry;
   saveRegistry();
   waitingCounts.delete(ws.id);
@@ -2514,6 +2522,455 @@ const pageLogBudget = lineBudget();
 handle("app:log", (_event, text) => {
   if (typeof text === "string" && pageLogBudget()) appLog(`page: ${text}`);
 });
+
+// ── the Bloks browser ─────────────────────────────────────────────────
+// A browser in the window, beside the chat, that agents drive and the
+// person watches and takes over (electron/app-browser.mjs has the rules;
+// server/app-browser.ts has the workspace's side of them).
+//
+// Each workspace browses in a session of its own, on disk, so its
+// sign-ins are its own and never the app's: the app's page runs on the
+// default session with the preload's bridge, and nothing here shares
+// either. A tab is a WebContentsView with no preload at all, sandboxed,
+// that the page in the window places by telling this process where its
+// panel is (browser:bounds). Agents reach a tab through its debugger,
+// asked by the workspace's server over the line it already has.
+
+/** Each workspace's browser, made the first time it is wanted. */
+const browsers = new Map();
+
+/** Permissions a page in the Bloks browser may have. Everything else
+ * (camera, microphone, location, notifications, devices) is refused: a
+ * page an agent opened should not be able to ask the person for any. */
+const BROWSER_GRANTS = new Set(["fullscreen", "clipboard-sanitized-write"]);
+
+/** Every port a Bloks server on this computer answers on, and the app's
+ * own page: none of them is ever loaded in, or fetched from, a tab. */
+function ownPorts() {
+  const ports = [];
+  for (const run of servers.values()) if (run.port) ports.push(run.port);
+  if (remotePort) ports.push(remotePort);
+  try {
+    ports.push(Number(new URL(DEV_URL).port));
+  } catch {
+    /* no development page */
+  }
+  return ports;
+}
+
+/** Where a workspace's downloads go, made private on first use. The
+ * server names the same folder (server/index.ts APP_BROWSER_DOWNLOADS). */
+function downloadsDir(ws) {
+  const dir = path.join(ws.dataDir, "browser-downloads");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return dir;
+}
+
+function browserFor(id) {
+  const had = browsers.get(id);
+  if (had) return had;
+  const ws = id ? entryOf(id) : null;
+  if (!ws || isRemoteKind(ws.kind) || !ws.dataDir) return null;
+  const ses = session.fromPartition(partitionFor(id));
+  const held = { id, ses, views: new Map(), bounds: null, win: null, stateTimer: null, browser: null };
+  held.browser = new AppBrowser({
+    makeTab: (tabId) => makeBrowserTab(held, tabId),
+    onChange: () => browserChanged(held),
+    ownPorts,
+  });
+  guardBrowserSession(held, ws);
+  browsers.set(id, held);
+  return held;
+}
+
+/** The rules every page in a workspace's browser lives under. */
+function guardBrowserSession(held, ws) {
+  const { ses } = held;
+  ses.setPermissionRequestHandler((_contents, permission, callback) => callback(BROWSER_GRANTS.has(permission)));
+  ses.setPermissionCheckHandler((_contents, permission) => BROWSER_GRANTS.has(permission));
+  // Sites that refuse "embedded" browsers read the Electron token in the
+  // user agent; without it this is the Chromium it is.
+  ses.setUserAgent(ses.getUserAgent().replace(/\s(Electron|bloks|Bloks)\/\S+/g, ""));
+  // A page may not reach a Bloks server even as a picture or a fetch:
+  // the origin checks would refuse it, and this means it never gets
+  // as far as asking.
+  ses.webRequest.onBeforeRequest({ urls: ["*://127.0.0.1/*", "*://localhost/*", "*://[::1]/*"] }, (details, callback) => {
+    callback({ cancel: Boolean(refusedNavigation(details.url, { ownPorts: ownPorts() })) });
+  });
+  ses.on("will-download", (_event, item) => {
+    let dir;
+    try {
+      dir = downloadsDir(ws);
+    } catch {
+      return item.cancel();
+    }
+    const name = downloadName(item.getFilename(), (taken) => fs.existsSync(path.join(dir, taken)));
+    const file = path.join(dir, name);
+    item.setSavePath(file);
+    const control = held.browser.control;
+    const id = `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const note = (state) =>
+      held.browser.noteDownload({
+        id,
+        name,
+        path: file,
+        bytes: item.getReceivedBytes(),
+        total: item.getTotalBytes(),
+        state,
+        at: Date.now(),
+        ...(control.by === "agent" ? { by: control.name } : {}),
+      });
+    note("progressing");
+    item.on("updated", (_e, state) => note(state === "interrupted" ? "interrupted" : "progressing"));
+    item.once("done", (_e, state) => note(state === "completed" ? "completed" : state === "cancelled" ? "cancelled" : "interrupted"));
+  });
+}
+
+/** One tab: a view with no bridge of ours, and its debugger for agents. */
+function makeBrowserTab(held, tabId) {
+  const view = new WebContentsView({
+    webPreferences: {
+      partition: partitionFor(held.id),
+      contextIsolation: true,
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      sandbox: true,
+      webviewTag: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      // an agent drives it with the panel closed too, and a throttled
+      // page answers its debugger slowly
+      backgroundThrottling: false,
+    },
+  });
+  view.setVisible(false);
+  const wc = view.webContents;
+  try {
+    wc.debugger.attach("1.3");
+  } catch (error) {
+    appLog(`browser: debugger did not attach: ${error?.message ?? error}`);
+  }
+  held.views.set(tabId, view);
+  const tab = {
+    cdp: (method, params = {}) => boundedCdp(wc, method, params),
+    url: () => (wc.isDestroyed() ? "" : wc.getURL()),
+    title: () => (wc.isDestroyed() ? "" : wc.getTitle()),
+    load: (url) => void wc.loadURL(url).catch(() => {}),
+    loading: () => !wc.isDestroyed() && wc.isLoading(),
+    canGoBack: () => !wc.isDestroyed() && wc.navigationHistory.canGoBack(),
+    canGoForward: () => !wc.isDestroyed() && wc.navigationHistory.canGoForward(),
+    close: () => {
+      held.views.delete(tabId);
+      try {
+        held.win?.contentView.removeChildView(view);
+      } catch {
+        /* the window went first */
+      }
+      if (!wc.isDestroyed()) wc.close();
+    },
+  };
+  const changed = () => held.browser.changed();
+  for (const name of ["did-start-loading", "did-stop-loading", "page-title-updated", "did-navigate-in-page", "render-process-gone"]) wc.on(name, changed);
+  wc.on("did-navigate", () => {
+    // a new document: the last snapshot's refs name nothing on it
+    tab.refs = new Map();
+    changed();
+  });
+  // Where a tab may go, on every navigation the page starts and every
+  // redirect: never somewhere refusedNavigation names, and, while an
+  // agent drives it, nowhere its workspace's lists keep agents from.
+  const guard = (event, url) => {
+    if (refusedNavigation(url, { ownPorts: ownPorts() })) return event.preventDefault();
+    const control = held.browser.control;
+    if (control.by === "agent" && tab.by?.kind === "agent" && !allowedForAgent(url, tab.policy)) {
+      tab.blocked = url;
+      event.preventDefault();
+    }
+  };
+  wc.on("will-navigate", (event) => guard(event, event.url));
+  wc.on("will-redirect", (event) => {
+    if (event.isMainFrame) guard(event, event.url);
+  });
+  // A page that opens a window gets a tab of ours instead, under the same
+  // rules, driven by whoever drove the tab that opened it.
+  wc.setWindowOpenHandler(({ url }) => {
+    if (refusedNavigation(url, { ownPorts: ownPorts() })) return { action: "deny" };
+    const control = held.browser.control;
+    if (control.by === "agent" && !allowedForAgent(url, tab.policy)) {
+      tab.blocked = url;
+      return { action: "deny" };
+    }
+    try {
+      const opened = held.browser.newTab(tab.by ?? { kind: "person" });
+      opened.policy = tab.policy;
+      opened.load(url);
+    } catch {
+      /* the most tabs there may be are open */
+    }
+    return { action: "deny" };
+  });
+  // The person reaching into a tab an agent is driving takes it over:
+  // the agent's next step waits for it back. Its own steps' input
+  // events are not that (tab.acting, AppBrowser.command).
+  wc.on("input-event", (_event, input) => {
+    if (tab.acting || held.browser.control.by !== "agent") return;
+    if (input.type === "mouseDown" || input.type === "keyDown" || input.type === "rawKeyDown") held.browser.takeOver();
+  });
+  if (held.win && !held.win.isDestroyed()) {
+    try {
+      held.win.contentView.addChildView(view);
+    } catch {
+      /* placed when the panel next says where it is */
+    }
+  }
+  return tab;
+}
+
+/** A server that just came up hears what its browser is doing, so an
+ * agent asking after a restart is not told about nothing. */
+function handBrowser(run) {
+  const held = browsers.get(run?.id);
+  if (!held || !run.child) return;
+  try {
+    run.child.postMessage({ kind: "browser.state", state: held.browser.state() });
+  } catch {
+    /* it hears the next change */
+  }
+}
+
+/** One protocol call, bounded: a page that never answers its debugger
+ * fails the agent's step instead of holding it, and the turn, forever. */
+function boundedCdp(wc, method, params) {
+  let timer;
+  return Promise.race([
+    wc.debugger.sendCommand(method, params).finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`the page did not answer ${method} in time`)), 20_000);
+    }),
+  ]);
+}
+
+/** The windows showing workspace `id`, which hear its browser's state. */
+const windowsShowing = (id) =>
+  BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && isWorkspaceWindow(w) && (windowWorkspace.get(w) ?? shownId) === id);
+
+/** Said to the window and to the workspace's server, a beat after the
+ * last change, so a page loading is one message rather than twenty. */
+function browserChanged(held) {
+  placeTabs(held);
+  clearTimeout(held.stateTimer);
+  held.stateTimer = setTimeout(() => {
+    const state = held.browser.state();
+    for (const win of windowsShowing(held.id)) win.webContents.send("browser:state", state);
+    try {
+      servers.get(held.id)?.child?.postMessage({ kind: "browser.state", state });
+    } catch {
+      /* the server is restarting; it hears the next change */
+    }
+  }, 120);
+}
+
+/** The tab on screen where the panel is, and every other tab hidden. */
+function placeTabs(held) {
+  const win = held.win;
+  if (!win || win.isDestroyed()) return;
+  const zoom = win.webContents.getZoomFactor?.() ?? 1;
+  for (const [tabId, view] of held.views) {
+    try {
+      if (!win.contentView.children.includes(view)) win.contentView.addChildView(view);
+      const shown = Boolean(held.bounds) && tabId === held.browser.state().activeTabId;
+      if (shown) {
+        const { x, y, width, height } = held.bounds;
+        view.setBounds({ x: Math.round(x * zoom), y: Math.round(y * zoom), width: Math.round(width * zoom), height: Math.round(height * zoom) });
+      }
+      view.setVisible(shown);
+    } catch {
+      /* a view on its way out */
+    }
+  }
+}
+
+/** A workspace's tabs out of the window they were in. */
+function detachBrowser(held) {
+  const win = held.win;
+  held.win = null;
+  held.bounds = null;
+  if (!win || win.isDestroyed()) return;
+  for (const view of held.views.values()) {
+    try {
+      win.contentView.removeChildView(view);
+    } catch {
+      /* already out */
+    }
+  }
+}
+
+/** A rectangle from the page, or null for "not on screen". */
+function boundsFrom(rect) {
+  if (!rect || typeof rect !== "object") return null;
+  const n = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(20_000, Number(v))) : NaN);
+  const out = { x: n(rect.x), y: n(rect.y), width: n(rect.width), height: n(rect.height) };
+  return Object.values(out).some(Number.isNaN) || out.width < 40 || out.height < 40 ? null : out;
+}
+
+/** Windows whose page is leaving: their tabs hide until the page that
+ * replaces it says where its panel is. */
+const watchedForBrowser = new WeakSet();
+function watchWindowForBrowser(win) {
+  if (watchedForBrowser.has(win)) return;
+  watchedForBrowser.add(win);
+  win.webContents.on("did-start-navigation", (event) => {
+    if (!event.isMainFrame || event.isSameDocument) return;
+    for (const held of browsers.values()) {
+      if (held.win !== win) continue;
+      held.bounds = null;
+      placeTabs(held);
+    }
+  });
+  win.once("closed", () => {
+    for (const held of browsers.values()) if (held.win === win) held.win = null;
+  });
+}
+
+handle("browser:state", (event) => browserFor(senderWorkspace(event))?.browser.state() ?? null);
+
+handle("browser:bounds", (event, rect) => {
+  const id = senderWorkspace(event);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!id || !win || !isWorkspaceWindow(win)) return null;
+  const held = browserFor(id);
+  if (!held) return null;
+  watchWindowForBrowser(win);
+  // another workspace's tabs never sit over this one's page
+  for (const other of browsers.values()) if (other !== held && other.win === win) detachBrowser(other);
+  if (held.win !== win) {
+    detachBrowser(held);
+    held.win = win;
+  }
+  held.bounds = boundsFrom(rect);
+  placeTabs(held);
+  return held.browser.state();
+});
+
+/** What the person does in the panel that moves a page an agent may be
+ * driving. */
+const PERSON_STEERS = new Set(["navigate", "selectTab", "closeTab", "back", "forward", "reload", "stop"]);
+
+/** What the person does from the panel. One channel, a fixed set of
+ * actions: the page names one, never a path or a script. */
+handle("browser:do", async (event, action, arg) => {
+  const held = browserFor(senderWorkspace(event));
+  if (!held) return { error: "This workspace has no browser here." };
+  const { browser } = held;
+  const active = browser.active;
+  const wc = active ? held.views.get(active.id)?.webContents : null;
+  const download = () => browser.state().downloads.find((d) => d.id === arg && d.state === "completed");
+  // the person steering while an agent drives is the person taking over
+  if (PERSON_STEERS.has(action) && browser.control.by === "agent") browser.takeOver();
+  switch (action) {
+    case "navigate":
+      return browser.navigate(String(arg ?? ""));
+    case "newTab":
+      browser.newTab({ kind: "person" });
+      return { ok: true };
+    case "closeTab":
+      return { ok: browser.close(String(arg ?? "")) };
+    case "selectTab":
+      return { ok: browser.select(String(arg ?? "")) };
+    case "back":
+      if (wc?.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
+      return { ok: true };
+    case "forward":
+      if (wc?.navigationHistory.canGoForward()) wc.navigationHistory.goForward();
+      return { ok: true };
+    case "reload":
+      wc?.reload();
+      return { ok: true };
+    case "stop":
+      wc?.stop();
+      return { ok: true };
+    case "takeOver":
+      browser.takeOver();
+      return { ok: true };
+    case "giveBack":
+      browser.giveBack();
+      return { ok: true };
+    case "openExternal": {
+      const url = active?.url() ?? "";
+      if (/^https?:\/\//i.test(url)) await shell.openExternal(url);
+      return { ok: true };
+    }
+    case "openDownload": {
+      const found = download();
+      if (found) await shell.openPath(found.path);
+      return { ok: Boolean(found) };
+    }
+    case "revealDownload": {
+      const found = download();
+      if (found) shell.showItemInFolder(found.path);
+      return { ok: Boolean(found) };
+    }
+    case "openDownloads": {
+      const ws = entryOf(held.id);
+      if (ws?.dataDir) await shell.openPath(downloadsDir(ws));
+      return { ok: true };
+    }
+    case "clearDownloads":
+      browser.clearDownloads();
+      return { ok: true };
+    case "forgetSites":
+      // signed out everywhere: cookies, storage and cache, this workspace only
+      await held.ses.clearStorageData();
+      await held.ses.clearCache();
+      return { ok: true };
+    default:
+      return { error: "The browser does not do that." };
+  }
+});
+
+/** A command from the workspace's server: an agent's, or another app's
+ * over MCP. The server checked it and decided the site and the field;
+ * this runs it and says what happened. */
+async function browserCommand(id, said) {
+  const held = browserFor(id);
+  if (!held) return { error: "This workspace has no browser here.", status: 503 };
+  const command = said?.command;
+  if (!command || typeof command.action !== "string") return { error: "That is not a browser command.", status: 400 };
+  const driver = { botId: String(said.driver?.botId ?? ""), name: String(said.driver?.name ?? "An agent") };
+  // the person sees it happen: the panel opens where the workspace is shown
+  if (command.action === "open" && !held.bounds) {
+    for (const win of windowsShowing(id)) win.webContents.send("browser:reveal", { by: driver.name });
+  }
+  return held.browser.command(command, driver);
+}
+
+/** A small picture of the tab on screen, for a phone looking on. */
+async function browserThumbnail(id) {
+  const held = browsers.get(id);
+  const active = held?.browser.active;
+  const wc = active ? held.views.get(active.id)?.webContents : null;
+  if (!wc || wc.isDestroyed()) return { jpeg: null };
+  try {
+    const image = await wc.capturePage();
+    if (image.isEmpty()) return { jpeg: null };
+    return { jpeg: image.resize({ width: 480 }).toJPEG(60).toString("base64") };
+  } catch {
+    return { jpeg: null };
+  }
+}
+
+/** A deleted workspace's browser: its tabs closed, its session emptied. */
+async function forgetBrowser(id) {
+  const held = browsers.get(id);
+  const ses = held?.ses ?? session.fromPartition(partitionFor(id));
+  if (held) {
+    held.browser.closeAll();
+    detachBrowser(held);
+    browsers.delete(id);
+  }
+  await ses.clearStorageData();
+  await ses.clearCache();
+}
 
 // ── permissions the web layer cannot ask for ───────────────────────────
 
