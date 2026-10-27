@@ -96,7 +96,7 @@ export function useBloksAi() {
   const setCap = (member: string, cap: number | null) =>
     api("/api/credits", { method: "PATCH", body: JSON.stringify({ memberCaps: { [member]: cap } }) }).then((next: CreditsStatus) => {
       setStatus(next);
-      toast.success(cap === null ? "Daily cap removed" : "Daily cap saved");
+      toast.success(cap === null ? t("creditsSection.capRemoved") : t("creditsSection.capSaved"));
     });
 
   return { status, loaded, busy, error, load, connect, setBackground, setCap };
@@ -183,9 +183,9 @@ function MemberCapRow({ row, onSave }: { row: MemberRow; onSave: (member: string
   return (
     <SettingRow
       label={row.name}
-      description={`${row.used}. ${row.cap}.`}
+      description={t("creditsSection.memberLine", { used: row.used, cap: row.cap })}
       htmlFor={id}
-      error={cap === undefined ? "A cap is a percent above 0 and at most 100." : problem}
+      error={cap === undefined ? t("creditsSection.capInvalid") : problem}
       control={
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -199,7 +199,7 @@ function MemberCapRow({ row, onSave }: { row: MemberRow; onSave: (member: string
               }}
               onKeyDown={(e) => e.key === "Enter" && save()}
               placeholder={t("creditsSection.noCap")}
-              aria-label={`Daily cap for ${row.name}, as a percent of the month`}
+              aria-label={t("creditsSection.capFor", { name: row.name })}
               aria-invalid={cap === undefined}
               className="h-8 w-24 pr-7 tabular-nums"
             />

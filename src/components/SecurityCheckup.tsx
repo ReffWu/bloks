@@ -20,7 +20,6 @@ import { ShieldCheck } from "@/components/icons";
 import { useStore } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import {
   checkupApi,
   refreshCheckup,
@@ -30,12 +29,12 @@ import {
   type CheckupReport,
 } from "@/lib/securityCheckup";
 import { SettingsGroup } from "./SettingsLayout";
-import { t } from "@/lib/i18n";
+import { formatDate, t, type MessageKey } from "@/lib/i18n";
 
-const LEVEL: Record<CheckupLevel, { label: string; className: string }> = {
-  ok: { label: "OK", className: "bg-success/10 text-success" },
-  look: { label: "Worth a look", className: "bg-warning/15 text-warning" },
-  risky: { label: "Risky", className: "bg-destructive/10 text-destructive" },
+const LEVEL: Record<CheckupLevel, { label: MessageKey; className: string }> = {
+  ok: { label: "securityCheckup.level.ok", className: "bg-success/10 text-success" },
+  look: { label: "securityCheckup.level.look", className: "bg-warning/15 text-warning" },
+  risky: { label: "securityCheckup.level.risky", className: "bg-destructive/10 text-destructive" },
 };
 
 /** Items shown before "and N more": a workspace can have hundreds of
@@ -46,26 +45,28 @@ function LevelPill({ level }: { level: CheckupLevel }) {
   const { label, className } = LEVEL[level];
   return (
     <span className={cn("inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-caption font-medium", className)}>
-      {label}
+      {t(label)}
     </span>
   );
 }
 
 function when(at: number): string {
   const seconds = Math.round((Date.now() - at) / 1000);
-  if (seconds < 45) return "just now";
+  if (seconds < 45) return t("securityCheckup.justNow");
   const minutes = Math.round(seconds / 60);
-  return minutes < 60 ? `${plural(minutes, "minute")} ago` : new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return minutes < 60 ? t("securityCheckup.minutesAgo", { count: minutes }) : formatDate(at, { hour: "numeric", minute: "2-digit" });
 }
 
 function Summary({ report, loading }: { report: CheckupReport; loading: boolean }) {
   const risky = report.findings.filter((f) => f.level === "risky").length;
   const look = report.findings.filter((f) => f.level === "look").length;
   const line = risky
-    ? `${plural(risky, "risky finding")}${look ? `, and ${look} worth a look` : ""}.`
+    ? look
+      ? t("securityCheckup.summary.riskyAndLook", { count: risky, look })
+      : t("securityCheckup.summary.risky", { count: risky })
     : look
-      ? `Nothing risky. ${plural(look, "finding")} worth a look.`
-      : "All clear.";
+      ? t("securityCheckup.summary.look", { count: look })
+      : t("securityCheckup.summary.allClear");
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border bg-card px-4 py-3.5">
       {risky ? (
@@ -75,11 +76,11 @@ function Summary({ report, loading }: { report: CheckupReport; loading: boolean 
       )}
       <div className="min-w-0 flex-1">
         <div className="text-ui font-medium text-foreground">{line}</div>
-        <div className="text-small text-muted-foreground">Checked {when(report.checkedAt)}.</div>
+        <div className="text-small text-muted-foreground">{t("securityCheckup.checked", { when: when(report.checkedAt) })}</div>
       </div>
       <Button size="sm" variant="secondary" disabled={loading} onClick={() => void refreshCheckup()}>
         {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-        Check again
+        {t("common.checkAgain")}
       </Button>
     </div>
   );
@@ -98,7 +99,7 @@ function Row({ finding }: { finding: CheckupFinding }) {
     try {
       const answered = await run();
       const report = await refreshCheckup(answered ? Promise.resolve(answered) : undefined);
-      if (report?.failed?.length) setError(`Couldn't change ${report.failed.join(", ")}. It may belong to another account.`);
+      if (report?.failed?.length) setError(t("securityCheckup.couldntChange", { names: report.failed.join(", ") }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -161,7 +162,7 @@ function Row({ finding }: { finding: CheckupFinding }) {
               }
             >
               {busy === item.id && <Loader2 size={12} className="animate-spin" />}
-              Forget {item.name}
+              {t("securityCheckup.forgetItem", { name: item.name })}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setForgetting(null)}>
               {t("common.keep")}
@@ -240,7 +241,7 @@ function Row({ finding }: { finding: CheckupFinding }) {
             </li>
           ))}
           {items.length > MAX_ITEMS && (
-            <li className="px-3 py-2 text-small text-muted-foreground">and {items.length - MAX_ITEMS} more</li>
+            <li className="px-3 py-2 text-small text-muted-foreground">{t("securityCheckup.andMore", { count: items.length - MAX_ITEMS })}</li>
           )}
         </ul>
       )}
@@ -261,7 +262,7 @@ export function SecurityCheckup() {
               t("securityCheckup.openTheCheckupOnThe")
             ) : (
               <>
-                <span className="min-w-0 flex-1">Couldn't run the checkup: {error}</span>
+                <span className="min-w-0 flex-1">{t("securityCheckup.couldntRun", { error })}</span>
                 <Button size="sm" variant="secondary" onClick={() => void refreshCheckup()}>
                   {t("common.tryAgain")}
                 </Button>

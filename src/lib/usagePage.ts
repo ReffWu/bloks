@@ -15,6 +15,7 @@
 // be tested without a DOM.
 
 import { planName, planRows, shortTokens, type PlanRow, type PlanUsage } from "./contextCard.ts";
+import { formatDate, formatNumber, t, type MessageKey } from "./i18n.ts";
 
 export type UsageRange = "7d" | "30d" | "90d" | "month";
 export type UsageMetric = "cost" | "tokens" | "turns";
@@ -89,19 +90,22 @@ export interface OwnPrice {
 }
 
 /** Where an estimate's prices come from, said wherever one is shown. */
-export const PRICES_NOTE = "Prices are the providers' list prices, refreshed daily.";
+export function pricesNote(): string {
+  return t("libUsagePage.pricesNote");
+}
 
-export const RANGES: Array<{ value: UsageRange; label: string }> = [
-  { value: "7d", label: "7 days" },
-  { value: "30d", label: "30 days" },
-  { value: "90d", label: "90 days" },
-  { value: "month", label: "This month" },
+// labels as keys, read where they are drawn
+export const RANGES: ReadonlyArray<{ value: UsageRange; label: MessageKey }> = [
+  { value: "7d", label: "libUsagePage.range.7d" },
+  { value: "30d", label: "libUsagePage.range.30d" },
+  { value: "90d", label: "libUsagePage.range.90d" },
+  { value: "month", label: "libUsagePage.range.month" },
 ];
 
-export const METRICS: Array<{ value: UsageMetric; label: string }> = [
-  { value: "cost", label: "Cost" },
-  { value: "tokens", label: "Tokens" },
-  { value: "turns", label: "Turns" },
+export const METRICS: ReadonlyArray<{ value: UsageMetric; label: MessageKey }> = [
+  { value: "cost", label: "libUsagePage.metric.cost" },
+  { value: "tokens", label: "libUsagePage.metric.tokens" },
+  { value: "turns", label: "libUsagePage.metric.turns" },
 ];
 
 /** The Bloks engine's id, whose turns are never priced here. */
@@ -169,15 +173,20 @@ export function valueOf(totals: UsageTotals, metric: UsageMetric): number {
 /** Dollars the way a bill writes them: "$12.40", "$1,204.18", and
  * "under $0.01" for a price too small to write in cents, which a bare
  * "$0.00" would show as free. */
+const CENTS = { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 } as const;
+
 export function money(usd: number): string {
-  if (!Number.isFinite(usd) || usd <= 0) return "$0.00";
-  if (usd < 0.01) return "under $0.01";
-  return `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (!Number.isFinite(usd) || usd <= 0) return formatNumber(0, CENTS);
+  if (usd < 0.01) return t("libUsagePage.under", { amount: formatNumber(0.01, CENTS) });
+  return formatNumber(usd, CENTS);
 }
 
 /** Dollars estimated from tokens: "~$4.20", and "under ~$0.01". */
 export function estimatedMoney(usd: number): string {
-  return money(usd).replace("$", "~$");
+  const about = (amount: number) => t("libUsagePage.about", { amount: formatNumber(amount, CENTS) });
+  if (!Number.isFinite(usd) || usd <= 0) return about(0);
+  if (usd < 0.01) return t("libUsagePage.under", { amount: about(0.01) });
+  return about(usd);
 }
 
 /** Whether a tally's cost is, at least in part, an estimate. */
@@ -188,20 +197,22 @@ export function isEstimate(totals: Pick<UsageTotals, "estimated"> | null | undef
 /** Dollars per million tokens, as a provider's price page writes them:
  * "$3", "$0.15", "$1.25". */
 export function perMillionText(usd: number): string {
-  return `$${usd.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 3 })}`;
+  return formatNumber(usd, { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
 
 /** Dollars on an axis, as short as they can be and still be read. */
 export function axisMoney(usd: number): string {
-  if (usd === 0) return "$0";
+  const dollars = (n: number, min: number, max: number) =>
+    formatNumber(n, { style: "currency", currency: "USD", minimumFractionDigits: min, maximumFractionDigits: max });
+  if (usd === 0) return dollars(0, 0, 0);
   if (usd >= 1_000) return `$${shortTokens(usd)}`;
-  if (usd >= 10) return `$${Math.round(usd)}`;
-  return `$${usd.toFixed(usd < 1 ? 2 : 1).replace(/\.0$/, "")}`;
+  if (usd >= 10) return dollars(Math.round(usd), 0, 0);
+  return usd < 1 ? dollars(usd, 2, 2) : dollars(usd, 0, 1);
 }
 
 /** "1 turn", "12 turns", with the thousands grouped. */
 export function turnsText(n: number): string {
-  return `${n.toLocaleString("en-US")} ${n === 1 ? "turn" : "turns"}`;
+  return t("libUsagePage.turns", { count: n });
 }
 
 /** A metric's figure in full, for the headline and a tooltip. A cost
@@ -209,7 +220,7 @@ export function turnsText(n: number): string {
 export function figure(value: number, metric: UsageMetric, estimated = false): string {
   if (metric === "cost") return estimated ? estimatedMoney(value) : money(value);
   if (metric === "tokens") return shortTokens(value);
-  return value.toLocaleString("en-US");
+  return formatNumber(value);
 }
 
 /** A tally's figure in one metric, an estimate written as one. Nothing
@@ -228,10 +239,11 @@ export function axisFigure(value: number, metric: UsageMetric): string {
 /** A share of a whole, as a percent: "42%", and "under 1%" for a sliver
  * a rounded 0% would hide. */
 export function shareText(part: number, whole: number): string {
-  if (!(whole > 0) || !(part > 0)) return "0%";
+  const percent = (n: number) => formatNumber(n / 100, { style: "percent" });
+  if (!(whole > 0) || !(part > 0)) return percent(0);
   const share = (part / whole) * 100;
-  if (share < 1) return "under 1%";
-  return `${Math.round(share)}%`;
+  if (share < 1) return t("libUsagePage.under", { amount: percent(1) });
+  return percent(Math.round(share));
 }
 
 /**
@@ -242,11 +254,13 @@ export function shareText(part: number, whole: number): string {
 export function deltaLine(now: number, before: number, days: number): { text: string; direction: "up" | "down" | "flat" } | null {
   if (!(before > 0) || !Number.isFinite(now)) return null;
   const change = ((now - before) / before) * 100;
-  const span = `the ${days} ${days === 1 ? "day" : "days"} before`;
-  if (Math.abs(change) < 0.5) return { text: `About the same as ${span}`, direction: "flat" };
+  if (Math.abs(change) < 0.5) return { text: t("libUsagePage.delta.same", { count: days }), direction: "flat" };
   // past ten times, a percent stops meaning anything to anybody
-  if (change >= 900) return { text: `${Math.round(now / before)} times ${span}`, direction: "up" };
-  return { text: `${Math.round(Math.abs(change))}% ${change > 0 ? "more" : "less"} than ${span}`, direction: change > 0 ? "up" : "down" };
+  if (change >= 900) return { text: t("libUsagePage.delta.times", { count: days, times: Math.round(now / before) }), direction: "up" };
+  const percent = formatNumber(Math.round(Math.abs(change)) / 100, { style: "percent" });
+  return change > 0
+    ? { text: t("libUsagePage.delta.more", { count: days, percent }), direction: "up" }
+    : { text: t("libUsagePage.delta.less", { count: days, percent }), direction: "down" };
 }
 
 /**
@@ -259,11 +273,11 @@ export function deltaLine(now: number, before: number, days: number): { text: st
 export function headlineNotes(report: Pick<UsageReport, "total" | "unpricedTurns" | "bloksAiTurns" | "priced">, metric: UsageMetric): string[] {
   const notes = [turnsText(report.total.turns)];
   if (metric === "cost" && report.priced) {
-    notes.push(isEstimate(report.total) ? "estimate from what engines report, and from tokens where they report no price" : "estimate from what engines report", "USD");
-    if (report.unpricedTurns > 0) notes.push(`${turnsText(report.unpricedTurns)} with no price reported`);
+    notes.push(isEstimate(report.total) ? t("libUsagePage.note.estimateWithTokens") : t("libUsagePage.note.estimate"), "USD");
+    if (report.unpricedTurns > 0) notes.push(t("libUsagePage.note.unpriced", { count: report.unpricedTurns }));
   }
-  if (metric === "cost" && report.bloksAiTurns > 0) notes.push(`${turnsText(report.bloksAiTurns)} on Bloks AI, never priced`);
-  if (report.total.unmeasured > 0) notes.push(`${turnsText(report.total.unmeasured)} unmeasured`);
+  if (metric === "cost" && report.bloksAiTurns > 0) notes.push(t("libUsagePage.note.bloksAi", { count: report.bloksAiTurns }));
+  if (report.total.unmeasured > 0) notes.push(t("libUsagePage.note.unmeasured", { count: report.total.unmeasured }));
   return notes;
 }
 
@@ -329,21 +343,23 @@ export function planUses(
 
 /** What the plan side of a PlanUse is called: "Your Pro plan". */
 export function planTitle(plan: string | null): string {
-  return plan ? `Your ${plan} plan` : "Your plan";
+  return plan ? t("libUsagePage.yourNamedPlan", { plan }) : t("libUsagePage.yourPlan");
 }
 
 /** Said under a plan's windows, so they are never read as this
  * workspace's share of them. */
-export const ACCOUNT_WIDE = "Account-wide, so it counts use outside this workspace too.";
+export function accountWide(): string {
+  return t("libUsagePage.accountWide");
+}
 
 /** Said in place of the windows when there is no current reading. */
 export function noPlanReading(engine: string): string {
-  return `${engine} reports no dollar figure on a plan, and there is no current reading of what the plan has left.`;
+  return t("libUsagePage.noPlanReading", { engine });
 }
 
 /** The title of the way to Limits where a plan engine's cost would be. */
 export function seePlanTitle(engine: string): string {
-  return `${engine} reports no dollar figure on a plan. See what the plan has left, in Limits.`;
+  return t("libUsagePage.seePlanTitle", { engine });
 }
 
 // ── dates ──────────────────────────────────────────────────────────────
@@ -355,19 +371,24 @@ export function dayOf(date: string): Date {
 }
 
 /** "Oct 3", for an axis or a row. */
+// a locale given is used as it is (the tests pin one); otherwise the reader's
+function dateIn(at: Date, options: Intl.DateTimeFormatOptions, locale?: string): string {
+  return locale ? at.toLocaleDateString(locale, options) : formatDate(at, options);
+}
+
 export function shortDay(date: string, locale?: string): string {
-  return dayOf(date).toLocaleDateString(locale ?? "en-US", { month: "short", day: "numeric" });
+  return dateIn(dayOf(date), { month: "short", day: "numeric" }, locale);
 }
 
 /** "Fri, Oct 3", for a tooltip. */
 export function longDay(date: string, locale?: string): string {
-  return dayOf(date).toLocaleDateString(locale ?? "en-US", { weekday: "short", month: "short", day: "numeric" });
+  return dateIn(dayOf(date), { weekday: "short", month: "short", day: "numeric" }, locale);
 }
 
 /** "Tops up Nov 1": when a spending limit's month starts again, in the
  * words the composer's notice uses for it. */
 export function topsUpLine(at: number, locale?: string): string {
-  return `Tops up ${new Date(at).toLocaleDateString(locale ?? "en-US", { month: "short", day: "numeric" })}`;
+  return t("libUsagePage.topsUp", { date: dateIn(new Date(at), { month: "short", day: "numeric" }, locale) });
 }
 
 // ── the chart's scale ──────────────────────────────────────────────────

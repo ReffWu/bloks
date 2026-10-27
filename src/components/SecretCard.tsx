@@ -35,7 +35,7 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
   if (!secret) return null;
   const { label, status } = secret;
   const telegram = secret.telegram;
-  const agentName = state.bots.find((bot) => bot.id === botId)?.name ?? "this agent";
+  const agentName = state.bots.find((bot) => bot.id === botId)?.name ?? t("secretCard.thisAgent");
 
   const save = () => {
     if (!value.trim() || busy) return;
@@ -61,7 +61,7 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-ui font-semibold text-foreground">
-              {telegram ? `Connect @${telegram.username ?? telegram.bot} to ${agentName}` : label}
+              {telegram ? t("secretCard.connectBot", { bot: telegram.username ?? telegram.bot, agent: agentName }) : label}
             </div>
             {/* a bot's paste instructions are done with once it is connected */}
             {secret.hint && (!telegram || status === "needs-value") && (
@@ -98,7 +98,7 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && save()}
-                placeholder={telegram ? t("common.pasteTheToken") : `Paste your ${label}`}
+                placeholder={telegram ? t("common.pasteTheToken") : t("secretCard.pasteYour", { label })}
                 autoComplete="off"
                 className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2.5 text-body text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring/60"
               />
@@ -112,14 +112,14 @@ export function SecretCard({ botId, message }: { botId: string; message: Message
             </div>
             <div className="mt-1.5 flex items-center gap-1 text-caption text-muted-foreground/80">
               <ShieldCheck size={11} />
-              Kept on {thisComputer()}, never shown in chat.
+              {t("secretCard.keptOn", { computer: thisComputer() })}
             </div>
             {error && <div className="mt-1 text-small text-destructive">{error}</div>}
           </>
         )}
         {status === "saved" && telegram && (
           <div className="mt-1.5 text-small text-muted-foreground">
-            Pair with @{telegram.username ?? telegram.bot} from {agentName}'s Telegram settings.{" "}
+            {t("secretCard.pairWith", { bot: telegram.username ?? telegram.bot, agent: agentName })}{" "}
             <button
               onClick={() => {
                 dispatch({ type: "select", id: botId });

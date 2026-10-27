@@ -20,10 +20,10 @@ import { ProviderMark } from "@/components/ProviderIcons";
 import { api, useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { planName, planRows, type PlanRow, type PlanUsage } from "@/lib/contextCard";
-import { TOP_UP_WORDS, percentText, renewsLine, type BloksAiStatus } from "@/lib/credits";
+import { percentText, renewsLine, topUpWords, type BloksAiStatus } from "@/lib/credits";
 import { resetLine } from "@/lib/usageNotice";
-import { PRICES_NOTE, estimatedMoney, money, onPlan, perMillionText, topsUpLine, type SpendLimitRow } from "@/lib/usagePage";
-import { t } from "@/lib/i18n";
+import { estimatedMoney, money, onPlan, perMillionText, pricesNote, topsUpLine, type SpendLimitRow } from "@/lib/usagePage";
+import { formatNumber, t } from "@/lib/i18n";
 
 /** A share as a bar. Warning colour near the end, where it matters. */
 function Bar({ fill, tone = "brand", label }: { fill: number; tone?: "brand" | "warning" | "destructive"; label: string }) {
@@ -112,7 +112,7 @@ export function PlanLine({ row }: { row: PlanRow }) {
     <LimitLine
       label={row.label}
       fill={row.fill}
-      tone={row.note === "Limit reached" ? "destructive" : row.near || row.fill >= 0.8 ? "warning" : "brand"}
+      tone={row.note !== null && row.note === t("contextCard.limitReached") ? "destructive" : row.near || row.fill >= 0.8 ? "warning" : "brand"}
       used={row.used}
       note={[row.note, row.reset].filter(Boolean).join(" · ")}
     />
@@ -164,7 +164,7 @@ function PlanCards({ plans, badgeFor }: { plans: Record<string, PlanUsage> | nul
               rows.map((row) => <PlanLine key={row.id} row={row} />)
             ) : (
               <p className="text-pretty text-small text-muted-foreground">
-                {plans === null ? t("usageLimits.reading") : `Nothing heard yet. ${engine.displayName} says what its plan has left as it answers.`}
+                {plans === null ? t("usageLimits.reading") : t("usageLimits.nothingHeardYet", { engine: engine.displayName })}
               </p>
             )}
           </LimitCard>
@@ -204,7 +204,7 @@ function BloksAiCard({ badge }: { badge: string | null }) {
             href={status.checkoutUrl}
             target="_blank"
             rel="noreferrer"
-            title={TOP_UP_WORDS}
+            title={topUpWords()}
             className="inline-flex h-7 shrink-0 items-center rounded-md border px-2.5 text-body font-medium text-foreground transition-[background-color,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]"
           >
             {t("usageLimits.topUp")}
@@ -217,7 +217,7 @@ function BloksAiCard({ badge }: { badge: string | null }) {
               label={t("usageLimits.thisMonth")}
               fill={used / 100}
               tone={status.low || used >= 100 ? "warning" : "brand"}
-              used={`${percentText(used)} used`}
+              used={t("usageLimits.percentUsed", { percent: percentText(used) })}
               note={renews ? renews[0].toUpperCase() + renews.slice(1) : null}
             />
             {today !== null && daily !== null && (
@@ -225,7 +225,7 @@ function BloksAiCard({ badge }: { badge: string | null }) {
                 label={t("usageLimits.today")}
                 fill={today / daily}
                 tone={today >= daily ? "destructive" : today / daily >= 0.8 ? "warning" : "brand"}
-                used={`${percentText((today / daily) * 100)} of today's limit`}
+                used={t("usageLimits.ofTodaysLimit", { percent: percentText((today / daily) * 100) })}
                 note={resetLine(status.dailyResetsAt ?? null, now)}
               />
             )}
@@ -233,7 +233,7 @@ function BloksAiCard({ badge }: { badge: string | null }) {
         ) : (
           <p className="text-small text-muted-foreground">{status.problem ?? t("usageLimits.whatIsLeftCouldNot")}</p>
         )}
-        <p className="text-caption text-muted-foreground">{TOP_UP_WORDS}</p>
+        <p className="text-caption text-muted-foreground">{topUpWords()}</p>
       </LimitCard>
     </Group>
   );
@@ -290,10 +290,10 @@ function DollarInput({
  * so far was priced at. */
 function estimateLine(row: SpendLimitRow): string | null {
   if (row.ownPrice) {
-    const own = `Your price, ${perMillionText(row.ownPrice.input)} in and ${perMillionText(row.ownPrice.output)} out per million tokens, comes ahead of the list.`;
-    return row.estimated ? `Estimated from tokens. ${own}` : own;
+    const prices = { input: perMillionText(row.ownPrice.input), output: perMillionText(row.ownPrice.output) };
+    return row.estimated ? t("usageLimits.estimatedOwnPrice", prices) : t("usageLimits.ownPrice", prices);
   }
-  return row.estimated ? `Estimated from tokens. ${PRICES_NOTE}` : null;
+  return row.estimated ? t("usageLimits.estimatedListPrices", { note: pricesNote() }) : null;
 }
 
 function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string | null; onSaved: (rows: SpendLimitRow[]) => void }) {
@@ -332,7 +332,7 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
     const typedIn = priceIn.trim();
     const typedOut = priceOut.trim();
     if (Boolean(typedIn) !== Boolean(typedOut)) {
-      setError("Give both prices per million tokens, or leave both empty.");
+      setError(t("usageLimits.giveBothPrices"));
       return;
     }
     if (typedIn && (typedIn !== String(row.ownPrice?.input ?? "") || typedOut !== String(row.ownPrice?.output ?? ""))) {
@@ -342,7 +342,7 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
       close();
       return;
     }
-    save(change, `Saved for ${row.name}`);
+    save(change, t("usageLimits.savedFor", { name: row.name }));
   };
 
   const tone = row.reached ? "destructive" : row.level === "warn" ? "warning" : "brand";
@@ -366,8 +366,10 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
           label={t("usageLimits.thisMonth")}
           fill={row.spent / row.limit}
           tone={tone}
-          used={`${spentText} of ${money(row.limit)}`}
-          note={`${row.usedPercent ?? 0}% used · ${topsUpLine(row.resetsAt)}`}
+          used={t("usageLimits.spentOf", { spent: spentText, limit: money(row.limit) })}
+          note={`${t("usageLimits.percentUsed", {
+            percent: formatNumber((row.usedPercent ?? 0) / 100, { style: "percent", maximumFractionDigits: 2 }),
+          })} · ${topsUpLine(row.resetsAt)}`}
         />
       ) : (
         <div className="flex items-baseline justify-between gap-3">
@@ -377,12 +379,11 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
       )}
       {estimate && <p className="text-pretty text-small text-muted-foreground">{estimate}</p>}
       {row.reached && !editing && (
-        <p className="text-pretty text-small text-destructive">New turns on {row.name} are paused until you raise the limit or the month turns.</p>
+        <p className="text-pretty text-small text-destructive">{t("usageLimits.pausedUntilRaised", { name: row.name })}</p>
       )}
       {!row.reportsPrice && (
         <p className="text-pretty text-small text-muted-foreground">
-          {row.name} has not been priced here yet. A limit counts the price the provider reports, or its tokens at the providers' list prices. For a
-          model the list does not have, set your own price per million tokens.
+          {t("usageLimits.notPricedYet", { name: row.name })}
         </p>
       )}
       {row.limit === null && row.reportsPrice && !editing && (
@@ -421,7 +422,7 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
                   variant="ghost"
                   className="ml-auto h-8 hover:text-destructive"
                   disabled={busy}
-                  onClick={() => save({ usd: null }, `Limit removed from ${row.name}`)}
+                  onClick={() => save({ usd: null }, t("usageLimits.limitRemovedFrom", { name: row.name }))}
                 >
                   {t("usageLimits.removeLimit")}
                 </Button>
@@ -466,7 +467,7 @@ function SpendCard({ row, badge, onSaved }: { row: SpendLimitRow; badge: string 
                 />
               </div>
             </div>
-            <p className="text-caption text-muted-foreground">Used ahead of the list for every model on {row.name}. Leave both empty to use the list.</p>
+            <p className="text-caption text-muted-foreground">{t("usageLimits.usedAheadOfList", { name: row.name })}</p>
           </fieldset>
           <div className="flex items-center gap-2">
             <Button type="submit" size="sm" className="h-8" disabled={busy}>
@@ -533,11 +534,11 @@ export function UsageLimits({ focusBot, plans }: { focusBot: string | null; plan
   const bot = focusBot ? state.bots.find((b) => b.id === focusBot) : undefined;
   const runsOn = bot?.modelSelection.instanceId ?? null;
   const onCredits = bot && runsOn === "bloks";
-  const badgeFor = (instanceId: string) => (bot && !onCredits && runsOn === instanceId ? `${bot.name}'s engine` : null);
+  const badgeFor = (instanceId: string) => (bot && !onCredits && runsOn === instanceId ? t("usageLimits.agentsEngine", { name: bot.name }) : null);
   return (
     <div className="flex flex-col gap-8">
       <PlanCards plans={plans} badgeFor={badgeFor} />
-      <BloksAiCard badge={bot && onCredits ? `${bot.name}'s engine` : null} />
+      <BloksAiCard badge={bot && onCredits ? t("usageLimits.agentsEngine", { name: bot.name }) : null} />
       <SpendCards badgeFor={badgeFor} />
     </div>
   );

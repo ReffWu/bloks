@@ -10,6 +10,8 @@
 // person's own Claude plan or key. (The engine id and the routes still say
 // credits, which is what it was called first.)
 
+import { formatDate, formatNumber, inEnglish, t } from "./i18n.ts";
+
 export const CREDITS_ENGINE = "bloks";
 export const BLOKS_AI_NAME = "Bloks AI";
 
@@ -84,8 +86,8 @@ export interface BloksAiStatus {
 /** A share, as a whole percent unless it is under one. */
 export function percentText(value: number): string {
   const v = Math.max(0, Math.min(100, value));
-  if (v > 0 && v < 1) return "under 1%";
-  return `${Math.round(v)}%`;
+  if (v > 0 && v < 1) return t("credits.underPercent", { percent: formatNumber(0.01, { style: "percent" }) });
+  return formatNumber(Math.round(v) / 100, { style: "percent" });
 }
 
 /** The meter's share: this month's, or all that is left when the service
@@ -97,15 +99,15 @@ export function meterShare(status: Pick<BloksAiStatus, "monthlyLeftPercent" | "l
 /** The meter's words: "62% of this month left". */
 export function meterLine(status: Pick<BloksAiStatus, "monthlyLeftPercent" | "leftPercent">): string {
   const share = meterShare(status);
-  return share <= 0 ? "Nothing left this month" : `${percentText(share)} of this month left`;
+  return share <= 0 ? t("credits.nothingLeft") : t("credits.leftThisMonth", { percent: percentText(share) });
 }
 
 /** Top-ups still to spend, in months' worth: "plus 1 top-up". */
 export function topUpsLine(topUps: number | null | undefined): string | null {
   if (!topUps || !(topUps > 0)) return null;
   const n = Math.round(topUps * 10) / 10;
-  if (n === 0) return "plus part of a top-up";
-  return `plus ${n} ${n === 1 ? "top-up" : "top-ups"}`;
+  if (n === 0) return t("credits.plusPartOfTopUp");
+  return t("credits.plusTopUps", { count: n });
 }
 
 /** When the month starts again: "renews Nov 19". */
@@ -113,19 +115,25 @@ export function renewsLine(renewsAt: number | null | undefined, locale?: string)
   if (!renewsAt) return null;
   const at = new Date(renewsAt);
   if (Number.isNaN(at.getTime())) return null;
-  return `renews ${at.toLocaleDateString(locale ?? "en-US", { month: "short", day: "numeric" })}`;
+  const options = { month: "short", day: "numeric" } as const;
+  return t("credits.renews", { date: locale ? at.toLocaleDateString(locale, options) : formatDate(at, options) });
 }
 
 /** The line under the meter, joined: "plus 1 top-up · renews Nov 19". */
 export function allowanceNote(status: Pick<BloksAiStatus, "topUps" | "renewsAt" | "low">, locale?: string): string | null {
   const parts = [topUpsLine(status.topUps), renewsLine(status.renewsAt, locale)].filter(Boolean) as string[];
-  if (!parts.length) return status.low ? "Running low." : null;
+  if (!parts.length) return status.low ? t("credits.runningLow") : null;
   const line = parts.join(" · ");
   return line[0].toUpperCase() + line.slice(1);
 }
 
-/** What Top up buys, said without an amount. */
-export const TOP_UP_WORDS = "Adds another month's worth, on bloks.dev.";
+/** What Top up buys, said without an amount, in the reader's language. */
+export function topUpWords(): string {
+  return t("credits.topUpWords");
+}
+
+/** The same in English, for a caller that has not moved to topUpWords(). */
+export const TOP_UP_WORDS = inEnglish("credits.topUpWords");
 
 // ── a team ────────────────────────────────────────────────────────────
 
@@ -142,9 +150,9 @@ export interface MemberRow {
 export function memberRows(members: BloksAiStatus["members"]): MemberRow[] {
   return (members ?? []).map((m) => ({
     member: m.member,
-    name: m.name ?? "Someone no longer in a room",
-    used: `${percentText(m.usedPercent)} used this month`,
-    cap: m.dailyCapPercent === null ? "No daily cap" : `Up to ${percentText(m.dailyCapPercent)} a day`,
+    name: m.name ?? t("credits.someoneGone"),
+    used: t("credits.usedThisMonth", { percent: percentText(m.usedPercent) }),
+    cap: m.dailyCapPercent === null ? t("credits.noDailyCap") : t("credits.upToADay", { percent: percentText(m.dailyCapPercent) }),
     capPercent: m.dailyCapPercent,
   }));
 }
@@ -152,16 +160,17 @@ export function memberRows(members: BloksAiStatus["members"]): MemberRow[] {
 /** A cap as typed: a share of the month above nothing and at most all of
  * it, or null for none (an empty field). Undefined is not a cap. */
 export function parseCap(text: string): number | null | undefined {
-  const t = text.trim().replace(/%$/, "").trim();
-  if (!t) return null;
-  const n = Number(t);
+  const typed = text.trim().replace(/%$/, "").trim();
+  if (!typed) return null;
+  const n = Number(typed);
   if (!Number.isFinite(n) || n <= 0 || n > 100) return undefined;
   return Math.round(n * 10) / 10;
 }
 
 // ── a team on personal sign-ins ───────────────────────────────────────
 
-export const TEAM_SIGN_IN_WARNING = "A personal Claude or ChatGPT sign-in is for one person. For a team, use an API key or Bloks AI.";
+/** The warning in English; teamSignInWarning() says it in the reader's language. */
+export const TEAM_SIGN_IN_WARNING = inEnglish("credits.teamSignInWarning");
 
 /** Whether an agent runs on somebody's personal sign-in: Claude Code on
  * its own login, or Codex on its ChatGPT one (server/bloks-ai.ts). */
@@ -173,7 +182,7 @@ export function onPersonalSignIn(bot: AgentLike, instances: EngineLike[]): boole
 /** The warning on a hosted team workspace, for these agents, or null. */
 export function teamSignInWarning(opts: { hosted: boolean; team: boolean | null | undefined; agents: AgentLike[]; instances: EngineLike[] }): string | null {
   if (!opts.hosted || opts.team !== true) return null;
-  return opts.agents.some((a) => onPersonalSignIn(a, opts.instances)) ? TEAM_SIGN_IN_WARNING : null;
+  return opts.agents.some((a) => onPersonalSignIn(a, opts.instances)) ? t("credits.teamSignInWarning") : null;
 }
 
 /** Where a dismissed warning is remembered on this computer. */

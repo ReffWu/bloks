@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
 import { ConnectionHeader, HealthLine } from "./ConnectionKit";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
 
 type Status = { mode: "local" } | { mode: "remote"; host: string; connected: boolean; revoked?: boolean };
 
@@ -44,9 +44,9 @@ export function RemoteSection() {
   const connect = async () => {
     if (busy || !pasted) return;
     const yes = await confirm({
-      title: "Use that Bloks?",
-      body: `Bloks restarts. Agents on ${thisComputer()} wait here, paused, until you switch back.`,
-      confirmLabel: "Switch",
+      title: t("remoteSection.useThatBloksTitle"),
+      body: t("remoteSection.useThatBloksBody", { computer: thisComputer() }),
+      confirmLabel: t("remoteSection.switch"),
     });
     if (!yes) return;
     setBusy(true);
@@ -59,9 +59,9 @@ export function RemoteSection() {
 
   const leave = async () => {
     const yes = await confirm({
-      title: `Use ${thisComputer()} instead?`,
-      body: "Bloks restarts. Nothing on either computer is deleted.",
-      confirmLabel: "Switch",
+      title: t("remoteSection.useThisInsteadTitle", { computer: thisComputer() }),
+      body: t("remoteSection.useThisInsteadBody"),
+      confirmLabel: t("remoteSection.switch"),
     });
     if (yes) bridge.remoteDisconnect?.();
   };
@@ -77,8 +77,8 @@ export function RemoteSection() {
             title={t("remoteSection.whereYourBloksRuns")}
             says={
               status.revoked
-                ? `On ${status.host}, which no longer knows this app. Pair it again.`
-                : `On ${status.host}, through Bloks Cloud. Agents keep working while ${thisComputer()} sleeps.`
+                ? t("remoteSection.onHostRevoked", { host: status.host })
+                : t("remoteSection.onHost", { host: status.host, computer: thisComputer() })
             }
             health={
               <HealthLine
@@ -88,12 +88,12 @@ export function RemoteSection() {
             }
           />
           <Button size="sm" variant="secondary" className="mt-3" disabled={busy} onClick={() => void leave()}>
-            Use {thisComputer()} instead
+            {t("remoteSection.useThisInstead", { computer: thisComputer() })}
           </Button>
         </>
       ) : (
         <>
-          <ConnectionHeader icon={icon} title={t("remoteSection.whereYourBloksRuns")} says={`On ${thisComputer()}, so agents pause when it sleeps.`} />
+          <ConnectionHeader icon={icon} title={t("remoteSection.whereYourBloksRuns")} says={t("remoteSection.onThisComputer", { computer: thisComputer() })} />
           <form
             className="mt-3 flex gap-2"
             onSubmit={(e) => {
@@ -116,7 +116,7 @@ export function RemoteSection() {
             {/* grey until there is a link to use, then plainly the thing to press */}
             <Button type="submit" variant={pasted ? "brand" : "secondary"} disabled={busy || !pasted}>
               {busy && <Loader2 size={13} className="animate-spin" />}
-              Use that Bloks
+              {t("remoteSection.useThatBloks")}
             </Button>
           </form>
           <details className="group mt-2.5">
@@ -125,8 +125,11 @@ export function RemoteSection() {
               {t("remoteSection.how")}
             </summary>
             <p className="mt-1.5 max-w-[60ch] pl-4 text-pretty text-small leading-relaxed text-muted-foreground">
-              Install <Code>{t("remoteSection.bloksServer")}</Code> on a computer that stays on. Run <Code>{t("remoteSection.bloksServerPair")}</Code> there and
-              paste the link it prints. Your agents then keep working when {thisComputer()} sleeps.
+              {tr("remoteSection.howSteps", {
+                server: <Code>bloks-server</Code>,
+                command: <Code>bloks-server pair</Code>,
+                computer: thisComputer(),
+              })}
             </p>
           </details>
         </>

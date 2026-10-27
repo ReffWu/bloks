@@ -127,7 +127,7 @@ test("a moved workspace names the keys to enter again, each once", () => {
   assert.equal(keysToEnter(["OpenRouter key"]), "Keys stay behind. Enter this again where it lands: OpenRouter key.");
   assert.equal(
     keysToEnter(["OpenRouter key", "Saved secret A", "OpenRouter key", "Slack bot token"]),
-    "Keys stay behind. Enter these again where it lands: OpenRouter key, Saved secret A and Slack bot token.",
+    "Keys stay behind. Enter these again where it lands: OpenRouter key, Saved secret A, and Slack bot token.",
   );
   assert.equal(kindLabel("move"), "For moving");
 });

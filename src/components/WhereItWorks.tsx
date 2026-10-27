@@ -35,7 +35,7 @@ import { cn } from "@/lib/cn";
 import { placeLine, type PlaceState, type Workplace, type WorkplaceStatus } from "@/lib/workplace";
 import { HealthLine, type Health } from "./ConnectionKit";
 import { SettingRow, SettingsSelect } from "./SettingsLayout";
-import { t } from "@/lib/i18n";
+import { formatDate, t, tr, type MessageKey } from "@/lib/i18n";
 
 interface TestCheck {
   id: string;
@@ -89,11 +89,11 @@ interface Draft {
   command: string;
 }
 
-const IDLE_CHOICES: Array<[number, string]> = [
-  [15, "After 15 minutes idle"],
-  [60, "After an hour idle"],
-  [240, "After four hours idle"],
-  [0, "Never"],
+const IDLE_CHOICES: Array<[number, MessageKey]> = [
+  [15, "whereItWorks.idle.15"],
+  [60, "whereItWorks.idle.60"],
+  [240, "whereItWorks.idle.240"],
+  [0, "whereItWorks.idle.never"],
 ];
 
 function draftOf(view: View, agentName: string): Draft {
@@ -171,16 +171,16 @@ const TONES: Record<PlaceState, Health> = {
   unreachable: "issue",
 };
 
-const STATE_WORDS: Record<PlaceState, string> = {
-  idle: "Not started yet",
-  starting: "Starting",
-  ready: "Ready",
-  working: "Working",
-  stopped: "Stopped",
-  removed: "Removed",
-  dropped: "Connection dropped",
-  reconnecting: "Reconnecting",
-  unreachable: "Cannot reach it",
+const STATE_WORDS: Record<PlaceState, MessageKey> = {
+  idle: "whereItWorks.state.idle",
+  starting: "whereItWorks.state.starting",
+  ready: "whereItWorks.state.ready",
+  working: "whereItWorks.state.working",
+  stopped: "whereItWorks.state.stopped",
+  removed: "whereItWorks.state.removed",
+  dropped: "whereItWorks.state.dropped",
+  reconnecting: "whereItWorks.state.reconnecting",
+  unreachable: "whereItWorks.state.unreachable",
 };
 
 /** A short aside under a row, as the rest of the page has them. */
@@ -268,7 +268,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
       .then((next: View) => {
         setView(next);
         setDraft(draftOf(next, bot.name));
-        toast.success(next.workplace ? "Saved. The next message runs there." : "Saved. It works on this computer again.");
+        toast.success(next.workplace ? t("whereItWorks.savedThere") : t("whereItWorks.savedHere"));
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(null));
@@ -291,10 +291,10 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
     setBusy("signin");
     api(`/api/bots/${bot.id}/workplace/sign-in`, { method: "POST", body: JSON.stringify({ workplace: placeOf(draft) }) })
       .then((r: { opened: boolean; command: string }) => {
-        if (r.opened) toast.success("Terminal is open with the sign-in running. Test again when it says you are in.");
+        if (r.opened) toast.success(t("whereItWorks.terminalOpen"));
         else {
           void navigator.clipboard?.writeText(r.command).catch(() => {});
-          toast.info(`Run this in a terminal to sign in there: ${r.command}`, { duration: 12_000 });
+          toast.info(t("whereItWorks.runToSignIn", { command: r.command }), { duration: 12_000 });
         }
       })
       .catch((e: Error) => setError(e.message))
@@ -314,14 +314,14 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
       }
       const plan = asked.plan as { files: Array<{ from: string; to: string }>; says: string; fingerprint: string };
       const yes = await confirm({
-        title: `Copy your ${view.engine.name} sign-in there?`,
+        title: t("whereItWorks.copySignInTitle", { engine: view.engine.name }),
         // the plan's own words, which name each file at both ends
         body: plan.says,
-        confirmLabel: "Copy sign-in",
+        confirmLabel: t("whereItWorks.copySignIn"),
       });
       if (!yes) return;
       await api(`/api/bots/${bot.id}/workplace/sign-in-copy`, { method: "POST", body: JSON.stringify({ consent: true, fingerprint: plan.fingerprint }) });
-      toast.success("Copied. Test again to check it signs in there.");
+      toast.success(t("whereItWorks.copiedTestAgain"));
       load();
     } catch (e) {
       setError((e as Error).message);
@@ -335,11 +335,9 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
       const place = view.workplace;
       const lost = place?.kind === "docker" && place.source === "image" && place.folder === "copy";
       const yes = await confirm({
-        title: `Remove ${place?.kind === "docker" ? place.name : "the container"}?`,
-        body: lost
-          ? "Its working folder was copied in, so anything it changed there goes with it. A fresh container is made with the next message."
-          : "Its working folder is on this computer and stays. A fresh container is made with the next message.",
-        confirmLabel: "Remove",
+        title: place?.kind === "docker" ? t("whereItWorks.removeNamed", { name: place.name }) : t("whereItWorks.removeTheContainer"),
+        body: lost ? t("whereItWorks.removeLosesCopy") : t("whereItWorks.removeKeepsFolder"),
+        confirmLabel: t("common.remove"),
         destructive: true,
       });
       if (!yes) return;
@@ -356,7 +354,6 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
   const savedPlace = view.workplace;
   const off = !view.support.ok;
   const remote = draft.kind !== "here";
-  const where = savedPlace?.kind === "ssh" ? savedPlace.host : savedPlace?.kind === "docker" ? `container ${savedPlace.name}` : null;
   const madeHere = savedPlace?.kind === "docker" && savedPlace.source === "image";
 
   return (
@@ -364,10 +361,12 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
       label={t("whereItWorks.whereItWorks")}
       description={
         savedPlace
-          ? `Its engine, commands and files are ${savedPlace.kind === "ssh" ? `on ${where} over SSH` : `in ${where}`}, not on this computer.`
+          ? savedPlace.kind === "ssh"
+            ? t("whereItWorks.filesOverSsh", { host: savedPlace.host })
+            : t("whereItWorks.filesInContainer", { name: savedPlace.name })
           : t("whereItWorks.itsEngineCommandsAndFiles")
       }
-      control={status && savedPlace && !dirty ? <HealthLine tone={TONES[status.state]} label={STATE_WORDS[status.state]} title={status.detail ?? placeLine(status, false) ?? undefined} /> : null}
+      control={status && savedPlace && !dirty ? <HealthLine tone={TONES[status.state]} label={t(STATE_WORDS[status.state])} title={status.detail ?? placeLine(status, false) ?? undefined} /> : null}
     >
       <Segmented<Kind>
         aria-label={t("whereItWorks.whereItWorks")}
@@ -375,7 +374,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
         value={draft.kind}
         onChange={(kind) => set({ kind })}
         options={[
-          { value: "here", label: "This computer" },
+          { value: "here", label: t("whereItWorks.kind.here") },
           { value: "docker", label: "Docker", disabled: off, ...(off ? { title: (view.support as { why: string }).why } : {}) },
           { value: "ssh", label: "SSH", disabled: off, ...(off ? { title: (view.support as { why: string }).why } : {}) },
         ]}
@@ -391,8 +390,8 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
             value={draft.source}
             onChange={(source) => set({ source })}
             options={[
-              { value: "image", label: "An image Bloks runs" },
-              { value: "container", label: "A container you run" },
+              { value: "image", label: t("whereItWorks.source.image") },
+              { value: "container", label: t("whereItWorks.source.container") },
             ]}
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -420,20 +419,14 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
                 value={draft.folder}
                 onChange={(folder) => set({ folder })}
                 options={[
-                  { value: "mount", label: "Mount it" },
-                  { value: "copy", label: "Copy it in once" },
+                  { value: "mount", label: t("whereItWorks.folder.mount") },
+                  { value: "copy", label: t("whereItWorks.folder.copy") },
                 ]}
               />
               <p className="mt-1 text-pretty text-small text-muted-foreground">
-                {draft.folder === "mount" ? (
-                  <>
-                    <span className="font-mono">{view.localFolderShown ?? view.localFolder}</span> is the folder in the container: what it changes is changed here, and undo works.
-                  </>
-                ) : (
-                  <>
-                    A copy of <span className="font-mono">{view.localFolderShown ?? view.localFolder}</span> when the container is made. What it changes stays in the container.
-                  </>
-                )}
+                {tr(draft.folder === "mount" ? "whereItWorks.folder.mountNote" : "whereItWorks.folder.copyNote", {
+                  folder: <span className="font-mono">{view.localFolderShown ?? view.localFolder}</span>,
+                })}
               </p>
             </div>
           )}
@@ -458,7 +451,9 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
                   <span className="block text-pretty text-small text-muted-foreground">
                     {draft.network
                       ? t("whereItWorks.onItCanReachThe")
-                      : `Off: it reaches only Bloks${view.lineHosts?.length ? ` and ${view.engine.name}'s own service (${view.lineHosts.join(", ")})` : ""}. Needs Node in the image.`}
+                      : view.lineHosts?.length
+                        ? t("whereItWorks.networkOffWithHosts", { engine: view.engine.name, hosts: view.lineHosts.join(", ") })
+                        : t("whereItWorks.networkOff")}
                   </span>
                 </span>
                 <Switch
@@ -474,13 +469,13 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
                   <SettingsSelect id={`${ids}-idle`} className="w-[220px]" value={String(draft.idleMinutes)} onChange={(e) => set({ idleMinutes: Number(e.target.value) })}>
                     {IDLE_CHOICES.map(([minutes, label]) => (
                       <option key={minutes} value={minutes}>
-                        {label}
+                        {t(label)}
                       </option>
                     ))}
                   </SettingsSelect>
                 </Field>
                 <label className="flex items-center gap-2 pb-1 text-body text-muted-foreground">
-                  Remove it instead, so each start is fresh
+                  {t("whereItWorks.removeInstead")}
                   <Switch checked={draft.autoRemove} disabled={draft.idleMinutes === 0} onCheckedChange={(autoRemove) => set({ autoRemove })} aria-label={t("whereItWorks.removeItInsteadOfStopping")} />
                 </label>
               </div>
@@ -538,7 +533,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
                 spellCheck={false}
                 onChange={(e) => set({ command: e.target.value })}
               />
-              <p className="mt-1 text-small text-muted-foreground">Only when {view.engine.name} is installed there under another name or path.</p>
+              <p className="mt-1 text-small text-muted-foreground">{t("whereItWorks.onlyWhenInstalledElsewhere", { engine: view.engine.name })}</p>
             </div>
           )}
         </div>
@@ -549,7 +544,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
           {dirty && (
             <Button variant="brand" size="sm" disabled={busy !== null} onClick={save}>
               {busy === "save" && <Loader2 size={12} className="animate-spin" />}
-              Save
+              {t("common.save")}
             </Button>
           )}
           {remote && (
@@ -561,13 +556,13 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
           {!dirty && madeHere && status && (status.state === "ready" || status.state === "idle") && (
             <Button variant="ghost" size="sm" disabled={busy !== null || view.running > 0} onClick={() => void containerAct("stop")}>
               {busy === "stop" && <Loader2 size={12} className="animate-spin" />}
-              Stop container
+              {t("whereItWorks.stopContainer")}
             </Button>
           )}
           {!dirty && madeHere && (
             <Button variant="ghost" size="sm" disabled={busy !== null || view.running > 0} onClick={() => void containerAct("remove")}>
               {busy === "remove" && <Loader2 size={12} className="animate-spin" />}
-              Remove container
+              {t("whereItWorks.removeContainer")}
             </Button>
           )}
         </div>
@@ -606,7 +601,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
               ))}
             </div>
           )}
-          {report.ok && report.problems.length === 0 && <p className="mt-2 text-small text-success">Ready. {dirty ? t("whereItWorks.saveToSendItsNext") : ""}</p>}
+          {report.ok && report.problems.length === 0 && <p className="mt-2 text-small text-success">{dirty ? t("whereItWorks.readySaveToSend") : t("whereItWorks.ready")}</p>}
           {(report.signIn || report.canCopySignIn) && (
             <div className="mt-3 flex flex-wrap gap-2">
               {report.signIn && (
@@ -618,7 +613,7 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
               {report.canCopySignIn && (
                 <Button variant="outline" size="sm" disabled={busy !== null || dirty} title={dirty ? t("whereItWorks.saveFirst") : undefined} onClick={() => void copySignIn()}>
                   {busy === "copy" ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
-                  Copy my sign-in…
+                  {t("whereItWorks.copyMySignIn")}
                 </Button>
               )}
             </div>
@@ -628,13 +623,13 @@ export function WhereItWorksCard({ bot }: { bot: Bot }) {
 
       {savedPlace && !dirty && (
         <Note>
-          {view.filesHere
-            ? t("whereItWorks.undoAndRewindWorkOn")
-            : t("whereItWorks.undoAndRewindsFileRestore")}
-          Rehearsals and shared rooms run only on this computer, so they are off for it. Files it saves in its outbox come back as cards when each turn ends, and{" "}
-          {view.seen?.node === false ? t("whereItWorks.withoutNodeThereItsBloks") : t("whereItWorks.itsBloksCommandAndMemory")}{" "}
-          The Terminal button still opens a terminal on this computer.
-          {view.seen?.copied?.length ? ` Your sign-in was copied there on ${new Date(view.seen.copied.at(-1)!.at).toLocaleDateString()}.` : ""}
+          {[
+            view.filesHere ? t("whereItWorks.note.undoWorks") : t("whereItWorks.note.undoOff"),
+            t("whereItWorks.note.rehearsalsOff"),
+            view.seen?.node === false ? t("whereItWorks.note.outboxNoNode") : t("whereItWorks.note.outbox"),
+            t("whereItWorks.note.terminal"),
+            ...(view.seen?.copied?.length ? [t("whereItWorks.note.signInCopied", { date: formatDate(view.seen.copied.at(-1)!.at) })] : []),
+          ].join(" ")}
         </Note>
       )}
     </SettingRow>

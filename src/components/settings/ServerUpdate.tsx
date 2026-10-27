@@ -172,22 +172,33 @@ export function useServerUpdate(): {
 function jobLine(job: NonNullable<ServerUpdateStatus["job"]>, now = Date.now()): string {
   switch (job.phase) {
     case "downloading":
-      return `Downloading ${job.version}${job.percent ? ` (${job.percent}%)` : ""}…`;
+      return job.percent
+        ? t("serverUpdate.job.downloadingPercent", { version: job.version, percent: job.percent })
+        : t("serverUpdate.job.downloading", { version: job.version });
     case "unpacking":
-      return `Checked against the release's checksum. Unpacking ${job.version} beside ${job.from}…`;
+      return t("serverUpdate.job.unpacking", { version: job.version, from: job.from });
     case "draining": {
       const n = job.running ?? 0;
-      const what = n > 0 ? `${n} running ${n === 1 ? "reply" : "replies"}` : "what's running";
       const minutes = job.deadline ? Math.ceil((job.deadline - now) / 60_000) : null;
-      const left = minutes === null ? "" : minutes > 1 ? ` (${minutes} minutes left)` : " (under a minute left)";
-      return `Finishing ${what} before the server restarts into ${job.version}…${left}`;
+      const version = job.version;
+      // a whole sentence for each case, so a language orders it its own way
+      if (n > 0) {
+        if (minutes === null) return t("serverUpdate.job.finishingReplies", { count: n, version });
+        return minutes > 1
+          ? t("serverUpdate.job.finishingRepliesMinutes", { count: n, version, minutes })
+          : t("serverUpdate.job.finishingRepliesUnderMinute", { count: n, version });
+      }
+      if (minutes === null) return t("serverUpdate.job.finishingRunning", { version });
+      return minutes > 1
+        ? t("serverUpdate.job.finishingRunningMinutes", { version, minutes })
+        : t("serverUpdate.job.finishingRunningUnderMinute", { version });
     }
     case "restarting":
-      return `Restarting the server into ${job.version}…`;
+      return t("serverUpdate.job.restarting", { version: job.version });
     case "failed":
-      return `The update stopped and nothing changed. ${job.error ?? ""}`.trim();
+      return job.error ? t("serverUpdate.job.failedWhy", { error: job.error }) : t("serverUpdate.job.failed");
     case "cancelled":
-      return "Called off. Nothing changed.";
+      return t("serverUpdate.job.cancelled");
   }
 }
 
@@ -205,11 +216,10 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
     return (
       <SettingRow
         rowId="workspace-server"
-        label={`Workspace server: Bloks ${view.version}`}
+        label={t("serverUpdate.label", { version: view.version })}
         description={
           <>
-            This server is older than Bloks 3.0.14, so it can't be checked or updated from here, and updating this app doesn't update it.
-            Update it by hand once, on the computer it runs on; after that, new versions can be installed from this page.{" "}
+            {t("serverUpdate.older", { version: "3.0.14" })}{" "}
             <a href="https://bloks.dev/docs#server" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">
               {t("serverUpdate.howToUpdateIt")}
             </a>
@@ -228,25 +238,33 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
 
   const line = restartingTo
     ? slow
-      ? `The server hasn't answered since it began restarting into ${restartingTo}. If it went back to the version before, this page will say so once it answers.`
-      : `Restarting the server into ${restartingTo}. If it doesn't start, the version before comes back on its own…`
+      ? t("serverUpdate.line.slow", { version: restartingTo })
+      : t("serverUpdate.line.restarting", { version: restartingTo })
     : job && (active || job.phase === "failed" || job.phase === "cancelled")
       ? jobLine(job)
       : recent && recent.to === status.version && recent.ok
-        ? `Updated from ${recent.from} to ${recent.to}. Its output now goes to ${recent.log}.`
+        ? t("serverUpdate.line.updated", { from: recent.from, to: recent.to, log: recent.log })
         : recent && !recent.ok
-          ? `${recent.to} didn't start${recent.rolledBack ? `, so ${recent.from} is running again` : ""}. ${recent.error ?? ""}`.trim()
+          ? recent.rolledBack
+            ? recent.error
+              ? t("serverUpdate.line.rolledBackWhy", { to: recent.to, from: recent.from, error: recent.error })
+              : t("serverUpdate.line.rolledBack", { to: recent.to, from: recent.from })
+            : recent.error
+              ? t("serverUpdate.line.didNotStartWhy", { to: recent.to, error: recent.error })
+              : t("serverUpdate.line.didNotStart", { to: recent.to })
           : how.kind === "hosted"
             ? how.why
             : looked?.error
               ? looked.error
               : looked?.newer && latest
-                ? `Bloks ${latest.version} is out.${how.canInstall ? " Installing it restarts the server once running replies finish; your workspace stays as it is." : ""}`
+                ? how.canInstall
+                  ? t("serverUpdate.line.outInstallable", { version: latest.version })
+                  : t("serverUpdate.line.out", { version: latest.version })
                 : looked
-                  ? "The server is on the latest version."
+                  ? t("serverUpdate.line.latest")
                   : busy
-                    ? "Checking…"
-                    : "Checks GitHub for a newer bloks-server.";
+                    ? t("common.checking")
+                    : t("serverUpdate.line.checksGithub");
 
   const control = fixed ? null : active && job?.phase !== "restarting" ? (
     <Button size="sm" variant="secondary" disabled={busy} onClick={() => void cancel()}>
@@ -258,7 +276,7 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
     </Button>
   ) : looked?.newer && latest && how.canInstall && latest.checksum ? (
     <Button size="sm" disabled={busy} onClick={() => void install(latest.version)}>
-      Install {latest.version}
+      {t("serverUpdate.install", { version: latest.version })}
     </Button>
   ) : (
     <Button size="sm" variant="secondary" disabled={busy} onClick={() => void check()}>
@@ -269,10 +287,10 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
   return (
     <SettingRow
       rowId="workspace-server"
-      label={`Workspace server: Bloks ${status.version}`}
+      label={t("serverUpdate.label", { version: status.version })}
       description={
         <>
-          <span className="block">Runs this workspace on {status.computer}. Updating it doesn't update this app, and updating this app doesn't update it.</span>
+          <span className="block">{t("serverUpdate.runsOn", { computer: status.computer })}</span>
           <span className={cn("mt-1 block", job?.phase === "failed" || (recent && !recent.ok) ? "text-destructive" : undefined)} aria-live="polite">
             {line}
           </span>
@@ -287,7 +305,7 @@ export function ServerUpdateRow({ state }: { state: ReturnType<typeof useServerU
             <details className="group">
               <summary className="flex cursor-pointer list-none items-center gap-1 text-small text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
                 <ChevronRight size={12} className="transition-transform duration-150 group-open:rotate-90" />
-                What's new in {latest.version}
+                {t("serverUpdate.whatsNew", { version: latest.version })}
               </summary>
               <div className="mt-2 max-h-[280px] overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/40 p-3 text-small leading-relaxed text-foreground">
                 {latest.notes}

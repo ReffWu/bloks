@@ -25,7 +25,7 @@ export function SavedSecrets() {
       })
       .catch((e: Error & { code?: string }) =>
         // a server older than this app has no list to give
-        setError(e.code === "unknown_route" ? "The computer this workspace runs on needs an update before it can list them here." : e.message),
+        setError(e.code === "unknown_route" ? t("savedSecrets.needsUpdate") : e.message),
       );
   }, []);
   // again whenever one is saved from a card or forgotten anywhere
@@ -33,9 +33,9 @@ export function SavedSecrets() {
 
   const forget = async (name: string) => {
     const yes = await confirm({
-      title: `Forget ${name}?`,
-      body: "Agents stop getting it from their next turn. An agent that needs it again will ask you for it.",
-      confirmLabel: "Forget",
+      title: t("savedSecrets.forgetTitle", { name }),
+      body: t("savedSecrets.forgetBody"),
+      confirmLabel: t("savedSecrets.forget"),
       destructive: true,
     });
     if (!yes) return;

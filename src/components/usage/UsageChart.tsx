@@ -90,7 +90,7 @@ export function UsageChart({
   };
 
   const day = at !== null ? days[at] : null;
-  const reading = day ? `${longDay(day.date)}: ${figureOf(day, metric)}` : "";
+  const reading = day ? t("usageChart.reading", { day: longDay(day.date), value: figureOf(day, metric) }) : "";
 
   return (
     <div className="flex flex-col gap-3">
@@ -98,8 +98,8 @@ export function UsageChart({
         ref={box}
         tabIndex={0}
         role="group"
-        aria-roledescription="chart"
-        aria-label={`${label}. Use the arrow keys to read each day.`}
+        aria-roledescription={t("usageChart.chart")}
+        aria-label={t("usageChart.label", { label })}
         onKeyDown={keys}
         onFocus={() => setAt((was) => was ?? days.length - 1)}
         onBlur={() => setAt(null)}
@@ -221,14 +221,14 @@ export function ChartLegend({ lines, onPick, className }: { lines: ChartLine[]; 
     <div className={cn("flex flex-wrap items-center gap-x-1 gap-y-1", className)}>
       <span className="mr-2 flex items-center gap-1.5 text-small text-muted-foreground">
         <span aria-hidden className="h-0.5 w-3 rounded-full bg-brand" />
-        Total
+        {t("usageChart.total")}
       </span>
       {lines.map((line) => (
         <button
           key={line.id}
           type="button"
           onClick={() => onPick(line.id)}
-          title={`Show only ${line.name}`}
+          title={t("usagePage.showOnly", { name: line.name })}
           className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-small text-muted-foreground transition-[background-color,color] duration-150 hover:bg-accent hover:text-foreground"
         >
           <span aria-hidden className="h-0.5 w-3 rounded-full" style={{ background: line.colour }} />

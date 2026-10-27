@@ -68,7 +68,7 @@ export function Suggestion({ note, onDone }: { note: ProfileNote; onDone: () => 
       ) : (
         <p className="text-pretty text-lead leading-relaxed text-foreground">{note.text}</p>
       )}
-      <p className="mt-1.5 text-body text-muted-foreground">Suggested by {note.by.name}</p>
+      <p className="mt-1.5 text-body text-muted-foreground">{t("aboutYou.suggestedBy", { name: note.by.name })}</p>
       <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
         <Button size="sm" disabled={busy || text.trim().length < 3} onClick={keep}>
           <Check size={13} /> {editing ? t("aboutYou.keepThis") : t("common.keep")}
@@ -122,11 +122,11 @@ export function KeptNotes({ notes, reload }: { notes: ProfileNote[] | null; relo
               <div className="min-w-0 flex-1">
                 <div className="text-pretty text-ui leading-relaxed text-foreground">{note.text}</div>
                 <div className="mt-0.5 text-small text-muted-foreground">
-                  {note.by.id === "you" ? t("aboutYou.youWroteThis") : `From ${note.by.name}`}
+                  {note.by.id === "you" ? t("aboutYou.youWroteThis") : t("aboutYou.fromName", { name: note.by.name })}
                 </div>
               </div>
               <button
-                aria-label={`Remove "${note.text}"`}
+                aria-label={t("aboutYou.removeNote", { note: note.text })}
                 title={t("common.remove")}
                 onClick={() => api(`/api/profile/notes/${note.id}`, { method: "DELETE" }).then(reload).catch(() => {})}
                 className={cn(

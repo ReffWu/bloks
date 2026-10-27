@@ -7,6 +7,8 @@
 // engines stay signed in when they are about to be replaced, or the other
 // way round.
 
+import { formatList, formatNumber, t } from "./i18n.ts";
+
 /** "move" is a whole workspace written out for another machine. */
 export type BackupKind = "manual" | "automatic" | "before-restore" | "move";
 
@@ -31,28 +33,31 @@ export interface RestoreProgress {
   error?: string;
 }
 
+// one decimal for the big units, as "12.4 MB" always read
+const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 } as const;
+
 export function sizeText(bytes: number): string {
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
-  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+  if (bytes >= 1e9) return t("backups.size.gb", { size: formatNumber(bytes / 1e9, oneDecimal) });
+  if (bytes >= 1e6) return t("backups.size.mb", { size: formatNumber(bytes / 1e6, oneDecimal) });
+  return t("backups.size.kb", { size: Math.max(1, Math.round(bytes / 1e3)) });
 }
 
 export function kindLabel(kind: BackupKind): string | null {
-  if (kind === "automatic") return "Automatic";
-  if (kind === "before-restore") return "Before a restore";
-  if (kind === "move") return "For moving";
+  if (kind === "automatic") return t("backups.kind.automatic");
+  if (kind === "before-restore") return t("backups.kind.beforeRestore");
+  if (kind === "move") return t("backups.kind.move");
   return null;
 }
 
 /** One line under a backup's date: what made it and what it holds. */
 export function backupDetails(backup: BackupItem): string {
-  if (backup.damaged) return `${sizeText(backup.size)} · cannot be read, may be damaged`;
+  if (backup.damaged) return t("backups.details.damaged", { size: sizeText(backup.size) });
   return [
-    backup.version ? `Bloks ${backup.version}` : null,
+    backup.version ? t("backups.details.version", { version: backup.version }) : null,
     sizeText(backup.size),
-    backup.encrypted ? "sealed" : null,
-    backup.undo ? "with Undo history" : null,
-    backup.secrets ? "with saved keys" : null,
+    backup.encrypted ? t("backups.details.sealed") : null,
+    backup.undo ? t("backups.details.withUndo") : null,
+    backup.secrets ? t("backups.details.withKeys") : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -67,18 +72,14 @@ export function asideFolder(backupsFolder: string): string {
 /** What happens, in order, and what it means for this backup. */
 export function restoreSteps(backup: BackupItem, backupsFolder: string): { steps: string[]; notes: string[] } {
   const steps = [
-    "Anything running gets up to 10 minutes to finish first. Nothing new starts.",
-    "Your workspace is backed up as it is now.",
-    "Every file in this backup is checked before anything changes.",
-    `Your current workspace is moved aside to ${asideFolder(backupsFolder)}, not deleted.`,
-    "Bloks restarts into the restored workspace.",
+    t("backups.restore.stepDrain"),
+    t("backups.restore.stepBackUp"),
+    t("backups.restore.stepCheck"),
+    t("backups.restore.stepAside", { folder: asideFolder(backupsFolder) }),
+    t("backups.restore.stepRestart"),
   ];
-  const notes = [
-    backup.secrets
-      ? "This backup has its own saved keys, and they replace the ones on this computer."
-      : "This backup has no saved keys, so the keys on this computer stay as they are.",
-  ];
-  if (!backup.undo) notes.push("It has no Undo history, so earlier changes can't be undone.");
+  const notes = [backup.secrets ? t("backups.restore.keysReplaced") : t("backups.restore.keysKept")];
+  if (!backup.undo) notes.push(t("backups.restore.noUndo"));
   return { steps, notes };
 }
 
@@ -87,28 +88,33 @@ export function restoreLine(progress: RestoreProgress, now = Date.now()): string
   switch (progress.phase) {
     case "draining": {
       const n = progress.running ?? 0;
-      if (n === 0) return "Getting ready to restore…";
+      if (n === 0) return t("backups.restore.gettingReady");
       const left = progress.deadline ? Math.max(0, Math.ceil((progress.deadline - now) / 60_000)) : null;
-      return `Waiting for ${n} running ${n === 1 ? "reply" : "replies"} to finish${left !== null ? `, up to ${left} more ${left === 1 ? "minute" : "minutes"}` : ""}…`;
+      if (left === null) return t("backups.restore.waiting", { count: n });
+      // two counts in one sentence: the minutes are a phrase of their own
+      return t("backups.restore.waitingUpTo", { count: n, minutes: t("backups.restore.moreMinutes", { count: left }) });
     }
     case "backing-up":
-      return "Backing up your workspace as it is now…";
+      return t("backups.restore.backingUp");
     case "staging":
-      return "Checking every file in the backup…";
+      return t("backups.restore.staging");
     case "restarting":
-      return "Restarting Bloks into the restored workspace…";
+      return t("backups.restore.restarting");
     case "cancelled":
-      return "Restore cancelled. Nothing was changed.";
+      return t("backups.restore.cancelled");
     case "failed": {
-      const why = progress.error ?? "something went wrong.";
-      return `The restore stopped. ${why}${/nothing was changed/i.test(why) ? "" : " Nothing was changed."}`;
+      // the server's own reason, which already says so when nothing changed
+      const why = progress.error ?? t("backups.restore.somethingWentWrong");
+      return /nothing was changed/i.test(why)
+        ? t("backups.restore.stopped", { reason: why })
+        : t("backups.restore.stoppedNothingChanged", { reason: why });
     }
   }
 }
 
 export function passphraseProblem(passphrase: string, again: string): string | null {
-  if (passphrase.length < 8) return "A passphrase needs at least 8 characters.";
-  if (passphrase !== again) return "The two passphrases differ.";
+  if (passphrase.length < 8) return t("backups.passphrase.tooShort", { count: 8 });
+  if (passphrase !== again) return t("backups.passphrase.differ");
   return null;
 }
 
@@ -116,7 +122,6 @@ export function passphraseProblem(passphrase: string, again: string): string | n
  * behind, by name, since keys never travel in a move. */
 export function keysToEnter(labels: string[]): string {
   const names = [...new Set(labels.filter(Boolean))];
-  if (!names.length) return "No saved keys were left behind.";
-  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `Keys stay behind. Enter ${names.length === 1 ? "this" : "these"} again where it lands: ${list}.`;
+  if (!names.length) return t("backups.keysToEnter.none");
+  return t("backups.keysToEnter.some", { count: names.length, list: formatList(names) });
 }

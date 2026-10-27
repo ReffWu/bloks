@@ -23,7 +23,7 @@ import { thisComputer } from "@/lib/thisComputer";
 import { usePageVisible } from "@/lib/pageVisible";
 import { HealthLine, type Health } from "./ConnectionKit";
 import { SettingsGroup } from "./SettingsLayout";
-import { t } from "@/lib/i18n";
+import { t, tr, type MessageKey } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -78,12 +78,12 @@ function Hint({ children }: { children: React.ReactNode }) {
 
 /** What the steps already behind you add up to, said once. Indexed by
  * the step that is next. */
-const BEHIND = [
+const BEHIND: ReadonlyArray<MessageKey | null> = [
   null,
-  "The container runtime is installed.",
-  "The container runtime is installed and running.",
-  "The runtime and desktop are installed.",
-] as const;
+  "localVmSection.behind.runtimeInstalled",
+  "localVmSection.behind.runtimeRunning",
+  "localVmSection.behind.desktopInstalled",
+];
 
 export function LocalVmSection() {
   const [status, setStatus] = useState<VmStatus | null>(null);
@@ -109,8 +109,8 @@ export function LocalVmSection() {
   useEffect(() => {
     if (!visible) return;
     load();
-    const t = setInterval(load, 5_000);
-    return () => clearInterval(t);
+    const timer = setInterval(load, 5_000);
+    return () => clearInterval(timer);
   }, [load, visible]);
 
   const act = async (verb: "prepare" | "create" | "remove", ask?: ConfirmOptions) => {
@@ -130,16 +130,18 @@ export function LocalVmSection() {
     ? [
         {
           done: s.runtime !== null,
-          title: "Install a container runtime",
+          title: t("localVmSection.step.installRuntime"),
           body: <Hint>{t("localVmSection.applesContainerCliOrDocker")}</Hint>,
         },
         {
           done: s.daemonUp,
-          title: "Start the container runtime",
+          title: t("localVmSection.step.startRuntime"),
           body:
             s.runtime === "container" ? (
               <Hint>
-                Run <code className="rounded bg-muted px-1 font-mono text-small text-foreground">{t("localVmSection.containerSystemStart")}</code> in a terminal.
+                {tr("localVmSection.runInTerminal", {
+                  command: <code className="rounded bg-muted px-1 font-mono text-small text-foreground">container system start</code>,
+                })}
               </Hint>
             ) : s.runtime ? (
               <Hint>{t("localVmSection.openDockerAndWaitFor")}</Hint>
@@ -147,7 +149,7 @@ export function LocalVmSection() {
         },
         {
           done: s.imageReady,
-          title: "Prepare the Cua desktop",
+          title: t("localVmSection.step.prepareDesktop"),
           body: (
             <>
               <Hint>{t("localVmSection.aOneTimeDownload")}</Hint>
@@ -165,7 +167,7 @@ export function LocalVmSection() {
           done: s.container === "running" && s.desktopReady,
           // the line above already says it is ready to create, so the
           // button needs no heading of its own to repeat it
-          title: staleOrStopped ? "Create the Local VM again" : s.container === "missing" ? null : "Starting the Local VM",
+          title: staleOrStopped ? t("localVmSection.step.createAgain") : s.container === "missing" ? null : t("localVmSection.step.starting"),
           body: (
             <>
               {s.imageReady &&
@@ -179,21 +181,21 @@ export function LocalVmSection() {
                       disabled={acting !== null}
                       onClick={() =>
                         void act("remove", {
-                          title: "Recreate the Local VM?",
-                          body: "Files in its workspace are kept. Everything else resets.",
-                          confirmLabel: "Remove",
+                          title: t("localVmSection.recreateTitle"),
+                          body: t("localVmSection.recreateBody"),
+                          confirmLabel: t("common.remove"),
                           destructive: true,
                         })
                       }
                     >
                       {acting === "remove" && <Loader2 size={12} className="animate-spin" />}
-                      Remove, then create again
+                      {t("localVmSection.removeThenCreate")}
                     </Button>
                   </>
                 ) : s.container === "missing" ? (
                   <Button variant="brand" size="sm" disabled={acting !== null} onClick={() => act("create")}>
                     {acting === "create" && <Loader2 size={12} className="animate-spin" />}
-                    Create Local VM
+                    {t("localVmSection.createLocalVm")}
                   </Button>
                 ) : (
                   <div className="mt-1 flex items-center gap-1.5 text-body text-muted-foreground">
@@ -210,22 +212,22 @@ export function LocalVmSection() {
   const next = steps.findIndex((step) => !step.done);
   const step = next >= 0 ? steps[next] : null;
   const behind =
-    next === 3 && s?.container === "missing" ? "Ready to create: the runtime and desktop are installed." : next > 0 ? BEHIND[next] : null;
+    next === 3 && s?.container === "missing" ? t("localVmSection.behind.readyToCreate") : next > 0 && BEHIND[next] ? t(BEHIND[next]) : null;
 
   const health: { tone: Health; label: string } | null = !s
     ? null
     : s.ready
-      ? { tone: "on", label: s.inUseBy ? "In use" : "Ready" }
+      ? { tone: "on", label: s.inUseBy ? t("localVmSection.health.inUse") : t("localVmSection.health.ready") }
       : staleOrStopped && s.imageReady
-        ? { tone: "wait", label: s.container === "stopped" ? "Stopped" : "Out of date" }
+        ? { tone: "wait", label: s.container === "stopped" ? t("localVmSection.health.stopped") : t("localVmSection.health.outOfDate") }
         : s.container !== "missing" && s.imageReady
-        ? { tone: "wait", label: "Starting" }
-        : { tone: "off", label: "Not set up" };
+        ? { tone: "wait", label: t("localVmSection.health.starting") }
+        : { tone: "off", label: t("localVmSection.health.notSetUp") };
 
   return (
     <SettingsGroup
       title={t("localVmSection.localVm")}
-      description={`A free Linux desktop on ${thisComputer()}, kept apart from yours.`}
+      description={t("localVmSection.description", { computer: thisComputer() })}
       action={
         <>
           {health && <HealthLine tone={health.tone} label={health.label} />}
@@ -243,7 +245,7 @@ export function LocalVmSection() {
         ) : s.ready ? (
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
             <div className="min-w-0 text-body text-foreground">
-              {s.inUseBy ? `${s.inUseBy} is using it.` : t("localVmSection.readyForAnyAgentThat")}
+              {s.inUseBy ? t("localVmSection.inUseBy", { name: s.inUseBy }) : t("localVmSection.readyForAnyAgentThat")}
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {s.viewerUrl && (
@@ -261,9 +263,9 @@ export function LocalVmSection() {
                 disabled={acting !== null}
                 onClick={() =>
                   void act("remove", {
-                    title: "Remove the Local VM?",
-                    body: "Files in its workspace are kept.",
-                    confirmLabel: "Remove",
+                    title: t("localVmSection.removeTitle"),
+                    body: t("localVmSection.removeBody"),
+                    confirmLabel: t("common.remove"),
                     destructive: true,
                   })
                 }
@@ -298,13 +300,12 @@ export function LocalVmSection() {
           </summary>
           <div className="px-5 pb-4 pl-[37px] text-small leading-relaxed text-muted-foreground">
             <p className="text-pretty">
-              4 GB memory and 2 CPUs. It resets after 8 idle hours; files and browser sign-ins in its workspace stay. Its
-              screen opens only on {thisComputer()}.
+              {t("localVmSection.detailsLine", { computer: thisComputer() })}
             </p>
             <p className="mt-1.5 break-all">
-              Workspace <span className="font-mono text-caption text-foreground/80">{s.workspace}</span>
+              {tr("localVmSection.workspaceAt", { path: <span className="font-mono text-caption text-foreground/80">{s.workspace}</span> })}
             </p>
-            <p className="mt-0.5">Driver {s.driverVersion}</p>
+            <p className="mt-0.5">{t("localVmSection.driverVersion", { version: s.driverVersion })}</p>
           </div>
         </details>
       )}

@@ -56,7 +56,7 @@ export function BrowserPage() {
     if (!settings || mode === settings.mode) return;
     // letting agents go anywhere is a widening, and asks who is there
     if (mode === "auto" && window.bloks?.authConfirm) {
-      const answer = await window.bloks.authConfirm("let agents open any site in the Bloks browser without asking");
+      const answer = await window.bloks.authConfirm(t("browserPage.confirmAuto"));
       if (answer === "denied" || answer === "cancelled") return;
     }
     void save({ mode });
@@ -86,8 +86,8 @@ export function BrowserPage() {
                 value={settings.mode}
                 onChange={(mode) => void chooseMode(mode)}
                 options={[
-                  { value: "ask", label: "Ask first" },
-                  { value: "auto", label: "Auto" },
+                  { value: "ask", label: t("browserPage.askFirst") },
+                  { value: "auto", label: t("browserPage.auto") },
                 ]}
               />
             </div>
@@ -97,6 +97,7 @@ export function BrowserPage() {
 
       <SiteList
         title={t("browserPage.sitesAgentsMayUse")}
+        addLabel={t("browserPage.addToAllowed")}
         empty={t("browserPage.noneYetPressAlwaysAllow")}
         sites={settings.allow}
         onChange={(allow) => save({ allow })}
@@ -104,6 +105,7 @@ export function BrowserPage() {
       />
       <SiteList
         title={t("browserPage.sitesAgentsNeverUse")}
+        addLabel={t("browserPage.addToBlocked")}
         empty={t("browserPage.noneAgentsMayBeAsked")}
         sites={settings.deny}
         onChange={(deny) => save({ deny })}
@@ -135,15 +137,15 @@ export function BrowserPage() {
                 variant="destructive"
                 onClick={() =>
                   void confirm({
-                    title: "Sign out of every site?",
-                    body: "You and your agents will have to sign in again in this workspace's browser.",
-                    confirmLabel: "Sign out",
+                    title: t("browserPage.signOutTitle"),
+                    body: t("browserPage.signOutBody"),
+                    confirmLabel: t("browserPage.signOut"),
                     destructive: true,
                   }).then(async (yes) => {
                     if (!yes) return;
                     const said = await window.bloks?.browserDo?.("forgetSites");
                     if (said?.error) toast.error(said.error);
-                    else toast.success("Signed out of every site in this workspace's browser.");
+                    else toast.success(t("browserPage.signedOut"));
                   })
                 }
               >
@@ -159,12 +161,15 @@ export function BrowserPage() {
 
 function SiteList({
   title,
+  addLabel,
   empty,
   sites,
   onChange,
   footnote,
 }: {
   title: string;
+  /** The add field's name, said whole rather than built from the title. */
+  addLabel: string;
   empty: string;
   sites: string[];
   onChange: (sites: string[]) => Promise<boolean>;
@@ -187,8 +192,8 @@ function SiteList({
               <span className="min-w-0 flex-1 truncate text-ui text-foreground">{site}</span>
               <button
                 type="button"
-                aria-label={`Remove ${site}`}
-                title={`Remove ${site}`}
+                aria-label={t("browserPage.removeSite", { site })}
+                title={t("browserPage.removeSite", { site })}
                 onClick={() => void onChange(sites.filter((s) => s !== site))}
                 className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
               >
@@ -209,7 +214,7 @@ function SiteList({
           value={adding}
           onChange={(e) => setAdding(e.target.value)}
           placeholder="example.com"
-          aria-label={`Add to ${title.toLowerCase()}`}
+          aria-label={addLabel}
           spellCheck={false}
           autoCapitalize="off"
           className="h-8 flex-1"

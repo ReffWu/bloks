@@ -7,10 +7,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, MapPin } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { thisComputer } from "@/lib/thisComputer";
+import { ThisComputer } from "@/lib/thisComputer";
 import { api, useStore } from "@/state/store";
 import { ConnectionError, ConnectionHeader, HealthLine, type Health } from "./ConnectionKit";
-import { t } from "@/lib/i18n";
+import { formatDate, t, type MessageKey } from "@/lib/i18n";
 
 type Sharing = "on" | "paused" | "off";
 
@@ -31,26 +31,26 @@ interface LocationState {
   devices: Array<{ id: string; name: string; sharing: Sharing; at: number; background?: boolean }>;
 }
 
-const HEALTH: Record<Sharing, { tone: Health; label: string }> = {
-  on: { tone: "on", label: "Sharing" },
-  paused: { tone: "wait", label: "Paused" },
-  off: { tone: "off", label: "Off" },
+const HEALTH: Record<Sharing, { tone: Health; label: MessageKey }> = {
+  on: { tone: "on", label: "locationSection.health.sharing" },
+  paused: { tone: "wait", label: "common.paused" },
+  off: { tone: "off", label: "common.off" },
 };
 
-const PRECISION: Record<Reading["precision"], string> = {
-  exact: "Exact position",
-  area: "Neighbourhood and city",
-  city: "City only",
+const PRECISION: Record<Reading["precision"], MessageKey> = {
+  exact: "locationSection.precision.exact",
+  area: "locationSection.precision.area",
+  city: "locationSection.precision.city",
 };
 
 /** "a moment ago", "10 minutes ago", "3 hours ago", or a date. */
 function ago(at: number, now: number): string {
   const minutes = Math.floor((now - at) / 60_000);
-  if (minutes < 1) return "a moment ago";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t("locationSection.ago.moment");
+  if (minutes < 60) return t("locationSection.ago.minutes", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return new Date(at).toLocaleDateString([], { month: "short", day: "numeric" });
+  if (hours < 24) return t("locationSection.ago.hours", { count: hours });
+  return formatDate(at, { month: "short", day: "numeric" });
 }
 
 export function LocationSection() {
@@ -101,27 +101,27 @@ export function LocationSection() {
   const hint = !shown
     ? null
     : shown.sharing === "off"
-      ? "Turn it on in the Bloks app on your iPhone, in Settings, Location."
+      ? t("locationSection.hint.off")
       : shown.sharing === "paused"
         ? reading
-          ? "Paused on your iPhone, so your agents are not told this."
-          : "Paused on your iPhone. Nothing kept here."
+          ? t("locationSection.hint.pausedWithPlace")
+          : t("locationSection.hint.paused")
         : reading
           ? closed === false
-            ? "Your iPhone shares only while Bloks is open on it."
+            ? t("locationSection.hint.whileOpen")
             : closed
-              ? "Your iPhone also shares with Bloks closed, when it moves a fair way."
+              ? t("locationSection.hint.whenClosed")
               : null
-          : "Your iPhone sends a place the next time it moves a fair way or Bloks opens there.";
+          : t("locationSection.hint.waiting");
 
   return (
     <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0" data-setting-row="location">
       <ConnectionHeader
         icon={<MapPin size={14} className="shrink-0 text-muted-foreground" />}
         title={t("locationSection.location")}
-        info={`${thisComputer().replace(/^t/, "T")} keeps only the last place, never a trail, and members never see it. Turn sharing on, pause it or stop it on your iPhone, in Settings, Location. Forget clears what is kept here; to stop new places arriving, stop sharing on the phone.`}
+        info={t("locationSection.info", { computer: ThisComputer() })}
         says={t("locationSection.letsYourAgentsKnowRoughly")}
-        health={health && <HealthLine tone={health.tone} label={health.label} />}
+        health={health && <HealthLine tone={health.tone} label={t(health.label)} />}
       />
       <ConnectionError>{error}</ConnectionError>
 
@@ -132,8 +132,14 @@ export function LocationSection() {
           <div className="min-w-0 flex-1">
             <div className="text-body font-medium text-foreground">{reading.place}</div>
             <div className="mt-0.5 text-small text-muted-foreground">
-              {ago(reading.observedAt, now)} from {reading.device} · {PRECISION[reading.precision]}
-              {reading.precision === "exact" && reading.accuracy ? `, to about ${reading.accuracy} m` : ""}
+              {reading.precision === "exact" && reading.accuracy
+                ? t("locationSection.readingExact", {
+                    ago: ago(reading.observedAt, now),
+                    device: reading.device,
+                    precision: t(PRECISION[reading.precision]),
+                    accuracy: reading.accuracy,
+                  })
+                : t("locationSection.reading", { ago: ago(reading.observedAt, now), device: reading.device, precision: t(PRECISION[reading.precision]) })}
             </div>
             {hint && <div className="mt-1 text-small text-muted-foreground">{hint}</div>}
           </div>
@@ -146,7 +152,7 @@ export function LocationSection() {
             className="hover:bg-destructive/10 hover:text-destructive"
           >
             {forgetting && <Loader2 size={13} className="animate-spin" />}
-            Forget
+            {t("locationSection.forget")}
           </Button>
         </div>
       ) : (

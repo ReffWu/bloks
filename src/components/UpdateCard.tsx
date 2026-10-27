@@ -23,7 +23,7 @@ import type { UpdateState } from "@/types/bridge";
 import { cn } from "@/lib/cn";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
 
 const DISMISSED = "bloks.updateCardDismissed";
 
@@ -38,10 +38,16 @@ function dismissedVersion(): string | null {
 /** What an install is waiting for, while it waits. */
 export function drainingLine(draining: NonNullable<UpdateState["draining"]>, now = Date.now()): string {
   const n = draining.running;
-  const what = n > 0 ? `${n} running ${n === 1 ? "reply" : "replies"}` : "what's running";
   const minutes = draining.deadline ? Math.ceil((draining.deadline - now) / 60_000) : null;
-  const left = minutes === null ? "" : minutes > 1 ? ` (${minutes} minutes left)` : " (under a minute left)";
-  return `Finishing ${what} before restarting…${left}`;
+  // a whole sentence for each case, so a language orders it its own way
+  if (n > 0) {
+    if (minutes === null) return t("updateCard.finishingReplies", { count: n });
+    return minutes > 1
+      ? t("updateCard.finishingRepliesMinutes", { count: n, minutes })
+      : t("updateCard.finishingRepliesUnderMinute", { count: n });
+  }
+  if (minutes === null) return t("updateCard.finishingRunning");
+  return minutes > 1 ? t("updateCard.finishingRunningMinutes", { minutes }) : t("updateCard.finishingRunningUnderMinute");
 }
 
 /**
@@ -66,16 +72,16 @@ export function UpdateRailButton() {
   const version = update.version ?? "";
   if (hidden !== null && hidden === version && !update.draining && !missed) return null;
   const label = update.draining
-    ? "Restarting to update"
+    ? t("updateCard.restartingToUpdate")
     : missed
-      ? "The update did not install"
-      : "Update available";
+      ? t("updateCard.theUpdateDidNotInstall")
+      : t("updateCard.updateAvailable");
   return (
     <DropdownMenu onOpenChange={(open) => !open && setHidden(dismissedVersion())}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger
-            aria-label={version ? `${label}: Bloks ${version}` : label}
+            aria-label={version ? t("updateCard.labelWithVersion", { label, version }) : label}
             className="flex size-8 items-center justify-center rounded-full bg-update text-update-foreground outline-none transition-[scale,opacity] duration-150 ease-out hover:opacity-90 active:scale-[0.96]"
           >
             {update.draining ? (
@@ -178,16 +184,19 @@ function UpdateCard() {
           </button>
           <div className="pr-5 text-body font-medium text-foreground">{t("updateCard.theUpdateDidNotInstall")}</div>
           <p className="mt-0.5 text-small leading-snug text-muted-foreground">
-            Bloks is still on {missed.from}. {ready ? t("updateCard.tryAgainOrGet") : t("updateCard.get")} the installer from{" "}
-            <a
-              href="https://bloks.dev"
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium underline underline-offset-2 hover:text-foreground"
-            >
-              {t("updateCard.bloksDev")}
-            </a>
-            .
+            {tr(ready ? "updateCard.stillOnTryAgain" : "updateCard.stillOnGet", {
+              from: missed.from,
+              site: (
+                <a
+                  href="https://bloks.dev"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium underline underline-offset-2 hover:text-foreground"
+                >
+                  bloks.dev
+                </a>
+              ),
+            })}
           </p>
           {ready && (
             <button
@@ -217,7 +226,7 @@ function UpdateCard() {
         </button>
         <div className="pr-5 text-body font-medium text-foreground">{t("updateCard.newVersionAvailable")}</div>
         <p className="mt-0.5 text-small leading-snug text-muted-foreground">
-          {version ? `Bloks ${version} is` : t("updateCard.anUpdateIs")} downloaded. Relaunch to update.
+          {version ? t("updateCard.versionDownloaded", { version }) : t("updateCard.updateDownloaded")}
         </p>
         <button
           onClick={relaunch}

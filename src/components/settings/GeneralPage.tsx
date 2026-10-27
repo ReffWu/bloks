@@ -20,13 +20,13 @@ import { cn } from "@/lib/cn";
 import { AccentPicker } from "../AccentPicker";
 import { SettingRow, SettingsGroup } from "../SettingsLayout";
 import { YourName } from "./YourName";
-import { LANGUAGES, isLanguage, t } from "@/lib/i18n";
+import { LANGUAGES, isLanguage, t, type MessageKey } from "@/lib/i18n";
 import { chooseLanguage, systemLanguage, useLanguageChoice } from "@/lib/language";
 
-const THEME_OPTIONS: Array<{ value: Theme; label: string; icon: React.ReactNode }> = [
-  { value: "light", label: "Light", icon: <Sun size={14} /> },
-  { value: "dark", label: "Dark", icon: <Moon size={14} /> },
-  { value: "system", label: "System", icon: <Monitor size={14} /> },
+const THEME_OPTIONS: Array<{ value: Theme; label: MessageKey; icon: React.ReactNode }> = [
+  { value: "light", label: "generalPage.themeLight", icon: <Sun size={14} /> },
+  { value: "dark", label: "generalPage.themeDark", icon: <Moon size={14} /> },
+  { value: "system", label: "generalPage.themeSystem", icon: <Monitor size={14} /> },
 ];
 
 /**
@@ -40,7 +40,7 @@ const THEME_OPTIONS: Array<{ value: Theme; label: string; icon: React.ReactNode 
 function QuickAskShortcut() {
   const [accelerator, setAccelerator] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<MessageKey | null>(null);
 
   useEffect(() => {
     void fetch("/api/config")
@@ -53,7 +53,7 @@ function QuickAskShortcut() {
     setProblem(null);
     const took = (await window.bloks?.shortcutApply(next)) ?? null;
     if (next && !took) {
-      setProblem("Another app uses those keys. Try another combination.");
+      setProblem("generalPage.shortcutTaken");
       return;
     }
     setAccelerator(took);
@@ -77,7 +77,7 @@ function QuickAskShortcut() {
     if (e.altKey) parts.push("Alt");
     if (e.shiftKey) parts.push("Shift");
     if (parts.length === 0) {
-      setProblem("Include a modifier key, like Command or Control.");
+      setProblem("generalPage.shortcutNeedsModifier");
       return;
     }
     parts.push(key.length === 1 ? key.toUpperCase() : key);
@@ -91,8 +91,8 @@ function QuickAskShortcut() {
     <SettingRow
       label={t("generalPage.quickAskShortcut")}
       info={t("generalPage.tabPicksADifferentAgent")}
-      description={`Ask any agent from anywhere on ${thisComputer()}.`}
-      error={problem}
+      description={t("generalPage.quickAskDescription", { computer: thisComputer() })}
+      error={problem && t(problem)}
       control={
         <div className="flex items-center gap-1.5">
           {accelerator && !capturing && (
@@ -176,7 +176,7 @@ export function GeneralPage() {
               aria-label={t("generalPage.theme")}
               value={theme}
               onChange={setTheme}
-              options={THEME_OPTIONS.map((o) => ({ value: o.value, label: <>{o.icon}{o.label}</> }))}
+              options={THEME_OPTIONS.map((o) => ({ value: o.value, label: <>{o.icon}{t(o.label)}</> }))}
             />
           }
         />
@@ -215,9 +215,9 @@ export function GeneralPage() {
               value={width}
               onChange={setWidth}
               options={[
-                { value: "narrow", label: "Narrow" },
-                { value: "medium", label: "Medium" },
-                { value: "wide", label: "Wide" },
+                { value: "narrow", label: t("generalPage.widthNarrow") },
+                { value: "medium", label: t("generalPage.widthMedium") },
+                { value: "wide", label: t("generalPage.widthWide") },
               ]}
             />
           }

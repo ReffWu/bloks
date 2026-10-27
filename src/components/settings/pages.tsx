@@ -56,7 +56,7 @@ export function AboutYouPage() {
       <SettingRow
         label={t("pages.whatEveryAgentKnowsAbout")}
         htmlFor="about-you"
-        description={`Optional. Stays on ${thisComputer()} and is never shown to people in your rooms.`}
+        description={t("pages.aboutYouDescription", { computer: thisComputer() })}
         control={<SavedMark on={justSaved} />}
       >
         <Textarea
@@ -86,8 +86,7 @@ export function AboutYouPage() {
 function OpenAIKeyHint() {
   const { state, dispatch } = useStore();
   const speech = state.config?.speech;
-  const sourceName = (s: "env" | "codex") =>
-    s === "codex" ? "your Codex sign-in" : "your environment";
+
 
   const setConsent = (on: boolean) =>
     api("/api/config", {
@@ -101,7 +100,7 @@ function OpenAIKeyHint() {
     return (
       <div className="mt-3 rounded-xl border border-warning/40 bg-warning/10 p-3">
         <div className="text-body font-medium text-foreground">
-          Found an OpenAI API key from {sourceName(speech.openaiAvailable)}
+          {speech.openaiAvailable === "codex" ? t("pages.foundKeyCodex") : t("pages.foundKeyEnv")}
         </div>
         <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
           {t("pages.bloksCanUseItFor")}
@@ -115,7 +114,7 @@ function OpenAIKeyHint() {
   if (speech?.openaiSource) {
     return (
       <div className="mt-2 flex items-center gap-2 text-small text-success">
-        Using the API key from {sourceName(speech.openaiSource)} for voices.
+        {speech.openaiSource === "codex" ? t("pages.usingKeyCodex") : t("pages.usingKeyEnv")}
         <button type="button" className="rounded text-muted-foreground underline hover:text-foreground" onClick={() => setConsent(false)}>
           {t("pages.stopUsingIt")}
         </button>
@@ -143,20 +142,20 @@ function WorkspaceApprovals() {
   const choose = async (next: ApprovalMode) => {
     setNote(null);
     if (next === mode) return;
-    if (!(await confirmWidening(mode, next, "new agents"))) {
-      setNote("Nothing changed.");
+    if (!(await confirmWidening(mode, next, t("pages.who.newAgents")))) {
+      setNote(t("pages.nothingChanged"));
       return;
     }
     await save(next, false);
   };
   const applyToAll = async () => {
     setNote(null);
-    if (!(await confirmWidening("ask", mode, "every agent"))) {
-      setNote("Nothing changed.");
+    if (!(await confirmWidening("ask", mode, t("pages.who.everyAgent")))) {
+      setNote(t("pages.nothingChanged"));
       return;
     }
     await save(mode, true);
-    setNote(`Every agent is on ${label} now.`);
+    setNote(t("pages.everyAgentOn", { mode: label }));
   };
 
   return (
@@ -167,12 +166,12 @@ function WorkspaceApprovals() {
           <span className="min-w-0 flex-1 text-pretty">
             {note ??
               (elsewhere > 0
-                ? `New agents start on ${label}. ${elsewhere} of your ${total} agent${total === 1 ? " is" : "s are"} on something else.`
-                : `All your agents are on ${label}.`)}
+                ? t("pages.approvals.elsewhere", { mode: label, elsewhere, count: total })
+                : t("pages.approvals.allOn", { mode: label }))}
           </span>
           {elsewhere > 0 && (
             <Button size="sm" variant="secondary" onClick={() => void applyToAll()}>
-              Move all to {label}
+              {t("pages.moveAllTo", { mode: label })}
             </Button>
           )}
         </div>
@@ -192,8 +191,8 @@ export function VoicesPage() {
         title={t("pages.keys")}
         footnote={mac ? t("pages.anyOneKeyWorksThe") : t("pages.anyOneKeyWorksMac")}
       >
-        <ApiKeyRow section="elevenlabs" label={t("pages.elevenlabsApiKey")} placeholder={t("pages.sk")} />
-        <ApiKeyRow section="openaiSpeech" label={t("pages.openaiApiKey")} description={t("pages.usedForSpeechOnly")} placeholder={t("pages.skEllipsis")}>
+        <ApiKeyRow section="elevenlabs" label={t("pages.elevenlabsApiKey")} placeholder="sk_…" />
+        <ApiKeyRow section="openaiSpeech" label={t("pages.openaiApiKey")} description={t("pages.usedForSpeechOnly")} placeholder="sk-…">
           <OpenAIKeyHint />
         </ApiKeyRow>
         <ApiKeyRow
@@ -202,8 +201,8 @@ export function VoicesPage() {
           description={t("pages.yourOwnClonedVoicesAnd")}
           placeholder={t("pages.pasteYourKey")}
           info={{
-            text: "Make a key in your Fish Audio account's API section. Voices you made there show first in each agent's voice list.",
-            linkLabel: "Get a key at fish.audio",
+            text: t("pages.fishInfo"),
+            linkLabel: t("pages.fishLink"),
             linkHref: "https://fish.audio",
           }}
         />
@@ -211,7 +210,7 @@ export function VoicesPage() {
           section="xaiSpeech"
           label={t("pages.xaiApiKey")}
           description={grok ? t("pages.optionalVoicesUseYourGrok") : t("pages.groksVoicesAGrokKey")}
-          placeholder={t("pages.xai")}
+          placeholder="xai-…"
         />
       </SettingsGroup>
       <SettingsGroup title={t("pages.onYourOwnMachine")} footnote={t("pages.repliesReadAloudGoOnly")}>
@@ -267,7 +266,7 @@ function ChatterboxRow() {
           <div className="-mr-2 flex shrink-0 items-center gap-0.5">
             <span aria-live="polite" className="mr-2 inline-flex items-center gap-1.5 text-small font-medium text-success">
               <span aria-hidden className="size-1.5 rounded-full bg-current" />
-              Saved
+              {t("common.saved")}
             </span>
             {!editing && (
               <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setValue(saved); setEditing(true); }}>
@@ -347,10 +346,10 @@ export function AppsPage() {
           section="composio"
           label={t("pages.composioConnectKey")}
           description={t("pages.linksAccountsLikeSlackAnd")}
-          placeholder={t("pages.ck")}
+          placeholder="ck_…"
           info={{
-            text: "The Connect key starts with ck_. It's checked when you save it.",
-            linkLabel: "Get a Connect key at composio.dev",
+            text: t("pages.composioConnectInfo", { prefix: "ck_" }),
+            linkLabel: t("pages.composioConnectLink"),
             linkHref: "https://composio.dev",
           }}
         />
@@ -358,9 +357,9 @@ export function AppsPage() {
           section="composioApi"
           label={t("pages.composioApiKey")}
           description={t("pages.optionalLetsYouBrowseThe")}
-          placeholder={t("pages.ak")}
+          placeholder="ak_…"
           info={{
-            text: "A project API key, starting with ak_. Connections work without it. App watchers need it, and watch the accounts connected in that project.",
+            text: t("pages.composioApiInfo", { prefix: "ak_" }),
           }}
         />
       </SettingsGroup>
@@ -401,8 +400,8 @@ export function ComputersPage() {
           description={t("pages.aPrivateLinuxComputerIn")}
           placeholder={t("pages.pasteYourBoatApiKey")}
           info={{
-            text: "With a desktop and a terminal, for agents that need a computer of their own. Boat was called Box before.",
-            linkLabel: "Open the Boat API key guide",
+            text: t("pages.boatInfo"),
+            linkLabel: t("pages.boatLink"),
             linkHref: "https://docs.boat.dev/api-keys",
           }}
         />

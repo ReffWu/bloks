@@ -7,6 +7,8 @@
 // Bloks build it runs. Two of the same name paired on the same day get the
 // time as well, and only when even that says nothing new is a number added.
 
+import { formatDate, t } from "./i18n.ts";
+
 export interface DeviceFacts {
   id: string;
   name: string;
@@ -21,17 +23,20 @@ export interface DeviceLabel {
   detail: string;
 }
 
-const day = (at: number, locale?: string) => new Date(at).toLocaleDateString(locale ?? [], { month: "short", day: "numeric" });
-const time = (at: number, locale?: string) => new Date(at).toLocaleTimeString(locale ?? [], { hour: "numeric", minute: "2-digit" });
+// a locale given is used as it is (the tests pin one); otherwise the reader's
+const DAY = { month: "short", day: "numeric" } as const;
+const TIME = { hour: "numeric", minute: "2-digit" } as const;
+const day = (at: number, locale?: string) => (locale ? new Date(at).toLocaleDateString(locale, DAY) : formatDate(at, DAY));
+const time = (at: number, locale?: string) => (locale ? new Date(at).toLocaleTimeString(locale, TIME) : formatDate(at, TIME));
 
 /** "Seen just now", "Seen 5 min ago", "Seen 3 h ago", or a date. */
 export function seenLabel(at: number, now: number, locale?: string): string {
   const minutes = Math.floor((now - at) / 60_000);
-  if (minutes < 1) return "Seen just now";
-  if (minutes < 60) return `Seen ${minutes} min ago`;
+  if (minutes < 1) return t("deviceLabels.seenJustNow");
+  if (minutes < 60) return t("deviceLabels.seenMinutes", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Seen ${hours} h ago`;
-  return `Seen ${day(at, locale)}`;
+  if (hours < 24) return t("deviceLabels.seenHours", { count: hours });
+  return t("deviceLabels.seenOn", { date: day(at, locale) });
 }
 
 export function deviceLabels(devices: readonly DeviceFacts[], now: number, locale?: string): Map<string, DeviceLabel> {
@@ -43,7 +48,11 @@ export function deviceLabels(devices: readonly DeviceFacts[], now: number, local
     const sorted = [...group].sort((a, b) => a.pairedAt - b.pairedAt);
     const details = sorted.map((d) => {
       const sameDay = sorted.some((o) => o !== d && day(o.pairedAt, locale) === day(d.pairedAt, locale));
-      const parts = [`Paired ${day(d.pairedAt, locale)}${sameDay ? `, ${time(d.pairedAt, locale)}` : ""}`];
+      const parts = [
+        sameDay
+          ? t("deviceLabels.pairedAt", { date: day(d.pairedAt, locale), time: time(d.pairedAt, locale) })
+          : t("deviceLabels.pairedOn", { date: day(d.pairedAt, locale) }),
+      ];
       if (d.lastSeen) parts.push(seenLabel(d.lastSeen, now, locale));
       if (d.client) parts.push(d.client);
       return parts.join(" · ");

@@ -135,10 +135,9 @@ function ThisBrowser() {
         icon={<Globe size={14} className="shrink-0 text-muted-foreground" />}
         title={t("devicesSection.thisBrowser")}
         says={
-          <>
-            Connected to {window.bloksWeb?.host || t("devicesSection.yourComputer")} through Bloks Cloud, end-to-end encrypted. To fully
-            disconnect, also remove this browser on your computer.
-          </>
+          window.bloksWeb?.host
+            ? t("devicesSection.connectedToHost", { host: window.bloksWeb.host })
+            : t("devicesSection.connectedToYourComputer")
         }
         health={<HealthLine tone="on" label={t("common.connected")} />}
       />
@@ -153,7 +152,7 @@ function ThisBrowser() {
         }}
       >
         {leaving ? <Loader2 size={13} className="animate-spin" /> : <Globe size={13} />}
-        Disconnect this browser
+        {t("devicesSection.disconnectThisBrowser")}
       </Button>
     </div>
   );
@@ -232,13 +231,13 @@ function PairedList({
               <Button
                 variant="ghost"
                 size="sm"
-                aria-label={`Remove ${label.name}`}
+                aria-label={t("devicesSection.removeDevice", { name: label.name })}
                 className="hover:bg-destructive/10 hover:text-destructive"
                 onClick={async () => {
                   const yes = await confirm({
-                    title: `Remove ${label.name}?`,
-                    body: `It can't reach ${place} until you pair it again.`,
-                    confirmLabel: "Remove",
+                    title: t("devicesSection.removeDeviceTitle", { name: label.name }),
+                    body: t("devicesSection.removeDeviceBody", { place }),
+                    confirmLabel: t("common.remove"),
                     destructive: true,
                   });
                   if (yes) onRemove(device);
@@ -420,7 +419,7 @@ function PairingControls() {
   // no switch on another computer: on is how this window got here, and
   // off from here would cut it off too, so the server keeps that for itself
   const offElsewhere = away
-    ? `Phone access is turned off only on ${away} itself: from here it would cut ${thisComputer()} off from this workspace too.`
+    ? t("devicesSection.offElsewhere", { away, computer: thisComputer() })
     : undefined;
 
   // The code lives exactly as long as this: the panel open, phone access
@@ -519,14 +518,14 @@ function PairingControls() {
   const health: { tone: Health; label: string } | null = !status
     ? null
     : status.restartRequired
-      ? { tone: "wait", label: "Restart needed" }
+      ? { tone: "wait", label: t("devicesSection.restartNeeded") }
       : !status.enabled
-        ? { tone: "off", label: "Off" }
+        ? { tone: "off", label: t("common.off") }
         : code || (panelLink && flow)
-          ? { tone: "wait", label: "Waiting" }
+          ? { tone: "wait", label: t("devicesSection.waiting") }
           : devices.length > 0
-            ? { tone: "on", label: `${devices.length} paired` }
-            : { tone: "on", label: "On" };
+            ? { tone: "on", label: t("devicesSection.pairedCount", { count: devices.length }) }
+            : { tone: "on", label: t("devicesSection.on") };
 
   // The switch alone does not open the door: the server decides what it
   // listens on when it starts. Without saying so, somebody turns this on
@@ -537,7 +536,7 @@ function PairingControls() {
     <ConnectionNote className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span className="min-w-0 flex-1">
         {away
-          ? `Restart Bloks on ${away} to finish turning this on.`
+          ? t("devicesSection.restartBloksOn", { away })
           : status.enabled
             ? t("devicesSection.restartBloksToFinishTurning")
             : t("devicesSection.restartBloksToStopListening")}
@@ -595,7 +594,7 @@ function PairingControls() {
         stopped={stopped}
         lead={
           away
-            ? `Scan this with your iPhone on the same network as ${away}.`
+            ? t("devicesSection.scanOnSameNetwork", { away })
             : onboarding
               ? t("devicesSection.scanThisCodeWithYour")
               : t("devicesSection.onYourIphoneOpenBloks")
@@ -611,8 +610,7 @@ function PairingControls() {
         <div className="mt-3 rounded-xl border bg-muted/30 p-4" data-browser-link>
           <div className="text-body font-medium text-foreground">{t("devicesSection.pairWithALink")}</div>
           <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-            Works once, for {Math.ceil(browserSecondsLeft / 60)} more minute{browserSecondsLeft > 60 ? "s" : ""}.
-            Anyone who opens a link gets access, so keep it private.
+            {t("devicesSection.linkWorksOnceKeepPrivate", { count: Math.ceil(browserSecondsLeft / 60) })}
           </div>
           {linkRows(browserLink)}
           <div className="mt-2 flex justify-end">
@@ -629,12 +627,16 @@ function PairingControls() {
   // reach, so the line says only that, and the error line the way on.
   const unanswered = !status && Boolean(error);
   const says = unanswered
-    ? "Phones pair with the computer this workspace runs on."
+    ? t("devicesSection.phonesPairWithWorkspaceComputer")
     : status && !status.enabled
-      ? `Off, so these can't reach ${place} until you turn it on.`
+      ? t("devicesSection.offCantReach", { place })
       : away
-        ? `Your paired phones reach ${away}, where this workspace runs, ${viaCloud ? "through Bloks Cloud" : "over its network or through Bloks Cloud"}.`
-        : `Your paired phones reach ${thisComputer()} ${viaCloud ? "through Bloks Cloud" : "over your network"}.`;
+        ? viaCloud
+          ? t("devicesSection.reachAwayViaCloud", { away })
+          : t("devicesSection.reachAwayViaNetworkOrCloud", { away })
+        : viaCloud
+          ? t("devicesSection.reachHereViaCloud", { computer: thisComputer() })
+          : t("devicesSection.reachHereViaNetwork", { computer: thisComputer() });
 
   // The words of the onboarding are the iPhone walkthrough's, word for
   // word, so the two screens read as one set of instructions.
@@ -646,7 +648,7 @@ function PairingControls() {
           title={t("devicesSection.pairYourIphone")}
           says={
             away
-              ? `Talk to your agents on ${away} from your phone, and approve their work from your Lock Screen.`
+              ? t("devicesSection.talkToAgentsOn", { away })
               : t("devicesSection.talkToYourAgentsFrom")
           }
           info={offElsewhere}
@@ -697,8 +699,8 @@ function PairingControls() {
           <PairedMoment
             key={arrived.id}
             icon={isBrowser(arrived.name) ? <Globe size={18} /> : <Smartphone size={18} />}
-            title={`${arrived.name} is paired`}
-            detail={`It can reach ${place} now. Remove it here any time.`}
+            title={t("devicesSection.isPaired", { name: arrived.name })}
+            detail={t("devicesSection.canReachNow", { place })}
           />
         )}
       </AnimatePresence>
@@ -802,11 +804,10 @@ function PairingLink({
                 {t("devicesSection.onYourIphoneOpenBloksAnd")}
               </p>
               <p className="mt-1 text-pretty text-small text-muted-foreground">
-                It pairs with {place} through Bloks Cloud, from any network. Anyone who opens it in time becomes one of your devices, so
-                keep it to yourself.
+                {t("devicesSection.linkPairsWith", { place })}
               </p>
               <div className="mt-3 text-small tabular-nums text-muted-foreground">
-                {link ? `Works once, for ${Math.ceil(secondsLeft / 60)} more minute${secondsLeft > 60 ? "s" : ""}.` : t("devicesSection.worksOnce")}
+                {link ? t("devicesSection.worksOnceFor", { count: Math.ceil(secondsLeft / 60) }) : t("devicesSection.worksOnce")}
               </div>
             </>
           )}
@@ -905,12 +906,14 @@ function PairingCode({
                 by-hand route had no way to find where to dial. */}
             {code?.address && (
               <div className="mt-1.5 text-small text-muted-foreground">
-                Address <span className="ml-1 font-mono text-foreground">{code.address}</span>
+                {t("common.address")} <span className="ml-1 font-mono text-foreground">{code.address}</span>
               </div>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="text-small tabular-nums text-muted-foreground">
-                {code ? `Works once. New code in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}.` : t("devicesSection.worksOnce")}
+                {code
+                  ? t("devicesSection.newCodeIn", { clock: `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}` })
+                  : t("devicesSection.worksOnce")}
               </span>
               {/* a camera that will not focus, a phone on another network,
                   or a browser: all of them want a link instead */}

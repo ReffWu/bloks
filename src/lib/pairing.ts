@@ -7,6 +7,8 @@
 // server now says which computer it is and whether that is this one; this
 // is the reading of that, kept apart so it can be tested without a window.
 
+import { inEnglish, t } from "./i18n.ts";
+
 /** The fields of the server's pairing status this reads. A server from
  * before 3.0.15 sends none of `computer`, `here` and `thisDevice`. */
 export interface PairingWhere {
@@ -17,16 +19,16 @@ export interface PairingWhere {
   here?: boolean;
 }
 
-/** Said instead of an older server's refusal of the owner's own device. */
-export const PAIRING_ELSEWHERE =
-  "The computer this workspace runs on has an older Bloks, which pairs phones only there. Update it to 3.0.15 or newer to pair from here. On a server, bloks-server pair prints a link in the meantime.";
+/** Said instead of an older server's refusal of the owner's own device,
+ * in English; pairingTrouble says it in the reader's language. */
+export const PAIRING_ELSEWHERE = inEnglish("pairing.elsewhere", { version: "3.0.15", command: "bloks-server pair" });
 
 /** The line the card shows for an answer that was not a success. `said`
  * is the answer's error, if it had one; `fallback` is for one that said
  * nothing. Only the bare refusal is replaced: everything else the server
  * says is already in words meant for the person. */
 export function pairingTrouble(status: number, said: unknown, fallback: string): string {
-  if (status === 403 && said === "not from here") return PAIRING_ELSEWHERE;
+  if (status === 403 && said === "not from here") return t("pairing.elsewhere", { version: "3.0.15", command: "bloks-server pair" });
   return typeof said === "string" && said.trim() ? said : fallback;
 }
 
@@ -34,7 +36,7 @@ export function pairingTrouble(status: number, said: unknown, fallback: string):
  * window is on; null when it is, or when the server did not say. */
 export function pairingAway(status: PairingWhere | null): string | null {
   if (!status || status.here !== false) return null;
-  return status.computer?.trim() || "the workspace's computer";
+  return status.computer?.trim() || t("pairing.workspacesComputer");
 }
 
 /** On, and reached through Bloks Cloud alone: a server that answers

@@ -89,7 +89,7 @@ import { GeneralPage } from "./settings/GeneralPage";
 import { PlanPage } from "./settings/PlanPage";
 import { AboutYouPage, AppsPage, ComputersPage, RulesPage, VoicesPage } from "./settings/pages";
 import { BrowserPage } from "./settings/BrowserPage";
-import { t } from "@/lib/i18n";
+import { inEnglish, t } from "@/lib/i18n";
 
 type Icon = React.ComponentType<{ size?: number; className?: string }>;
 
@@ -123,23 +123,33 @@ const ICONS: Record<string, Icon> = {
 
 interface SettingsPage {
   id: string;
-  label: string;
+  readonly label: string;
   icon: Icon;
-  description: string;
-  keywords: string;
+  readonly description: string;
+  readonly keywords: string;
 }
 
 /** Every page of the person's own Settings, grouped, with its icon: the
  * command palette offers them by name. The workspace's pages are reached
  * there through "Workspace settings". */
-export const SETTINGS_PAGES: Array<{ group: string; pages: SettingsPage[] }> = SETTINGS_GROUPS.filter((g) => g.id !== "workspace").map((g) => ({
-  group: g.label,
+export const SETTINGS_PAGES: Array<{ readonly group: string; pages: SettingsPage[] }> = SETTINGS_GROUPS.filter((g) => g.id !== "workspace").map((g) => ({
+  // read when asked for, so the palette names them in the language of the day
+  get group() {
+    return t(g.label);
+  },
   pages: SETTINGS_PAGE_LIST.filter((p) => p.group === g.id).map((p) => ({
     id: p.id,
-    label: p.label,
+    get label() {
+      return p.label;
+    },
     icon: ICONS[p.id] ?? SlidersHorizontal,
-    description: p.description,
-    keywords: `${p.keywords} ${(p.rows ?? []).join(" ")}`,
+    get description() {
+      return p.description;
+    },
+    // the reader's words and the English ones, so either finds the page
+    get keywords() {
+      return [p.keywords, t(p.keywordsKey), inEnglish(p.labelKey), ...p.rows, ...p.rowMessages.map((key) => inEnglish(key))].join(" ");
+    },
   })),
 }));
 
@@ -365,12 +375,12 @@ export function AppSettingsPanel() {
             <Marked text={p.label} words={words} />
           </span>
           {p.id === "security" && risky > 0 && (
-            <span aria-label={`${risky} risky`} className="ml-auto rounded-md bg-destructive/10 px-1.5 py-0.5 text-caption font-medium tabular-nums text-destructive">
+            <span aria-label={t("appSettingsPanel.risky", { count: risky })} className="ml-auto rounded-md bg-destructive/10 px-1.5 py-0.5 text-caption font-medium tabular-nums text-destructive">
               {risky}
             </span>
           )}
           {/* somebody asking to join is said where the eye goes (design: Mac-Approve) */}
-          {p.id === "workspace:members" && waiting > 0 && <span className="ml-auto text-small font-semibold tabular-nums text-warning">{waiting} waiting</span>}
+          {p.id === "workspace:members" && waiting > 0 && <span className="ml-auto text-small font-semibold tabular-nums text-warning">{t("appSettingsPanel.waiting", { count: waiting })}</span>}
         </button>
         {/* the rows a search found on this page, each a way straight to it */}
         {rows.map((row) => (
@@ -398,7 +408,7 @@ export function AppSettingsPanel() {
   const folded = useColumnFolded("settings", SETTINGS_COLUMN);
   const tabGroups: SideTabGroup[] = SETTINGS_GROUPS.map((g) => ({
     id: g.id,
-    name: g.id === "workspace" && ws ? `${ws.name} workspace` : g.label,
+    name: g.id === "workspace" && ws ? t("appSettingsPanel.workspaceNamed", { name: ws.name }) : t(g.label),
     // "General" is in two groups, so the workspace's says whose it is
     label:
       g.id === "workspace" && ws ? (
@@ -407,7 +417,7 @@ export function AppSettingsPanel() {
           <span className="max-w-[140px] truncate">{ws.name}</span>
         </>
       ) : (
-        g.label
+        t(g.label)
       ),
     tabs: pages
       .filter((p) => p.group === g.id)
@@ -416,11 +426,11 @@ export function AppSettingsPanel() {
         label: p.label,
         badge:
           p.id === "security" && risky > 0 ? (
-            <span aria-label={`${risky} risky`} className="rounded-md bg-destructive/10 px-1.5 py-px text-caption font-medium tabular-nums text-destructive">
+            <span aria-label={t("appSettingsPanel.risky", { count: risky })} className="rounded-md bg-destructive/10 px-1.5 py-px text-caption font-medium tabular-nums text-destructive">
               {risky}
             </span>
           ) : p.id === "workspace:members" && waiting > 0 ? (
-            <span aria-label={`${waiting} waiting`} className="text-small font-semibold tabular-nums text-warning">
+            <span aria-label={t("appSettingsPanel.waiting", { count: waiting })} className="text-small font-semibold tabular-nums text-warning">
               {waiting}
             </span>
           ) : undefined,
@@ -492,10 +502,10 @@ export function AppSettingsPanel() {
             <div
               key={g.id}
               role="group"
-              aria-label={g.id === "workspace" && ws ? `${ws.name} workspace` : g.label}
+              aria-label={g.id === "workspace" && ws ? t("appSettingsPanel.workspaceNamed", { name: ws.name }) : t(g.label)}
               className="flex shrink-0 gap-0.5 md:flex-col"
             >
-              <div className="hidden px-2.5 pb-1 pt-3 text-small font-medium text-muted-foreground md:flex">{groupTitle(g.id, g.label)}</div>
+              <div className="hidden px-2.5 pb-1 pt-3 text-small font-medium text-muted-foreground md:flex">{groupTitle(g.id, t(g.label))}</div>
               {/* a phone has no room for headings: the workspace's own pages
                   are set apart by its mark instead */}
               {g.id === "workspace" && ws && (
@@ -508,7 +518,7 @@ export function AppSettingsPanel() {
           ))}
           {groups.length === 0 && (
             <div className="flex flex-col gap-1 px-3 py-6 text-body text-muted-foreground">
-              <span>Nothing matches “{query.trim()}”.</span>
+              <span>{t("appSettingsPanel.nothingMatches", { query: query.trim() })}</span>
               <button type="button" onClick={() => setQuery("")} className="w-fit rounded text-small font-medium text-foreground underline-offset-2 hover:underline">
                 {t("appSettingsPanel.clearTheSearch")}
               </button>
@@ -549,7 +559,7 @@ export function AppSettingsPanel() {
                   workspacePage && ws ? (
                     <>
                       <WorkspaceMark mark={ws.mark} logo={ws.logo} size={16} />
-                      <span className="truncate">{ws.name} workspace</span>
+                      <span className="truncate">{t("appSettingsPanel.workspaceNamed", { name: ws.name })}</span>
                     </>
                   ) : undefined
                 }

@@ -38,7 +38,7 @@ import {
 } from "@/lib/backups";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import { MoveWorkspace } from "./MoveWorkspace";
-import { t } from "@/lib/i18n";
+import { formatDate, t, tr, type MessageKey } from "@/lib/i18n";
 
 interface Status {
   folder: string;
@@ -54,17 +54,19 @@ interface Status {
 /** As a heading: "Today, 3:04 PM" or "Fri, Oct 10, 2026, 3:04 PM". */
 function when(at: number): string {
   const date = new Date(at);
-  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  if (new Date().toDateString() === date.toDateString()) return `Today, ${time}`;
-  return `${date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" })}, ${time}`;
+  const time = formatDate(date, { hour: "numeric", minute: "2-digit" });
+  if (new Date().toDateString() === date.toDateString()) return t("backupsSection.whenToday", { time });
+  return t("backupsSection.whenDay", { date: formatDate(date, { weekday: "short", month: "short", day: "numeric", year: "numeric" }), time });
 }
 
 /** Inside a sentence: "at 3:04 PM today" or "on Oct 10, 2026 at 3:04 PM". */
-function whenSaid(at: number): string {
+function whenSaid(at: number): { today: boolean; date: string; time: string } {
   const date = new Date(at);
-  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  if (new Date().toDateString() === date.toDateString()) return `at ${time} today`;
-  return `on ${date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} at ${time}`;
+  return {
+    today: new Date().toDateString() === date.toDateString(),
+    date: formatDate(date, { month: "short", day: "numeric", year: "numeric" }),
+    time: formatDate(date, { hour: "numeric", minute: "2-digit" }),
+  };
 }
 
 const underWay = (restore: RestoreProgress | null | undefined) =>
@@ -103,7 +105,7 @@ function Backups() {
   const [restoring, setRestoring] = useState<BackupItem | null>(null);
   /** Set once a restore is under way: the pid before, to know the new one. */
   const [watch, setWatch] = useState<{ pid: number | null } | null>(null);
-  const [restartNote, setRestartNote] = useState<string | null>(null);
+  const [restartNote, setRestartNote] = useState<MessageKey | null>(null);
 
   const load = useCallback(() => {
     api("/api/backups")
@@ -151,7 +153,7 @@ function Backups() {
           return;
         }
       }
-      setRestartNote("Restore ready. Restart Bloks to finish.");
+      setRestartNote("backupsSection.restoreReadyRestart");
     };
     const tick = setInterval(() => {
       fetch("/api/backups/restore")
@@ -208,7 +210,7 @@ function Backups() {
     );
   }
 
-  const reveal = deviceWord() === "Mac" ? "Show in Finder" : "Show in folder";
+  const reveal = deviceWord() === "Mac" ? t("backupsSection.showInFinder") : t("backupsSection.showInFolder");
 
   return (
     <>
@@ -219,9 +221,9 @@ function Backups() {
       <SettingsGroup title={t("backupsSection.backUpNow")}>
         <BackUpNow busy={working} folder={status.folder} onDone={load} />
       </SettingsGroup>
-      <SettingsGroup title={status.backups.length ? `Backups (${status.backups.length})` : t("backupsSection.backups")}>
+      <SettingsGroup title={status.backups.length ? t("backupsSection.backupsCount", { count: status.backups.length }) : t("backupsSection.backups")}>
         {status.backups.length === 0 ? (
-          <SettingRow label={t("backupsSection.noBackupsYet")} description={`They are kept in ${status.folder}.`} />
+          <SettingRow label={t("backupsSection.noBackupsYet")} description={t("backupsSection.keptIn", { folder: status.folder })} />
         ) : (
           status.backups.map((backup) => (
             <BackupRow
@@ -255,7 +257,7 @@ function Backups() {
 
 /** What a restore is doing now, what the last one did, or one waiting
  * for a restart. Nothing at all when there is nothing to say. */
-function RestoreBanner({ status, note, onCancel }: { status: Status; note: string | null; onCancel: () => void }) {
+function RestoreBanner({ status, note, onCancel }: { status: Status; note: MessageKey | null; onCancel: () => void }) {
   const restore = status.restore;
   if (restore) {
     const live = underWay(restore);
@@ -278,7 +280,7 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-pretty text-body font-medium text-foreground">{note ?? restoreLine(restore)}</div>
+          <div className="text-pretty text-body font-medium text-foreground">{note ? t(note) : restoreLine(restore)}</div>
           <div className="mt-0.5 break-all text-small text-muted-foreground">{restore.from}</div>
         </div>
         {restore.phase === "draining" && (
@@ -292,27 +294,35 @@ function RestoreBanner({ status, note, onCancel }: { status: Status; note: strin
   if (status.pending) {
     return (
       <div role="status" className="mb-6 rounded-2xl border bg-card p-4 text-body text-foreground">
-        A restore of <span className="break-all font-medium">{status.pending.from}</span> is ready. It applies when Bloks next
-        starts.
+        {tr("backupsSection.restorePending", { from: <span className="break-all font-medium">{status.pending.from}</span> })}
       </div>
     );
   }
   const last = status.lastRestore;
   // said for a week, then it is just history
   if (last && Date.now() - last.at < 7 * 24 * 60 * 60_000) {
+    const said = whenSaid(last.at);
+    const from = <span className="break-all">{last.from}</span>;
     return (
       <div role="status" className="mb-6 flex items-start gap-3 rounded-2xl border bg-card p-4">
         <ShieldCheck size={15} className="mt-0.5 shrink-0 text-success" />
         <div className="min-w-0 text-pretty text-body leading-relaxed text-muted-foreground">
-          <span className="font-medium text-foreground">Restored {whenSaid(last.at)}</span> from{" "}
-          <span className="break-all">{last.from}</span>.
+          {tr("backupsSection.restoredFrom", {
+            restored: (
+              <span className="font-medium text-foreground">
+                {said.today ? t("backupsSection.restoredAtToday", { time: said.time }) : t("backupsSection.restoredOnDate", { date: said.date, time: said.time })}
+              </span>
+            ),
+            from,
+          })}
           {last.aside && (
             <>
               {" "}
-              Your previous workspace is in <span className="break-all font-mono text-small">{last.aside}</span>.
+              {tr("backupsSection.previousWorkspaceIn", { folder: <span className="break-all font-mono text-small">{last.aside}</span> })}
             </>
           )}
-          {last.keys === "kept" ? t("backupsSection.keysOnThisComputerWere") : t("backupsSection.itsSavedKeysWereRestored")}
+          {" "}
+          {last.keys === "kept" ? t("backupsSection.keysKept") : t("backupsSection.keysRestored")}
         </div>
       </div>
     );
@@ -333,7 +343,7 @@ function AutoBackup({ status, onChange }: { status: Status; onChange: (s: Status
     <SettingRow
       label={t("backupsSection.backUpEveryDay")}
       info={t("backupsSection.madeOnceADayWhile")}
-      description={`Keeps the newest ${status.keep}, in ${status.folder}.`}
+      description={t("backupsSection.keepsNewest", { count: status.keep, folder: status.folder })}
       control={<Switch aria-label={t("backupsSection.backUpEveryDay")} checked={status.auto} disabled={saving} onCheckedChange={set} />}
     />
   );
@@ -359,8 +369,8 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
       .then(({ backup }: { backup: BackupItem }) => {
         // Done is said once and goes; the passphrase warning is the part
         // worth keeping on the page, so only that one stays.
-        toast.success(`Backed up, ${sizeText(backup.size)}`);
-        setResult(seal ? { ok: true, text: "Keep the passphrase safe: without it, this backup can't be opened." } : null);
+        toast.success(t("backupsSection.backedUp", { size: sizeText(backup.size) }));
+        setResult(seal ? { ok: true, text: t("backupsSection.keepPassphraseSafe") } : null);
         setPassphrase("");
         setAgain("");
         onDone();
@@ -420,7 +430,7 @@ function BackUpNow({ busy, folder, onDone }: { busy: boolean; folder: string; on
           result ? (
             <span className={result.ok ? "text-success" : "text-destructive"}>{result.text}</span>
           ) : (
-            `Agents, rooms, conversations, skills and settings, ${seal && keys ? "with" : "without"} saved keys. Saved to ${folder}.`
+            t(seal && keys ? "backupsSection.backUpNowWithKeys" : "backupsSection.backUpNowWithoutKeys", { folder })
           )
         }
         control={
@@ -467,7 +477,7 @@ function BackupRow({
         setPassphrase("");
         setLine(
           r.ok
-            ? { ok: true, text: `All ${r.files.toLocaleString()} files check out.` }
+            ? { ok: true, text: t("backupsSection.allFilesCheckOut", { count: r.files }) }
             : { ok: false, text: r.problems.slice(0, 3).join(" ") },
         );
       })
@@ -484,16 +494,16 @@ function BackupRow({
 
   const remove = async () => {
     const yes = await confirm({
-      title: `Delete the backup from ${when(backup.created)}?`,
-      body: "This can't be undone.",
-      confirmLabel: "Delete",
+      title: t("backupsSection.deleteBackupTitle", { when: when(backup.created) }),
+      body: t("backupsSection.cantBeUndone"),
+      confirmLabel: t("common.delete"),
       destructive: true,
     });
     if (!yes) return;
     void api(base, { method: "DELETE" })
       .then(() => {
         onChanged();
-        toast("Backup deleted");
+        toast(t("backupsSection.backupDeleted"));
       })
       .catch((e) => setLine({ ok: false, text: errorOf(e) }));
   };
@@ -544,7 +554,7 @@ function BackupRow({
         {!asking && (
           <Button size="sm" variant="secondary" disabled={checking || backup.damaged} onClick={verify}>
             {checking ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
-            Verify
+            {t("backupsSection.verify")}
           </Button>
         )}
         <Button size="sm" variant="secondary" onClick={show}>
@@ -579,6 +589,7 @@ function RestoreDialog({
   const [starting, setStarting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const { steps, notes } = restoreSteps(backup, folder);
+  const said = whenSaid(backup.created);
 
   const start = async () => {
     setStarting(true);
@@ -601,8 +612,9 @@ function RestoreDialog({
       <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] max-w-[480px] overflow-y-auto">
         <DialogTitle>{t("backupsSection.restoreThisBackup")}</DialogTitle>
         <DialogDescription>
-          Everything in Bloks goes back to how it was {whenSaid(backup.created)}: agents, rooms, conversations, skills
-          and settings.
+          {said.today
+            ? t("backupsSection.restoreGoesBackToday", { time: said.time })
+            : t("backupsSection.restoreGoesBackOn", { date: said.date, time: said.time })}
         </DialogDescription>
         <ol className="mt-4 flex list-decimal flex-col gap-1.5 pl-5 text-body leading-relaxed text-foreground marker:text-muted-foreground">
           {steps.map((step) => (
@@ -638,7 +650,7 @@ function RestoreDialog({
           </Button>
           <Button variant="destructive" disabled={starting || (backup.encrypted && !passphrase)} onClick={() => void start()}>
             {starting ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-            Restore and restart
+            {t("backupsSection.restoreAndRestart")}
           </Button>
         </div>
       </DialogContent>
