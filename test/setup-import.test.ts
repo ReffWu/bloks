@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
 
-import type { ImportDeps, McpEntry, Pick, Review, Scan } from "../server/setup-import.ts";
+import type { AgentSettings, Engine, ImportDeps, McpEntry, Pick, Review, Scan } from "../server/setup-import.ts";
 import type { Rule } from "../server/policy.ts";
 import type { ProfileNote } from "../server/profile-notes.ts";
 
@@ -192,6 +192,7 @@ describe("finding a setup", () => {
       ["mcp", "docs"],
       ["mcp", "web search"],
       ["mcp", "files"],
+      ["setting", "Model gpt-5"],
     ]);
 
     const openclaw = scan.sources.find((s) => s.id === "openclaw")!;
@@ -394,9 +395,20 @@ describe("permission rules", () => {
   const rule = (pattern: string, effect: "allow" | "deny") => mod.ruleFromPermission(pattern, effect, home);
 
   test("rules that can be said exactly become Bloks rules", () => {
+    // one plain command, never "starts with": that would let a second
+    // command chained after it through
     assert.deepEqual(rule("Bash(npm run test:*)", "allow"), {
-      rule: { effect: "allow", field: "command", op: "starts-with", value: "npm run test" },
-      notes: ["Bloks compares the start of the command, so anything added after these words is allowed too."],
+      rule: { effect: "allow", field: "command", op: "runs", value: "npm run test" },
+      notes: ["Bloks lets it through only as one plain command starting with these words, with nothing chained after it."],
+    });
+    assert.deepEqual((rule("Bash(git log *)", "allow") as { rule: unknown }).rule, { effect: "allow", field: "command", op: "runs", value: "git log" });
+    // reading, and only reading, through the tool that reads
+    assert.deepEqual((rule("Read(~/notes/**)", "allow") as { rule: unknown }).rule, {
+      effect: "allow",
+      field: "path",
+      op: "starts-with",
+      value: "/Users/sam/notes/",
+      tool: "Read",
     });
     assert.deepEqual((rule("Bash(git status)", "allow") as { rule: unknown }).rule, { effect: "allow", field: "command", op: "equals", value: "git status" });
     assert.deepEqual((rule("Edit(~/projects/**)", "allow") as { rule: unknown }).rule, {
@@ -433,7 +445,9 @@ describe("permission rules", () => {
   });
 
   test("an allow that would let agents do more than it did is left out, and says why", () => {
-    assert.match((rule("Read(./src/**)", "allow") as { skip: string }).skip, /change files there too/);
+    assert.match((rule("Read(./src/**)", "allow") as { skip: string }).skip, /project folder/);
+    assert.match((rule("Grep(~/src/**)", "allow") as { skip: string }).skip, /change files there too/);
+    assert.match((rule('Bash(echo "hi":*)', "allow") as { skip: string }).skip, /not one plain command/);
     assert.match((rule("Edit(./src/**)", "allow") as { skip: string }).skip, /project folder/);
     assert.match((rule("Bash(git * --force)", "allow") as { skip: string }).skip, /wildcard in the middle/);
     assert.match((rule("AskUserQuestion", "allow") as { skip: string }).skip, /question/);
@@ -468,39 +482,106 @@ describe("facts about the person", () => {
 
 // ── importing, against a workspace held in memory ──────────────────────
 
+type FakeAgent = {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  busy: boolean;
+  archived?: boolean;
+  talked?: boolean;
+  color?: string;
+  effort?: AgentSettings["effort"];
+  modelSelection: { instanceId: string; model: string };
+  skillIds: string[];
+  mcpServers: string[];
+};
+
 interface World {
   deps: ImportDeps;
-  agents: Map<string, { id: string; name: string; title: string; description: string; busy: boolean }>;
+  agents: Map<string, FakeAgent>;
   memory: Map<string, string>;
   journal: Array<{ botId: string; file: string; before: string | null; after: string }>;
   skills: Array<{ id: string; source: "builtin" | "user"; name: string; description: string; body: string }>;
   mcp: McpEntry[];
   rules: Rule[];
   notes: ProfileNote[];
+  /** Saved chat connections, by platform or telegram:agent, token and all. */
+  channels: Map<string, { tokens: Record<string, string>; enabled: false }>;
+  /** Engines Bloks has, by kind. */
+  engines: Partial<Record<Engine, { instanceId: string; model: string }>>;
+  /** Tokens the fake chat apps accept. */
+  goodTokens: Set<string>;
 }
+
+const agentOf = (input: Partial<FakeAgent> & { id: string; name: string }): FakeAgent => ({
+  title: "",
+  description: "",
+  busy: false,
+  modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
+  skillIds: [],
+  mcpServers: [],
+  ...input,
+});
 
 function world(): World {
   let n = 0;
   const w: World = {
-    agents: new Map([["nova", { id: "nova", name: "Nova", title: "", description: "Be brief.", busy: false }]]),
+    agents: new Map([["nova", agentOf({ id: "nova", name: "Nova", description: "Be brief." })]]),
     memory: new Map(),
     journal: [],
     skills: [{ id: "code-review", source: "builtin", name: "Code review", description: "", body: "x" }],
     mcp: [],
     rules: [],
     notes: [],
+    channels: new Map(),
+    engines: { claude: { instanceId: "claude", model: "claude-sonnet-5" }, codex: { instanceId: "codex", model: "gpt-6-sol" } },
+    goodTokens: new Set(),
     deps: undefined as unknown as ImportDeps,
   };
+  const live = (id: string) => {
+    const a = w.agents.get(id);
+    return a && !a.archived ? a : undefined;
+  };
+  const settingsOf = (a: FakeAgent): AgentSettings => ({
+    title: a.title,
+    description: a.description,
+    color: a.color,
+    effort: a.effort ?? null,
+    modelSelection: { ...a.modelSelection },
+    skillIds: [...a.skillIds],
+    mcpServers: [...a.mcpServers],
+  });
+  const channelKey = (platform: string, botId?: string) => (platform === "telegram" ? `telegram:${botId}` : platform);
   w.deps = {
     agent: (id) => {
-      const a = w.agents.get(id);
+      const a = live(id);
       return a ? { id: a.id, name: a.name, description: a.description, busy: a.busy } : null;
     },
-    createAgent: ({ name, title }) => {
+    agents: () => [...w.agents.values()].filter((a) => !a.archived).map((a) => ({ id: a.id, name: a.name })),
+    agentSettings: (id) => {
+      const a = live(id);
+      return a ? settingsOf(a) : null;
+    },
+    patchAgent: (id, patch) => {
+      const a = w.agents.get(id)!;
+      Object.assign(a, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)));
+      if (patch.effort === null) delete a.effort;
+    },
+    createAgent: ({ name, title, settings }) => {
       const id = `made-${++n}`;
-      w.agents.set(id, { id, name, title, description: "", busy: false });
+      w.agents.set(id, agentOf({ id, name, title }));
+      if (settings) w.deps.patchAgent(id, settings);
       return id;
     },
+    retireAgent: (id) => {
+      const a = live(id);
+      if (!a) return "gone";
+      if (a.talked) return "talked";
+      a.archived = true;
+      return "archived";
+    },
+    engine: (engine) => w.engines[engine] ?? null,
     setInstructions: (botId, text) => {
       w.agents.get(botId)!.description = text;
     },
@@ -509,10 +590,19 @@ function world(): World {
       w.journal.push({ botId, file, before, after });
       w.memory.set(`${botId}/${file}`, after);
     },
-    skills: () => w.skills.map((s) => ({ id: s.id, source: s.source })),
+    skills: () => w.skills.map((s) => ({ id: s.id, source: s.source, name: s.name })),
+    skill: (id) => {
+      const s = w.skills.find((x) => x.id === id);
+      return s ? { name: s.name, description: s.description, body: s.body, source: s.source } : null;
+    },
     installSkill: (input) => {
       w.skills = [...w.skills.filter((s) => s.id !== input.id), { ...input, source: "user" }];
       return input.id;
+    },
+    removeSkill: (id) => {
+      const had = w.skills.length;
+      w.skills = w.skills.filter((s) => s.id !== id || s.source !== "user");
+      return w.skills.length < had;
     },
     mcpServers: () => w.mcp,
     saveMcpServers: (list) => {
@@ -525,11 +615,35 @@ function world(): World {
       w.rules.push(made);
       return made;
     },
+    removeRule: (id) => {
+      const had = w.rules.length;
+      w.rules = w.rules.filter((r) => r.id !== id);
+      return w.rules.length < had;
+    },
     notes: () => w.notes,
     suggestNote: (text, by) => {
       const note: ProfileNote = { id: `note-${++n}`, text, state: "suggested", by, at: 0 };
       w.notes.push(note);
       return note;
+    },
+    removeNote: (id) => {
+      const had = w.notes.length;
+      w.notes = w.notes.filter((x) => x.id !== id);
+      return w.notes.length < had;
+    },
+    channel: (platform, botId) => {
+      const saved = w.channels.get(channelKey(platform, botId));
+      if (!saved) return null;
+      const token = saved.tokens.botToken ?? saved.tokens.token;
+      return { tokenHash: mod.tokenHash(token) };
+    },
+    // the fake app accepts only the tokens a test says it knows
+    connectChannel: async ({ platform, botId, tokens }) => {
+      for (const token of Object.values(tokens)) if (!w.goodTokens.has(token)) throw new Error("that token was refused");
+      w.channels.set(channelKey(platform, botId), { tokens, enabled: false });
+    },
+    disconnectChannel: (platform, botId) => {
+      w.channels.delete(channelKey(platform, botId));
     },
   };
   return w;
@@ -545,7 +659,7 @@ function picksFrom(review: Review, also: (key: string) => boolean = () => false)
 }
 
 describe("importing", () => {
-  test("only ticked items are written, each where it belongs, and nothing is attached or switched on", () => {
+  test("only ticked items are written, each where it belongs, and nothing is attached or switched on", async () => {
     const home = fixtureHome();
     const w = world();
     const record = new mod.ImportRecord(join(scratch, `record-${++homes}.json`));
@@ -557,7 +671,7 @@ describe("importing", () => {
     assert.ok(rules.length > 0 && rules.every((i) => !i.picked), "rules wait for the person to tick them");
 
     const picks = picksFrom(review, (key) => key === "claude:rule:deny:Bash(rm -rf:*)");
-    const outcome = mod.applyImport(scan, picks, w.deps, record);
+    const outcome = await mod.applyImport(scan, picks, w.deps, record);
     assert.deepEqual(outcome.results.filter((r) => !r.ok), []);
     assert.equal(outcome.results.length, picks.length);
 
@@ -596,11 +710,11 @@ describe("importing", () => {
     for (const secret of SECRETS) assert.equal(everything.includes(secret), false, `${secret} was imported`);
   });
 
-  test("importing again updates what the first import added instead of adding it twice", () => {
+  test("importing again updates what the first import added instead of adding it twice", async () => {
     const home = fixtureHome();
     const w = world();
     const record = new mod.ImportRecord(join(scratch, `record-${++homes}.json`));
-    mod.applyImport(mod.detectSetup(home), picksFrom(mod.reviewOf(mod.detectSetup(home), record, w.deps)), w.deps, record);
+    await mod.applyImport(mod.detectSetup(home), picksFrom(mod.reviewOf(mod.detectSetup(home), record, w.deps)), w.deps, record);
     const agents = w.agents.size;
     const counts = () => [w.agents.size, w.skills.length, w.mcp.length, w.notes.length, w.journal.length];
     const first = counts();
@@ -608,7 +722,7 @@ describe("importing", () => {
     // the same files again: everything is already there
     const again = mod.reviewOf(mod.detectSetup(home), record, w.deps);
     assert.equal(again.fresh, 5, "only Claude Code's five rules, never ticked, are still new");
-    const repeat = mod.applyImport(mod.detectSetup(home), picksFrom(again, () => true).filter((p) => !p.key.includes(":rule:")), w.deps, record);
+    const repeat = await mod.applyImport(mod.detectSetup(home), picksFrom(again, () => true).filter((p) => !p.key.includes(":rule:")), w.deps, record);
     assert.ok(repeat.results.every((r) => r.ok && r.did === "unchanged"), JSON.stringify(repeat.results));
     assert.deepEqual(counts(), first);
 
@@ -619,7 +733,7 @@ describe("importing", () => {
     const claudeMd = changed.sources[0].items[0];
     assert.equal(claudeMd.status, "changed");
     assert.notEqual(claudeMd.suggested.botId, "new", "it goes back where it went last time");
-    const update = mod.applyImport(
+    const update = await mod.applyImport(
       mod.detectSetup(home),
       picksFrom(changed).filter((p) => p.key === "claude:instructions:CLAUDE.md" || p.key === "openclaw:memory:MEMORY.md"),
       w.deps,
@@ -636,58 +750,58 @@ describe("importing", () => {
     assert.equal(memory.match(/## From OpenClaw/g)!.length, 1);
   });
 
-  test("a file that changed after the review is refused rather than imported unseen", () => {
+  test("a file that changed after the review is refused rather than imported unseen", async () => {
     const home = fixtureHome();
     const w = world();
     const record = new mod.ImportRecord(join(scratch, `record-${++homes}.json`));
     const review = mod.reviewOf(mod.detectSetup(home), record, w.deps);
     write(home, ".codex/AGENTS.md", "Something nobody looked at.\n");
     const pick = picksFrom(review).filter((p) => p.key === "codex:instructions:AGENTS.md");
-    const outcome = mod.applyImport(mod.detectSetup(home), pick, w.deps, record);
+    const outcome = await mod.applyImport(mod.detectSetup(home), pick, w.deps, record);
     assert.equal(outcome.results[0].ok, false);
     assert.match(outcome.results[0].error!, /changed since you looked/);
     assert.equal(w.agents.size, 1, "and nothing was made for it");
   });
 
-  test("a library skill by the same name is somebody's, and is not written over", () => {
+  test("a library skill by the same name is somebody's, and is not written over", async () => {
     const home = fixtureHome();
     const w = world();
     w.skills.push({ id: "weather", source: "user", name: "My weather", description: "", body: "mine" });
     const record = new mod.ImportRecord(join(scratch, `record-${++homes}.json`));
     const review = mod.reviewOf(mod.detectSetup(home), record, w.deps);
-    mod.applyImport(mod.detectSetup(home), picksFrom(review).filter((p) => p.key === "openclaw:skill:weather"), w.deps, record);
+    await mod.applyImport(mod.detectSetup(home), picksFrom(review).filter((p) => p.key === "openclaw:skill:weather"), w.deps, record);
     assert.equal(w.skills.find((s) => s.id === "weather")!.body, "mine");
     assert.match(w.skills.find((s) => s.id === "weather-openclaw")!.body, /Use the weather tool/);
   });
 
-  test("what the person filled in for a server survives a second import", () => {
+  test("what the person filled in for a server survives a second import", async () => {
     const home = fixtureHome();
     const w = world();
     const record = new mod.ImportRecord(join(scratch, `record-${++homes}.json`));
     const only = (review: Review) => picksFrom(review).filter((p) => p.key === "claude:mcp:github");
-    mod.applyImport(mod.detectSetup(home), only(mod.reviewOf(mod.detectSetup(home), record, w.deps)), w.deps, record);
+    await mod.applyImport(mod.detectSetup(home), only(mod.reviewOf(mod.detectSetup(home), record, w.deps)), w.deps, record);
     w.mcp[0].env = { GITHUB_PERSONAL_ACCESS_TOKEN: "filled-in-by-the-person" };
 
     const config = JSON.parse(`${JSON.stringify({ mcpServers: { github: { command: "npx", args: ["-y", "@modelcontextprotocol/server-github", "--read-only"], env: { GITHUB_PERSONAL_ACCESS_TOKEN: "x" } } } })}`);
     write(home, ".claude.json", JSON.stringify(config));
-    const outcome = mod.applyImport(mod.detectSetup(home), only(mod.reviewOf(mod.detectSetup(home), record, w.deps)), w.deps, record);
+    const outcome = await mod.applyImport(mod.detectSetup(home), only(mod.reviewOf(mod.detectSetup(home), record, w.deps)), w.deps, record);
     assert.equal(outcome.results[0].did, "updated");
     assert.equal(w.mcp.length, 1);
     assert.deepEqual(w.mcp[0].args, ["-y", "@modelcontextprotocol/server-github", "--read-only"]);
     assert.deepEqual(w.mcp[0].env, { GITHUB_PERSONAL_ACCESS_TOKEN: "filled-in-by-the-person" });
   });
 
-  test("instructions that would not fit, a busy agent, and a full server list each say why", () => {
+  test("instructions that would not fit, a busy agent, and a full server list each say why", async () => {
     const home = fixtureHome();
     const w = world();
     w.agents.get("nova")!.description = "y".repeat(3_990);
-    w.agents.set("busy", { id: "busy", name: "Rex", title: "", description: "", busy: true });
+    w.agents.set("busy", agentOf({ id: "busy", name: "Rex", busy: true }));
     w.mcp = Array.from({ length: 16 }, (_, i) => ({ id: `s${i}`, name: `server ${i}`, transport: "stdio" as const, command: "x" }));
     const record = new mod.ImportRecord(join(scratch, `record-${++homes}.json`));
     const review = mod.reviewOf(mod.detectSetup(home), record, w.deps);
     const by = new Map(review.sources.flatMap((s) => s.items).map((i) => [i.key, i]));
     const pick = (key: string, to: Pick["to"], botId?: string): Pick => ({ key, digest: by.get(key)!.digest, to, ...(botId ? { botId } : {}) });
-    const outcome = mod.applyImport(
+    const outcome = await mod.applyImport(
       mod.detectSetup(home),
       [
         pick("codex:instructions:AGENTS.md", "brief", "nova"),
