@@ -1418,7 +1418,8 @@ demand with `bloks skill using-bloks`, but only on the turns that get
 the full credential it describes: the owner's own, outside a shared
 room, on an engine that runs a process. It names every command `bloks
 help` lists, which `test/agent-tab.test.ts` checks against the shipped
-CLI, and what only the person can do, with the Settings page for each.
+CLI, and what only the person can do, pointing at `where`, `open` and
+`settings propose` below rather than naming pages from memory.
 
 Separate tasks are counted apart only when the person allows it
 (GitHub 326). `agents.taskBudget` is off until they set it in Settings,
@@ -3309,6 +3310,81 @@ Revoking a device, or switching pairing off, forgets what it said.
 A phone gates its reports on `device-settings` in `/api/health`
 (`server/features.ts`), so an older Mac is never sent one. An older phone
 ignores a frame it does not know and is listed as unavailable.
+
+## Explaining Bloks, and showing the way
+
+A second built-in skill, `how-bloks-works` (`BLOKS_EXPLAINER`,
+`withBloksExplainer`), explains each feature in a few lines: what it is,
+how it behaves, where it lives in the app, what an agent can do about it
+and what only the person can. It is written from this file and the
+README, and names every Settings page id, which `test/agent-guide.test.ts`
+holds to `SETTINGS_PAGE_LIST`, so a page added without a line there fails
+the build. Explaining is harmless, so it goes to every turn that can read
+a skill on demand. That is exactly the turn `using-bloks` goes to:
+reading on demand is `bloks skill`, on the full credential, and an API
+engine has no tool that reads a skill.
+
+Where things are is data both sides read: `server/settings-index.ts`
+holds the Settings index (pages, groups, words, rows, redirects) and the
+main places (Overview, Automations and its tabs, Memory, Plugins and its
+tabs, Usage, and `agent`, one agent's own settings). The app draws its
+Settings list and search from it (`src/lib/settingsPages.ts`), and holds
+every key in it to the catalogue at typecheck. The server reads the same
+list in English from the catalogue beside it (`server/where.ts`: next to
+it in a checkout, `Resources/locales` when packaged).
+
+- `bloks where <words>` is `GET /api/agent/where?q=`: the best places for
+  the words, each with its id, the path in words ("Settings, Behaviour"),
+  the rows that hold the words and the `open` command for it. A place
+  that holds every word ranks first, as the app's search keeps only
+  those; one that holds some is kept below it, since an agent's words
+  are looser than a search box's. Reading only.
+- `bloks open <page-id> [--row <row>]` is `POST /api/agent/open`: a card
+  in the conversation the turn runs in (`Message.card.open`, an
+  `OpenPlan`) with one button. In the desktop window it dispatches what
+  the app's own links do (`toggleAppSettings` with the page and, new, a
+  `row`, which `AppSettingsPanel` scrolls to and lights the way a search
+  result is; `toggleRoutines` with a tab; `openCustomize`; `openMemory`;
+  `openPage`; an agent's settings), and changes nothing. A workspace's
+  own page in a window with no workspaces, and a client that does not
+  know the card, show the way in words: the card's title and subtitle
+  carry it for the iPhone.
+
+### Settings an agent proposes
+
+`bloks settings propose` with nothing after it lists what may be
+proposed, with each value now (`GET /api/agent/settings/proposals`).
+`bloks settings propose <setting> <value> --why "<reason>"` is the POST:
+`server/settings-proposals.ts` decides, and a refusal changes nothing.
+The list (`PROPOSABLE`) is everyday preferences only: Behaviour's
+recall, nightly tidy, summarise as you go, other changed files and skill
+suggestions; the morning brief's switch, time, notifications and
+sections; the proposing agent's own notifications, effort and model (a
+model of the engine it is on); and the effort new agents start on.
+Everything about approvals and rules, keys, secrets and sign-ins,
+engines, members, invites and roles, phones and pairing, remote access
+and Bloks Cloud, the plan, billing and spending limits, the chain limit
+and the task budget, backups, moving and exporting, deleting, the Bloks
+browser's sites, Home Assistant and security is refused by subject
+(`REFUSED`) with `bloks open <page>` for where to send the person; any
+other name is refused with the list and `bloks where`.
+
+An accepted proposal is a card (`Message.card.settingsProposal`, a
+`ProposalCard`) carrying the setting, its name, the way there, the
+value now, the value proposed and the reason, and the command waits up
+to a minute (`BLOKS_SETTINGS_WAIT_MS`) for an answer; `bloks settings
+proposal <id>` waits again. The card holds everything the change needs,
+so a Change pressed after a restart still applies. Change and Keep are
+`POST /api/settings-proposals/:lane/:message/(change|keep)`, the
+owner's alone (on `NEVER`, and refused to a member's credential). Change
+reads the setting again as things stand, builds the request the Settings
+page itself sends (`PUT /api/config`, `PATCH /api/briefs/settings`,
+`PATCH /api/bots/:id`) and makes it as the person at this computer, on
+loopback with no credential, so its checks, its save and its broadcast
+are the page's own. It is recorded as `settings.changed` with actor
+`you`. The agent hears how it went from the command still waiting, or
+at the start of its next turn in that conversation, once (`told` on
+the card).
 
 ## Rule suggestions
 

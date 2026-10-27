@@ -112,6 +112,27 @@ agent itself or one it may already message, and is refused wherever that
 message would be. An empty conversation, and which one you have open,
 stay yours.
 
+**An agent can point at a setting, and propose a few, never change one.**
+`bloks where` reads the app's own Settings index and `bloks open` puts a
+button in the conversation that opens a page; neither changes anything.
+`bloks settings propose` puts a card in front of you for one of a short
+list of everyday preferences (`PROPOSABLE` in
+`server/settings-proposals.ts`): Behaviour's recall, nightly tidy,
+summarise as you go, other changed files and skill suggestions; the
+morning brief's switch, time, notifications and sections; the proposing
+agent's own notifications, effort and model on the engine it already
+has; and the effort new agents start on. Nothing changes until you tap
+Change, which only you can (`/api/settings-proposals` is on the agents'
+never list, and a member's credential is refused), and the change is
+the Settings page's own request, made as you and recorded as yours. An
+agent never proposes approvals or rules, keys, secrets or sign-ins,
+engines, members, invites or roles, phone access or pairing, remote
+access or Bloks Cloud, the plan, billing or spending limits, the limit
+on agents writing to agents or the task budget, backups or restore,
+moving or exporting a workspace, deleting anything, the browser's sites,
+Home Assistant, or anything about security: each is refused by name
+with the page to send you to, and `test/agent-guide.test.ts` holds that.
+
 **The renderer is pinned to its own origin.** The packaged app serves its
 UI with a strict `Content-Security-Policy`: no remote script, no remote
 frames, no form posts, and `connect-src 'self'`. The Electron window runs

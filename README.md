@@ -226,7 +226,11 @@ owns, which skills to give them. You approve or you don't. Agents can
 message each other, hire, open rooms, start a new conversation for a
 teammate, and stop one they outrank, with a credential that ends with the
 turn. A built-in skill tells them which command fits what you asked,
-and which things only you can do, and where in Settings. When something fails for
+and which things only you can do. Another explains how each part of
+Bloks works, so an agent can answer "where do I turn that off" from the
+app's own settings index and leave a button in the chat that takes you
+there, or propose changing an everyday setting on a card where nothing
+changes until you tap Change. When something fails for
 good, an **incident desk** hands it to the lead to retry once, pass on,
 or bring to you, instead of letting it fail quietly or in a storm.
 
