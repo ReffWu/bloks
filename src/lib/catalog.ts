@@ -2,6 +2,7 @@
 // story): the shapes the routes answer with, and the small pure parts of
 // browsing, which are searching, filtering by tag and counting.
 import type { BlokColor, BlokShape } from "@/lib/mascot";
+import { formatRelative, t } from "./i18n.ts";
 
 /** A line of a diff, as server/checkpoints.ts returns it and DiffLines
  * draws it. */
@@ -175,7 +176,7 @@ export function filterCatalog(items: CatalogRow[], kind: CatalogKind, query: str
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return items.filter((item) => {
     if (item.kind !== kind) return false;
-    if (tags.some((t) => !item.tags.includes(t))) return false;
+    if (tags.some((tag) => !item.tags.includes(tag))) return false;
     const hay = `${item.title} ${item.summary} ${item.tags.join(" ")} ${item.author ?? ""} ${item.id}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
@@ -186,10 +187,10 @@ export function filterCatalog(items: CatalogRow[], kind: CatalogKind, query: str
  * are a few shared ones the rest are left off the row. */
 export function tagsOf(items: CatalogRow[], kind: CatalogKind, most = 12): string[] {
   const counts = new Map<string, number>();
-  for (const item of items) if (item.kind === kind) for (const t of item.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+  for (const item of items) if (item.kind === kind) for (const tag of item.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const shared = sorted.filter(([, n]) => n > 1);
-  return (shared.length >= 4 ? shared : sorted).slice(0, most).map(([t]) => t);
+  return (shared.length >= 4 ? shared : sorted).slice(0, most).map(([tag]) => tag);
 }
 
 /** How many of one kind have an update waiting. */
@@ -197,13 +198,16 @@ export function updatesOf(items: CatalogRow[], kind?: CatalogKind): number {
   return items.filter((i) => (!kind || i.kind === kind) && i.standing.state === "outdated").length;
 }
 
-/** "Updated 5 minutes ago", for the line that says how old an offline copy is. */
+/** "5 minutes ago", for the line that says how old an offline copy is.
+ * Always the number ("1 day ago", never "yesterday"), in the reader's
+ * language. */
 export function fetchedWords(at: number, now = Date.now()): string {
   const minutes = Math.max(0, Math.round((now - at) / 60_000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  if (minutes < 1) return t("catalog.justNow");
+  const always = { numeric: "always" } as const;
+  if (minutes < 60) return formatRelative(-minutes, "minute", always);
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  if (hours < 24) return formatRelative(-hours, "hour", always);
   const days = Math.round(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  return formatRelative(-days, "day", always);
 }

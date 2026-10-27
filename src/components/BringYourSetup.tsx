@@ -40,7 +40,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import {
   choicesFrom,
   conflictLine,
@@ -57,7 +56,7 @@ import {
   type SetupSource,
 } from "@/lib/setupReview";
 import { thisComputer } from "@/lib/thisComputer";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, t, tr, type MessageKey } from "@/lib/i18n";
 
 export type { SetupItem, SetupReview, SetupSource } from "@/lib/setupReview";
 
@@ -78,8 +77,7 @@ export interface SetupWhere {
 
 /** A workspace server from before 3.0.14 has no `where`, and brings a
  * setup over only for a window on its own computer. */
-const OLDER_SERVER =
-  "The workspace server runs an older Bloks, which brings a setup over only at its own computer. Update the server to 3.0.14 or newer, then look again.";
+const OLDER_SERVER: MessageKey = "bringYourSetup.olderServer";
 
 /** The review, looked up once and again on demand. Null while looking. */
 export function useSetupReview(): {
@@ -105,7 +103,7 @@ export function useSetupReview(): {
       try {
         setReview((await api("/api/setup-import")) as SetupReview);
       } catch (e) {
-        setError(older && (e as { status?: number }).status === 403 ? OLDER_SERVER : (e as Error).message);
+        setError(older && (e as { status?: number }).status === 403 ? t(OLDER_SERVER) : (e as Error).message);
         setReview({ sources: [], fresh: 0 });
       }
     })();
@@ -118,16 +116,16 @@ export function useSetupReview(): {
  * them (server/setup-import.ts reads these and nothing else). */
 const SETUP_FOLDERS = "~/.claude, ~/.codex, ~/.cursor, ~/.openclaw or ~/.hermes";
 
-const KIND: Record<Kind, { label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
-  agent: { label: "Agent", icon: Bot },
-  instructions: { label: "Instructions", icon: FileText },
-  memory: { label: "Memory", icon: Brain },
-  skill: { label: "Skill", icon: Sparkles },
-  mcp: { label: "MCP server", icon: Server },
-  setting: { label: "Model", icon: Cpu },
-  rule: { label: "Rule", icon: Scale },
-  fact: { label: "About you", icon: UserRound },
-  channel: { label: "Chat app", icon: MessagesSquare },
+const KIND: Record<Kind, { label: MessageKey; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
+  agent: { label: "common.agent", icon: Bot },
+  instructions: { label: "common.instructions", icon: FileText },
+  memory: { label: "common.memory", icon: Brain },
+  skill: { label: "bringYourSetup.kind.skill", icon: Sparkles },
+  mcp: { label: "bringYourSetup.kind.mcp", icon: Server },
+  setting: { label: "bringYourSetup.kind.setting", icon: Cpu },
+  rule: { label: "bringYourSetup.kind.rule", icon: Scale },
+  fact: { label: "bringYourSetup.kind.fact", icon: UserRound },
+  channel: { label: "bringYourSetup.kind.channel", icon: MessagesSquare },
 };
 
 /**
@@ -146,15 +144,13 @@ export function SetupPrivacyLine({ where, className }: { where: SetupWhere | nul
         {away ? (
           <>
             <div className="font-medium text-foreground">
-              Read on {where.computer}, where this workspace runs. No key or password is copied unless you tick it.
+              {t("bringYourSetup.away.readOn", { computer: where.computer })}
             </div>
             <div className="text-muted-foreground">
-              Nothing is read from {thisComputer()}, and nothing is added until you choose. What you pick is added to the workspace on{" "}
-              {where.computer}.
+              {t("bringYourSetup.away.nothingReadHere", { here: thisComputer(), computer: where.computer })}
             </div>
             <div className="mt-1.5 text-muted-foreground">
-              To bring a setup from {thisComputer()} instead, copy its folders ({SETUP_FOLDERS}) to the same place on {where.computer}, then look
-              again.
+              {t("bringYourSetup.away.toBringFromHere", { here: thisComputer(), folders: SETUP_FOLDERS, computer: where.computer })}
             </div>
           </>
         ) : (
@@ -162,7 +158,7 @@ export function SetupPrivacyLine({ where, className }: { where: SetupWhere | nul
             <div className="font-medium text-foreground">
               {/* only said once the server has said it is this computer */}
               {where?.here
-                ? `Nothing leaves ${thisComputer()}, and no key or password is copied unless you tick it.`
+                ? t("bringYourSetup.nothingLeaves", { here: thisComputer() })
                 : t("bringYourSetup.noKeyOrPasswordIs")}
             </div>
             <div className="text-muted-foreground">{t("bringYourSetup.nothingIsAddedUntilYou")}</div>
@@ -214,7 +210,7 @@ function AgentPicker({
       onChange={(e) => onChange(e.target.value)}
       className="h-7 min-w-0 max-w-full rounded-md border bg-background px-2 text-body text-foreground"
     >
-      <option value="new">New agent: {agentName}</option>
+      <option value="new">{t("bringYourSetup.newAgent", { name: agentName })}</option>
       {agents.map((agent) => (
         <option key={agent.id} value={agent.id}>
           {agent.name}
@@ -226,45 +222,64 @@ function AgentPicker({
 
 function WhereItGoes({ item, source, choice, onChange }: { item: SetupItem; source: SetupSource; choice: Choice; onChange: (next: Choice) => void }) {
   if (item.kind === "instructions" || item.kind === "memory") {
+    const picker = (
+      <AgentPicker
+        value={choice.botId}
+        agentName={source.agentName}
+        label={t("bringYourSetup.whichAgentGoesTo", { item: item.title })}
+        onChange={(botId) => onChange({ ...choice, botId })}
+      />
+    );
+    // the words sit between the controls as the sentence orders them, so
+    // they are the row's own text, in its small muted type
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        {item.destinations.length > 1 ? (
-          <Segmented
-            size="sm"
-            aria-label={`Where ${item.title} goes`}
-            value={choice.to}
-            onChange={(to) => onChange({ ...choice, to })}
-            options={[
-              { value: "brief" as Destination, label: "Instructions" },
-              { value: "memory" as Destination, label: "Memory" },
-            ]}
-            className="w-auto"
-          />
-        ) : (
-          <span className="text-small text-muted-foreground">{t("bringYourSetup.memoryOf")}</span>
-        )}
-        {item.destinations.length > 1 && <span className="text-small text-muted-foreground">{t("bringYourSetup.for")}</span>}
-        <AgentPicker
-          value={choice.botId}
-          agentName={source.agentName}
-          label={`Which agent ${item.title} goes to`}
-          onChange={(botId) => onChange({ ...choice, botId })}
-        />
+      <div className="flex flex-wrap items-center gap-2 text-small text-muted-foreground">
+        {item.destinations.length > 1
+          ? tr("bringYourSetup.whereForAgent", {
+              where: (
+                <Segmented
+                  size="sm"
+                  aria-label={t("bringYourSetup.whereItemGoes", { item: item.title })}
+                  value={choice.to}
+                  onChange={(to) => onChange({ ...choice, to })}
+                  options={[
+                    { value: "brief" as Destination, label: t("common.instructions") },
+                    { value: "memory" as Destination, label: t("common.memory") },
+                  ]}
+                  className="w-auto"
+                />
+              ),
+              agent: picker,
+            })
+          : tr("bringYourSetup.memoryOfAgent", { agent: picker })}
       </div>
     );
   }
   if (item.kind === "setting" || (item.kind === "channel" && item.channel?.perAgent)) {
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-small text-muted-foreground">
-          {item.kind === "setting" ? `On ${item.setting?.engineName ?? "its engine"}, for` : t("bringYourSetup.answersAs")}
-        </span>
-        <AgentPicker
-          value={choice.botId}
-          agentName={source.agentName}
-          label={item.kind === "setting" ? `Which agent runs on ${item.title}` : `Which agent ${item.title} answers as`}
-          onChange={(botId) => onChange({ ...choice, botId })}
-        />
+      <div className="flex flex-wrap items-center gap-2 text-small text-muted-foreground">
+        {item.kind === "setting"
+          ? tr("bringYourSetup.onEngineForAgent", {
+              engine: item.setting?.engineName ?? t("bringYourSetup.itsEngine"),
+              agent: (
+                <AgentPicker
+                  value={choice.botId}
+                  agentName={source.agentName}
+                  label={t("bringYourSetup.whichAgentRunsOn", { item: item.title })}
+                  onChange={(botId) => onChange({ ...choice, botId })}
+                />
+              ),
+            })
+          : tr("bringYourSetup.answersAsAgent", {
+              agent: (
+                <AgentPicker
+                  value={choice.botId}
+                  agentName={source.agentName}
+                  label={t("bringYourSetup.whichAgentAnswersAs", { item: item.title })}
+                  onChange={(botId) => onChange({ ...choice, botId })}
+                />
+              ),
+            })}
       </div>
     );
   }
@@ -281,12 +296,12 @@ function ConflictChoice({ item, choice, onChange }: { item: SetupItem; choice: C
       {c.canReplace ? (
         <Segmented
           size="sm"
-          aria-label={`What to do about ${c.name}`}
+          aria-label={t("bringYourSetup.whatToDoAbout", { name: c.name })}
           value={choice.conflict ?? "both"}
           onChange={(conflict) => onChange({ ...choice, conflict })}
           options={[
-            { value: "both" as const, label: "Keep both" },
-            { value: "replace" as const, label: c.kind === "agent" ? "Update it" : "Replace it" },
+            { value: "both" as const, label: t("bringYourSetup.keepBoth") },
+            { value: "replace" as const, label: c.kind === "agent" ? t("bringYourSetup.updateIt") : t("bringYourSetup.replaceIt") },
           ]}
           className="w-auto"
         />
@@ -340,14 +355,12 @@ function SecretFields({ item, choice, onChange }: { item: SetupItem; choice: Cho
                   onChange={(e) => onChange({ ...choice, copy: { ...choice.copy, [slot.id]: e.target.checked } })}
                   className="size-3.5 shrink-0 accent-(--brand)"
                 />
-                <span>
-                  Copy the one in <span className="font-mono text-caption">{slot.copyFrom}</span>
-                </span>
+                <span>{tr("bringYourSetup.copyTheOneIn", { file: <span className="font-mono text-caption">{slot.copyFrom}</span> })}</span>
               </label>
             )}
             {!slot.copyFrom && slot.ref && (
               <div className="text-caption text-muted-foreground sm:pl-[calc(38%+0.5rem)]">
-                It was read from <span className="font-mono">${slot.ref}</span> in your shell, so paste its value.
+                {tr("bringYourSetup.readFromShell", { ref: <span className="font-mono">${slot.ref}</span> })}
               </div>
             )}
           </div>
@@ -393,7 +406,7 @@ function ItemRow({
             <span className="min-w-0 truncate text-ui font-medium text-foreground">{item.title}</span>
           </label>
           <span className="text-small text-muted-foreground">
-            {item.kind === "instructions" || item.kind === "memory" ? `${meta.label}, ${source.name}` : source.name}
+            {item.kind === "instructions" || item.kind === "memory" ? t("bringYourSetup.kindFromSource", { kind: t(meta.label), source: source.name }) : source.name}
           </span>
           <StatusChip status={item.status} />
         </div>
@@ -402,14 +415,14 @@ function ItemRow({
         )}
         {item.kind === "agent" && item.agent?.title && <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">{item.agent.title}</div>}
         <div className="mt-0.5 truncate font-mono text-caption text-muted-foreground/80">{item.from}</div>
-        {item.sameAs && <div className="mt-1 text-small text-muted-foreground">The same as {item.sameAs}, so it is not ticked.</div>}
+        {item.sameAs && <div className="mt-1 text-small text-muted-foreground">{t("bringYourSetup.sameAs", { name: item.sameAs })}</div>}
         <div className="mt-2 flex flex-col gap-2">
           <WhereItGoes item={item} source={source} choice={choice} onChange={onChange} />
           {choice.on && item.conflict && <ConflictChoice item={item} choice={choice} onChange={onChange} />}
           {choice.on && (item.secrets?.length ?? 0) > 0 && <SecretFields item={item} choice={choice} onChange={onChange} />}
           {missing.length > 0 && (
             <div className="text-small text-warning">
-              Needs its {missing.map((s) => s.name.toLowerCase()).join(" and ")} to come over.
+              {t("bringYourSetup.needsItsValues", { values: formatList(missing.map((s) => s.name.toLowerCase())) })}
             </div>
           )}
         </div>
@@ -443,8 +456,9 @@ function ItemRow({
         {result && (
           <div className={cn("mt-1.5 text-small", result.ok ? "text-success" : "text-destructive")} aria-live="polite">
             {result.ok
-              ? `${result.did === "unchanged" ? "Already here." : result.did === "updated" ? "Updated." : "Brought over."}${result.note ? ` ${result.note}` : ""}`
-              : `Not brought over: ${result.error}`}
+              ? // the note is the server's, as it words it
+                `${result.did === "unchanged" ? t("bringYourSetup.result.alreadyHere") : result.did === "updated" ? t("bringYourSetup.result.updated") : t("bringYourSetup.result.broughtOver")}${result.note ? ` ${result.note}` : ""}`
+              : t("bringYourSetup.result.notBroughtOver", { error: result.error ?? "" })}
           </div>
         )}
       </div>
@@ -453,7 +467,7 @@ function ItemRow({
 }
 
 function when(at: number): string {
-  return new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return formatDate(at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 /**
@@ -487,7 +501,7 @@ function UndoImport({
       onUndone?.();
       onReview(out.review);
     } catch (e) {
-      setProblem(e instanceof Error ? e.message : "Could not undo it. Nothing changed.");
+      setProblem(e instanceof Error ? e.message : t("bringYourSetup.couldNotUndo"));
     } finally {
       setBusy(false);
     }
@@ -495,12 +509,12 @@ function UndoImport({
   if (done) {
     return (
       <div className="flex flex-col gap-1 text-body text-foreground" aria-live="polite">
-        <div>{done.undone ? `Took back ${plural(done.undone, "change")}.` : t("bringYourSetup.nothingNeededTakingBack")}</div>
+        <div>{done.undone ? t("bringYourSetup.tookBack", { count: done.undone }) : t("bringYourSetup.nothingNeededTakingBack")}</div>
         {done.kept.length > 0 && (
           <ul className="flex flex-col gap-0.5">
             {done.kept.map((k) => (
               <li key={`${k.title}:${k.why}`} className="text-small leading-relaxed text-muted-foreground">
-                Kept {k.title}: {k.why}
+                {t("bringYourSetup.keptWhy", { title: k.title, why: k.why })}
               </li>
             ))}
           </ul>
@@ -543,7 +557,8 @@ export function SetupReviewList({
   const [results, setResults] = useState<Record<string, Result>>({});
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [summary, setSummary] = useState<string | null>(null);
+  // what the import did, as counts, so the line is worded when it draws
+  const [summary, setSummary] = useState<{ brought: number; created: number; failed: number } | null>(null);
   const [run, setRun] = useState<SetupRun | null>(null);
   const [undone, setUndone] = useState(false);
 
@@ -590,22 +605,14 @@ export function SetupReviewList({
       setResults(Object.fromEntries(outcome.results.map((r) => [r.key, r])));
       const brought = outcome.results.filter((r) => r.ok && r.did !== "unchanged").length;
       const failed = outcome.results.filter((r) => !r.ok).length;
-      setSummary(
-        [
-          brought ? `Brought over ${plural(brought, "item")}.` : "Nothing new to bring over.",
-          outcome.created.length ? `Made ${plural(outcome.created.length, "new agent")}.` : "",
-          failed ? `${failed} failed, see below.` : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-      );
+      setSummary({ brought, created: outcome.created.length, failed });
       setRun(outcome.run ?? null);
       // what was typed has done its job; it is not kept on screen
       setChoices((current) => Object.fromEntries(Object.entries(current).map(([k, c]) => [k, { ...c, typed: undefined, copy: undefined }])));
       onReview(outcome.review);
       onImported?.({ brought, created: outcome.created.length });
     } catch (e) {
-      setProblem(e instanceof Error ? e.message : "Something went wrong. Nothing changed.");
+      setProblem(e instanceof Error ? e.message : t("bringYourSetup.somethingWentWrong"));
     } finally {
       setBusy(false);
     }
@@ -618,18 +625,25 @@ export function SetupReviewList({
     <div className="flex min-h-0 flex-col">
       {/* the first-run step names the tools in its own heading */}
       <div className={cn("mb-4 px-1 text-body leading-relaxed text-muted-foreground", compact && "hidden")}>
-        Found in{" "}
-        {review.sources.map((source, i) => (
-          <span key={source.id}>
-            {i > 0 && (i === review.sources.length - 1 ? t("bringYourSetup.and") : ", ")}
-            <span className="text-foreground">{source.name}</span> <span className="font-mono text-caption">{source.folder}</span>
-          </span>
-        ))}
-        .
+        {tr("bringYourSetup.foundIn", {
+          sources: (
+            <span>
+              {review.sources.map((source, i) => (
+                <span key={source.id}>
+                  {i > 0 && (i === review.sources.length - 1 ? t("bringYourSetup.listAnd") : t("bringYourSetup.listComma"))}
+                  {tr("bringYourSetup.sourceInFolder", {
+                    source: <span className="text-foreground">{source.name}</span>,
+                    folder: <span className="font-mono text-caption">{source.folder}</span>,
+                  })}
+                </span>
+              ))}
+            </span>
+          ),
+        })}
       </div>
       {earlier && (
         <div className="mb-4 px-1">
-          <UndoImport run={earlier} onReview={onReview} onUndone={() => setResults({})} lead={`Your last import, ${when(earlier.at)}, brought over ${plural(earlier.items, "item")}.`} />
+          <UndoImport run={earlier} onReview={onReview} onUndone={() => setResults({})} lead={t("bringYourSetup.lastImport", { when: when(earlier.at), count: earlier.items })} />
         </div>
       )}
       <div className="flex flex-col gap-5">
@@ -671,7 +685,7 @@ export function SetupReviewList({
           <details className="group px-1">
             <summary className="flex cursor-pointer list-none items-center gap-1 text-small text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
               <ChevronRight size={12} className="transition-transform duration-150 group-open:rotate-90" />
-              Left out ({review.sources.reduce((n, s) => n + s.skipped.length, 0)})
+              {t("bringYourSetup.leftOut", { n: review.sources.reduce((n, s) => n + s.skipped.length, 0) })}
             </summary>
             <div className="mt-1.5 flex flex-col gap-2.5 pl-4">
               {review.sources
@@ -697,7 +711,13 @@ export function SetupReviewList({
         {problem && <div className="text-small text-destructive">{problem}</div>}
         {summary && !undone && (
           <div className="text-body text-foreground" aria-live="polite">
-            {summary}
+            {[
+              summary.brought ? t("bringYourSetup.summary.broughtOver", { count: summary.brought }) : t("bringYourSetup.summary.nothingNew"),
+              summary.created ? t("bringYourSetup.summary.madeAgents", { count: summary.created }) : "",
+              summary.failed ? t("bringYourSetup.summary.failed", { n: summary.failed }) : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           </div>
         )}
         {run && (
@@ -714,7 +734,7 @@ export function SetupReviewList({
         )}
         {needsKeys && !compact && (
           <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground">
-            Some servers still need a key.
+            {t("bringYourSetup.someServersNeedKey")}
             <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "apps" })}>
               {t("bringYourSetup.addKeys")}
             </Button>
@@ -737,7 +757,7 @@ export function SetupReviewList({
             ) : picked.length === 0 ? (
               t("bringYourSetup.nothingSelected")
             ) : (
-              `Bring over ${plural(picked.length, "item")}`
+              t("bringYourSetup.bringOverItems", { count: picked.length })
             )}
           </Button>
         )}
@@ -757,16 +777,16 @@ export function BringYourSetupPage() {
           <Loader2 size={15} className="animate-spin" /> {t("bringYourSetup.looking")}
         </div>
       ) : error ? (
-        <div className="rounded-2xl border bg-card p-4 text-body text-destructive">Couldn't check: {error}</div>
+        <div className="rounded-2xl border bg-card p-4 text-body text-destructive">{t("bringYourSetup.couldNotCheck", { error })}</div>
       ) : review.sources.length === 0 ? (
         <div className="rounded-2xl border bg-card p-4">
           <div className="text-ui font-medium text-foreground">{t("bringYourSetup.nothingFoundToBringOver")}</div>
           <div className="mt-1 text-body leading-relaxed text-muted-foreground">
-            Bloks checks {where && !where.here ? `${where.computer} ` : ""}for Claude Code, Codex, Cursor, OpenClaw and Hermes.
+            {where && !where.here ? t("bringYourSetup.checksOn", { computer: where.computer }) : t("bringYourSetup.checks")}
           </div>
           {review.lastRun && (
             <div className="mt-3">
-              <UndoImport run={review.lastRun} onReview={set} lead={`Your last import, ${when(review.lastRun.at)}, brought over ${plural(review.lastRun.items, "item")}.`} />
+              <UndoImport run={review.lastRun} onReview={set} lead={t("bringYourSetup.lastImport", { when: when(review.lastRun.at), count: review.lastRun.items })} />
             </div>
           )}
           <Button size="sm" variant="secondary" className="mt-3" onClick={reload}>

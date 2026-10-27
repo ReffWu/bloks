@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { startRemoteProxy } from "../electron/remote.mjs";
 import { allows } from "../server/agent-cli.ts";
 import { APPS_ELSEWHERE, appsTrouble } from "../src/lib/mcpApps.ts";
+import { inEnglish } from "../src/lib/i18n.ts";
 import { sealedRelay } from "./helpers/sealed-relay.ts";
 import { startHarness } from "./helpers/server.ts";
 
@@ -143,7 +144,7 @@ test("the owner's own device checks a server's apps, opens one and runs its tool
 describe("what the Apps card says when apps could not be had", () => {
   test("an older Bloks's refusal is said plainly, never as its bare words", () => {
     const said = appsTrouble(403, "not from here", "403 Forbidden");
-    assert.equal(said, APPS_ELSEWHERE);
+    assert.equal(said, inEnglish(APPS_ELSEWHERE));
     assert.doesNotMatch(said, /not from here/);
     assert.match(said, /Update Bloks there/);
   });

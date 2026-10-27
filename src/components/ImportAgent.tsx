@@ -46,7 +46,7 @@ export function isAgentFileName(name: string): boolean {
   return /\.(bloks-agent|agent)\.json$/i.test(name) || name.toLowerCase().endsWith(".json");
 }
 
-const size = (bytes: number) => (bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`);
+const size = (bytes: number) => (bytes < 1024 ? t("importAgent.bytes", { n: bytes }) : t("importAgent.kilobytes", { n: Math.round(bytes / 1024) }));
 
 export function ImportAgentDialog({
   text,
@@ -153,14 +153,14 @@ export function ImportAgentDialog({
                     preview.memoryBytes || preview.topics
                       ? [
                           preview.memoryBytes ? size(preview.memoryBytes) : null,
-                          preview.topics ? `${preview.topics} note${preview.topics === 1 ? "" : "s"}` : null,
+                          preview.topics ? t("importAgent.notes", { count: preview.topics }) : null,
                         ]
                           .filter(Boolean)
                           .join(", ")
-                      : "none"
+                      : t("importAgent.none")
                   }
                 />
-                {preview.hasPhoto && <Line label={t("importAgent.photo")} value="included" />}
+                {preview.hasPhoto && <Line label={t("importAgent.photo")} value={t("importAgent.included")} />}
               </div>
 
               {preview.notes.length > 0 && (
@@ -225,6 +225,6 @@ function Line({ label, value }: { label: string; value: string }) {
 export const MAX_AGENT_FILE_BYTES = 8 * 1024 * 1024;
 
 export async function readAgentFile(file: File): Promise<string> {
-  if (file.size > MAX_AGENT_FILE_BYTES) throw new Error("This file is too large.");
+  if (file.size > MAX_AGENT_FILE_BYTES) throw new Error(t("importAgent.tooLarge"));
   return await file.text();
 }

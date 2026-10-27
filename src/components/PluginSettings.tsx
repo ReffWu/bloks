@@ -40,7 +40,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { t, tr, type MessageKey } from "@/lib/i18n";
 
 type List = "apps" | "mcps" | "clis" | "skills";
 
@@ -96,7 +96,7 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div className="px-6 py-12 text-center text-ui text-muted-foreground">{children}</div>;
 }
 
-const usedBy = (n: number) => (n === 0 ? "No agents" : n === 1 ? "1 agent" : `${n} agents`);
+const usedBy = (n: number) => (n === 0 ? t("pluginSettings.noAgents") : t("pluginSettings.agentCount", { count: n }));
 
 export function PluginSettings() {
   const { state, dispatch } = useStore();
@@ -235,11 +235,11 @@ export function PluginSettings() {
         <div role="tablist" className="flex items-center gap-1">
           {(
             [
-              ["apps", "Apps"],
-              ["mcps", "MCPs"],
-              ["clis", "CLIs"],
-              ["skills", "Skills"],
-            ] as const
+              ["apps", "pluginSettings.tab.apps"],
+              ["mcps", "pluginSettings.tab.mcps"],
+              ["clis", "pluginSettings.tab.clis"],
+              ["skills", "common.skills"],
+            ] as const satisfies ReadonlyArray<readonly [string, MessageKey]>
           ).map(([value, text]) => (
             <button
               key={value}
@@ -251,7 +251,7 @@ export function PluginSettings() {
                 list === value ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {text}
+              {t(text)}
               {counts[value] === null ? (
                 <span className="inline-block h-2.5 w-3 animate-pulse rounded-sm bg-muted-foreground/25" aria-hidden />
               ) : (
@@ -279,14 +279,17 @@ export function PluginSettings() {
             <Loading />
           ) : !connectors.configured ? (
             <Empty>
-              Connecting apps needs a Composio key.{" "}
-              <button onClick={() => connectors.askForKey()} className="text-foreground underline underline-offset-2">
-                {t("pluginSettings.addAKey")}
-              </button>
+              {tr("pluginSettings.needsAComposioKey", {
+                addKey: (
+                  <button onClick={() => connectors.askForKey()} className="text-foreground underline underline-offset-2">
+                    {t("pluginSettings.addAKey")}
+                  </button>
+                ),
+              })}
             </Empty>
           ) : apps.length === 0 ? (
             <Empty>
-              {q ? `No connected apps match “${query.trim()}”.` : t("pluginSettings.noAppsConnectedYet")}{" "}
+              {q ? t("pluginSettings.noAppsMatch", { query: query.trim() }) : t("pluginSettings.noAppsConnectedYet")}{" "}
               {!q && (
                 <button onClick={() => dispatch({ type: "openCustomize", tab: "plugins" })} className="text-foreground underline underline-offset-2">
                   {t("pluginSettings.browseTheDirectory")}
@@ -326,7 +329,7 @@ export function PluginSettings() {
             <Loading />
           ) : shownServers.length === 0 ? (
             <Empty>
-              {q ? `No servers match “${query.trim()}”.` : t("pluginSettings.noMcpServersYet")}{" "}
+              {q ? t("pluginSettings.noServersMatch", { query: query.trim() }) : t("pluginSettings.noMcpServersYet")}{" "}
               {!q && (
                 <button onClick={() => setAddingServer(true)} className="text-foreground underline underline-offset-2">
                   {t("pluginSettings.addOne")}
@@ -384,7 +387,7 @@ export function PluginSettings() {
           ) : cliError ? (
             <Empty>{cliError}</Empty>
           ) : shownClis.length === 0 ? (
-            <Empty>{`No CLIs match “${query.trim()}”.`}</Empty>
+            <Empty>{t("pluginSettings.noClisMatch", { query: query.trim() })}</Empty>
           ) : (
             <>
               <p className="mb-2.5 text-pretty text-body text-muted-foreground">{t("pluginSettings.toolsOnThisComputerThat")}</p>
@@ -403,7 +406,7 @@ export function PluginSettings() {
                     aside={
                       <button
                         onClick={() => setFocus({ kind: "cli", id: plugin.id })}
-                        aria-label={`${plugin.name} settings`}
+                        aria-label={t("pluginSettings.pluginSettingsLabel", { plugin: plugin.name })}
                         className="flex shrink-0 items-center gap-2 text-body text-muted-foreground"
                       >
                         {plugin.enabled ? t("pluginSettings.on") : t("common.off")}
@@ -420,7 +423,7 @@ export function PluginSettings() {
           (skills === null ? (
             <Loading />
           ) : shownSkills.length === 0 ? (
-            <Empty>{q ? `No skills match “${query.trim()}”.` : t("pluginSettings.noSkillsYet")}</Empty>
+            <Empty>{q ? t("pluginSettings.noSkillsMatch", { query: query.trim() }) : t("pluginSettings.noSkillsYet")}</Empty>
           ) : (
             <Card>
               {shownSkills.map((skill) => {
@@ -434,8 +437,8 @@ export function PluginSettings() {
                     line={skill.description}
                     aside={
                       <span className="flex shrink-0 items-center gap-3 text-body text-muted-foreground">
-                        <span>{skill.source === "builtin" ? t("pluginSettings.builtIn") : `Yours, version ${skill.revision ?? 1}`}</span>
-                        {skill.uses ? <span className="tabular-nums">{skill.uses} {skill.uses === 1 ? "use" : "uses"}</span> : null}
+                        <span>{skill.source === "builtin" ? t("pluginSettings.builtIn") : t("pluginSettings.yoursVersion", { version: String(skill.revision ?? 1) })}</span>
+                        {skill.uses ? <span className="tabular-nums">{t("pluginSettings.uses", { count: skill.uses })}</span> : null}
                         <span className="tabular-nums">{usedBy(n)}</span>
                         <ChevronRight size={16} />
                       </span>
@@ -506,7 +509,7 @@ function AppSettings({
             <ServiceIcon card={card} />
             <span className="truncate">{card.label}</span>
           </h2>
-          <p className="mt-0.5 text-ui text-muted-foreground">{details.category}, through Composio Connect</p>
+          <p className="mt-0.5 text-ui text-muted-foreground">{t("pluginSettings.categoryThroughComposio", { category: details.category })}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -517,7 +520,7 @@ function AppSettings({
           </button>
           {connected && (
             <button
-              onClick={() => tryPrompt(state, dispatch, `Using ${card.label}: ${details.prompts[0]}`)}
+              onClick={() => tryPrompt(state, dispatch, t("appDetails.usingApp", { app: card.label, prompt: details.prompts[0] }))}
               className={cn(pill, "gap-1.5 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}
             >
               <MessageSquare size={15} />
@@ -569,7 +572,7 @@ function AppSettings({
                 <span className="min-w-0 flex-1 truncate text-ui text-foreground">{bot.name}</span>
                 <Switch
                   checked={bot.composio !== false}
-                  aria-label={`${bot.name} can use apps`}
+                  aria-label={t("pluginSettings.agentCanUseApps", { agent: bot.name })}
                   onCheckedChange={(on) => dispatch({ type: "updateBot", botId: bot.id, patch: { composio: on } })}
                 />
               </div>
@@ -598,16 +601,16 @@ function SkillSettings({
   const agents = state.bots.filter((b) => !b.hidden);
   const remove = async () => {
     const yes = await confirm({
-      title: `Remove ${skill.name}?`,
-      body: "Agents will stop using it.",
-      confirmLabel: "Remove",
+      title: t("pluginSettings.removeSkillTitle", { skill: skill.name }),
+      body: t("pluginSettings.removeSkillBody"),
+      confirmLabel: t("common.remove"),
       destructive: true,
     });
     if (!yes) return;
     void api(`/api/skills/${skill.id}`, { method: "DELETE" })
       .then(() => {
         onRemoved();
-        toast(`Removed ${skill.name}`);
+        toast(t("pluginSettings.removedSkill", { skill: skill.name }));
       })
       .catch(() => {});
   };
@@ -646,7 +649,7 @@ function SkillSettings({
                   <span className="min-w-0 flex-1 truncate text-ui text-foreground">{bot.name}</span>
                   <Switch
                     checked={on}
-                    aria-label={`${bot.name} uses ${skill.name}`}
+                    aria-label={t("pluginSettings.agentUsesSkill", { agent: bot.name, skill: skill.name })}
                     onCheckedChange={(next) =>
                       dispatch({
                         type: "updateBot",

@@ -37,7 +37,7 @@ import { cn } from "@/lib/cn";
 import { AgentAvatar } from "./Avatar";
 import { BackLink } from "./McpServers";
 import { GitHubMark } from "./ProviderIcons";
-import { t } from "@/lib/i18n";
+import { t, tr, type MessageKey } from "@/lib/i18n";
 
 // ── what the server says (server/cli-plugins.ts, server/connections.ts) ──
 
@@ -119,7 +119,7 @@ export function useCliPlugins() {
       })
       .catch((e: Error & { status?: number }) => {
         setPlugins([]);
-        setError(e.status === 403 ? "CLI plugins are set up on the computer Bloks runs on." : e.message);
+        setError(e.status === 403 ? t("cliPlugins.setUpWhereBloksRuns") : e.message);
       });
   }, []);
   useEffect(reload, [reload]);
@@ -147,9 +147,10 @@ function useConnections() {
 /** One line for the list: where gh stands. */
 export function cliPluginLine(plugin: CliPluginView): string {
   const status = plugin.status;
-  if (!status) return "git and gh on this computer";
-  if (status.ready && status.account) return `Signed in as @${status.account.login}`;
-  return status.next?.says ?? "Not set up yet";
+  if (!status) return t("cliPlugins.gitAndGhHere");
+  if (status.ready && status.account) return t("cliPlugins.signedInAs", { login: status.account.login });
+  // the next step as the server words it
+  return status.next?.says ?? t("cliPlugins.notSetUpYet");
 }
 
 // ── the page ─────────────────────────────────────────────────────────
@@ -184,7 +185,7 @@ function Command({ text }: { text: string }) {
       <button
         type="button"
         onClick={() => {
-          void navigator.clipboard?.writeText(text).then(() => toast("Copied"));
+          void navigator.clipboard?.writeText(text).then(() => toast(t("common.copied")));
         }}
         className="shrink-0 text-body text-muted-foreground transition-colors hover:text-foreground"
       >
@@ -194,11 +195,11 @@ function Command({ text }: { text: string }) {
   );
 }
 
-const STORAGE: Record<GitHubAccount["storage"], string> = {
-  keychain: "in the system keychain",
-  file: "in a file",
-  environment: "in an environment variable",
-  unknown: "where gh keeps it",
+const STORAGE: Record<GitHubAccount["storage"], MessageKey> = {
+  keychain: "cliPlugins.storage.keychain",
+  file: "cliPlugins.storage.file",
+  environment: "cliPlugins.storage.environment",
+  unknown: "cliPlugins.storage.unknown",
 };
 
 export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
@@ -249,7 +250,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
             className={cn(pill, "gap-1.5 border bg-card px-4 text-body font-medium text-foreground hover:bg-accent disabled:opacity-50")}
           >
             {busy === "check" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Check again
+            {t("common.checkAgain")}
           </button>
         )}
       </div>
@@ -269,7 +270,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
             <>
               <div className="grid grid-cols-[auto_120px_minmax(0,1fr)] items-center gap-x-3 gap-y-3 text-ui">
                 <Dot on={status.git.found} />
-                <span className="text-muted-foreground">{t("cliPlugins.git")}</span>
+                <span className="text-muted-foreground">git</span>
                 <span className="truncate text-foreground">
                   {status.git.found ? (
                     <>
@@ -280,7 +281,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                   )}
                 </span>
                 <Dot on={status.gh.found} />
-                <span className="text-muted-foreground">{t("cliPlugins.gh")}</span>
+                <span className="text-muted-foreground">gh</span>
                 <span className="truncate text-foreground">
                   {status.gh.found ? (
                     <>
@@ -295,9 +296,9 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                 <span className="truncate text-foreground">
                   {status.account ? (
                     <>
-                      @{status.account.login} on github.com{" "}
+                      {t("cliPlugins.loginOnGithub", { login: status.account.login })}{" "}
                       <span className="text-muted-foreground">
-                        · {STORAGE[status.account.storage]}
+                        · {t(STORAGE[status.account.storage])}
                         {status.account.where ? ` (${status.account.where})` : ""}
                       </span>
                     </>
@@ -315,7 +316,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
               </div>
               {status.account?.scopes && (
                 <p className="mt-3 text-pretty text-body text-muted-foreground">
-                  The sign-in may use {status.account.scopes}. What an agent can push still depends on each repository's own permissions and branch protection; that is tested on the first push.
+                  {t("cliPlugins.signInMayUse", { scopes: status.account.scopes })}
                 </p>
               )}
 
@@ -326,14 +327,14 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                     {next.kind === "install" && next.command && (
                       <Button size="sm" onClick={() => void act("install", "/api/cli-plugins/github/install")} disabled={busy !== null}>
                         {busy === "install" && <Loader2 size={13} className="animate-spin" />}
-                        Install with Homebrew
+                        {t("cliPlugins.installWithHomebrew")}
                       </Button>
                     )}
                     {next.kind === "install" && (
                       <Button size="sm" variant="outline" asChild>
                         <a href={next.url} target="_blank" rel="noreferrer">
                           <ExternalLink size={13} />
-                          {t("cliPlugins.cliGithubCom")}
+                          cli.github.com
                         </a>
                       </Button>
                     )}
@@ -342,7 +343,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                         size="sm"
                         onClick={async () => {
                           const r = await act("sign-in", "/api/cli-plugins/github/sign-in");
-                          if (r?.opened) toast("Terminal is open", { description: "Finish signing in there, then press Check again." });
+                          if (r?.opened) toast(t("cliPlugins.terminalIsOpen"), { description: t("cliPlugins.finishSigningIn") });
                         }}
                         disabled={busy !== null}
                       >
@@ -353,7 +354,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                     {next.kind === "setup-git" && (
                       <Button size="sm" onClick={() => void act("setup-git", "/api/cli-plugins/github/setup-git")} disabled={busy !== null}>
                         {busy === "setup-git" && <Loader2 size={13} className="animate-spin" />}
-                        Set up git
+                        {t("cliPlugins.setUpGit")}
                       </Button>
                     )}
                   </div>
@@ -368,7 +369,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
               {status.ready && (
                 <p className="mt-4 flex items-center gap-2 text-body text-muted-foreground">
                   <Check size={14} className="text-success" />
-                  Ready. Checked {stamp(status.checkedAt)}.
+                  {t("cliPlugins.readyChecked", { when: stamp(status.checkedAt) })}
                 </p>
               )}
             </>
@@ -386,7 +387,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                 aria-label={t("cliPlugins.agentsUseGh")}
                 onCheckedChange={(on) =>
                   void act("enable", "/api/cli-plugins/github", { method: "PUT", body: JSON.stringify({ enabled: on }) }).then((r) => {
-                    if (r && !on) toast("Agents are no longer told about gh", { description: "gh stays signed in on this computer. Run gh auth logout to sign it out." });
+                    if (r && !on) toast(t("cliPlugins.noLongerTold"), { description: t("cliPlugins.ghStaysSignedIn", { command: "gh auth logout" }) });
                   })
                 }
               />
@@ -403,15 +404,15 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
 
         <Section
           title={t("cliPlugins.protectedConnection")}
-          says="A token Bloks keeps and adds to an agent's requests itself. Agents you grant it clone, fetch and push over https://github.com and call the GitHub API through an address of their own that lasts one turn. They never see the token."
+          says={t("cliPlugins.protectedConnectionSays", { url: "https://github.com" })}
           aside={
             connection && (
               <button
                 onClick={async () => {
                   const yes = await confirm({
-                    title: "Disconnect GitHub?",
-                    body: "Bloks forgets the token. Agents lose the connection at their next request.\n\nThe token itself still works on GitHub until you delete it there.",
-                    confirmLabel: "Disconnect",
+                    title: t("cliPlugins.disconnectTitle"),
+                    body: t("cliPlugins.disconnectBody"),
+                    confirmLabel: t("common.disconnect"),
                     destructive: true,
                   });
                   if (!yes) return;
@@ -419,7 +420,7 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
                   api(`/api/connections/${connection.id}`, { method: "DELETE" })
                     .then(() => {
                       reloadConnections();
-                      toast("GitHub disconnected");
+                      toast(t("cliPlugins.disconnected"));
                     })
                     .catch((e: Error) => toast.error(e.message))
                     .finally(() => setBusy(null));
@@ -477,10 +478,10 @@ export function GitHubPluginSettings({ onBack }: { onBack: () => void }) {
   );
 }
 
-const ACCESS_OPTIONS: Array<{ value: "none" | Access; label: string }> = [
-  { value: "none", label: "No access" },
-  { value: "read", label: "Read" },
-  { value: "write", label: "Read and write" },
+const ACCESS_OPTIONS: Array<{ value: "none" | Access; label: MessageKey }> = [
+  { value: "none", label: "cliPlugins.access.none" },
+  { value: "read", label: "cliPlugins.access.read" },
+  { value: "write", label: "cliPlugins.access.write" },
 ];
 
 function ConnectionBody({
@@ -528,7 +529,7 @@ function ConnectionBody({
             {connection.account ? `@${connection.account}` : t("common.connected")}
             <span className="text-muted-foreground">
               {" "}
-              · added {stamp(connection.addedAt)}
+              · {t("cliPlugins.added", { when: stamp(connection.addedAt) })}
               {connection.scopes ? ` · ${connection.scopes}` : ""}
             </span>
           </span>
@@ -541,8 +542,8 @@ function ConnectionBody({
             setChecking(true);
             api(`/api/connections/${connection.id}/check`, { method: "POST" })
               .then((r) => {
-                if (r.ok) toast.success("GitHub accepts the token");
-                else toast.error(r.error ?? "GitHub did not accept the token");
+                if (r.ok) toast.success(t("cliPlugins.tokenAccepted"));
+                else toast.error(r.error ?? t("cliPlugins.tokenRefused"));
                 onChanged();
               })
               .catch((e: Error) => toast.error(e.message))
@@ -550,7 +551,7 @@ function ConnectionBody({
           }}
         >
           {checking ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-          Check token
+          {t("cliPlugins.checkToken")}
         </Button>
       </div>
 
@@ -575,9 +576,9 @@ function ConnectionBody({
                 <span className="min-w-0 flex-1 truncate text-ui text-foreground">{bot.name}</span>
                 <Segmented
                   size="sm"
-                  aria-label={`${bot.name}'s GitHub access`}
+                  aria-label={t("cliPlugins.agentAccess", { agent: bot.name })}
                   value={grants[bot.id] ?? "none"}
-                  options={ACCESS_OPTIONS}
+                  options={ACCESS_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))}
                   onChange={(value) => grant(bot.id, value)}
                   className="w-full sm:w-auto"
                 />
@@ -648,7 +649,7 @@ function AddTokenDialog({
       .then((r) => {
         setToken("");
         onAdded();
-        toast.success(`Connected as @${r.connection.account}`, { description: "Choose which agents may use it." });
+        toast.success(t("cliPlugins.connectedAs", { account: r.connection.account }), { description: t("cliPlugins.chooseWhichAgents") });
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
@@ -665,11 +666,13 @@ function AddTokenDialog({
         </DialogDescription>
         <ol className="mt-5 flex list-decimal flex-col gap-1.5 pl-5 text-pretty text-body text-muted-foreground">
           <li>
-            Make a fine-grained token on{" "}
-            <a href={tokenUrl} target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">
-              GitHub
-            </a>
-            , for only the repositories agents should work on.
+            {tr("cliPlugins.makeAToken", {
+              github: (
+                <a href={tokenUrl} target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">
+                  GitHub
+                </a>
+              ),
+            })}
           </li>
           <li>{t("cliPlugins.giveItContentsReadAnd")}</li>
           <li>{t("cliPlugins.pasteItHere")}</li>
@@ -683,7 +686,7 @@ function AddTokenDialog({
           onKeyDown={(e) => {
             if (e.key === "Enter" && token.trim() && !busy) add();
           }}
-          placeholder={t("cliPlugins.githubPat")}
+          placeholder="github_pat_…"
           aria-label={t("cliPlugins.githubToken")}
           className="mt-5 h-10 rounded-xl font-mono text-body"
         />
@@ -698,7 +701,7 @@ function AddTokenDialog({
           </Button>
           <Button onClick={add} disabled={!token.trim() || busy}>
             {busy && <Loader2 size={14} className="animate-spin" />}
-            Connect
+            {t("common.connect")}
           </Button>
         </div>
       </DialogContent>

@@ -25,7 +25,6 @@ import { useTheme } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { appsTrouble } from "@/lib/mcpApps";
-import { plural } from "@/lib/plural";
 import { t } from "@/lib/i18n";
 
 interface McpApp {
@@ -127,8 +126,8 @@ function ServerApps({
             {apps === null
               ? server.target
               : apps.length === 0
-                ? `${plural(tools, "tool")}, no app`
-                : `${apps.length} app${apps.length === 1 ? "" : "s"}, ${tools} tools`}
+                ? t("mcpApps.toolsNoApp", { count: tools })
+                : t("mcpApps.appsAndTools", { count: apps.length, tools })}
           </span>
         </span>
         <Button variant="ghost" size="sm" disabled={asking} onClick={ask}>
@@ -197,7 +196,7 @@ function AppFrame({
       body: JSON.stringify({ uri: app.uri, theme: paletteNow(resolvedTheme === "dark") }),
     })
       .then(async (res) => {
-        if (!res.ok) throw new Error(appsTrouble(res.status, (await res.json().catch(() => ({}))).error, "Could not open this app"));
+        if (!res.ok) throw new Error(appsTrouble(res.status, (await res.json().catch(() => ({}))).error, t("mcpApps.couldNotOpen")));
         return res.text();
       })
       .then(setHtml)
@@ -254,7 +253,7 @@ function AppFrame({
         {html === null && !error ? (
           <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
-            Loading from {server.name}
+            {t("mcpApps.loadingFrom", { server: server.name })}
           </div>
         ) : (
           html !== null && (
@@ -272,8 +271,7 @@ function AppFrame({
       <div className="flex items-start gap-2 border-t px-3 py-2 text-small leading-relaxed text-muted-foreground">
         <ShieldCheck size={13} className="mt-[2px] shrink-0" />
         <span>
-          Made by {server.name}, not Bloks. No internet access, and it can only
-          use {server.name}'s tools.
+          {t("mcpApps.madeBy", { server: server.name })}
         </span>
       </div>
     </div>

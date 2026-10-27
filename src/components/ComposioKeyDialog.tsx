@@ -25,9 +25,22 @@ import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
 
 const COMPOSIO = "https://composio.dev";
+
+/** How a Connect key and a project API key begin, as Composio prints them. */
+const CONNECT_PREFIX = "ck_";
+const PROJECT_PREFIX = "ak_";
+
+/** Composio's dashboard, in its own words: the person looks for these on
+ * a page that is in English whatever language Bloks is read in. */
+const DASHBOARD = {
+  forYou: "For You",
+  settings: "Settings",
+  sessions: "Sessions & API Key",
+  apiKey: "Your API Key",
+};
 
 export function ComposioKeyDialog({ connectors }: { connectors: Connectors }) {
   const ask = connectors.keyAsk;
@@ -36,9 +49,9 @@ export function ComposioKeyDialog({ connectors }: { connectors: Connectors }) {
   const saved = () => {
     connectors.keySaved();
     if (card) {
-      toast.success("Key saved", { description: `Finish signing in to ${card.label} in your browser.` });
+      toast.success(t("composioKeyDialog.keySaved"), { description: t("composioKeyDialog.finishSigningIn", { app: card.label }) });
     } else {
-      toast.success("Key saved", { description: "Every app is ready to connect." });
+      toast.success(t("composioKeyDialog.keySaved"), { description: t("composioKeyDialog.everyAppReady") });
     }
   };
 
@@ -72,10 +85,10 @@ function KeyBody({
   return (
     <>
       <Marks card={card} cards={cards} />
-      <DialogTitle className="mt-4">{card ? `Connect ${card.label}` : t("composioKeyDialog.connectYourApps")}</DialogTitle>
+      <DialogTitle className="mt-4">{card ? t("composioKeyDialog.connectApp", { app: card.label }) : t("composioKeyDialog.connectYourApps")}</DialogTitle>
       <DialogDescription>
         {card
-          ? `Add your Composio key once, then sign in to ${card.label}.`
+          ? t("composioKeyDialog.addKeyThenSignIn", { app: card.label })
           : t("composioKeyDialog.oneComposioKeyConnectsEvery")}
       </DialogDescription>
 
@@ -84,8 +97,8 @@ function KeyBody({
         value={tab}
         onChange={(next) => (next === "key" ? toKey() : setTab(next))}
         options={[
-          { value: "key", label: "Add key" },
-          { value: "how", label: "How to" },
+          { value: "key", label: t("composioKeyDialog.addKey") },
+          { value: "how", label: t("composioKeyDialog.howTo") },
         ]}
         className="mt-5"
       />
@@ -138,9 +151,9 @@ function shapeOf(value: string): { tone: "quiet" | "good" | "warn" | "bad"; text
   const key = value.trim();
   const mistake = composioKeyMistake("composio", key);
   if (mistake) return { tone: "bad", text: mistake };
-  if (!key || "ck_".startsWith(key)) return { tone: "quiet", text: "Starts with ck_." };
-  if (key.startsWith("ck_")) return { tone: "good", text: "Looks like a Connect key." };
-  return { tone: "warn", text: "Connect keys start with ck_. Check you copied all of it." };
+  if (!key || CONNECT_PREFIX.startsWith(key)) return { tone: "quiet", text: t("composioKeyDialog.startsWith", { prefix: CONNECT_PREFIX }) };
+  if (key.startsWith(CONNECT_PREFIX)) return { tone: "good", text: t("composioKeyDialog.looksLikeConnectKey") };
+  return { tone: "warn", text: t("composioKeyDialog.connectKeysStartWith", { prefix: CONNECT_PREFIX }) };
 }
 
 const TONE = {
@@ -199,7 +212,7 @@ function KeyField({
           setRefusal(null);
         }}
         onKeyDown={(e) => e.key === "Enter" && save()}
-        placeholder={t("composioKeyDialog.ck")}
+        placeholder={`${CONNECT_PREFIX}…`}
         autoComplete="off"
         spellCheck={false}
         autoFocus
@@ -213,7 +226,7 @@ function KeyField({
         aria-live="polite"
         className={cn("mt-1.5 min-h-5 text-small", done ? TONE.good : refusal ? TONE.bad : TONE[shape.tone])}
       >
-        {done ? (connecting ? `Saved. Opening ${connecting} sign-in.` : t("composioKeyDialog.saved")) : refusal ? `${refusal}.`.replace(/\.\.$/, ".") : shape.text}
+        {done ? (connecting ? t("composioKeyDialog.savedOpening", { app: connecting }) : t("composioKeyDialog.saved")) : refusal ? `${refusal}.`.replace(/\.\.$/, ".") : shape.text}
       </p>
       <Button size="lg" onClick={save} disabled={saving || done || blocked} className="mt-3 w-full">
         {saving ? (
@@ -227,7 +240,7 @@ function KeyField({
             {t("common.saved")}
           </>
         ) : connecting ? (
-          `Save and connect ${connecting}`
+          t("composioKeyDialog.saveAndConnect", { app: connecting })
         ) : (
           t("common.save")
         )}
@@ -253,7 +266,7 @@ function CatalogueKey() {
     saveApiKey("composioApi", value, dispatch)
       .then(() => {
         setValue("");
-        setVerdict({ ok: true, text: "Saved. The full catalogue is on." });
+        setVerdict({ ok: true, text: t("composioKeyDialog.fullCatalogueOn") });
       })
       .catch((e: Error) => setVerdict({ ok: false, text: e.message }))
       .finally(() => setSaving(false));
@@ -284,7 +297,7 @@ function CatalogueKey() {
             setVerdict(null);
           }}
           onKeyDown={(e) => e.key === "Enter" && save()}
-          placeholder={t("composioKeyDialog.ak")}
+          placeholder={`${PROJECT_PREFIX}…`}
           autoComplete="off"
           spellCheck={false}
           className="h-8 text-body"
@@ -324,11 +337,17 @@ function HowTo({ onDone }: { onDone: () => void }) {
           {t("composioKeyDialog.openComposioDevAndSign")}
         </Step>
         <Step n={2}>
-          Switch to <Em>{t("composioKeyDialog.forYou")}</Em>, then open <Em>{t("common.settings")}</Em> and <Em>{t("composioKeyDialog.sessionsApiKey")}</Em>.
+          {tr("composioKeyDialog.step2", {
+            forYou: <Em>{DASHBOARD.forYou}</Em>,
+            settings: <Em>{DASHBOARD.settings}</Em>,
+            sessions: <Em>{DASHBOARD.sessions}</Em>,
+          })}
         </Step>
         <Step n={3}>
-          Copy <Em>{t("composioKeyDialog.yourApiKey")}</Em>. It starts with{" "}
-          <code className="rounded bg-muted px-1 py-px font-mono text-small text-foreground">{t("composioKeyDialog.ck2")}</code>.
+          {tr("composioKeyDialog.step3", {
+            apiKey: <Em>{DASHBOARD.apiKey}</Em>,
+            prefix: <code className="rounded bg-muted px-1 py-px font-mono text-small text-foreground">{CONNECT_PREFIX}</code>,
+          })}
         </Step>
         <Step n={4}>{t("composioKeyDialog.pasteItInAddKey")}</Step>
       </ol>

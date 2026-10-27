@@ -282,7 +282,7 @@ export function SecretField({
             >
               <Check size={12} strokeWidth={2.5} className="text-success" />
             </motion.span>
-            Looks right
+            {t("connectionKit.looksRight")}
           </>
         ) : (
           hint
@@ -395,7 +395,7 @@ export function CopyRow({ label, value, big }: { label?: string; value: string; 
         size="sm"
         variant="secondary"
         className={big ? "h-8" : undefined}
-        aria-label={copied ? t("common.copied") : `Copy ${label ?? (big ? "the word" : "this")}`}
+        aria-label={copied ? t("common.copied") : (label ? t("connectionKit.copyLabel", { label }) : big ? t("connectionKit.copyTheWord") : t("connectionKit.copyThis"))}
         onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true))}
       >
         {copied ? <Check size={13} /> : <Copy size={13} />}

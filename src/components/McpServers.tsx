@@ -25,7 +25,7 @@ import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { AgentAvatar } from "./Avatar";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -58,7 +58,7 @@ export function useMcpServers(): { servers: McpServerRow[] | null; reload: () =>
 
 /** How a server is reached, in a few words. */
 export function mcpTarget(server: McpServerRow): string {
-  return server.transport === "http" ? server.target : `Runs ${server.target}`;
+  return server.transport === "http" ? server.target : t("mcpServers.runsCommand", { command: server.target });
 }
 
 const field = "h-10 rounded-xl text-ui";
@@ -144,9 +144,9 @@ export function AddMcpServerDialog({
             <div role="tablist" className="mb-2 flex gap-1">
               {(
                 [
-                  ["http", "Server URL"],
-                  ["stdio", "Command"],
-                ] as const
+                  ["http", "mcpServers.serverUrl"],
+                  ["stdio", "mcpServers.command"],
+                ] as const satisfies ReadonlyArray<readonly [string, MessageKey]>
               ).map(([value, text]) => (
                 <button
                   key={value}
@@ -158,7 +158,7 @@ export function AddMcpServerDialog({
                     transport === value ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {text}
+                  {t(text)}
                 </button>
               ))}
             </div>
@@ -174,7 +174,7 @@ export function AddMcpServerDialog({
                 <Input
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
-                  placeholder={t("mcpServers.npxYExampleMcpServer")}
+                  placeholder="npx -y @example/mcp-server --flag"
                   className={cn(field, "font-mono text-body")}
                 />
                 <p className="mt-1.5 text-body text-muted-foreground">{t("mcpServers.runsOnThisComputer")}</p>
@@ -188,9 +188,9 @@ export function AddMcpServerDialog({
               <div role="tablist" className="mb-2 flex gap-1">
                 {(
                   [
-                    ["none", "None"],
-                    ["header", "A header"],
-                  ] as const
+                    ["none", "mcpServers.authNone"],
+                    ["header", "mcpServers.authHeader"],
+                  ] as const satisfies ReadonlyArray<readonly [string, MessageKey]>
                 ).map(([value, text]) => (
                   <button
                     key={value}
@@ -202,7 +202,7 @@ export function AddMcpServerDialog({
                       auth === value ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    {text}
+                    {t(text)}
                   </button>
                 ))}
               </div>
@@ -220,7 +220,7 @@ export function AddMcpServerDialog({
                     type="password"
                     autoComplete="off"
                     aria-label={t("mcpServers.headerValue")}
-                    placeholder={headerName.trim().toLowerCase() === "authorization" ? t("mcpServers.bearer") : t("mcpServers.value")}
+                    placeholder={headerName.trim().toLowerCase() === "authorization" ? "Bearer …" : t("mcpServers.value")}
                     className={cn(field, "flex-1 font-mono text-body")}
                   />
                 </div>
@@ -257,7 +257,7 @@ export function AddMcpServerDialog({
           </Button>
           <Button onClick={add} disabled={!ready || busy}>
             {busy && <Loader2 size={14} className="animate-spin" />}
-            Add server
+            {t("mcpServers.addServer")}
           </Button>
         </div>
       </DialogContent>
@@ -316,7 +316,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
     api(`/api/mcp-servers/${server.id}`, { method: "PATCH", body: JSON.stringify({ env: given, headers: given }) })
       .then(() => {
         setValues({});
-        setNote("Saved.");
+        setNote(t("mcpServers.saved"));
         reload();
       })
       .catch((e: Error) => setError(e.message))
@@ -324,16 +324,16 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
   };
   const uninstall = async () => {
     const yes = await confirm({
-      title: `Remove ${server.name}?`,
-      body: "Agents using it lose its tools.",
-      confirmLabel: "Remove",
+      title: t("mcpServers.removeTitle", { server: server.name }),
+      body: t("mcpServers.removeBody"),
+      confirmLabel: t("common.remove"),
       destructive: true,
     });
     if (!yes) return;
     void api(`/api/mcp-servers/${server.id}`, { method: "DELETE" })
       .then(() => {
         onBack();
-        toast(`Removed ${server.name}`);
+        toast(t("mcpServers.removed", { server: server.name }));
       })
       .catch((e: Error) => setError(e.message));
   };
@@ -384,7 +384,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
                     autoComplete="off"
                     value={values[name] ?? ""}
                     onChange={(e) => setValues((current) => ({ ...current, [name]: e.target.value }))}
-                    placeholder={name === "Authorization" ? t("mcpServers.bearer") : t("mcpServers.pasteTheValue")}
+                    placeholder={name === "Authorization" ? "Bearer …" : t("mcpServers.pasteTheValue")}
                     className={cn(field, "font-mono text-body")}
                   />
                 </label>
@@ -412,7 +412,7 @@ export function McpServerSettings({ id, onBack }: { id: string; onBack: () => vo
                     <span className="min-w-0 flex-1 truncate text-ui text-foreground">{bot.name}</span>
                     <Switch
                       checked={on}
-                      aria-label={`${bot.name} can use ${server.name}`}
+                      aria-label={t("mcpServers.agentCanUse", { agent: bot.name, server: server.name })}
                       onCheckedChange={(next) =>
                         dispatch({
                           type: "updateBot",

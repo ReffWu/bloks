@@ -33,8 +33,19 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
-import { t } from "@/lib/i18n";
+import { formatList, t, tr, type MessageKey } from "@/lib/i18n";
+
+/** A plain run of names or counts ("Ada, Ben"), with no "and". */
+const run = (items: string[]) => formatList(items, { type: "unit", style: "short" });
+
+/** A skill's verbs as the server sends them (server/skill-registry.ts),
+ * in the reader's language; an unknown one as the server words it. */
+const ACTION: Record<string, { label: MessageKey; title: MessageKey }> = {
+  Install: { label: "catalogReview.install", title: "catalogReview.installItem" },
+  Update: { label: "catalogReview.update", title: "catalogReview.updateItem" },
+  Replace: { label: "catalogReview.action.replace", title: "catalogReview.replaceItem" },
+  Restore: { label: "catalogReview.action.restore", title: "catalogReview.restoreItem" },
+};
 
 export function CatalogReview({
   review,
@@ -64,8 +75,11 @@ function Origin({ review }: { review: Review }) {
     return (
       <p className="flex items-center gap-1.5 text-small text-muted-foreground">
         <ShieldCheck size={13} className="shrink-0 text-success" />
-        From the catalogue, checked against its fingerprint
-        {review.item ? `. Version ${review.item.version}${review.item.author ? `, by ${review.item.author}` : ""}` : ""}.
+        {!review.item
+          ? t("catalogReview.origin.catalogue")
+          : review.item.author
+            ? t("catalogReview.origin.catalogueVersionBy", { version: review.item.version, author: review.item.author })
+            : t("catalogReview.origin.catalogueVersion", { version: review.item.version })}
       </p>
     );
   }
@@ -73,8 +87,11 @@ function Origin({ review }: { review: Review }) {
     <p className="flex items-start gap-1.5 text-small text-warning">
       <ShieldAlert size={13} className="mt-[2px] shrink-0" />
       <span>
-        {review.origin === "link" ? `From ${review.host ?? "a link"}, not the catalogue.` : t("catalogReview.fromAFileYouChose")} Read what
-        it does before installing.
+        {review.origin === "link"
+          ? review.host
+            ? t("catalogReview.origin.host", { host: review.host })
+            : t("catalogReview.origin.link")
+          : t("catalogReview.origin.file")}
       </span>
     </p>
   );
@@ -92,11 +109,11 @@ function Section({ title, count, children }: { title: string; count?: number; ch
   );
 }
 
-const SKILL_CHIP: Record<PlannedSkill["state"], { label: string; tone: string }> = {
-  install: { label: "New", tone: "bg-brand/15 text-brand-ink" },
-  installed: { label: "Already here", tone: "bg-muted text-muted-foreground" },
-  kept: { label: "Yours is used", tone: "bg-muted text-muted-foreground" },
-  missing: { label: "Left out", tone: "bg-warning/15 text-warning" },
+const SKILL_CHIP: Record<PlannedSkill["state"], { label: MessageKey; tone: string }> = {
+  install: { label: "common.new", tone: "bg-brand/15 text-brand-ink" },
+  installed: { label: "catalogReview.chip.alreadyHere", tone: "bg-muted text-muted-foreground" },
+  kept: { label: "catalogReview.chip.yoursIsUsed", tone: "bg-muted text-muted-foreground" },
+  missing: { label: "catalogReview.chip.leftOut", tone: "bg-warning/15 text-warning" },
 };
 
 /** One skill a team brings, readable in place before it is installed. */
@@ -117,10 +134,10 @@ function SkillRow({ skill }: { skill: PlannedSkill }) {
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
             <span className="truncate text-body font-medium text-foreground">{skill.name}</span>
-            <span className={cn("shrink-0 rounded-full px-1.5 text-caption font-medium", chip.tone)}>{chip.label}</span>
+            <span className={cn("shrink-0 rounded-full px-1.5 text-caption font-medium", chip.tone)}>{t(chip.label)}</span>
           </span>
           <span className="block truncate text-small text-muted-foreground">
-            {skill.says}. For {skill.usedBy.join(", ")}
+            {t("catalogReview.saysFor", { says: skill.says, agents: run(skill.usedBy) })}
           </span>
         </span>
         {readable && <ChevronDown size={14} className={cn("shrink-0 text-muted-foreground transition-transform duration-150", open && "rotate-180")} />}
@@ -132,6 +149,13 @@ function SkillRow({ skill }: { skill: PlannedSkill }) {
       )}
     </div>
   );
+}
+
+/** Whom a planned routine is for, after its schedule when it has a name
+ * (the summary is the server's). */
+function routineTarget(routine: { name?: string; summary: string; target: string }): string {
+  const target = routine.target === "room" ? t("catalogReview.toTheRoom") : t("catalogReview.forMember", { member: routine.target });
+  return routine.name ? t("catalogReview.summaryTarget", { summary: routine.summary, target }) : target;
 }
 
 function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClose: () => void; onInstalled?: (result: InstallResult) => void }) {
@@ -146,7 +170,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
   const names = useMemo(() => {
     const taken = state.bots.map((b) => b.name);
     const fresh = drawNames(plan.agents.length, taken);
-    return review.team.members.map((m, i) => (m.name && !taken.some((t) => t.toLowerCase() === m.name!.toLowerCase()) ? m.name : fresh[i]));
+    return review.team.members.map((m, i) => (m.name && !taken.some((name) => name.toLowerCase() === m.name!.toLowerCase()) ? m.name : fresh[i]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [review.token]);
   const newSkills = plan.skills.filter((s) => s.state === "install").length;
@@ -162,12 +186,13 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
           dispatch({ type: "hydrateBloks", bloks });
           if (result.roomId) dispatch({ type: "select", id: result.roomId });
           const parts = [
-            result.botIds.length ? plural(result.botIds.length, "new agent") : "",
-            result.skillIds.length ? plural(result.skillIds.length, "skill") : "",
-            result.routineIds.length ? `${plural(result.routineIds.length, "routine")} paused` : "",
+            result.botIds.length ? t("catalogReview.toast.newAgents", { count: result.botIds.length }) : "",
+            result.skillIds.length ? t("catalogReview.toast.skills", { count: result.skillIds.length }) : "",
+            result.routineIds.length ? t("catalogReview.toast.routinesPaused", { count: result.routineIds.length }) : "",
           ].filter(Boolean);
-          toast.success(updating ? `Updated ${review.team.name}` : `Installed ${review.team.name}`, {
-            ...(parts.length || result.notes.length ? { description: [parts.join(", "), ...result.notes].filter(Boolean).join(". ") } : {}),
+          // the notes are the server's, as it words them
+          toast.success(updating ? t("catalogReview.updatedItem", { item: review.team.name }) : t("catalogReview.installedItem", { item: review.team.name }), {
+            ...(parts.length || result.notes.length ? { description: [parts.length ? run(parts) : "", ...result.notes].filter(Boolean).join(". ") } : {}),
           });
           onInstalled?.(result);
           onClose();
@@ -183,7 +208,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
     <>
       <div className="shrink-0 border-b px-5 pb-3.5 pt-4">
         <DialogTitle className="pr-8 text-lead">
-          {updating ? `Update ${review.team.name}` : `Install ${review.team.name}`}
+          {updating ? t("catalogReview.updateItem", { item: review.team.name }) : t("catalogReview.installItem", { item: review.team.name })}
         </DialogTitle>
         {review.team.blurb && <DialogDescription className="mt-1 text-body">{review.team.blurb}</DialogDescription>}
         <div className="mt-2">
@@ -196,8 +221,8 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
           <div className="mb-4 rounded-xl bg-muted/60 px-3 py-2.5">
             <p className="text-body text-foreground">
               {update.same
-                ? `This version is already installed, in ${update.roomName}.`
-                : `Version ${update.version} is installed, in ${update.roomName}.`}
+                ? t("catalogReview.alreadyInstalledIn", { room: update.roomName })
+                : t("catalogReview.versionInstalledIn", { version: update.version, room: update.roomName })}
             </p>
             <Segmented
               size="sm"
@@ -206,8 +231,8 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
               value={mode}
               onChange={(next) => setMode(next)}
               options={[
-                { value: "update", label: "Update the room", disabled: update.same },
-                { value: "new", label: "Install a new room" },
+                { value: "update", label: t("catalogReview.updateTheRoom"), disabled: update.same },
+                { value: "new", label: t("catalogReview.installANewRoom") },
               ]}
             />
           </div>
@@ -279,9 +304,8 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
               </div>
             </Section>
             <Section title={t("catalogReview.room")}>
-              <p className="text-body text-foreground">
-                {plan.room.name}
-                <span className="text-muted-foreground">, with these {plan.agents.length} agents in it.</span>
+              <p className="text-body text-muted-foreground">
+                {tr("catalogReview.roomWithAgents", { room: <span className="text-foreground">{plan.room.name}</span>, count: plan.agents.length })}
               </p>
             </Section>
           </>
@@ -319,8 +343,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
                       </span>
                     </span>
                     <span className="block text-small text-muted-foreground">
-                      {routine.name ? `${routine.summary}, ` : ""}
-                      {routine.target === "room" ? t("catalogReview.toTheRoom") : `for the ${routine.target}`}
+                      {routineTarget(routine)}
                     </span>
                     <span className="mt-0.5 line-clamp-2 text-small text-foreground/80">{routine.prompt}</span>
                   </span>
@@ -337,7 +360,7 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
           <div className="mt-5 flex items-start gap-2.5 rounded-xl bg-muted/60 px-3 py-2.5">
             <Lock size={14} className="mt-[3px] shrink-0 text-muted-foreground" />
             <p className="text-body leading-relaxed text-foreground">
-              New agents start with connected apps, the browser and tool servers off.
+              {t("catalogReview.newAgentsStartOff")}
               <span className="text-muted-foreground"> {t("catalogReview.turnOnWhatEachOne")}</span>
             </p>
           </div>
@@ -349,8 +372,12 @@ function TeamBody({ review, onClose, onInstalled }: { review: TeamReview; onClos
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t px-5 py-3.5">
         <span className="text-small tabular-nums text-muted-foreground">
           {updating
-            ? `${plural(update.changes.length, "change")}`
-            : [plural(plan.agents.length, "agent"), newSkills ? plural(newSkills, "new skill") : "", plan.routines.length ? plural(plan.routines.length, "routine") : ""]
+            ? t("catalogReview.count.changes", { count: update.changes.length })
+            : [
+                t("catalogReview.count.agents", { count: plan.agents.length }),
+                newSkills ? t("catalogReview.count.newSkills", { count: newSkills }) : "",
+                plan.routines.length ? t("catalogReview.count.routines", { count: plan.routines.length }) : "",
+              ]
                 .filter(Boolean)
                 .join(" · ")}
         </span>
@@ -380,7 +407,7 @@ function SkillBody({ review, onClose, onInstalled }: { review: SkillReview; onCl
     setError(null);
     api("/api/catalog/install", { method: "POST", body: JSON.stringify({ token: review.token }) })
       .then(({ result }: { result: InstallResult }) => {
-        toast.success(`Installed ${plan.skill.name}`, { description: "Attach it to an agent in the agent's settings." });
+        toast.success(t("catalogReview.installedItem", { item: plan.skill.name }), { description: t("catalogReview.attachItToAnAgent") });
         onInstalled?.(result);
         onClose();
       })
@@ -394,7 +421,7 @@ function SkillBody({ review, onClose, onInstalled }: { review: SkillReview; onCl
     <>
       <div className="shrink-0 border-b px-5 pb-3.5 pt-4">
         <DialogTitle className="pr-8 text-lead">
-          {action && action !== "Install" ? `${action} ${plan.skill.name}` : `Install ${plan.skill.name}`}
+          {action && ACTION[action] ? t(ACTION[action].title, { item: plan.skill.name }) : action ? `${action} ${plan.skill.name}` : t("catalogReview.installItem", { item: plan.skill.name })}
         </DialogTitle>
         {plan.skill.description && <DialogDescription className="mt-1 text-body">{plan.skill.description}</DialogDescription>}
         <div className="mt-2">
@@ -419,8 +446,7 @@ function SkillBody({ review, onClose, onInstalled }: { review: SkillReview; onCl
           >
             {plan.standing.destructive && <TriangleAlert size={14} className="mt-[3px] shrink-0" />}
             <span>
-              {plan.standing.says}
-              {plan.standing.destructive ? ". This replaces your copy." : "."}
+              {plan.standing.destructive ? t("catalogReview.saysReplaces", { says: plan.standing.says }) : t("catalogReview.saysPeriod", { says: plan.standing.says })}
             </span>
           </div>
         )}
@@ -442,7 +468,7 @@ function SkillBody({ review, onClose, onInstalled }: { review: SkillReview; onCl
       </div>
 
       <div className="flex shrink-0 items-center justify-between gap-3 border-t px-5 py-3.5">
-        <span className="text-small text-muted-foreground">Version {plan.skill.version}</span>
+        <span className="text-small text-muted-foreground">{t("catalogReview.version", { version: plan.skill.version })}</span>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={onClose}>
             {t("common.cancel")}
@@ -454,7 +480,7 @@ function SkillBody({ review, onClose, onInstalled }: { review: SkillReview; onCl
             className={cn(plan.standing.destructive && "text-warning hover:text-warning")}
           >
             {plan.standing.destructive && !busy && <TriangleAlert size={13} />}
-            {busy ? t("catalogReview.installing") : (action ?? t("catalogReview.installed"))}
+            {busy ? t("catalogReview.installing") : action ? (ACTION[action] ? t(ACTION[action].label) : action) : t("catalogReview.installed")}
           </Button>
         </div>
       </div>

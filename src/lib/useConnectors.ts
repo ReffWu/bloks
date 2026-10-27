@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, useStore } from "@/state/store";
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
+import { t } from "./i18n.ts";
 
 export interface ToolkitCard {
   slug: string;
@@ -131,16 +132,16 @@ export function useConnectors() {
     const label = cards?.find((c) => c.slug === slug)?.label ?? slug;
     // every account behind it goes, and agents stop being able to use it
     const yes = await confirm({
-      title: `Disconnect ${label}?`,
-      body: "Agents can't use it until you reconnect.",
-      confirmLabel: "Disconnect",
+      title: t("useConnectors.disconnectTitle", { app: label }),
+      body: t("useConnectors.disconnectBody"),
+      confirmLabel: t("common.disconnect"),
       destructive: true,
     });
     if (!yes) return;
     setBusySlug(slug);
     api(`/api/connectors/${slug}`, { method: "DELETE" })
       .then(() => {
-        toast(`Disconnected ${label}`);
+        toast(t("useConnectors.disconnected", { app: label }));
         return refreshStatus([slug]);
       })
       .catch((e: Error) => setError(e.message))

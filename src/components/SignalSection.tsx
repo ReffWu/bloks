@@ -31,7 +31,7 @@ import {
   type Health,
   type Step,
 } from "./ConnectionKit";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
 interface Person {
   id: string;
@@ -74,23 +74,23 @@ interface Daemon {
   bots?: Array<{ botId: string; account: string | null; enabled: boolean; ownerPaired: boolean }>;
 }
 
-const PERSON_STATE: Record<Person["state"], string> = {
-  allowed: "Let in",
-  pending: "Waiting",
-  declined: "Not now",
-  removed: "Taken out",
+const PERSON_STATE: Record<Person["state"], MessageKey> = {
+  allowed: "signalSection.person.allowed",
+  pending: "signalSection.person.pending",
+  declined: "common.notNow",
+  removed: "signalSection.person.removed",
 };
 
 const INSTALL = "brew install signal-cli";
 
 function health(status: AgentStatus | null, daemon: Daemon | null): { tone: Health; label: string } | null {
   if (!status) return null;
-  if (!status.configured) return { tone: "off", label: "Not set up" };
-  if (!status.enabled) return { tone: "off", label: "Off" };
-  if (status.connection.state === "error" || daemon?.reachable === false) return { tone: "issue", label: "signal-cli not running" };
-  if (!status.ownerPaired) return { tone: "wait", label: "Needs pairing" };
-  if (status.connection.state === "connected") return { tone: "on", label: "Connected" };
-  return { tone: "wait", label: "Connecting" };
+  if (!status.configured) return { tone: "off", label: t("signalSection.health.notSetUp") };
+  if (!status.enabled) return { tone: "off", label: t("common.off") };
+  if (status.connection.state === "error" || daemon?.reachable === false) return { tone: "issue", label: t("signalSection.signalCliNotRunning") };
+  if (!status.ownerPaired) return { tone: "wait", label: t("signalSection.needsPairing") };
+  if (status.connection.state === "connected") return { tone: "on", label: t("common.connected") };
+  return { tone: "wait", label: t("signalSection.health.connecting") };
 }
 
 /** The address field and the commands, shared by both views. */
@@ -200,13 +200,9 @@ export function SignalSection({ botId }: { botId?: string }) {
   // than it is.
   const giveFullAccess = async (person: Person, agent: string) => {
     const yes = await confirm({
-      title: `Give ${person.name} full access to ${agent}?`,
-      body: [
-        `Their messages run the way yours do: with ${agent}'s own tools, engine and permissions, and what it makes is sent back to them. Anything that still asks comes to you.`,
-        `They talk in a conversation of their own, but ${agent} has one memory, and its tools reach your files and accounts.`,
-        "You can take it back here at any time. That stops their running work; what is already done stays done.",
-      ].join("\n\n"),
-      confirmLabel: "Give full access",
+      title: t("signalSection.full.title", { person: person.name, agent }),
+      body: [t("signalSection.full.runs", { agent }), t("signalSection.full.memory", { agent }), t("signalSection.full.takeBack")].join("\n\n"),
+      confirmLabel: t("signalSection.giveFullAccess"),
       destructive: true,
     });
     if (yes) post({ personId: person.id, action: "full" });
@@ -245,7 +241,7 @@ export function SignalSection({ botId }: { botId?: string }) {
           <div className="mt-4 border-t pt-3">
             <div className="text-body font-semibold text-foreground">{t("signalSection.signalCliOnThisComputer")}</div>
             <p className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-              {daemon.reachable ? `Answering at ${daemon.daemon}.` : `Install it with ${INSTALL}, then keep this running in Terminal:`}
+              {daemon.reachable ? t("signalSection.answeringAtSentence", { address: daemon.daemon }) : t("signalSection.installItWith", { command: INSTALL })}
             </p>
             <DaemonFields daemon={daemon} onSaved={(next) => setDaemon({ ...daemon, ...next })} />
           </div>
@@ -255,7 +251,7 @@ export function SignalSection({ botId }: { botId?: string }) {
   }
 
   const h = health(status, daemon);
-  const agentName = state.bots.find((bot) => bot.id === botId)?.name ?? "this agent";
+  const agentName = state.bots.find((bot) => bot.id === botId)?.name ?? t("signalSection.thisAgent");
   const reachable = daemon?.reachable === true;
   const settingUp = Boolean(status && (!status.configured || !status.ownerPaired));
   const free = (linked ?? []).filter((a) => !a.botId);
@@ -264,9 +260,9 @@ export function SignalSection({ botId }: { botId?: string }) {
     ? [
         {
           key: "install",
-          title: "Install signal-cli",
+          title: t("signalSection.step.install", { tool: "signal-cli" }),
           state: reachable ? "done" : "now",
-          summary: "Installed",
+          summary: t("signalSection.step.installed"),
           body: (
             <>
               <StepNote>{t("signalSection.inTerminalWithHomebrewIt")}</StepNote>
@@ -282,9 +278,9 @@ export function SignalSection({ botId }: { botId?: string }) {
         },
         {
           key: "run",
-          title: "Keep it running",
+          title: t("signalSection.step.keepRunning"),
           state: reachable ? "done" : "wait",
-          summary: `Answering at ${daemon.daemon}`,
+          summary: t("signalSection.answeringAt", { address: daemon.daemon }),
           body: (
             <>
               <StepNote>{t("signalSection.runThisAndLeaveIt")}</StepNote>
@@ -294,14 +290,13 @@ export function SignalSection({ botId }: { botId?: string }) {
         },
         {
           key: "link",
-          title: "Link a Signal account",
+          title: t("signalSection.step.link"),
           state: status.configured ? "done" : !reachable ? "later" : status.link?.state === "waiting" ? "wait" : "now",
-          summary: status.account ? `Linked to ${status.account}` : "Linked",
+          summary: status.account ? t("signalSection.step.linkedTo", { account: status.account }) : t("signalSection.step.linked"),
           body: (
             <>
               <StepNote>
-                Best is a number of its own for {agentName}, on a second phone or SIM, so people can message it and not you.
-                Your own account works too: then you talk to {agentName} in Note to Self, and nothing else on your account reaches it.
+                {t("signalSection.step.linkNote", { agent: agentName })}
               </StepNote>
               {status.link?.state === "waiting" ? (
                 <div className="mt-3 flex flex-wrap items-start gap-4">
@@ -320,7 +315,7 @@ export function SignalSection({ botId }: { botId?: string }) {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="brand" disabled={busy || !reachable} onClick={() => post({ link: true })}>
                     {busy ? <Loader2 size={13} className="animate-spin" /> : null}
-                    Show a code to scan
+                    {t("signalSection.step.showCode")}
                   </Button>
                   {free.length > 0 && (
                     <select
@@ -335,27 +330,26 @@ export function SignalSection({ botId }: { botId?: string }) {
                   )}
                 </div>
               )}
-              {status.link?.state === "failed" && <p className="mt-2 text-small text-warning">{status.link.error ?? t("signalSection.thatLinkDidNotFinish")} Try again.</p>}
+              {status.link?.state === "failed" && <p className="mt-2 text-small text-warning">{t("signalSection.tryAgainAfter", { error: status.link.error ?? t("signalSection.thatLinkDidNotFinish") })}</p>}
             </>
           ),
         },
         {
           key: "word",
-          title: "Send your pairing word",
+          title: t("signalSection.step.sendWord"),
           state: !status.configured ? "later" : status.ownerPaired ? "done" : status.pairing ? "wait" : "now",
-          summary: status.ownerSelf ? "In your Note to Self" : "You are the owner",
+          summary: status.ownerSelf ? t("signalSection.step.inNoteToSelf") : t("signalSection.step.youAreOwner"),
           body: status.pairing ? (
             <>
               <StepNote>
-                From your own Signal, send this word to {status.account}. If you linked your own account, send it to yourself in Note to Self.
-                Keep it to yourself: whoever sends it first is the owner.
+                {t("signalSection.step.sendWordNote", { account: status.account ?? "" })}
               </StepNote>
               <div className="mt-2 max-w-[280px]"><CopyRow value={status.pairing} big /></div>
               <span className="mt-2 block text-small text-muted-foreground">{t("signalSection.thisTicksWhenItArrives")}</span>
             </>
           ) : (
             <>
-              <StepNote>So {agentName} knows which messages are yours.</StepNote>
+              <StepNote>{t("signalSection.step.soAgentKnows", { agent: agentName })}</StepNote>
               <Button className="mt-2" size="sm" variant="secondary" disabled={busy} onClick={() => post({ pair: true })}>{t("signalSection.getAPairingWord")}</Button>
             </>
           ),
@@ -368,7 +362,7 @@ export function SignalSection({ botId }: { botId?: string }) {
       <ConnectionHeader
         icon={<MessageDots size={14} className="shrink-0 text-muted-foreground" />}
         title="Signal"
-        says={`Message ${agentName} on Signal.`}
+        says={t("signalSection.messageOnSignal", { agent: agentName })}
         info={t("signalSection.signalCliOnThisComputerIs")}
         health={h && <HealthLine tone={h.tone} label={h.label} title={status?.connection.detail} />}
         control={status?.configured && <Switch aria-label={t("signalSection.answerOnSignal")} checked={status.enabled} disabled={busy} onCheckedChange={(enabled) => post({ enabled })} />}
@@ -379,8 +373,8 @@ export function SignalSection({ botId }: { botId?: string }) {
           <PairedMoment
             key="paired"
             icon={<MessageDots size={18} />}
-            title={status.ownerSelf ? t("signalSection.pairedInYourNoteTo") : `You own ${status.account}`}
-            detail={status.ownerSelf ? `Write to ${agentName} there.` : `Messages to it now reach ${agentName}.`}
+            title={status.ownerSelf ? t("signalSection.pairedInYourNoteTo") : t("signalSection.youOwn", { account: status.account ?? "" })}
+            detail={status.ownerSelf ? t("signalSection.writeThere", { agent: agentName }) : t("signalSection.messagesReach", { agent: agentName })}
           />
         )}
       </AnimatePresence>
@@ -397,8 +391,9 @@ export function SignalSection({ botId }: { botId?: string }) {
       {status?.configured && status.ownerPaired && (
         <p className="mt-3 text-small leading-relaxed text-muted-foreground">
           {status.ownerSelf
-            ? `${status.account} is your own account. ${agentName} reads only your Note to Self; your other conversations are dropped before anything reads them.`
-            : `${status.account} answers for ${agentName}. Others can message it to ask to be let in.`}
+            ? t("signalSection.ownAccount", { account: status.account ?? "", agent: agentName })
+            : t("signalSection.answersFor", { account: status.account ?? "", agent: agentName })}
+          {/* the connection's own words, as signal-cli or the server put them */}
           {status.connection.state === "error" && status.connection.detail ? ` ${status.connection.detail}` : ""}
         </p>
       )}
@@ -408,7 +403,7 @@ export function SignalSection({ botId }: { botId?: string }) {
           <div className="text-body font-semibold text-foreground">{t("signalSection.peopleOnSignal")}</div>
           {!status.engineReady && (
             <p className="mt-0.5 text-small leading-relaxed text-warning">
-              {agentName} answers people without full access only on Claude Code or an API model.
+              {t("signalSection.engineNotReady", { agent: agentName })}
             </p>
           )}
           <div className="mt-1.5 flex flex-col">
@@ -423,18 +418,19 @@ export function SignalSection({ botId }: { botId?: string }) {
                         person.state === "allowed" ? "bg-success/10 text-success" : person.state === "pending" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground",
                       )}
                     >
-                      {person.full ? t("signalSection.fullAccess") : PERSON_STATE[person.state]}
+                      {person.full ? t("signalSection.fullAccess") : t(PERSON_STATE[person.state])}
                     </span>
                   </span>
                   {/* a profile name is chosen freely; the number is not */}
                   <span className="block text-caption text-muted-foreground">
-                    {person.number ?? t("signalSection.numberNotShared")}
-                    {person.sameName ? ". Someone else here has the same name" : ""}
+                    {person.sameName
+                      ? t("signalSection.sameName", { number: person.number ?? t("signalSection.numberNotShared") })
+                      : (person.number ?? t("signalSection.numberNotShared"))}
                   </span>
-                  {person.first && <span className="block break-words text-caption text-muted-foreground">They wrote: {person.first}</span>}
+                  {person.first && <span className="block break-words text-caption text-muted-foreground">{t("signalSection.theyWrote", { message: person.first })}</span>}
                   {person.state === "allowed" && (
                     <span className="block text-caption text-muted-foreground">
-                      {person.full ? `Uses ${agentName} with its own tools, in a conversation of their own.` : `Talks with ${agentName} in a conversation of their own, without its tools or your notes.`}
+                      {person.full ? t("signalSection.usesWithTools", { agent: agentName }) : t("signalSection.talksWithout", { agent: agentName })}
                     </span>
                   )}
                 </span>
@@ -455,7 +451,7 @@ export function SignalSection({ botId }: { botId?: string }) {
       {status?.configured && (
         <div className="mt-4 border-t pt-3">
           <p className="text-small leading-relaxed text-muted-foreground">
-            {status.voiceVendor ? `Voice notes are transcribed by ${status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs"} with your speech key.` : t("signalSection.voiceNotesNeedAnOpenai")}
+            {status.voiceVendor ? t("signalSection.voiceTranscribedBy", { vendor: status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs" }) : t("signalSection.voiceNotesNeedAnOpenai")}
           </p>
           <ConnectionNote>{t("signalSection.toUnlinkThisComputerFor")}</ConnectionNote>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-small text-muted-foreground">

@@ -47,8 +47,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, t, tr, type MessageKey } from "@/lib/i18n";
 
 /** Where contributors are pointed, from the page's footer. */
 const GUIDE_URL = "https://github.com/hamedgitty/bloks/blob/main/catalog/README.md";
@@ -72,13 +71,34 @@ function readKind(): CatalogKind {
   }
 }
 
-const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** A day's short name in the reader's language: 7 January 2024 was a
+ * Sunday, so day `d` of the week is that date plus `d`. */
+function dayName(d: number): string {
+  return formatDate(new Date(2024, 0, 7 + d), { weekday: "short" });
+}
+
 function when(days: number[], time: string): string {
   const same = (list: number[]) => days.length === list.length && days.every((d, i) => d === list[i]);
-  if (!days.length) return `Every day at ${time}`;
-  if (same([1, 2, 3, 4, 5])) return `Weekdays at ${time}`;
-  if (same([0, 6])) return `Weekends at ${time}`;
-  return `${days.map((d) => DAY[d]).join(", ")} at ${time}`;
+  if (!days.length) return t("catalogPage.when.everyDay", { time });
+  if (same([1, 2, 3, 4, 5])) return t("catalogPage.when.weekdays", { time });
+  if (same([0, 6])) return t("catalogPage.when.weekends", { time });
+  // a plain run of names ("Mon, Wed, Fri"), with no "and"
+  return t("catalogPage.when.days", { days: formatList(days.map(dayName), { type: "unit", style: "short" }), time });
+}
+
+/** The catalogue's verbs (server/catalog.ts, server/skill-registry.ts),
+ * said in the reader's language; an unknown one as the server words it. */
+const ACTION: Record<string, { label: MessageKey; review: MessageKey }> = {
+  Install: { label: "catalogPage.install", review: "catalogPage.reviewAndInstall" },
+  Update: { label: "catalogPage.action.update", review: "catalogPage.reviewAnd.update" },
+  Replace: { label: "catalogPage.action.replace", review: "catalogPage.reviewAnd.replace" },
+  Restore: { label: "catalogPage.action.restore", review: "catalogPage.reviewAnd.restore" },
+};
+function actionLabel(action: string): string {
+  return ACTION[action] ? t(ACTION[action].label) : action;
+}
+function reviewLabel(action: string): string {
+  return ACTION[action] ? t(ACTION[action].review) : t("catalogPage.reviewAndAction", { action: action.toLowerCase() });
 }
 
 export function CatalogPage({
@@ -179,7 +199,7 @@ export function CatalogPage({
     if (!s.action) return <Check size={16} className="mr-2 text-muted-foreground" aria-label={t("catalogPage.installed")} />;
     if (s.state === "available") {
       return (
-        <button onClick={() => void reviewItem(item)} aria-label={`Install ${item.title}`} title={`Install ${item.title}`} className={ROUND}>
+        <button onClick={() => void reviewItem(item)} aria-label={t("catalogPage.installItem", { item: item.title })} title={t("catalogPage.installItem", { item: item.title })} className={ROUND}>
           <Plus size={17} />
         </button>
       );
@@ -194,13 +214,13 @@ export function CatalogPage({
         )}
       >
         {s.destructive && <TriangleAlert size={13} />}
-        {s.action}
+        {actionLabel(s.action)}
       </button>
     );
   };
 
   const lineFor = (item: CatalogRow) => {
-    if (data?.offline && !item.offline) return "Needs a connection to install";
+    if (data?.offline && !item.offline) return t("catalogPage.needsAConnection");
     if (item.standing.state === "available" || item.standing.state === "current") return item.summary;
     return item.standing.says;
   };
@@ -300,7 +320,7 @@ export function CatalogPage({
             value: "team",
             label: (
               <>
-                Teams
+                {t("catalogPage.teams")}
                 {teamUpdates > 0 && <span className="rounded-full bg-brand/15 px-1.5 text-caption font-semibold tabular-nums text-brand-ink">{teamUpdates}</span>}
               </>
             ),
@@ -309,7 +329,7 @@ export function CatalogPage({
             value: "skill",
             label: (
               <>
-                Skills
+                {t("common.skills")}
                 {skillUpdates > 0 && <span className="rounded-full bg-brand/15 px-1.5 text-caption font-semibold tabular-nums text-brand-ink">{skillUpdates}</span>}
               </>
             ),
@@ -325,7 +345,7 @@ export function CatalogPage({
               <button
                 key={tag}
                 aria-pressed={on}
-                onClick={() => setTags((prev) => (on ? prev.filter((t) => t !== tag) : [...prev, tag]))}
+                onClick={() => setTags((prev) => (on ? prev.filter((other) => other !== tag) : [...prev, tag]))}
                 className={cn(
                   "h-7 rounded-full border px-3 text-small transition-colors duration-150",
                   on ? "border-foreground/20 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -342,7 +362,7 @@ export function CatalogPage({
         <div className="mt-5 flex items-start gap-2.5 rounded-2xl border bg-card px-4 py-3">
           <Info size={15} className="mt-[3px] shrink-0 text-muted-foreground" />
           <p className="text-body text-foreground">
-            Offline. Showing the catalogue as of {fetchedWords(data.fetchedAt)}.
+            {t("catalogPage.offlineAsOf", { when: fetchedWords(data.fetchedAt) })}
             <span className="text-muted-foreground"> {t("catalogPage.itemsKeptOnThisComputer")}</span>
           </p>
         </div>
@@ -359,7 +379,7 @@ export function CatalogPage({
       )}
 
       <SectionTitle
-        aside={data && <span className="text-body tabular-nums text-muted-foreground">{search || tags.length ? `${matching.length} found` : plural(matching.length, kind === "team" ? "team" : "skill")}</span>}
+        aside={data && <span className="text-body tabular-nums text-muted-foreground">{search || tags.length ? t("catalogPage.found", { n: matching.length }) : kind === "team" ? t("catalogPage.teamCount", { count: matching.length }) : t("catalogPage.skillCount", { count: matching.length })}</span>}
       >
         {search || tags.length ? t("catalogPage.results") : kind === "team" ? t("catalogPage.teams") : t("common.skills")}
       </SectionTitle>
@@ -367,7 +387,13 @@ export function CatalogPage({
         <GridSkeleton label={t("catalogPage.loadingTheCatalogue")} count={8} />
       ) : data && matching.length === 0 ? (
         <p className="py-10 text-ui text-muted-foreground">
-          {search || tags.length ? `Nothing matches${search ? ` “${search.trim()}”` : " those tags"}.` : `The catalogue has no ${kind === "team" ? "teams" : "skills"} yet.`}
+          {search || tags.length
+            ? search
+              ? t("catalogPage.nothingMatchesSearch", { search: search.trim() })
+              : t("catalogPage.nothingMatchesTags")
+            : kind === "team"
+              ? t("catalogPage.noTeamsYet")
+              : t("catalogPage.noSkillsYet")}
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
@@ -386,13 +412,15 @@ export function CatalogPage({
 
       {data && (
         <p className="mt-10 text-body leading-relaxed text-muted-foreground">
-          From {host}
-          {data.source.custom ? t("catalogPage.aCatalogueYouChose") : ""}. Anyone can add a team or a skill by pull request:{" "}
-          <a href={GUIDE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground">
-            {t("catalogPage.howToContribute")}
-            <ExternalLink size={12} />
-          </a>
-          .
+          {tr(data.source.custom ? "catalogPage.fromChosenHost" : "catalogPage.fromHost", {
+            host,
+            link: (
+              <a href={GUIDE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground">
+                {t("catalogPage.howToContribute")}
+                <ExternalLink size={12} />
+              </a>
+            ),
+          })}
         </p>
       )}
       {dialogs}
@@ -429,7 +457,7 @@ function ItemPage({
   }, [row.kind, row.id]);
 
   const s = row.standing;
-  const meta = [`Version ${row.version}`, row.author ? `by ${row.author}` : "", row.tags.join(", ")].filter(Boolean).join(" · ");
+  const meta = [t("catalogPage.version", { version: row.version }), row.author ? t("catalogPage.byAuthor", { author: row.author }) : "", row.tags.join(", ")].filter(Boolean).join(" · ");
 
   return (
     <>
@@ -465,7 +493,7 @@ function ItemPage({
               className={cn(s.destructive && "text-warning hover:text-warning")}
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : s.destructive ? <TriangleAlert size={14} /> : null}
-              {s.action === "Install" ? t("catalogPage.reviewAndInstall") : `Review and ${s.action.toLowerCase()}`}
+              {reviewLabel(s.action)}
             </Button>
           ) : (
             <>
@@ -526,10 +554,17 @@ function ItemPage({
   );
 }
 
+/** "Weekdays at 09:00, for the Researcher", or just whom it is for when
+ * the routine has a name of its own. `room` marks the team's own. */
+function routineMeta(r: { name?: string; days: number[]; time: string; target: string; room: boolean }): string {
+  const target = r.room ? t("catalogPage.toTheRoom") : t("catalogPage.forMember", { member: r.target });
+  return r.name ? t("catalogPage.whenTarget", { when: when(r.days, r.time), target }) : target;
+}
+
 function TeamDetail({ team, skillTitles }: { team: TeamFile; skillTitles: Map<string, string> }) {
   const routines = [
-    ...(team.routines ?? []).map((r) => ({ ...r, target: "The room" })),
-    ...team.members.flatMap((m) => (m.routines ?? []).map((r) => ({ ...r, target: m.title }))),
+    ...(team.routines ?? []).map((r) => ({ ...r, target: "", room: true })),
+    ...team.members.flatMap((m) => (m.routines ?? []).map((r) => ({ ...r, target: m.title, room: false }))),
   ];
   return (
     <>
@@ -575,8 +610,7 @@ function TeamDetail({ team, skillTitles }: { team: TeamFile; skillTitles: Map<st
                   {r.name ?? when(r.days, r.time)}
                   <span className="font-normal text-muted-foreground">
                     {" "}
-                    · {r.name ? `${when(r.days, r.time)}, ` : ""}
-                    {r.target === "The room" ? t("catalogPage.toTheRoom") : `for the ${r.target}`}
+                    · {routineMeta(r)}
                   </span>
                 </span>
                 <span className="text-body text-muted-foreground">{r.prompt}</span>
@@ -685,7 +719,7 @@ function SourceDialog({ onClose, onChanged }: { onClose: () => void; onChanged: 
         </DialogDescription>
         {source?.fromEnvironment ? (
           <p className="mt-4 rounded-xl bg-muted/60 px-3 py-2.5 text-body text-foreground">
-            Set by BLOKS_CATALOG_URL for this run: <span className="break-all font-mono text-small">{source.url}</span>
+            {tr("catalogPage.setByEnvironment", { variable: "BLOKS_CATALOG_URL", url: <span className="break-all font-mono text-small">{source.url}</span> })}
           </p>
         ) : (
           <form

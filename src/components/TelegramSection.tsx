@@ -27,7 +27,7 @@ import {
   type Health,
   type Step,
 } from "./ConnectionKit";
-import { t } from "@/lib/i18n";
+import { t, tr, type MessageKey } from "@/lib/i18n";
 
 interface Status {
   configured: boolean;
@@ -54,19 +54,25 @@ interface Status {
  * change, and getMe is the check that counts. */
 const BOT_TOKEN = /^\d+:[A-Za-z0-9_-]{20,}$/;
 
-const PERSON_STATE: Record<NonNullable<Status["people"]>[number]["state"], string> = {
-  allowed: "Let in",
-  pending: "Waiting",
-  declined: "Not now",
-  removed: "Taken out",
+const PERSON_STATE: Record<NonNullable<Status["people"]>[number]["state"], MessageKey> = {
+  allowed: "telegramSection.person.allowed",
+  pending: "telegramSection.person.pending",
+  declined: "common.notNow",
+  removed: "telegramSection.person.removed",
 };
 
 function health(status: Status | null): { tone: Health; label: string } | null {
   if (!status) return null;
-  if (!status.configured) return { tone: "off", label: "Not set up" };
-  if (!status.enabled) return { tone: "off", label: "Off" };
-  if (status.needsOwnerPairing) return { tone: "wait", label: "Needs pairing" };
-  return { tone: "on", label: "Connected" };
+  if (!status.configured) return { tone: "off", label: t("telegramSection.health.notSetUp") };
+  if (!status.enabled) return { tone: "off", label: t("common.off") };
+  if (status.needsOwnerPairing) return { tone: "wait", label: t("telegramSection.health.needsPairing") };
+  return { tone: "on", label: t("common.connected") };
+}
+
+/** Who a person is past the name they chose: their id, and their
+ * username when they have one. */
+function idLine(userId: number, username?: string): string {
+  return username ? t("telegramSection.idWithUsername", { username, id: String(userId) }) : t("telegramSection.id", { id: String(userId) });
 }
 
 export function TelegramSection({ botId }: { botId?: string }) {
@@ -143,13 +149,9 @@ export function TelegramSection({ botId }: { botId?: string }) {
   // chat makes it look more private than it is.
   const giveFullAccess = async (person: { id: string; name: string }, agent: string) => {
     const yes = await confirm({
-      title: `Give ${person.name} full access to ${agent}?`,
-      body: [
-        `Their messages run the way yours do: with ${agent}'s own tools, engine and permissions, without asking you first. The answers and the cards their turns raise go to their chat.`,
-        `They share one conversation and one memory with you. ${agent} can repeat anything from it to them, and its tools reach your files and accounts. Separate chats do not mean separate memory.`,
-        "You can take it back here at any time. That stops their running work; what is already done stays done.",
-      ].join("\n\n"),
-      confirmLabel: "Give full access",
+      title: t("telegramSection.full.title", { person: person.name, agent }),
+      body: [t("telegramSection.full.runs", { agent }), t("telegramSection.full.memory", { agent }), t("telegramSection.full.takeBack")].join("\n\n"),
+      confirmLabel: t("telegramSection.giveFullAccess"),
       destructive: true,
     });
     if (yes) post({ personId: person.id, action: "full" });
@@ -159,13 +161,9 @@ export function TelegramSection({ botId }: { botId?: string }) {
   // group reply is public to that group in a way a private chat is not.
   const answerInGroups = async (agent: string, bot: string) => {
     const yes = await confirm({
-      title: `Let ${agent} answer in Telegram groups?`,
-      body: [
-        `In any group ${bot} is in, ${agent} answers messages that mention it or reply to it, and ignores everything else. Mentions reach it only with the bot's privacy mode off, or with the bot as an admin.`,
-        `Your own requests there run with your usual context and permissions. Every member of the group sees what ${agent} replies, including people you have not let in.`,
-        "Anyone else is asked to wait until you let them in. People you let in can ask in any group they share with the bot; they stay restricted there even with full access, and what their turns can read without asking can reach the whole group.",
-      ].join("\n\n"),
-      confirmLabel: "Answer in groups",
+      title: t("telegramSection.groups.title", { agent }),
+      body: [t("telegramSection.groups.mentions", { bot, agent }), t("telegramSection.groups.public", { agent }), t("telegramSection.groups.others")].join("\n\n"),
+      confirmLabel: t("telegramSection.answerInGroups"),
     });
     if (yes) post({ groups: true });
   };
@@ -231,8 +229,8 @@ export function TelegramSection({ botId }: { botId?: string }) {
   }
 
   const h = health(status);
-  const agentName = state.bots.find((bot) => bot.id === botId)?.name ?? "this agent";
-  const handle = status?.username ? `@${status.username}` : "your bot";
+  const agentName = state.bots.find((bot) => bot.id === botId)?.name ?? t("telegramSection.thisAgent");
+  const handle = status?.username ? `@${status.username}` : t("telegramSection.yourBot");
   const botLink = status?.username ? `https://t.me/${encodeURIComponent(status.username)}` : null;
   const settingUp = Boolean(status && (!status.configured || status.needsOwnerPairing));
   const tokenLooksRight = BOT_TOKEN.test(token.trim());
@@ -261,7 +259,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
     ? [
         {
           key: "botfather",
-          title: "Make a bot with BotFather",
+          title: t("telegramSection.step.makeBot"),
           state: status.configured || tokenLooksRight ? "done" : "now",
           // ticked by the pasted token's shape, while it is still being
           // pasted, so it stays open until the server has the token
@@ -269,8 +267,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
           body: (
             <>
               <StepNote>
-                In Telegram, message @BotFather and send <code className="rounded bg-muted px-1 font-mono">{t("telegramSection.newbot")}</code>.
-                Pick a name, and it replies with a token.
+                {tr("telegramSection.step.makeBotNote", { command: <code className="rounded bg-muted px-1 font-mono">/newbot</code> })}
               </StepNote>
               <Button asChild size="sm" variant="secondary" className="mt-2">
                 <a href="https://t.me/BotFather" target="_blank" rel="noreferrer">
@@ -283,21 +280,22 @@ export function TelegramSection({ botId }: { botId?: string }) {
         },
         {
           key: "token",
-          title: "Paste the token here",
+          title: t("telegramSection.step.pasteToken"),
           state: status.configured ? "done" : busy ? "wait" : "now",
-          summary: status.username ? `Saved as @${status.username}` : "Saved",
+          summary: status.username ? t("telegramSection.step.savedAs", { username: status.username }) : t("common.saved"),
           body: tokenField,
         },
         {
           key: "word",
-          title: "Send the bot your pairing word",
+          title: t("telegramSection.step.sendWord"),
           state: !status.configured ? "later" : status.ownerPaired ? "done" : status.pairing ? "wait" : "now",
-          summary: "You are the owner",
+          summary: t("telegramSection.step.youAreOwner"),
           body: status.pairing ? (
             <>
               <StepNote>
-                {(status.upgradeNotices?.length ?? 0) > 0 ? t("telegramSection.pairYourselfAgain") : ""}
-                Send this word to {handle} in a private chat. Keep it to yourself: whoever sends it first owns the bot.
+                {(status.upgradeNotices?.length ?? 0) > 0
+                  ? t("telegramSection.step.sendWordAgainNote", { handle })
+                  : t("telegramSection.step.sendWordNote", { handle })}
               </StepNote>
               <div className="mt-2 max-w-[280px]">
                 <CopyRow value={status.pairing} big />
@@ -306,7 +304,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
                 {botLink && (
                   <Button asChild size="sm" variant="secondary">
                     <a href={botLink} target="_blank" rel="noreferrer">
-                      Open {handle}
+                      {t("telegramSection.openHandle", { handle })}
                       <ExternalLink size={12} />
                     </a>
                   </Button>
@@ -335,7 +333,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
       <ConnectionHeader
         icon={<MessageCircle size={14} className="shrink-0 text-muted-foreground" />}
         title="Telegram"
-        says={`Message ${agentName} on Telegram.`}
+        says={t("telegramSection.messageOnTelegram", { agent: agentName })}
         health={h && <HealthLine tone={h.tone} label={h.label} />}
         control={
           status?.configured && (
@@ -349,8 +347,8 @@ export function TelegramSection({ botId }: { botId?: string }) {
           <PairedMoment
             key="paired"
             icon={<MessageCircle size={18} />}
-            title={`You own ${handle}`}
-            detail={`Messages to it now reach ${agentName}.`}
+            title={t("telegramSection.youOwn", { handle })}
+            detail={t("telegramSection.messagesReach", { agent: agentName })}
           />
         )}
       </AnimatePresence>
@@ -386,18 +384,19 @@ export function TelegramSection({ botId }: { botId?: string }) {
                         person.state === "allowed" ? "bg-success/10 text-success" : person.state === "pending" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground",
                       )}
                     >
-                      {person.full ? t("telegramSection.fullAccess") : PERSON_STATE[person.state]}
+                      {person.full ? t("telegramSection.fullAccess") : t(PERSON_STATE[person.state])}
                     </span>
                   </span>
                   {/* a first name is chosen freely; the id and username are not */}
                   {person.userId !== undefined && (
                     <span className="block text-caption text-muted-foreground">
-                      {person.username ? `@${person.username}, ` : ""}Telegram id {person.userId}
-                      {person.sameName ? ". Someone else here has the same name" : ""}
+                      {person.sameName
+                        ? t("telegramSection.sameName", { line: idLine(person.userId, person.username) })
+                        : idLine(person.userId, person.username)}
                     </span>
                   )}
-                  {person.first && <span className="block break-words text-caption text-muted-foreground">They wrote: {person.first}</span>}
-                  {person.full && <span className="block text-caption text-muted-foreground">Uses {agentName} with its own tools, in the conversation you share with it.</span>}
+                  {person.first && <span className="block break-words text-caption text-muted-foreground">{t("telegramSection.theyWrote", { message: person.first })}</span>}
+                  {person.full && <span className="block text-caption text-muted-foreground">{t("telegramSection.usesWithTools", { agent: agentName })}</span>}
                 </span>
                 <div className="flex shrink-0 gap-1">
                   {person.state !== "allowed" && (
@@ -428,7 +427,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
             <span className="mt-0.5 block text-small leading-relaxed text-muted-foreground">
               {status.groups
                 ? t("telegramSection.inGroupsMentionThisBot")
-                : `Off. ${handle} ignores every group message, yours included.`}
+                : t("telegramSection.groupsOff", { handle })}
             </span>
           </span>
           <Switch
@@ -445,7 +444,7 @@ export function TelegramSection({ botId }: { botId?: string }) {
       {status?.configured && (
         <div className="mt-4 border-t pt-3">
           <p className="text-small leading-relaxed text-muted-foreground">
-            {status.voiceVendor ? `Voice messages are transcribed by ${status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs"} with your speech key.` : t("telegramSection.voiceMessagesNeedAnOpenai")}
+            {status.voiceVendor ? t("telegramSection.voiceTranscribedBy", { vendor: status.voiceVendor === "openai" ? "OpenAI" : "ElevenLabs" }) : t("telegramSection.voiceMessagesNeedAnOpenai")}
           </p>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-small text-muted-foreground">
             <button disabled={busy} onClick={() => { setToken(""); setEditingToken(!editingToken); }} className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline">

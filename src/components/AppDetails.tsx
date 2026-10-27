@@ -53,8 +53,8 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
   const users = state.bots.filter((b) => !b.hidden && b.composio !== false).length;
   const send = (prompt: string) => {
     if (!connected) return connectors.connect(card.slug);
-    const bot = tryPrompt(state, dispatch, `Using ${card.label}: ${prompt}`);
-    if (!bot) setNote("No agent can use apps yet. Turn it on in an agent's settings.");
+    const bot = tryPrompt(state, dispatch, t("appDetails.usingApp", { app: card.label, prompt }));
+    if (!bot) setNote(t("appDetails.noAgentCanUseApps"));
   };
 
   return (
@@ -76,7 +76,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  aria-label={`${card.label} options`}
+                  aria-label={t("appDetails.appOptions", { app: card.label })}
                   className="flex size-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent"
                 >
                   {busy ? <Loader2 size={17} className="animate-spin" /> : <MoreHorizontal size={18} />}
@@ -108,7 +108,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
               className={cn(pill, "bg-foreground text-background hover:opacity-90")}
             >
               {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-              Connect
+              {t("common.connect")}
             </button>
           )}
         </div>
@@ -117,7 +117,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
       <Hero card={card} accent={details.accent} prompts={details.prompts} connected={connected} onPick={send} />
       {note && <p className="mt-3 text-body text-destructive">{note}</p>}
       {!connected && (
-        <p className="mt-3 text-body text-muted-foreground">Connect {card.label} to try these.</p>
+        <p className="mt-3 text-body text-muted-foreground">{t("appDetails.connectToTry", { app: card.label })}</p>
       )}
 
       <p className="mt-8 text-pretty text-lead leading-relaxed text-foreground">{details.about}</p>
@@ -140,7 +140,7 @@ export function AppDetailsPage({ slug, connectors }: { slug: string; connectors:
         )}
         <dt className="text-muted-foreground">{t("common.agents")}</dt>
         <dd className="text-foreground">
-          {users === 0 ? t("appDetails.noneYet") : `${users} ${users === 1 ? "agent" : "agents"} can use apps`}
+          {users === 0 ? t("appDetails.noneYet") : t("appDetails.agentsCanUseApps", { count: users })}
         </dd>
         <dt className="text-muted-foreground">{t("appDetails.status")}</dt>
         <dd className="flex items-center gap-2 text-foreground">
@@ -217,7 +217,7 @@ function Hero({
           <button
             key={prompt}
             onClick={() => onPick(prompt)}
-            title={connected ? (to ? `Write this to ${to.name}` : undefined) : `Connect ${card.label} first`}
+            title={connected ? (to ? t("appDetails.writeThisTo", { agent: to.name }) : undefined) : t("appDetails.connectFirst", { app: card.label })}
             className="group flex items-center gap-4 rounded-2xl bg-white/80 px-5 py-4 text-left text-lead leading-relaxed text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.07] backdrop-blur-md transition-[background-color,scale] duration-150 ease-out hover:bg-white active:scale-[0.99] dark:bg-black/45 dark:text-white/90 dark:shadow-none dark:ring-white/10 dark:hover:bg-black/55"
           >
             <span className="min-w-0 flex-1">

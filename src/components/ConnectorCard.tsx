@@ -33,7 +33,7 @@ export function ConnectorCard({ botId, message }: { botId: string; message: Mess
   // seconds; the message.patch frame flips the card the moment it lands
   useEffect(() => {
     if (connector?.status !== "authorizing") return;
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       if (polling.current) return;
       polling.current = true;
       call("refresh")
@@ -42,7 +42,7 @@ export function ConnectorCard({ botId, message }: { botId: string; message: Mess
           polling.current = false;
         });
     }, 4_000);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connector?.status, message.id]);
 

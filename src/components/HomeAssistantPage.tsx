@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { Checklist, ConnectionError, ConnectionHeader, ConnectionNote, HealthLine, PairedMoment, SecretField, StepNote, useJustHappened, type Step } from "./ConnectionKit";
 import { SettingRow, SettingsCard, SettingsGroup, SettingsSelect, SettingsSkeleton } from "./SettingsLayout";
-import { t } from "@/lib/i18n";
+import { formatLocale, t, type MessageKey } from "@/lib/i18n";
 
 interface Status {
   configured: boolean;
@@ -45,11 +45,29 @@ interface Entity {
 const TOKEN = /^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$/;
 
 /** Domains worth offering whole, in the words people use for them. */
-const DOMAIN_NAMES: Record<string, string> = {
-  light: "Lights", switch: "Switches", sensor: "Sensors", binary_sensor: "Door and motion sensors", climate: "Thermostats",
-  cover: "Blinds and doors", lock: "Locks", alarm_control_panel: "Alarms", media_player: "Speakers and TVs", fan: "Fans",
-  scene: "Scenes", script: "Scripts", vacuum: "Vacuums", weather: "Weather", person: "People at home", camera: "Cameras",
+const DOMAIN_NAMES: Record<string, MessageKey> = {
+  light: "homeAssistantPage.domain.light",
+  switch: "homeAssistantPage.domain.switch",
+  sensor: "homeAssistantPage.domain.sensor",
+  binary_sensor: "homeAssistantPage.domain.binarySensor",
+  climate: "homeAssistantPage.domain.climate",
+  cover: "homeAssistantPage.domain.cover",
+  lock: "homeAssistantPage.domain.lock",
+  alarm_control_panel: "homeAssistantPage.domain.alarmControlPanel",
+  media_player: "homeAssistantPage.domain.mediaPlayer",
+  fan: "homeAssistantPage.domain.fan",
+  scene: "homeAssistantPage.domain.scene",
+  script: "homeAssistantPage.domain.script",
+  vacuum: "homeAssistantPage.domain.vacuum",
+  weather: "homeAssistantPage.domain.weather",
+  person: "homeAssistantPage.domain.person",
+  camera: "homeAssistantPage.domain.camera",
 };
+
+/** A domain in the people's words, or its own id for one not named here. */
+function domainName(domain: string): string {
+  return DOMAIN_NAMES[domain] ? t(DOMAIN_NAMES[domain]) : domain;
+}
 
 export function HomeAssistantPage() {
   const { state } = useStore();
@@ -105,7 +123,7 @@ export function HomeAssistantPage() {
   const steps: Step[] = [
     {
       key: "token",
-      title: "Make a long-lived access token",
+      title: t("homeAssistantPage.makeAToken"),
       state: tokenOk ? "done" : "now",
       keep: true,
       body: (
@@ -114,7 +132,7 @@ export function HomeAssistantPage() {
         </StepNote>
       ),
     },
-    { key: "paste", title: "Paste the address and the token", state: busy ? "wait" : "now", body: fields },
+    { key: "paste", title: t("homeAssistantPage.pasteAddressAndToken"), state: busy ? "wait" : "now", body: fields },
   ];
 
   return (
@@ -123,13 +141,19 @@ export function HomeAssistantPage() {
         <ConnectionHeader
           icon={<House size={14} className="shrink-0 text-muted-foreground" />}
           title="Home Assistant"
-          says={status.configured ? `Connected to ${status.name ?? "your home"}${status.version ? `, Home Assistant ${status.version}` : ""}.` : t("homeAssistantPage.letAgentsSeeAndControl")}
+          says={
+            status.configured
+              ? status.version
+                ? t("homeAssistantPage.connectedToVersion", { home: status.name ?? t("homeAssistantPage.yourHome"), version: status.version })
+                : t("homeAssistantPage.connectedToSentence", { home: status.name ?? t("homeAssistantPage.yourHome") })
+              : t("homeAssistantPage.letAgentsSeeAndControl")
+          }
           info={t("homeAssistantPage.theTokenStaysOnThis")}
           health={<HealthLine tone={!status.configured ? "off" : status.enabled ? "on" : "off"} label={!status.configured ? t("homeAssistantPage.notSetUp") : status.enabled ? t("common.connected") : t("common.off")} />}
           control={status.configured && <Switch aria-label="Home Assistant" checked={status.enabled} disabled={busy} onCheckedChange={(enabled) => void post({ enabled })} />}
         />
         <AnimatePresence initial={false}>
-          {justConnected && <PairedMoment key="up" icon={<House size={18} />} title={`Connected to ${status.name ?? "your home"}`} detail={t("homeAssistantPage.chooseWhatAgentsCanSee")} />}
+          {justConnected && <PairedMoment key="up" icon={<House size={18} />} title={t("homeAssistantPage.connectedTo", { home: status.name ?? t("homeAssistantPage.yourHome") })} detail={t("homeAssistantPage.chooseWhatAgentsCanSee")} />}
         </AnimatePresence>
         {!status.configured ? (
           <Checklist label={t("homeAssistantPage.connectHomeAssistant")} steps={steps} />
@@ -162,7 +186,7 @@ export function HomeAssistantPage() {
                 rowId={`home-agent-${bot.id}`}
                 label={bot.name}
                 description={on ? t("homeAssistantPage.canReadWhatIsListed") : t("homeAssistantPage.cannotSeeTheHome")}
-                control={<Switch aria-label={`${bot.name} can use the home`} checked={on} disabled={busy} onCheckedChange={(next) => void post({ agents: next ? [...status.agents, bot.id] : status.agents.filter((id) => id !== bot.id) })} />}
+                control={<Switch aria-label={t("homeAssistantPage.agentCanUseHome", { agent: bot.name })} checked={on} disabled={busy} onCheckedChange={(next) => void post({ agents: next ? [...status.agents, bot.id] : status.agents.filter((id) => id !== bot.id) })} />}
               />
             );
           })}
@@ -241,7 +265,7 @@ function EntityList({ status, busy, onSave }: { status: Status; busy: boolean; o
                       on ? "border-foreground/30 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                     )}
                   >
-                    {DOMAIN_NAMES[domain] ?? domain} <span className="text-muted-foreground">{count}</span>
+                    {domainName(domain)} <span className="text-muted-foreground">{count}</span>
                   </button>
                 );
               })}
@@ -255,7 +279,7 @@ function EntityList({ status, busy, onSave }: { status: Status; busy: boolean; o
               </div>
               <label className="flex items-center gap-2 text-small text-muted-foreground">
                 <Switch aria-label={t("homeAssistantPage.onlyWhatIsListed")} checked={onlyListed} onCheckedChange={setOnlyListed} />
-                Only listed
+                {t("homeAssistantPage.onlyListed")}
               </label>
             </div>
           </div>
@@ -279,8 +303,12 @@ function EntityList({ status, busy, onSave }: { status: Status; busy: boolean; o
                     <span className="min-w-0">
                       <span className="block truncate text-body text-foreground">{e.name}</span>
                       <span className="block truncate text-caption text-muted-foreground">
-                        {[e.area, e.entity_id, e.state].filter(Boolean).join(" · ")}
-                        {byDomain ? `. Listed with all ${DOMAIN_NAMES[e.domain]?.toLowerCase() ?? e.domain}` : ""}
+                        {byDomain
+                          ? t("homeAssistantPage.listedWithAll", {
+                              meta: [e.area, e.entity_id, e.state].filter(Boolean).join(" · "),
+                              kind: DOMAIN_NAMES[e.domain] ? t(DOMAIN_NAMES[e.domain]).toLocaleLowerCase(formatLocale()) : e.domain,
+                            })
+                          : [e.area, e.entity_id, e.state].filter(Boolean).join(" · ")}
                       </span>
                     </span>
                   </label>
@@ -288,8 +316,8 @@ function EntityList({ status, busy, onSave }: { status: Status; busy: boolean; o
                     <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-caption text-muted-foreground">{t("homeAssistantPage.alwaysAsks")}</span>
                   ) : (
                     <label className="flex shrink-0 items-center gap-2 text-small text-muted-foreground">
-                      <Switch aria-label={`Change ${e.name} without asking`} checked={auto} disabled={busy} onCheckedChange={(next) => toggleAuto(e, next)} />
-                      Without asking
+                      <Switch aria-label={t("homeAssistantPage.changeWithoutAsking", { entity: e.name })} checked={auto} disabled={busy} onCheckedChange={(next) => toggleAuto(e, next)} />
+                      {t("homeAssistantPage.withoutAsking")}
                     </label>
                   ))}
                 </div>
@@ -329,7 +357,7 @@ function StartAnAgent() {
       description={t("homeAssistantPage.aHomeAssistantAutomationCan")}
       footnote={
         <>
-          The webhook's address is its password: anyone with it can start the agent. Pause or change it under Automations, Webhooks.{" "}
+          {t("homeAssistantPage.webhookIsPassword")}{" "}
           <a href="https://www.home-assistant.io/integrations/rest_command/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:underline">
             {t("homeAssistantPage.aboutRestCommand")} <ExternalLink size={11} />
           </a>
@@ -386,7 +414,7 @@ function Snippet({ title, text }: { title: string; text: string }) {
     <div className="min-w-0">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="text-small font-medium text-foreground">{title}</span>
-        <Button size="sm" variant="secondary" aria-label={copied ? t("common.copied") : `Copy: ${title}`} onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}>
+        <Button size="sm" variant="secondary" aria-label={copied ? t("common.copied") : t("homeAssistantPage.copySnippet", { title })} onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}>
           {copied ? <Check size={13} /> : <Copy size={13} />}
           {copied ? t("common.copied") : t("common.copy")}
         </Button>
