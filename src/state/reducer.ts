@@ -11,6 +11,7 @@ import type { LaneContext } from "@/lib/contextCard";
 import type { CodexSpeed, CodexSpeedStatus } from "@/lib/codexSpeed";
 import type { Effort } from "@/lib/effort";
 import type { RoomAnswers, RoomRoute } from "@/lib/roomRoute";
+import type { Workplace, WorkplaceStatus } from "@/lib/workplace";
 import { resolveSettingsPage } from "../lib/settingsPages.ts";
 
 export type { BlokColor, BlokShape } from "@/lib/mascot";
@@ -390,6 +391,11 @@ export interface Bot {
   computer?: "cloud" | "sandbox" | "local" | "off" | null;
   /** The folder new turns run in; unset means the agent's workspace. */
   cwd?: string | null;
+  /** Where its engine runs: unset is this computer; otherwise a Docker
+   * container or another machine over SSH (src/lib/workplace.ts). */
+  workplace?: Workplace | null;
+  /** That place now, as the header says it. Null on this computer. */
+  workplaceStatus?: WorkplaceStatus | null;
   /** Whether this agent may reach the shared connectors. Unset = yes. */
   composio?: boolean;
   /** Whether this agent has a browser of its own. Unset = no: a browser

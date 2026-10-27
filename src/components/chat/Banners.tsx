@@ -194,8 +194,12 @@ export function useOtherLanesNotice(bot: Bot): Notice | null {
 export function useEngineNotice(bot: Bot): Notice | null {
   const { state, dispatch } = useStore();
   const instance = state.instances.find((i) => i.instanceId === bot.modelSelection?.instanceId);
-  const missing = instance ? instance.snapshot.state !== "available" : false;
-  const signedOut = Boolean(instance) && !missing && instance!.snapshot.authenticated === false;
+  // An agent that works in a container or over SSH runs the engine there:
+  // this computer's copy, installed or signed in or not, is not the one it
+  // uses, and the Test in its settings says how the other one stands.
+  const elsewhere = Boolean(bot.workplace);
+  const missing = instance && !elsewhere ? instance.snapshot.state !== "available" : false;
+  const signedOut = Boolean(instance) && !elsewhere && !missing && instance!.snapshot.authenticated === false;
   const refresh = () => {
     api("/api/instances")
       .then(({ instances }) => dispatch({ type: "instances", instances }))

@@ -77,6 +77,8 @@ import { BACKGROUND_WORK, backgroundWords, type BackgroundWork } from "@/lib/bac
 import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
 import { effortChoice } from "@/lib/effort";
 import { SideColumn, SideTabs } from "./SideColumn";
+import { WhereItWorksCard } from "./WhereItWorks";
+import { placePhrase } from "@/lib/workplace";
 
 type Patch = Partial<
   Pick<
@@ -450,6 +452,14 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                     />
                   )}
                 </Group>
+                {/* where that engine runs: here, a container, or another
+                    machine over SSH; the owner's, so never on a member's
+                    own agent */}
+                {(!bot.solo || bot.solo.by === "owner") && (
+                  <Group>
+                    <WhereItWorksCard key={bot.id} bot={bot} />
+                  </Group>
+                )}
                 <CodexSpeedControl bot={bot} />
                 {suggestion && <EngineSuggestionCard s={suggestion} compact />}
               </Section>
@@ -1176,6 +1186,8 @@ function ComputerRow({ bot, patch, onBox }: { bot: Bot; patch: (p: Patch) => voi
   // screen there, and is said so rather than shown as nothing picked.
   const savedOwnScreen = !hosted && !ownScreen && bot.computer === "local";
   const where = thisComputer();
+  // an agent that works elsewhere has its commands and files there
+  const elsewhere = bot.workplaceStatus ? placePhrase(bot.workplaceStatus) : null;
   return (
     <SettingRow
       label="Computer"
@@ -1183,8 +1195,8 @@ function ComputerRow({ bot, patch, onBox }: { bot: Bot; patch: (p: Patch) => voi
         hosted
           ? "This machine's browser and virtual desktop, or none."
           : bot.computer
-            ? computerMeaning(where, onBox)
-            : `${computerMeaning(where, onBox)} Automatic uses your cloud box if you have one, otherwise ${ownScreen ? `${where}'s screen` : "none"}.`
+            ? computerMeaning(where, onBox, elsewhere)
+            : `${computerMeaning(where, onBox, elsewhere)} Automatic uses your cloud box if you have one, otherwise ${ownScreen ? `${where}'s screen` : "none"}.`
       }
       control={
         <label className="flex items-center gap-2 text-body text-muted-foreground">

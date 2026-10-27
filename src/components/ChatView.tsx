@@ -48,6 +48,7 @@ import { AudioLines } from "@/components/icons";
 import { ForwardDialog, type ReplyDraft } from "./MessageActions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { placeLine, placeTrouble } from "@/lib/workplace";
 import { useStickToBottom } from "@/lib/useStickToBottom";
 import { useHoldPlace } from "@/lib/useHoldPlace";
 import { foldHolding, foldTurns, lastFoldKey, rowsFrom, turnRunning } from "@/lib/turnFold";
@@ -675,6 +676,8 @@ export function ChatView({ bot }: { bot: Bot }) {
   const first = said[0];
   // this conversation, not the agent: another one may be the one working
   const working = openLaneWorking(bot);
+  // where it works, when that is not this computer (src/lib/workplace.ts)
+  const placeNow = placeLine(bot.workplaceStatus, working);
   // Nothing said, nothing on its way, and nothing still loading: a new
   // conversation, which shows who is here and a few ways to begin.
   const empty =
@@ -871,9 +874,19 @@ export function ChatView({ bot }: { bot: Bot }) {
           <AgentAvatar bot={bot} size={28} />
           <span className="flex min-w-0 items-baseline gap-2 text-left">
             <span className="truncate text-ui font-semibold text-foreground">{bot.name}</span>
-            {(working || bot.title) && (
-              <span className="hidden truncate text-small text-muted-foreground sm:block">
-                {working ? <WorkingClock threadKey={threadKey} working={working} messages={said} /> : bot.title}
+            {/* An agent that works elsewhere says where, in place of its
+                title: where its commands are running is the thing to know
+                about it, and a lost connection has to be seen. */}
+            {(working || bot.title || placeNow) && (
+              <span
+                className={cn("hidden truncate text-small sm:block", placeTrouble(bot.workplaceStatus) ? "text-warning" : "text-muted-foreground")}
+                title={bot.workplaceStatus?.detail}
+              >
+                {working && !placeTrouble(bot.workplaceStatus) ? (
+                  <WorkingClock threadKey={threadKey} working={working} messages={said} label={placeNow ?? "Working"} />
+                ) : (
+                  (placeNow ?? bot.title)
+                )}
               </span>
             )}
           </span>

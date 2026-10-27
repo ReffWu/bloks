@@ -46,10 +46,10 @@ export function firstPickedComputer(fromServer?: Array<{ id: ComputerMode; label
  * where the agent runs (GitHub 388). `where` is this machine's name, as
  * thisComputer() gives it. An agent on the cloud engine runs on its box,
  * and is told so instead. */
-export function computerMeaning(where: string, onBox: boolean): string {
+export function computerMeaning(where: string, onBox: boolean, elsewhere?: string | null): string {
   return onBox
     ? "The desktop it can see and click. This engine runs on its cloud box."
-    : `The desktop it can see and click. Its commands and files run on ${where} either way.`;
+    : `The desktop it can see and click. Its commands and files run ${elsewhere ?? `on ${where}`} either way.`;
 }
 
 /** Said under the choices when an agent is saved on "This computer" off

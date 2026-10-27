@@ -28,6 +28,10 @@ export type RedoPreview =
       /** How many of the person's messages go again: more than one when
        * other words of theirs were part of the same turn. */
       resend: number;
+      /** Where its files are, when it works somewhere else and they are
+       * not on this computer: "on build-box over SSH". Nothing there is
+       * restored. */
+      filesElsewhere?: string;
     };
 
 export type RedoOffer = Extract<RedoPreview, { offered: true }>;
@@ -44,12 +48,15 @@ const counted = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 export function redoLine(offer: RedoOffer, agent: string): string {
   const messages = counted(offer.messages, "message");
   const takes = offer.working
-    ? `Stops ${agent}, removes ${messages} and undoes its file changes.`
+    ? offer.filesElsewhere
+      ? `Stops ${agent} and removes ${messages}.`
+      : `Stops ${agent}, removes ${messages} and undoes its file changes.`
     : offer.files > 0
       ? `Removes ${messages} and restores ${counted(offer.files, "file")}.`
       : `Removes ${messages}.`;
   return [
     takes,
+    offer.filesElsewhere ? `Files it changed ${offer.filesElsewhere} stay as they are.` : "",
     offer.resend > 1 ? `Resends your ${offer.resend} messages.` : "",
     offer.sent ? "Messages it sent, and anything outside the folder, stay." : "",
   ]

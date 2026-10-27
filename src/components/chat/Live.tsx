@@ -116,7 +116,19 @@ function turnSince(key: string, working: boolean, messages: readonly Message[]):
 }
 
 /** "Working · 42s", small, for the header beside the agent's name. */
-export function WorkingClock({ threadKey, working, messages }: { threadKey: string; working: boolean; messages: readonly Message[] }) {
+export function WorkingClock({
+  threadKey,
+  working,
+  messages,
+  label = "Working",
+}: {
+  threadKey: string;
+  working: boolean;
+  messages: readonly Message[];
+  /** What it is doing, when there is more to say: "Working in container
+   * bloks-scout" for an agent that works elsewhere. */
+  label?: string;
+}) {
   const since = turnSince(threadKey, working, messages);
   // the header hides it on a phone, and hidden it need not count
   const [el, setEl] = useState<HTMLSpanElement | null>(null);
@@ -125,7 +137,7 @@ export function WorkingClock({ threadKey, working, messages }: { threadKey: stri
   if (!working) return null;
   return (
     <span ref={setEl} className="tabular-nums">
-      Working · {clock(now - since)}
+      {label} · {clock(now - since)}
     </span>
   );
 }
