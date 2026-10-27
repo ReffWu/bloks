@@ -192,8 +192,11 @@ export interface AppConfig {
   compaction?: { micro?: boolean; idle?: boolean; beforeTurn?: number; beforeTurnAt?: number };
   /** Whether a finished session is read back for something worth keeping.
    * Off unless asked for: it spends the person's own tokens on work they
-   * did not request. What it finds is always staged, never installed. */
-  skills?: { propose?: boolean };
+   * did not request. What it finds is always staged, never installed.
+   * `learn` is how eager that is (server/proposals.ts): "off", "suggest"
+   * or "more". Unset reads `propose`, which is what it was when it was
+   * one switch: on is "suggest". */
+  skills?: { propose?: boolean; learn?: "off" | "suggest" | "more" };
   /** How long a tool call may go without a word from the engine before
    * Bloks stops the turn, in minutes; 0 is never. Unset is the default
    * in server/drivers/stall.ts. `backgroundWork` is whether a turn waits

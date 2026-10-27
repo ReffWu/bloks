@@ -102,7 +102,12 @@ export function inspectWorkspaceSettings(input: WorkspaceInspectionInput): Inspe
   // the engine an Auto room asks (server/room-route.ts), null for the
   // room's own engines
   add("rooms", "router", general, typeof value("rooms", "router") === "string" ? value("rooms", "router") : null);
-  add("skills", "propose", general, Boolean(value("skills", "propose")));
+  // how eager skill suggestions are: unset reads the switch it replaced,
+  // the way server/proposals.ts (eagernessOf) does
+  const learnSaid = value("skills", "learn");
+  const learn = learnSaid === "off" || learnSaid === "suggest" || learnSaid === "more" ? learnSaid : value("skills", "propose") ? "suggest" : "off";
+  add("skills", "propose", general, learn !== "off");
+  add("skills", "learn", general, learn);
   add("changes", "showShared", general, value("changes", "showShared") !== false);
   // Bloks credits (server/credits.ts): background work spends them only
   // when the person turned this on

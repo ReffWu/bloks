@@ -11,7 +11,7 @@ const field = (rows: ReturnType<typeof read>, id: string) => {
 test("workspace answers effective defaults and the actual turn-limit control", () => {
   const rows = read();
   for (const [id, value] of [["agents.turnLimit", 12], ["recall.beforeTurn", true], ["changes.showShared", true],
-    ["compaction.micro", false], ["compaction.idle", false], ["skills.propose", false],
+    ["compaction.micro", false], ["compaction.idle", false], ["skills.propose", false], ["skills.learn", "off"],
     ["compaction.beforeTurn", 200000], ["compaction.beforeTurnAt", 0.6], ["turns.stallMinutes", 15],
     ["shortcuts.quickAsk", null], ["profile.about", ""], ["profile.name", "The owner"]] as const) {
     assert.deepEqual(field(rows, id).effective, { status: "value", value });

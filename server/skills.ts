@@ -12,6 +12,10 @@
 // explicit and reviewable, bodies are size-capped, ids are slugs that can
 // never escape the skills directory, and nothing is ever fetched and
 // installed on the app's own initiative.
+//
+// Every change to a skill of the person's is kept as a version beside it
+// (server/skill-history.ts), whoever made it, and a writer that says
+// which version it read is refused when the skill has moved on since.
 import {
   chmodSync,
   mkdirSync,
@@ -21,8 +25,9 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import { SKILLS_DIR } from "./config.ts";
+import { DATA_DIR, SKILLS_DIR } from "./config.ts";
 import { closeHeld, openInside, readHeld } from "./open-inside.ts";
+import { SkillHistory, sameText, type Author, type Revision } from "./skill-history.ts";
 
 export interface Skill {
   id: string;
@@ -594,7 +599,92 @@ export interface InstallInput {
   id?: string;
 }
 
-export function installSkill(input: InstallInput): Skill {
+/** Who is changing a skill, and why, for its history. */
+export interface Change {
+  by: Author;
+  /** One line. */
+  why: string;
+  /**
+   * The version the writer read. When it is given and the skill has
+   * moved on since, nothing is written: two writers that both read
+   * version 3 cannot both turn it into their version 4. A built-in, and
+   * a skill that is not there yet, are version 0.
+   */
+  from?: number;
+  /** Set when this puts an earlier version back. */
+  restoredFrom?: number;
+}
+
+/** A write refused because the skill moved on since the writer read it. */
+export class SkillMovedOn extends Error {
+  readonly status = 409;
+  readonly read: number;
+  readonly current: number;
+  constructor(read: number, current: number) {
+    super(`This skill has changed since version ${read}: it is version ${current} now. Read it again and make the change against that.`);
+    this.read = read;
+    this.current = current;
+  }
+}
+
+/** A change nobody described, which is a person saving in the app. */
+const BY_YOU: Change = { by: { kind: "person", name: "you" }, why: "Saved" };
+
+let history: SkillHistory | null = null;
+
+/** Where every skill's versions are kept. Made on first use, so reading
+ * the library never touches the disk beyond the skills themselves. */
+export function skillHistory(): SkillHistory {
+  return (history ??= new SkillHistory(join(DATA_DIR, "skill-history")));
+}
+
+/** A bundled skill as it ships, whether or not a copy shadows it. */
+export function builtinSkill(id: string): Skill | null {
+  const found = BUILTIN.find((b) => b.id === id);
+  return found ? { ...found, source: "builtin" } : null;
+}
+
+/**
+ * The version a skill is at, as an agent reading it now would see it.
+ *
+ * A built-in is version 0: it is the same text on every install. A skill
+ * of the person's with no record yet, which is every skill written before
+ * versions existed, becomes version 1 here, as it stands.
+ */
+export function revisionOf(skill: Pick<Skill, "id" | "source" | "name" | "description" | "body">): number {
+  if (skill.source === "builtin") return 0;
+  return skillHistory().sync(skill.id, skill).n;
+}
+
+/** One version of a skill in full, or null when there is no such version.
+ * Version 0 of a built-in is the text it ships with. */
+export function skillAt(id: string, n: number): Revision | null {
+  if (n === 0) {
+    const shipped = builtinSkill(id);
+    return shipped
+      ? { n: 0, at: 0, by: { kind: "builtin", name: "Bloks" }, why: "As it ships with Bloks", name: shipped.name, description: shipped.description, body: shipped.body }
+      : null;
+  }
+  return skillHistory().get(slugify(id), n);
+}
+
+/** Every skill of the person's given a version 1 if it has none, so the
+ * first look at any skill's history finds it already there. Run once as
+ * the server starts; reading the library never writes. */
+export function migrateSkillHistory(): number {
+  let started = 0;
+  for (const skill of readUserSkills()) {
+    try {
+      if (!skillHistory().latest(skill.id)) started++;
+      skillHistory().sync(skill.id, skill);
+    } catch {
+      /* one unreadable record should not stop the rest */
+    }
+  }
+  return started;
+}
+
+export function installSkill(input: InstallInput, change: Change = BY_YOU): Skill & { revision: number } {
   const fromDoc = input.markdown ? parseMarkdown(input.markdown) : null;
   const body = (input.body ?? fromDoc?.body ?? "").trim();
   if (!body) throw Object.assign(new Error("a skill needs instructions"), { status: 400 });
@@ -623,6 +713,11 @@ export function installSkill(input: InstallInput): Skill {
   // "replace what you wrote" rather than say plainly that this is its
   // own skill with your changes on top.
   const before = existing.find((s) => s.id === id);
+  // Whatever stands now is kept before anything is written over it: a
+  // skill with no record yet, or a file edited by hand since its last
+  // version, becomes a version of its own first.
+  const standing = before ? skillHistory().sync(id, before).n : 0;
+  if (change.from !== undefined && change.from !== standing) throw new SkillMovedOn(change.from, standing);
   const from = {
     registry: input.registry ?? before?.registry,
     version: input.version ?? before?.version,
@@ -642,6 +737,17 @@ export function installSkill(input: InstallInput): Skill {
     /* non-POSIX filesystem */
   }
   if (skillObservation) skillObservation.invalidatedAt = Date.now();
+  // The first change to a built-in makes it the person's own copy, and
+  // that copy's history starts with the text as it shipped, so "what did
+  // I change" has an answer.
+  const shipped = before ? null : builtinSkill(id);
+  if (shipped) {
+    const latest = skillHistory().latest(id);
+    if (!latest || !sameText(latest, shipped)) {
+      skillHistory().record(id, shipped, { by: { kind: "builtin", name: "Bloks" }, why: "As it ships with Bloks" });
+    }
+  }
+  const revision = skillHistory().record(id, { name, description, body }, change);
   return {
     id,
     name,
@@ -651,6 +757,7 @@ export function installSkill(input: InstallInput): Skill {
     ...(from.registry ? { registry: from.registry } : {}),
     ...(from.version ? { version: from.version } : {}),
     ...(from.sha256 ? { sha256: from.sha256 } : {}),
+    revision: revision.n,
   };
 }
 
@@ -659,6 +766,12 @@ export function deleteSkill(id: string): boolean {
   try {
     unlinkSync(join(SKILLS_DIR, `${slug}.md`));
     if (skillObservation) skillObservation.invalidatedAt = Date.now();
+    // its versions stay: removing a skill is not forgetting what it said
+    try {
+      skillHistory().removed(slug);
+    } catch {
+      /* the skill is gone either way */
+    }
     return true;
   } catch {
     return false;
