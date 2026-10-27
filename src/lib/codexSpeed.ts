@@ -4,6 +4,7 @@
 // own copy of the few shapes and answers it shows, rather than reaching
 // into the server's code. test/codex-speed-shared.test.ts holds the two
 // to the same answers.
+import { t } from "./i18n.ts";
 
 export type CodexSpeed = "standard" | "fast";
 
@@ -50,8 +51,10 @@ export function showsSpeedStatus(status: CodexSpeedStatus | undefined): boolean 
  * served, so the line never claims more than that. */
 export function speedStatusLine(status: CodexSpeedStatus | undefined): string | null {
   if (!status || !showsSpeedStatus(status)) return null;
-  const speed = status.choice.resolved === "fast" ? "Fast" : "Standard";
-  const why = status.choice.source === "agent" ? "this agent" : "workspace default";
-  const tier = status.configuredTier ? `, ${status.configuredTier} tier` : "";
-  return `Codex speed: ${speed} (${why})${tier}`;
+  const speed = status.choice.resolved === "fast" ? t("libCodexSpeed.fast") : t("libCodexSpeed.standard");
+  const tier = status.configuredTier;
+  if (status.choice.source === "agent") {
+    return tier ? t("libCodexSpeed.statusAgentTier", { speed, tier }) : t("libCodexSpeed.statusAgent", { speed });
+  }
+  return tier ? t("libCodexSpeed.statusWorkspaceTier", { speed, tier }) : t("libCodexSpeed.statusWorkspace", { speed });
 }

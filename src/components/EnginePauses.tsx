@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { stamp } from "@/lib/when";
-import { t } from "@/lib/i18n";
+import { formatList, t } from "@/lib/i18n";
 
 type What = { family?: string; driver?: string; instanceId?: string; model?: string };
 
@@ -39,15 +39,15 @@ interface PausesState {
 }
 
 /** How long, offered. A week is the most a pause may last. */
-const LENGTHS: Array<[minutes: number, label: string]> = [
-  [30, "30 minutes"],
-  [60, "1 hour"],
-  [120, "2 hours"],
-  [240, "4 hours"],
-  [480, "8 hours"],
-  [24 * 60, "1 day"],
-  [3 * 24 * 60, "3 days"],
-  [7 * 24 * 60, "1 week"],
+const LENGTHS: Array<[minutes: number, unit: "minutes" | "hours" | "days" | "weeks", count: number]> = [
+  [30, "minutes", 30],
+  [60, "hours", 1],
+  [120, "hours", 2],
+  [240, "hours", 4],
+  [480, "hours", 8],
+  [24 * 60, "days", 1],
+  [3 * 24 * 60, "days", 3],
+  [7 * 24 * 60, "weeks", 1],
 ];
 
 const key = (what: What) => JSON.stringify([what.family, what.driver, what.instanceId, what.model]);
@@ -107,8 +107,8 @@ export function EnginePauses() {
         setEveryone(true);
         // what happens to work already under way is the one thing a
         // pause does not decide on its own, so it is said
-        if (body.stopped) setSaid(`Paused. Stopped ${body.stopped} running ${body.stopped === 1 ? "task" : "tasks"}.`);
-        else if (body.running) setSaid(`Paused. ${body.running} running ${body.running === 1 ? "task finishes" : "tasks finish"} first.`);
+        if (body.stopped) setSaid(t("enginePauses.pausedStopped", { count: body.stopped }));
+        else if (body.running) setSaid(t("enginePauses.pausedRunning", { count: body.running }));
         load();
       })
       .catch((e: Error) => setError(e.message))
@@ -153,9 +153,12 @@ export function EnginePauses() {
           <div className="min-w-0 flex-1">
             <div className="text-ui font-medium text-foreground">{p.label}</div>
             <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-              {p.agents === "all" ? t("enginePauses.everyAgent") : (p.agentNames ?? p.agents).join(", ")}, until {stamp(p.until)}
-              {p.byName ? ` · ${p.byName} paused itself` : ""}
-              {p.running ? ` · ${p.running} running ${p.running === 1 ? "task finishes" : "tasks finish"} first` : ""}
+              {t("enginePauses.forUntil", {
+                who: p.agents === "all" ? t("enginePauses.everyAgent") : formatList(p.agentNames ?? p.agents, { type: "unit", style: "short" }),
+                until: stamp(p.until),
+              })}
+              {p.byName ? ` · ${t("enginePauses.pausedItself", { name: p.byName })}` : ""}
+              {p.running ? ` · ${t("enginePauses.runningFinish", { count: p.running })}` : ""}
             </div>
             {p.note && <div className="mt-0.5 text-small text-muted-foreground">{p.note}</div>}
           </div>
@@ -231,9 +234,9 @@ export function EnginePauses() {
               onChange={(e) => setMinutes(Number(e.target.value))}
               className="rounded-md border bg-background px-2 py-1 text-body text-foreground"
             >
-              {LENGTHS.map(([value, label]) => (
+              {LENGTHS.map(([value, unit, count]) => (
                 <option key={value} value={value}>
-                  {label}
+                  {t(`enginePauses.length.${unit}`, { count })}
                 </option>
               ))}
             </select>
@@ -254,7 +257,7 @@ export function EnginePauses() {
               {t("common.cancel")}
             </Button>
             <Button variant="secondary" size="sm" onClick={add} disabled={busy || !picked || (!everyone && !chosen.length)}>
-              Pause until {stamp(Date.now() + minutes * 60_000)}
+              {t("enginePauses.pauseUntil", { until: stamp(Date.now() + minutes * 60_000) })}
             </Button>
           </div>
         </div>

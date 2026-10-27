@@ -20,7 +20,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { quietButton } from "./composer/Shell";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
+
+/** A speed as the settings name it. */
+const speedWord = (speed: CodexSpeed) => (speed === "fast" ? t("codexSpeed.fast") : t("codexSpeed.standard"));
 
 /** A catalog older than this says nothing about Fast today. */
 const CATALOG_FRESH_MS = 300_000;
@@ -59,16 +62,16 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
       const result = await api("/api/config", { method: "PATCH", body: JSON.stringify({ codex: { speed: value } }) });
       dispatch({ type: "configStatus", config: result });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't save the Codex speed");
+      setError(e instanceof Error ? e.message : t("codexSpeed.couldntSave"));
     } finally {
       setSaving(false);
     }
   };
 
-  const workspaceLabel = `Workspace (${choice.default === "fast" ? "Fast" : "Standard"})`;
+  const workspaceLabel = t("codexSpeed.workspace", { speed: speedWord(choice.default) });
   const options: Array<[CodexSpeed | null, string]> = bot
-    ? [[null, workspaceLabel], ["standard", "Standard"], ["fast", "Fast"]]
-    : [["standard", "Standard"], ["fast", "Fast"]];
+    ? [[null, workspaceLabel], ["standard", speedWord("standard")], ["fast", speedWord("fast")]]
+    : [["standard", speedWord("standard")], ["fast", speedWord("fast")]];
   const selected = bot ? choice.override : choice.default;
 
   return (
@@ -78,24 +81,25 @@ export function CodexSpeedControl({ bot, className }: { bot?: Bot; className?: s
     >
       <div className="text-ui font-semibold text-foreground">{t("codexSpeed.codexSpeed")}</div>
       <div className="mt-0.5 text-body text-muted-foreground">
-        {bot ? t("codexSpeed.forThisAgentOnCodex") : t("codexSpeed.forEveryAgentOnCodex")}
-        Fast answers sooner and uses more:{" "}
-        <a
-          className="underline underline-offset-2 hover:text-foreground"
-          href="https://learn.chatgpt.com/docs/agent-configuration/speed"
-          target="_blank"
-          rel="noreferrer"
-        >
-          {t("codexSpeed.n25xIncludedUsage2x")}
-        </a>
-        .
+        {tr(bot ? "codexSpeed.agentSays" : "codexSpeed.workspaceSays", {
+          usage: (
+            <a
+              className="underline underline-offset-2 hover:text-foreground"
+              href="https://learn.chatgpt.com/docs/agent-configuration/speed"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t("codexSpeed.usage")}
+            </a>
+          ),
+        })}
       </div>
       <div className="mt-3 flex gap-1 rounded-xl bg-muted p-1" role="radiogroup" aria-label={t("codexSpeed.codexSpeed")}>
         {options.map(([value, label]) => {
           const unavailable = value === "fast" && noFastModel;
           return (
             <button
-              key={label}
+              key={value ?? "workspace"}
               role="radio"
               aria-checked={selected === value}
               disabled={saving || unavailable}
@@ -159,20 +163,20 @@ export function CodexSpeedMenu({ bot }: { bot: Bot }) {
   const options: Array<{ value: CodexSpeed | null; label: string; hint: string }> = [
     {
       value: null,
-      label: `Workspace default (${choice.default === "fast" ? "Fast" : "Standard"})`,
-      hint: "Follows the setting under Engines.",
+      label: t("codexSpeed.workspaceDefault", { speed: speedWord(choice.default) }),
+      hint: t("codexSpeed.workspaceDefaultHint"),
     },
-    { value: "standard", label: "Standard", hint: "Codex as it usually runs." },
-    { value: "fast", label: "Fast", hint: "Answers sooner. Uses 2.5x included usage." },
+    { value: "standard", label: speedWord("standard"), hint: t("codexSpeed.standardHint") },
+    { value: "fast", label: speedWord("fast"), hint: t("codexSpeed.fastHint") },
   ];
-  const label = fast ? "Fast" : "Standard";
+  const label = speedWord(fast ? "fast" : "standard");
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          title={noFast ? t("codexSpeed.fastIsntOfferedForThisModel") : `Codex speed: ${label}`}
-          aria-label={`Codex speed: ${label}`}
+          title={noFast ? t("codexSpeed.fastIsntOfferedForThisModel") : t("codexSpeed.title", { speed: label })}
+          aria-label={t("codexSpeed.title", { speed: label })}
           className={cn(quietButton, "shrink-0", noFast && "text-warning hover:text-warning aria-expanded:text-warning")}
         >
           {fast && <Zap size={13} className="shrink-0" />}
@@ -186,7 +190,7 @@ export function CodexSpeedMenu({ bot }: { bot: Bot }) {
           const unavailable = option.value === "fast" && noFast;
           return (
             <DropdownMenuItem
-              key={option.label}
+              key={option.value ?? "workspace"}
               role="menuitemradio"
               aria-checked={on}
               disabled={unavailable}

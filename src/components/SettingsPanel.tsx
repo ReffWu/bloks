@@ -64,7 +64,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import { stamp } from "@/lib/when";
 import { thisComputer } from "@/lib/thisComputer";
 import { sameEngineBackup } from "@/lib/backupChoice";
@@ -79,7 +78,7 @@ import { effortChoice } from "@/lib/effort";
 import { SideColumn, SideTabs } from "./SideColumn";
 import { WhereItWorksCard } from "./WhereItWorks";
 import { placePhrase } from "@/lib/workplace";
-import { t } from "@/lib/i18n";
+import { formatList, formatNumber, t, tr, type MessageKey } from "@/lib/i18n";
 
 type Patch = Partial<
   Pick<
@@ -117,17 +116,18 @@ type SectionId =
   | "export"
   | "danger";
 
-const SECTIONS: Array<{ id: SectionId; label: string; icon: typeof User }> = [
-  { id: "identity", label: "Identity", icon: User },
-  { id: "engine", label: "Engine", icon: Cpu },
-  { id: "behaviour", label: "Behaviour", icon: SlidersHorizontal },
-  { id: "tools", label: "Tools", icon: Puzzle },
-  { id: "memory", label: "Memory", icon: BookOpen },
-  { id: "reach", label: "Voice and chat apps", icon: Mic },
-  { id: "notifications", label: "Notifications", icon: BellDot },
-  { id: "schedules", label: "Schedules", icon: CalendarClock },
-  { id: "export", label: "Signature and export", icon: Fingerprint },
-  { id: "danger", label: "Danger zone", icon: TriangleAlert },
+// Keys, said where they draw.
+const SECTIONS: Array<{ id: SectionId; label: MessageKey; icon: typeof User }> = [
+  { id: "identity", label: "settingsPanel.identity", icon: User },
+  { id: "engine", label: "common.engine", icon: Cpu },
+  { id: "behaviour", label: "settingsPanel.behaviour", icon: SlidersHorizontal },
+  { id: "tools", label: "settingsPanel.tools", icon: Puzzle },
+  { id: "memory", label: "common.memory", icon: BookOpen },
+  { id: "reach", label: "settingsPanel.voiceAndChatApps", icon: Mic },
+  { id: "notifications", label: "settingsPanel.notifications", icon: BellDot },
+  { id: "schedules", label: "settingsPanel.schedules", icon: CalendarClock },
+  { id: "export", label: "settingsPanel.signatureAndExport", icon: Fingerprint },
+  { id: "danger", label: "settingsPanel.dangerZone", icon: TriangleAlert },
 ];
 
 const anchor = (id: SectionId) => `agent-settings-${id}`;
@@ -259,7 +259,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
   const instance = state.instances.find((i) => i.instanceId === bot.modelSelection?.instanceId);
   const modelName =
     instance?.models.options.find((o) => o.id === bot.modelSelection?.model)?.label ??
-    (bot.modelSelection?.model || instance?.models.default || "Engine default");
+    (bot.modelSelection?.model || instance?.models.default || t("settingsPanel.engineDefault"));
   const mode = bot.approvals ?? "ask";
   const seniority = bot.seniority ?? 1;
   const skillCount = (bot.skills?.length ?? 0) + (bot.skillIds?.length ?? 0);
@@ -271,7 +271,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
         id="agent-settings"
         size={AGENT_SETTINGS_COLUMN}
         as="nav"
-        label={`${bot.name}'s settings`}
+        label={t("settingsPanel.agentsSettings", { name: bot.name })}
         className="border-b bg-sidebar/60 md:border-b-0"
       >
         {/* No back button of its own, as in Settings: the title bar's Back
@@ -316,7 +316,7 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                     section.id === "danger" ? "text-destructive" : on ? "text-foreground" : "text-muted-foreground",
                   )}
                 />
-                <span className="relative z-[1]">{section.label}</span>
+                <span className="relative z-[1]">{t(section.label)}</span>
               </button>
             );
           })}
@@ -327,9 +327,15 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
         {folded && (
           <SideTabs
             column="agent-settings"
-            label={`${bot.name}'s settings`}
+            label={t("settingsPanel.agentsSettings", { name: bot.name })}
             currentKind="location"
-            groups={[{ id: "sections", name: "Groups", tabs: SECTIONS.map((s) => ({ id: s.id, label: s.label, tone: s.id === "danger" ? "danger" : "default" })) }]}
+            groups={[
+              {
+                id: "sections",
+                name: t("settingsPanel.groups"),
+                tabs: SECTIONS.map((s) => ({ id: s.id, label: t(s.label), tone: s.id === "danger" ? "danger" : "default" })),
+              },
+            ]}
             current={active}
             onPick={(id) => jump(id as SectionId)}
           />
@@ -341,9 +347,12 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
               patch={patch}
               facts={[
                 { label: modelName, to: "engine" },
-                { label: APPROVAL_MODES.find((m) => m.id === mode)?.label ?? "Ask first", to: "behaviour" },
-                { label: seniority >= 4 ? "Lead" : seniority === 3 ? "Mid" : "Junior", to: "identity" },
-                ...(skillCount ? [{ label: plural(skillCount, "skill"), to: "tools" as const }] : []),
+                { label: APPROVAL_MODES.find((m) => m.id === mode)?.label ?? t("approvalsChooser.ask"), to: "behaviour" },
+                {
+                  label: seniority >= 4 ? t("settingsPanel.lead") : seniority === 3 ? t("settingsPanel.mid") : t("settingsPanel.junior"),
+                  to: "identity",
+                },
+                ...(skillCount ? [{ label: t("settingsPanel.skillCount", { count: skillCount }), to: "tools" as const }] : []),
               ]}
               onJump={jump}
               onChat={close}
@@ -376,9 +385,9 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                       value={seniority >= 4 ? "5" : seniority === 3 ? "3" : "1"}
                       onChange={(level) => patch({ seniority: Number(level) })}
                       options={[
-                        { value: "1", label: "Junior" },
-                        { value: "3", label: "Mid" },
-                        { value: "5", label: "Lead" },
+                        { value: "1", label: t("settingsPanel.junior") },
+                        { value: "3", label: t("settingsPanel.mid") },
+                        { value: "5", label: t("settingsPanel.lead") },
                       ]}
                     />
                   </SettingRow>
@@ -606,7 +615,7 @@ function Hero({
               className="-mx-2 mt-0.5 block w-[calc(100%+1rem)] min-w-0 truncate rounded-lg bg-transparent px-2 py-1 text-lead text-muted-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 hover:bg-accent/50 focus:bg-accent/60 focus:text-foreground"
             />
           </div>
-          <Button variant="secondary" onClick={onChat} className="mt-1.5 shrink-0" title={`Back to the chat with ${bot.name}`}>
+          <Button variant="secondary" onClick={onChat} className="mt-1.5 shrink-0" title={t("settingsPanel.backToChat", { name: bot.name })}>
             <MessageCircle size={15} />
             <span className="max-sm:hidden">{t("settingsPanel.openChat")}</span>
           </Button>
@@ -729,9 +738,9 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
               value={tab}
               onChange={setTab}
               options={[
-                { value: "shape", label: "Shape" },
-                { value: "color", label: "Color" },
-                { value: "face", label: "Face" },
+                { value: "shape", label: t("settingsPanel.shape") },
+                { value: "color", label: t("settingsPanel.color") },
+                { value: "face", label: t("settingsPanel.face") },
               ]}
             />
             <Button
@@ -761,8 +770,8 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
                   aria-checked={activeShape === shape}
                   onClick={() => patch({ shape })}
                   className={cn(tile, "size-[52px]", activeShape === shape && "bg-accent shadow-[inset_0_0_0_1.5px_var(--foreground)]")}
-                  title={shape}
-                  aria-label={`Use ${shape} shape`}
+                  title={t(`settingsPanel.shapeName.${shape}`)}
+                  aria-label={t("settingsPanel.useShape", { shape: t(`settingsPanel.shapeName.${shape}`) })}
                 >
                   <BlokAvatar color={bot.color} shape={shape} expression="deadpan" size={34} />
                 </button>
@@ -783,8 +792,8 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
                     bot.color === color && "shadow-[0_0_0_2px_var(--card),0_0_0_4px_var(--foreground)]",
                   )}
                   style={{ backgroundColor: BLOK_COLORS[color] }}
-                  title={color}
-                  aria-label={`Use ${color} color`}
+                  title={t(`settingsPanel.colorName.${color}`)}
+                  aria-label={t("settingsPanel.useColor", { color: t(`settingsPanel.colorName.${color}`) })}
                 />
               ))}
             </div>
@@ -803,8 +812,8 @@ function LookCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
                     "size-[52px]",
                     activeExpression === expression && "bg-accent shadow-[inset_0_0_0_1.5px_var(--foreground)]",
                   )}
-                  title={expression}
-                  aria-label={`Use ${expression} expression`}
+                  title={t(`settingsPanel.expressionName.${expression}`)}
+                  aria-label={t("settingsPanel.useExpression", { expression: t(`settingsPanel.expressionName.${expression}`) })}
                 >
                   <BlokAvatar color={bot.color} shape={activeShape} expression={expression} size={36} />
                 </button>
@@ -853,7 +862,7 @@ function ApprovalsCard({ bot }: { bot: Bot }) {
     <Group>
       <SettingRow
         label={t("settingsPanel.howMuchItAsks")}
-        info={RULES_AND_MODES}
+        info={t(RULES_AND_MODES)}
         description={t("settingsPanel.givingItMoreFreedomAsks")}
       >
         <div className="mt-3">
@@ -924,13 +933,13 @@ function WorkingFolderCard({ bot }: { bot: Bot }) {
   );
 }
 
-const COMPONENTS: Array<[string, string]> = [
-  ["chart", "Charts"],
-  ["table", "Tables"],
-  ["decision", "Decisions"],
-  ["steps", "Step lists"],
-  ["quote", "Quotes"],
-  ["refused", "Refusals"],
+const COMPONENTS: Array<[string, MessageKey]> = [
+  ["chart", "settingsPanel.component.chart"],
+  ["table", "settingsPanel.component.table"],
+  ["decision", "settingsPanel.component.decision"],
+  ["steps", "settingsPanel.component.steps"],
+  ["quote", "settingsPanel.component.quote"],
+  ["refused", "settingsPanel.component.refused"],
 ];
 
 /**
@@ -958,7 +967,7 @@ function DeliveryRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
   return (
     <SettingRow
       label={t("settingsPanel.messagesWhileItWorks")}
-      description={own ? shown.says : `Same as your other agents: ${shown.label}. ${shown.says}`}
+      description={own ? shown.says : t("settingsPanel.sameAsOthers", { choice: shown.label, says: shown.says })}
     >
       <div className="mt-3 max-w-[460px]">
         <Segmented<"default" | DeliveryMode>
@@ -967,7 +976,7 @@ function DeliveryRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
           value={own ?? "default"}
           onChange={(next) => patch({ delivery: next === "default" ? null : next })}
           options={[
-            { value: "default", label: "Default", title: "Follow Settings, Behaviour" },
+            { value: "default", label: t("settingsPanel.default"), title: t("settingsPanel.followBehaviour") },
             ...DELIVERY_MODES.map((m) => ({ value: m.value, label: m.label })),
           ]}
         />
@@ -990,7 +999,7 @@ function BackgroundWorkRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void
   return (
     <SettingRow
       label={t("settingsPanel.backgroundWorkItStarts")}
-      description={own ? shown.says : `Same as your other agents: ${workspace.label}. ${workspace.says}`}
+      description={own ? t(shown.says) : t("settingsPanel.sameAsOthers", { choice: t(workspace.label), says: t(workspace.says) })}
       control={
         <SettingsSelect
           aria-label={t("settingsPanel.backgroundWorkItStarts")}
@@ -1001,7 +1010,7 @@ function BackgroundWorkRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void
           <option value="default">{t("settingsPanel.useTheWorkspaceSetting")}</option>
           {BACKGROUND_WORK.map((choice) => (
             <option key={choice.value} value={choice.value}>
-              {choice.label}
+              {t(choice.label)}
             </option>
           ))}
         </SettingsSelect>
@@ -1036,7 +1045,7 @@ function AnswersCard({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
             const on = !without.includes(kind);
             return (
               <label key={kind} className="flex items-center justify-between gap-3">
-                <span className="text-body text-foreground">{label}</span>
+                <span className="text-body text-foreground">{t(label)}</span>
                 <Switch
                   checked={on}
                   onCheckedChange={(next) =>
@@ -1116,7 +1125,13 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
       method: "POST",
       body: JSON.stringify({ browser, sites: wanted }),
     })
-      .then((r) => setResult(r.imported ? `Signed in for ${wanted.join(", ")}.` : (r.note ?? "Nothing found for those sites.")))
+      .then((r) =>
+        setResult(
+          r.imported
+            ? t("settingsPanel.signedInFor", { sites: formatList(wanted, { type: "unit", style: "short" }) })
+            : (r.note ?? t("settingsPanel.nothingFoundForSites")),
+        ),
+      )
       .catch((e) => setResult(e.message))
       .finally(() => setImporting(false));
   };
@@ -1156,7 +1171,7 @@ function BrowserRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
                 disabled={importing || !sites.trim()}
                 onClick={() => borrow(browser)}
               >
-                {importing ? t("settingsPanel.borrowing") : `From ${browser}`}
+                {importing ? t("settingsPanel.borrowing") : t("settingsPanel.fromBrowser", { browser })}
               </Button>
             ))}
             {result && <span className="text-small text-muted-foreground">{result}</span>}
@@ -1195,11 +1210,13 @@ function ComputerRow({ bot, patch, onBox }: { bot: Bot; patch: (p: Patch) => voi
           ? t("settingsPanel.thisMachinesBrowserAndVirtual")
           : bot.computer
             ? computerMeaning(where, onBox, elsewhere)
-            : `${computerMeaning(where, onBox, elsewhere)} Automatic uses your cloud box if you have one, otherwise ${ownScreen ? `${where}'s screen` : "none"}.`
+            : ownScreen
+              ? t("settingsPanel.automaticOwnScreen", { meaning: computerMeaning(where, onBox, elsewhere), where })
+              : t("settingsPanel.automaticNone", { meaning: computerMeaning(where, onBox, elsewhere) })
       }
       control={
         <label className="flex items-center gap-2 text-body text-muted-foreground">
-          Automatic
+          {t("settingsPanel.automatic")}
           <Switch
             checked={!bot.computer}
             onCheckedChange={(on) => patch({ computer: on ? null : firstPickedComputer(computers) })}
@@ -1269,7 +1286,7 @@ function McpAttachCard({ bot }: { bot: Bot }) {
           <SettingRow
             key={server.id}
             label={<span className="truncate font-normal">{server.name}</span>}
-            description={<span className="block truncate">{server.transport === "http" ? server.target : `runs ${server.target}`}</span>}
+            description={<span className="block truncate">{server.transport === "http" ? server.target : t("settingsPanel.runsCommand", { command: server.target })}</span>}
             control={
               <Switch
                 checked={on}
@@ -1330,7 +1347,7 @@ function SkillsCard({ bot }: { bot: Bot }) {
         label={
           <>
             <Library size={15} className="text-muted-foreground" />
-            From the library
+            {t("settingsPanel.fromTheLibrary")}
             <span className="font-normal tabular-nums text-muted-foreground">{attached.length}</span>
           </>
         }
@@ -1384,7 +1401,7 @@ function SkillsCard({ bot }: { bot: Bot }) {
       <SettingRow
         label={
           <>
-            Written for {bot.name || t("settingsPanel.thisAgent")}
+            {bot.name ? t("settingsPanel.writtenFor", { name: bot.name }) : t("settingsPanel.writtenForThisAgent")}
             <span className="font-normal tabular-nums text-muted-foreground">{written.length}</span>
           </>
         }
@@ -1471,17 +1488,27 @@ function MemorySummary({ bot }: { bot: Bot }) {
   }, [bot.id]);
 
   const share = info ? Math.min(1, info.lines / MEMORY_LINES) : 0;
-  const who = last?.by === "you" ? "you" : last?.by === "undo" ? "an undo" : last?.by === "tidy" ? "the nightly tidy" : bot.name || "the agent";
+  // who made the last change, each said as its own sentence
+  const lastChanged = (at: string) =>
+    last?.by === "you"
+      ? t("settingsPanel.lastChanged.you", { at })
+      : last?.by === "undo"
+        ? t("settingsPanel.lastChanged.undo", { at })
+        : last?.by === "tidy"
+          ? t("settingsPanel.lastChanged.tidy", { at })
+          : bot.name
+            ? t("settingsPanel.lastChanged.agent", { at, name: bot.name })
+            : t("settingsPanel.lastChanged.theAgent", { at });
 
   return (
     <div className="rounded-2xl border bg-card p-4 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-heading font-semibold tabular-nums text-foreground">
-              {info ? info.lines : "…"}
-            </span>
-            <span className="text-body text-muted-foreground">of {MEMORY_LINES} lines</span>
+          <div className="text-body text-muted-foreground">
+            {tr("settingsPanel.linesOf", {
+              lines: <span className="text-heading font-semibold tabular-nums text-foreground">{info ? formatNumber(info.lines) : "…"}</span>,
+              max: MEMORY_LINES,
+            })}
           </div>
           <div
             role="meter"
@@ -1499,12 +1526,12 @@ function MemorySummary({ bot }: { bot: Bot }) {
             />
           </div>
           <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-body text-muted-foreground">
-            {info && <span>{info.topics ? plural(info.topics, "topic file") : t("settingsPanel.noTopicFiles")}</span>}
-            <span>{last ? `Last changed ${stamp(last.at)} by ${who}` : info?.lines ? t("settingsPanel.noChangesRecordedYet") : t("settingsPanel.nothingRememberedYet")}</span>
+            {info && <span>{info.topics ? t("settingsPanel.topicFiles", { count: info.topics }) : t("settingsPanel.noTopicFiles")}</span>}
+            <span>{last ? lastChanged(stamp(last.at)) : info?.lines ? t("settingsPanel.noChangesRecordedYet") : t("settingsPanel.nothingRememberedYet")}</span>
           </div>
           {info?.truncated && (
             <div className="mt-2 text-small text-warning">
-              Too long: only the first {MEMORY_LINES} lines are read.
+              {t("settingsPanel.memoryTooLong", { count: MEMORY_LINES })}
             </div>
           )}
           {error && <div className="mt-2 text-small text-destructive">{error}</div>}
@@ -1535,7 +1562,9 @@ function RecallRow({ bot, patch }: { bot: Bot; patch: (p: Patch) => void }) {
       label={t("settingsPanel.bringUpOtherConversations")}
       description={
         everywhere
-          ? `Gives ${bot.name || "it"} up to three close matches from its other chats and notes, shown under your message.`
+          ? bot.name
+            ? t("settingsPanel.recallGives", { name: bot.name })
+            : t("settingsPanel.recallGivesIt")
           : t("settingsPanel.offForEveryAgentIn")
       }
       control={
@@ -1571,7 +1600,7 @@ function SignatureRow({ bot }: { bot: Bot }) {
   return (
     <SettingRow
       label={t("settingsPanel.signature")}
-      description={`${bot.name} signs what it does, so you can check it later. Its private key never leaves ${thisComputer()}.`}
+      description={t("settingsPanel.signatureSays", { name: bot.name, computer: thisComputer() })}
     >
       <button
         onClick={() => setFull((v) => !v)}
@@ -1596,7 +1625,7 @@ function ExportRow({ bot }: { bot: Bot }) {
     setError(null);
     try {
       const res = await fetch(`/api/bots/${bot.id}/export`);
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "export failed");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? t("settingsPanel.exportFailed"));
       // the filename the server chose, so what lands on disk is what the
       // server says it is rather than something guessed here
       const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
@@ -1615,7 +1644,7 @@ function ExportRow({ bot }: { bot: Bot }) {
 
   return (
     <SettingRow
-      label={`Take ${bot.name || "it"} with you`}
+      label={bot.name ? t("settingsPanel.takeWithYou", { name: bot.name }) : t("settingsPanel.takeItWithYou")}
       description={t("settingsPanel.oneFileWithItsRole")}
       control={
         <Button variant="secondary" size="sm" disabled={busy} onClick={save}>
@@ -1646,7 +1675,7 @@ function ExportRow({ bot }: { bot: Bot }) {
 function DangerZone({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
   const [asking, setAsking] = useState<"archive" | "delete" | null>(null);
-  const name = bot.name || "this agent";
+  const name = bot.name || t("settingsPanel.thisAgent");
 
   const go = () => {
     const forget = asking === "delete";
@@ -1656,10 +1685,10 @@ function DangerZone({ bot }: { bot: Bot }) {
     dispatch({ type: "deleteBot", botId: bot.id, ...(forget ? { forget: true } : {}) });
     // an archive comes back, so it says so right where it happened
     if (!forget) {
-      toast.success(`Archived ${name}`, {
+      toast.success(t("settingsPanel.archived", { name }), {
         id: `archive-${bot.id}`,
         action: {
-          label: "Undo",
+          label: t("settingsPanel.undo"),
           onClick: () => {
             dispatch({ type: "restoreBot", botId: bot.id });
             dispatch({ type: "select", id: bot.id });
@@ -1673,7 +1702,7 @@ function DangerZone({ bot }: { bot: Bot }) {
     <>
       <Group className="border-destructive/25">
         <SettingRow
-          label={`Archive ${name}`}
+          label={t("settingsPanel.archiveName", { name })}
           description={t("settingsPanel.stopsItAndHidesIt")}
           control={
             <Button variant="outline" onClick={() => setAsking("archive")}>
@@ -1683,7 +1712,7 @@ function DangerZone({ bot }: { bot: Bot }) {
           }
         />
         <SettingRow
-          label={`Delete ${name} for good`}
+          label={t("settingsPanel.deleteNameForGood", { name })}
           description={t("settingsPanel.deletesItsConversationsAndSigning")}
           control={
             <Button variant="destructive" onClick={() => setAsking("delete")}>
@@ -1699,7 +1728,7 @@ function DangerZone({ bot }: { bot: Bot }) {
           <div className="flex items-start gap-3.5">
             <AgentAvatar bot={bot} size={40} />
             <div className="min-w-0">
-              <DialogTitle>{asking === "delete" ? `Delete ${name} for good?` : `Archive ${name}?`}</DialogTitle>
+              <DialogTitle>{asking === "delete" ? t("settingsPanel.deleteNameForGoodTitle", { name }) : t("settingsPanel.archiveNameTitle", { name })}</DialogTitle>
               <DialogDescription>
                 {asking === "delete"
                   ? t("settingsPanel.deletesItsConversationsAndSigningKey")

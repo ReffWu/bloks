@@ -143,9 +143,9 @@ export function ApiKeyRow({
   const remove = async () => {
     if (busy) return;
     const yes = await confirm({
-      title: `Remove the ${label}?`,
-      body: "Bloks forgets it on this computer. You can paste it again any time.",
-      confirmLabel: "Remove",
+      title: t("apiKeys.removeTitle", { label }),
+      body: t("apiKeys.removeBody"),
+      confirmLabel: t("common.remove"),
       destructive: true,
     });
     if (!yes) return;
@@ -180,7 +180,7 @@ export function ApiKeyRow({
                   "rounded-full p-0.5 transition-colors",
                   infoOpen ? "text-foreground" : "text-muted-foreground/60 hover:text-foreground",
                 )}
-                aria-label={`About ${label}`}
+                aria-label={t("apiKeys.about", { label })}
               >
                 <HelpCircle size={14} />
               </button>
@@ -192,7 +192,7 @@ export function ApiKeyRow({
           <div className="-mr-2 flex shrink-0 items-center gap-0.5">
             <span aria-live="polite" className="mr-2 inline-flex items-center gap-1.5 text-small font-medium text-success">
               <span aria-hidden className="size-1.5 rounded-full bg-current" />
-              Saved
+              {t("common.saved")}
             </span>
             {!replacing && (
               <Button
@@ -200,7 +200,7 @@ export function ApiKeyRow({
                 size="sm"
                 disabled={busy !== null}
                 onClick={() => setReplacing(true)}
-                aria-label={`Replace the ${label}`}
+                aria-label={t("apiKeys.replaceLabel", { label })}
               >
                 {t("apiKeys.replace")}
               </Button>
@@ -210,7 +210,7 @@ export function ApiKeyRow({
               size="sm"
               disabled={busy !== null}
               onClick={() => void remove()}
-              aria-label={`Remove the ${label}`}
+              aria-label={t("apiKeys.removeLabel", { label })}
               className="hover:bg-destructive/10 hover:text-destructive"
             >
               {busy === "remove" ? <Loader2 size={13} className="animate-spin" /> : t("common.remove")}

@@ -42,7 +42,7 @@ function ToolsSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) =>
   return (
     <label className="flex items-center justify-between gap-3 text-body text-foreground">
       <span className="min-w-0">
-        This model can use tools
+        {t("customEndpoints.thisModelCanUseTools")}
         <span className="block text-small text-muted-foreground">
           {on
             ? t("customEndpoints.agentsCanUseBloksTools")
@@ -61,7 +61,7 @@ function SeesImages({ on, onChange }: { on: boolean; onChange: (on: boolean) => 
   return (
     <label className="flex items-center justify-between gap-3 text-body text-foreground">
       <span className="min-w-0">
-        Sees images
+        {t("customEndpoints.seesImages")}
         <span className="block text-small text-muted-foreground">
           {on
             ? t("customEndpoints.attachedImagesGoToThe")
@@ -234,7 +234,7 @@ export function CustomEndpoints() {
                   className={cn("size-1.5 rounded-full", cred.active ? "bg-success" : "bg-muted-foreground/30")}
                 />
                 <span className="min-w-0 flex-1 truncate text-body text-foreground">
-                  {cred.label || (endpoint.keys.length > 1 ? `Key ${index + 1}` : t("customEndpoints.apiKey"))}
+                  {cred.label || (endpoint.keys.length > 1 ? t("customEndpoints.keyNumber", { number: index + 1 }) : t("customEndpoints.apiKey"))}
                   {cred.active && (
                     <span className="ml-1.5 text-caption font-normal text-success">{t("customEndpoints.inUse")}</span>
                   )}

@@ -8,7 +8,7 @@ import { Settings } from "@/components/icons";
 import { Skeleton, SkeletonAvatar, SkeletonGroup } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { TitleTools } from "./SideColumn";
-import { t } from "@/lib/i18n";
+import { formatList, t } from "@/lib/i18n";
 
 /** The tile an item's mark sits on, the same for an app and a skill. */
 export function Tile({ children }: { children: React.ReactNode }) {
@@ -131,13 +131,14 @@ export function MoreLine({ hidden, onClick }: { hidden: string[]; onClick: () =>
   if (!hidden.length) return null;
   const named = hidden.slice(0, 2);
   const rest = hidden.length - named.length;
+  // "A, B": a short run of names, written the reader's way
+  const names = formatList(named, { type: "unit", style: "short" });
   return (
     <button
       onClick={onClick}
       className="mt-3 px-1 text-left text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
     >
-      See {named.join(", ")}
-      {rest > 0 ? `, and ${rest} more` : ""}
+      {rest > 0 ? t("customizeParts.seeMore", { names, count: rest }) : t("customizeParts.see", { names })}
     </button>
   );
 }

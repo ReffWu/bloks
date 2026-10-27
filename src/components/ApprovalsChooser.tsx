@@ -12,30 +12,32 @@ import { useEffect, useState } from "react";
 import { Check } from "@/components/icons";
 import { api } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
 export type ApprovalMode = "ask" | "edits" | "auto" | "full";
 
-export const APPROVAL_MODES: Array<{ id: ApprovalMode; label: string; hint: string }> = [
+// The words are read when they are drawn, so each mode says itself in
+// the language of the moment wherever the list is used.
+export const APPROVAL_MODES: Array<{ id: ApprovalMode; readonly label: string; readonly hint: string }> = [
   {
     id: "ask",
-    label: "Ask first",
-    hint: "Asks before changing files or running commands.",
+    get label() { return t("approvalsChooser.ask"); },
+    get hint() { return t("approvalsChooser.askHint"); },
   },
   {
     id: "edits",
-    label: "Accept edits",
-    hint: "Changes files freely. Asks before anything else.",
+    get label() { return t("approvalsChooser.edits"); },
+    get hint() { return t("approvalsChooser.editsHint"); },
   },
   {
     id: "auto",
-    label: "Auto",
-    hint: "Goes ahead unless your rules block it. The engine's sandbox stays on.",
+    get label() { return t("approvalsChooser.auto"); },
+    get hint() { return t("approvalsChooser.autoHint"); },
   },
   {
     id: "full",
-    label: "Full access",
-    hint: "No prompts and no sandbox. Your rules can't block anything.",
+    get label() { return t("approvalsChooser.full"); },
+    get hint() { return t("approvalsChooser.fullHint"); },
   },
 ];
 
@@ -46,7 +48,7 @@ const RANK: Record<ApprovalMode, number> = { ask: 0, edits: 1, auto: 2, full: 3 
 export async function confirmWidening(from: ApprovalMode, to: ApprovalMode, who: string): Promise<boolean> {
   if (RANK[to] <= RANK[from] || RANK[to] < RANK.auto || !window.bloks?.authConfirm) return true;
   const answer = await window.bloks.authConfirm(
-    to === "full" ? `give ${who} full access, with nothing asking first` : `let ${who} act without asking`,
+    to === "full" ? t("approvalsChooser.confirmFull", { who }) : t("approvalsChooser.confirmAuto", { who }),
   );
   return answer !== "denied" && answer !== "cancelled";
 }
@@ -97,8 +99,7 @@ export function ApprovalsChooser({
 
 /** What the info tips beside the chooser say about rules, one sentence
  * shared so it cannot drift from the Full access hint above. */
-export const RULES_AND_MODES =
-  "Your rules apply in every mode except Full access, where nothing asks. Remembered answers keep working too.";
+export const RULES_AND_MODES: MessageKey = "approvalsChooser.rulesAndModes";
 
 /** The workspace's choice as the server has it, and how many agents are
  * on each mode, for Settings and onboarding. */

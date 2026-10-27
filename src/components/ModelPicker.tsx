@@ -40,7 +40,7 @@ import { BLOKS_AI_NAME, CREDITS_ENGINE } from "@/lib/credits";
 import { EFFORT_LABELS, effortChoice, isEffort } from "@/lib/effort";
 import { quietButton, useDismiss } from "./composer/Shell";
 import { SettingsSelect } from "./SettingsLayout";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
 
 /** Catalogs this long or shorter are read at a glance, not searched. */
 const SEARCH_ABOVE = 8;
@@ -288,10 +288,10 @@ export function ModelPicker({
     rows[next].focus();
   };
 
-  const full = active || !custom ? modelLabel(active, effectiveModel(active, selection.model)) : (noneLabel ?? "None");
+  const full = active || !custom ? modelLabel(active, effectiveModel(active, selection.model)) : (noneLabel ?? t("modelPicker.none"));
   const name = composer ? shortName(active, full) : full;
   const portalled = (panel: ReactNode) => (composer ? panel : createPortal(panel, document.body));
-  const described = active ? `${active.displayName}, ${full}` : full;
+  const described = active ? t("modelPicker.described", { engine: active.displayName, model: full }) : full;
 
   return (
     // Under the composer the list hangs from the row, not from the name,
@@ -308,7 +308,7 @@ export function ModelPicker({
         aria-expanded={open}
         aria-haspopup="dialog"
         title={described}
-        aria-label={`Model: ${described}${effortLabel ? `, ${effortLabel} effort` : ""}`}
+        aria-label={effortLabel ? t("modelPicker.labelWithEffort", { model: described, effort: effortLabel }) : t("modelPicker.label", { model: described })}
         className={
           composer
             ? cn(quietButton, "max-w-full")
@@ -319,7 +319,7 @@ export function ModelPicker({
           <span className="relative flex">
             <ProviderMark driverKind={active.driverKind} size={13} />
             {state.engineUpdates[active.driverKind] && (
-              <span className="absolute -right-1 -top-1 size-1.5 rounded-full bg-brand ring-2 ring-background" aria-label={t("modelPicker.updateAvailable")} />
+              <span className="absolute -right-1 -top-1 size-1.5 rounded-full bg-brand ring-2 ring-background" aria-label={t("modelPicker.updateAvailableDot")} />
             )}
           </span>
         )}
@@ -451,7 +451,7 @@ export function ModelPicker({
                     {/* the whole update note is for the engine in use, where
                         a missing model is being looked for; elsewhere a dot */}
                     {update && !isActive && !off && (
-                      <span title={t("modelPicker.updateAvailable2")} aria-label={t("modelPicker.updateAvailable2")} className="size-1.5 shrink-0 rounded-full bg-brand" />
+                      <span title={t("modelPicker.updateAvailable")} aria-label={t("modelPicker.updateAvailable")} className="size-1.5 shrink-0 rounded-full bg-brand" />
                     )}
                     {off && !custom && (
                       <button
@@ -477,7 +477,7 @@ export function ModelPicker({
                       {unlisted && (
                         <div
                           aria-current="true"
-                          title={`${unlisted}\nNot listed, but still in use`}
+                          title={`${unlisted}\n${t("modelPicker.notListed")}`}
                           className={cn(optionRow, "bg-accent text-foreground")}
                         >
                           <span className="flex min-w-0 items-center gap-2">
@@ -495,7 +495,7 @@ export function ModelPicker({
                           className={cn(optionRow, "text-foreground hover:bg-accent")}
                         >
                           <span className="min-w-0 [overflow-wrap:anywhere]">
-                            Use <span className="font-mono text-small">{typedId}</span>
+                            {tr("modelPicker.useId", { id: <span className="font-mono text-small">{typedId}</span> })}
                           </span>
                         </button>
                       )}
@@ -537,7 +537,7 @@ export function ModelPicker({
                           onClick={() => setUnfolded((u) => [...u, instance.instanceId])}
                           className={cn(optionRow, "text-small text-muted-foreground hover:bg-accent hover:text-foreground")}
                         >
-                          Show all {matching.length}
+                          {t("modelPicker.showAll", { count: matching.length })}
                           <ChevronDown size={13} className="shrink-0" />
                         </button>
                       )}

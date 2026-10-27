@@ -50,7 +50,7 @@ import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
 import { FoldedSwitchBar, FoldedSwitchSlot, SideColumn, SideSwitch } from "./SideColumn";
 import { shareAsFile } from "@/lib/shareFile";
 import { GridItem, GridSkeleton, MoreLine, PageHeader, pill, Pills, ROUND, SectionTitle, Tile } from "./CustomizeParts";
-import { t } from "@/lib/i18n";
+import { formatList, t, tr } from "@/lib/i18n";
 
 /** An app's mark: its own artwork, then its site's icon, then a letter,
  * because one broken image in a grid of logos looks worse than a letter. */
@@ -92,6 +92,9 @@ export function ServiceIcon({ card, size = 24 }: { card: ToolkitCard; size?: num
 
 // ---------------------------------------------------------------------------
 
+/** Where skills live on disk, said as the path it is. */
+const SKILLS_FOLDER = "~/.bloks/skills";
+
 /** How many items a section shows before it folds the rest behind a line. */
 const FOLD = 8;
 
@@ -120,8 +123,8 @@ function PluginsPage({
   const openApp = (card: ToolkitCard) => dispatch({ type: "openCustomize", tab: "plugins", app: card.slug });
   const unfinished = (servers ?? []).filter((server) => (server.needs ?? []).length > 0);
   const tryNow = (card: ToolkitCard) => {
-    const bot = tryPrompt(state, dispatch, `Using ${card.label}: ${detailsFor(card).prompts[0]}`);
-    if (!bot) setTried("No agent can use apps yet. Turn it on in an agent's settings.");
+    const bot = tryPrompt(state, dispatch, t("customize.tryPrompt", { app: card.label, prompt: detailsFor(card).prompts[0] }));
+    if (!bot) setTried(t("customize.noAgentCanUseApps"));
   };
 
   const q = search.trim().toLowerCase();
@@ -147,7 +150,7 @@ function PluginsPage({
         <Loader2 size={15} className="animate-spin motion-reduce:animate-none" />
       </span>
     ) : (
-      <button onClick={() => connect(card.slug)} aria-label={`Connect ${card.label}`} title={`Connect ${card.label}`} className={ROUND}>
+      <button onClick={() => connect(card.slug)} aria-label={t("customize.connectApp", { app: card.label })} title={t("customize.connectApp", { app: card.label })} className={ROUND}>
         <Plus size={17} />
       </button>
     );
@@ -155,7 +158,7 @@ function PluginsPage({
   const manageAction = (card: ToolkitCard) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button aria-label={`${card.label} options`} className={cn(ROUND, "data-[state=open]:bg-accent")}>
+        <button aria-label={t("customize.appOptions", { app: card.label })} className={cn(ROUND, "data-[state=open]:bg-accent")}>
           {busySlug === card.slug ? <Loader2 size={15} className="animate-spin" /> : <MoreHorizontal size={17} />}
         </button>
       </DropdownMenuTrigger>
@@ -214,8 +217,8 @@ function PluginsPage({
         value={view}
         onChange={setView}
         options={[
-          { value: "apps", label: "Apps" },
-          { value: "mcp", label: "MCP apps" },
+          { value: "apps", label: t("customize.apps") },
+          { value: "mcp", label: t("customize.mcpApps") },
         ]}
       />
 
@@ -228,7 +231,7 @@ function PluginsPage({
           {!configured && (
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
               <span className="text-ui text-foreground">
-                Add a Composio key to connect apps.
+                {t("customize.addComposioKey")}
                 <span className="text-muted-foreground"> {t("customize.oneKeyWorksForEvery")}</span>
               </span>
               <button
@@ -241,11 +244,13 @@ function PluginsPage({
           )}
           {configured && source === "curated" && (
             <p className="mt-5 text-body text-muted-foreground">
-              Showing popular apps.{" "}
-              <button onClick={toKeys} className="underline underline-offset-2 hover:text-foreground">
-                {t("customize.addAComposioApiKey")}
-              </button>{" "}
-              to see them all.
+              {tr("customize.showingPopular", {
+                link: (
+                  <button onClick={toKeys} className="underline underline-offset-2 hover:text-foreground">
+                    {t("customize.addAComposioApiKey")}
+                  </button>
+                ),
+              })}
             </p>
           )}
           {(error || tried) && <p className="mt-4 text-body text-destructive">{error ?? tried}</p>}
@@ -263,7 +268,7 @@ function PluginsPage({
                       </Tile>
                     }
                     name={server.name}
-                    line={`Waiting for ${(server.needs ?? []).join(", ")}`}
+                    line={t("customize.waitingFor", { needs: formatList(server.needs ?? [], { type: "unit", style: "short" }) })}
                     action={
                       <button
                         onClick={() => dispatch({ type: "openPluginSettings", focus: { kind: "mcp", id: server.id } })}
@@ -303,7 +308,7 @@ function PluginsPage({
             aside={
               cards && (
                 <span className="text-body tabular-nums text-muted-foreground">
-                  {q ? `${matching.length} found` : `${notConnected.length} apps`}
+                  {q ? t("customize.found", { count: matching.length }) : t("customize.appsCount", { count: notConnected.length })}
                 </span>
               )
             }
@@ -313,7 +318,7 @@ function PluginsPage({
           {cards === null ? (
             <GridSkeleton label={t("customize.loadingTheCatalogue")} count={8} />
           ) : matching.length === 0 ? (
-            <p className="py-10 text-ui text-muted-foreground">No apps match “{search.trim()}”.</p>
+            <p className="py-10 text-ui text-muted-foreground">{t("customize.noAppsMatch", { query: search.trim() })}</p>
           ) : (
             <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
               {(q ? matching : shown).map((card) => (
@@ -401,22 +406,22 @@ function SkillsPage({
   const q = search.trim().toLowerCase();
   const matching = (skills ?? []).filter((s) => !q || `${s.name} ${s.description} ${s.body}`.toLowerCase().includes(q));
   const groups = [
-    { key: "user", title: "Yours", rows: matching.filter((s) => s.source === "user") },
-    { key: "builtin", title: "Built in", rows: matching.filter((s) => s.source === "builtin") },
+    { key: "user", title: t("customize.yours"), rows: matching.filter((s) => s.source === "user") },
+    { key: "builtin", title: t("customize.builtIn"), rows: matching.filter((s) => s.source === "builtin") },
   ].filter((g) => g.rows.length > 0);
 
   const remove = async (skill: Skill) => {
     const yes = await confirm({
-      title: `Remove ${skill.name}?`,
-      body: "Agents will stop using it.",
-      confirmLabel: "Remove",
+      title: t("customize.removeSkillTitle", { name: skill.name }),
+      body: t("customize.removeSkillBody"),
+      confirmLabel: t("common.remove"),
       destructive: true,
     });
     if (!yes) return;
     void api(`/api/skills/${skill.id}`, { method: "DELETE" })
       .then(() => {
         setOpen(null);
-        toast(`Removed ${skill.name}`);
+        toast(t("customize.removedSkill", { name: skill.name }));
       })
       .then(load)
       .catch(() => {});
@@ -459,7 +464,7 @@ function SkillsPage({
       {updates > 0 && !q && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
           <span className="text-ui text-foreground">
-            {updates === 1 ? t("customize.aSkillYouInstalledHas") : `${updates} skills you installed have updates`} in the catalogue.
+            {t("customize.skillUpdates", { count: updates })}
           </span>
           <button
             onClick={() => openCatalog(dispatch, "skill")}
@@ -485,7 +490,7 @@ function SkillsPage({
             <GridSkeleton label={t("customize.loadingSkills")} className="mt-6" />
           ) : groups.length === 0 ? (
             <p className="mt-10 text-ui text-muted-foreground">
-              {q ? `No skills match “${search.trim()}”.` : t("customize.noSkillsYetAddOne")}
+              {q ? t("customize.noSkillsMatch", { query: search.trim() }) : t("customize.noSkillsYetAddOne")}
             </p>
           ) : (
             groups.map((group) => {
@@ -518,7 +523,7 @@ function SkillsPage({
                                 skill.uses >= 2 && (skill.corrected ?? 0) * 2 >= skill.uses ? "text-warning" : "text-muted-foreground",
                               )}
                             >
-                              {skill.uses} {skill.uses === 1 ? "use" : "uses"}
+                              {t("customize.uses", { count: skill.uses })}
                             </span>
                           ) : (
                             <Check size={16} className="mr-2 text-muted-foreground" aria-label={t("customize.installed")} />
@@ -538,8 +543,9 @@ function SkillsPage({
             })
           )}
           <p className="mt-10 text-body text-muted-foreground">
-            Attach skills in an agent's settings. Stored in{" "}
-            <code className="rounded bg-muted px-1 py-px font-mono text-small">{t("customize.bloksSkills")}</code>.
+            {tr("customize.attachSkills", {
+              path: <code className="rounded bg-muted px-1 py-px font-mono text-small">{SKILLS_FOLDER}</code>,
+            })}
           </p>
 
       <AddSkillDialog open={adding} onOpenChange={setAdding} onInstalled={() => void load()} />
@@ -568,7 +574,11 @@ function SkillsPage({
                   <button
                     onClick={() =>
                       shareAsFile(`/api/skills/${open.id}/skill.md`, "SKILL.md")
-                        .then(() => toast("Saved SKILL.md", { description: `For the catalogue, it goes in catalog/skills/${open.id}/.` }))
+                        .then(() =>
+                          toast(t("customize.savedFile", { file: "SKILL.md" }), {
+                            description: t("customize.forTheCatalogue", { path: `catalog/skills/${open.id}/` }),
+                          }),
+                        )
                         .catch((e: Error) => toast.error(e.message))
                     }
                     className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
@@ -714,9 +724,9 @@ export function CustomizeView() {
                 value={tab}
                 onChange={setTab}
                 options={[
-                  { value: "plugins", label: "Plugins" },
-                  { value: "skills", label: "Skills" },
-                  { value: "catalog", label: "Catalogue" },
+                  { value: "plugins", label: t("common.plugins") },
+                  { value: "skills", label: t("common.skills") },
+                  { value: "catalog", label: t("customize.catalogue") },
                 ]}
               />
             </div>
@@ -729,9 +739,9 @@ export function CustomizeView() {
                     current={tab}
                     onPick={(id) => setTab(id as CustomizeTab)}
                     items={[
-                      { id: "plugins", label: "Plugins", icon: <Puzzle size={14} /> },
-                      { id: "skills", label: "Skills", icon: <Sparkles size={14} /> },
-                      { id: "catalog", label: "Catalogue", icon: <LayoutGrid size={14} /> },
+                      { id: "plugins", label: t("common.plugins"), icon: <Puzzle size={14} /> },
+                      { id: "skills", label: t("common.skills"), icon: <Sparkles size={14} /> },
+                      { id: "catalog", label: t("customize.catalogue"), icon: <LayoutGrid size={14} /> },
                     ]}
                   />
                 ) : null

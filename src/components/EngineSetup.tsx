@@ -19,17 +19,17 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { isHostedWindow } from "@/lib/waking";
 import { api, useStore } from "@/state/store";
-import { t } from "@/lib/i18n";
+import { t, tr, type MessageKey } from "@/lib/i18n";
 
 type SetupTable = Record<string, { install: string; signIn?: string }>;
 
 /** Whose plan a sign-in spends, for the engines that sign in with a
  * person's own subscription. */
-const PLAN_OWNER: Record<string, { plan: string; maker: string; first?: string }> = {
+const PLAN_OWNER: Record<string, { plan: string; maker: string; first?: MessageKey }> = {
   claudeAgent: { plan: "Claude", maker: "Anthropic" },
   // a machine with no browser signs Codex in with a code, which ChatGPT
   // only accepts once the person has turned it on
-  codex: { plan: "ChatGPT", maker: "OpenAI", first: "Turn on device code sign-in in ChatGPT\u2019s security settings first." },
+  codex: { plan: "ChatGPT", maker: "OpenAI", first: "engineSetup.deviceCodeFirst" },
   geminiCli: { plan: "Google AI", maker: "Google" },
 };
 
@@ -48,9 +48,8 @@ function HostedPlanNote({ kind }: { kind: string }) {
     <div className="flex items-start gap-1.5 text-small leading-relaxed text-muted-foreground">
       <Info size={13} className="mt-[3px] shrink-0" aria-hidden />
       <span>
-        This uses your own {owner.plan} plan, at your own risk. Its limits are set for one person&rsquo;s ordinary use,
-        agents working around the clock can reach them sooner, and what the plan allows is between you and {owner.maker}.
-        An API key is billed by use instead.{owner.first ? ` ${owner.first}` : ""}
+        {t("engineSetup.hostedPlan", { plan: owner.plan, maker: owner.maker })}
+        {owner.first ? ` ${t(owner.first)}` : ""}
       </span>
     </div>
   );
@@ -110,9 +109,9 @@ export function EngineOutdatedActions({
     try {
       const res = await fetch(`/api/engines/${kind}/update`, { method: "POST" });
       const result = await res.json().catch(() => ({}));
-      if (!res.ok || !result.ok) setProblem(result.problem ?? `${name} did not update.`);
+      if (!res.ok || !result.ok) setProblem(result.problem ?? t("engineSetup.didNotUpdate", { name }));
     } catch {
-      setProblem("Bloks could not start the update.");
+      setProblem(t("engineSetup.couldNotStartUpdate"));
     } finally {
       setBusy(false);
       onChanged();
@@ -123,7 +122,7 @@ export function EngineOutdatedActions({
       <div>
         <Button size="sm" variant="secondary" onClick={() => void update()} disabled={busy}>
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-          {busy ? t("engineSetup.updating") : `Update ${name}`}
+          {busy ? t("engineSetup.updating") : t("engineSetup.update", { name })}
         </Button>
       </div>
       {problem && (
@@ -183,7 +182,7 @@ export function EnginePathControl({
         {path ? (
           <>
             <span className="min-w-0 truncate" title={path}>
-              Runs <code className="font-mono text-foreground">{path}</code>
+              {tr("engineSetup.runs", { path: <code className="font-mono text-foreground">{path}</code> })}
             </span>
             <button
               type="button"
@@ -201,7 +200,7 @@ export function EnginePathControl({
               onClick={() => void put(null)}
               className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
             >
-              {busy ? t("engineSetup.saving") : `Use ${command} from PATH`}
+              {busy ? t("engineSetup.saving") : t("engineSetup.useFromPath", { command })}
             </button>
           </>
         ) : (
@@ -213,7 +212,7 @@ export function EnginePathControl({
             }}
             className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
           >
-            Use a different copy of {name}
+            {t("engineSetup.useDifferentCopy", { name })}
           </button>
         )}
         {error && <span className="basis-full text-destructive">{error}</span>}
@@ -224,7 +223,7 @@ export function EnginePathControl({
   return (
     <div className="mt-2">
       <label htmlFor={id} className="text-small text-muted-foreground">
-        Full path to the {name} CLI
+        {t("engineSetup.fullPath", { name })}
       </label>
       <div className="mt-1 flex gap-2">
         <Input
@@ -341,11 +340,11 @@ export function EngineSetupActions({
       const res = await fetch(`/api/engines/${kind}/install`, { method: "POST" });
       const result = await res.json();
       if (!result.ok) {
-        setProblem(result.problem ?? `${name} did not install.`);
+        setProblem(result.problem ?? t("engineSetup.didNotInstall", { name }));
         setLog(result.log ?? "");
       }
     } catch {
-      setProblem("Bloks could not start the installer.");
+      setProblem(t("engineSetup.couldNotStartInstaller"));
     } finally {
       setBusy(false);
       onChanged();
@@ -371,7 +370,7 @@ export function EngineSetupActions({
           <div className="flex items-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => void install()} disabled={busy}>
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-              {busy ? t("engineSetup.installing") : `Install ${name}`}
+              {busy ? t("engineSetup.installing") : t("engineSetup.install", { name })}
             </Button>
             {busy && <span className="text-small text-muted-foreground">{t("engineSetup.canTakeAMinute")}</span>}
           </div>
@@ -387,7 +386,7 @@ export function EngineSetupActions({
                 className="mt-1 flex items-center gap-1 text-small text-muted-foreground hover:text-foreground"
               >
                 <ChevronRight size={11} className={cn("transition-transform duration-150", showLog && "rotate-90")} />
-                {showLog ? t("common.hide") : t("engineSetup.show")} details
+                {showLog ? t("engineSetup.hideDetails") : t("engineSetup.showDetails")}
               </button>
             )}
             {showLog && (
@@ -397,7 +396,7 @@ export function EngineSetupActions({
             )}
             {entry && (
               <div className="mt-1.5 text-muted-foreground">
-                Or run it yourself in Terminal:
+                {t("engineSetup.orRunItYourself")}
                 <CopyCommand command={entry.install} className="mt-1" />
               </div>
             )}
@@ -413,7 +412,7 @@ export function EngineSetupActions({
         <div>
           <Button size="sm" variant="secondary" onClick={() => void signIn()}>
             <LogIn size={13} />
-            Sign in to {name}
+            {t("engineSetup.signInTo", { name })}
           </Button>
         </div>
         <HostedPlanNote kind={kind} />
@@ -424,7 +423,7 @@ export function EngineSetupActions({
         )}
         {signingIn === "manual" && (
           <div className="text-small leading-relaxed text-muted-foreground">
-            Run this in a terminal:
+            {t("engineSetup.runThisInTerminal")}
             <CopyCommand command={entry.signIn} className="mt-1" />
           </div>
         )}
@@ -464,15 +463,15 @@ export function EngineUpdateNote({ kind, name, className }: { kind: string; name
       const res = await fetch(`/api/engines/${kind}/update`, { method: "POST" });
       const result = await res.json();
       if (!result.ok) {
-        setNote(result.problem ?? `${name} did not update.`);
+        setNote(result.problem ?? t("engineSetup.didNotUpdate", { name }));
       } else if (!result.reloaded) {
-        setNote(`Updated. New models appear once current work on ${name} finishes.`);
+        setNote(t("engineSetup.updatedWhenFinished", { name }));
       }
       const [{ updates }, { instances }] = await Promise.all([api("/api/engines/updates"), api("/api/instances")]);
       if (updates) dispatch({ type: "engineUpdates", updates });
       if (instances) dispatch({ type: "instances", instances });
     } catch {
-      setNote("Bloks could not start the update.");
+      setNote(t("engineSetup.couldNotStartUpdate"));
     } finally {
       setBusy(false);
     }
@@ -482,16 +481,16 @@ export function EngineUpdateNote({ kind, name, className }: { kind: string; name
     <div className={cn("rounded-lg bg-brand-soft px-2.5 py-2 text-small leading-relaxed text-foreground", className)}>
       <div>
         <span className="font-medium">
-          {name} {update.latest} is out.
+          {t("engineSetup.isOut", { name, version: String(update.latest) })}
         </span>{" "}
         <span className="text-muted-foreground">
-          You have {update.installed}. Update to get the newest models.
+          {t("engineSetup.youHave", { version: String(update.installed) })}
         </span>
       </div>
       {local ? (
         <Button size="sm" variant="secondary" className="mt-1.5 h-6 px-2 text-small" disabled={busy} onClick={() => void run()}>
           {busy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-          {busy ? t("engineSetup.updating") : `Update ${name}`}
+          {busy ? t("engineSetup.updating") : t("engineSetup.update", { name })}
         </Button>
       ) : (
         <div className="mt-1 text-muted-foreground">{t("engineSetup.updateItOnTheComputer")}</div>

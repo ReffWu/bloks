@@ -18,7 +18,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Slider, numberStops } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { SettingRow, SettingsGroup, SettingsSelect } from "../SettingsLayout";
-import { t } from "@/lib/i18n";
+import { inEnglish, t } from "@/lib/i18n";
 
 /**
  * How a long conversation is kept inside the model's window.
@@ -81,11 +81,11 @@ function IdleCompaction() {
 
 // smallest to largest, with Never as the far end of "later": a slider
 // reads left to right as sooner to never
-const BEFORE_TURN_CEILINGS = [
+const beforeTurnCeilings = () => [
   { value: "100000", label: "100k" },
   { value: "200000", label: "200k" },
   { value: "400000", label: "400k" },
-  { value: "0", label: "Never" },
+  { value: "0", label: t("behaviourPage.never") },
 ];
 
 function SharedChanges() {
@@ -121,6 +121,7 @@ function BeforeTurnCompaction() {
   const { state, dispatch } = useStore();
   const ceiling = String(state.config?.compaction?.beforeTurn ?? 200_000);
   const [saving, setSaving] = useState(false);
+  const ceilings = beforeTurnCeilings();
 
   const set = (next: string) => {
     setSaving(true);
@@ -140,8 +141,8 @@ function BeforeTurnCompaction() {
         <Slider
           aria-label={t("behaviourPage.compactLongChats")}
           className="max-w-[420px]"
-          stops={BEFORE_TURN_CEILINGS}
-          value={BEFORE_TURN_CEILINGS.some((o) => o.value === ceiling) ? ceiling : "200000"}
+          stops={ceilings}
+          value={ceilings.some((o) => o.value === ceiling) ? ceiling : "200000"}
           onCommit={(next) => !saving && set(next)}
         />
       </div>
@@ -149,12 +150,12 @@ function BeforeTurnCompaction() {
   );
 }
 
-const SILENT_CALL_LIMITS = [
-  { value: "5", label: "5 min" },
-  { value: "15", label: "15 min" },
-  { value: "30", label: "30 min" },
-  { value: "60", label: "1 hour" },
-  { value: "0", label: "Never" },
+const silentCallLimits = () => [
+  { value: "5", label: t("behaviourPage.minutesShort", { count: 5 }) },
+  { value: "15", label: t("behaviourPage.minutesShort", { count: 15 }) },
+  { value: "30", label: t("behaviourPage.minutesShort", { count: 30 }) },
+  { value: "60", label: t("behaviourPage.hours", { count: 1 }) },
+  { value: "0", label: t("behaviourPage.never") },
 ];
 
 /**
@@ -167,6 +168,7 @@ function SilentCallLimit() {
   const { state, dispatch } = useStore();
   const minutes = String(state.config?.turns?.stallMinutes ?? 15);
   const [saving, setSaving] = useState(false);
+  const limits = silentCallLimits();
 
   const set = (next: string) => {
     setSaving(true);
@@ -186,8 +188,8 @@ function SilentCallLimit() {
         <Slider
           aria-label={t("behaviourPage.stopStuckToolCalls")}
           className="max-w-[420px]"
-          stops={SILENT_CALL_LIMITS}
-          value={SILENT_CALL_LIMITS.some((o) => o.value === minutes) ? minutes : "15"}
+          stops={limits}
+          value={limits.some((o) => o.value === minutes) ? minutes : "15"}
           onCommit={(next) => !saving && set(next)}
         />
       </div>
@@ -214,15 +216,16 @@ function ProposeSkills() {
     setError("");
     api("/api/config", { method: "PUT", body: JSON.stringify({ skills: { learn: next } }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t("behaviourPage.couldntSaveThat")))
       .finally(() => setSaving(false));
   };
+  const options = skillLearning();
 
   return (
     <SettingRow
       label={t("behaviourPage.suggestSkills")}
       info={t("behaviourPage.nothingChangesOnItsOwn")}
-      description={SKILL_LEARNING.find((o) => o.value === learn)?.says}
+      description={options.find((o) => o.value === learn)?.says}
       error={error}
     >
       <div className="mt-3 max-w-[460px]">
@@ -231,7 +234,7 @@ function ProposeSkills() {
           size="sm"
           value={learn}
           onChange={(next) => !saving && next !== learn && set(next)}
-          options={SKILL_LEARNING.map((o) => ({ value: o.value, label: o.label }))}
+          options={options.map((o) => ({ value: o.value, label: o.label }))}
         />
       </div>
     </SettingRow>
@@ -242,18 +245,10 @@ type SkillLearning = "off" | "suggest" | "more";
 
 /** The three settings, and what each costs. The ceilings are the
  * server's DAILY_REVIEWS (server/proposals.ts). */
-const SKILL_LEARNING: Array<{ value: SkillLearning; label: string; says: string }> = [
-  { value: "off", label: "Off", says: "No checks, so nothing is spent." },
-  {
-    value: "suggest",
-    label: "Suggest",
-    says: "After a chat that clearly worked something out, or a skill you corrected. At most 20 checks a day.",
-  },
-  {
-    value: "more",
-    label: "Suggest more",
-    says: "Also after shorter ones, and after any skill that was used for real work. At most 60 checks a day.",
-  },
+const skillLearning = (): Array<{ value: SkillLearning; label: string; says: string }> => [
+  { value: "off", label: t("common.off"), says: t("behaviourPage.learn.offSays") },
+  { value: "suggest", label: t("behaviourPage.learn.suggest"), says: t("behaviourPage.learn.suggestSays", { count: 20 }) },
+  { value: "more", label: t("behaviourPage.learn.more"), says: t("behaviourPage.learn.moreSays", { count: 60 }) },
 ];
 
 /**
@@ -272,7 +267,7 @@ function AgentTurnLimit() {
     setError("");
     api("/api/config", { method: "PUT", body: JSON.stringify({ agents: { turnLimit: value } }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save the limit."))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t("behaviourPage.couldntSaveLimit")))
       .finally(() => setSaving(false));
   };
   return (
@@ -285,7 +280,7 @@ function AgentTurnLimit() {
         <Slider
           aria-label={t("behaviourPage.mostAgentRepliesInA")}
           className="max-w-[460px]"
-          stops={TURN_LIMIT_STOPS}
+          stops={turnLimitStops()}
           value={stored}
           onCommit={(value) => !saving && save(value)}
         />
@@ -313,7 +308,7 @@ function TaskBudget() {
     setError("");
     api("/api/config", { method: "PUT", body: JSON.stringify({ agents: { taskBudget } }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save the budget."))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t("behaviourPage.couldntSaveBudget")))
       .finally(() => setSaving(false));
   };
   // only numbers past the limit mean anything, and the one chosen stays
@@ -321,10 +316,10 @@ function TaskBudget() {
   const choices = [...new Set([...TASK_BUDGET_CHOICES.filter((n) => n > limit), ...(stored !== null ? [stored] : [])])].sort((a, b) => a - b);
   const description =
     stored === null
-      ? "Off. The limit above counts every reply in a row, whatever the task."
+      ? t("behaviourPage.budget.off")
       : stored <= limit
-        ? "No higher than the limit above, so that limit still counts every reply in a row."
-        : `Each task agents name gets ${limit} ${limit === 1 ? "reply" : "replies"} in a row, and all of them together stop at ${stored}.`;
+        ? t("behaviourPage.budget.noHigher")
+        : t("behaviourPage.budget.each", { count: limit, total: stored });
   return (
     <SettingRow
       label={t("behaviourPage.separateTasks")}
@@ -342,7 +337,7 @@ function TaskBudget() {
           <option value="off">{t("common.off")}</option>
           {choices.map((n) => (
             <option key={n} value={n}>
-              {n} replies in total
+              {t("behaviourPage.repliesInTotal", { count: n })}
             </option>
           ))}
         </SettingsSelect>
@@ -368,7 +363,7 @@ function IncidentDesk() {
     setError("");
     api("/api/config", { method: "PUT", body: JSON.stringify({ incidents }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t("behaviourPage.couldntSaveThat")))
       .finally(() => setSaving(false));
   };
 
@@ -424,7 +419,7 @@ function MidTurnMessages() {
     setError("");
     api("/api/config", { method: "PUT", body: JSON.stringify({ delivery: next }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t("behaviourPage.couldntSaveThat")))
       .finally(() => setSaving(false));
   };
   return (
@@ -474,17 +469,16 @@ interface RouterChoice {
 
 /** What one choice costs, said before it is made. */
 function routerCost(choice: RouterChoice | null): string {
-  if (!choice) {
-    return "A small model from an engine the room's agents already use, so its messages go nowhere new. One short call for each message that names nobody.";
-  }
-  const model = choice.model ?? "its model";
-  if (choice.allowance) return `One short call to ${choice.name} for each message that names nobody, from your Bloks AI allowance.`;
-  if (choice.kind === "claudeAgent") {
-    return `One short call to ${model} for each message that names nobody, on your Claude plan. Each call starts Claude Code, which can take longer than Auto waits; then the lead answers.`;
-  }
-  if (choice.small) return `One short call to ${model} for each message that names nobody, billed to your ${choice.name} key. A small model: usually a fraction of a cent.`;
-  return `One short call to ${model} for each message that names nobody, billed like any other use of ${choice.name}. Not a small model, so it costs more and may be slower.`;
+  if (!choice) return t("behaviourPage.router.room");
+  const model = choice.model ?? t("behaviourPage.router.itsModel");
+  if (choice.allowance) return t("behaviourPage.router.allowance", { name: choice.name });
+  if (choice.kind === "claudeAgent") return t("behaviourPage.router.claude", { model });
+  if (choice.small) return t("behaviourPage.router.small", { model, name: choice.name });
+  return t("behaviourPage.router.large", { model, name: choice.name });
 }
+
+/** A choice as its option says it: the engine, and its model when it has one. */
+const routerName = (c: RouterChoice) => (c.model ? t("behaviourPage.router.engineModel", { name: c.name, model: c.model }) : c.name);
 
 /**
  * Which engine a room set to Auto asks to pick who answers
@@ -512,7 +506,7 @@ function RoomRouter() {
     setError("");
     api("/api/config", { method: "PUT", body: JSON.stringify({ rooms: { router } }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t("behaviourPage.couldntSaveThat")))
       .finally(() => setSaving(false));
   };
   const picked = chosen ? (choices?.find((c) => c.id === chosen) ?? null) : null;
@@ -537,8 +531,7 @@ function RoomRouter() {
           {gone && chosen && <option value={chosen}>{t("behaviourPage.anEngineSinceRemoved")}</option>}
           {(choices ?? []).map((c) => (
             <option key={c.id} value={c.id}>
-              {c.model ? `${c.name}, ${c.model}` : c.name}
-              {c.ready ? "" : t("behaviourPage.notSignedIn")}
+              {c.ready ? routerName(c) : t("behaviourPage.notSignedIn", { choice: routerName(c) })}
             </option>
           ))}
         </SettingsSelect>
@@ -564,7 +557,7 @@ function BackgroundWork() {
     setError("");
     api("/api/config", { method: "PUT", body: JSON.stringify({ turns: { backgroundWork } }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t("behaviourPage.couldntSaveThat")))
       .finally(() => setSaving(false));
   };
   return (
@@ -572,9 +565,7 @@ function BackgroundWork() {
       title={t("behaviourPage.backgroundWorkAnAgentStarts")}
       footnote={
         <>
-          For agents on Claude Code. While it waits, what you send goes into that turn or waits for it like any other, and a
-          background task that makes no progress for the time under Stop stuck tool calls is stopped. Each agent can choose for
-          itself in its own settings.
+          {t("behaviourPage.backgroundFootnote")}
           {error && <span className="mt-1 block text-destructive">{error}</span>}
         </>
       }
@@ -582,7 +573,7 @@ function BackgroundWork() {
       <div
         role="radiogroup"
         aria-label={t("behaviourPage.backgroundWorkAnAgentStarts")}
-        data-setting-row={rowKey("Background work an agent starts")}
+        data-setting-row={rowKey(inEnglish("behaviourPage.backgroundWorkAnAgentStarts"))}
         className="flex flex-col divide-y transition-colors duration-700"
       >
         {BACKGROUND_WORK.map((choice) => {
@@ -607,8 +598,8 @@ function BackgroundWork() {
                 {on && <span className="size-1.5 rounded-full bg-brand-foreground" />}
               </span>
               <span className="flex min-w-0 flex-col">
-                <span className="text-ui font-medium text-foreground">{choice.label}</span>
-                <span className="text-pretty text-body text-muted-foreground">{choice.says}</span>
+                <span className="text-ui font-medium text-foreground">{t(choice.label)}</span>
+                <span className="text-pretty text-body text-muted-foreground">{t(choice.says)}</span>
               </span>
             </button>
           );
@@ -618,7 +609,7 @@ function BackgroundWork() {
   );
 }
 
-const TURN_LIMIT_STOPS = numberStops(MIN_TURN_LIMIT, MAX_TURN_LIMIT, (n) => `${n} ${n === 1 ? "reply" : "replies"}`);
+const turnLimitStops = () => numberStops(MIN_TURN_LIMIT, MAX_TURN_LIMIT, (n) => t("behaviourPage.replies", { count: n }));
 /** What the budget across separate tasks offers, past whatever the limit is. */
 const TASK_BUDGET_CHOICES = [24, 36, 48, 60, 80, MAX_TASK_BUDGET];
 

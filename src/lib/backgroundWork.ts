@@ -1,18 +1,20 @@
 // What happens to work an agent starts in the background once its reply
 // is done (server/background-work.ts), in the words both Settings pages
-// use for it.
+// use for it. The words are keys, said where they draw.
+import type { MessageKey } from "./i18n.ts";
+
 export type BackgroundWork = "finish" | "stop";
 
-export const BACKGROUND_WORK: Array<{ value: BackgroundWork; label: string; says: string }> = [
+export const BACKGROUND_WORK: Array<{ value: BackgroundWork; label: MessageKey; says: MessageKey }> = [
   {
     value: "finish",
-    label: "Let it finish",
-    says: "The agent keeps working until its background subagents and tasks are done, then says what came of them.",
+    label: "backgroundWork.finish",
+    says: "backgroundWork.finishSays",
   },
   {
     value: "stop",
-    label: "Stop when the reply is done",
-    says: "The reply ends the turn, and anything the agent left running in the background is stopped.",
+    label: "backgroundWork.stop",
+    says: "backgroundWork.stopSays",
   },
 ];
 

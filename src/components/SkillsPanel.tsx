@@ -18,7 +18,7 @@ import { cn } from "@/lib/cn";
 import { DiffLines, type DiffLine } from "./DiffLines";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { MAX_SKILL_CHARS, skillLength } from "@/lib/skillLength";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
 /** How long the instructions are against the limit, red once over it. */
 function LengthCount({ length }: { length: number }) {
@@ -29,7 +29,7 @@ function LengthCount({ length }: { length: number }) {
         length > MAX_SKILL_CHARS ? "text-destructive" : "text-muted-foreground",
       )}
     >
-      {length.toLocaleString()} / {MAX_SKILL_CHARS.toLocaleString()}
+      {t("skillsPanel.lengthOfMax", { length, max: MAX_SKILL_CHARS })}
     </span>
   );
 }
@@ -44,7 +44,7 @@ function nameFor(markdown: string, fileName: string): string {
     declared?.trim().replace(/^["']|["']$/g, "") ||
     heading?.trim() ||
     fileName ||
-    "New skill"
+    t("skillsPanel.newSkill")
   );
 }
 
@@ -103,7 +103,7 @@ function ReviewImport({
 
       {tooLong && (
         <div className="mt-2 text-small text-destructive">
-          Too long: {length.toLocaleString()} of {MAX_SKILL_CHARS.toLocaleString()} characters.
+          {t("skillsPanel.tooLong", { length, max: MAX_SKILL_CHARS })}
         </div>
       )}
       {error && <div className="mt-2 text-small text-destructive">{error}</div>}
@@ -171,7 +171,7 @@ export function AddSkill({
 
       <div className="my-3 flex items-center gap-3 text-small text-muted-foreground">
         <span className="h-px flex-1 bg-border" />
-        or write it
+        {t("skillsPanel.orWriteIt")}
         <span className="h-px flex-1 bg-border" />
       </div>
 
@@ -261,14 +261,14 @@ export interface Proposal {
   builtin?: boolean;
 }
 
-/** Why it is here, after "From Scout". */
-const BECAUSE_OF: Record<NonNullable<Proposal["trigger"]>, string> = {
-  conversation: "after a conversation that worked something out",
-  tools: "after a turn that took many steps",
-  recovery: "after a step failed and it found another way",
-  correction: "after you corrected it",
-  deviation: "after it used this skill for real work",
-  agent: "asking for this change",
+/** Who it is from and why it is here, one sentence for each reason. */
+const FROM_BECAUSE: Record<NonNullable<Proposal["trigger"]>, MessageKey> = {
+  conversation: "skillsPanel.from.conversation",
+  tools: "skillsPanel.from.tools",
+  recovery: "skillsPanel.from.recovery",
+  correction: "skillsPanel.from.correction",
+  deviation: "skillsPanel.from.deviation",
+  agent: "skillsPanel.from.agent",
 };
 
 /** Who it is from, inside a sentence: an agent by its name, another app
@@ -319,15 +319,16 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
     <div className="rounded-xl border border-brand/30 bg-brand-soft/30 p-3">
       <button onClick={() => setOpen((v) => !v)} className="w-full text-left">
         <div className="text-body font-medium text-foreground">
-          {patch ? `A change to ${proposal.name}` : name}
+          {patch ? t("skillsPanel.aChangeTo", { name: proposal.name }) : name}
         </div>
         <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
           {proposal.because}
         </div>
         <div className="mt-1 text-small text-muted-foreground/80">
-          From {fromWhom(proposal)}
-          {proposal.trigger ? `, ${BECAUSE_OF[proposal.trigger]}` : ""}.
-          {patch && proposal.base !== undefined && ` Against ${proposal.base === 0 ? "the built-in text" : `version ${proposal.base}`}.`}{" "}
+          {t(proposal.trigger ? FROM_BECAUSE[proposal.trigger] : "skillsPanel.from.someone", { who: fromWhom(proposal) })}
+          {patch &&
+            proposal.base !== undefined &&
+            ` ${proposal.base === 0 ? t("skillsPanel.againstBuiltIn") : t("skillsPanel.againstVersion", { version: String(proposal.base) })}`}{" "}
           {open ? t("common.hide") : t("skillsPanel.show")}
         </div>
       </button>
@@ -349,7 +350,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
       {open && patch && proposal.stale && (
         <div role="status" className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-small leading-relaxed text-warning">
           {proposal.movedOn
-            ? `Written against version ${proposal.base}, and the skill is version ${proposal.current} now. Keeping it as it is would undo that change. Edit it to keep your own text, or discard it.`
+            ? t("skillsPanel.movedOn", { base: String(proposal.base), current: String(proposal.current) })
             : t("skillsPanel.theSkillChangedSinceThis")}
         </div>
       )}

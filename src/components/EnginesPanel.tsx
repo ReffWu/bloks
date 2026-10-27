@@ -21,13 +21,13 @@ import { EngineReport } from "./EngineReport";
 import { EnginePauses } from "./EnginePauses";
 import { EngineOutdatedActions, EnginePathControl, EngineSetupActions, EngineUpdateNote } from "./EngineSetup";
 import { TeamSignInNotice } from "./TeamSignInNotice";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
-const AUTH_NOTE: Record<ProviderRow["auth"], string> = {
-  oauth: "Browser sign-in",
-  key: "API key",
-  cli: "Uses its own sign-in",
-  none: "Runs on this machine",
+const AUTH_NOTE: Record<ProviderRow["auth"], MessageKey> = {
+  oauth: "enginesPanel.auth.oauth",
+  key: "enginesPanel.auth.key",
+  cli: "enginesPanel.auth.cli",
+  none: "enginesPanel.auth.none",
 };
 
 function KeyForm({ provider, onDone }: { provider: ProviderRow; onDone: () => void }) {
@@ -64,7 +64,7 @@ function KeyForm({ provider, onDone }: { provider: ProviderRow; onDone: () => vo
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2">
         <span className={cn("text-small", mismatched ? "text-warning" : "text-muted-foreground")}>
-          {mismatched ? `Keys here usually start with ${provider.keyPrefix}` : provider.keyHint}
+          {mismatched ? t("enginesPanel.keysUsuallyStartWith", { prefix: provider.keyPrefix ?? "" }) : provider.keyHint}
         </span>
         <a
           href={provider.docsUrl}
@@ -146,7 +146,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
                 ? t("enginesPanel.installedNotSignedIn")
                 : provider.connected
                   ? t("common.connected")
-                  : AUTH_NOTE[provider.auth]}
+                  : t(AUTH_NOTE[provider.auth])}
           </div>
         </div>
 
@@ -217,7 +217,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
               Some CLIs sign in where we cannot see it, so the second is a
               hint rather than a verdict, and stays muted. */}
           {provider.connected
-            ? `No sign-in detected. ${provider.signInHint ?? provider.keyHint}`
+            ? t("enginesPanel.noSignInDetected", { hint: provider.signInHint ?? provider.keyHint })
             : provider.keyHint}
         </div>
       )}
@@ -276,7 +276,7 @@ export function EnginesPanel() {
         <div className="px-4 pb-3 pt-4">
           <div className="flex items-baseline justify-between gap-2">
             <div className="text-ui font-semibold text-foreground">{t("enginesPanel.yourEngines")}</div>
-            <div className="text-small text-muted-foreground">{connected} connected</div>
+            <div className="text-small text-muted-foreground">{t("enginesPanel.connectedCount", { count: connected })}</div>
           </div>
           <div className="mt-0.5 text-body leading-relaxed text-muted-foreground">
             {t("enginesPanel.whatYourAgentsRunOn")}

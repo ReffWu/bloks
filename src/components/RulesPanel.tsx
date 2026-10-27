@@ -30,7 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { useRuleSuggestions } from "@/lib/ruleSuggestions";
 import { SuggestionWhat, takeSuggestion } from "@/components/chat/Banners";
-import { t } from "@/lib/i18n";
+import { formatList, t, tr, type MessageKey } from "@/lib/i18n";
 
 type Effect = "allow" | "deny";
 type Field = "tool" | "command" | "path" | "url" | "agent";
@@ -50,31 +50,42 @@ interface Rule {
   summary: string;
 }
 
-/** The words for each choice, so the form reads as the sentence it builds. */
-const FIELD_WORDS: Array<[Field, string]> = [
-  ["tool", "the tool"],
-  ["command", "the command"],
-  ["path", "the file"],
-  ["url", "the address"],
-  ["agent", "the agent"],
+/** The words for each choice, so the form reads as the sentence it builds.
+ * Keys, said where they draw. The form's pieces are the sentence's own
+ * slots, so each language orders them in the read-back sentence. */
+const FIELD_WORDS: Array<[Field, MessageKey]> = [
+  ["tool", "rulesPanel.field.tool"],
+  ["command", "rulesPanel.field.command"],
+  ["path", "rulesPanel.field.path"],
+  ["url", "rulesPanel.field.url"],
+  ["agent", "rulesPanel.field.agent"],
 ];
 
-const OP_WORDS: Array<[Op, string]> = [
-  ["contains", "contains"],
-  ["not-contains", "does not contain"],
-  ["equals", "is exactly"],
-  ["starts-with", "starts with"],
-  ["ends-with", "ends with"],
+const OP_WORDS: Array<[Op, MessageKey]> = [
+  ["contains", "rulesPanel.op.contains"],
+  ["not-contains", "rulesPanel.op.notContains"],
+  ["equals", "rulesPanel.op.equals"],
+  ["starts-with", "rulesPanel.op.startsWith"],
+  ["ends-with", "rulesPanel.op.endsWith"],
 ];
 
 /** The narrow comparisons a suggestion writes. Read back here, not
  * offered in the form: each belongs to one field and reads it rather
  * than only comparing (server/policy.ts). */
-const NARROW_WORDS: Array<[Op, string]> = [
-  ["runs", "is one plain command starting with"],
-  ["in-folder", "is in the folder"],
-  ["on-site", "is on the site"],
+const NARROW_WORDS: Array<[Op, MessageKey]> = [
+  ["runs", "rulesPanel.op.runs"],
+  ["in-folder", "rulesPanel.op.inFolder"],
+  ["on-site", "rulesPanel.op.onSite"],
 ];
+
+const fieldWords = (field: Field) => {
+  const key = FIELD_WORDS.find(([f]) => f === field)?.[1];
+  return key ? t(key) : field;
+};
+const opWords = (op: Op) => {
+  const key = [...OP_WORDS, ...NARROW_WORDS].find(([o]) => o === op)?.[1];
+  return key ? t(key) : op;
+};
 
 const PLACEHOLDER: Record<Field, string> = {
   tool: "Bash",
@@ -112,7 +123,7 @@ export function RulesPanel() {
   // act, or you write a rule about nobody.
   const bots = state.bots ?? [];
   const choosable = bots.filter((b) => !b.archivedAt);
-  const nameOf = (botId?: string) => (botId ? (bots.find((b) => b.id === botId)?.name ?? "an agent") : null);
+  const nameOf = (botId?: string) => (botId ? (bots.find((b) => b.id === botId)?.name ?? t("rulesPanel.anAgent")) : null);
 
   return (
     <>
@@ -181,20 +192,26 @@ export function RulesPanel() {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="text-body text-foreground">
-                  {rule.effect === "deny" ? t("rulesPanel.refuse") : t("rulesPanel.allow")} when{" "}
-                  {FIELD_WORDS.find(([f]) => f === rule.field)?.[1] ?? rule.field}{" "}
-                  {[...OP_WORDS, ...NARROW_WORDS].find(([o]) => o === rule.op)?.[1] ?? rule.op}{" "}
-                  <span className="font-mono text-small">{rule.value}</span>
+                  {tr(rule.effect === "deny" ? "rulesPanel.readBack.deny" : "rulesPanel.readBack.allow", {
+                    field: fieldWords(rule.field),
+                    op: opWords(rule.op),
+                    value: <span className="font-mono text-small">{rule.value}</span>,
+                  })}
                 </div>
                 <div className="mt-0.5 text-small text-muted-foreground">
-                  {rule.botId ? `Only ${nameOf(rule.botId)}` : t("rulesPanel.everyAgent")}
-                  {rule.tool ? `, only ${rule.tool}` : ""}
-                  {rule.enabled ? "" : t("rulesPanel.off")}
+                  {rule.tool
+                    ? rule.botId
+                      ? t("rulesPanel.onlyAgentTool", { name: nameOf(rule.botId) ?? "", tool: rule.tool })
+                      : t("rulesPanel.everyAgentTool", { tool: rule.tool })
+                    : rule.botId
+                      ? t("rulesPanel.onlyAgent", { name: nameOf(rule.botId) ?? "" })
+                      : t("rulesPanel.everyAgent")}
+                  {rule.enabled ? "" : ` · ${t("rulesPanel.off")}`}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <Switch
-                  aria-label={`${rule.summary}: on or off`}
+                  aria-label={t("rulesPanel.switchLabel", { rule: rule.summary })}
                   checked={rule.enabled}
                   onCheckedChange={(enabled) =>
                     api(`/api/rules/${rule.id}`, { method: "PATCH", body: JSON.stringify({ enabled }) })
@@ -277,14 +294,14 @@ function RuleForm({
         <select value={field} onChange={(e) => setField(e.target.value as Field)} className={select}>
           {FIELD_WORDS.map(([f, words]) => (
             <option key={f} value={f}>
-              {words}
+              {t(words)}
             </option>
           ))}
         </select>
         <select value={op} onChange={(e) => setOp(e.target.value as Op)} className={select}>
           {OP_WORDS.map(([o, words]) => (
             <option key={o} value={o}>
-              {words}
+              {t(words)}
             </option>
           ))}
         </select>
@@ -299,10 +316,10 @@ function RuleForm({
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <span className="text-body text-muted-foreground">{t("rulesPanel.for")}</span>
         <select value={botId} onChange={(e) => setBotId(e.target.value)} className={select}>
-          <option value="">{t("rulesPanel.everyAgent2")}</option>
+          <option value="">{t("rulesPanel.form.everyAgent")}</option>
           {bots.map((bot) => (
             <option key={bot.id} value={bot.id}>
-              only {bot.name}
+              {t("rulesPanel.form.onlyAgent", { name: bot.name })}
             </option>
           ))}
         </select>
@@ -341,13 +358,19 @@ function Suggested() {
           <div className="min-w-0 flex-1">
             <div className="text-body text-foreground">{s.title}</div>
             <div className="mt-0.5 text-small text-muted-foreground">
-              <SuggestionWhat what={s.what} />
-              {s.agents.length > 1 ? `. Approved for ${s.agents.map((a) => a.name).join(", ")}.` : ""}
+              {s.agents.length > 1 ? (
+                tr("rulesPanel.whatApprovedFor", {
+                  what: <SuggestionWhat what={s.what} />,
+                  names: formatList(s.agents.map((a) => a.name), { type: "unit", style: "short" }),
+                })
+              ) : (
+                <SuggestionWhat what={s.what} />
+              )}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {s.forAgent && (
                 <Button variant="brand" size="sm" onClick={() => takeSuggestion(accept, s, "agent")}>
-                  Allow for {s.forAgent.name}
+                  {t("rulesPanel.allowFor", { name: s.forAgent.name })}
                 </Button>
               )}
               {s.forEveryone && (

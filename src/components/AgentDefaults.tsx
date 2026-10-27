@@ -147,7 +147,7 @@ export function AgentDefaults() {
           label={t("agentDefaults.approvals")}
           description={
             approvals
-              ? `New agents start on ${APPROVAL_MODES.find((m) => m.id === approvals.mode)?.label ?? approvals.mode}.`
+              ? t("agentDefaults.newAgentsStartOn", { mode: APPROVAL_MODES.find((m) => m.id === approvals.mode)?.label ?? approvals.mode })
               : t("agentDefaults.howMuchANewAgent")
           }
           control={

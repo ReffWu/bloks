@@ -26,7 +26,6 @@ import { Segmented } from "@/components/ui/segmented";
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import { stamp } from "@/lib/when";
 import { MAX_SKILL_CHARS } from "@/lib/skillLength";
 import { DiffLines, type DiffLine } from "./DiffLines";
@@ -76,41 +75,42 @@ interface DiffAnswer {
 export function authorWords(by: Author): string {
   switch (by.kind) {
     case "person":
-      return "You";
+      return t("skillVersions.by.person");
     case "agent":
-      return `${by.name || "An agent"}, kept by you`;
+      return by.name ? t("skillVersions.by.agent", { name: by.name }) : t("skillVersions.by.anAgent");
     case "proposal":
-      return `Suggested by ${by.name || "an agent"}, kept by you`;
+      return by.name ? t("skillVersions.by.proposal", { name: by.name }) : t("skillVersions.by.proposalAnAgent");
     case "catalog":
-      return "The catalogue";
+      return t("skillVersions.by.catalog");
     case "import":
-      return "Brought in";
+      return t("skillVersions.by.import");
     case "file":
-      return "Edited outside Bloks";
+      return t("skillVersions.by.file");
     case "migration":
-      return "Before versions";
+      return t("skillVersions.by.migration");
     case "builtin":
-      return "As it ships";
+      return t("skillVersions.asItShips");
   }
 }
 
 /** How much a skill is used, in one line: counted when you name it with
  * a slash or an agent reads it in full (server/skill-usage.ts). */
 export function usageWords(uses: number, corrected: number, lastUsed: number | null): string {
-  if (!uses) return "Not used yet";
-  const last = lastUsed ? `, last ${stamp(lastUsed)}` : "";
-  const fixes = corrected ? `. Corrected after ${corrected === uses ? "every one" : plural(corrected, "of them", "of them")}` : "";
-  return `Used ${plural(uses, "time")}${last}${fixes}`;
+  if (!uses) return t("skillVersions.notUsedYet");
+  const params = { count: uses, corrected, last: lastUsed ? stamp(lastUsed) : "" };
+  if (!corrected) return t(lastUsed ? "skillVersions.usedLast" : "skillVersions.used", params);
+  if (corrected === uses) return t(lastUsed ? "skillVersions.usedLastCorrectedAll" : "skillVersions.usedCorrectedAll", params);
+  return t(lastUsed ? "skillVersions.usedLastCorrectedSome" : "skillVersions.usedCorrectedSome", params);
 }
 
-const versionWord = (n: number) => (n === 0 ? "As it ships" : `Version ${n}`);
+const versionWord = (n: number) => (n === 0 ? t("skillVersions.asItShips") : t("skillVersions.version", { n: String(n) }));
 
 /** How long the instructions are against the limit, red once over it. */
 function Count({ text }: { text: string }) {
   const length = [...text.trim()].length;
   return (
     <span className={cn("text-small tabular-nums", length > MAX_SKILL_CHARS ? "text-destructive" : "text-muted-foreground")}>
-      {length.toLocaleString()} / {MAX_SKILL_CHARS.toLocaleString()}
+      {t("skillVersions.lengthOfMax", { length, max: MAX_SKILL_CHARS })}
     </span>
   );
 }
@@ -136,7 +136,7 @@ export function SkillDetail({ skill, onChanged }: { skill: Skill; onChanged: (ne
     setBusy(true);
     api(`/api/skills/${skill.id}/fork`, { method: "POST" })
       .then(({ skill: mine }) => {
-        toast.success(`${skill.name} is yours to change now`);
+        toast.success(t("skillVersions.yoursNow", { name: skill.name }));
         onChanged(mine);
         setEditing(true);
       })
@@ -156,12 +156,18 @@ export function SkillDetail({ skill, onChanged }: { skill: Skill; onChanged: (ne
             if (next === "history") setEditing(false);
           }}
           options={[
-            { value: "text", label: "Instructions" },
-            { value: "history", label: builtin ? "History" : `History${skill.revision ? ` (${skill.revision})` : ""}` },
+            { value: "text", label: t("common.instructions") },
+            {
+              value: "history",
+              label: !builtin && skill.revision ? t("skillVersions.historyCount", { count: String(skill.revision) }) : t("skillVersions.history"),
+            },
           ]}
         />
         <span className="text-small text-muted-foreground">
-          {builtin ? t("skillVersions.builtIn") : `Version ${skill.revision ?? 1}`}. {usageWords(skill.uses ?? 0, skill.corrected ?? 0, skill.lastUsed ?? null)}
+          {t("skillVersions.statusLine", {
+            version: builtin ? t("skillVersions.builtIn") : t("skillVersions.version", { n: String(skill.revision ?? 1) }),
+            usage: usageWords(skill.uses ?? 0, skill.corrected ?? 0, skill.lastUsed ?? null),
+          })}
         </span>
       </div>
 
@@ -185,7 +191,7 @@ export function SkillDetail({ skill, onChanged }: { skill: Skill; onChanged: (ne
                 <>
                   <Button size="sm" variant="secondary" disabled={busy} onClick={makeOwn}>
                     {busy ? <Loader2 size={13} className="animate-spin" /> : <Pencil size={13} />}
-                    Make it yours
+                    {t("skillVersions.makeItYours")}
                   </Button>
                   <span className="text-small text-muted-foreground">
                     {t("skillVersions.builtInSkillsStayAs")}
@@ -226,12 +232,12 @@ function SkillEditor({ skill, onCancel, onSaved }: { skill: Skill; onCancel: () 
       body: JSON.stringify({ name, description, body, why, from: skill.revision }),
     })
       .then(({ skill: next }) => {
-        toast.success(`Saved ${next.name} as version ${next.revision}`);
+        toast.success(t("skillVersions.savedAs", { name: next.name, version: String(next.revision) }));
         onSaved(next);
       })
       .catch((e: Error & { status?: number }) =>
         // moved on while this was open: say so, and keep what was typed
-        setError(e.status === 409 ? `${e.message} Copy your text, close this and open the skill again.` : e.message),
+        setError(e.status === 409 ? t("skillVersions.movedOnError", { error: e.message }) : e.message),
       )
       .finally(() => setSaving(false));
   };
@@ -248,7 +254,7 @@ function SkillEditor({ skill, onCancel, onSaved }: { skill: Skill; onCancel: () 
       </label>
       <label className="flex min-h-0 flex-1 flex-col">
         <span className="mb-1 flex items-center justify-between text-small font-medium text-muted-foreground">
-          Instructions
+          {t("common.instructions")}
           <Count text={body} />
         </span>
         <Textarea
@@ -341,15 +347,15 @@ function SkillHistory({
 
   const restore = async (n: number) => {
     const yes = await confirm({
-      title: n === 0 ? "Go back to the text it shipped with?" : `Restore version ${n}?`,
-      body: "It comes back as a new version. Nothing is lost: what it says now stays in the history.",
-      confirmLabel: "Restore",
+      title: n === 0 ? t("skillVersions.restoreShippedTitle") : t("skillVersions.restoreTitle", { n: String(n) }),
+      body: t("skillVersions.restoreBody"),
+      confirmLabel: t("skillVersions.restore"),
     });
     if (!yes) return;
     setRestoring(true);
     api(`/api/skills/${skill.id}/restore`, { method: "POST", body: JSON.stringify({ revision: n, from: history?.current }) })
       .then(({ skill: next }) => {
-        toast.success(`Restored as version ${next.revision}`);
+        toast.success(t("skillVersions.restoredAs", { version: String(next.revision) }));
         onRestored(next);
         void load();
       })
@@ -409,8 +415,9 @@ function SkillHistory({
               <div className="mt-0.5 line-clamp-2 text-small text-foreground/85">{row.why}</div>
               {row.uses > 0 && (
                 <div className={cn("mt-0.5 text-caption", row.corrected ? "text-warning" : "text-muted-foreground")}>
-                  {plural(row.uses, "use")}
-                  {row.corrected ? `, corrected ${row.corrected}` : ""}
+                  {row.corrected
+                    ? t("skillVersions.usesCorrected", { count: row.uses, corrected: row.corrected })
+                    : t("skillVersions.uses", { count: row.uses })}
                 </div>
               )}
             </button>
@@ -418,7 +425,7 @@ function SkillHistory({
         ))}
         {history.pruned && (
           <li className="px-2.5 py-2 text-caption text-muted-foreground">
-            Versions past the latest {history.max} are let go, except the first.
+            {t("skillVersions.pruned", { count: history.max })}
           </li>
         )}
       </ol>
@@ -429,11 +436,15 @@ function SkillHistory({
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-body font-medium text-foreground">{versionWord(chosen.n)}</span>
               {chosen.restoredFrom !== undefined && (
-                <span className="text-small text-muted-foreground">put back {versionWord(chosen.restoredFrom).toLowerCase()}</span>
+                <span className="text-small text-muted-foreground">
+                  {chosen.restoredFrom === 0
+                    ? t("skillVersions.putBackShipped")
+                    : t("skillVersions.putBackVersion", { n: String(chosen.restoredFrom) })}
+                </span>
               )}
               {(others.length > 0 || history.shipped) && (
                 <label className="ml-auto flex items-center gap-2 text-small text-muted-foreground">
-                  Compared with
+                  {t("skillVersions.comparedWith")}
                   <SettingsSelect
                     aria-label={t("skillVersions.compareWith")}
                     value={base === null ? "" : String(base)}
@@ -462,16 +473,18 @@ function SkillHistory({
                 <>
                   {base > picked! && (
                     <p className="px-4 pb-1 text-caption text-muted-foreground">
-                      From {versionWord(Math.min(base, picked!)).toLowerCase()} to {versionWord(Math.max(base, picked!)).toLowerCase()}.
+                      {Math.min(base, picked!) === 0
+                        ? t("skillVersions.fromShippedTo", { to: String(Math.max(base, picked!)) })
+                        : t("skillVersions.fromTo", { from: String(Math.min(base, picked!)), to: String(Math.max(base, picked!)) })}
                     </p>
                   )}
                   {diff.name && (
                     <p className="px-4 pb-1 text-small text-foreground">
-                      Renamed from “{diff.name.from}” to “{diff.name.to}”.
+                      {t("skillVersions.renamed", { from: diff.name.from, to: diff.name.to })}
                     </p>
                   )}
                   {diff.description && (
-                    <p className="px-4 pb-1 text-small text-foreground">When to use it changed to “{diff.description.to}”.</p>
+                    <p className="px-4 pb-1 text-small text-foreground">{t("skillVersions.descriptionChanged", { to: diff.description.to })}</p>
                   )}
                   {diff.tooBig ? (
                     <p className="px-4 text-small text-muted-foreground">{t("skillVersions.tooLargeToCompareLine")}</p>
@@ -487,7 +500,7 @@ function SkillHistory({
               {chosen.n !== history.current && (
                 <Button size="sm" variant="secondary" disabled={restoring} onClick={() => void restore(chosen.n)}>
                   {restoring ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                  Restore this version
+                  {t("skillVersions.restoreThisVersion")}
                 </Button>
               )}
               {history.shipped && chosen.n === history.current && (
