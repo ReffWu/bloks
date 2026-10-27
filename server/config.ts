@@ -120,7 +120,17 @@ export interface AppConfig {
      * this computer's part of every address; `allowFrom` limits who can
      * write (addresses, or @domain), empty meaning anyone who has one. */
     email?: { enabled?: boolean; id?: string; domain?: string; allowFrom?: string[] };
+    /** A Signal group, through one of the accounts linked in signal-cli
+     * (server/signal.ts). No credential: signal-cli keeps the keys. */
+    signal?: { account?: string; aci?: string; enabled?: boolean };
   };
+  /** Reaching agents from Signal, one linked account per agent, through
+   * signal-cli on this computer. Nothing here is a credential: the
+   * account's keys stay in signal-cli's own data folder. */
+  signal?: import("./signal-people.ts").SignalSettings;
+  /** Home Assistant (server/home-assistant.ts). The token is a credential
+   * and lives here; it never reaches a client or a turn. */
+  home?: import("./home-assistant.ts").HomeSettings;
   /** Reaching agents from a phone over Telegram. The token is a
    * credential, so it lives here with the rest of them. */
   telegram?: import("./telegram-bots.ts").TelegramConfig;
@@ -418,6 +428,8 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "changes",
     "telegram",
     "chat",
+    "signal",
+    "home",
     "brief",
     "backups",
     "credits",

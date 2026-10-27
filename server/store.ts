@@ -159,7 +159,7 @@ export interface Message {
   afterAgent?: { peerId: string; peerName: string };
   /** Set on a room message that was said in the room's linked chat
    * channel, so the bridge does not say it there a second time. */
-  via?: "slack" | "discord" | "whatsapp" | "watcher" | "email" | "webhook" | "routine" | "goal" | "intent" | "incident";
+  via?: "slack" | "discord" | "whatsapp" | "signal" | "watcher" | "email" | "webhook" | "routine" | "goal" | "intent" | "incident";
   /** Posted by a standing intent (server/intents.ts): a note in its own
    * words, or the line saying it brought an agent in. Never matched by
    * an intent, its own or another's. */
@@ -325,6 +325,10 @@ export interface Message {
   telegramGroup?: import("./telegram-people.ts").TelegramOwnerGroup;
   /** Explicit reply, kept in the owner's transcript with its send result. */
   telegramSent?: { personId: string; name: string; audience?: string; state: "sending" | "sent" | "uncertain" | "failed" };
+  /** Server-created. Said on Signal: by the owner, or by a person the
+   * owner let in (`personId`), on the agent's connection as it was then.
+   * Never read from a client body. */
+  fromSignal?: { botId: string; generation: string; personId?: string };
   /** Server-only: the Claude instance that accepted this queued text.
    * Null means it was accepted on another engine; absent is a legacy queue.
    * Derive command dispatch from the current text, including after edits. */
@@ -471,6 +475,10 @@ export interface TaskRecord {
    * server/index.ts). Marked rather than known by its title, which the
    * person may change. */
   guestMail?: boolean;
+  /** A person on Signal talks to the agent here, and only here: the lane
+   * is theirs, by person id, and the owner's own words never land in it
+   * unasked (signalPersonLane in server/index.ts). */
+  signalPerson?: string;
   /** What this lane keeps working toward, turn after turn, until it is
    * done, blocked or out of turns (server/goals.ts). Goes with the lane:
    * closed or cleared, the goal is gone too. */
@@ -1217,6 +1225,14 @@ export class Store {
     const found = this.taskByThread(threadId);
     if (!found?.task.imported || found.task.imported.carried) return;
     found.task.imported = { ...found.task.imported, carried: true };
+    this.saveBots();
+  }
+
+  /** Mark the lane a person on Signal is answered in (TaskRecord.signalPerson). */
+  markSignalPerson(threadId: string, personId: string) {
+    const found = this.taskByThread(threadId);
+    if (!found || found.task.signalPerson === personId) return;
+    found.task.signalPerson = personId;
     this.saveBots();
   }
 

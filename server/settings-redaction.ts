@@ -23,6 +23,8 @@ const SECRET_BEARING = [
   "telegram.pending.pairing",
   "telegram.bots.*.pairing",
   "telegram.bots.*.generation",
+  "signal.bots.*.pairing",
+  "signal.bots.*.generation",
   "mcpServers[].url",
   "mcpServers[].command",
   "mcpServers[].args",

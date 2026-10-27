@@ -250,6 +250,16 @@ export const RULES: Rule[] = [
   // is given and the pairing as it stands. Its Telegram settings stay the
   // person's (/api/bots/:id/telegram is not on this list).
   { method: "POST", path: "/api/bots/:me/telegram/send", why: "send one file from its working folder or its own files to the person's Telegram chat with its own bot, while that bot is paired with them" },
+  // The home, through the owner's Home Assistant (server/home-assistant.ts):
+  // only the entities the owner listed, only for an agent the owner let
+  // in, only in the owner's own turns. Reading is free. A change runs
+  // only on the owner's yes on a card, unless the owner marked it auto;
+  // locks, alarms and garage doors ask every time. The settings, the
+  // token and the list stay the owner's (/api/home is on NEVER).
+  { method: "GET", path: "/api/bots/:me/home/entities", why: "see the Home Assistant entities the owner listed for you, with their states" },
+  { method: "GET", path: "/api/bots/:me/home/history", why: "read one listed Home Assistant entity's recent history" },
+  { method: "POST", path: "/api/bots/:me/home/call", why: "ask to run a Home Assistant service on listed entities, which waits for the owner's yes unless they marked it auto" },
+  { method: "GET", path: "/api/bots/:me/home/requests/:id", why: "wait for the owner's answer to a change to the home you asked for" },
 
   // Skills it can consult, and its own settings.
   { method: "GET", path: "/api/skills", why: "see the skill library" },
@@ -335,6 +345,11 @@ export const NEVER = [
   // app's way in: an agent drives it through /api/agent/browser only, and
   // what sites it may use is the person's to say
   "/api/browser",
+  // Home Assistant's address, token and list, and the other AI apps' way
+  // in: the owner's. An agent reaches the home through its own routes.
+  "/api/home",
+  // which Signal accounts answer for which agent, and who is let in
+  "/api/signal",
 ];
 
 const PATH_PART = /^[\w.-]+$/;

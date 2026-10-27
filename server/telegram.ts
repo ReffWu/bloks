@@ -1125,7 +1125,7 @@ export function imagesText(caption: string, paths: string[]): string {
     .join("\n\n");
 }
 
-function attachmentsText(caption: string, paths: { kind: "image" | "file"; path: string }[]): string {
+export function attachmentsText(caption: string, paths: { kind: "image" | "file"; path: string }[]): string {
   return [caption.trim(), ...paths.map(({ kind, path }) => `<attached-${kind} path="${attr(path)}" />`)]
     .filter(Boolean).join("\n\n");
 }
