@@ -26,6 +26,7 @@ import { api, useStore, type Bot } from "@/state/store";
 import { AgentAvatar, BlokAvatar } from "./Avatar";
 import { TEAM_LIBRARY } from "@/lib/teamLibrary";
 import { TeamHireDialog, type HireableTeam } from "./TeamHireDialog";
+import { openCatalog } from "./CatalogPage";
 import { Button } from "@/components/ui/button";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -390,7 +391,19 @@ export function NewRoomDialog() {
               )}
             </Shelf>
             <p className="mt-5 text-small leading-relaxed text-muted-foreground">
-              Hiring a team creates its agents and room. You can edit them later.
+              Hiring a team creates its agents and room. You can edit them later.{" "}
+              {/* the catalogue's teams come with their skills and routines,
+                  reviewed on the Catalogue page (CatalogPage.tsx) */}
+              <button
+                onClick={() => {
+                  close();
+                  openCatalog(dispatch, "team");
+                }}
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                More teams, with their skills and routines, in the Catalogue
+              </button>
+              .
             </p>
           </div>
         )}

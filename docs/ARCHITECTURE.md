@@ -1946,9 +1946,56 @@ redacted notice is sent; only a turn with neither keeps the empty-answer line.
 
 `server/team-file.ts` reads and writes a team as one Markdown file: a
 heading per member, a few `key: value` lines, and the brief as the body.
-Rooms export to it, imports go through it, and the gallery at
-bloks.dev/teams is checked with the same parser before anything reaches
-the hire dialog.
+A member may name library skills it uses (`uses:`), and the top block or
+a member's section may carry `routine:` lines (`weekdays 09:00 | name |
+what to say`). Rooms export to it, imports go through it, and the gallery
+at bloks.dev/teams is checked with the same parser before anything
+reaches the hire dialog.
+
+## The catalogue
+
+`catalog/` in this repository holds ready teams (`teams/<id>.md`) and
+skills (`skills/<id>/SKILL.md`, the open format: `name` and `description`
+on top, a `metadata` block for a title, version, author and tags).
+`scripts/build-catalog.mjs` writes `catalog/index.json` from them with
+each item's id, kind, title, summary, tags, author, version, path, size
+and sha256, and `test/catalog.test.ts` fails when the checked-in index is
+not what the build writes or an item breaks the house rules.
+
+`server/catalog.ts` is the pure part: reading an index, building one,
+SKILL.md in and out, links, the review (`teamPlan`, `skillPlan`), the
+update (`teamChanges`) and cleaning a file for sharing.
+`server/catalog-source.ts` fetches the index from `catalogUrl()` (the
+environment's `BLOKS_CATALOG_URL`, then `catalog.url` in config.json,
+then this repository's raw main branch), holds it for half an hour, and
+keeps it with every item under the workspace's `catalog/`, items named
+by their sha256 and hashed again when read. A failed fetch answers from
+that copy with `offline: true`. It also keeps `catalog-installs.json`:
+each team installed from the catalogue or a link, with its room, the
+agents it made and what each was given, which is what an update is
+measured against.
+
+Routes, all the owner's (an agent token gets 403, members never reach
+them):
+
+| Route | What it does |
+| --- | --- |
+| `GET /api/catalog` | The index, each item with where it stands here (`standing`), and `offline` |
+| `GET /api/catalog/:kind/:id` | One item's file, checked, and read |
+| `POST /api/catalog/review` | `{ kind, id }`, `{ url }` or `{ text, filename }`: the plan an install would carry out, and a token for it. Creates nothing |
+| `POST /api/catalog/install` | `{ token, names?, mode? }`: installs what that review showed, once |
+| `GET`, `PUT /api/catalog/source` | Where the index is read from |
+| `GET /api/bloks/:id/team.md` | A room as a catalogue team file, cleaned |
+| `GET /api/skills/:id/skill.md` | A skill as a catalogue SKILL.md, cleaned |
+
+An install of a team creates new agents with `composio: false`,
+`browser: false` and no MCP servers, a room around them, the catalogue
+skills they use that the library does not have yet, and their routines
+with `enabled: false`. An update (`mode: "update"`) matches members by
+role: an agent whose description or skills changed here since the
+install keeps them, new members join the room, new routines are filed
+paused, and nothing is removed. `bloks://install?url=` (electron/links.mjs)
+opens the same review for an https link.
 
 `bloks-server team apply` reads the same file into a workspace that may
 have the team already (`POST /api/teams/apply`, `server/team-apply.ts`).

@@ -22,7 +22,11 @@ packaged build asks GitHub for the latest release on launch; npm is
 asked whether an installed engine CLI has a newer release; browsing the
 skill catalog fetches `https://bloks.dev/skills/index.json`, held for
 half an hour (point it elsewhere with `BLOKS_SKILLS_URL`), and the team
-gallery comes from bloks.dev the same way; while an engine runs on a key
+gallery comes from bloks.dev the same way; the Catalogue of teams and
+skills reads `catalog/index.json` from this repository's main branch on
+GitHub (point it elsewhere in its settings, or with `BLOKS_CATALOG_URL`)
+and the files it lists, kept on disk for offline, and a link you choose
+to install from is fetched once, over https only; while an engine runs on a key
 of your own, OpenRouter's public model list is fetched at most once a
 day, with no key and nothing about you, to estimate what unpriced turns
 cost; and with a Bloks key, bloks.dev is asked, with that key, about your
@@ -340,6 +344,30 @@ Bloks therefore:
   cannot edit, restore, install, or keep a suggestion, and a change
   written against a version that has since moved on is refused rather
   than allowed to undo the newer one.
+
+Teams and skills from the Catalogue, a link or a file go through the same
+gate, and a few more:
+
+- Nothing installs from a click in a list or a `bloks://install` link.
+  Each opens a review of exactly what would be created (agents, a room,
+  skills with their full text, routines), and only the review's own
+  Install does anything. It installs the bytes that were shown, held by
+  a token for half an hour, not whatever a link serves by then.
+- A catalogue item is refused unless its bytes match the size and sha256
+  in the catalogue's index, whether it was just downloaded or read from
+  the copy on disk. A link has no index, so the review says it is not
+  from the catalogue.
+- Links are https only, with no sign-in in them, at most 96 KB, and are
+  read with the same parser and limits as a file imported by hand.
+- Agents a team creates start with connected apps, the browser and tool
+  servers off, and every routine it files starts paused. A team never
+  replaces a skill you already have under the same name.
+- The catalogue routes are the owner's: an agent's credential is refused,
+  and a member's requests never reach them.
+- **Share as file** takes out this workspace's stored keys, anything
+  shaped like a key, email addresses, phone numbers, your home folder
+  and the project brief given at hire. It cannot know what else in a
+  job description is private, so read the file before sending it.
 
 **Only install skills from a source you'd trust with your accounts.**
 The same caution applies to anything an agent reads and treats as

@@ -31,8 +31,8 @@ export interface UsageFocus {
 }
 /** One routine or watcher, for a link into Automations. */
 export type AutomationsFocus = { kind: "routine" | "watcher"; id: string };
-/** The two pages of Customize, the rail's Plugins place (Customize.tsx). */
-export type CustomizeTab = "plugins" | "skills";
+/** The pages of Customize, the rail's Plugins place (Customize.tsx). */
+export type CustomizeTab = "plugins" | "skills" | "catalog";
 /** One thing on Settings' Plugins page with a page of its own. */
 export type PluginFocus = { kind: "app" | "mcp" | "skill" | "cli"; id: string };
 /** What the Memory place has open (MemoryPlace.tsx): an agent by its id,
@@ -827,6 +827,9 @@ export interface AppState {
   ticks: Record<string, number>;
   /** A gallery team a bloks:// link asked to open, until the dialog takes it. */
   teamLink: string | null;
+  /** A team or skill a bloks://install link asked to review, by its https
+   * address, until the catalogue page takes it (CatalogPage.tsx). */
+  installLink: string | null;
   routinesOpen: boolean;
   /** The tab Automations opens on, when something linked to one. */
   routinesTab: AutomationsTab | null;
@@ -923,6 +926,7 @@ export type Action =
    * leaves it empty, so a preset never outlives the dialog it was for. */
   | { type: "toggleNewRoom"; open?: boolean; preset?: NewRoomPreset }
   | { type: "openTeamLink"; slug: string | null }
+  | { type: "openInstallLink"; url: string | null }
   | { type: "instances"; instances: InstanceInfo[] }
   | { type: "engineUpdates"; updates: Record<string, { installed: string; latest: string }> }
   | { type: "providers"; providers: ProviderRow[] }
@@ -1196,6 +1200,20 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case "openTeamLink":
       return { ...state, teamLink: action.slug, newRoomOpen: action.slug ? true : state.newRoomOpen };
+    // the catalogue page opens with the link's review on top of it
+    case "openInstallLink":
+      return action.url
+        ? {
+            ...state,
+            installLink: action.url,
+            page: "plugins",
+            customize: "catalog",
+            customizeApp: null,
+            routinesOpen: false,
+            appSettingsOpen: false,
+            settingsOpen: false,
+          }
+        : { ...state, installLink: null };
     case "toggleNewRoom": {
       const open = action.open ?? !state.newRoomOpen;
       return { ...state, newRoomOpen: open, newRoomPreset: open ? (action.preset ?? null) : null };
@@ -1675,6 +1693,7 @@ export const initialState: AppState = {
   rehearsalsTick: 0,
   ticks: {},
   teamLink: null,
+  installLink: null,
   routinesOpen: false,
   routinesTab: null,
   routinesFocus: null,

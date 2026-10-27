@@ -724,8 +724,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const bridge = window.bloks;
     if (!bridge?.onLink) return;
-    const open = (link: { kind?: string; slug?: string; fragment?: string } | null) => {
+    const open = (link: { kind?: string; slug?: string; fragment?: string; url?: string } | null) => {
       if (link?.kind === "team" && link.slug) rawDispatch({ type: "openTeamLink", slug: link.slug });
+      // bloks://install?url=: the catalogue's review of whatever it points
+      // at, fetched and checked by the server; nothing installs from it
+      if (link?.kind === "install" && link.url) rawDispatch({ type: "openInstallLink", url: link.url });
       // a workspace invite from bloks.dev or a scanned QR: the join dialog,
       // filled in (src/components/members/JoinWorkspaceDialog.tsx)
       if (link?.kind === "join" && link.fragment) openJoinDialog(`bloks://join#${link.fragment}`);

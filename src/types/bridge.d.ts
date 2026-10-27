@@ -312,8 +312,8 @@ declare global {
       ): () => void;
       onMeetingEnd?(handler: (payload: { code: number }) => void): () => void;
       /** bloks:// links from the website (electron/main.mjs). */
-      onLink?(handler: (link: { kind: "team"; slug: string } | { kind: "join"; fragment: string } | { kind: "plan" }) => void): () => void;
-      pendingLink?(): Promise<{ kind: "team"; slug: string } | { kind: "join"; fragment: string } | { kind: "plan" } | null>;
+      onLink?(handler: (link: { kind: "team"; slug: string } | { kind: "join"; fragment: string } | { kind: "plan" } | { kind: "install"; url: string }) => void): () => void;
+      pendingLink?(): Promise<{ kind: "team"; slug: string } | { kind: "join"; fragment: string } | { kind: "plan" } | { kind: "install"; url: string } | null>;
       /** Opens one of bloks.dev's offers in the browser, the licence added
        * in the fragment by the main process for bloks.dev alone; false for
        * a link it will not open. */

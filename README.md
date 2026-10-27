@@ -247,6 +247,19 @@ agent framed as untrusted data, never as instructions. On your phone the
 conversation says the agent is browsing on the Mac, with a small live
 picture of the page.
 
+### Ready teams and skills
+
+The **Catalogue**, in Customize, holds teams (a launch crew, a research
+desk, a support desk, personal admin and more) and the skills they use,
+kept in this repository's [catalog/](catalog/README.md) folder. Before
+anything installs, a review says exactly what it creates: the agents,
+their room, each skill to read first, and the routines, which start
+paused. New agents start with connected apps, the browser and tool
+servers off. A newer version comes back as an update that shows what
+changed and keeps what you changed. Install from a raw GitHub link, a
+file or a `bloks://install?url=` link through the same review, and use
+**Share as file** on a room or a skill to send one back by pull request.
+
 ### Careful by default
 
 - **Approvals say what will run.** A card shows the command, file, diff
@@ -557,6 +570,7 @@ Inside each workspace's folder:
 | `reads.json` | How far each person has read each conversation |
 | `skills/` | Installed skills, one markdown file each |
 | `skill-history/` | Every version of each of your skills, with who changed it and why |
+| `catalog/`, `catalog-installs.json` | The Catalogue's index and items as last fetched, checked by sha256, and the teams installed from it |
 | `workspaces/` | Each agent's own home folder, with its `MEMORY.md` and topic files |
 | `checkpoints/` | Each turn's before and after, kept once per file version, for undo |
 | `memory-journal/` | Every change to an agent's memory, with the text before and after |
@@ -578,6 +592,9 @@ your conversations:
   release;
 - the skill catalog and the team gallery come from bloks.dev when you
   browse them;
+- the Catalogue of teams and skills is read from this repository on
+  GitHub when you open it, and kept on your computer so it opens
+  offline; a link you install from is fetched once, when you ask;
 - when an engine runs on a key of yours, the public model price list is
   fetched from OpenRouter at most once a day, to estimate costs, with
   nothing about you in the request;

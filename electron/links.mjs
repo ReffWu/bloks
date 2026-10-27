@@ -54,6 +54,29 @@ export function planLink(raw) {
   }
 }
 
+/**
+ * bloks://install?url=<https link to a team or a skill>, the "Install in
+ * Bloks" button on a catalogue page or anywhere else. The address rides
+ * on as text, and only an https one: the app fetches it, checks it the
+ * way it checks a file dropped on it, and shows the same review, so a
+ * link can open a review but never install anything by itself.
+ */
+export function installLink(raw) {
+  const text = String(raw ?? "");
+  if (text.length > 2200) return null;
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "bloks:" || url.hostname !== "install") return null;
+    const target = url.searchParams.get("url") ?? "";
+    if (target.length > 2048) return null;
+    const parsed = new URL(target);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) return null;
+    return { kind: "install", url: parsed.toString() };
+  } catch {
+    return null;
+  }
+}
+
 /** The bloks:// link among a launch's arguments, or null. */
 export function linkInArgv(argv) {
   return (Array.isArray(argv) ? argv : []).find((arg) => typeof arg === "string" && arg.startsWith("bloks://")) ?? null;

@@ -49,7 +49,7 @@ import { markInstall, restartIntoUpdate, takeInstallMark, within } from "./updat
 import { claimPairLink, reachOf, startLanProxy, startRemoteProxy } from "./remote.mjs";
 import { nativeSettingsObservation } from "./settings-observation.mjs";
 import { sameAppOrigin } from "./navigation.mjs";
-import { joinLink, linkInArgv, planLink, teamLink } from "./links.mjs";
+import { installLink, joinLink, linkInArgv, planLink, teamLink } from "./links.mjs";
 import { licencePrint, withLicence } from "./plan-link.mjs";
 import { keepPlan, planFromReport, readKeptPlan } from "./account-plan.mjs";
 import {
@@ -187,10 +187,9 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // bloks:// links from the website ("Add to Bloks" on a team in the
-// gallery). Only a gallery team by name is understood: a link cannot
-// point the app at an arbitrary address, and what it opens is the same
-// review a person sees when importing by hand, so nothing is created
-// until they choose the seats. macOS hands links over with open-url, the
+// gallery), and bloks://install?url= for a team or a skill anywhere on
+// https. What either opens is the same review a person sees when
+// importing by hand, so nothing is created until they confirm it. macOS hands links over with open-url, the
 // others as an argument, to a second launch or to the one the link
 // started (electron/links.mjs).
 // A development run that starts its own servers is a throwaway, often on
@@ -199,7 +198,7 @@ if (!app.requestSingleInstanceLock()) {
 if (app.isPackaged || !HOSTS_SERVERS) app.setAsDefaultProtocolClient("bloks");
 let pendingLink = null;
 function deliverLink(raw) {
-  const link = teamLink(raw) ?? joinLink(raw) ?? planLink(raw);
+  const link = teamLink(raw) ?? joinLink(raw) ?? planLink(raw) ?? installLink(raw);
   if (!link) return;
   const main = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w));
   if (!main || main.webContents.isLoading()) {

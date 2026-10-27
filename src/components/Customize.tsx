@@ -1,14 +1,15 @@
 // Customize: what your agents can reach and what they know how to do, as
-// a place of its own off the main rail. A sidebar of its own lists the two
+// a place of its own off the main rail. A sidebar of its own lists the
 // pages and the apps already connected; each page is a catalogue laid out
 // to read, two to a row, with the one action each item needs beside it.
 // The sidebar is a page column (SideColumn.tsx), sized by its edge and
-// folded with ⌘B, and folded the two pages are a switch at the top left
-// of the page.
+// folded with ⌘B, and folded the pages are a switch at the top left of
+// the page.
 //
 // Plugins are the connected apps (Composio Connect) and the interfaces MCP
 // servers draw; Skills are the instructions agents pick up, the ones on
-// this machine and the catalogue they come from.
+// this machine; Catalogue is ready teams and skills to install
+// (CatalogPage.tsx).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check } from "@/components/icons";
 import { ChevronDown } from "@/components/icons";
@@ -18,7 +19,8 @@ import { MessageSquare } from "@/components/icons";
 import { MoreHorizontal } from "@/components/icons";
 import { Plus } from "@/components/icons";
 import { Puzzle } from "@/components/icons";
-import { RefreshCw } from "@/components/icons";
+import { Download } from "@/components/icons";
+import { LayoutGrid } from "@/components/icons";
 import { Search } from "@/components/icons";
 import { Settings } from "@/components/icons";
 import { Sparkles } from "@/components/icons";
@@ -31,7 +33,7 @@ import { AppDetailsPage } from "./AppDetails";
 import { ComposioKeyDialog } from "./ComposioKeyDialog";
 import { detailsFor } from "@/lib/appDetails";
 import { tryPrompt } from "@/lib/tryPrompt";
-import { SkillCatalog } from "./SkillCatalog";
+import { CatalogPage, openCatalog } from "./CatalogPage";
 import { AddSkillDialog, ProposedSkill, type Proposal } from "./SkillsPanel";
 import { SkillDetail, usageWords } from "./SkillVersions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -42,11 +44,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { confirm } from "@/components/ui/confirm";
-import { Skeleton, SkeletonAvatar, SkeletonGroup } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
-import { FoldedSwitchBar, FoldedSwitchSlot, SideColumn, SideSwitch, TitleTools } from "./SideColumn";
+import { FoldedSwitchBar, FoldedSwitchSlot, SideColumn, SideSwitch } from "./SideColumn";
+import { shareAsFile } from "@/lib/shareFile";
+import { GridItem, GridSkeleton, MoreLine, PageHeader, pill, Pills, ROUND, SectionTitle, Tile } from "./CustomizeParts";
 
 /** An app's mark: its own artwork, then its site's icon, then a letter,
  * because one broken image in a grid of logos looks worse than a letter. */
@@ -85,198 +88,6 @@ export function ServiceIcon({ card, size = 24 }: { card: ToolkitCard; size?: num
   );
 }
 
-/** The tile an item's mark sits on, the same for an app and a skill. */
-function Tile({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border bg-card text-muted-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-      {children}
-    </span>
-  );
-}
-
-const pill =
-  "flex h-9 items-center rounded-full outline-none transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.97]";
-
-/** The heading every Customize page shares: title, line, and the tools. */
-function PageHeader({
-  title,
-  says,
-  search,
-  onSearch,
-  searchRef,
-  placeholder,
-  onRefresh,
-  refreshing,
-  onSettings,
-  add,
-}: {
-  title: string;
-  says: string;
-  search: string;
-  onSearch: (value: string) => void;
-  searchRef: React.RefObject<HTMLInputElement | null>;
-  placeholder: string;
-  onRefresh: () => void;
-  refreshing?: boolean;
-  onSettings: () => void;
-  add: React.ReactNode;
-}) {
-  return (
-    <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
-      <div className="min-w-0">
-        <h1 className="text-balance text-display font-semibold text-foreground">{title}</h1>
-        <p className="mt-1.5 text-pretty text-ui text-muted-foreground">{says}</p>
-      </div>
-      <TitleTools>
-        <label className="flex h-9 w-[240px] items-center gap-2 rounded-full border bg-card px-3.5 transition-colors duration-150 focus-within:border-ring/50 lg:w-[280px]">
-          <Search size={15} className="shrink-0 text-muted-foreground" />
-          <input
-            ref={searchRef}
-            value={search}
-            onChange={(e) => onSearch(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && (onSearch(""), e.currentTarget.blur())}
-            placeholder={placeholder}
-            aria-label={placeholder}
-            className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-muted-foreground"
-          />
-        </label>
-        <button
-          onClick={onRefresh}
-          aria-label="Refresh"
-          title="Refresh"
-          className={cn(pill, "size-9 justify-center text-muted-foreground hover:bg-accent hover:text-foreground")}
-        >
-          <RefreshCw size={16} className={cn(refreshing && "animate-spin motion-reduce:animate-none")} />
-        </button>
-        <button
-          onClick={onSettings}
-          aria-label="Settings"
-          title="Settings"
-          className={cn(pill, "size-9 justify-center text-muted-foreground hover:bg-accent hover:text-foreground")}
-        >
-          <Settings size={16} />
-        </button>
-        {add}
-      </TitleTools>
-    </header>
-  );
-}
-
-/** Two or three choices of what a page shows, as pills. */
-function Pills<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: Array<{ value: T; label: React.ReactNode }>;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div role="tablist" className="mt-7 flex items-center gap-1">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          role="tab"
-          aria-selected={option.value === value}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            "flex h-8 items-center gap-1.5 rounded-full px-4 text-body font-medium outline-none transition-colors duration-150",
-            option.value === value ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function SectionTitle({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
-  return (
-    <div className="mb-1 mt-9 flex items-center justify-between border-b pb-3">
-      <h2 className="text-lead font-semibold text-foreground">{children}</h2>
-      {aside}
-    </div>
-  );
-}
-
-/** "See A, B, and 12 more": what the fold is hiding, by name. */
-function MoreLine({ hidden, onClick }: { hidden: string[]; onClick: () => void }) {
-  if (!hidden.length) return null;
-  const named = hidden.slice(0, 2);
-  const rest = hidden.length - named.length;
-  return (
-    <button
-      onClick={onClick}
-      className="mt-3 px-1 text-left text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
-    >
-      See {named.join(", ")}
-      {rest > 0 ? `, and ${rest} more` : ""}
-    </button>
-  );
-}
-
-/** One item in a catalogue grid: its tile, its name and line, its action. */
-function GridItem({
-  tile,
-  name,
-  line,
-  action,
-  onOpen,
-}: {
-  tile: React.ReactNode;
-  name: React.ReactNode;
-  line?: string;
-  action?: React.ReactNode;
-  onOpen?: () => void;
-}) {
-  const body = (
-    <>
-      {tile}
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-ui font-medium text-foreground">{name}</span>
-        {line && <span className="mt-0.5 block truncate text-body text-muted-foreground">{line}</span>}
-      </span>
-    </>
-  );
-  return (
-    <div className="group flex min-w-0 items-center gap-3.5 rounded-xl px-2 py-3 transition-colors duration-150 hover:bg-accent/40">
-      {onOpen ? (
-        <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3.5 text-left outline-none">
-          {body}
-        </button>
-      ) : (
-        <span className="flex min-w-0 flex-1 items-center gap-3.5">{body}</span>
-      )}
-      {action && <span className="flex shrink-0 items-center">{action}</span>}
-    </div>
-  );
-}
-
-/** A catalogue grid before it arrives: GridItem's own outline, a tile and
- * two lines, so the real items land where their shapes already were. */
-function GridSkeleton({ label, count = 6, className }: { label: string; count?: number; className?: string }) {
-  return (
-    <SkeletonGroup label={label} className={cn("grid grid-cols-1 gap-x-8 md:grid-cols-2", className)}>
-      {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="flex min-w-0 items-center gap-3.5 px-2 py-3">
-          <SkeletonAvatar size={40} shape="tile" />
-          <div className="min-w-0 flex-1">
-            <div className="flex h-[22px] items-center">
-              <Skeleton className="h-2.5 rounded-full" style={{ width: `${32 + ((i * 17) % 24)}%` }} />
-            </div>
-            <div className="mt-0.5 flex h-5 items-center">
-              <Skeleton className="h-2 rounded-full" style={{ width: `${62 + ((i * 23) % 30)}%` }} />
-            </div>
-          </div>
-        </div>
-      ))}
-    </SkeletonGroup>
-  );
-}
-
-const ROUND = "flex size-8 items-center justify-center rounded-full text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.94] disabled:opacity-40";
 
 // ---------------------------------------------------------------------------
 
@@ -557,7 +368,6 @@ function SkillsPage({
   const [skills, setSkills] = useState<Skill[] | null>(null);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [updates, setUpdates] = useState(0);
-  const [view, setView] = useState<"installed" | "catalog">("installed");
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<Skill | null>(null);
   const [unfolded, setUnfolded] = useState<Record<string, boolean>>({});
@@ -577,8 +387,9 @@ function SkillsPage({
       api("/api/skills/proposals")
         .then((r) => setProposals(r.proposals ?? []))
         .catch(() => setProposals([])),
-      api("/api/skills/registry")
-        .then((r) => setUpdates(r.updates ?? 0))
+      // the catalogue's updates for skills here, said on this page too
+      api("/api/catalog")
+        .then((r) => setUpdates((r.items ?? []).filter((i: { kind: string; standing: { state: string } }) => i.kind === "skill" && i.standing.state === "outdated").length))
         .catch(() => setUpdates(0)),
     ]).finally(() => setLoading(false));
   }, []);
@@ -635,7 +446,7 @@ function SkillsPage({
                 <Plus />
                 Write or import a skill
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setView("catalog")}>
+              <DropdownMenuItem onClick={() => openCatalog(dispatch, "skill")}>
                 <Sparkles />
                 Browse the catalogue
               </DropdownMenuItem>
@@ -644,31 +455,20 @@ function SkillsPage({
         }
       />
 
-      <Pills
-        value={view}
-        onChange={setView}
-        options={[
-          { value: "installed", label: "On this machine" },
-          {
-            value: "catalog",
-            label: (
-              <>
-                Catalogue
-                {updates > 0 && (
-                  <span className="rounded-full bg-brand/15 px-1.5 text-caption font-semibold tabular-nums text-brand-ink">{updates}</span>
-                )}
-              </>
-            ),
-          },
-        ]}
-      />
-
-      {view === "catalog" ? (
-        <div className="mt-6 flex min-h-[420px] flex-col">
-          <SkillCatalog onInstalled={() => void load()} />
+      {updates > 0 && !q && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
+          <span className="text-ui text-foreground">
+            {updates === 1 ? "A skill you installed has an update" : `${updates} skills you installed have updates`} in the catalogue.
+          </span>
+          <button
+            onClick={() => openCatalog(dispatch, "skill")}
+            className={cn(pill, "h-8 bg-foreground px-3.5 text-body font-medium text-background hover:opacity-90")}
+          >
+            Review
+          </button>
         </div>
-      ) : (
-        <>
+      )}
+
           {proposals.length > 0 && !q && (
             <>
               <SectionTitle>Suggested from your chats</SectionTitle>
@@ -740,8 +540,6 @@ function SkillsPage({
             Attach skills in an agent's settings. Stored in{" "}
             <code className="rounded bg-muted px-1 py-px font-mono text-small">~/.bloks/skills</code>.
           </p>
-        </>
-      )}
 
       <AddSkillDialog open={adding} onOpenChange={setAdding} onInstalled={() => void load()} />
 
@@ -764,15 +562,29 @@ function SkillsPage({
                 <span className="text-body text-muted-foreground">
                   {open.source === "builtin" ? "Built in" : "Yours"}
                 </span>
-                {open.source === "user" && (
+                <div className="flex items-center gap-1">
+                  {/* the catalogue's SKILL.md, keys and addresses taken out */}
                   <button
-                    onClick={() => remove(open)}
-                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body text-destructive transition-colors duration-150 hover:bg-destructive/10"
+                    onClick={() =>
+                      shareAsFile(`/api/skills/${open.id}/skill.md`, "SKILL.md")
+                        .then(() => toast("Saved SKILL.md", { description: `For the catalogue, it goes in catalog/skills/${open.id}/.` }))
+                        .catch((e: Error) => toast.error(e.message))
+                    }
+                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
                   >
-                    <Trash2 size={14} />
-                    Remove
+                    <Download size={14} />
+                    Share as file
                   </button>
-                )}
+                  {open.source === "user" && (
+                    <button
+                      onClick={() => remove(open)}
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body text-destructive transition-colors duration-150 hover:bg-destructive/10"
+                    >
+                      <Trash2 size={14} />
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
             </>
           )}
@@ -830,7 +642,7 @@ function CustomizeSidebar({
         <span className="text-lead font-semibold text-foreground">Customize</span>
         <button
           onClick={onSearch}
-          aria-label={tab === "plugins" ? "Search plugins" : "Search skills"}
+          aria-label={tab === "plugins" ? "Search plugins" : tab === "skills" ? "Search skills" : "Search the catalogue"}
           title="Search"
           className="flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-accent hover:text-foreground active:scale-[0.96]"
         >
@@ -840,6 +652,7 @@ function CustomizeSidebar({
       <nav className="flex flex-col gap-0.5 px-2">
         <NavRow active={tab === "plugins"} icon={<Puzzle size={17} />} label="Plugins" onClick={() => setTab("plugins")} />
         <NavRow active={tab === "skills"} icon={<Sparkles size={17} />} label="Skills" onClick={() => setTab("skills")} />
+        <NavRow active={tab === "catalog"} icon={<LayoutGrid size={17} />} label="Catalogue" onClick={() => setTab("catalog")} />
       </nav>
       <div className="mt-6 px-4 pb-1.5 text-body text-muted-foreground">Installed</div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
@@ -869,6 +682,7 @@ export function CustomizeView() {
   const connectors = useConnectors();
   const [pluginSearch, setPluginSearch] = useState("");
   const [skillSearch, setSkillSearch] = useState("");
+  const [catalogSearch, setCatalogSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -901,6 +715,7 @@ export function CustomizeView() {
                 options={[
                   { value: "plugins", label: "Plugins" },
                   { value: "skills", label: "Skills" },
+                  { value: "catalog", label: "Catalogue" },
                 ]}
               />
             </div>
@@ -915,6 +730,7 @@ export function CustomizeView() {
                     items={[
                       { id: "plugins", label: "Plugins", icon: <Puzzle size={14} /> },
                       { id: "skills", label: "Skills", icon: <Sparkles size={14} /> },
+                      { id: "catalog", label: "Catalogue", icon: <LayoutGrid size={14} /> },
                     ]}
                   />
                 ) : null
@@ -925,6 +741,8 @@ export function CustomizeView() {
                 <AppDetailsPage slug={state.customizeApp} connectors={connectors} />
               ) : tab === "plugins" ? (
                 <PluginsPage connectors={connectors} search={pluginSearch} setSearch={setPluginSearch} searchRef={searchRef} />
+              ) : tab === "catalog" ? (
+                <CatalogPage search={catalogSearch} setSearch={setCatalogSearch} searchRef={searchRef} />
               ) : (
                 <SkillsPage search={skillSearch} setSearch={setSkillSearch} searchRef={searchRef} />
               )}

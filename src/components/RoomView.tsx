@@ -69,6 +69,8 @@ import { ROOM_ANSWERS, answersOf, answersWords, routeWords, type RoomAnswers, ty
 import { replyCounts, replyLabel } from "@/lib/threads";
 import { queuedLine } from "@/lib/when";
 import { cn } from "@/lib/cn";
+import { shareAsFile, teamFilename } from "@/lib/shareFile";
+import { toast } from "@/components/ui/toast";
 import { roomLead } from "@/lib/roomLead";
 import { useStickToBottom } from "@/lib/useStickToBottom";
 import { usePageVisible } from "@/lib/pageVisible";
@@ -1001,21 +1003,13 @@ export function RoomView({ blok }: { blok: Blok }) {
   };
 
   const exportManifest = () => {
-    // The manifest is the room's roles as a file, for handing to someone
-    // else. It downloads rather than opens: the point is to leave with it.
-    // A Markdown team file (server/team-file.ts): readable, editable, and
-    // what the gallery on bloks.dev is made of.
-    fetch(`/api/bloks/${blok.id}/team.md`)
-      .then((res) => (res.ok ? res.text() : Promise.reject(new Error(String(res.status)))))
-      .then((text) => {
-        const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${blok.name.replace(/[^\w-]+/g, "-").toLowerCase() || "team"}.team.md`;
-        a.click();
-        URL.revokeObjectURL(url);
-      })
-      .catch(() => {});
+    // The room's roles as a file, for handing to someone else or to the
+    // catalogue: a Markdown team file in the catalogue's own format
+    // (server/catalog.ts), with this workspace's secrets, addresses and
+    // the hire's project brief taken out by the server.
+    shareAsFile(`/api/bloks/${blok.id}/team.md`, teamFilename(blok.name))
+      .then(() => toast("Saved the team file", { description: "Anyone can install it with Install from a file." }))
+      .catch((e: Error) => toast.error(e.message));
   };
 
   // Seniority is the agent's in every room; the crown is this room's own.
@@ -1550,7 +1544,7 @@ function RoomMenu({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onExport}>
           <Download size={15} />
-          Export team file
+          Share as file
         </DropdownMenuItem>
         {members.length > 1 && (
           <DropdownMenuSub>
