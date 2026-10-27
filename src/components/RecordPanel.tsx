@@ -63,6 +63,7 @@ const LABEL: Record<string, MessageKey> = {
   "sessions.imported": "recordPanel.kind.sessionsImported",
   "server.update": "recordPanel.kind.serverUpdate",
   "home.call": "recordPanel.kind.homeCall",
+  "runs.exported": "recordPanel.kind.runsExported",
 };
 
 function when(at: number): string {

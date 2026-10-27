@@ -37,6 +37,12 @@
 //                                machine, and what each becomes. Reads only;
 //                                the import itself is chosen in the app
 //   bloks-server stop            stop the running server
+//   bloks-server export-runs [--format openai|sharegpt|trajectory] [--dry-run]
+//                                write agents' runs to a file on this computer
+//                                to train a model on, cleaned of keys and, by
+//                                default, of emails, phone numbers, home
+//                                folder paths and people's names; --help for
+//                                the rest. Works with Bloks stopped too
 //
 // And for scripts, CI and a terminal (server/scripting-cli.ts):
 //
@@ -171,6 +177,14 @@ async function answering() {
 async function backupCode() {
   const source = join(root, "server", "backup.ts");
   return import(pathToFileURL(existsSync(source) ? source : join(root, "dist-server", "backup.js")).href);
+}
+
+/** export-runs, which reads the data folder itself, like backup. */
+async function exportRuns() {
+  const source = join(root, "server", "run-export-cli.ts");
+  const code = await import(pathToFileURL(existsSync(source) ? source : join(root, "dist-server", "run-export-cli.js")).href);
+  const exitCode = await code.exportRunsMain(args, { stdout: process.stdout, stderr: process.stderr, env: process.env, dataDir: dataDir() });
+  process.stdout.write("", () => process.exit(exitCode));
 }
 
 /** run, team, chat and token, which live with the server's code so the
@@ -534,6 +548,9 @@ if (handOver) {
     console.log((await answering()) ? "Asked Bloks to stop. It is still finishing up." : "Bloks has stopped.");
     break;
   }
+  case "export-runs":
+    await exportRuns();
+    break;
   case "run":
   case "team":
   case "chat":
@@ -562,5 +579,5 @@ if (handOver) {
     break;
   }
   default:
-    fail("Commands: bloks-server [start], activate KEY, pair, status, drain, backup, restore FILE, update, import --dry-run, stop, run AGENT TASK, team apply FILE, chat AGENT, token");
+    fail("Commands: bloks-server [start], activate KEY, pair, status, drain, backup, restore FILE, update, import --dry-run, stop, export-runs, run AGENT TASK, team apply FILE, chat AGENT, token");
 }

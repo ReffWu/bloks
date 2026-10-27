@@ -10,7 +10,7 @@ import { CLOUD_KEY, licenceFrom, licenceToUse } from "./licence.ts";
 import "./pending-restore.ts";
 import { codexTextFor, itemProgress, isProgressText, type CodexText } from "./codex-text.ts";
 import { SaidOnce, desktopNotice, noticeKey, unreadCount as desktopUnreadCount } from "./desktop-notice.ts";
-import { closeSync, createWriteStream, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
+import { closeSync, createWriteStream, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, unlinkSync, watch, writeFileSync, renameSync } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect as netConnect } from "node:net";
@@ -72,6 +72,7 @@ import {
   saveConfig,
   AVATARS_DIR,
   EVENTS_DIR,
+  NATIVE_DIR,
   type AppConfig,
   type CustomEndpoint,
   type CustomKey,
@@ -691,6 +692,23 @@ import * as workspace from "./workspace.ts";
 import * as places from "./workplace.ts";
 import { Gate } from "./workplace-gate.ts";
 import { PlaceError, Workplaces, filesAreHere } from "./workplace-run.ts";
+import {
+  defaultChoice,
+  engineName as exportEngineName,
+  engineResults,
+  ensureExportsDir,
+  exportName,
+  exportPath,
+  exportsDirFor,
+  isExportName,
+  knownNames,
+  listExports,
+  readChoice,
+  runExport,
+  storedSecrets,
+  transcriptTurns,
+  type ExportSource,
+} from "./run-export.ts";
 import * as speech from "./speech.ts";
 import { speakable } from "./speech-text.ts";
 
@@ -21088,6 +21106,128 @@ async function serveMove(req: IncomingMessage, res: ServerResponse, method: stri
   }
 }
 
+/** The workspace as an export reads it: what the store holds now, the
+ * people it knows, and the keys it has saved, for taking out by value. */
+function exportSource(): ExportSource {
+  return {
+    bots: store.bots,
+    messages: (threadId) => store.messagesFor(threadId),
+    eventsDir: EVENTS_DIR,
+    nativeDir: NATIVE_DIR,
+    names: knownNames({ people: people.people() }, cfg),
+    secrets: [...storedSecrets(cfg), ...[creditsEnvToken()].filter((t): t is string => typeof t === "string" && t.length >= 8)],
+    home: homedir(),
+    privateReadable: invites.joiningSettings().privateReadable,
+    personName: (personId) => people.person(personId)?.name ?? null,
+    memory: (botId) => workspace.readMemoryFile(botId).text || null,
+    price: (completed) => turnPrice(completed).cost,
+    busy: (threadId) => Boolean(store.taskByThread(threadId)?.task.busy),
+  };
+}
+
+/** One export at a time: two would read every transcript twice over for
+ * nothing, and the second is almost always a double click. */
+let exportRunning = false;
+
+async function serveTrainingExport(req: IncomingMessage, res: ServerResponse, method: string, path: string) {
+  try {
+    if (method === "GET" && path === "/api/training-export") {
+      const readable = invites.joiningSettings().privateReadable;
+      const kinds = new Map<string, string>();
+      for (const instance of registry.instances()) kinds.set(instance.driverKind, exportEngineName(instance.driverKind));
+      return json(res, 200, {
+        agents: store.bots.map((bot) => ({
+          id: bot.id,
+          name: bot.name,
+          color: bot.color,
+          ...(bot.shape ? { shape: bot.shape } : {}),
+          archived: Boolean(bot.archivedAt),
+          // a member's private conversation is not even listed while
+          // reading them is off, as everywhere else (server/access.ts)
+          conversations: bot.tasks
+            .filter((task) => !task.personId || readable)
+            .map((task) => {
+              const turns = transcriptTurns(task.id, store.messagesFor(task.id));
+              return {
+                id: task.id,
+                title: task.personId ? `${people.person(task.personId)?.name ?? "A member"}'s conversation` : task.title,
+                kind: task.personId ? "member" : task.team ? "team" : "own",
+                turns: turns.length,
+                lastAt: turns.at(-1)?.at ?? null,
+              };
+            }),
+        })),
+        engines: [...kinds].map(([kind, name]) => ({ kind, name, toolResults: engineResults(kind) })),
+        privateReadable: readable,
+        folder: shownPath(exportsDirFor(DATA_DIR)),
+        exports: listExports(DATA_DIR),
+        defaults: defaultChoice(),
+      });
+    }
+    if (method === "POST" && (path === "/api/training-export" || path === "/api/training-export/preview")) {
+      const choice = readChoice(await readBody(req));
+      if (typeof choice === "string") return json(res, 400, { error: choice });
+      if (exportRunning) return json(res, 409, { error: "An export is already being written. Try again once it is done." });
+      exportRunning = true;
+      try {
+        const writing = path === "/api/training-export";
+        const dir = writing ? ensureExportsDir(DATA_DIR) : null;
+        const out = dir ? join(dir, exportName(dir, choice)) : null;
+        const result = await runExport(exportSource(), choice, { out });
+        if (!writing) return json(res, 200, { summary: result.summary, preview: result.preview, previewOf: result.previewOf });
+        if (result.file) {
+          record({
+            at: Date.now(),
+            kind: "runs.exported",
+            actor: "you",
+            summary: `Exported ${result.summary.records} ${result.summary.records === 1 ? "record" : "records"} of agents' runs for training, to this computer`,
+            detail: { file: basename(result.file), records: result.summary.records, turns: result.summary.turns, format: choice.format },
+          });
+        }
+        return json(res, 200, {
+          summary: result.summary,
+          file: result.file ? { name: basename(result.file), path: shownPath(result.file), size: statSync(result.file).size } : null,
+          exports: listExports(DATA_DIR),
+        });
+      } finally {
+        exportRunning = false;
+      }
+    }
+    const m = path.match(/^\/api\/training-export\/files\/([^/]+)(?:\/(reveal))?$/);
+    if (m) {
+      const name = decodeURIComponent(m[1]);
+      if (!isExportName(name)) return json(res, 400, { error: "That is not the name of an export." });
+      const file = exportPath(DATA_DIR, name);
+      if (!file) return json(res, 404, { error: "There is no export by that name." });
+      if (method === "GET" && !m[2]) {
+        // opened once, inside the exports folder, and sent from that
+        // open file, never through a link out of it
+        const held = openInside(exportsDirFor(DATA_DIR), [name]);
+        if (!held) return json(res, 404, { error: "There is no export by that name." });
+        res.writeHead(200, {
+          "content-type": "application/x-ndjson",
+          "content-length": held.stat.size,
+          "content-disposition": `attachment; filename="${name}"`,
+          "cache-control": "no-store",
+        });
+        pipeline(streamHeld(held), res, () => {});
+        return;
+      }
+      if (method === "POST" && m[2] === "reveal") return json(res, 200, { path: shownPath(file), shown: revealBackup(file) });
+      if (method === "DELETE" && !m[2]) {
+        rmSync(file, { force: true });
+        return json(res, 200, { deleted: name, exports: listExports(DATA_DIR) });
+      }
+    }
+    return json(res, 404, { error: "not found" });
+  } catch (e) {
+    if (e instanceof URIError) return json(res, 400, { error: "That is not the name of an export." });
+    return json(res, (e as { status?: number }).status ?? 500, {
+      error: redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 300),
+    });
+  }
+}
+
 /** Bigger than any photo the app or an agent file puts there, which the
  * body limit keeps far smaller already. */
 const AVATAR_MAX_BYTES = 16 * 1024 * 1024;
@@ -29445,6 +29585,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (path === "/api/backups" || path.startsWith("/api/backups/")) {
       if (!local || asAgent) return json(res, 403, { error: "not from here" });
       return serveBackups(req, res, method, path);
+    }
+    // ── agents' runs, written out to train a model on (server/run-export.ts) ──
+    // This computer only, and the owner's alone: an export is every
+    // conversation in the workspace in one file, so never an agent's
+    // credential, never a member's, and never a paired device, which
+    // would be asking for that file somewhere else.
+    if (path === "/api/training-export" || path.startsWith("/api/training-export/")) {
+      if (!local || asAgent || namesMember()) return json(res, 403, { error: "not from here" });
+      return serveTrainingExport(req, res, method, path);
     }
     // Moving the whole workspace to another machine. Never an agent's. On
     // a hosted workspace the owner's own paired devices write one out and
