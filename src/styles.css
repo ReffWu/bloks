@@ -760,3 +760,232 @@
   cursor: col-resize !important;
   user-select: none !important;
 }
+
+/* ── the trace waterfall (trace/TraceWaterfall.tsx) ──────────────────────
+ *
+ * Every bar, tick, link and the playhead is placed by the same two
+ * numbers, set on the timeline every frame while a turn runs: --ms,
+ * pixels per millisecond, and --now, how far the shared clock has gone.
+ * Each piece carries its own --start and --end (milliseconds from the
+ * first agent's start), and one still running has no --end, so it reaches
+ * --now on its own. Nothing is rendered again to move. An agent's colour
+ * comes in as --c, on its rows. */
+.trace-timeline {
+  --ms: 0;
+  --now: 0;
+  contain: layout paint;
+}
+.trace-bar {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: var(--bar-h, 14px);
+  margin-top: calc(var(--bar-h, 14px) / -2);
+  border-radius: 4px;
+  /* a piece of a parent's bar sits a pixel in from each neighbour */
+  transform: translate3d(calc(var(--start) * var(--ms) * 1px + var(--inset, 0px)), 0, 0);
+  width: max(var(--bar-min, 3px), calc((var(--end, var(--now)) - var(--start)) * var(--ms) * 1px - var(--inset, 0px) * 2));
+  container-type: inline-size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #fff;
+}
+.trace-bar[data-kind="model"],
+.trace-bar[data-kind="retry"] {
+  background-color: var(--c);
+}
+/* tool time: the same colour a shade deeper, so a parent's bar reads as
+   thinking and doing in turn */
+.trace-bar[data-kind="tool"] {
+  background-color: color-mix(in oklab, var(--c) 70%, #000);
+}
+.dark .trace-bar[data-kind="tool"] {
+  background-color: color-mix(in oklab, var(--c) 52%, var(--background));
+}
+.trace-bar[data-kind="agent"] {
+  background-color: color-mix(in oklab, var(--c) 80%, #fff);
+  color: #101013;
+  justify-content: flex-start;
+  padding-left: 3px;
+}
+.trace-bar[data-kind="wait"] {
+  background-color: color-mix(in srgb, var(--foreground) 4%, transparent);
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--foreground) 26%, transparent) 0 1px,
+    transparent 1px 5px
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+.trace-bar[data-kind="failed"] {
+  background-color: var(--destructive);
+  color: var(--destructive-foreground);
+}
+.trace-bar[data-kind="stopped"] {
+  background-color: color-mix(in oklab, var(--c) 34%, transparent);
+}
+/* a mark inside a bar only where the bar has room for it */
+@container (width < 15px) {
+  .trace-bar > * {
+    display: none;
+  }
+}
+/* the running one: a light at its leading edge, riding now, and a soft
+   sweep along it, which the hatch of a wait shows best */
+.trace-bar[data-live]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent calc(100% - 26px), rgba(255, 255, 255, 0.38)),
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent) no-repeat;
+  background-size:
+    100% 100%,
+    56px 100%;
+  animation: trace-sweep 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes trace-sweep {
+  from { background-position: 0 0, -56px 0; }
+  to { background-position: 0 0, calc(100% + 56px) 0; }
+}
+/* a moment, an error or a compaction, on the bar at its time */
+.trace-mark {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 2px;
+  transform: translate3d(calc(var(--start) * var(--ms) * 1px), 0, 0) rotate(45deg);
+  background: color-mix(in srgb, var(--foreground) 45%, transparent);
+  box-shadow: 0 0 0 1.5px var(--trace-ground, var(--background));
+}
+.trace-mark[data-kind="error"] {
+  background: var(--destructive);
+}
+/* what follows a bar: how long, what it cost, and perhaps the pill */
+.trace-note {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transform: translate3d(calc(var(--end, var(--now)) * var(--ms) * 1px + 6px), 0, 0);
+}
+/* a hand-off: down from the parent's bar into the sub-agent's own row */
+.trace-link {
+  position: absolute;
+  left: 0;
+  width: 7px;
+  border-left: 1.5px solid color-mix(in srgb, var(--c) 75%, transparent);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--c) 75%, transparent);
+  border-bottom-left-radius: 6px;
+  transform: translate3d(calc(var(--start) * var(--ms) * 1px - 7px), 0, 0);
+  pointer-events: none;
+}
+.trace-link::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: -3.75px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--c);
+  box-shadow: 0 0 0 1.5px var(--trace-ground, var(--background));
+}
+.trace-grid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--border);
+  transform: translate3d(calc(var(--at) * var(--ms) * 1px), 0, 0);
+  transition: opacity 240ms ease-out;
+}
+.trace-tick {
+  position: absolute;
+  left: 0;
+  transform: translate3d(calc(var(--at) * var(--ms) * 1px + 5px), 0, 0);
+  transition: opacity 240ms ease-out;
+}
+.trace-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  margin-left: -0.5px;
+  background: color-mix(in srgb, var(--foreground) 62%, transparent);
+  transform: translate3d(calc(var(--now) * var(--ms) * 1px), 0, 0);
+  pointer-events: none;
+}
+/* rows slide when a fold above them opens or shuts, and a new one fades up */
+.trace-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  transition: transform 260ms var(--ease-out-quart);
+}
+.trace-row[data-new] {
+  animation: fade-in 320ms var(--ease-out-quart) both;
+}
+/* the running step's name: a soft light passing through it */
+.trace-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    currentColor 0%,
+    currentColor 35%,
+    var(--trace-shine, var(--foreground)) 50%,
+    currentColor 65%,
+    currentColor 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: trace-shimmer 2.4s linear infinite;
+}
+@keyframes trace-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+.trace-spin {
+  animation: trace-spin 0.9s linear infinite;
+}
+@keyframes trace-spin {
+  to { transform: rotate(360deg); }
+}
+/* rolling digits (trace/RollingNumber.tsx): the wheel fades at its top
+   and bottom, so a digit on its way in or out is a ghost, not a cut */
+.rolling-digit {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24%, #000 76%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 24%, #000 76%, transparent);
+}
+.rolling-digit > span {
+  transition: transform 520ms var(--ease-out-quart);
+}
+@media (prefers-reduced-motion: reduce) {
+  .trace-bar[data-live]::after,
+  .trace-shimmer,
+  .trace-spin,
+  .trace-row[data-new] {
+    animation: none;
+  }
+  .trace-shimmer {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+  .trace-row,
+  .rolling-digit > span {
+    transition: none;
+  }
+}

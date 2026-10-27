@@ -27,6 +27,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutKeys } from "@/components/Shortcuts";
 import { Switcher } from "@/components/Switcher";
 import { QuickAsk } from "@/components/QuickAsk";
+import { TraceDemo } from "@/components/trace/TraceDemo";
 import { Toaster, toast } from "@/components/ui/toast";
 import { ConfirmHost } from "@/components/ui/confirm";
 import { YourNameHost } from "@/components/YourNameDialog";
@@ -231,10 +232,13 @@ export default function App() {
   // The panel window loads the same bundle with a flag. It shares nothing
   // else with the workspace: no store, no stream, no intro, because it is
   // open for four seconds at a time.
-  if (new URLSearchParams(location.search).has("quick")) return <QuickAsk />;
+  const asked = new URLSearchParams(location.search);
+  if (asked.has("quick")) return <QuickAsk />;
   // So does an agent's terminal popped out into a window of its own.
   const terminalFor = terminalWindowAgent(location.search);
   if (terminalFor) return <TerminalWindow botId={terminalFor} />;
+  // the trace panel with a made-up turn, to look at without an engine
+  if (asked.get("trace") === "demo") return <TraceDemo />;
   return <WhichApp />;
 }
 
