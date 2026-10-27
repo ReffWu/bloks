@@ -27,6 +27,7 @@ import { X } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { plural } from "@/lib/plural";
 import { contextTitle, measuredContext, type LaneContext } from "@/lib/contextCard";
+import { rovingTo } from "@/lib/conversationKeys";
 
 export type TaskState = "working" | "needs-you" | "idle";
 
@@ -49,7 +50,7 @@ export function formatTokens(n: number): string | null {
 }
 
 /** The server's bound (MAX_TASKS in server/store.ts). */
-const MAX_TASKS = 20;
+export const MAX_TASKS = 20;
 
 /** The server keeps a lane title to one line of 40 characters. */
 const MAX_TITLE = 40;
@@ -225,9 +226,21 @@ export function TaskStrip({
             key={task.id}
             role="tab"
             aria-selected={active}
-            tabIndex={0}
+            // One stop in the tab order, the open tab, and the arrows,
+            // Home and End from there, as a tab strip has them. They move
+            // the keyboard and Enter opens: opening one asks the server
+            // for it and reads it, which is not for every tab passed on
+            // the way.
+            tabIndex={active || (activeIndex < 0 && index === 0) ? 0 : -1}
             onClick={() => onSelect(task.id)}
-            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(task.id))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") return (e.preventDefault(), onSelect(task.id));
+              const tabs = [...(e.currentTarget.parentElement?.querySelectorAll<HTMLElement>("[role=tab]") ?? [])];
+              const to = rovingTo(e.key, tabs.indexOf(e.currentTarget), tabs.length, "horizontal");
+              if (to === null) return;
+              e.preventDefault();
+              tabs[to].focus();
+            }}
             onDoubleClick={onRename ? () => setRenaming(task.id) : undefined}
             title={`${task.title}${onRename ? ". Double-click to rename" : ""}${usage}`}
             className={cn(

@@ -22,6 +22,7 @@ import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { ContextRing, RING_FROM, type TaskChipData } from "./TaskStrip";
 import { contextTitle, measuredContext } from "@/lib/contextCard";
+import { rovingTo } from "@/lib/conversationKeys";
 
 /** The one spring for things that open in place: quick, and no bounce,
  * because a list that overshoots reads as unsure of its own height. */
@@ -53,6 +54,19 @@ export function LaneRing({ lane }: { lane: Pick<TaskChipData, "context"> }) {
       <ContextRing fraction={measuredContext(c) ? c.fraction : 0} summarised={c.summarised} size={12} />
     </span>
   );
+}
+
+/** ↑ and ↓, Home and End, on a focused conversation in the list move the
+ * keyboard along that agent's conversations, General's row first, as the
+ * arrows do along the strip's tabs. ⌥ with them walks the agents instead
+ * (Shortcuts.tsx). */
+export function laneRowKeys(e: React.KeyboardEvent<HTMLElement>, botId: string) {
+  if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  const rows = [...document.querySelectorAll<HTMLElement>(`[data-lane-of="${CSS.escape(botId)}"]`)];
+  const to = rovingTo(e.key, rows.indexOf(e.currentTarget), rows.length, "vertical");
+  if (to === null) return;
+  e.preventDefault();
+  rows[to].focus();
 }
 
 interface LaneMenuState {
@@ -238,6 +252,8 @@ export function ConversationRows({ bot, open }: { bot: Bot; open: boolean }) {
                 return (
                   <button
                     key={lane.id}
+                    data-lane-of={bot.id}
+                    onKeyDown={(e) => laneRowKeys(e, bot.id)}
                     onClick={() => dispatch({ type: "select", id: bot.id, lane: lane.id })}
                     onDoubleClick={() => setRenaming(lane.id)}
                     onContextMenu={(e) => {

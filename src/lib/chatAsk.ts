@@ -12,7 +12,9 @@
 type AgentAsk =
   | { kind: "land"; botId: string; threadId: string; messageId: string }
   | { kind: "find"; botId: string }
-  | { kind: "terminal"; botId: string };
+  | { kind: "terminal"; botId: string }
+  // the open conversation, with the question its × asks (ChatView.tsx)
+  | { kind: "close"; botId: string };
 
 /** A room has one transcript and no lanes, so landing is all it is asked. */
 type RoomAsk = { kind: "landRoom"; roomId: string; messageId: string };

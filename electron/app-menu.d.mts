@@ -1,7 +1,11 @@
 // Hand-written twin of app-menu.mjs, so the tests typecheck against the
 // same shape the main process builds its menu from.
 
-export type MenuCommand = "settings" | "shortcuts";
+export type TabCommand = "newConversation" | "closeConversation" | "previousConversation" | "nextConversation";
+
+export type MenuCommand = "settings" | "shortcuts" | TabCommand;
+
+export const TAB_COMMANDS: readonly TabCommand[];
 
 export interface MenuTemplateItem {
   label?: string;

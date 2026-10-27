@@ -46,7 +46,7 @@ import {
   type Place,
 } from "@/lib/sections";
 import { refreshCheckup, riskyCount, useSecurityCheckup } from "@/lib/securityCheckup";
-import { ConversationRows, LaneRing, WaitingRow } from "./SidebarParts";
+import { ConversationRows, laneRowKeys, LaneRing, WaitingRow } from "./SidebarParts";
 import { RoomRename } from "./room/RoomRename";
 import { CHAT_SIDEBAR, useChatSidebar } from "@/lib/chatSidebar";
 import { CHAT_COLUMN } from "@/lib/sideColumn";
@@ -426,6 +426,8 @@ function BotListItem({
         data-sidebar-waiting={Boolean(bot.unread || bot.tasks?.some((t) => t.state === "needs-you"))}
       >
         <button
+          data-lane-of={bot.id}
+          onKeyDown={(e) => laneRowKeys(e, bot.id)}
           onClick={() => dispatch({ type: "select", id: bot.id, lane: general?.id })}
           onContextMenu={(e) => {
             e.preventDefault();

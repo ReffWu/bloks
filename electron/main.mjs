@@ -41,7 +41,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { normalizeBadgeCount, resolveWindowState } from "./window-state.mjs";
-import { appMenuTemplate } from "./app-menu.mjs";
+import { appMenuTemplate, TAB_COMMANDS } from "./app-menu.mjs";
 import { drainWait } from "./drain-wait.mjs";
 import { mayLookAgain, newestBeforeInstall, updateFrame } from "./update-check.mjs";
 import { markInstall, restartIntoUpdate, takeInstallMark, within } from "./update-restart.mjs";
@@ -224,6 +224,19 @@ handle("link:pending", () => {
 // the same way a link waits above.
 let pendingMenuCommand = null;
 function menuCommand(command) {
+  // The conversation tabs' items (⌘T, ⌘W, ⌘⇧[ and ⌘⇧]) are about the
+  // window in front, and with none in front there is nothing for them to
+  // do: they never open a window or wait for one, and never reach a
+  // workspace window behind a terminal's. A window with no conversations
+  // in it takes ⌘W as the Close it always was. The page plays the rest
+  // as the keys they are (src/lib/conversationKeys.ts).
+  if (TAB_COMMANDS.includes(command)) {
+    const front = BrowserWindow.getFocusedWindow();
+    if (!front || front.isDestroyed()) return;
+    if (command === "closeConversation" && !isWorkspaceWindow(front)) front.close();
+    else front.webContents.send("menu:command", command);
+    return;
+  }
   const main = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w));
   if (!main || main.webContents.isLoading()) {
     pendingMenuCommand = command;

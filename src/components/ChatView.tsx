@@ -18,7 +18,9 @@ import { MessageComponent } from "./Gallery";
 import { GenUiHost } from "./genui/host";
 import { Composer } from "./Composer";
 import { useTerminalDock } from "./terminal/TerminalDock";
-import { terminalChord } from "@/lib/terminalTabs";
+import { stepTab, terminalChord } from "@/lib/terminalTabs";
+import { closeRefusal, conversationChord, keysOwner, keysWhere, type ConversationChord } from "@/lib/conversationKeys";
+import { toast } from "@/components/ui/toast";
 import { lastEditable, quietRunAt, splitWaiting } from "@/lib/transcript";
 import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { useLanesInSidebar } from "@/lib/conversationsView";
@@ -26,7 +28,7 @@ import { findHits, stepHit } from "@/lib/find";
 import { isApproval } from "@/lib/cardAnswer";
 import { AnimatePresence, motion } from "motion/react";
 import { dayLine, timeSaidBelow } from "@/lib/when";
-import { TaskStrip } from "./TaskStrip";
+import { MAX_TASKS, TaskStrip } from "./TaskStrip";
 import { GoalDialog } from "./Goal";
 import { AfterAgentLink, AgentExchangeDialog, AgentExchangeRow } from "./AgentExchange";
 import { CallButton } from "./Voice";
@@ -494,6 +496,9 @@ export function ChatView({ bot }: { bot: Bot }) {
     } else if (ask.kind === "terminal") {
       takeAsk(ask);
       setTerminalOpen(true);
+    } else if (ask.kind === "close") {
+      takeAsk(ask);
+      closeOpen();
     } else if (ask.threadId === bot.threadId) {
       if (said.some((m) => m.id === ask.messageId)) {
         takeAsk(ask);
@@ -503,6 +508,84 @@ export function ChatView({ bot }: { bot: Bot }) {
       }
     }
   }, [askTick, bot.id, bot.threadId, said, earlier.remaining, earlier.loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Closing deletes the transcript, and on a phone the X sits right
+  // where a thumb lands, so a lane with anything in it asks first,
+  // in the words the sidebar's Close uses. An empty one just goes.
+  // ⌘W and the palette close through here as well, so no key skips it.
+  const closeLane = (taskId: string) => {
+    const lane = bot.tasks?.find((t) => t.id === taskId);
+    const open = taskId === (bot.activeTaskId ?? bot.threadId);
+    const anything = laneHasMessages(lane) || (open && bot.messages.length > 0);
+    if (!anything) return dispatch({ type: "closeTask", botId: bot.id, taskId });
+    void confirm({
+      title: `Close "${lane?.title ?? "this conversation"}"?`,
+      body: "Its messages are deleted.",
+      confirmLabel: "Close",
+      destructive: true,
+    }).then((yes) => yes && dispatch({ type: "closeTask", botId: bot.id, taskId }));
+  };
+  // The open one, or the reason it stays, which the tab's × says by
+  // being a Clear, or by being greyed while it works.
+  const closeOpen = () => {
+    const open = bot.activeTaskId ?? bot.threadId;
+    const lane = bot.tasks?.find((t) => t.id === open);
+    const why = closeRefusal(bot.tasks ?? [], open);
+    if (why === "first") {
+      toast.info(`"${lane?.title ?? "General"}" stays open`, {
+        id: "close-first",
+        description: "An agent always keeps its first conversation. Clear it to start over.",
+      });
+    } else if (why === "working") {
+      toast.info("Stop it before closing", { id: "close-working", description: `"${lane?.title}" is still working.` });
+    } else closeLane(open);
+  };
+
+  // ⌘T, ⌘W, ⌘⇧[ and ⌘⇧] (conversationKeys.ts), on the conversation on
+  // screen. In a room, on a page, or with no agent, nothing here hears
+  // them and they do nothing: a ⌘W that closed the window whenever there
+  // was no tab to close would be the surprise this replaced.
+  const tabKey = (chord: ConversationChord) => {
+    const tasks = bot.tasks ?? [];
+    const open = bot.activeTaskId ?? bot.threadId;
+    if (chord === "close") return closeOpen();
+    if (chord === "new") {
+      // where the strip stops offering its +
+      if (tasks.length >= MAX_TASKS) {
+        toast.info(`${bot.name} has ${MAX_TASKS} conversations open`, {
+          id: "new-full",
+          description: "Close one to start another.",
+        });
+        return;
+      }
+      return dispatch({ type: "newTask", botId: bot.id });
+    }
+    const next = stepTab(
+      tasks.map((t) => t.id),
+      open,
+      chord === "next" ? 1 : -1,
+    );
+    if (next && next !== open) dispatch({ type: "selectTask", botId: bot.id, taskId: next });
+  };
+  const tabKeyRef = useRef(tabKey);
+  tabKeyRef.current = tabKey;
+  useEffect(() => {
+    // a browser keeps these for its own tabs and never passes them on
+    if (!window.bloks) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      const chord = conversationChord(e, platformOf());
+      if (!chord) return;
+      const owner = keysOwner(keysWhere());
+      if (owner === "terminal") return;
+      // taken with a dialog up as well, where it does nothing: the
+      // question on screen is answered before anything under it changes
+      e.preventDefault();
+      if (owner === "conversation") tabKeyRef.current(chord);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // A starter from the empty page goes into the message box, never out:
   // the words are there to read, change or finish, and the box has the
@@ -828,21 +911,7 @@ export function ChatView({ bot }: { bot: Bot }) {
         activeId={bot.activeTaskId ?? bot.threadId}
         onSelect={(taskId) => taskId !== bot.activeTaskId && dispatch({ type: "selectTask", botId: bot.id, taskId })}
         onNew={() => dispatch({ type: "newTask", botId: bot.id })}
-        onClose={(taskId) => {
-          // Closing deletes the transcript, and on a phone the X sits right
-          // where a thumb lands, so a lane with anything in it asks first,
-          // in the words the sidebar's Close uses. An empty one just goes.
-          const lane = bot.tasks?.find((t) => t.id === taskId);
-          const open = taskId === (bot.activeTaskId ?? bot.threadId);
-          const said = laneHasMessages(lane) || (open && bot.messages.length > 0);
-          if (!said) return dispatch({ type: "closeTask", botId: bot.id, taskId });
-          void confirm({
-            title: `Close "${lane?.title ?? "this conversation"}"?`,
-            body: "Its messages are deleted.",
-            confirmLabel: "Close",
-            destructive: true,
-          }).then((yes) => yes && dispatch({ type: "closeTask", botId: bot.id, taskId }));
-        }}
+        onClose={closeLane}
         onClear={(taskId) => {
           void confirm({
             title: "Clear this conversation?",

@@ -11,6 +11,8 @@ import { TerminalPanel } from "@/components/Terminal";
 import { ConfirmHost } from "@/components/ui/confirm";
 import { Toaster } from "@/components/ui/toast";
 import { api } from "@/state/store";
+import { followMenuKeys } from "@/lib/conversationKeys";
+import { platformOf } from "@/lib/shortcuts";
 
 /** The agent a terminal window was opened for, if the address names one. */
 export function terminalWindowAgent(search: string): string | null {
@@ -32,6 +34,13 @@ export function TerminalWindow({ botId }: { botId: string }) {
       })
       .catch(() => setMissing(true));
   }, [botId]);
+
+  // ⌘⇧[ and ⌘⇧] from the menu bar step these tabs, as the keys do
+  useEffect(() => {
+    const bridge = window.bloks;
+    if (!bridge?.onMenuCommand) return;
+    return followMenuKeys(platformOf(), (handler) => bridge.onMenuCommand!(handler));
+  }, []);
 
   return (
     <div className="flex h-full flex-col bg-card">

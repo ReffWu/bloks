@@ -73,6 +73,28 @@ describe("the shortcut list", () => {
     assert.deepEqual(keysFor("close", "mac"), ["esc"]);
   });
 
+  test("the conversation tabs have a browser's keys, ⌘ on a Mac and Ctrl elsewhere (#401)", () => {
+    assert.deepEqual(keysFor("newConversation", "mac"), ["⌘T"]);
+    assert.deepEqual(keysFor("newConversation", "other"), ["Ctrl+T"]);
+    assert.deepEqual(keysFor("closeConversation", "mac"), ["⌘W"]);
+    assert.deepEqual(keysFor("closeConversation", "other"), ["Ctrl+W"]);
+    assert.deepEqual(keysFor("conversationStep", "mac"), ["⇧⌘[", "⇧⌘]"]);
+    assert.deepEqual(keysFor("conversationStep", "other"), ["Ctrl+Shift+[", "Ctrl+Shift+]"]);
+    assert.deepEqual(keysFor("tabArrows", "mac"), ["←", "→", "Home", "End"]);
+    assert.deepEqual(keysFor("laneArrows", "other"), ["↑", "↓", "Home", "End"]);
+    // ⌘W's old meaning, which only the Mac's menu bar has
+    assert.deepEqual(keysFor("closeWindow", "mac"), ["⇧⌘W"]);
+    assert.deepEqual(keysFor("closeWindow", "other"), []);
+  });
+
+  test("closing says it asks first and that General stays, and stepping says the terminal's keys win in it", () => {
+    const close = SHORTCUTS.find((s) => s.id === "closeConversation")!;
+    assert.match(close.when ?? "", /asks first/);
+    assert.match(close.when ?? "", /General/);
+    assert.match(SHORTCUTS.find((s) => s.id === "conversationStep")?.when ?? "", /outside the terminal/);
+    assert.match(SHORTCUTS.find((s) => s.id === "terminalStep")?.when ?? "", /in the terminal/);
+  });
+
   test("an id the list does not have gets no keys rather than a guess", () => {
     assert.deepEqual(keysFor("nothing-by-this-name", "mac"), []);
   });
@@ -132,6 +154,21 @@ describe("the sheet", () => {
     assert.ok(ids(true).includes("recent"));
     assert.ok(!ids(false).includes("recent"), "Ctrl+Tab never reaches a page in a browser");
     assert.ok(ids(false).includes("palette"));
+  });
+
+  test("the tabs' keys are the app's alone, and Close Window only a Mac's", () => {
+    const ids = (desktop: boolean, platform: "mac" | "other") =>
+      shortcutSheet(desktop, platform).flatMap((g) => g.shortcuts.map((s) => s.id));
+    for (const id of ["newConversation", "closeConversation", "conversationStep"]) {
+      assert.ok(ids(true, "mac").includes(id), `${id} is missing from the app's sheet`);
+      assert.ok(ids(true, "other").includes(id), `${id} is missing on Windows and Linux`);
+      assert.ok(!ids(false, "mac").includes(id), `a browser keeps ${id}'s key for its own tabs`);
+    }
+    assert.ok(ids(true, "mac").includes("closeWindow"));
+    assert.ok(!ids(true, "other").includes("closeWindow"));
+    // and a browser tab's palette shows no key the browser will not pass on
+    assert.deepEqual(keysFor("newConversation", "mac", false), []);
+    assert.deepEqual(keysFor("find", "mac", false), ["⌘F"]);
   });
 });
 

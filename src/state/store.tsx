@@ -33,6 +33,8 @@ import { snapshotOrder, type SnapshotLoad } from "./snapshotOrder";
 import { sendHeld, takeWake, wakeFetch, wakeGaveUp } from "@/lib/waking";
 import { placeRow, type Listed } from "@/lib/sections";
 import { askLaneFocus, dropLaneFocus } from "@/lib/drafts";
+import { followMenuKeys } from "@/lib/conversationKeys";
+import { platformOf } from "@/lib/shortcuts";
 import { maybeAutoSpeak } from "@/components/Voice";
 import {
   configFromFrame,
@@ -739,7 +741,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // The macOS menu bar's own items (electron/app-menu.mjs): Settings…,
   // and Keyboard Shortcuts under Help. One chosen while no window was
-  // open is waiting for this one.
+  // open is waiting for this one. The conversation tabs' items are their
+  // keys, heard where those are (conversationKeys.ts).
   useEffect(() => {
     const bridge = window.bloks;
     if (!bridge?.onMenuCommand) return;
@@ -748,7 +751,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (command === "shortcuts") rawDispatch({ type: "toggleShortcuts", open: true });
     };
     void bridge.pendingMenuCommand?.().then(run).catch(() => {});
-    return bridge.onMenuCommand(run);
+    const stopRun = bridge.onMenuCommand(run);
+    const stopKeys = followMenuKeys(platformOf(), (handler) => bridge.onMenuCommand!(handler));
+    return () => {
+      stopRun();
+      stopKeys();
+    };
   }, []);
 
   // Clicking a banner opens what it was about. A banner from another

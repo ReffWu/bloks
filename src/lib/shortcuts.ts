@@ -34,6 +34,9 @@ export interface Shortcut {
   /** Heard only by the desktop app. A browser keeps these keys for its
    * own tabs and never passes them to the page. */
   desktopOnly?: boolean;
+  /** The Mac menu bar's key, with no twin elsewhere: Windows and Linux
+   * close a window with the system's own key. */
+  macOnly?: boolean;
 }
 
 export const SHORTCUT_GROUPS: ReadonlyArray<{ id: ShortcutGroup; label: string }> = [
@@ -92,6 +95,39 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
 
   // ── conversation ──
+  // The tabs' keys, a browser's (conversationKeys.ts). The menu bar has
+  // them too, under File and Window.
+  { id: "newConversation", group: "conversation", keys: [["Mod", "T"]], does: "New conversation", desktopOnly: true },
+  {
+    id: "closeConversation",
+    group: "conversation",
+    keys: [["Mod", "W"]],
+    does: "Close this conversation",
+    when: "asks first when it has messages; General stays",
+    desktopOnly: true,
+  },
+  {
+    id: "conversationStep",
+    group: "conversation",
+    keys: [["Mod", "Shift", "["], ["Mod", "Shift", "]"]],
+    does: "Previous or next conversation",
+    when: "in tab order, outside the terminal",
+    desktopOnly: true,
+  },
+  {
+    id: "tabArrows",
+    group: "conversation",
+    keys: [["Left"], ["Right"], ["Home"], ["End"]],
+    does: "Move between conversation tabs",
+    when: "on a focused tab; Enter opens it",
+  },
+  {
+    id: "laneArrows",
+    group: "conversation",
+    keys: [["Up"], ["Down"], ["Home"], ["End"]],
+    does: "Move between an agent's conversations",
+    when: "on one listed in the sidebar; Enter opens it",
+  },
   {
     id: "find",
     group: "conversation",
@@ -169,7 +205,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: "terminal",
     keys: [["Mod", "Shift", "]"], ["Mod", "Shift", "["]],
     does: "Next or previous terminal tab",
-    when: "while the terminal is open",
+    when: "in the terminal, or while it fills the window",
   },
   {
     id: "terminalFill",
@@ -189,6 +225,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   // ── app ──
   { id: "settings", group: "app", keys: [["Mod", ","]], does: "Settings" },
   { id: "newAgent", group: "app", keys: [["Mod", "N"]], does: "New agent" },
+  // ⌘W's old meaning, moved aside for the conversations
+  { id: "closeWindow", group: "app", keys: [["Mod", "Shift", "W"]], does: "Close the window", desktopOnly: true, macOnly: true },
   { id: "shortcuts", group: "app", keys: [["Mod", "/"]], does: "Keyboard shortcuts" },
   { id: "close", group: "app", keys: [["Esc"]], does: "Close what's open" },
   {
@@ -214,8 +252,21 @@ export function platformOf(said?: string): Platform {
 // runs them together (⌥⇧↓); Windows and Linux spell them out and join
 // them with a plus (Alt+Shift+↓). Arrows are arrows on both.
 const NAMES: Record<Platform, Record<string, string>> = {
-  mac: { Mod: "⌘", Ctrl: "⌃", Alt: "⌥", Shift: "⇧", Enter: "↩", Tab: "⇥", Esc: "esc", Up: "↑", Down: "↓" },
-  other: { Mod: "Ctrl", Ctrl: "Ctrl", Alt: "Alt", Shift: "Shift", Enter: "Enter", Tab: "Tab", Esc: "Esc", Up: "↑", Down: "↓", "+": "Plus" },
+  mac: { Mod: "⌘", Ctrl: "⌃", Alt: "⌥", Shift: "⇧", Enter: "↩", Tab: "⇥", Esc: "esc", Up: "↑", Down: "↓", Left: "←", Right: "→" },
+  other: {
+    Mod: "Ctrl",
+    Ctrl: "Ctrl",
+    Alt: "Alt",
+    Shift: "Shift",
+    Enter: "Enter",
+    Tab: "Tab",
+    Esc: "Esc",
+    Up: "↑",
+    Down: "↓",
+    Left: "←",
+    Right: "→",
+    "+": "Plus",
+  },
 };
 
 // Modifiers in each platform's own order: Apple writes ⌃⌥⇧⌘, Windows
@@ -237,18 +288,27 @@ export function chordLabel(chord: Chord, platform: Platform): string {
   return platform === "mac" ? names.join("") : names.join("+");
 }
 
+/** Whether this app hears a shortcut: a browser tab does not hear the
+ * keys the browser keeps, and only a Mac has the menu bar's own. */
+function heard(shortcut: Shortcut, desktop: boolean, platform: Platform): boolean {
+  return (desktop || !shortcut.desktopOnly) && (platform === "mac" || !shortcut.macOnly);
+}
+
 /** Every chord of one shortcut, written for this platform, or nothing
- * for an id the list does not have. */
-export function keysFor(id: string, platform: Platform): string[] {
+ * for an id the list does not have, or one this app does not hear. */
+export function keysFor(id: string, platform: Platform, desktop = true): string[] {
   const shortcut = SHORTCUTS.find((s) => s.id === id);
-  return shortcut ? shortcut.keys.map((chord) => chordLabel(chord, platform)) : [];
+  return shortcut && heard(shortcut, desktop, platform) ? shortcut.keys.map((chord) => chordLabel(chord, platform)) : [];
 }
 
 /** The sheet's contents: each group in order, holding what this app can
  * actually hear. A browser tab drops the keys the browser keeps. */
-export function shortcutSheet(desktop: boolean): Array<{ id: ShortcutGroup; label: string; shortcuts: Shortcut[] }> {
+export function shortcutSheet(
+  desktop: boolean,
+  platform: Platform = platformOf(),
+): Array<{ id: ShortcutGroup; label: string; shortcuts: Shortcut[] }> {
   return SHORTCUT_GROUPS.map((group) => ({
     ...group,
-    shortcuts: SHORTCUTS.filter((s) => s.group === group.id && (desktop || !s.desktopOnly)),
+    shortcuts: SHORTCUTS.filter((s) => s.group === group.id && heard(s, desktop, platform)),
   })).filter((group) => group.shortcuts.length > 0);
 }

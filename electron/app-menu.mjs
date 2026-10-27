@@ -14,13 +14,26 @@
 // rule the window keeps on Windows and Linux: they are for working on the
 // app, and an installed one has no use for them.
 //
+// The conversation tabs' keys are the exception, because a Mac lists a
+// tab's keys in its menus (GitHub 401): New Conversation ⌘T and Close
+// Conversation ⌘W under File, the window's Close moved to ⌘⇧W beside
+// them, and Previous and Next Conversation ⌘⇧[ and ⌘⇧] under Window.
+// These choices are played to the page as the keys they name
+// (src/lib/conversationKeys.ts), so the page's own rules still decide
+// what each press does, the terminal's tabs and a dialog's included,
+// whichever of the two hears the key first.
+//
 // Built by a function with no Electron in it, so a test can read the
 // template without starting the app. The roles bring their own labels and
 // keys (⌘Z, ⌘C, ⌘Q and so on), exactly as the stock menu had them.
 
+/** The menu's words for the conversation tabs, carried to the window in
+ * front rather than to the workspace's (electron/main.mjs). */
+export const TAB_COMMANDS = ["newConversation", "closeConversation", "previousConversation", "nextConversation"];
+
 /**
- * @param {{ name: string; packaged: boolean; command: (word: "settings" | "shortcuts") => void }} options
- *   `command` carries a menu choice to the workspace window.
+ * @param {{ name: string; packaged: boolean; command: (word: "settings" | "shortcuts" | (typeof TAB_COMMANDS)[number]) => void }} options
+ *   `command` carries a menu choice to the window it is for.
  */
 export function appMenuTemplate({ name, packaged, command }) {
   return [
@@ -41,7 +54,16 @@ export function appMenuTemplate({ name, packaged, command }) {
         { role: "quit" },
       ],
     },
-    { label: "File", submenu: [{ role: "close" }] },
+    {
+      label: "File",
+      submenu: [
+        { label: "New Conversation", accelerator: "CmdOrCtrl+T", click: () => command("newConversation") },
+        { type: "separator" },
+        { label: "Close Conversation", accelerator: "CmdOrCtrl+W", click: () => command("closeConversation") },
+        // the stock ⌘W, moved aside the way a browser's Close Window is
+        { role: "close", accelerator: "CmdOrCtrl+Shift+W" },
+      ],
+    },
     {
       // Copy and paste in every text field live here: on a Mac the
       // keys are the menu's, and without these items they do nothing.
@@ -76,7 +98,15 @@ export function appMenuTemplate({ name, packaged, command }) {
     {
       // the window role is what makes macOS list the open windows here
       role: "window",
-      submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }],
+      submenu: [
+        { role: "minimize" },
+        { role: "zoom" },
+        { type: "separator" },
+        { label: "Previous Conversation", accelerator: "CmdOrCtrl+Shift+[", click: () => command("previousConversation") },
+        { label: "Next Conversation", accelerator: "CmdOrCtrl+Shift+]", click: () => command("nextConversation") },
+        { type: "separator" },
+        { role: "front" },
+      ],
     },
     {
       // No key here: ⌘/ belongs to the window, which also has to hear it

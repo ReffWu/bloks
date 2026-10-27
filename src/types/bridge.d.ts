@@ -298,8 +298,19 @@ declare global {
       shareLink?(url: string): Promise<boolean>;
       /** A choice from the macOS menu bar for this window to carry out
        * (electron/app-menu.mjs), and one made while no window was
-       * listening yet. */
-      onMenuCommand?(handler: (command: "settings" | "shortcuts") => void): () => void;
+       * listening yet. The conversation ones are played to the page as
+       * their keys (src/lib/conversationKeys.ts) and never wait. */
+      onMenuCommand?(
+        handler: (
+          command:
+            | "settings"
+            | "shortcuts"
+            | "newConversation"
+            | "closeConversation"
+            | "previousConversation"
+            | "nextConversation",
+        ) => void,
+      ): () => void;
       pendingMenuCommand?(): Promise<"settings" | "shortcuts" | null>;
       /** Puts a number on the Dock icon; 0 clears it. */
       badgeSet(count: number): Promise<void>;

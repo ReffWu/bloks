@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { appMenuTemplate, type MenuCommand, type MenuTemplateItem } from "../electron/app-menu.mjs";
+import { appMenuTemplate, TAB_COMMANDS, type MenuCommand, type MenuTemplateItem } from "../electron/app-menu.mjs";
 import { SHORTCUTS } from "../src/lib/shortcuts.ts";
 
 function build(packaged = true) {
@@ -59,6 +59,57 @@ describe("the rest of the bar", () => {
     assert.deepEqual(roles(window?.submenu), ["minimize", "zoom", "front"]);
   });
 
+  // GitHub 401: ⌘W closed the whole window, where a tab strip means the tab.
+  const file = () => build().menu.find((m) => m.label === "File")?.submenu ?? [];
+  const windowMenu = () => build().menu.find((m) => m.role === "window")?.submenu ?? [];
+
+  test("File has New and Close Conversation on ⌘T and ⌘W, and Close Window moved to ⌘⇧W", () => {
+    const items = file();
+    assert.deepEqual(
+      items.filter((item) => item.type !== "separator").map((item) => [item.label ?? item.role, item.accelerator]),
+      [
+        ["New Conversation", "CmdOrCtrl+T"],
+        ["Close Conversation", "CmdOrCtrl+W"],
+        ["close", "CmdOrCtrl+Shift+W"],
+      ],
+    );
+  });
+
+  test("Window steps through them on ⌘⇧[ and ⌘⇧], and still arranges windows", () => {
+    const keyed = windowMenu().filter((item) => item.accelerator);
+    assert.deepEqual(
+      keyed.map((item) => [item.label, item.accelerator]),
+      [
+        ["Previous Conversation", "CmdOrCtrl+Shift+["],
+        ["Next Conversation", "CmdOrCtrl+Shift+]"],
+      ],
+    );
+  });
+
+  test("each asks the window with its own word, and those are the words the main process sends on", () => {
+    const { menu, asked } = build();
+    for (const label of ["New Conversation", "Close Conversation", "Previous Conversation", "Next Conversation"]) {
+      all(menu).find((item) => item.label === label)?.click?.();
+    }
+    assert.deepEqual(asked, ["newConversation", "closeConversation", "previousConversation", "nextConversation"]);
+    assert.deepEqual([...TAB_COMMANDS].sort(), [...asked].sort());
+  });
+
+  test("the window's own Close stays a role, so macOS still closes whichever window is in front", () => {
+    const close = file().find((item) => item.role === "close");
+    assert.equal(close?.click, undefined);
+  });
+
+  test("their keys are the ones the shortcuts sheet lists", () => {
+    const listed = (id: string) =>
+      SHORTCUTS.find((s) => s.id === id)?.keys.map((chord) => chord.join("+").replace("Mod", "CmdOrCtrl"));
+    const keyOf = (label: string) => all(build().menu).find((item) => item.label === label)?.accelerator;
+    assert.deepEqual(listed("newConversation"), [keyOf("New Conversation")]);
+    assert.deepEqual(listed("closeConversation"), [keyOf("Close Conversation")]);
+    assert.deepEqual(listed("conversationStep"), [keyOf("Previous Conversation"), keyOf("Next Conversation")]);
+    assert.deepEqual(listed("closeWindow"), [file().find((item) => item.role === "close")?.accelerator]);
+  });
+
   test("View keeps zoom and full screen in every build", () => {
     for (const packaged of [true, false]) {
       const view = build(packaged).menu.find((m) => m.label === "View");
@@ -86,13 +137,21 @@ describe("the rest of the bar", () => {
 
 test("no menu key takes one the window answers to", () => {
   // A key equivalent is heard before the page, so a menu item on ⌘K or
-  // ⌘/ would quietly take the palette or the sheet away. Settings is the
-  // one key the menu owns, and the sheet lists it as such.
+  // ⌘/ would quietly take the palette or the sheet away. Settings is one
+  // key the menu owns; the conversation tabs' are the others, and those
+  // are played back to the page as keys, so the page still decides.
   for (const packaged of [true, false]) {
     const keyed = all(build(packaged).menu).filter((item) => item.accelerator);
     assert.deepEqual(
-      keyed.map((item) => item.label),
-      ["Settings…"],
+      keyed.map((item) => item.label ?? item.role),
+      ["Settings…", "New Conversation", "Close Conversation", "close", "Previous Conversation", "Next Conversation"],
     );
+    // and none of them is one the page keeps to itself
+    const owned = keyed.map((item) => item.accelerator?.replace("CmdOrCtrl", "Mod"));
+    for (const id of ["palette", "newAgent", "find", "shortcuts", "interrupt", "back", "forward", "recent", "workspace", "toggleSidebar"]) {
+      for (const chord of SHORTCUTS.find((s) => s.id === id)?.keys ?? []) {
+        assert.ok(!owned.includes(chord.join("+")), `the menu took ${id}'s ${chord.join("+")}`);
+      }
+    }
   }
 });

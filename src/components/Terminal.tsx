@@ -32,6 +32,7 @@ import { cn } from "@/lib/cn";
 import { chordLabel, platformOf } from "@/lib/shortcuts";
 import { arrangeTerminal } from "@/lib/terminalLayout";
 import { activeAfterClose, stepTab, terminalChord } from "@/lib/terminalTabs";
+import { keysOwner, keysWhere } from "@/lib/conversationKeys";
 import { useTerminalLayout, useTerminalPrefs } from "@/lib/useTerminalSettings";
 import { terminalApi, useTerminalStream, type TerminalInfo, type TerminalScreen } from "@/lib/useTerminalStream";
 
@@ -591,6 +592,12 @@ export function TerminalPanel({
       // closing is the one that ends something, so it is only heard from
       // inside the terminal
       if (chord === "close" && !inside) return;
+      // ⌘⇧[ and ⌘⇧] step the conversation's tabs too: the terminal's
+      // while it has the keyboard or the window, theirs otherwise
+      // (conversationKeys.ts)
+      const step = chord === "next" || chord === "previous";
+      const where = { inTerminal: inside, terminalCovers: k.mode !== "docked", inDialog: keysWhere().inDialog };
+      if (step && keysOwner(where) !== "terminal") return;
       if (chord === "fill" && k.mode === "window") return;
       e.preventDefault();
       if (chord === "new") void k.newTab();
@@ -639,6 +646,8 @@ export function TerminalPanel({
       ref={root}
       role="region"
       aria-label={`Terminal for ${botName}`}
+      // where the conversation looks to tell whose ⌘⇧] it is
+      data-terminal-panel={mode}
       className="flex h-full min-h-0 w-full min-w-0 flex-col bg-card"
     >
       <div

@@ -30,11 +30,13 @@ import { Usage as UsageIcon } from "@/components/icons";
 import { SquarePen } from "@/components/icons";
 import { SquareTerminal } from "@/components/icons";
 import { Users } from "@/components/icons";
+import { X } from "@/components/icons";
 import { Zap } from "@/components/icons";
 import { api, openLaneWorking, useStore, type Action, type Blok, type Bot } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { SETTINGS_PAGES } from "./AppSettingsPanel";
 import { askChat } from "@/lib/chatAsk";
+import { closeRefusal } from "@/lib/conversationKeys";
 import { splitHighlight } from "@/lib/find";
 import { keysFor, platformOf } from "@/lib/shortcuts";
 import { cn } from "@/lib/cn";
@@ -202,6 +204,17 @@ export function CommandPalette() {
           run: () => (askChat({ kind: "find", botId: bot.id }), toChat()),
         },
       );
+      // only while the open one can go: General stays, and one at work
+      // is stopped first
+      if (!closeRefusal(bot.tasks ?? [], bot.activeTaskId ?? bot.threadId)) {
+        list.push({
+          id: "closeConversation",
+          label: "Close conversation",
+          keywords: `${bot.name} lane thread task tab delete end`,
+          icon: X,
+          run: () => (askChat({ kind: "close", botId: bot.id }), toChat()),
+        });
+      }
       if (working) {
         list.push({
           id: "stop",
@@ -366,7 +379,8 @@ export function CommandPalette() {
   );
   const command = (index: number, c: Command) => {
     const Icon = c.icon;
-    return row(index, <Icon size={16} strokeWidth={1.75} />, c.label, undefined, keysFor(c.id, platform));
+    // a browser tab never passes ⌘T or ⌘W on, so it shows no key for them
+    return row(index, <Icon size={16} strokeWidth={1.75} />, c.label, undefined, keysFor(c.id, platform, Boolean(window.bloks)));
   };
 
   const settles = open === "pointer";
