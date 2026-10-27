@@ -274,11 +274,14 @@ function sourceFiles(dir: string, match: RegExp): string[] {
 }
 
 // The index of where things are in the app is the server's as well as the
-// app's (server/settings-index.ts), and its keys are the app's words.
+// app's (server/settings-index.ts), and so are the settings an agent may
+// propose (server/settings-proposals.ts), whose names and values a card
+// draws by key: their keys are the app's words.
 const CODE = [
   ...sourceFiles(path.join(ROOT, "src"), /\.(tsx?|mjs)$/),
   ...sourceFiles(path.join(ROOT, "electron"), /\.mjs$/),
   path.join(ROOT, "server", "settings-index.ts"),
+  path.join(ROOT, "server", "settings-proposals.ts"),
 ];
 const parsed = CODE.map((file) => {
   const text = fs.readFileSync(file, "utf8");

@@ -60,7 +60,8 @@ export type LedgerKind =
   | "sessions.imported"
   | "server.update"
   | "home.call"
-  | "runs.exported";
+  | "runs.exported"
+  | "settings.changed";
 
 export interface LedgerEntry {
   /** Counts from zero, one per entry, no gaps. */

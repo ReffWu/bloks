@@ -68,6 +68,46 @@ export interface OptionCardData {
   /** Present when an agent proposed an app watcher (server/app-watch.ts).
    * Answered through the watcher's own routes, never as a reply. */
   appWatch?: AppWatchPlan;
+  /** Present when an agent pointed the person at a place in the app
+   * (`bloks open`, server/where.ts). Pressing it only navigates. */
+  open?: OpenPlacePlan;
+  /** Present when an agent proposed changing a setting
+   * (server/settings-proposals.ts). Answered through its own route. */
+  settingsProposal?: SettingsProposalPlan;
+}
+
+/** A place an agent's card opens, as server/where.ts writes it. */
+export interface OpenPlacePlan {
+  kind: "settings" | "panel";
+  page: string;
+  /** The row to scroll to, by its English label. */
+  row?: string;
+  name: string;
+  /** The way there in words, for a window that cannot open it. */
+  path: string;
+  /** The agent whose own settings it opens. */
+  botId?: string;
+  workspace?: boolean;
+}
+
+/** A setting an agent proposed changing (server/settings-proposals.ts). */
+export interface SettingsProposalPlan {
+  id: string;
+  laneId: string;
+  setting: string;
+  nameKey: string;
+  name: string;
+  path: string;
+  page: string;
+  current: { key?: string; text: string };
+  proposed: { key?: string; text: string };
+  value: string;
+  why?: string;
+  botId: string;
+  agentName: string;
+  told?: boolean;
+  outcome?: "changed" | "kept" | "failed";
+  error?: string;
 }
 
 /** An app watcher an agent proposed, as its card shows it. */
@@ -810,6 +850,9 @@ export interface AppState {
   appSettingsOpen: boolean;
   /** Which Settings page is showing, so a link can open the right one. */
   settingsPage: string;
+  /** A row a link asked Settings to scroll to and light, once its page is
+   * in; `at` makes the same row asked twice a new ask. */
+  settingsRow: { page: string; row: string; at: number } | null;
   newAgentOpen: boolean;
   /** the new-agent screen is the last step of setup, not a normal visit */
   newAgentFirstRun: boolean;
@@ -998,7 +1041,7 @@ export type Action =
   | { type: "openUsage"; botId?: string | null; section?: "limits" | null }
   | { type: "toggleComputer"; open?: boolean }
   /** `page` opens Settings on that page (see SETTINGS_PAGES). */
-  | { type: "toggleAppSettings"; open?: boolean; page?: string }
+  | { type: "toggleAppSettings"; open?: boolean; page?: string; row?: string }
   | { type: "rehearsalsChanged" }
   | { type: "tick"; key: string }
   | { type: "openMeeting"; botId: string | null }
@@ -1604,6 +1647,8 @@ export function reducer(state: AppState, action: Action): AppState {
         // an id that moved goes where it lives now (src/lib/settingsPages.ts),
         // so a link from anywhere, old or new, lands on a real page
         settingsPage: action.page ? resolveSettingsPage(action.page) : open && !state.appSettingsOpen ? "general" : state.settingsPage,
+        // a row only with the page it is on, and only while opening
+        settingsRow: open && action.page && action.row ? { page: resolveSettingsPage(action.page), row: action.row, at: Date.now() } : null,
         // a full page, like Automations: one of them at a time
         routinesOpen: open ? false : state.routinesOpen,
         page: open ? null : state.page,
@@ -1689,6 +1734,7 @@ export const initialState: AppState = {
   computerOpen: false,
   appSettingsOpen: false,
   settingsPage: "general",
+  settingsRow: null,
   newAgentOpen: false,
   newAgentFirstRun: false,
   memoryTarget: null,

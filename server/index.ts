@@ -25,6 +25,8 @@ import { takeBackWaiting } from "./take-back.ts";
 import { DeviceSettings, type ReportSource } from "./settings-devices.ts";
 import { CONTEXT_MS, EMPTY_STATE, FRESH_WAIT_MS, Whereabouts, cleanState, crossingWords, hearsWhere, parsePlace, placePending, placeStep, placeWords, precisionWords, readSeen, agoWords, sideOf, DEFAULT_RADIUS, type LocationState, type SharedLocation } from "./location.ts";
 import { SettingsPages, type SettingsCategory } from "./settings-pages.ts";
+import { openCard, placeOf, say, where } from "./where.ts";
+import { MAX_WHY, PROPOSABLE, proposable, readValue, refusal as proposalRefusal, valueLabel, type ProposalCard, type ProposalState } from "./settings-proposals.ts";
 import { DEVICE_CATEGORIES, noStore, readReport, serveSettingsRead } from "./settings-read-http.ts";
 import { settingsCatalog } from "./settings-catalog.ts";
 import { inspectionRedactor } from "./settings-redaction.ts";
@@ -228,6 +230,7 @@ import {
   observedSkillLibrary,
   PAGE_DESIGN,
   PAGE_DESIGN_SHORT,
+  withBloksExplainer,
   withBloksGuide,
   withPageDesign,
   type Skill,
@@ -7529,11 +7532,13 @@ async function startClaimedTurn(
     // line it describes (the credential below): the owner's own turn,
     // outside a shared room.
     // An engine that cannot fetch it would be sent the whole of it every
-    // turn, so it gets the short form in Deliverables instead.
+    // turn, so it gets the short form in Deliverables instead. How Bloks
+    // works rides with the guide, for the same reason: a skill read on
+    // demand is read with that credential (server/skills.ts).
     !guestMail &&
       skillsPrompt(
         runsAProcess(instance.driverKind) && !personSource
-          ? disclose(withPageDesign(!sharing && owners ? withBloksGuide(attached) : attached), true)
+          ? disclose(withPageDesign(!sharing && owners ? withBloksExplainer(withBloksGuide(attached)) : attached), true)
           : disclose(attached, false),
         `To read one, run: ${cliCommand} skill <id>`,
       ),
@@ -8151,6 +8156,10 @@ async function startClaimedTurn(
         const named = undone.slice(0, 20).join(", ") + (undone.length > 20 ? `, and ${undone.length - 20} more` : "");
         turnText = `(Since your last turn, the user undid your changes to: ${named}. Those files are back as they were before that turn.)\n\n${turnText}`;
       }
+      // settings it proposed that the person answered since (a card's
+      // answer, kept on the card, told once)
+      const answeredNote = personSource || command ? null : proposalsAnswered(task.id, bot.id);
+      if (answeredNote) turnText = `${answeredNote}\n\n${turnText}`;
       const stalledNote = personSource ? undefined : stalledSince.get(task.id);
       if (stalledNote && !command) {
         stalledSince.delete(task.id);
@@ -17034,6 +17043,230 @@ function homeHookBase(): { base: string; network: boolean } {
   const status = pairingStatus();
   const address = status.listening === "network" ? status.addresses[0] : undefined;
   return address ? { base: `http://${address}:${PORT}`, network: true } : { base: `http://127.0.0.1:${PORT}`, network: false };
+}
+
+// ── settings an agent proposes (server/settings-proposals.ts) ─────────
+// The card lives in the conversation and carries everything the change
+// needs, so a Change pressed after a restart still applies, and the
+// waiting below is only for a `bloks settings propose` still listening.
+
+/** How long the agent's command waits for the person's answer before it
+ * says "still waiting". Under what a shell tool gives one command. */
+const PROPOSAL_WAIT_MS = Number(process.env.BLOKS_SETTINGS_WAIT_MS) || 60_000;
+/** Proposals someone is waiting on, by id. */
+const proposalWaiters = new Map<string, Set<() => void>>();
+
+/** What a proposal reads as current, for the agent that proposes. */
+function proposalState(botId: string): ProposalState {
+  const bot = store.bot(botId);
+  const brief = briefSettings(cfg.brief);
+  const selection = bot?.modelSelection;
+  const instance = selection ? registry.get(selection.instanceId) : undefined;
+  return {
+    config: cfg as ProposalState["config"],
+    brief: { enabled: brief.enabled, time: brief.time, notify: brief.notify, allClear: brief.allClear, layout: brief.layout },
+    agent: {
+      id: botId,
+      notifications: bot?.notifications !== false,
+      ...(bot?.effort ? { effort: bot.effort } : {}),
+      model: selection && instance
+        ? {
+            instanceId: selection.instanceId,
+            model: selection.model || instance.models.default || "",
+            options: [
+              ...(instance.models.default && !instance.models.options.some((o) => o.id === instance.models.default) ? [{ id: instance.models.default }] : []),
+              ...instance.models.options.map((o) => ({ id: o.id, label: o.label })),
+            ],
+          }
+        : null,
+    },
+  };
+}
+
+/** A proposal card by its id, in the lanes of the agent that made it. */
+function findProposal(botId: string, id: string, firstLane?: string): { laneId: string; message: Message } | null {
+  const bot = store.bot(botId);
+  const lanes = [...new Set([firstLane, ...(bot?.tasks ?? []).map((t) => t.id)].filter((x): x is string => Boolean(x)))];
+  for (const laneId of lanes) {
+    const message = store.messagesFor(laneId).find((m) => m.card?.settingsProposal?.id === id);
+    if (message) return { laneId, message };
+  }
+  return null;
+}
+
+/** How a proposal stands, for the agent: a sentence it can say. Marks it
+ * told when it is settled, so its next turn does not hear it twice. */
+function proposalOutcome(laneId: string, message: Message): { status: number; body: Record<string, unknown> } {
+  const plan = message.card!.settingsProposal!;
+  const said = `${plan.name} from ${plan.current.text} to ${plan.proposed.text}`;
+  if (!plan.outcome) {
+    return { status: 202, body: { pending: true, proposal: plan.id, note: `The person was asked on a card to change ${said}. Nothing has changed yet. Run \`bloks settings proposal ${plan.id}\` to wait for the answer, or carry on: you will be told how it went at the start of your next turn here.` } };
+  }
+  if (!plan.told) {
+    const patched = store.patchMessage(laneId, message.id, { card: { ...message.card!, settingsProposal: { ...plan, told: true } } });
+    if (patched) broadcast({ kind: "message.patch", threadId: laneId, message: patched });
+  }
+  if (plan.outcome === "changed") return { status: 200, body: { ok: true, changed: plan.setting, from: plan.current.text, to: plan.proposed.text, note: `The person tapped Change: ${said} is done.` } };
+  if (plan.outcome === "kept") return { status: 200, body: { ok: false, kept: true, note: `The person kept ${plan.name} as it is (${plan.current.text}). Do not propose it again in this conversation unless they ask.` } };
+  return { status: 502, body: { error: `The person tapped Change, but ${plan.name} could not be changed: ${plan.error ?? "the settings refused it"}. Nothing changed.` } };
+}
+
+function wakeProposal(id: string): void {
+  for (const wake of proposalWaiters.get(id) ?? []) wake();
+  proposalWaiters.delete(id);
+}
+
+/** Wait for the person's answer, a while at most. */
+function proposalWait(id: string, ms = PROPOSAL_WAIT_MS): Promise<void> {
+  return new Promise((resolve) => {
+    const set = proposalWaiters.get(id) ?? new Set<() => void>();
+    const done = () => { clearTimeout(timer); set.delete(done); resolve(); };
+    const timer = setTimeout(done, ms);
+    set.add(done);
+    proposalWaiters.set(id, set);
+  });
+}
+
+/** An agent's proposal: refused, or a card in the conversation its turn
+ * runs in, and then the person's answer if it comes while it waits. */
+async function proposeSetting(credential: AgentToken, body: Record<string, unknown>): Promise<{ status: number; body: Record<string, unknown> }> {
+  const asked = typeof body.setting === "string" ? body.setting.trim() : "";
+  if (!asked) return { status: 400, body: { error: "propose needs a setting: run `bloks settings propose` to list the ones you can" } };
+  const refused = proposalRefusal(asked);
+  if (refused) return { status: 403, body: { error: refused } };
+  const setting = proposable(asked)!;
+  const bot = store.bot(credential.botId);
+  if (!bot) return { status: 404, body: { error: "no such agent" } };
+  const state = proposalState(bot.id);
+  const read = readValue(setting, body.value, state);
+  if (!read.ok) return { status: 400, body: { error: read.error } };
+  const current = setting.read(state);
+  if (current === read.value) return { status: 409, body: { error: `${setting.id} is ${read.value} already. Nothing to propose.` } };
+  const laneId = credential.taskId;
+  const open = store.messagesFor(laneId).find((m) => {
+    const p = m.card?.settingsProposal;
+    return p && p.botId === bot.id && p.setting === setting.id && !p.outcome;
+  });
+  if (open) return { status: 409, body: { error: `You already proposed a change to ${setting.id} here, and it is waiting on the person. Wait for it with \`bloks settings proposal ${open.card!.settingsProposal!.id}\`.` } };
+  const why = typeof body.why === "string" ? body.why.replace(/\s+/g, " ").trim().slice(0, MAX_WHY) : "";
+  const place = placeOf(setting.page);
+  const path = setting.page === "agent"
+    ? `${bot.name}'s settings: Edit profile, in its menu in the sidebar`
+    : place ? `${place.path}${setting.row ? `, ${setting.row}` : ""}` : "Settings";
+  const name = say(setting.name);
+  const before = valueLabel(setting, current, state);
+  const after = valueLabel(setting, read.value, state);
+  const words = (v: { key?: string; text: string }) => (v.key ? say(v.key) : v.text);
+  const plan: ProposalCard = {
+    id: randomUUID(),
+    laneId,
+    setting: setting.id,
+    nameKey: setting.name,
+    name,
+    path,
+    page: setting.page,
+    current: { ...before, text: words(before) },
+    proposed: { ...after, text: words(after) },
+    value: read.value,
+    ...(why ? { why } : {}),
+    botId: bot.id,
+    agentName: bot.name,
+  };
+  const card = store.appendMessage(laneId, {
+    role: "bot",
+    kind: "options",
+    card: {
+      // what a client that does not know the card draws: the words, and
+      // where the person can make the change themselves
+      title: `${bot.name} suggests changing ${name}`,
+      subtitle: `From ${plan.current.text} to ${plan.proposed.text}.${why ? ` ${why}` : ""} It changes only if you say so; it is in ${path}.`,
+      options: [],
+      settingsProposal: plan,
+    },
+  });
+  broadcast({ kind: "message", threadId: laneId, message: card });
+  store.markLane(bot.id, laneId, true);
+  broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
+  await proposalWait(plan.id);
+  const now = store.messagesFor(laneId).find((m) => m.id === card.id) ?? card;
+  return proposalOutcome(laneId, now);
+}
+
+/** The person's answer to a proposal card: Change applies it through the
+ * request the Settings page sends, as them; Keep leaves it. */
+async function answerProposal(laneId: string, messageId: string, change: boolean): Promise<{ status: number; body: Record<string, unknown> }> {
+  const message = store.messagesFor(laneId).find((m) => m.id === messageId);
+  const plan = message?.card?.settingsProposal;
+  if (!message || !plan) return { status: 404, body: { error: "no such proposal" } };
+  if (plan.outcome) return { status: 409, body: { error: "this proposal was answered already" } };
+  const settle = (patch: Partial<ProposalCard>, answered: string) => {
+    const patched = store.patchMessage(laneId, message.id, { card: { ...message.card!, answered, settingsProposal: { ...plan, ...patch } } });
+    if (patched) broadcast({ kind: "message.patch", threadId: laneId, message: patched });
+    wakeProposal(plan.id);
+    return patched;
+  };
+  if (!change) {
+    settle({ outcome: "kept" }, "Kept");
+    return { status: 200, body: { ok: true, outcome: "kept" } };
+  }
+  // read again as things stand now: the list may have changed under a
+  // card that waited, and a value the setting no longer takes is refused
+  const setting = proposable(plan.setting);
+  const state = proposalState(plan.botId);
+  const read = setting ? readValue(setting, plan.value, state) : { ok: false as const, error: "it is not a setting an agent can propose any more" };
+  if (!setting || !read.ok) {
+    settle({ outcome: "failed", error: read.ok ? undefined : read.error }, "Not changed");
+    return { status: 409, body: { error: `Not changed: ${read.ok ? "" : read.error}` } };
+  }
+  const request = setting.request(read.value, state);
+  let failed: string | null = null;
+  try {
+    // The Settings page's own request, made as the person at this
+    // computer: loopback, no credential, which the guard takes as the
+    // owner. Its checks, its save and its broadcast are the page's, so
+    // the change is the same change, whoever tapped where.
+    const res = await fetch(`http://127.0.0.1:${PORT}${request.path}`, {
+      method: request.method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request.body),
+    });
+    if (!res.ok) failed = String(((await res.json().catch(() => ({}))) as { error?: unknown }).error ?? `${res.status}`).slice(0, 200);
+  } catch (error) {
+    failed = (error as Error).message.slice(0, 200);
+  }
+  if (failed) {
+    settle({ outcome: "failed", error: failed }, "Not changed");
+    return { status: 502, body: { error: `Not changed: ${failed}` } };
+  }
+  settle({ outcome: "changed" }, "Changed");
+  record({
+    at: Date.now(),
+    kind: "settings.changed",
+    actor: "you",
+    summary: `Changed ${plan.name} from ${plan.current.text} to ${plan.proposed.text}, as ${plan.agentName} proposed`,
+    detail: { setting: plan.setting, from: plan.current.text, to: plan.proposed.text, proposedBy: plan.agentName },
+  });
+  return { status: 200, body: { ok: true, outcome: "changed" } };
+}
+
+/** What the agent's next turn in a lane hears about proposals the person
+ * answered since, once each. */
+function proposalsAnswered(laneId: string, botId: string): string | null {
+  const lines: string[] = [];
+  for (const message of store.messagesFor(laneId).slice(-300)) {
+    const plan = message.card?.settingsProposal;
+    if (!plan || plan.botId !== botId || !plan.outcome || plan.told) continue;
+    lines.push(
+      plan.outcome === "changed"
+        ? `the person changed ${plan.name} from ${plan.current.text} to ${plan.proposed.text}, as you proposed`
+        : plan.outcome === "kept"
+          ? `the person kept ${plan.name} as it is (${plan.current.text}) rather than change it as you proposed`
+          : `the person tapped Change on ${plan.name}, but it could not be changed (${plan.error ?? "refused"}), so it is as it was`,
+    );
+    const patched = store.patchMessage(laneId, message.id, { card: { ...message.card!, settingsProposal: { ...plan, told: true } } });
+    if (patched) broadcast({ kind: "message.patch", threadId: laneId, message: patched });
+  }
+  return lines.length ? `(Since your last turn here, ${lines.join("; ")}.)` : null;
 }
 
 // ── shared rooms in Slack and Discord ──────────────────────────────────
@@ -28736,6 +28969,89 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           ...(goal.lastReason ? { lastReason: goal.lastReason } : {}),
         },
       });
+    }
+
+    // Where something lives in the app, from the same index its settings
+    // search reads (server/where.ts), for `bloks where`. Reading only.
+    if (method === "GET" && path === "/api/agent/where") {
+      if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });
+      const words = (url.searchParams.get("q") ?? "").slice(0, 200);
+      if (!words.trim()) return json(res, 400, { error: "where needs some words, like `bloks where nightly memory tidy`" });
+      const matches = where(words);
+      return json(res, 200, {
+        query: words,
+        matches,
+        note: matches.length
+          ? "Tell the person the path in words. To put a button in the chat that opens it, run the `open` command a match gives."
+          : "Nothing in the app matches those words. Try other words for the same thing.",
+      });
+    }
+    // A card in the conversation this turn runs in, with one button that
+    // opens a page of the app for the person (`bloks open`). Navigation
+    // only: the button changes nothing.
+    if (method === "POST" && path === "/api/agent/open") {
+      if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });
+      const bot = store.bot(asAgent.botId);
+      if (!bot) return json(res, 404, { error: "no such agent" });
+      const body = await readBody(req);
+      const made = openCard({ id: bot.id, name: bot.name }, body.page, body.row);
+      if (!made.ok) return json(res, 400, { error: made.error });
+      const card = store.appendMessage(asAgent.taskId, { role: "bot", kind: "options", card: made.card });
+      broadcast({ kind: "message", threadId: asAgent.taskId, message: card });
+      return json(res, 200, {
+        ok: true,
+        page: made.card.open.page,
+        path: made.card.open.path,
+        note: `A card with an Open ${made.card.open.name} button is in the conversation. In your reply, say where it goes in words too: on a phone or in a browser the page may not open.`,
+      });
+    }
+    // Settings an agent may propose, as they stand now, and proposing one:
+    // a card the person answers, which waits a while for that answer
+    // (server/settings-proposals.ts). Never a change by itself.
+    if (path === "/api/agent/settings/proposals" && (method === "GET" || method === "POST")) {
+      if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });
+      if (method === "GET") {
+        const state = proposalState(asAgent.botId);
+        return json(res, 200, {
+          settings: PROPOSABLE.map((setting) => {
+            const current = setting.read(state);
+            return {
+              setting: setting.id,
+              name: say(setting.name),
+              where: setting.page === "agent" ? "your own settings" : placeOf(setting.page)?.path ?? "Settings",
+              current,
+              takes: setting.kind === "time"
+                ? "a time of day like 08:00"
+                : setting.kind === "model"
+                  ? state.agent.model?.options.map((o) => o.id) ?? []
+                  : setting.choices!.map((c) => c.value),
+            };
+          }),
+          note: "Propose one with `bloks settings propose <setting> <value> --why \"<reason>\"`. The person answers on a card; nothing changes until they tap Change. Anything not listed here is theirs: send them there with `bloks open`.",
+        });
+      }
+      const answered = await proposeSetting(asAgent, await readBody(req));
+      return json(res, answered.status, answered.body);
+    }
+    m = path.match(/^\/api\/agent\/settings\/proposals\/([\w-]+)$/);
+    if (m && method === "GET") {
+      if (!asAgent) return json(res, 401, { error: "no agent credential on this request" });
+      let found = findProposal(asAgent.botId, m[1], asAgent.taskId);
+      if (!found) return json(res, 404, { error: "no proposal of yours by that id" });
+      if (!found.message.card!.settingsProposal!.outcome) {
+        await proposalWait(m[1]);
+        found = findProposal(asAgent.botId, m[1], found.laneId) ?? found;
+      }
+      const outcome = proposalOutcome(found.laneId, found.message);
+      return json(res, outcome.status, outcome.body);
+    }
+    // The person's answer to one. Theirs alone: no rule lets an agent's
+    // credential here (server/agent-cli.ts), and this says so as well.
+    m = path.match(/^\/api\/settings-proposals\/([\w:.-]+)\/([\w-]+)\/(change|keep)$/);
+    if (m && method === "POST") {
+      if (asAgent || namesMember()) return json(res, 403, { error: "the person answers a proposed change to their settings" });
+      const answered = await answerProposal(m[1], m[2], m[3] === "change");
+      return json(res, answered.status, answered.body);
     }
 
     // ── projects ──

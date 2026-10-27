@@ -169,6 +169,9 @@ test("every agent that makes files is pointed at the design skill, and can read 
   // own turn, which has the command line it describes (GitHub 408)
   assert.match(persona, /^- using-bloks: Using Bloks\. Read before acting on Bloks itself/m);
   assert.doesNotMatch(persona, /A new tab: `tab /);
+  // and how Bloks works, to explain it and say where things are
+  assert.match(persona, /^- how-bloks-works: How Bloks works\. Read when the person asks how Bloks works/m);
+  assert.doesNotMatch(persona, /## Pointing the person somewhere/);
   // and the chat side of a file is a sentence, not a recap
   assert.match(persona, /Never repeat the file in the chat as a list/);
   // the design rules in short, even for an agent that could read the skill

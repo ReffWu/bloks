@@ -97,6 +97,14 @@ export interface OptionCardData {
     conversation: string;
     instruction: string;
   };
+  /** Present when an agent pointed the person at a place in the app
+   * (`bloks open`, server/where.ts): one button that opens it, and the
+   * way there in words for a window or a phone that cannot. */
+  open?: import("./where.ts").OpenPlan;
+  /** Present when an agent proposed changing a setting
+   * (server/settings-proposals.ts): answered through its own route, never
+   * as a reply, and applied only on the person's Change. */
+  settingsProposal?: import("./settings-proposals.ts").ProposalCard;
   /** Present when a lead has proposed hiring a team (server/teams.ts). */
   team?: {
     room: string;

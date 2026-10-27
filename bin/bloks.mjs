@@ -50,9 +50,28 @@ const COMMANDS = {
     run: () => request("GET", "/api/agent/whoami"),
   },
   settings: {
-    use: "settings [--category <category>] [--id <reference>] [--cursor <continuation>]",
-    about: "inspect safe settings and their owner controls. A device category asks the owner's open windows and connected phone once and says how fresh each answer is; nothing a device has not said is filled in. This command never changes a setting",
+    use:
+      'settings [--category <category>] [--id <reference>] [--cursor <continuation>] | settings propose [<setting> <value> --why "<reason>"] | settings proposal <id>',
+    about:
+      "inspect safe settings and their owner controls. A device category asks the owner's open windows and connected phone once and says how fresh each answer is; nothing a device has not said is filled in. Inspecting never changes a setting. " +
+      "propose with nothing after it lists the everyday settings you may propose, with their values now. propose <setting> <value> puts a card in this conversation showing the setting, its value now, yours and your reason, with Change and Keep: " +
+      "nothing changes until the person taps Change, and it waits a minute for their answer. proposal <id> waits for the answer again. Approvals, keys, people, devices, plans, limits, backups and anything that deletes are refused: send the person there with `open`",
     run: (args) => {
+      if (args[0] === "propose") {
+        const flags = parseFlags(args.slice(1));
+        const [setting, ...value] = positional(args.slice(1));
+        if (!setting) return request("GET", "/api/agent/settings/proposals");
+        if (!value.length) throw new Error(`propose needs the value too, like \`settings propose ${setting} off --why "..."\`; \`settings propose\` lists what each takes`);
+        return request("POST", "/api/agent/settings/proposals", {
+          setting,
+          value: value.join(" "),
+          ...(flags.why && flags.why !== "true" ? { why: flags.why } : {}),
+        });
+      }
+      if (args[0] === "proposal") {
+        if (!args[1]) throw new Error("proposal needs the id `settings propose` answered with");
+        return request("GET", `/api/agent/settings/proposals/${encodeURIComponent(args[1])}`);
+      }
       const flags = parseFlags(args);
       if (args.some((arg, i) => i % 2 === 0 && !["--category", "--id", "--cursor"].includes(arg)) || args.length % 2) {
         throw new Error("settings accepts only --category, --id and --cursor with values");
@@ -62,6 +81,29 @@ const COMMANDS = {
         if (flags[key]) query.set(key, flags[key]);
       }
       return request("GET", `/api/agent/settings${query.size ? `?${query}` : ""}`);
+    },
+  },
+  where: {
+    use: "where <words…>",
+    about:
+      "where something lives in the app, from the same index its settings search reads: the best matches, each with its page id, the path in words " +
+      '("Settings, Behaviour"), the rows that match and the `open` command that puts a button for it in the chat. Use it before telling the person where to go',
+    run: (args) => {
+      const words = args.join(" ").trim();
+      if (!words) throw new Error("where needs some words, like `where nightly memory tidy`");
+      return request("GET", `/api/agent/where?q=${encodeURIComponent(words)}`);
+    },
+  },
+  open: {
+    use: 'open <page-id> [--row "<row>"]',
+    about:
+      "put a card in this conversation with one button that takes the person's app to that page (and to the row, on a Settings page): a page id from `where`. " +
+      "It only opens the page; the person changes what is on it. On a phone or in a browser the page may not open there, so say the path in words too",
+    run: (args) => {
+      const flags = parseFlags(args);
+      const [page] = positional(args);
+      if (!page) throw new Error("open needs a page id: run `where <words>` to find one");
+      return request("POST", "/api/agent/open", { page, ...(flags.row && flags.row !== "true" ? { row: flags.row } : {}) });
     },
   },
   goal: {

@@ -142,6 +142,21 @@ export const RULES: Rule[] = [
   // credentials as configured or not, and a device's settings as it last
   // said them (docs/ARCHITECTURE.md, Settings inspection).
   { method: "GET", path: "/api/agent/settings", why: "inspect safe settings observations and their owner controls without changing them" },
+  // Where something lives in the app, so an agent can tell the person the
+  // way rather than guess at it, and a button that takes them there. The
+  // answer is the app's own settings index (server/where.ts); the button
+  // only opens a page, and the person changes whatever is on it.
+  { method: "GET", path: "/api/agent/where", why: "find where something lives in the app: the Settings page or panel, the path in words and the rows that match" },
+  { method: "POST", path: "/api/agent/open", why: "put a card in the conversation with one button that opens a page of the app for the person; it changes nothing" },
+  // A change to one of a short list of everyday preferences, proposed on
+  // a card the person answers (server/settings-proposals.ts). Proposing
+  // is all it is: the change is made by the person's tap, through the
+  // request the Settings page sends, and the route that takes the tap
+  // (/api/settings-proposals) is on NEVER. Approvals, keys, people,
+  // devices, money and anything that could be lost are refused by name.
+  { method: "GET", path: "/api/agent/settings/proposals", why: "list the everyday settings it may propose changing, with their current values" },
+  { method: "POST", path: "/api/agent/settings/proposals", why: "propose changing one everyday setting, on a card the person answers with Change or Keep; nothing changes until they tap Change" },
+  { method: "GET", path: "/api/agent/settings/proposals/:id", why: "wait for the person's answer to a setting it proposed" },
   // The goal the person set for the conversation this turn runs in, if
   // any. Reading only: a goal starts turns unattended and can run a
   // command on the person's computer, so setting one is theirs alone,
@@ -357,6 +372,9 @@ export const NEVER = [
   "/api/home",
   // which Signal accounts answer for which agent, and who is let in
   "/api/signal",
+  // the person's answer to a setting an agent proposed: proposing is an
+  // agent's, the Change is theirs
+  "/api/settings-proposals",
 ];
 
 const PATH_PART = /^[\w.-]+$/;

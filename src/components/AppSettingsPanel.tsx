@@ -292,6 +292,13 @@ export function AppSettingsPanel() {
     setTarget(row ? { page: id, row: rowKey(row), at: Date.now() } : null);
   };
 
+  // A row asked for from outside the list, such as an agent's card in a
+  // conversation: the same scroll and light a search result gets.
+  const asked = state.settingsRow;
+  useEffect(() => {
+    if (asked) setTarget({ page: asked.page, row: rowKey(asked.row), at: asked.at });
+  }, [asked]);
+
   // a new page starts at its top, not wherever the last one was left
   const targetRef = useRef(target);
   targetRef.current = target;
