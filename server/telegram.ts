@@ -28,7 +28,8 @@ import { deliveries } from "./telegram-format.ts";
 import { clipTelegramText, TELEGRAM_MESSAGE_CHARS } from "./telegram-reply.ts";
 import { randomInt } from "node:crypto";
 
-const API = "https://api.telegram.org";
+// overridable only so a test can stand in for Telegram, as Slack's is
+const API = process.env.BLOKS_TELEGRAM_API || "https://api.telegram.org";
 
 export interface TelegramState {
   /** Bot token from BotFather. Lives in the secrets file. */

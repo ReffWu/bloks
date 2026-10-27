@@ -701,7 +701,7 @@ process.on("exit", () => {
   for (const store of unwritten) store.writeWaiting();
 });
 
-const COLORS: BlokColor[] = [
+export const COLORS: BlokColor[] = [
   "green",
   "blue",
   "red",

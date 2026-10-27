@@ -55,6 +55,7 @@ export type LedgerKind =
   | "control.released"
   | "conversation.rewound"
   | "setup.imported"
+  | "setup.undone"
   | "sessions.imported"
   | "server.update";
 

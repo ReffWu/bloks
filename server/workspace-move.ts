@@ -39,6 +39,7 @@ export function moveLeftOut(rel: string, isDir: boolean): string | null {
     "engine-turns.json": "engine sessions on the computer it left",
     "session-import.json": "what was brought over from that computer's other tools",
     "setup-import.json": "what was brought over from that computer's other tools",
+    "setup-import-runs.json": "imports from that computer's other tools, kept for undo",
     "pair-links.json": "pairing links for that computer",
     "live-activities.json": "phones paired with that computer",
   };

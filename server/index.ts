@@ -129,7 +129,7 @@ import { forgetNative, slimNativeLogs, tidyNativeLogs } from "./drivers/native.t
 import { DEFAULT_STALL_MINUTES, STALL_CHOICES, stallPreface } from "./drivers/stall.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
-import { MAX_TASKS, ownerLanes, shapeOf, Store, type AgentNote, type BotRecord, type Message, type NewBotProfile, type RecalledNote, type TaskRecord } from "./store.ts";
+import { COLORS as BLOK_COLORS, MAX_TASKS, ownerLanes, shapeOf, Store, type AgentNote, type BlokColor, type BotRecord, type Message, type NewBotProfile, type RecalledNote, type TaskRecord } from "./store.ts";
 import { addressees, audienceOf, BlokStore, currentSpend, DEFAULT_SHARING, leadOf, MAX_MEMBERS, ranksForExport, type BlokRecord, type RoomSharing } from "./bloks.ts";
 import { answersOf, pickAnswerers, RECENT_LINES, roomAnswers, routeWords, type RoomAnswers, type RoomRoute, type RouteLine } from "./room-route.ts";
 import { cleanSectionOrder, placeAt, SidebarStore, sidebarView, upgradePlaces, type Placed } from "./sidebar.ts";
@@ -584,7 +584,20 @@ import {
   type LeadCandidate,
   type RaiseInput,
 } from "./incidents.ts";
-import { applyImport, detectSetup, ImportRecord, reviewOf, scrubSecrets, type ImportDeps, type McpEntry } from "./setup-import.ts";
+import {
+  applyImport,
+  cleanPicks,
+  detectSetup,
+  ImportRecord,
+  reviewOf,
+  scrubSecrets,
+  tokenHash as setupTokenHash,
+  type AgentSettings,
+  type ChatPlatform as SetupChatPlatform,
+  type ImportDeps,
+  type McpEntry,
+} from "./setup-import.ts";
+import { ImportRuns, undoRun } from "./setup-undo.ts";
 import {
   cleanDestination,
   cleanPicks as cleanSessionPicks,
@@ -1935,6 +1948,8 @@ const intentWoken = new Map<string, number>();
 // What was brought over from other agent tools, and where it went, so a
 // second import updates the first (server/setup-import.ts).
 const setupRecord = new ImportRecord(join(DATA_DIR, "setup-import.json"));
+// And what each import changed, so it can be taken back (server/setup-undo.ts).
+const setupRuns = new ImportRuns(join(DATA_DIR, "setup-import-runs.json"));
 // Which past sessions became which conversations (server/session-import.ts),
 // and the engine sessions Bloks ran itself, which are conversations here
 // already and never something to bring over.
@@ -2096,16 +2111,51 @@ function sessionImportDeps(): SessionImportDeps {
  * the import because finding the default engine has to wait on the
  * registry and the import itself does not.
  */
-function setupImportDeps(settings: Partial<BotRecord> = {}): ImportDeps {
+function setupImportDeps(
+  settings: Partial<BotRecord> = {},
+  engines: Partial<Record<SessionEngine, ModelSelection | null>> = {},
+): ImportDeps {
+  const settingsOf = (bot: BotRecord): AgentSettings => ({
+    title: bot.title ?? "",
+    description: bot.description ?? "",
+    color: bot.color,
+    effort: bot.effort ?? null,
+    modelSelection: { instanceId: bot.modelSelection.instanceId, model: bot.modelSelection.model },
+    skillIds: [...(bot.skillIds ?? [])],
+    mcpServers: [...(bot.mcpServers ?? [])],
+  });
+  // only the parts an import sets, each checked the way the agent's own
+  // settings would check it
+  const patchOf = (patch: Partial<AgentSettings>): Partial<BotRecord> => {
+    const out: Partial<BotRecord> = {};
+    if (patch.title !== undefined) out.title = patch.title.slice(0, MAX_TITLE_CHARS);
+    if (patch.description !== undefined) out.description = patch.description.slice(0, MAX_DESCRIPTION_CHARS);
+    if (patch.color !== undefined && BLOK_COLORS.includes(patch.color as BlokColor)) out.color = patch.color as BlokColor;
+    if (patch.effort !== undefined) out.effort = patch.effort && isEffort(patch.effort) ? patch.effort : undefined;
+    if (patch.modelSelection && registry.get(patch.modelSelection.instanceId)) out.modelSelection = patch.modelSelection;
+    if (patch.skillIds) out.skillIds = patch.skillIds.filter((id) => listSkills().some((s) => s.id === id));
+    if (patch.mcpServers) out.mcpServers = patch.mcpServers.filter((id) => (cfg.mcpServers ?? []).some((s) => s.id === id));
+    return out;
+  };
+  const tokenOf = (platform: SetupChatPlatform, botId?: string) =>
+    platform === "telegram" ? (botId ? telegramBinding(botId)?.token : undefined) : platform === "slack" ? cfg.chat?.slack?.botToken : cfg.chat?.discord?.token;
   return {
     agent(id) {
       const bot = store.bot(id);
       if (!bot || bot.archivedAt) return null;
       return { id: bot.id, name: bot.name, description: bot.description ?? "", busy: bot.tasks.some((t) => t.busy) };
     },
-    createAgent({ name, title }) {
+    agents: () => store.bots.filter((bot) => !bot.archivedAt && !bot.hidden).map((bot) => ({ id: bot.id, name: bot.name })),
+    agentSettings(id) {
+      const bot = store.bot(id);
+      return bot && !bot.archivedAt ? settingsOf(bot) : null;
+    },
+    patchAgent(id, patch) {
+      store.patchBot(id, patchOf(patch));
+    },
+    createAgent({ name, title, settings: own }) {
       const bot = store.createBot({ name: name.slice(0, MAX_NAME_CHARS), title: title.slice(0, MAX_TITLE_CHARS) });
-      store.patchBot(bot.id, { ...settings, activeWithYouAt: Date.now() });
+      store.patchBot(bot.id, { ...settings, ...(own ? patchOf(own) : {}), activeWithYouAt: Date.now() });
       record({
         at: Date.now(),
         kind: "agent.created",
@@ -2115,6 +2165,18 @@ function setupImportDeps(settings: Partial<BotRecord> = {}): ImportDeps {
       });
       return bot.id;
     },
+    retireAgent(id) {
+      const bot = store.bot(id);
+      if (!bot || bot.archivedAt) return "gone";
+      // a word from the person makes it theirs, whoever made it
+      if (bot.tasks.some((task) => store.messagesFor(task.id).some((m) => m.role === "user"))) return "talked";
+      const archived = store.archiveBot(id, Date.now());
+      if (!archived) return "gone";
+      void windDown(archived).catch(() => {});
+      record({ at: Date.now(), kind: "agent.archived", actor: "you", summary: `Archived ${archived.name}`, detail: { agent: archived.name, key: "kept" } });
+      return "archived";
+    },
+    engine: (engine) => engines[engine] ?? null,
     setInstructions(botId, text) {
       store.patchBot(botId, { description: text.slice(0, MAX_DESCRIPTION_CHARS) });
     },
@@ -2130,8 +2192,13 @@ function setupImportDeps(settings: Partial<BotRecord> = {}): ImportDeps {
         if (!written) throw new Error(`${file} is a link to somewhere else now, so it was not written. Look at the agent's workspace.`);
       });
     },
-    skills: () => listSkills().map((skill) => ({ id: skill.id, source: skill.source })),
+    skills: () => listSkills().map((skill) => ({ id: skill.id, source: skill.source, name: skill.name })),
+    skill(id) {
+      const found = listSkills().find((s) => s.id === id);
+      return found ? { name: found.name, description: found.description, body: found.body, source: found.source } : null;
+    },
     installSkill: (input) => installSkill(input, { by: { kind: "import", name: "an import" }, why: "Brought in from another tool" }).id,
+    removeSkill: (id) => deleteSkill(id),
     mcpServers: () => (cfg.mcpServers ?? []) as McpEntry[],
     saveMcpServers(list) {
       // a connection the app holds open was made with the old settings
@@ -2142,8 +2209,63 @@ function setupImportDeps(settings: Partial<BotRecord> = {}): ImportDeps {
     newId: () => randomBytes(8).toString("hex"),
     rules: () => policy.list(),
     addRule: (rule) => policy.add(rule, Date.now()),
+    removeRule: (id) => policy.remove(id),
     notes: () => profileNotes.list(),
     suggestNote: (text, by) => profileNotes.suggest(text, by),
+    removeNote: (id) => profileNotes.remove(id),
+    channel(platform, botId) {
+      const token = tokenOf(platform, botId);
+      return token ? { tokenHash: setupTokenHash(token) } : null;
+    },
+    // The same checks Settings makes before it saves a token, so an
+    // imported one is as real as one typed there. Saved switched off: the
+    // other tool may still be answering on that bot, and a bot answers
+    // one app at a time.
+    async connectChannel({ platform, botId, tokens }) {
+      if (platform === "telegram") {
+        if (!botId || !store.bot(botId)) throw new Error("Choose an agent for this Telegram bot.");
+        const token = telegram.cleanToken(tokens.botToken);
+        if (!token) throw new Error("That does not look like a Telegram bot token.");
+        const me = await telegram.whoAmI(token);
+        await identifyTelegramBindings(token, me);
+        if (duplicateTelegramBot(botId, me.id)) throw new Error("This Telegram bot already belongs to another agent. Each agent needs its own bot.");
+        saveTelegramBinding(botId, { ...replaceTelegramToken(telegramBinding(botId), token, me), enabled: false });
+        startTelegramBot(botId);
+        return;
+      }
+      const next = { ...(cfg.chat ?? {}) };
+      if (platform === "slack") {
+        const botToken = slack.cleanBotToken(tokens.botToken);
+        const appToken = slack.cleanAppToken(tokens.appToken);
+        if (!botToken) throw new Error("That bot token should start with xoxb-.");
+        if (!appToken) throw new Error("That app-level token should start with xapp-.");
+        await slack.whoAmI(botToken);
+        next.slack = { ...(next.slack ?? {}), botToken, appToken, enabled: false };
+      } else {
+        const token = discord.cleanToken(tokens.token);
+        if (!token) throw new Error("That does not look like a Discord bot token.");
+        await discord.whoAmI(token);
+        next.discord = { ...(next.discord ?? {}), token, enabled: false };
+      }
+      saveConfig({ chat: next } as Partial<AppConfig>);
+      cfg.chat = next;
+      startChat(platform);
+    },
+    disconnectChannel(platform, botId) {
+      if (platform === "telegram") {
+        if (!botId) return;
+        saveTelegramBinding(botId);
+        void revokeTelegramPersonTurns(botId, () => true, "This agent's Telegram bot was removed.").catch(() => {});
+        startTelegramBot(botId);
+        return;
+      }
+      const next = { ...(cfg.chat ?? {}) };
+      if (platform === "slack") next.slack = { ...(next.slack ?? {}), botToken: undefined, appToken: undefined, enabled: false };
+      else next.discord = { ...(next.discord ?? {}), token: undefined, enabled: false };
+      saveConfig({ chat: next } as Partial<AppConfig>);
+      cfg.chat = next;
+      startChat(platform);
+    },
   };
 }
 // An agent doing the work on a clone of its folder, for you to apply or not.
@@ -21344,14 +21466,28 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (asAgent || (local ? namesMember() : !ownerDevice)) return json(res, 403, { error: "bringing a setup over is the owner's" });
       return json(res, 200, { computer: computerName(), here: local });
     }
+    // The look also says which import, if any, can still be undone, so the
+    // offer outlives the window it was made in.
+    const setupLook = () => {
+      const last = setupRuns.latest();
+      return { ...reviewOf(detectSetup(), setupRecord, setupImportDeps()), lastRun: last ? { id: last.id, at: last.at, items: last.items } : null };
+    };
     if (path === "/api/setup-import" && (method === "GET" || method === "POST")) {
       if (asAgent || (local ? namesMember() : !ownerDevice)) return json(res, 403, { error: "bringing a setup over is the owner's" });
-      if (method === "GET") return json(res, 200, reviewOf(detectSetup(), setupRecord, setupImportDeps()));
+      if (method === "GET") return json(res, 200, setupLook());
       const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const picks = cleanPicks(body.picks);
       // A new agent's settings mean asking the engines which one answers,
-      // which takes a moment; only an import that makes one waits for it.
-      const makesAgent = Array.isArray(body.picks) && body.picks.some((pick: unknown) => isRecord(pick) && pick.botId === "new");
-      const outcome = applyImport(detectSetup(), body.picks, setupImportDeps(makesAgent ? await newAgentSettings() : {}), setupRecord);
+      // which takes a moment; only an import that makes one, or that sets
+      // an agent's engine, waits for it.
+      const makesAgent = picks.some((pick) => pick.botId === "new" || pick.to === "agent");
+      const engines =
+        picks.some((pick) => pick.to === "agent" || pick.to === "engine")
+          ? { claude: await selectionForEngine("claude"), codex: await selectionForEngine("codex") }
+          : {};
+      const now = Date.now();
+      const outcome = await applyImport(detectSetup(), picks, setupImportDeps(makesAgent ? await newAgentSettings() : {}, engines), setupRecord, now);
+      const run = setupRuns.add(outcome, now);
       for (const id of outcome.created) {
         const made = store.bot(id);
         if (made) broadcast({ kind: "bot", bot: { ...clientBot(made)!, messages: store.messagesFor(made.threadId) } });
@@ -21363,10 +21499,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (outcome.touched.skills) broadcast({ kind: "skills" });
       if (outcome.touched.rules) broadcast({ kind: "rules" });
       if (outcome.touched.notes) broadcast({ kind: "profile" });
+      if (outcome.touched.channels.size) broadcast({ kind: "config", ...(await configStatus()) });
       const brought = outcome.results.filter((r) => r.ok && r.did !== "unchanged").length;
       if (brought) {
         record({
-          at: Date.now(),
+          at: now,
           kind: "setup.imported",
           actor: "you",
           summary: `Brought over ${brought} ${brought === 1 ? "item" : "items"} from other agent tools${local ? "" : ` on ${computerName()}`}`,
@@ -21376,8 +21513,36 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       return json(res, 200, {
         results: outcome.results,
         created: outcome.created,
-        review: reviewOf(detectSetup(), setupRecord, setupImportDeps()),
+        run: run ? { id: run.id, at: run.at, items: run.items } : null,
+        review: setupLook(),
       });
+    }
+    if (path === "/api/setup-import/undo" && method === "POST") {
+      if (asAgent || (local ? namesMember() : !ownerDevice)) return json(res, 403, { error: "bringing a setup over is the owner's" });
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const run = typeof body.runId === "string" ? setupRuns.get(body.runId) : undefined;
+      if (!run) return json(res, 404, { error: "no such import" });
+      if (run.undoneAt) return json(res, 409, { error: "that import was already undone" });
+      const undone = undoRun(run, setupImportDeps(), setupRecord);
+      setupRuns.markUndone(run.id, Date.now());
+      for (const id of undone.touched.archived) {
+        const bot = store.bot(id);
+        if (bot) broadcast({ kind: "bot", bot: clientBot(bot) });
+      }
+      for (const id of undone.touched.agents) if (!undone.touched.archived.has(id)) broadcast({ kind: "bot", bot: clientBot(store.bot(id)) });
+      for (const id of undone.touched.memory) broadcast({ kind: "memory.changed", botId: id, changes: 1 });
+      if (undone.touched.skills) broadcast({ kind: "skills" });
+      if (undone.touched.rules) broadcast({ kind: "rules" });
+      if (undone.touched.notes) broadcast({ kind: "profile" });
+      if (undone.touched.channels) broadcast({ kind: "config", ...(await configStatus()) });
+      record({
+        at: Date.now(),
+        kind: "setup.undone",
+        actor: "you",
+        summary: `Undid an import from other agent tools: ${undone.undone.length} ${undone.undone.length === 1 ? "change" : "changes"} taken back${undone.kept.length ? `, ${undone.kept.length} kept` : ""}`,
+        detail: { undone: undone.undone.length, kept: undone.kept.length },
+      });
+      return json(res, 200, { undone: undone.undone, kept: undone.kept, review: setupLook() });
     }
 
     // ── bring your past sessions: Claude Code and Codex conversations ──

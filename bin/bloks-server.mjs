@@ -31,6 +31,11 @@
 //                                switch to it and restart, or go back if it
 //                                does not start; --check only says if there is
 //                                one. The app's About page does the same
+//   bloks-server import [TOOL] --dry-run [--json]
+//                                what Bring your setup would find from Claude
+//                                Code, Codex, Cursor, OpenClaw or Hermes on this
+//                                machine, and what each becomes. Reads only;
+//                                the import itself is chosen in the app
 //   bloks-server stop            stop the running server
 //
 // And for scripts, CI and a terminal (server/scripting-cli.ts):
@@ -535,6 +540,27 @@ if (handOver) {
   case "token":
     await scripting(command);
     break;
+  case "import": {
+    // What bringing a setup over would find in this machine's home
+    // folder, read here with the server's own reader and nothing written.
+    // The import itself is a list to tick in the app, where each value a
+    // server or a chat app needs is typed or copied on purpose, so from
+    // here there is only the look.
+    const sources = ["claude", "codex", "cursor", "openclaw", "hermes"];
+    const source = args.find((a) => !a.startsWith("-"));
+    if (source && source !== "all" && !sources.includes(source)) fail(`Which tool? One of: ${sources.join(", ")}, or all.`);
+    if (!args.includes("--dry-run")) {
+      fail("Only a look from here: bloks-server import [claude|codex|cursor|openclaw|hermes] --dry-run. To bring things over, open Bloks, Settings, Bring your setup.");
+    }
+    const file = join(root, "server", "setup-import.ts");
+    const code = await import(pathToFileURL(existsSync(file) ? file : join(root, "dist-server", "setup-import.js")).href);
+    const scan = code.detectSetup(homedir(), source && source !== "all" ? source : undefined);
+    if (args.includes("--json")) {
+      // the same shape the app's review is made from, which holds no values
+      console.log(JSON.stringify(scan, null, 2));
+    } else process.stdout.write(code.dryRunReport(scan));
+    break;
+  }
   default:
-    fail("Commands: bloks-server [start], activate KEY, pair, status, drain, backup, restore FILE, update, stop, run AGENT TASK, team apply FILE, chat AGENT, token");
+    fail("Commands: bloks-server [start], activate KEY, pair, status, drain, backup, restore FILE, update, import --dry-run, stop, run AGENT TASK, team apply FILE, chat AGENT, token");
 }
