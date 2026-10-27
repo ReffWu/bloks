@@ -1,0 +1,397 @@
+// Home Assistant, both ways: agents that can see the home and change it
+// with the owner's leave, and the home starting an agent.
+//
+// The order is the order of trust. First the connection, which proves an
+// address and a token work and keeps the token on this computer. Then the
+// list, because nothing is visible to an agent until it is on it. Then
+// which agents may use it at all. Last, the other direction, which needs
+// nothing from the list: Home Assistant posts to an agent's webhook.
+import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence } from "motion/react";
+import { Check, Copy, ExternalLink, House, Loader2, Search as SearchIcon } from "@/components/icons";
+import { api, useStore } from "@/state/store";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/cn";
+import { Checklist, ConnectionError, ConnectionHeader, ConnectionNote, HealthLine, PairedMoment, SecretField, StepNote, useJustHappened, type Step } from "./ConnectionKit";
+import { SettingRow, SettingsCard, SettingsGroup, SettingsSelect, SettingsSkeleton } from "./SettingsLayout";
+
+interface Status {
+  configured: boolean;
+  enabled: boolean;
+  url: string | null;
+  name: string | null;
+  version: string | null;
+  entities: string[];
+  domains: string[];
+  auto: string[];
+  agents: string[];
+  mcp: boolean;
+  hooks?: Record<string, boolean>;
+}
+
+interface Entity {
+  entity_id: string;
+  domain: string;
+  name: string;
+  state: string;
+  area?: string;
+  alwaysAsks: boolean;
+}
+
+/** The server's own check: a long-lived token is a JWT. */
+const TOKEN = /^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$/;
+
+/** Domains worth offering whole, in the words people use for them. */
+const DOMAIN_NAMES: Record<string, string> = {
+  light: "Lights", switch: "Switches", sensor: "Sensors", binary_sensor: "Door and motion sensors", climate: "Thermostats",
+  cover: "Blinds and doors", lock: "Locks", alarm_control_panel: "Alarms", media_player: "Speakers and TVs", fan: "Fans",
+  scene: "Scenes", script: "Scripts", vacuum: "Vacuums", weather: "Weather", person: "People at home", camera: "Cameras",
+};
+
+export function HomeAssistantPage() {
+  const { state } = useStore();
+  const [status, setStatus] = useState<Status | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    api("/api/home").then(setStatus).catch((e) => setError(e.message));
+  }, []);
+
+  const justConnected = useJustHappened(status ? status.configured : undefined);
+
+  const post = (body: Record<string, unknown>) => {
+    setBusy(true);
+    setError(null);
+    return api("/api/home", { method: "POST", body: JSON.stringify(body) })
+      .then((next: Status) => {
+        setStatus((before) => ({ ...next, hooks: before?.hooks }));
+        setToken("");
+        setEditing(false);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setBusy(false));
+  };
+
+  if (!status) return error ? <ConnectionError>{error}</ConnectionError> : <SettingsSkeleton rows={2} />;
+
+  const connect = () => {
+    if (busy || !url.trim() || !TOKEN.test(token.trim())) return;
+    void post({ url: url.trim(), token: token.trim() });
+  };
+  const tokenOk = TOKEN.test(token.trim());
+  const fields = (
+    <div className="flex max-w-[460px] flex-col gap-2">
+      <div>
+        <label htmlFor="home-url" className="mb-1 block text-small text-muted-foreground">Address</label>
+        <Input id="home-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://homeassistant.local:8123" spellCheck={false} className="h-8 font-mono text-small" />
+      </div>
+      <SecretField id="home-token" label="Long-lived access token" value={token} onChange={setToken} shape={TOKEN} hint="A long string in three parts, from your Home Assistant profile." placeholder="Paste the token" onEnter={connect} />
+      <div>
+        <Button variant="brand" size="sm" disabled={busy || !url.trim() || !tokenOk} onClick={connect}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+          {busy ? "Checking with Home Assistant" : "Connect"}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const steps: Step[] = [
+    {
+      key: "token",
+      title: "Make a long-lived access token",
+      state: tokenOk ? "done" : "now",
+      keep: true,
+      body: (
+        <StepNote>
+          In Home Assistant, open your profile, then Security, and under Long-lived access tokens choose Create token. It acts as you, so
+          use an account that can reach only what you want agents near.
+        </StepNote>
+      ),
+    },
+    { key: "paste", title: "Paste the address and the token", state: busy ? "wait" : "now", body: fields },
+  ];
+
+  return (
+    <>
+      <SettingsCard>
+        <ConnectionHeader
+          icon={<House size={14} className="shrink-0 text-muted-foreground" />}
+          title="Home Assistant"
+          says={status.configured ? `Connected to ${status.name ?? "your home"}${status.version ? `, Home Assistant ${status.version}` : ""}.` : "Let agents see and control your home, with your say on every change."}
+          info="The token stays on this computer. Agents never see it: Bloks makes every request for them, to the entities you list, and asks you on a card before any change."
+          health={<HealthLine tone={!status.configured ? "off" : status.enabled ? "on" : "off"} label={!status.configured ? "Not set up" : status.enabled ? "Connected" : "Off"} />}
+          control={status.configured && <Switch aria-label="Home Assistant" checked={status.enabled} disabled={busy} onCheckedChange={(enabled) => void post({ enabled })} />}
+        />
+        <AnimatePresence initial={false}>
+          {justConnected && <PairedMoment key="up" icon={<House size={18} />} title={`Connected to ${status.name ?? "your home"}`} detail="Choose what agents can see below." />}
+        </AnimatePresence>
+        {!status.configured ? (
+          <Checklist label="Connect Home Assistant" steps={steps} />
+        ) : editing ? (
+          <div className="mt-3">{fields}</div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-3">
+            <span className="min-w-0 truncate font-mono text-small text-muted-foreground">{status.url}</span>
+            <span className="flex gap-x-4 text-small text-muted-foreground">
+              <button onClick={() => { setUrl(status.url ?? ""); setEditing(true); }} className="underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline">Change token</button>
+              <button onClick={() => void post({ forget: true })} className="underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline">Disconnect</button>
+            </span>
+          </div>
+        )}
+        <ConnectionError>{error}</ConnectionError>
+      </SettingsCard>
+
+      {status.configured && <EntityList status={status} busy={busy} onSave={post} />}
+
+      {status.configured && (
+        <SettingsGroup
+          title="Agents that can use it"
+          footnote="Only in your own conversations with them. Not in shared rooms, and not for people on Telegram or Signal, or mail from anyone."
+        >
+          {state.bots.filter((b) => !b.hidden && !b.archivedAt).map((bot) => {
+            const on = status.agents.includes(bot.id);
+            return (
+              <SettingRow
+                key={bot.id}
+                rowId={`home-agent-${bot.id}`}
+                label={bot.name}
+                description={on ? "Can read what is listed, and ask you before changing it." : "Cannot see the home."}
+                control={<Switch aria-label={`${bot.name} can use the home`} checked={on} disabled={busy} onCheckedChange={(next) => void post({ agents: next ? [...status.agents, bot.id] : status.agents.filter((id) => id !== bot.id) })} />}
+              />
+            );
+          })}
+          <SettingRow
+            label="Other AI apps"
+            description="Through Bloks in Claude Desktop, Cursor and the like: read what is listed, and change only what you marked to change without asking."
+            control={<Switch aria-label="Other AI apps can use the home" checked={status.mcp} disabled={busy} onCheckedChange={(mcp) => void post({ mcp })} />}
+          />
+        </SettingsGroup>
+      )}
+
+      <StartAnAgent />
+    </>
+  );
+}
+
+/** What an agent may see, and what it may change without asking. */
+function EntityList({ status, busy, onSave }: { status: Status; busy: boolean; onSave: (body: Record<string, unknown>) => Promise<void> }) {
+  const [catalog, setCatalog] = useState<Entity[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [onlyListed, setOnlyListed] = useState(false);
+
+  useEffect(() => {
+    api("/api/home/catalog").then(({ entities }) => setCatalog(entities)).catch((e) => setError(e.message));
+  }, [status.url]);
+
+  const listed = (e: Entity) => status.entities.includes(e.entity_id) || status.domains.includes(e.domain);
+  const domains = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of catalog ?? []) counts.set(e.domain, (counts.get(e.domain) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [catalog]);
+  const shown = useMemo(() => {
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return (catalog ?? [])
+      .filter((e) => !onlyListed || listed(e))
+      .filter((e) => words.every((w) => `${e.name} ${e.entity_id} ${e.area ?? ""}`.toLowerCase().includes(w)))
+      .sort((a, b) => (a.area ?? "~").localeCompare(b.area ?? "~") || a.name.localeCompare(b.name))
+      .slice(0, 200);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, query, onlyListed, status.entities, status.domains]);
+
+  const toggleEntity = (e: Entity, on: boolean) => void onSave({
+    entities: on ? [...status.entities, e.entity_id] : status.entities.filter((id) => id !== e.entity_id),
+    auto: on ? status.auto : status.auto.filter((id) => id !== e.entity_id),
+  });
+  const toggleDomain = (domain: string, on: boolean) => void onSave({ domains: on ? [...status.domains, domain] : status.domains.filter((d) => d !== domain) });
+  const toggleAuto = (e: Entity, on: boolean) => void onSave({ auto: on ? [...status.auto, e.entity_id] : status.auto.filter((id) => id !== e.entity_id) });
+
+  return (
+    <SettingsGroup
+      title="What agents can see"
+      description="Nothing until you list it. Reading is free. Every change asks you on a card, unless you let it happen without asking. Locks, alarms and garage doors always ask."
+      footnote="Names and states come from your devices, and agents read them as data, never as instructions."
+    >
+      {error ? (
+        <div className="px-5 py-4"><ConnectionError>{error}</ConnectionError></div>
+      ) : !catalog ? (
+        <div className="px-5 py-4"><Loader2 size={14} className="animate-spin text-muted-foreground" aria-label="Loading entities" /></div>
+      ) : (
+        <>
+          <div className="px-5 py-4">
+            <div className="text-ui font-medium text-foreground">Whole kinds</div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {domains.map(([domain, count]) => {
+                const on = status.domains.includes(domain);
+                return (
+                  <button
+                    key={domain}
+                    aria-pressed={on}
+                    disabled={busy}
+                    onClick={() => toggleDomain(domain, !on)}
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-small transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                      on ? "border-foreground/30 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                    )}
+                  >
+                    {DOMAIN_NAMES[domain] ?? domain} <span className="text-muted-foreground">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="px-5 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-0 flex-1 basis-[220px]">
+                <SearchIcon size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                <Input aria-label="Find an entity" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find by name, room or id" className="h-8 pl-8 text-small" />
+              </div>
+              <label className="flex items-center gap-2 text-small text-muted-foreground">
+                <Switch aria-label="Only what is listed" checked={onlyListed} onCheckedChange={setOnlyListed} />
+                Only listed
+              </label>
+            </div>
+          </div>
+          {shown.length === 0 ? (
+            <div className="px-5 py-6 text-center text-body text-muted-foreground">{catalog.length ? "Nothing matches." : "Home Assistant has no entities yet."}</div>
+          ) : (
+            shown.map((e) => {
+              const on = listed(e);
+              const byDomain = status.domains.includes(e.domain) && !status.entities.includes(e.entity_id);
+              const auto = status.auto.includes(e.entity_id);
+              return (
+                <div key={e.entity_id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2.5">
+                  <label className="flex min-w-0 flex-1 basis-[240px] cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={busy || byDomain}
+                      onChange={(ev) => toggleEntity(e, ev.target.checked)}
+                      className="mt-1 size-4 shrink-0 accent-foreground"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-body text-foreground">{e.name}</span>
+                      <span className="block truncate text-caption text-muted-foreground">
+                        {[e.area, e.entity_id, e.state].filter(Boolean).join(" · ")}
+                        {byDomain ? `. Listed with all ${DOMAIN_NAMES[e.domain]?.toLowerCase() ?? e.domain}` : ""}
+                      </span>
+                    </span>
+                  </label>
+                  {on && (e.alwaysAsks ? (
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-caption text-muted-foreground">Always asks</span>
+                  ) : (
+                    <label className="flex shrink-0 items-center gap-2 text-small text-muted-foreground">
+                      <Switch aria-label={`Change ${e.name} without asking`} checked={auto} disabled={busy} onCheckedChange={(next) => toggleAuto(e, next)} />
+                      Without asking
+                    </label>
+                  ))}
+                </div>
+              );
+            })
+          )}
+        </>
+      )}
+    </SettingsGroup>
+  );
+}
+
+/** Home Assistant starting an agent: a webhook of the agent's own, and
+ * the YAML that posts to it, ready to paste. */
+function StartAnAgent() {
+  const { state } = useStore();
+  const bots = state.bots.filter((b) => !b.hidden && !b.archivedAt);
+  const [botId, setBotId] = useState("");
+  const [entity, setEntity] = useState("");
+  const [made, setMade] = useState<{ command: string; state: string; voice: string; network: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const make = () => {
+    if (!botId) return;
+    setBusy(true);
+    setError(null);
+    api("/api/home/automation", { method: "POST", body: JSON.stringify({ botId, ...(entity.trim() ? { entity: entity.trim() } : {}) }) })
+      .then(setMade)
+      .catch((e) => setError(e.message))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <SettingsGroup
+      title="Start an agent from Home Assistant"
+      description="A Home Assistant automation can hand an agent something that happened, or what someone asked their voice assistant. It posts to the agent's own webhook; the agent reads it as data from outside, and its answer is in Bloks."
+      footnote={
+        <>
+          The webhook's address is its password: anyone with it can start the agent. Pause or change it under Automations, Webhooks.{" "}
+          <a href="https://www.home-assistant.io/integrations/rest_command/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:underline">
+            About rest_command <ExternalLink size={11} />
+          </a>
+        </>
+      }
+    >
+      <SettingRow
+        label="Agent"
+        htmlFor="home-hook-agent"
+        control={
+          <SettingsSelect id="home-hook-agent" value={botId} onChange={(e) => { setBotId(e.target.value); setMade(null); }} className="w-[200px]">
+            <option value="">Choose an agent</option>
+            {bots.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </SettingsSelect>
+        }
+      />
+      <SettingRow
+        label="Entity to watch"
+        description="Optional. The automation runs when it changes."
+        htmlFor="home-hook-entity"
+        control={<Input id="home-hook-entity" value={entity} onChange={(e) => setEntity(e.target.value)} placeholder="binary_sensor.front_door" spellCheck={false} className="h-8 w-[220px] font-mono text-small" />}
+      />
+      <div className="px-5 py-4">
+        <Button size="sm" variant="secondary" disabled={!botId || busy} onClick={make}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+          {made ? "Make it again" : "Make the YAML"}
+        </Button>
+        <ConnectionError>{error}</ConnectionError>
+        {made && (
+          <div className="mt-4 flex flex-col gap-4">
+            {!made.network && (
+              <ConnectionNote>
+                This address works only for a Home Assistant on this computer. For one elsewhere on your network, turn on Phone access under Phone and devices, then make it again.
+              </ConnectionNote>
+            )}
+            <Snippet title="1. Add to configuration.yaml, then restart Home Assistant" text={made.command} />
+            <Snippet title="2. An automation for when something changes" text={made.state} />
+            <Snippet title="3. Or one for your voice assistant" text={made.voice} />
+          </div>
+        )}
+      </div>
+    </SettingsGroup>
+  );
+}
+
+function Snippet({ title, text }: { title: string; text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1600);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  return (
+    <div className="min-w-0">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-small font-medium text-foreground">{title}</span>
+        <Button size="sm" variant="secondary" aria-label={copied ? "Copied" : `Copy: ${title}`} onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}>
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <pre className="max-h-[260px] overflow-auto rounded-lg bg-muted px-3 py-2.5 font-mono text-caption leading-relaxed text-foreground">{text}</pre>
+    </div>
+  );
+}

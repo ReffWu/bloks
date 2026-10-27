@@ -61,6 +61,7 @@ const LABEL: Record<string, string> = {
   "setup.undone": "Setup import undone",
   "sessions.imported": "Past sessions brought over",
   "server.update": "Server update",
+  "home.call": "Home Assistant",
 };
 
 function when(at: number): string {

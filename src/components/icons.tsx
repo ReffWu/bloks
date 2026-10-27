@@ -49,6 +49,8 @@ import ChatBubbleBottomCenterTextHero from "@heroicons/react/24/outline/ChatBubb
 import ChatBubbleLeftHero from "@heroicons/react/24/outline/ChatBubbleLeftIcon.js";
 import ChatBubbleLeftRightHero from "@heroicons/react/24/outline/ChatBubbleLeftRightIcon.js";
 import ChatBubbleOvalLeftHero from "@heroicons/react/24/outline/ChatBubbleOvalLeftIcon.js";
+import ChatBubbleOvalLeftEllipsisHero from "@heroicons/react/24/outline/ChatBubbleOvalLeftEllipsisIcon.js";
+import HomeModernHero from "@heroicons/react/24/outline/HomeModernIcon.js";
 import CheckHero from "@heroicons/react/24/outline/CheckIcon.js";
 import ChevronDownHero from "@heroicons/react/24/outline/ChevronDownIcon.js";
 import ChevronLeftHero from "@heroicons/react/24/outline/ChevronLeftIcon.js";
@@ -346,6 +348,8 @@ export const ShieldAlert = icon(ShieldExclamationHero, "ShieldAlert");
 export const ShieldCheck = icon(ShieldCheckHero, "ShieldCheck");
 export const SlidersHorizontal = icon(AdjustmentsHorizontalHero, "SlidersHorizontal");
 export const Smartphone = icon(DevicePhoneMobileHero, "Smartphone");
+export const MessageDots = icon(ChatBubbleOvalLeftEllipsisHero, "MessageDots");
+export const House = icon(HomeModernHero, "House");
 export const SmilePlus = icon(FaceSmileHero, "SmilePlus");
 export const Sparkles = icon(SparklesHero, "Sparkles");
 export const Square = icon(StopHero, "Square");

@@ -67,8 +67,8 @@ function capStops(current: number) {
   return [...caps.map((c) => ({ value: c, label: `$${c}` })), { value: 0, label: "No cap" }];
 }
 
-type ChatPlatform = "slack" | "discord" | "whatsapp";
-const PLATFORM: Record<ChatPlatform, string> = { slack: "Slack", discord: "Discord", whatsapp: "WhatsApp" };
+type ChatPlatform = "slack" | "discord" | "whatsapp" | "signal";
+const PLATFORM: Record<ChatPlatform, string> = { slack: "Slack", discord: "Discord", whatsapp: "WhatsApp", signal: "Signal" };
 
 function usd(n: number) {
   return `$${n < 10 ? n.toFixed(2) : Math.round(n)}`;
@@ -577,7 +577,7 @@ function ChatLinkSection({
         </div>
       ) : data.chat.connected.length === 0 ? (
         <div className="text-small leading-snug text-muted-foreground">
-          Bring this room into Slack or Discord. Connect one in Settings, under Chat and email.
+          Bring this room into Slack, Discord, WhatsApp or Signal. Connect one in Settings, under Chat and email.
         </div>
       ) : (
         <div className="space-y-2">
@@ -600,8 +600,8 @@ function ChatLinkSection({
           {platform && channels && (
             channels.length === 0 ? (
               <div className="text-small leading-snug text-muted-foreground">
-                {platform === "whatsapp"
-                  ? "The number isn't in any groups yet. Add it to one in WhatsApp, then pick again."
+                {platform === "whatsapp" || platform === "signal"
+                  ? `The number isn't in any groups yet. Add it to one in ${PLATFORM[platform]}, then pick again.`
                   : `The bot isn't in any channels yet. Add it to one in ${PLATFORM[platform]}, then pick again.`}
               </div>
             ) : (

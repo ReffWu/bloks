@@ -31,6 +31,7 @@ import {
   Luggage,
   MessageCircle,
   MessagesSquare,
+  House,
   Mic,
   Monitor,
   Puzzle,
@@ -69,6 +70,8 @@ import { EnginesPanel } from "./EnginesPanel";
 import { DevicesSection } from "./DevicesSection";
 import { LocationSection } from "./LocationSection";
 import { TelegramSection } from "./TelegramSection";
+import { SignalSection } from "./SignalSection";
+import { HomeAssistantPage } from "./HomeAssistantPage";
 import { ChatSection } from "./ChatSection";
 import { RemoteSection } from "./RemoteSection";
 import { SecurityCheckup } from "./SecurityCheckup";
@@ -107,6 +110,7 @@ const ICONS: Record<string, Icon> = {
   apps: LayoutGrid,
   devices: Smartphone,
   chat: MessageCircle,
+  home: House,
   computers: Monitor,
   browser: Globe,
   "past-sessions": MessagesSquare,
@@ -175,9 +179,12 @@ function PageBody({ id }: { id: string }) {
       return (
         <>
           <TelegramSection />
+          <SignalSection />
           <ChatSection />
         </>
       );
+    case "home":
+      return <HomeAssistantPage />;
     case "computers":
       return <ComputersPage />;
     case "browser":

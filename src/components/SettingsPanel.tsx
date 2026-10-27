@@ -54,6 +54,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { toast } from "@/components/ui/toast";
 import { VoiceCard } from "./Voice";
 import { TelegramSection } from "./TelegramSection";
+import { SignalSection } from "./SignalSection";
 import { RoutinesSection } from "./RoutinesSection";
 import { SettingRow, SettingsSelect } from "./SettingsLayout";
 import { Button } from "@/components/ui/button";
@@ -481,9 +482,10 @@ export function AgentSettingsPage({ bot }: { bot: Bot }) {
                 </Group>
               </Section>
 
-              <Section id="reach" title="Voice and Telegram">
+              <Section id="reach" title="Voice, Telegram and Signal">
                 <VoiceCard bot={bot} />
                 <TelegramSection key={bot.id} botId={bot.id} />
+                <SignalSection key={`signal-${bot.id}`} botId={bot.id} />
               </Section>
 
               <Section id="notifications" title="Notifications">

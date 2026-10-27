@@ -1,5 +1,5 @@
-// Slack, Discord and WhatsApp, for carrying shared rooms into a team's
-// channels and groups.
+// Slack, Discord, WhatsApp and Signal, for carrying shared rooms into a
+// team's channels and groups.
 //
 // Only the connection lives here. Which room goes to which channel is
 // chosen in that room's Share panel, next to who is let in, because the
@@ -49,7 +49,12 @@ interface WhatsAppStatus extends PlatformStatus {
   verifyToken: string | null;
 }
 
-type Status = Record<Platform, PlatformStatus> & { whatsapp: WhatsAppStatus };
+interface SignalStatus extends PlatformStatus {
+  account: string | null;
+  daemon: string;
+}
+
+type Status = Record<Platform, PlatformStatus> & { whatsapp: WhatsAppStatus; signal: SignalStatus };
 
 // The server's own checks, word for word, so nothing it would refuse
 // gets as far as asking it.
@@ -97,6 +102,7 @@ export function ChatSection() {
       <PlatformCard platform="slack" status={status.slack} onChange={setStatus} />
       <PlatformCard platform="discord" status={status.discord} onChange={setStatus} />
       <WhatsAppCard status={status.whatsapp} onChange={setStatus} />
+      {status.signal && <SignalRoomsCard status={status.signal} onChange={setStatus} />}
       <EmailCard />
     </>
   );
@@ -578,6 +584,73 @@ interface EmailStatus {
 
 /** Each agent's own address, through Bloks Cloud (server "email your
  * agent"). Mail to it becomes a turn; the agent's answer is the reply. */
+/**
+ * Signal groups, through an account already linked in signal-cli for one
+ * of the agents (or another one linked the same way). Nothing to paste:
+ * signal-cli holds the account, so this only says which one carries rooms.
+ */
+function SignalRoomsCard({ status, onChange }: { status: SignalStatus; onChange: (next: Status) => void }) {
+  const [accounts, setAccounts] = useState<Array<{ account: string }> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const h = health(status);
+
+  useEffect(() => {
+    if (status.configured) return;
+    api("/api/signal/accounts").then(({ accounts }) => setAccounts(accounts)).catch(() => setAccounts([]));
+  }, [status.configured]);
+
+  const post = (body: Record<string, unknown>) => {
+    setBusy(true);
+    setError(null);
+    api("/api/chat", { method: "POST", body: JSON.stringify({ platform: "signal", ...body }) })
+      .then(onChange)
+      .catch((e) => setError(e.message))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
+      <ConnectionHeader
+        icon={<MessagesSquare size={14} className="shrink-0 text-muted-foreground" />}
+        title="Signal groups"
+        says="Bring a shared room into a Signal group. People you let in name an agent to talk to it."
+        info="Through signal-cli on this computer. Use a number of its own for this: everyone in the group sees the room through it."
+        health={<HealthLine tone={h.tone} label={h.label} />}
+        control={status.configured && <Switch aria-label="Signal groups" checked={status.enabled} disabled={busy} onCheckedChange={(on) => post({ enabled: on })} />}
+      />
+      {status.configured ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-3">
+          <span className="min-w-0 text-small text-muted-foreground">
+            {!status.enabled ? "Switched off." : status.state === "error" ? status.detail || "Not connected." : `Rooms go through ${status.account}. Pick a group in a room's Share panel.`}
+          </span>
+          <button onClick={() => post({ forget: true })} className="text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline">
+            Forget Signal groups
+          </button>
+        </div>
+      ) : accounts === null ? (
+        <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" aria-label="Loading" />
+      ) : accounts.length === 0 ? (
+        <ConnectionNote>Link a Signal account under an agent's settings first. Any account linked there can carry rooms too.</ConnectionNote>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select
+            aria-label="Signal account for rooms"
+            value=""
+            disabled={busy}
+            onChange={(e) => e.target.value && post({ account: e.target.value })}
+            className="h-8 rounded-lg border bg-background px-2 text-body text-foreground"
+          >
+            <option value="">Choose an account</option>
+            {accounts.map((a) => <option key={a.account} value={a.account}>{a.account}</option>)}
+          </select>
+        </div>
+      )}
+      <ConnectionError>{error}</ConnectionError>
+    </div>
+  );
+}
+
 function EmailCard() {
   const [status, setStatus] = useState<EmailStatus | null>(null);
   const [allow, setAllow] = useState("");
