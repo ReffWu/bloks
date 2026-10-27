@@ -275,6 +275,7 @@ export function storedSecrets(cfg: Record<string, any>): string[] {
     cfg.composio?.key,
     cfg.composio?.apiKey,
     cfg.box?.token,
+    cfg.home?.token,
     ...Object.values(isObject(cfg.providers) ? cfg.providers : {}).map((p: any) => p?.key),
     ...(Array.isArray(cfg.custom) ? cfg.custom : []).flatMap((endpoint: any) => (Array.isArray(endpoint?.keys) ? endpoint.keys.map((k: any) => k?.key) : [])),
     ...Object.values(isObject(cfg.secrets) ? cfg.secrets : {}),
