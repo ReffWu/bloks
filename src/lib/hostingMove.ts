@@ -8,14 +8,16 @@
 // on, so each page is one button.
 import type { HostingMove, HostingMoveCounts, HostingMoveKey, HostingMoveStep } from "../types/bridge.d.ts";
 import { SETTINGS_PAGE_LIST } from "./settingsPages.ts";
+import { formatList, formatNumber, hasMessage, t, type MessageKey } from "./i18n.ts";
 
-export const MOVE_STEPS: ReadonlyArray<{ step: HostingMoveStep; label: string }> = [
-  { step: "pairing", label: "Pairing" },
-  { step: "packing", label: "Packing" },
-  { step: "sending", label: "Sending" },
-  { step: "unpacking", label: "Unpacking" },
-  { step: "checking", label: "Checking" },
-  { step: "done", label: "Done" },
+// Each step's label is a key, read in the language it is drawn in.
+export const MOVE_STEPS: ReadonlyArray<{ step: HostingMoveStep; label: MessageKey }> = [
+  { step: "pairing", label: "libHostingMove.step.pairing" },
+  { step: "packing", label: "libHostingMove.step.packing" },
+  { step: "sending", label: "libHostingMove.step.sending" },
+  { step: "unpacking", label: "libHostingMove.step.unpacking" },
+  { step: "checking", label: "libHostingMove.step.checking" },
+  { step: "done", label: "libHostingMove.step.done" },
 ];
 
 const ORDER = MOVE_STEPS.map((s) => s.step);
@@ -32,90 +34,105 @@ export function stepState(move: Pick<HostingMove, "step" | "phase">, step: Hosti
  * under ten, gigabytes past a thousand. */
 export function sizeWords(bytes: number, unit: "MB" | "GB" = bytes >= 1e9 ? "GB" : "MB"): string {
   const n = unit === "GB" ? bytes / 1e9 : bytes / 1e6;
-  return n >= 10 || n === 0 ? String(Math.round(n)) : n.toFixed(1);
+  return n >= 10 || n === 0
+    ? formatNumber(Math.round(n))
+    : formatNumber(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
 /** "Sending 12 of 340 MB". */
 export function sendingWords(sent: number, size: number): string {
   const unit = size >= 1e9 ? "GB" : "MB";
-  return `Sending ${sizeWords(Math.min(sent, size), unit)} of ${sizeWords(size, unit)} ${unit}`;
+  return t("libHostingMove.sendingOf", { sent: sizeWords(Math.min(sent, size), unit), size: sizeWords(size, unit), unit });
 }
 
 /** A step's label in the list: Sending says how far, once it has begun. */
 export function stepLabel(move: Pick<HostingMove, "step" | "phase" | "sent" | "size">, step: HostingMoveStep): string {
-  const label = MOVE_STEPS.find((s) => s.step === step)?.label ?? step;
   if (step === "sending" && move.size > 0 && stepState(move, "sending") !== "next") return sendingWords(move.sent, move.size);
-  return label;
+  const label = MOVE_STEPS.find((s) => s.step === step)?.label;
+  return label ? t(label) : step;
 }
 
-/** Where it goes, in the move's own words. */
-export function whereTo(move: Pick<HostingMove, "direction" | "to">): string {
-  return move.direction === "to-hosted" ? "your hosted machine" : move.to.id ? `${move.to.name} on this Mac` : "this Mac";
+/** Where it goes: the hosted machine, a named workspace on this Mac, or
+ * this Mac. Each is said as part of a whole sentence, so a language can
+ * put the place where its grammar wants it. */
+export function destination(move: Pick<HostingMove, "direction" | "to">): "hosted" | "named" | "mac" {
+  return move.direction === "to-hosted" ? "hosted" : move.to.id ? "named" : "mac";
 }
 
 /** The card's heading for a move as it stands. */
 export function headline(move: Pick<HostingMove, "direction" | "from" | "to" | "phase">): string {
-  const where = whereTo(move);
+  const params = { name: move.from.name, to: move.to.name };
+  const where = destination(move);
   switch (move.phase) {
     case "done":
-      return move.direction === "to-hosted" ? `${move.from.name} is on your hosted machine` : `${move.from.name} is on this Mac`;
+      return move.direction === "to-hosted" ? t("libHostingMove.headline.doneHosted", params) : t("libHostingMove.headline.doneMac", params);
     case "failed":
-      return `${move.from.name} did not move`;
+      return t("libHostingMove.headline.failed", params);
     case "stopped":
-      return `Moving ${move.from.name} is stopped`;
+      return t("libHostingMove.headline.stopped", params);
     case "later":
-      return `Moving ${move.from.name} to ${where}, when you are ready`;
+      return t(`libHostingMove.headline.later.${where}`, params);
     default:
-      return `Moving ${move.from.name} to ${where}`;
+      return t(`libHostingMove.headline.moving.${where}`, params);
   }
+}
+
+/** "Personal starts moving to your hosted machine in 5 s." */
+export function startsIn(move: Pick<HostingMove, "direction" | "from" | "to">, seconds: number): string {
+  return t(`libHostingMove.startsIn.${destination(move)}`, { name: move.from.name, to: move.to.name, seconds });
 }
 
 /** The line under it. */
 export function subline(move: Pick<HostingMove, "direction" | "from" | "phase" | "step">): string {
-  const here = move.direction === "to-hosted" ? `${move.from.name} on this Mac` : `${move.from.name} on your hosted machine`;
+  const side = move.direction === "to-hosted" ? "mac" : "hosted";
+  const params = { name: move.from.name };
   switch (move.phase) {
     case "done":
-      return move.direction === "to-hosted"
-        ? "It runs there from now on. The copy on this Mac stays, paused, until you remove it."
-        : "It runs here from now on. Your hosted machine is left empty and still running.";
+      return move.direction === "to-hosted" ? t("libHostingMove.subline.doneHosted") : t("libHostingMove.subline.doneMac");
     case "failed":
-      return "Both sides are as they were.";
+      return t("libHostingMove.subline.failed");
     case "stopped":
     case "later":
-      return `${here} runs as it did. Carrying on writes it out again and sends what is new.`;
+      return t(`libHostingMove.subline.paused.${side}`, params);
     case "waiting":
-      return "Buying Hosting was the go-ahead, so nothing is asked. Choose another workspace, or put it off.";
+      return t("libHostingMove.subline.waiting");
     default:
       return move.step === "unpacking" || move.step === "checking"
-        ? "Putting it in place there. This part cannot be stopped, and takes a minute."
-        : `${here} is paused while it is carried, so nothing it does is left behind.`;
+        ? t("libHostingMove.subline.unpacking")
+        : t(`libHostingMove.subline.carrying.${side}`, params);
   }
 }
 
 /** What a move carries, counted, in one line: "3 agents, 12 conversations
  * and 2 routines". What there are none of is left out. */
 export function countsWords(counts: HostingMoveCounts | null | undefined): string {
-  if (!counts) return "its agents, conversations, rooms, routines, watchers, workflows and memory";
+  if (!counts) return t("libHostingMove.counts.unknown");
   const parts = (
     [
-      ["agents", "agent", "agents"],
-      ["conversations", "conversation", "conversations"],
-      ["rooms", "room", "rooms"],
-      ["routines", "routine", "routines"],
-      ["watchers", "watcher", "watchers"],
-      ["workflows", "workflow", "workflows"],
-      ["memoryFiles", "memory file", "memory files"],
+      ["agents", "libHostingMove.counts.agents"],
+      ["conversations", "libHostingMove.counts.conversations"],
+      ["rooms", "libHostingMove.counts.rooms"],
+      ["routines", "libHostingMove.counts.routines"],
+      ["watchers", "libHostingMove.counts.watchers"],
+      ["workflows", "libHostingMove.counts.workflows"],
+      ["memoryFiles", "libHostingMove.counts.memoryFiles"],
     ] as const
   )
     .filter(([key]) => counts[key] > 0)
-    .map(([key, one, many]) => `${counts[key]} ${counts[key] === 1 ? one : many}`);
-  if (!parts.length) return "nothing yet";
-  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+    .map(([key, words]) => t(words, { count: counts[key] }));
+  if (!parts.length) return t("libHostingMove.counts.none");
+  if (parts.length === 1) return parts[0];
+  // The last two are joined by the sentence's own "and", with no comma
+  // before it in English; the rest by the reader's list separator.
+  return t("libHostingMove.counts.list", { items: formatList(parts.slice(0, -1), { type: "unit", style: "short" }), last: parts[parts.length - 1] });
 }
 
-/** A Settings page by name. */
+/** A Settings page by name, in the reader's language when the page list
+ * keeps its labels as keys. */
 export function pageLabel(page: string): string {
-  return SETTINGS_PAGE_LIST.find((p) => p.id === page)?.label ?? "Settings";
+  const label: string | undefined = SETTINGS_PAGE_LIST.find((p) => p.id === page)?.label;
+  if (!label) return t("libHostingMove.settings");
+  return hasMessage(label) ? t(label) : label;
 }
 
 /** The keys to enter again, one group per Settings page, in the order the
@@ -135,5 +152,9 @@ export function keyGroups(keys: HostingMoveKey[] | null | undefined, bloksAi: bo
   return groups;
 }
 
-export const BLOKS_AI_LINE = "Your plan includes Bloks AI, so agents already run on it there, with nothing to sign in to.";
-export const STILL_PAID_LINE = "Hosting is still paid for. Change or end it in Settings, Plan.";
+export function bloksAiLine(): string {
+  return t("libHostingMove.bloksAiLine");
+}
+export function stillPaidLine(): string {
+  return t("libHostingMove.stillPaidLine");
+}

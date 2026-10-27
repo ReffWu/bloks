@@ -109,7 +109,7 @@ export function Transcript({ messages, me, people, owner, shared, agentName, str
     tick: messages.length,
   });
   const seenRows = place ? receiptsAt(said.map((m) => m.id), new Set(place.keys()), reads, me, new Map(said.map((m) => [m.id, senderOf(m)]))) : null;
-  const nameFor = (id: string) => (id === "owner" ? owner : (nameOf?.(id) ?? people[id] ?? "Someone"));
+  const nameFor = (id: string) => (id === "owner" ? owner : (nameOf?.(id) ?? people[id] ?? t("memberParts.someone")));
   const receiptsFor = (id: string) => {
     const who = seenRows?.get(id);
     return who?.length ? <SeenBy people={who.map((p) => ({ id: p, name: nameFor(p) }))} /> : undefined;
@@ -228,7 +228,7 @@ function Line({
         bubbleClassName={human ? "whitespace-pre-wrap" : undefined}
         bubble={
           <>
-            {m.onBehalf && <div className="mb-1 text-caption text-muted-foreground">Sent on {m.onBehalf.name}'s behalf</div>}
+            {m.onBehalf && <div className="mb-1 text-caption text-muted-foreground">{t("memberParts.onBehalf", { name: m.onBehalf.name })}</div>}
             {human ? m.text : <Markdownish text={m.text ?? ""} />}
           </>
         }
@@ -272,7 +272,7 @@ function Line({
       <div className={cn("flex flex-col items-start", fresh && "animate-fade-in")}>
         {m.onBehalf && (
           <span className="mb-1.5 rounded-full bg-muted px-2 py-0.5 text-caption text-muted-foreground">
-            Sent on {m.onBehalf.name}'s behalf
+            {t("memberParts.onBehalf", { name: m.onBehalf.name })}
           </span>
         )}
         <div className="w-full min-w-0 text-lead text-foreground">
@@ -293,10 +293,10 @@ function Line({
     return <CardLine messageId={m.id} card={m.card} from={agentName(m.from)} people={people} me={me} owner={owner} onAnswer={onAnswer} fresh={fresh} />;
   }
   if (m.kind === "secret" && m.secret) {
-    return <Quiet>{agentName(m.from)} asked {owner} for {m.secret.label}. Keys are saved on {owner}'s computer, by {owner}.</Quiet>;
+    return <Quiet>{t("memberParts.secretAsked", { agent: agentName(m.from), owner, label: m.secret.label })}</Quiet>;
   }
   if (m.kind === "artifact" && m.artifact) {
-    return <Quiet>{agentName(m.from)} made {m.artifact.name}. It is kept on {owner}'s computer.</Quiet>;
+    return <Quiet>{t("memberParts.artifactMade", { agent: agentName(m.from), owner, name: m.artifact.name })}</Quiet>;
   }
   if (m.kind === "notice" && m.text) {
     if (m.event) return <div className="py-1 text-center text-small text-muted-foreground">{m.text}</div>;
@@ -338,7 +338,9 @@ function CardLine({
   const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const state = cardState(card);
-  const asker = card.askedFor ? (card.askedFor === me ? "you" : (people[card.askedFor] ?? "a member")) : null;
+  // who it was asked for: you, somebody by name, or nobody in particular
+  const forYou = card.askedFor === me;
+  const asker = card.askedFor && !forYou ? (people[card.askedFor] ?? t("memberParts.aMember")) : null;
   const answer = async (option: string) => {
     if (!onAnswer || sending) return;
     setSending(option);
@@ -354,7 +356,9 @@ function CardLine({
   return (
     <div className={cn("flex flex-col gap-3 rounded-2xl border bg-card px-4 py-3.5", fresh && "animate-receive-in")}>
       <div className="flex flex-col gap-0.5">
-        <span className="text-caption text-muted-foreground">{from}{asker ? `, for ${asker}` : ""}</span>
+        <span className="text-caption text-muted-foreground">
+          {card.askedFor ? (forYou ? t("memberParts.card.forYou", { from }) : t("memberParts.card.forName", { from, name: asker ?? "" })) : from}
+        </span>
         <span className="text-pretty text-ui font-medium text-foreground">{card.title}</span>
         {card.subtitle && <span className="text-pretty text-body text-muted-foreground">{card.subtitle}</span>}
       </div>
@@ -369,11 +373,11 @@ function CardLine({
         </div>
       )}
       {state === "waiting-on-others" && (
-        <span className="text-body text-muted-foreground">Waiting on {asker && asker !== "you" ? `${asker}, ` : ""}{owner} or an admin.</span>
+        <span className="text-body text-muted-foreground">{asker ? t("memberParts.card.waitingOnBoth", { name: asker, owner }) : t("memberParts.card.waitingOn", { owner })}</span>
       )}
       {state === "done" && (
         <span className="text-body text-muted-foreground">
-          {card.answered ? `${card.answeredBy ? `${card.answeredBy}: ` : ""}${card.answered}` : card.closed ?? t("memberParts.closed")}
+          {card.answered ? (card.answeredBy ? t("memberParts.card.answeredBy", { name: card.answeredBy, answer: card.answered }) : card.answered) : card.closed ?? t("memberParts.closed")}
         </span>
       )}
       {error && <span role="alert" className="text-small text-destructive">{error}</span>}

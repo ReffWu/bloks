@@ -46,7 +46,7 @@ export function PrivateReader({ botId, botName }: { botId: string; botName: stri
       <div className="mb-4 px-1">
         <h2 className="text-title font-semibold text-foreground">{t("privateReader.privateConversations")}</h2>
         <p className="mt-1 text-pretty text-body text-muted-foreground">
-          Members' own conversations with {botName}, to read only. {list.line}
+          {t("privateReader.intro", { agent: botName })} {list.line}
         </p>
       </div>
       <div className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
@@ -63,7 +63,7 @@ export function PrivateReader({ botId, botName }: { botId: string; botName: stri
             <span className="min-w-0 flex-1">
               <span className="block truncate text-ui text-foreground">{c.name}</span>
               <span className="block text-small tabular-nums text-muted-foreground">
-                {c.count} {c.count === 1 ? "message" : "messages"} · last {shortDate(c.lastAt)}
+                {t("privateReader.countLast", { count: c.count, date: shortDate(c.lastAt) })}
               </span>
             </span>
             <Eye size={15} className="shrink-0 text-muted-foreground" aria-hidden />
@@ -73,15 +73,15 @@ export function PrivateReader({ botId, botName }: { botId: string; botName: stri
       <Dialog open={open !== null} onOpenChange={(o) => !o && setOpen(null)}>
         <DialogContent className="flex h-[min(720px,calc(100dvh-4rem))] w-[calc(100%-2rem)] max-w-[680px] flex-col p-0">
           <div className="border-b px-5 py-4 pr-12">
-            <DialogTitle>{open?.name} and {botName}</DialogTitle>
-            <DialogDescription>Read only. {open?.name} was told that you and the admins can read this.</DialogDescription>
+            <DialogTitle>{t("privateReader.title", { name: open?.name ?? "", agent: botName })}</DialogTitle>
+            <DialogDescription>{t("privateReader.readOnly", { name: open?.name ?? "" })}</DialogDescription>
           </div>
           {messages && open ? (
             <Transcript
               messages={messages}
               me={open.personId}
               people={{ [open.personId]: open.name }}
-              owner="You"
+              owner={t("privateReader.you")}
               shared={false}
               agentName={() => botName}
               streaming=""

@@ -13,11 +13,14 @@ import { Monitor } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
-import { STILL_PAID_LINE, countsWords, keyGroups } from "@/lib/hostingMove";
+import { countsWords, keyGroups, stillPaidLine } from "@/lib/hostingMove";
 import type { HostingMoveState, HostingMoveTarget } from "@/types/bridge";
 import { SettingRow, SettingsGroup, SettingsSelect } from "../SettingsLayout";
 import { said, useHostingMove } from "./useHostingMove";
-import { t } from "@/lib/i18n";
+import { formatList, t } from "@/lib/i18n";
+
+/** Names said one after another, the way the reader's language lists them. */
+const listed = (names: string[]) => formatList(names, { type: "unit", style: "short" });
 
 /** `only` keeps the list to one hosted workspace: its own Settings. */
 export function MoveHome({ state: given, only }: { state?: HostingMoveState; only?: string }) {
@@ -54,9 +57,9 @@ export function MoveHome({ state: given, only }: { state?: HostingMoveState; onl
 
   const moveAll = async () => {
     const ok = await confirm({
-      title: "Move every hosted workspace to this Mac?",
-      body: `${hosted.map((h) => h.name).join(", ")} each come to a new workspace here, one after another, with everything in them. Keys stay where they are, and each one's are listed to enter again here.\n\n${STILL_PAID_LINE}`,
-      confirmLabel: "Move them all",
+      title: t("moveHome.moveAll.title"),
+      body: `${t("moveHome.moveAll.body", { names: listed(hosted.map((h) => h.name)) })}\n\n${stillPaidLine()}`,
+      confirmLabel: t("moveHome.moveAll.confirm"),
     });
     if (!ok) return;
     queue.current = hosted.slice(1).map((h) => h.id);
@@ -73,7 +76,7 @@ export function MoveHome({ state: given, only }: { state?: HostingMoveState; onl
           </Button>
         ) : undefined
       }
-      footnote={STILL_PAID_LINE}
+      footnote={stillPaidLine()}
       className="mb-0"
     >
       {hosted.map((h) => (
@@ -88,11 +91,11 @@ export function MoveHome({ state: given, only }: { state?: HostingMoveState; onl
 export function landings(hosted: { id: string; name: string }, state: HostingMoveState, targets: HostingMoveTarget[] | null) {
   const copies = state.copies.filter((c) => c.to === hosted.id);
   const out: Array<{ key: string; to: string | null; name: string; replace: boolean; label: string }> = [];
-  for (const copy of copies) out.push({ key: `copy:${copy.id}`, to: copy.id, name: copy.name, replace: true, label: `Back into ${copy.name}, replacing what it has on this Mac` });
-  for (const t of targets ?? []) {
-    if (t.empty && !t.copy) out.push({ key: `empty:${t.id}`, to: t.id, name: t.name, replace: false, label: `Into ${t.name}, which is empty` });
+  for (const copy of copies) out.push({ key: `copy:${copy.id}`, to: copy.id, name: copy.name, replace: true, label: t("moveHome.landing.copy", { name: copy.name }) });
+  for (const target of targets ?? []) {
+    if (target.empty && !target.copy) out.push({ key: `empty:${target.id}`, to: target.id, name: target.name, replace: false, label: t("moveHome.landing.empty", { name: target.name }) });
   }
-  out.push({ key: "new", to: null, name: hosted.name, replace: false, label: `Into a new workspace, ${hosted.name}` });
+  out.push({ key: "new", to: null, name: hosted.name, replace: false, label: t("moveHome.landing.new", { name: hosted.name }) });
   return out;
 }
 
@@ -109,17 +112,21 @@ function HomeRow({ hosted, state, targets, busy }: { hosted: { id: string; name:
       const preview = await said(window.bloks?.hostingMovePreview?.(hosted.id)).catch(() => null);
       const groups = keyGroups(preview?.keys ?? [], false);
       const keysLine = groups.length
-        ? `Keys stay on your hosted machine. Enter these again here: ${groups.flatMap((g) => g.items).join(", ")}.`
-        : "No keys need entering again.";
+        ? t("moveHome.confirm.keys", { keys: listed(groups.flatMap((g) => g.items)) })
+        : t("moveHome.confirm.noKeys");
       const into = pick.replace
-        ? `This replaces everything in ${pick.name} on this Mac with what is on the hosted machine now. Nothing is merged; what ${pick.name} has here is kept in a backup first.`
+        ? t("moveHome.confirm.replaces", { name: pick.name })
         : pick.to
-          ? `It lands in ${pick.name}, which is empty.`
-          : `It lands in a new workspace here, ${pick.name}.`;
+          ? t("moveHome.confirm.intoEmpty", { name: pick.name })
+          : t("moveHome.confirm.intoNew", { name: pick.name });
       const ok = await confirm({
-        title: `Move ${hosted.name} to this Mac?`,
-        body: `Moving: ${countsWords(preview?.counts)}, with its memory, skills and settings. ${into}\n\n${keysLine} Afterwards it runs here, and your hosted machine is left empty and running.\n\n${STILL_PAID_LINE}`,
-        confirmLabel: pick.replace ? "Replace and move" : "Move to this Mac",
+        title: t("moveHome.confirm.title", { name: hosted.name }),
+        body: [
+          `${t("moveHome.confirm.moving", { counts: countsWords(preview?.counts) })} ${into}`,
+          `${keysLine} ${t("moveHome.confirm.afterwards")}`,
+          stillPaidLine(),
+        ].join("\n\n"),
+        confirmLabel: pick.replace ? t("moveHome.confirm.replaceAndMove") : t("moveHome.moveToThisMac"),
         destructive: pick.replace,
       });
       if (!ok) return;

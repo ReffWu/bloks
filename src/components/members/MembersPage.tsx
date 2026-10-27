@@ -33,7 +33,7 @@ import {
   initials,
   membersApi,
   serverIdOf,
-  ROLE_NAME,
+  roleName,
   shortDate,
   tintOf,
   useWorkspaceFrames,
@@ -49,9 +49,11 @@ import { RequestCard } from "./RequestCard";
 import { NeedsTeam, UpgradeButton, UpgradeLink } from "../TeamLock";
 import { AlertTriangle } from "@/components/icons";
 import { distinctNames } from "@/lib/names";
-import { t } from "@/lib/i18n";
+import { formatList, formatNumber, t, type MessageKey } from "@/lib/i18n";
 
-const DEVICE_WORD = { iphone: "iPhone", mac: "Mac", browser: "Browser" } as const;
+const DEVICE_WORD: Record<"iphone" | "mac" | "browser", MessageKey> = { iphone: "membersMembersPage.device.iphone", mac: "membersMembersPage.device.mac", browser: "membersMembersPage.device.browser" };
+const dollars = (n: number, cents = true) =>
+  formatNumber(n, { style: "currency", currency: "USD", minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: 2 });
 /** How long a newcomer's row says "New". */
 const NEW_FOR_MS = 60_000;
 
@@ -160,9 +162,13 @@ export function MembersPage({
           const person = frame.person as { id: string; name: string; role: "member" | "admin" };
           setNewcomer({ id: person.id, at: Date.now() });
           const first = person.name.split(" ")[0] || person.name;
-          toast.success(`${first} joined ${String(frame.workspace ?? "the workspace")} as ${person.role === "admin" ? "an Admin" : "a Member"}`, {
+          const admin = person.role === "admin";
+          const said = frame.workspace
+            ? t(admin ? "membersMembersPage.joined.admin" : "membersMembersPage.joined.member", { name: first, workspace: String(frame.workspace) })
+            : t(admin ? "membersMembersPage.joined.adminUnnamed" : "membersMembersPage.joined.memberUnnamed", { name: first });
+          toast.success(said, {
             id: `joined-${person.id}`,
-            ...(onOpenRoom ? { action: { label: "Say hello in a room", onClick: onOpenRoom } } : {}),
+            ...(onOpenRoom ? { action: { label: t("membersMembersPage.sayHello"), onClick: onOpenRoom } } : {}),
           });
         }
         load();
@@ -174,8 +180,8 @@ export function MembersPage({
   // the "New" mark and its burst last a minute, then the row is a row
   useEffect(() => {
     if (!newcomer) return;
-    const t = setTimeout(() => setNewcomer(null), NEW_FOR_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setNewcomer(null), NEW_FOR_MS);
+    return () => clearTimeout(timer);
   }, [newcomer]);
 
   const manage = data ? data.you.role !== "member" : false;
@@ -226,21 +232,20 @@ export function MembersPage({
 
   const remove = async (m: Member) => {
     const yes = await confirm({
-      title: `Remove ${m.name} from ${ws.name}?`,
-      body: `${m.name} loses every room and agent here at once, and their devices are signed out. Their private conversations and solo agents go with them.\n\nYou can invite them again later.`,
-      confirmLabel: "Remove",
+      title: t("membersMembersPage.remove.title", { name: m.name, workspace: ws.name }),
+      body: `${t("membersMembersPage.remove.body", { name: m.name })}\n\n${t("membersMembersPage.remove.again")}`,
+      confirmLabel: t("membersMembersPage.remove.confirm"),
       destructive: true,
     });
     if (yes) await run(() => membersApi.remove(m.id));
   };
 
   const cancelInvite = async (inv: Invite) => {
-    const who = inv.name ? `the invite for ${inv.name}` : "this invite";
     const yes = await confirm({
-      title: `Cancel ${who}?`,
-      body: "Its code, QR and link stop working at once. Anyone who has them is told it was cancelled.",
-      confirmLabel: "Cancel invite",
-      cancelLabel: "Keep it",
+      title: inv.name ? t("membersMembersPage.cancelInvite.titleNamed", { name: inv.name }) : t("membersMembersPage.cancelInvite.title"),
+      body: t("membersMembersPage.cancelInvite.body"),
+      confirmLabel: t("membersMembersPage.cancelInvite.confirm"),
+      cancelLabel: t("membersMembersPage.cancelInvite.keep"),
       destructive: true,
     });
     if (yes) await run(() => membersApi.cancel(inv.id));
@@ -248,9 +253,9 @@ export function MembersPage({
 
   const clearPassword = async () => {
     const yes = await confirm({
-      title: "Remove the join password?",
-      body: "From now on the invite alone is enough to ask to join. People already in are not affected.",
-      confirmLabel: "Remove password",
+      title: t("membersMembersPage.clearPassword.title"),
+      body: t("membersMembersPage.clearPassword.body"),
+      confirmLabel: t("membersMembersPage.removePassword"),
       destructive: true,
     });
     if (yes) await run(() => membersApi.clearPassword());
@@ -275,7 +280,7 @@ export function MembersPage({
           )}
         </div>
         <p className="max-w-[560px] text-pretty text-body leading-relaxed text-muted-foreground">
-          People who can use {ws.name}: its agents, rooms and memory.{" "}
+          {t("membersMembersPage.intro", { workspace: ws.name })}{" "}
           {joining?.approveEach === false ? t("membersMembersPage.theRightCodeLetsPeople") : t("membersMembersPage.nobodyGetsInUntilYou")}
         </p>
       </div>
@@ -286,7 +291,7 @@ export function MembersPage({
             <Users size={20} />
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <h2 className="text-pretty text-ui font-semibold text-foreground">Bring people into {ws.name}</h2>
+            <h2 className="text-pretty text-ui font-semibold text-foreground">{t("membersMembersPage.bringPeopleInto", { workspace: ws.name })}</h2>
             <p className="max-w-[52ch] text-pretty text-body leading-relaxed text-muted-foreground">
               {t("membersMembersPage.withBloksTeamInvitePeople")}
             </p>
@@ -303,7 +308,7 @@ export function MembersPage({
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-pretty text-ui font-medium text-foreground">{t("membersMembersPage.membersArePaused")}</span>
             <span className="text-pretty text-body leading-relaxed text-muted-foreground">
-              {ws.name} needs Bloks Team for members. Until it is back on Team, nobody here besides you can open it. Nothing is deleted: everyone and everything they had come back with Team.
+              {t("membersMembersPage.pausedBody", { workspace: ws.name })}
             </span>
           </div>
           <UpgradeLink className="mt-0.5 shrink-0 text-body" />
@@ -326,7 +331,7 @@ export function MembersPage({
       ))}
 
       <Section
-        title={<span className="tabular-nums">{total} {total === 1 ? "member" : "members"}</span>}
+        title={<span className="tabular-nums">{t("membersMembersPage.memberCount", { count: total })}</span>}
         aside={
           total > 4 && (
             <label className="flex h-8 w-60 items-center gap-2 rounded-lg border bg-background px-2.5 text-body text-muted-foreground transition-[border-color] duration-150 focus-within:border-ring/60 max-sm:w-40">
@@ -352,7 +357,7 @@ export function MembersPage({
                   {data.owner.name}
                   {owner && <span className="font-normal text-muted-foreground"> {t("membersMembersPage.you")}</span>}
                 </span>
-                <span className="text-body text-muted-foreground">Owner of {ws.name} · this computer</span>
+                <span className="text-body text-muted-foreground">{t("membersMembersPage.ownerOf", { workspace: ws.name })}</span>
               </div>
               <span className="rounded-full bg-brand-soft px-2.5 py-1 text-small font-semibold text-brand-ink">{t("membersMembersPage.owner")}</span>
             </div>
@@ -387,7 +392,7 @@ export function MembersPage({
                   {t("membersMembersPage.askedForAfterTheInvite")}
                 </span>
               </div>
-              {joining.password && <span className="shrink-0 text-body text-muted-foreground">Set {shortDate(joining.password.setAt)}</span>}
+              {joining.password && <span className="shrink-0 text-body text-muted-foreground">{t("membersMembersPage.setOn", { date: shortDate(joining.password.setAt) })}</span>}
               {owner &&
                 (joining.password ? (
                   <DropdownMenu>
@@ -448,7 +453,7 @@ export function MembersPage({
                 <div key={a.id} className="flex items-center gap-3.5 px-[18px] py-3">
                   <span className="flex-1 truncate text-ui text-foreground">{a.name}</span>
                   <span className="shrink-0 text-body text-muted-foreground">{accessWords(a, data.members)}</span>
-                  <Button variant="ghost" size="sm" onClick={() => setAccessFor(a)} aria-label={`Who can use ${a.name}`}>
+                  <Button variant="ghost" size="sm" onClick={() => setAccessFor(a)} aria-label={t("membersMembersPage.whoCanUse", { agent: a.name })}>
                     {t("common.change")}
                   </Button>
                 </div>
@@ -460,7 +465,7 @@ export function MembersPage({
       {manage && !locked && (
         <Section
           title={t("membersMembersPage.invitations")}
-          aside={<span className="text-body tabular-nums text-muted-foreground">{invites.length ? `${invites.length} waiting` : t("membersMembersPage.noneWaiting")}</span>}
+          aside={<span className="text-body tabular-nums text-muted-foreground">{invites.length ? t("membersMembersPage.waiting", { count: invites.length }) : t("membersMembersPage.noneWaiting")}</span>}
         >
           {invites.length ? (
             <Card>
@@ -472,12 +477,13 @@ export function MembersPage({
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-ui font-medium text-foreground">{inv.name ?? t("membersMembersPage.anyoneWithTheCode")}</span>
                     <span className="text-body text-muted-foreground">
-                      {ROLE_NAME[inv.role]} · {expiresIn(inv.expiresAt)}
-                      {!inv.online && t("membersMembersPage.thisNetworkOnly")}
+                      {inv.online
+                        ? t("membersMembersPage.inviteLine", { role: roleName(inv.role), expires: expiresIn(inv.expiresAt) })
+                        : t("membersMembersPage.inviteLineLocal", { role: roleName(inv.role), expires: expiresIn(inv.expiresAt) })}
                     </span>
                   </div>
                   <span className="shrink-0 select-all font-mono text-ui font-semibold tracking-[0.06em] text-foreground tabular-nums max-sm:hidden">{inv.code}</span>
-                  <Button variant="ghost" size="sm" onClick={() => copy(inv.id, inv.link)} aria-label={`Copy the link for ${inv.name ?? "this invite"}`}>
+                  <Button variant="ghost" size="sm" onClick={() => copy(inv.id, inv.link)} aria-label={inv.name ? t("membersMembersPage.copyLinkFor", { name: inv.name }) : t("membersMembersPage.copyLinkForThis")}>
                     {copied === inv.id ? <Check size={14} className="text-success" /> : <Copy size={14} />}
                     <span aria-live="polite">{copied === inv.id ? t("common.copied") : t("common.copy")}</span>
                   </Button>
@@ -524,13 +530,16 @@ export function MembersPage({
 
 function accessWords(agent: AgentAccessRow, members: Member[]): string {
   const a = agent.access;
-  if (!a || a.mode === "everyone") return "Everyone";
+  if (!a || a.mode === "everyone") return t("membersMembersPage.access.everyone");
   // first names, told apart where two share one (src/lib/names.ts)
   const called = distinctNames(members);
   const names = a.people.map((id) => called.get(id)).filter(Boolean) as string[];
-  const list = names.length <= 2 ? names.join(" and ") : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
-  if (a.mode === "only") return names.length ? `Only you and ${list}` : "Only you";
-  return names.length ? `Everyone except ${list}` : "Everyone";
+  const list =
+    names.length <= 2
+      ? formatList(names)
+      : t("membersMembersPage.access.andMore", { names: formatList(names.slice(0, 2), { type: "unit", style: "short" }), count: names.length - 2 });
+  if (a.mode === "only") return names.length ? t("membersMembersPage.access.onlyYouAnd", { list }) : t("membersMembersPage.access.onlyYou");
+  return names.length ? t("membersMembersPage.access.except", { list }) : t("membersMembersPage.access.everyone");
 }
 
 function MemberRow({
@@ -553,16 +562,20 @@ function MemberRow({
   onRemove: () => void;
 }) {
   const line = [
-    `Joined ${isNew ? "just now" : shortDate(m.joinedAt)}`,
+    isNew ? t("membersMembersPage.joinedJustNow") : t("membersMembersPage.joinedOn", { date: shortDate(m.joinedAt) }),
     activeWords(m.lastActive),
-    m.device ? DEVICE_WORD[m.device] : null,
+    m.device ? t(DEVICE_WORD[m.device]) : null,
   ].filter(Boolean);
   const spend = m.spend && m.limits;
   const usage = spend
     ? [
-        m.soloAgents ? `${m.soloAgents} solo ${m.soloAgents === 1 ? "agent" : "agents"}` : null,
-        m.limits!.monthlyUsd !== null ? `$${m.spend!.usd.toFixed(2)} of $${m.limits!.monthlyUsd} this month` : m.spend!.usd > 0 ? `$${m.spend!.usd.toFixed(2)} this month` : null,
-        m.limits!.aiPercent !== null && m.spend!.aiPercent !== null ? `${m.spend!.aiPercent}% of ${m.limits!.aiPercent}% Bloks AI` : null,
+        m.soloAgents ? t("membersMembersPage.soloAgents", { count: m.soloAgents }) : null,
+        m.limits!.monthlyUsd !== null
+          ? t("membersMembersPage.spentOfCap", { spent: dollars(m.spend!.usd), cap: dollars(m.limits!.monthlyUsd, false) })
+          : m.spend!.usd > 0
+            ? t("membersMembersPage.spentThisMonth", { spent: dollars(m.spend!.usd) })
+            : null,
+        m.limits!.aiPercent !== null && m.spend!.aiPercent !== null ? t("membersMembersPage.aiOfShare", { used: m.spend!.aiPercent, share: m.limits!.aiPercent }) : null,
       ].filter(Boolean)
     : [];
   const atLimit = Boolean(spend && m.limits!.monthlyUsd !== null && m.spend!.usd >= m.limits!.monthlyUsd);
@@ -591,8 +604,7 @@ function MemberRow({
         <span className="truncate text-body text-muted-foreground">{line.join(" · ")}</span>
         {usage.length > 0 && (
           <span className={cn("truncate text-small tabular-nums", atLimit ? "text-destructive" : "text-muted-foreground")}>
-            {usage.join(" · ")}
-            {atLimit && t("membersMembersPage.atLimit")}
+            {(atLimit ? [...usage, t("membersMembersPage.atLimit")] : usage).join(" · ")}
           </span>
         )}
       </div>
@@ -600,8 +612,8 @@ function MemberRow({
         <>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-foreground/80" aria-label={`Role for ${m.name}: ${ROLE_NAME[m.role]}`}>
-                {ROLE_NAME[m.role]}
+              <Button variant="ghost" size="sm" className="text-foreground/80" aria-label={t("membersMembersPage.roleFor", { name: m.name, role: roleName(m.role) })}>
+                {roleName(m.role)}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -613,7 +625,7 @@ function MemberRow({
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label={`More for ${m.name}`}>
+              <Button variant="ghost" size="icon-sm" aria-label={t("membersMembersPage.moreFor", { name: m.name })}>
                 <MoreHorizontal size={16} />
               </Button>
             </DropdownMenuTrigger>
@@ -630,7 +642,7 @@ function MemberRow({
           </DropdownMenu>
         </>
       ) : (
-        <span className="shrink-0 px-2.5 text-body text-muted-foreground">{ROLE_NAME[m.role]}</span>
+        <span className="shrink-0 px-2.5 text-body text-muted-foreground">{roleName(m.role)}</span>
       )}
     </div>
   );

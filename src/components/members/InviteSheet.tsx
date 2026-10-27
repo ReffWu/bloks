@@ -18,11 +18,11 @@ import { membersApi, whenWords, type Invite, type Workspace, type WorkspaceRole 
 import { needsName } from "@/lib/yourName";
 import { askYourName } from "@/components/YourNameDialog";
 import { WorkspaceMark } from "@/components/WorkspaceMark";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
-const ROLE_LINE: Record<WorkspaceRole, string> = {
-  member: "Members use the agents, rooms and memory. Admins can also invite and manage people.",
-  admin: "Admins use the agents, rooms and memory, and can also invite and manage people.",
+const ROLE_LINE: Record<WorkspaceRole, MessageKey> = {
+  member: "inviteSheet.roleLine.member",
+  admin: "inviteSheet.roleLine.admin",
 };
 
 /** The QR as one SVG path: a module per dark cell, high error correction
@@ -59,9 +59,10 @@ function useCopied(): [string | null, (key: string, text: string) => void] {
   return [copied, copy];
 }
 
-function CopyButton({ copied, onClick, label, className }: { copied: boolean; onClick: () => void; label: string; className?: string }) {
+function CopyButton({ copied, onClick, copies, className }: { copied: boolean; onClick: () => void; copies: "code" | "link"; className?: string }) {
+  const label = copies === "code" ? (copied ? t("inviteSheet.codeCopied") : t("inviteSheet.copyCode")) : copied ? t("inviteSheet.linkCopied") : t("inviteSheet.copyLink");
   return (
-    <Button variant="secondary" size="sm" onClick={onClick} aria-label={copied ? `${label} copied` : `Copy ${label}`} className={cn("min-w-[78px]", className)}>
+    <Button variant="secondary" size="sm" onClick={onClick} aria-label={label} className={cn("min-w-[78px]", className)}>
       {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
       <span aria-live="polite">{copied ? t("common.copied") : t("common.copy")}</span>
     </Button>
@@ -111,7 +112,7 @@ export function InviteSheet({
       .invite({ role: "member" })
       .catch(async (e: Error) => {
         if (!needsName(e)) throw e;
-        if (!(await askYourName({ why: `Everyone you invite to ${workspace.name} sees it.` }))) {
+        if (!(await askYourName({ why: t("inviteSheet.nameWhy", { name: workspace.name }) }))) {
           onOpenChange(false);
           return null;
         }
@@ -131,13 +132,13 @@ export function InviteSheet({
     if (!invite) return;
     const wanted = name.trim();
     if (wanted === (invite.name ?? "")) return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       membersApi
         .updateInvite(invite.id, { name: wanted })
         .then((b) => setInvite(b.invite))
         .catch(() => {});
     }, 400);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [name, invite]);
 
   const changeRole = (next: WorkspaceRole) => {
@@ -166,8 +167,7 @@ export function InviteSheet({
   };
 
   const qr = useMemo(() => (invite ? qrPath(invite.link) : null), [invite?.link]);
-  const who = name.trim() || "They";
-  const whoLower = name.trim() || "they";
+  const named = name.trim();
   const [first, second] = invite ? invite.code.split("-") : ["", ""];
 
   return (
@@ -184,7 +184,7 @@ export function InviteSheet({
       >
         <div className="flex items-center gap-3 px-[22px] pb-1.5 pt-5">
           <WorkspaceMark mark={workspace.mark} size={28} />
-          <DialogTitle className="flex-1 text-balance">Invite to {workspace.name}</DialogTitle>
+          <DialogTitle className="flex-1 text-balance">{t("inviteSheet.title", { name: workspace.name })}</DialogTitle>
           <Button variant="ghost" size="icon-sm" aria-label={t("common.close")} onClick={() => onOpenChange(false)}>
             <X size={16} />
           </Button>
@@ -192,7 +192,7 @@ export function InviteSheet({
 
         <div className="flex items-end gap-3.5 px-[22px] pb-1 pt-3.5">
           <label className="flex min-w-0 flex-1 flex-col gap-1.5 text-small text-muted-foreground">
-            Who is it for? (optional)
+            {t("inviteSheet.whoIsItFor")}
             <Input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("inviteSheet.aNameForYou")} maxLength={40} autoComplete="off" />
           </label>
           <div className="flex flex-col gap-1.5">
@@ -203,13 +203,13 @@ export function InviteSheet({
               onChange={changeRole}
               className="h-9"
               options={[
-                { value: "member", label: "Member" },
-                { value: "admin", label: "Admin" },
+                { value: "member", label: t("inviteSheet.member") },
+                { value: "admin", label: t("inviteSheet.admin") },
               ]}
             />
           </div>
         </div>
-        <DialogDescription className="mt-0 px-[22px] pt-2 text-small">{ROLE_LINE[role]}</DialogDescription>
+        <DialogDescription className="mt-0 px-[22px] pt-2 text-small">{t(ROLE_LINE[role])}</DialogDescription>
 
         <div className="mx-[22px] mt-[18px] flex gap-[26px] rounded-2xl border bg-muted/50 p-[22px] max-sm:flex-col max-sm:items-center">
           <div className="flex flex-col items-center gap-2.5">
@@ -234,7 +234,7 @@ export function InviteSheet({
             <div className="flex flex-col gap-2">
               <span className="text-small text-muted-foreground">{t("inviteSheet.code")}</span>
               <div className="flex items-center gap-2.5">
-                <span className="select-all font-mono text-[30px] font-semibold leading-none tracking-[0.08em] text-foreground tabular-nums" aria-label={invite ? `Code ${invite.code.split("").join(" ")}` : undefined}>
+                <span className="select-all font-mono text-[30px] font-semibold leading-none tracking-[0.08em] text-foreground tabular-nums" aria-label={invite ? t("inviteSheet.codeSpelled", { code: invite.code.split("").join(" ") }) : undefined}>
                   {invite ? (
                     <>
                       {first}
@@ -245,7 +245,7 @@ export function InviteSheet({
                     <span className="inline-block h-[30px] w-[200px] animate-pulse rounded-md bg-muted" />
                   )}
                 </span>
-                <CopyButton className="ml-auto" copied={copied === "code"} label="code" onClick={() => invite && copy("code", invite.code)} />
+                <CopyButton className="ml-auto" copied={copied === "code"} copies="code" onClick={() => invite && copy("code", invite.code)} />
               </div>
               <span className="text-small text-muted-foreground">{t("inviteSheet.easyToReadOutNo")}</span>
             </div>
@@ -256,7 +256,7 @@ export function InviteSheet({
                 <span className="flex h-[34px] min-w-0 flex-1 items-center truncate rounded-lg border bg-background px-3 font-mono text-body text-foreground/80">
                   {invite ? invite.link.replace(/^https:\/\//, "") : ""}
                 </span>
-                <CopyButton copied={copied === "link"} label="link" onClick={() => invite && copy("link", invite.link)} />
+                <CopyButton copied={copied === "link"} copies="link" onClick={() => invite && copy("link", invite.link)} />
                 <Button size="sm" onClick={() => void share()} disabled={!invite} className="h-[34px]">
                   <Upload size={14} />
                   {t("inviteSheet.share")}
@@ -273,7 +273,7 @@ export function InviteSheet({
           <div className="mx-[22px] mt-3.5 flex items-center gap-2.5 rounded-xl border border-warning/30 bg-warning/10 px-3.5 py-3">
             <Lock size={18} className="shrink-0 text-warning" />
             <span className="flex-1 text-pretty text-body leading-relaxed text-foreground/85">
-              {who} will also need the join password. It is not in the invite: tell them yourself.
+              {named ? t("inviteSheet.password.named", { name: named }) : t("inviteSheet.password.they")}
             </span>
           </div>
         )}
@@ -287,8 +287,20 @@ export function InviteSheet({
         <div className="flex items-center gap-3 px-[22px] pb-5 pt-[18px]">
           <span className="flex-1 text-pretty text-small text-muted-foreground">
             {invite
-              ? `Works once. Expires ${whenWords(invite.expiresAt)}. ${approveEach ? `You approve ${name.trim() || "them"} before ${whoLower === "they" ? "they are" : `${whoLower} is`} in.` : `The right code${passwordSet ? " and password" : ""} lets ${name.trim() || "them"} straight in.`}`
-              : t("inviteSheet.makingTheInvite2")}
+              ? `${t("inviteSheet.worksOnce", { when: whenWords(invite.expiresAt) })} ${
+                  approveEach
+                    ? named
+                      ? t("inviteSheet.approve.named", { name: named })
+                      : t("inviteSheet.approve.them")
+                    : passwordSet
+                      ? named
+                        ? t("inviteSheet.straightIn.passwordNamed", { name: named })
+                        : t("inviteSheet.straightIn.passwordThem")
+                      : named
+                        ? t("inviteSheet.straightIn.named", { name: named })
+                        : t("inviteSheet.straightIn.them")
+                }`
+              : t("inviteSheet.makingTheInviteDots")}
           </span>
           <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => void cancelInvite()}>
             {t("inviteSheet.cancelInvite")}

@@ -12,6 +12,7 @@ import { api } from "@/state/store";
 import { namer } from "./names";
 import { ownerOrNull } from "./yourName";
 import { openWorkspaceDialog } from "@/lib/workspaces";
+import { formatDate, t, type MessageKey } from "./i18n.ts";
 
 export type WorkspaceRole = "admin" | "member";
 export type Role = WorkspaceRole | "owner";
@@ -104,8 +105,13 @@ export interface AgentAccessRow {
   access: { mode: "everyone" | "only" | "except"; people: string[]; admins: boolean } | null;
 }
 
-export const ROLE_NAME: Record<Role, string> = { owner: "Owner", admin: "Admin", member: "Member" };
-export const DEVICE_NAME = { iphone: "an iPhone", mac: "a Mac", browser: "a browser" } as const;
+// Keys, so a role reads in the language it is drawn in.
+const ROLE_NAME: Record<Role, MessageKey> = { owner: "members.role.owner", admin: "members.role.admin", member: "members.role.member" };
+
+/** "Owner", "Admin", "Member". */
+export function roleName(role: Role): string {
+  return t(ROLE_NAME[role]);
+}
 
 export const membersApi = {
   list: (): Promise<MembersData> => api("/api/workspace/members"),
@@ -185,7 +191,7 @@ export type JoinAnswer =
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  const parsed = await res.json().catch(() => ({ ok: false, code: "offline", error: "This Mac's Bloks did not answer." }));
+  const parsed = await res.json().catch(() => ({ ok: false, code: "offline", error: t("members.macDidNotAnswer") }));
   return parsed as T;
 }
 
@@ -218,10 +224,10 @@ export function codeIn(raw: string): string | null {
 /** Whether some text is a Bloks workspace invite: a code, or a link to
  * one. A room invite's link (bloks.dev/join#...) is not. */
 export function looksLikeInvite(text: string): boolean {
-  const t = text.trim();
-  if (t.length > 300) return false;
-  if (/^(https?:\/\/)?bloks\.dev\/j\/[a-z0-9]{6}#/i.test(t) || /^bloks:\/\/join#/i.test(t)) return codeIn(t) !== null;
-  return !t.includes("/") && codeIn(t) !== null;
+  const trimmed = text.trim();
+  if (trimmed.length > 300) return false;
+  if (/^(https?:\/\/)?bloks\.dev\/j\/[a-z0-9]{6}#/i.test(trimmed) || /^bloks:\/\/join#/i.test(trimmed)) return codeIn(trimmed) !== null;
+  return !trimmed.includes("/") && codeIn(trimmed) !== null;
 }
 
 export function formatCode(code: string): string {
@@ -249,8 +255,8 @@ export function workspaceFrame(frame: Frame, news: boolean) {
     const request = frame.request as JoinRequest;
     const first = request.name.split(" ")[0] || request.name;
     void window.bloks?.notifyShow({
-      title: `${first} wants to join ${String(frame.workspace ?? "your workspace")}`,
-      body: `Check four words with ${first}, then let them in.`,
+      title: frame.workspace ? t("members.notify.wantsToJoin", { name: first, workspace: String(frame.workspace) }) : t("members.notify.wantsToJoinYours", { name: first }),
+      body: t("members.notify.checkFourWords", { name: first }),
       target: "workspace:members",
       urgent: true,
     });
@@ -258,8 +264,8 @@ export function workspaceFrame(frame: Frame, news: boolean) {
   if (news && frame.kind === "workspace.locked") {
     const invite = frame.invite as { name: string | null };
     void window.bloks?.notifyShow({
-      title: "An invite was closed",
-      body: `Somebody tried the wrong join password five times${invite.name ? ` on the invite for ${invite.name}` : ""}. That invite no longer works.`,
+      title: t("members.notify.inviteClosed"),
+      body: invite.name ? t("members.notify.wrongPasswordFor", { name: invite.name }) : t("members.notify.wrongPassword"),
       target: "workspace:members",
       urgent: false,
     });
@@ -267,8 +273,10 @@ export function workspaceFrame(frame: Frame, news: boolean) {
   if (news && frame.kind === "workspace.left") {
     const person = frame.person as { name?: string } | undefined;
     void window.bloks?.notifyShow({
-      title: `${person?.name ?? "Someone"} left ${String(frame.workspace ?? "your workspace")}`,
-      body: "Their devices are signed out, and their solo agents and private conversations are gone.",
+      title: frame.workspace
+        ? t("members.notify.left", { name: person?.name ?? t("members.notify.someone"), workspace: String(frame.workspace) })
+        : t("members.notify.leftYours", { name: person?.name ?? t("members.notify.someone") }),
+      body: t("members.notify.leftBody"),
       target: "workspace:members",
       urgent: false,
     });
@@ -312,7 +320,7 @@ const DAY = 24 * 60 * 60_000;
 export function shortDate(at: number, now = Date.now()): string {
   const d = new Date(at);
   const sameYear = d.getFullYear() === new Date(now).getFullYear();
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
+  return formatDate(d, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
 }
 
 /** "active today", "active yesterday", "active Oct 2". */
@@ -320,18 +328,18 @@ export function activeWords(at: number | null, now = Date.now()): string | null 
   if (!at) return null;
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
-  if (at >= start.getTime()) return "active today";
-  if (at >= start.getTime() - DAY) return "active yesterday";
-  return `active ${shortDate(at, now)}`;
+  if (at >= start.getTime()) return t("members.active.today");
+  if (at >= start.getTime() - DAY) return t("members.active.yesterday");
+  return t("members.active.on", { date: shortDate(at, now) });
 }
 
 /** "expires in 23 h", "expires in 12 min". */
 export function expiresIn(at: number, now = Date.now()): string {
   const left = at - now;
-  if (left <= 0) return "expired";
+  if (left <= 0) return t("members.expires.expired");
   const minutes = Math.round(left / 60_000);
-  if (minutes < 60) return `expires in ${Math.max(1, minutes)} min`;
-  return `expires in ${Math.round(minutes / 60)} h`;
+  if (minutes < 60) return t("members.expires.minutes", { minutes: Math.max(1, minutes) });
+  return t("members.expires.hours", { hours: Math.round(minutes / 60) });
 }
 
 /** "tomorrow at 9:41 PM", "today at 11:02 AM". */
@@ -339,11 +347,11 @@ export function whenWords(at: number, now = Date.now()): string {
   const d = new Date(at);
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const time = formatDate(d, { hour: "numeric", minute: "2-digit" });
   const day = Math.floor((d.getTime() - today.getTime()) / DAY);
-  if (day === 0) return `today at ${time}`;
-  if (day === 1) return `tomorrow at ${time}`;
-  return `${shortDate(at, now)} at ${time}`;
+  if (day === 0) return t("members.when.today", { time });
+  if (day === 1) return t("members.when.tomorrow", { time });
+  return t("members.when.on", { date: shortDate(at, now), time });
 }
 
 export function initials(name: string): string {
@@ -430,7 +438,7 @@ export function usePersonName(): (id: string) => string {
     () => names,
     () => names,
   );
-  return (id: string) => current[id] ?? "A former member";
+  return (id: string) => current[id] ?? t("members.formerMember");
 }
 
 /** The workspace's people with their roles, and the owner's name, as the

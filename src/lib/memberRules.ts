@@ -8,6 +8,8 @@
 // nothing to load, so a test can walk them; the calls and the live stream
 // are in src/lib/memberMode.ts.
 
+import { formatNumber, t } from "./i18n.ts";
+
 // ── the shapes the member routes answer with ──────────────────────────
 
 export type MemberRole = "member" | "admin";
@@ -151,7 +153,7 @@ export function modeFrom(
       workspace: {
         workspace: ws.workspace,
         you: ws.you,
-        owner: ws.owner ?? { name: "The owner" },
+        owner: ws.owner ?? { name: t("memberRules.theOwner") },
         privacy: ws.privacy ?? { privateReadable: false, line: "" },
         members: ws.members ?? [],
         solo: ws.solo ?? { count: 0, max: 0 },
@@ -163,7 +165,7 @@ export function modeFrom(
   // a guest of some rooms: the workspace route refuses them, "me" answers
   const said = me?.status === 200 ? (me.body as { person?: { name?: string; role?: string }; host?: string; rooms?: MemberRoomRow[] }) : null;
   if (workspace?.status === 403 && said?.person && !said.person.role && Array.isArray(said.rooms)) {
-    return { mode: "guest", rooms: said.rooms, host: said.host ?? "The owner", name: said.person.name ?? "" };
+    return { mode: "guest", rooms: said.rooms, host: said.host ?? t("memberRules.theOwner"), name: said.person.name ?? "" };
   }
   return { mode: "owner" };
 }
@@ -180,10 +182,10 @@ export type MemberPlace =
  * so there is nothing to refuse. */
 export function memberPages(role: MemberRole | null): Array<{ page: Extract<MemberPlace, { kind: "page" }>["page"]; label: string }> {
   return [
-    { page: "usage", label: "Your usage" },
-    { page: "about", label: "About you" },
-    ...(role === "admin" ? [{ page: "members" as const, label: "Members" }] : []),
-    { page: "settings", label: "Workspace" },
+    { page: "usage", label: t("memberRules.page.usage") },
+    { page: "about", label: t("memberRules.page.about") },
+    ...(role === "admin" ? [{ page: "members" as const, label: t("memberRules.page.members") }] : []),
+    { page: "settings", label: t("memberRules.page.settings") },
   ];
 }
 
@@ -221,11 +223,11 @@ export function agentGroups(agents: MemberAgent[]): { team: MemberAgent[]; mine:
 
 /** Whether another solo agent may be made, and if not, the plain reason. */
 export function soloRoom(solo: { count: number; max: number }, engines: number, owner: string): { ok: true } | { ok: false; why: string } {
-  if (solo.max === 0) return { ok: false, why: `Solo agents are not on for you here. ${owner} or an admin can turn them on.` };
+  if (solo.max === 0) return { ok: false, why: t("memberRules.solo.off", { owner }) };
   if (solo.count >= solo.max) {
-    return { ok: false, why: `You have ${solo.count} solo ${solo.count === 1 ? "agent" : "agents"}, as many as you may make here. Delete one, or ask ${owner} or an admin for more.` };
+    return { ok: false, why: t("memberRules.solo.full", { count: solo.count, owner }) };
   }
-  if (engines === 0) return { ok: false, why: `No engine is open to your solo agents yet. Ask ${owner} or an admin to allow one.` };
+  if (engines === 0) return { ok: false, why: t("memberRules.solo.noEngine", { owner }) };
   return { ok: true };
 }
 
@@ -236,11 +238,17 @@ export function usageNotice(usage: MemberUsage | null): { level: "stop" | "warn"
   if (usage.stopped) return { level: "stop", text: usage.stopped };
   const cap = usage.limits.monthlyUsd;
   if (cap !== null && cap > 0 && usage.spentUsd >= cap * 0.8) {
-    return { level: "warn", text: `You have used $${usage.spentUsd.toFixed(2)} of your $${cap} this month. Past it, your requests here stop until next month.` };
+    return {
+      level: "warn",
+      text: t("memberRules.usage.nearCap", {
+        spent: formatNumber(usage.spentUsd, { style: "currency", currency: "USD" }),
+        cap: formatNumber(cap, { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+      }),
+    };
   }
   const ai = usage.limits.aiPercent;
   if (ai !== null && usage.aiPercent !== null && usage.aiPercent >= ai * 0.8) {
-    return { level: "warn", text: `You have used ${usage.aiPercent}% of your ${ai}% of Bloks AI this month.` };
+    return { level: "warn", text: t("memberRules.usage.nearAi", { used: usage.aiPercent, share: ai }) };
   }
   return null;
 }
@@ -249,8 +257,8 @@ export function usageNotice(usage: MemberUsage | null): { level: "stop" | "warn"
  * "You", a member's name, or the owner's. */
 export function speaker(message: Pick<MemberMessage, "author" | "role">, me: string, people: Record<string, string>, owner: string): string {
   if (!message.author) return owner;
-  if (message.author === me) return "You";
-  return people[message.author] ?? "A former member";
+  if (message.author === me) return t("memberRules.you");
+  return people[message.author] ?? t("memberRules.formerMember");
 }
 
 /** Whether a card is still waiting on somebody, and whether it is this
@@ -296,10 +304,12 @@ export function roomAccessBody(audience: "everyone" | "some", chosen: Iterable<s
   return audience === "everyone" ? { audience } : { audience, members: [...new Set(chosen)].sort() };
 }
 
-/** The picker's one line about who is in a room. */
-export function roomAudienceLine(audience: "everyone" | "some", chosen: number, total: number, guests: number, owner = "you"): string {
-  const outside = guests ? ` Plus ${guests} ${guests === 1 ? "guest" : "guests"} let in by this room's own invite.` : "";
-  if (audience === "everyone") return `Everyone in the workspace is in this room, ${total} ${total === 1 ? "member" : "members"} and ${owner}.${outside}`;
-  if (!chosen) return `Only ${owner}, for now. Tick the people to bring in.${outside}`;
-  return `${chosen} of ${total} ${total === 1 ? "member" : "members"} and ${owner}.${outside}`;
+/** The picker's one line about who is in a room. Said to the owner
+ * ("and you") unless another owner's name is given. */
+export function roomAudienceLine(audience: "everyone" | "some", chosen: number, total: number, guests: number, owner?: string): string {
+  const outside = guests ? ` ${t("memberRules.audience.guests", { count: guests })}` : "";
+  const who = owner === undefined ? "you" : "named";
+  if (audience === "everyone") return t(`memberRules.audience.everyone.${who}`, { count: total, owner: owner ?? "" }) + outside;
+  if (!chosen) return t(`memberRules.audience.none.${who}`, { owner: owner ?? "" }) + outside;
+  return t(`memberRules.audience.some.${who}`, { chosen, count: total, owner: owner ?? "" }) + outside;
 }

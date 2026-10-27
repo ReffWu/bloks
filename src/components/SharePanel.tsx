@@ -22,7 +22,7 @@ import { RoomAudience } from "./members/RoomAudience";
 import { useWorkspaceFrames } from "@/lib/members";
 import { askYourName } from "./YourNameDialog";
 import { needsName, readYourName } from "@/lib/yourName";
-import { t } from "@/lib/i18n";
+import { formatList, formatNumber, t, tr } from "@/lib/i18n";
 
 interface PendingInvite {
   id: string;
@@ -65,15 +65,24 @@ const CAPS = [5, 10, 25, 50, 100, 250];
  * keeping a cap set some other way so the slider can still show it. */
 function capStops(current: number) {
   const caps = [...new Set([...CAPS, current])].filter((c) => c > 0).sort((a, b) => a - b);
-  return [...caps.map((c) => ({ value: c, label: `$${c}` })), { value: 0, label: "No cap" }];
+  return [...caps.map((c) => ({ value: c, label: dollars(c) })), { value: 0, label: t("sharePanel.noCap") }];
 }
 
 type ChatPlatform = "slack" | "discord" | "whatsapp" | "signal";
 const PLATFORM: Record<ChatPlatform, string> = { slack: "Slack", discord: "Discord", whatsapp: "WhatsApp", signal: "Signal" };
 
 function usd(n: number) {
-  return `$${n < 10 ? n.toFixed(2) : Math.round(n)}`;
+  const digits = n < 10 ? 2 : 0;
+  return formatNumber(n, { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
+
+/** A cap in dollars, whole unless it was set with cents. */
+function dollars(n: number) {
+  return formatNumber(n, { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+/** Agent names one after another, the reader's way. */
+const listed = (names: string[]) => formatList(names, { type: "unit", style: "short" });
 
 export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { state, dispatch } = useStore();
@@ -146,7 +155,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
       // a room shared before Bloks asked names: asked now, then on with it
       const made = await ask().catch(async (e) => {
         if (!needsName(e)) throw e;
-        if (!(await askYourName({ why: `Everyone you invite to ${blok.name} sees it.` }))) return null;
+        if (!(await askYourName({ why: t("sharePanel.nameWhy", { room: blok.name }) }))) return null;
         return ask();
       });
       if (!made) return;
@@ -175,7 +184,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[86vh] max-w-[480px] overflow-y-auto">
-        <DialogTitle className="text-lead font-semibold">Share {blok.name}</DialogTitle>
+        <DialogTitle className="text-lead font-semibold">{t("sharePanel.title", { room: blok.name })}</DialogTitle>
         <DialogDescription className="mt-1 text-body leading-relaxed text-muted-foreground">
           {t("sharePanel.invitePeopleToTalkTo")}
         </DialogDescription>
@@ -207,7 +216,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
         ) : !shared ? (
           <div className="mt-4 space-y-3">
             <label className="block text-body font-medium text-foreground">
-              Your name
+              {t("sharePanel.yourName")}
               <span className="mt-0.5 block text-small font-normal text-muted-foreground">
                 {t("sharePanel.everyoneYouLetInSees")}
               </span>
@@ -226,7 +235,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
               onClick={() => share({ hostName: name.trim() })}
             >
               {busy === "share" && <Loader2 size={14} className="animate-spin" />}
-              Start sharing
+              {t("sharePanel.startSharing")}
             </Button>
           </div>
         ) : (
@@ -235,10 +244,12 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
             {waiting.map((inv) => (
               <div key={inv.id} className="rounded-2xl border border-brand-ink/30 bg-brand-ink/5 p-4">
                 <div className="text-ui font-medium text-foreground">
-                  {inv.claim!.name} wants to join as a {inv.role}
+                  {inv.role === "viewer"
+                    ? t("sharePanel.wantsToJoin.viewer", { name: inv.claim!.name })
+                    : t("sharePanel.wantsToJoin.collaborator", { name: inv.claim!.name })}
                 </div>
                 <div className="mt-1 text-small text-muted-foreground">
-                  Check these words match what {inv.claim!.name} sees on their screen:
+                  {t("sharePanel.checkWords", { name: inv.claim!.name })}
                 </div>
                 <div className="mt-2 rounded-xl bg-background px-3 py-2.5 text-center font-mono text-title tracking-wide text-foreground">
                   {inv.claim!.phrase}
@@ -250,7 +261,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                     onClick={() => act(`in-${inv.id}`, () => api(`/api/invites/${inv.id}/approve`, { method: "POST" }))}
                   >
                     {busy === `in-${inv.id}` && <Loader2 size={14} className="animate-spin" />}
-                    Let in
+                    {t("sharePanel.letIn")}
                   </Button>
                   <Button
                     variant="secondary"
@@ -267,11 +278,12 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
             {data.knocks.map((k) => (
               <div key={k.id} className="rounded-2xl border border-brand-ink/30 bg-brand-ink/5 p-4">
                 <div className="text-ui font-medium text-foreground">
-                  {k.name} wants to talk to the agents from {PLATFORM[k.platform]}
+                  {t("sharePanel.knock.title", { name: k.name, platform: PLATFORM[k.platform] })}
                 </div>
                 <div className="mt-1 text-small text-muted-foreground">
-                  They named an agent in {data.chat.link?.channelName ?? t("sharePanel.theLinkedChannel")}. Agents only answer
-                  them once you let them in.
+                  {data.chat.link?.channelName
+                    ? t("sharePanel.knock.named", { channel: data.chat.link.channelName })
+                    : t("sharePanel.knock.namedLinked")}
                 </div>
                 <div className="mt-3 flex gap-2">
                   <Button
@@ -280,7 +292,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                     onClick={() => act(`kin-${k.id}`, () => api(`/api/knocks/${k.id}/approve`, { method: "POST" }))}
                   >
                     {busy === `kin-${k.id}` && <Loader2 size={14} className="animate-spin" />}
-                    Let in
+                    {t("sharePanel.letIn")}
                   </Button>
                   <Button
                     variant="secondary"
@@ -312,7 +324,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                 </select>
                 <Button className="flex-1" disabled={busy === "invite"} onClick={invite}>
                   {busy === "invite" && <Loader2 size={14} className="animate-spin" />}
-                  Make an invite link
+                  {t("sharePanel.makeAnInviteLink")}
                 </Button>
               </div>
               )}
@@ -324,7 +336,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                     </div>
                   )}
                   <div className="min-w-0 flex-1 text-small leading-relaxed text-muted-foreground">
-                    For one person. Works once, for 24 hours. You still approve who gets in.
+                    {t("sharePanel.inviteWorksOnce")}
                     <Button size="sm" variant="secondary" className="mt-2 w-full" onClick={copy}>
                       {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                       {copied ? t("common.copied") : t("sharePanel.copyLink")}
@@ -337,8 +349,9 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                   {unopened.map((inv) => (
                     <div key={inv.id} className="flex items-center justify-between text-small text-muted-foreground">
                       <span>
-                        Invite for a {inv.role}, not opened yet
-                        {inv.invitedBy !== data.hostName ? ` (from ${inv.invitedBy})` : ""}
+                        {inv.invitedBy !== data.hostName
+                          ? t(`sharePanel.unopened.${inv.role === "viewer" ? "viewer" : "collaborator"}From`, { name: inv.invitedBy })
+                          : t(`sharePanel.unopened.${inv.role === "viewer" ? "viewer" : "collaborator"}`)}
                       </span>
                       <Button
                         size="icon-sm"
@@ -360,14 +373,14 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
               <SectionTitle>{t("sharePanel.inThisRoom")}</SectionTitle>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-body">
-                  <span className="text-foreground">{data.hostName} (you)</span>
+                  <span className="text-foreground">{t("sharePanel.nameYou", { name: data.hostName })}</span>
                   <span className="text-small text-muted-foreground">{t("sharePanel.owner")}</span>
                 </div>
                 {data.people.map((p) => (
                   <div key={p.id} className="flex items-center justify-between gap-2 text-body">
                     <span className="min-w-0 truncate text-foreground">
                       {p.name}
-                      {p.via && <span className="ml-1.5 text-small text-muted-foreground">in {PLATFORM[p.via]}</span>}
+                      {p.via && <span className="ml-1.5 text-small text-muted-foreground">{t("sharePanel.inPlatform", { platform: PLATFORM[p.via] })}</span>}
                     </span>
                     <span className="flex shrink-0 items-center gap-1">
                       <select
@@ -381,7 +394,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                           )
                         }
                         className="rounded-md border bg-background px-1.5 py-0.5 text-small"
-                        aria-label={`${p.name}'s role`}
+                        aria-label={t("sharePanel.roleOf", { name: p.name })}
                       >
                         <option value="collaborator">{t("sharePanel.collaborator")}</option>
                         <option value="viewer">{t("sharePanel.viewer")}</option>
@@ -389,7 +402,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                       <Button
                         size="icon-sm"
                         variant="ghost"
-                        title={`Remove ${p.name}`}
+                        title={t("sharePanel.removePerson", { name: p.name })}
                         onClick={() =>
                           act(`rm-${p.id}`, () => api(`/api/bloks/${blok.id}/people/${p.id}`, { method: "DELETE" }))
                         }
@@ -455,10 +468,13 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                 <div className="mt-3 rounded-xl border bg-card px-3 py-2.5">
                   <div className="flex items-baseline justify-between text-body">
                     <span className="text-muted-foreground">{t("sharePanel.thisMonth")}</span>
-                    <span className="font-medium tabular-nums text-foreground">
-                      {usd(data.spend.total)}
-                      {data.spend.cap > 0 && <span className="text-muted-foreground"> of ${data.spend.cap}</span>}
-                    </span>
+                    {data.spend.cap > 0 ? (
+                      <span className="font-medium tabular-nums text-muted-foreground">
+                        {tr("sharePanel.spentOfCap", { spent: <span className="text-foreground">{usd(data.spend.total)}</span>, cap: dollars(data.spend.cap) })}
+                      </span>
+                    ) : (
+                      <span className="font-medium tabular-nums text-foreground">{usd(data.spend.total)}</span>
+                    )}
                   </div>
                   {data.spend.cap > 0 && (
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -472,7 +488,7 @@ export function SharePanel({ blok, open, onOpenChange }: { blok: Blok; open: boo
                     <div className="mt-2 space-y-0.5">
                       {data.spend.byPerson.map((p) => (
                         <div key={p.id} className="flex justify-between text-small text-muted-foreground">
-                          <span className="truncate">{p.id === "owner" ? `${p.name} (you)` : p.name}</span>
+                          <span className="truncate">{p.id === "owner" ? t("sharePanel.nameYou", { name: p.name }) : p.name}</span>
                           <span className="tabular-nums">{usd(p.usd)}</span>
                         </div>
                       ))}
@@ -561,7 +577,7 @@ function ChatLinkSection({
       {link ? (
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 text-body text-foreground">
-            Linked to <span className="font-medium">{link.channelName}</span> in {PLATFORM[link.platform]}
+            {tr("sharePanel.linkedTo", { channel: <span className="font-medium">{link.channelName}</span>, platform: PLATFORM[link.platform] })}
             <div className="text-small leading-snug text-muted-foreground">
               {t("sharePanel.messagesShowInBothPlaces")}
             </div>
@@ -601,8 +617,8 @@ function ChatLinkSection({
             channels.length === 0 ? (
               <div className="text-small leading-snug text-muted-foreground">
                 {platform === "whatsapp" || platform === "signal"
-                  ? `The number isn't in any groups yet. Add it to one in ${PLATFORM[platform]}, then pick again.`
-                  : `The bot isn't in any channels yet. Add it to one in ${PLATFORM[platform]}, then pick again.`}
+                  ? t("sharePanel.noGroups", { platform: PLATFORM[platform] })
+                  : t("sharePanel.noChannels", { platform: PLATFORM[platform] })}
               </div>
             ) : (
               <div className="flex gap-2">
@@ -675,8 +691,7 @@ function OwnerToolsSection({
       <SectionTitle>{t("sharePanel.yourTools")}</SectionTitle>
       {!team ? (
         <div className="text-small leading-snug text-muted-foreground">
-          With Bloks Team, agents here can ask to use your apps, a browser or your computer. You approve
-          each use.{" "}
+          {t("sharePanel.toolsNeedTeam")}{" "}
           <a
             href="https://bloks.dev/cloud/upgrade/"
             target="_blank"
@@ -741,8 +756,7 @@ function OwnerToolsSection({
           />
           {anyOn && left.length > 0 && (
             <div className="text-small leading-snug text-muted-foreground">
-              {left.map((a) => a.name).join(", ")} can't pause for approvals, so{" "}
-              {left.length === 1 ? "it" : "they"} can only talk.
+              {t("sharePanel.cantPause", { count: left.length, agents: listed(left.map((a) => a.name)) })}
             </div>
           )}
         </div>
@@ -784,8 +798,7 @@ function PlanLine({ data }: { data: PeopleResponse }) {
   if (data.plan !== "cloud" || !data.limits || data.sharedRoom === false) return null;
   return (
     <div className="mt-2 text-small leading-snug text-muted-foreground">
-      Bloks Cloud includes one shared room for up to {data.limits.members} people. Bloks Team allows any
-      number of rooms, up to 10 people each.{" "}
+      {t("sharePanel.planLine", { members: data.limits.members })}{" "}
       <a
         href="https://bloks.dev/cloud/upgrade/"
         target="_blank"

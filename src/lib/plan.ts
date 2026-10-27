@@ -6,6 +6,7 @@
 // workspace the page shows (GET /api/plan, server/plan-account.ts),
 // already read defensively there. Nothing in this file holds a price: an
 // offer's price is whatever words the site sent, and is drawn as it came.
+import { formatDate, t, type MessageKey } from "./i18n.ts";
 
 export type PaidPlan = "cloud" | "team" | "ai";
 /** What the site files offers under: no licence is "free", and a bundle
@@ -110,15 +111,16 @@ export function failedLook(
     return {
       snapshot: null,
       stale: false,
-      problem: { kind: "refused", words: "Your plan shows on the computer this workspace runs on. Update Bloks there to see it here too." },
+      problem: { kind: "refused", words: t("plan.problem.refused") },
     };
   }
   if (kept) return { snapshot: kept, stale: true, problem: null };
-  return { snapshot: null, stale: false, problem: { kind: "unreachable", words: "Bloks couldn't read your plan just now." } };
+  return { snapshot: null, stale: false, problem: { kind: "unreachable", words: t("plan.problem.unreachable") } };
 }
 
+// Product names, said as they are in every language; only the plan with
+// no key has a name in words, which planName reads in the reader's.
 export const PLAN_NAMES: Record<string, string> = {
-  free: "Self-hosted",
   cloud: "Bloks Cloud",
   team: "Bloks Team",
   ai: "Bloks AI",
@@ -127,7 +129,7 @@ export const PLAN_NAMES: Record<string, string> = {
 };
 
 export function planName(key: string | null | undefined): string {
-  if (!key) return PLAN_NAMES.free;
+  if (!key || key === "free") return t("plan.name.free");
   return PLAN_NAMES[key] ?? key.replace(/(^|-)([a-z])/g, (_, gap: string, c: string) => `${gap ? " " : ""}${c.toUpperCase()}`);
 }
 
@@ -190,21 +192,16 @@ export function hostingOffer(offers: readonly Offer[] | null | undefined): Offer
   return hosting.find((o) => o.onSale && o.cta) ?? hosting.find((o) => o.onSale) ?? hosting[0] ?? null;
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 /** "Nov 21", or "Nov 21, 2027" when it is not this year. Read in UTC, as
  * the site writes its dates, so a renewal never lands a day early. */
 export function shortDate(at: number, now = Date.now()): string {
-  const d = new Date(at);
-  const day = `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
-  return d.getUTCFullYear() === new Date(now).getUTCFullYear() ? day : `${day}, ${d.getUTCFullYear()}`;
+  const sameYear = new Date(at).getUTCFullYear() === new Date(now).getUTCFullYear();
+  return formatDate(at, { month: "short", day: "numeric", timeZone: "UTC", ...(sameYear ? {} : { year: "numeric" }) });
 }
 
 /** "March 2026", for how long somebody has been a member. */
 export function monthYear(at: number): string {
-  const d = new Date(at);
-  const long = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  return `${long[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  return formatDate(at, { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 export type StatusTone = "on" | "wait" | "issue" | "off";
@@ -218,16 +215,16 @@ export type StatusTone = "on" | "wait" | "issue" | "off";
 export function statusOf(account: Account, now = Date.now()): { tone: StatusTone; label: string; line: string | null; needsCard: boolean } {
   const status = account.status;
   if (status === "past_due" || status === "unpaid" || status === "incomplete") {
-    return { tone: "issue", label: "Payment due", line: "The last payment didn't go through. Update your card to keep your plan.", needsCard: true };
+    return { tone: "issue", label: t("plan.status.paymentDue"), line: t("plan.status.paymentDueLine"), needsCard: true };
   }
   if (status === "canceled" || status === "cancelled" || status === "incomplete_expired") {
-    return { tone: "off", label: "Ended", line: account.cancelsAt ? `Ended on ${shortDate(account.cancelsAt, now)}.` : null, needsCard: false };
+    return { tone: "off", label: t("plan.status.ended"), line: account.cancelsAt ? t("plan.status.endedOn", { date: shortDate(account.cancelsAt, now) }) : null, needsCard: false };
   }
   if (account.cancelsAt && account.cancelsAt > now) {
-    return { tone: "wait", label: `Cancels on ${shortDate(account.cancelsAt, now)}`, line: null, needsCard: false };
+    return { tone: "wait", label: t("plan.status.cancelsOn", { date: shortDate(account.cancelsAt, now) }), line: null, needsCard: false };
   }
-  if (status === "paused") return { tone: "off", label: "Paused", line: null, needsCard: false };
-  return { tone: "on", label: status === "trialing" ? "Trial" : "Active", line: null, needsCard: false };
+  if (status === "paused") return { tone: "off", label: t("plan.status.paused"), line: null, needsCard: false };
+  return { tone: "on", label: status === "trialing" ? t("plan.status.trial") : t("plan.status.active"), line: null, needsCard: false };
 }
 
 /** When the plan next renews, for beside its status: "Renews Nov 21",
@@ -236,9 +233,10 @@ export function statusOf(account: Account, now = Date.now()): { tone: StatusTone
  * plan that has ended or paused, or a date the site did not say. */
 export function renewalWords(account: Account, now = Date.now()): string | null {
   if (statusOf(account, now).tone === "off") return null;
-  if (account.cancelsAt && account.cancelsAt > now) return "Won't renew";
+  if (account.cancelsAt && account.cancelsAt > now) return t("plan.renewal.wontRenew");
   if (!account.renewsAt) return null;
-  return `${account.renewsAt < now ? "Was due" : "Renews"} ${shortDate(account.renewsAt, now)}`;
+  const date = shortDate(account.renewsAt, now);
+  return account.renewsAt < now ? t("plan.renewal.wasDue", { date }) : t("plan.renewal.renews", { date });
 }
 
 /** A price as the site wrote it: "<amount> / month", or "<amount> a
@@ -250,22 +248,23 @@ export function priceWords(price: { amount: string; per: string } | null | undef
 }
 
 export function intervalWords(interval: Account["interval"]): string | null {
-  return interval === "month" ? "Monthly" : interval === "year" ? "Yearly" : null;
+  return interval === "month" ? t("plan.interval.month") : interval === "year" ? t("plan.interval.year") : null;
 }
 
-/** Hosting's tiers, as the row names them and says what each one is. */
-const HOSTING_TIERS: Record<string, { name: string; line: string }> = {
-  lite: { name: "Hosting Lite", line: "Your own machine. It sleeps when idle and wakes for a message, a routine or a watcher." },
-  standard: { name: "Hosting Standard", line: "Your own machine, always on." },
+/** Hosting's tiers, as the row names them and says what each one is.
+ * The names are the product's; the lines are keys, read where drawn. */
+const HOSTING_TIERS: Record<string, { name: string; line: MessageKey }> = {
+  lite: { name: "Hosting Lite", line: "plan.hosting.lite" },
+  standard: { name: "Hosting Standard", line: "plan.hosting.standard" },
 };
 
 /** What bloks.dev says is happening to the machine, in a word or two. A
  * state this build has not heard of is said as it came. */
-const HOSTING_STATES: Record<string, { label: string; tone: StatusTone }> = {
-  provisioning: { label: "Setting up", tone: "wait" },
-  active: { label: "Running", tone: "on" },
-  grace: { label: "Stops soon", tone: "issue" },
-  stopped: { label: "Stopped", tone: "off" },
+const HOSTING_STATES: Record<string, { label: MessageKey; tone: StatusTone }> = {
+  provisioning: { label: "plan.hosting.state.provisioning", tone: "wait" },
+  active: { label: "plan.hosting.state.active", tone: "on" },
+  grace: { label: "plan.hosting.state.grace", tone: "issue" },
+  stopped: { label: "plan.hosting.state.stopped", tone: "off" },
 };
 
 /** Hosting's row: the tier by name, a line about it, and the machine's
@@ -277,8 +276,8 @@ export function hostingWords(hosting: Account["hosting"]): { name: string; line:
   const said = hosting.state ? hosting.state.replace(/[_-]+/g, " ") : null;
   return {
     name: tier?.name ?? "Hosting",
-    line: tier?.line ?? "A machine that runs your workspace for you.",
-    label: known?.label ?? (said ? said.charAt(0).toUpperCase() + said.slice(1) : "Setting up"),
+    line: tier ? t(tier.line) : t("plan.hosting.line"),
+    label: known ? t(known.label) : said ? said.charAt(0).toUpperCase() + said.slice(1) : t("plan.hosting.state.provisioning"),
     tone: known?.tone ?? (said ? "off" : "wait"),
   };
 }
@@ -305,6 +304,6 @@ const RANK: Record<string, number> = { free: 0, ai: 1, cloud: 2, hosted: 3, team
 export function planChange(before: PlanKey | null, after: PlanKey): { words: string; up: boolean } | null {
   if (before === null || before === after) return null;
   const up = (RANK[after] ?? 2) >= (RANK[before] ?? 0);
-  if (after === "free") return { words: "Your plan has ended. Bloks keeps working with your own keys.", up: false };
-  return { words: `You're on ${planName(after)} now`, up };
+  if (after === "free") return { words: t("plan.change.ended"), up: false };
+  return { words: t("plan.change.nowOn", { plan: planName(after) }), up };
 }

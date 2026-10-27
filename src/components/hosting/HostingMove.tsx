@@ -15,7 +15,7 @@ import { RotateCcw, Server } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { STILL_PAID_LINE, headline, subline, whereTo } from "@/lib/hostingMove";
+import { headline, startsIn, stillPaidLine, subline } from "@/lib/hostingMove";
 import { useWorkspaces } from "@/lib/workspaces";
 import type { HostingMove as Move, HostingMoveState } from "@/types/bridge";
 import { SettingsSelect } from "../SettingsLayout";
@@ -78,8 +78,8 @@ function MoveCard({ move, state }: { move: Move; state: HostingMoveState }) {
         )}
         {done && (
           <div className="mt-4 flex flex-col gap-3">
-            <MoveKeys keys={move.keys} bloksAi={state.bloksAi && move.direction === "to-hosted"} where={move.direction === "to-hosted" ? "in your hosted workspace" : `in ${move.to.name}`} />
-            {move.direction === "to-mac" && <p className="text-pretty text-small text-muted-foreground">{STILL_PAID_LINE}</p>}
+            <MoveKeys keys={move.keys} bloksAi={state.bloksAi && move.direction === "to-hosted"} to={move.direction === "to-hosted" ? null : move.to.name} />
+            {move.direction === "to-mac" && <p className="text-pretty text-small text-muted-foreground">{stillPaidLine()}</p>}
           </div>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -131,14 +131,14 @@ function MoveCard({ move, state }: { move: Move; state: HostingMoveState }) {
 function Waiting({ move }: { move: Move }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
   }, []);
   const left = Math.max(0, Math.ceil(((move.startsAt ?? now) - now) / 1000));
   return (
     <div className="flex flex-col gap-3">
       <p role="status" className="text-pretty text-body text-foreground tabular-nums">
-        {left > 0 ? `${move.from.name} starts moving to ${whereTo(move)} in ${left} s.` : t("hostingHostingMove.starting")}
+        {left > 0 ? startsIn(move, left) : t("hostingHostingMove.starting")}
       </p>
       <ChooseFrom label={t("hostingHostingMove.moveAnotherWorkspaceInstead")} except={move.from.id} onChoose={(id) => act(window.bloks?.hostingMoveChange?.(id))} />
       <div>
@@ -151,7 +151,7 @@ function Waiting({ move }: { move: Move }) {
 }
 
 /** A workspace of this Mac's own to move, chosen from a list. */
-function ChooseFrom({ label, except, onChoose, action = "Move this one" }: { label: string; except?: string; onChoose: (id: string) => void; action?: string }) {
+function ChooseFrom({ label, except, onChoose, action }: { label: string; except?: string; onChoose: (id: string) => void; action?: string }) {
   const workspaces = useWorkspaces();
   const choices = workspaces.available ? workspaces.workspaces.filter((w) => LOCAL.has(w.kind) && !w.movedTo && w.id !== except) : [];
   const [chosen, setChosen] = useState<string>("");
@@ -170,7 +170,7 @@ function ChooseFrom({ label, except, onChoose, action = "Move this one" }: { lab
         ))}
       </SettingsSelect>
       <Button size="sm" variant="secondary" disabled={!pick} onClick={() => onChoose(pick)}>
-        {action}
+        {action ?? t("hostingHostingMove.moveThisOne")}
       </Button>
     </div>
   );
@@ -183,13 +183,12 @@ function MoveThere({ state }: { state: HostingMoveState }) {
     <section aria-label={t("hostingHostingMove.moveToYourHostedMachine")} className="rounded-2xl border bg-card p-5">
       <h2 className="text-ui font-medium text-foreground">{t("hostingHostingMove.moveAWorkspaceToYour")}</h2>
       <p className="mt-0.5 max-w-[62ch] text-pretty text-body text-muted-foreground">
-        Everything in it goes: agents, conversations, rooms, routines, watchers, workflows, memory and settings. Keys stay on this Mac, and the app lists them to
-        enter again there.{state.bloksAi ? t("hostingHostingMove.agentsRunOnBloksAi") : ""}
+        {state.bloksAi ? t("hostingHostingMove.everythingGoesBloksAi") : t("hostingHostingMove.everythingGoes")}
       </p>
       <div className="mt-3">
         <ChooseFrom
           label={t("hostingHostingMove.move")}
-          action="Move it"
+          action={t("hostingHostingMove.moveIt")}
           onChoose={(id) => act(window.bloks?.hostingMoveStart?.({ direction: "to-hosted", from: id }))}
         />
       </div>

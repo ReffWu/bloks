@@ -11,7 +11,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { initials, membersApi, tintOf, type AgentAccessRow, type Member, type MemberLimit } from "@/lib/members";
-import { t } from "@/lib/i18n";
+import { formatNumber, t } from "@/lib/i18n";
 
 function Footer({ busy, onCancel, label, disabled }: { busy: boolean; onCancel: () => void; label: string; disabled?: boolean }) {
   return (
@@ -64,7 +64,7 @@ export function PasswordDialog({ open, onOpenChange, changing, onSaved }: { open
             {t("memberDialogs.askedForAfterTheInvite")}
           </DialogDescription>
           <label className="mt-4 flex flex-col gap-1.5 text-small text-muted-foreground">
-            Join password
+            {t("memberDialogs.joinPassword")}
             <div className="relative">
               <Input
                 autoFocus
@@ -154,27 +154,25 @@ export function LimitsDialog({
     <Dialog open={Boolean(member)} onOpenChange={onOpenChange}>
       <DialogContent className="w-[calc(100%-2rem)] max-w-[460px]">
         <form onSubmit={(e) => void save(e)}>
-          <DialogTitle>Limits for {member?.name}</DialogTitle>
-          <DialogDescription>
-            What {first} starts runs on your engines and keys. At a limit, {first}'s own requests stop with a clear message; nobody else is affected.
-          </DialogDescription>
+          <DialogTitle>{t("memberDialogs.limitsFor", { name: member?.name ?? "" })}</DialogTitle>
+          <DialogDescription>{t("memberDialogs.limitsDescription", { name: first })}</DialogDescription>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1.5 text-small text-muted-foreground">
-              Monthly API spending
+              {t("memberDialogs.monthlyApiSpending")}
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ui text-muted-foreground">$</span>
                 <Input inputMode="decimal" value={usd} onChange={(e) => setUsd(e.target.value)} placeholder={t("memberDialogs.noLimit")} className="pl-6 tabular-nums" />
               </div>
             </label>
             <label className="flex flex-col gap-1.5 text-small text-muted-foreground">
-              Bloks AI share a month
+              {t("memberDialogs.bloksAiShare")}
               <div className="relative">
                 <Input inputMode="decimal" value={ai} onChange={(e) => setAi(e.target.value)} placeholder={t("memberDialogs.noLimit")} className="pr-7 tabular-nums" />
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ui text-muted-foreground">%</span>
               </div>
             </label>
             <label className="col-span-2 flex flex-col gap-1.5 text-small text-muted-foreground">
-              Solo agents {first} may make
+              {t("memberDialogs.soloAgentsMayMake", { name: first })}
               <Input inputMode="numeric" value={solo} onChange={(e) => setSolo(e.target.value)} className="w-24 tabular-nums" />
             </label>
           </div>
@@ -207,7 +205,9 @@ export function LimitsDialog({
           )}
           {member?.spend && (
             <p className="mt-3 text-small tabular-nums text-muted-foreground">
-              This month so far: ${member.spend.usd.toFixed(2)} on API keys{member.spend.aiPercent !== null ? `, ${member.spend.aiPercent}% of Bloks AI` : ""}.
+              {member.spend.aiPercent !== null
+                ? t("memberDialogs.spentSoFarAi", { usd: formatNumber(member.spend.usd, { style: "currency", currency: "USD" }), ai: member.spend.aiPercent })
+                : t("memberDialogs.spentSoFar", { usd: formatNumber(member.spend.usd, { style: "currency", currency: "USD" }) })}
             </p>
           )}
           <Footer busy={busy} onCancel={() => onOpenChange(false)} label={t("memberDialogs.saveLimits")} />
@@ -265,19 +265,17 @@ export function AgentAccessDialog({
     <Dialog open={Boolean(agent)} onOpenChange={onOpenChange}>
       <DialogContent className="w-[calc(100%-2rem)] max-w-[460px]">
         <form onSubmit={(e) => void save(e)}>
-          <DialogTitle>Who can use {agent?.name}</DialogTitle>
-          <DialogDescription>
-            The people in {agent?.name}'s team conversation. Anyone in a room with {agent?.name} can still talk to it there, and have a private conversation with it.
-          </DialogDescription>
+          <DialogTitle>{t("memberDialogs.whoCanUse", { agent: agent?.name ?? "" })}</DialogTitle>
+          <DialogDescription>{t("memberDialogs.whoCanUseDescription", { agent: agent?.name ?? "" })}</DialogDescription>
           <Segmented
             aria-label={t("memberDialogs.whoCanUseThisAgent")}
             className="mt-4"
             value={mode}
             onChange={setMode}
             options={[
-              { value: "everyone", label: "Everyone" },
-              { value: "only", label: "Only these people" },
-              { value: "except", label: "Everyone except" },
+              { value: "everyone", label: t("memberDialogs.mode.everyone") },
+              { value: "only", label: t("memberDialogs.mode.only") },
+              { value: "except", label: t("memberDialogs.mode.except") },
             ]}
           />
           {mode !== "everyone" && (
@@ -293,7 +291,7 @@ export function AgentAccessDialog({
                     className="size-4 accent-[var(--brand)]"
                     checked={people.includes(m.id)}
                     onChange={(e) => setPeople((p) => (e.target.checked ? [...p, m.id] : p.filter((x) => x !== m.id)))}
-                    aria-label={`${mode === "only" ? "Include" : "Leave out"} ${m.name}`}
+                    aria-label={mode === "only" ? t("memberDialogs.include", { name: m.name }) : t("memberDialogs.leaveOut", { name: m.name })}
                   />
                 </label>
               ))}

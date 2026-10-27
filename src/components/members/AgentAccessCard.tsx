@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { membersApi, useWorkspaceFrames, type AgentAccessRow, type Member } from "@/lib/members";
 import { AgentAccessDialog } from "./MemberDialogs";
 import { distinctNames } from "@/lib/names";
-import { t } from "@/lib/i18n";
+import { formatList, t } from "@/lib/i18n";
 
 export function AgentAccessCard({ botId }: { botId: string }) {
   const [agent, setAgent] = useState<AgentAccessRow | null>(null);
@@ -31,15 +31,20 @@ export function AgentAccessCard({ botId }: { botId: string }) {
   const a = agent.access;
   // first names, told apart where two share one (src/lib/names.ts)
   const called = distinctNames(members);
-  const names = (ids: string[]) => ids.map((id) => called.get(id)).filter(Boolean).join(", ");
-  const summary = !a || a.mode === "everyone" ? "Everyone in the workspace" : a.mode === "only" ? `Only you${a.people.length ? `, ${names(a.people)}` : ""}${a.admins ? " and admins" : ""}` : `Everyone except ${names(a.people) || "nobody"}`;
+  const names = (ids: string[]) => formatList(ids.map((id) => called.get(id)).filter((n): n is string => Boolean(n)), { type: "unit", style: "short" });
+  const summary = (() => {
+    if (!a || a.mode === "everyone") return t("agentAccessCard.summary.everyone");
+    if (a.mode === "except") return names(a.people) ? t("agentAccessCard.summary.except", { names: names(a.people) }) : t("agentAccessCard.summary.exceptNobody");
+    if (a.people.length) return a.admins ? t("agentAccessCard.summary.onlyYouPeopleAdmins", { names: names(a.people) }) : t("agentAccessCard.summary.onlyYouPeople", { names: names(a.people) });
+    return a.admins ? t("agentAccessCard.summary.onlyYouAdmins") : t("agentAccessCard.summary.onlyYou");
+  })();
   return (
     <div className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
       <div className="flex items-center gap-6 px-5 py-4">
         <div className="min-w-0 flex-1">
           <div className="text-ui font-medium text-foreground">{t("agentAccessCard.whoCanUseThisAgent")}</div>
           <div className="mt-0.5 text-pretty text-body leading-relaxed text-muted-foreground">
-            {summary}. Anyone in a room with {agent.name} can still talk to it there.
+            {t("agentAccessCard.line", { summary, agent: agent.name })}
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={() => setEditing(true)}>

@@ -27,7 +27,6 @@ import {
   formatCode,
   joinApi,
   looksLikeInvite,
-  ROLE_NAME,
   whenWords,
   type FoundInvite,
   type JoinCredentials,
@@ -36,7 +35,7 @@ import {
 } from "@/lib/members";
 import { BlockConfetti } from "./BlockBurst";
 import { WorkspaceMark } from "@/components/WorkspaceMark";
-import { t } from "@/lib/i18n";
+import { formatList, t, tr } from "@/lib/i18n";
 
 export interface Joined {
   credentials: JoinCredentials;
@@ -63,34 +62,35 @@ const POLL_MS = 2_500;
  * `inviter` is null when nobody said who sent the invite (Bloks Cloud only
  * knows an invite has ended, not whose it was). */
 function ended(code: string, inviter: string | null, workspace: string | null, error: string): { title: string; body: string; note?: string } {
-  const who = inviter ?? "whoever sent it";
-  const Who = inviter ?? "Whoever sent it";
-  const ws = workspace ?? "the workspace";
+  // each sentence twice: with the inviter's name, and for an invite
+  // nobody said the sender of
+  const who = { name: inviter ?? "" };
+  const named = inviter !== null;
   switch (code) {
     case "expired":
-      return { title: "This invite has expired", body: `Invites last 24 hours, so a code from yesterday stops working. Ask ${who} for a new one: it takes them a second.` };
+      return { title: t("membersJoinWorkspaceDialog.ended.expired.title"), body: named ? t("membersJoinWorkspaceDialog.ended.expired.body", who) : t("membersJoinWorkspaceDialog.ended.expired.bodyAnyone") };
     case "cancelled":
-      return { title: "This invite was cancelled", body: `${Who} cancelled it, so it no longer works. Ask them for a new one: it takes them a second.` };
+      return { title: t("membersJoinWorkspaceDialog.ended.cancelled.title"), body: named ? t("membersJoinWorkspaceDialog.ended.cancelled.body", who) : t("membersJoinWorkspaceDialog.ended.cancelled.bodyAnyone") };
     case "used":
-      return { title: "This invite was already used", body: `Each invite lets one person in, and somebody has used this one. Ask ${who} for a new one: it takes them a second.` };
+      return { title: t("membersJoinWorkspaceDialog.ended.used.title"), body: named ? t("membersJoinWorkspaceDialog.ended.used.body", who) : t("membersJoinWorkspaceDialog.ended.used.bodyAnyone") };
     case "closed":
-      return { title: "This invite is closed", body: `Too many wrong passwords were tried, so it stopped working, and ${who} has been told. Ask them for a new one.` };
+      return { title: t("membersJoinWorkspaceDialog.ended.closed.title"), body: named ? t("membersJoinWorkspaceDialog.ended.closed.body", who) : t("membersJoinWorkspaceDialog.ended.closed.bodyAnyone") };
     case "declined":
       return {
-        title: inviter ? `${inviter} did not let this request in` : "This request was not let in",
-        body: `If you think that is a mistake, check with ${who}. They can send you a new invite.`,
-        note: "No reason is shown, and nothing about the workspace stays on this Mac.",
+        title: named ? t("membersJoinWorkspaceDialog.ended.declined.title", who) : t("membersJoinWorkspaceDialog.ended.declined.titleAnyone"),
+        body: named ? t("membersJoinWorkspaceDialog.ended.declined.body", who) : t("membersJoinWorkspaceDialog.ended.declined.bodyAnyone"),
+        note: t("membersJoinWorkspaceDialog.ended.declined.note"),
       };
     case "already_member":
       return {
-        title: `You are already in ${ws}`,
-        body: "This invite was for you, and you are in already. Nothing more to do.",
-        note: `The invite stays unused, so ${who} can cancel it or give it to someone else.`,
+        title: workspace ? t("membersJoinWorkspaceDialog.ended.already.title", { workspace }) : t("membersJoinWorkspaceDialog.ended.already.titleUnnamed"),
+        body: t("membersJoinWorkspaceDialog.ended.already.body"),
+        note: named ? t("membersJoinWorkspaceDialog.ended.already.note", who) : t("membersJoinWorkspaceDialog.ended.already.noteAnyone"),
       };
     case "full":
-      return { title: `${ws} is full`, body: error };
+      return { title: workspace ? t("membersJoinWorkspaceDialog.ended.full.title", { workspace }) : t("membersJoinWorkspaceDialog.ended.full.titleUnnamed"), body: error };
     default:
-      return { title: "That did not work", body: error };
+      return { title: t("membersJoinWorkspaceDialog.ended.other.title"), body: error };
   }
 }
 
@@ -159,7 +159,7 @@ export function JoinWorkspaceDialog({
       return;
     }
     if (found.code === "wrong_code" || found.code === "not_a_code") {
-      setProblem({ field: "code", text: "That code does not match an invite. Check each letter and try again.", note: "After a few wrong codes, Bloks asks you to wait a minute." });
+      setProblem({ field: "code", text: t("membersJoinWorkspaceDialog.problem.wrongCode"), note: t("membersJoinWorkspaceDialog.problem.wrongCodeNote") });
       shakeBox(codeBox.current, animateCode);
       return;
     }
@@ -182,11 +182,11 @@ export function JoinWorkspaceDialog({
   const codeInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       const box = codeInput.current?.closest("[role=dialog]");
       if (codeInput.current && box && !box.contains(document.activeElement)) codeInput.current.focus();
     }, 180);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [open]);
 
   // looked up as soon as what is typed can be a code; nothing to press
@@ -194,14 +194,14 @@ export function JoinWorkspaceDialog({
     if (!open || stage.kind !== "enter") return;
     if (!codeIn(input)) return;
     if (looked.current === input) return;
-    const t = setTimeout(() => void lookup(input), 300);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => void lookup(input), 300);
+    return () => clearTimeout(timer);
   }, [input, open, stage.kind, lookup]);
 
   const failed = (answer: JoinFailure, invite: FoundInvite) => {
     const host = firstName(invite.inviter);
     if (answer.code === "password_required") {
-      setProblem({ field: "password", text: `${invite.workspace} asks for a join password. ${host} can tell you what it is.` });
+      setProblem({ field: "password", text: t("membersJoinWorkspaceDialog.problem.passwordRequired", { workspace: invite.workspace, host }) });
       setStage((s) => (s.kind === "found" ? { ...s, invite: { ...s.invite, password: true } } : s));
       return;
     }
@@ -209,8 +209,8 @@ export function JoinWorkspaceDialog({
       const left = answer.triesLeft ?? 0;
       setProblem({
         field: "password",
-        text: `That is not the password. Ask ${host} for it again. ${left} ${left === 1 ? "try" : "tries"} left on this invite.`,
-        note: `After 5 wrong tries the invite closes, and ${host} is told someone guessed.`,
+        text: t("membersJoinWorkspaceDialog.problem.wrongPassword", { host, count: left }),
+        note: t("membersJoinWorkspaceDialog.problem.wrongPasswordNote", { host }),
       });
       shakeBox(passBox.current, animatePass);
       // ready to type again: the wrong one selected, so typing replaces it
@@ -218,7 +218,7 @@ export function JoinWorkspaceDialog({
       return;
     }
     if (answer.code === "invalid") {
-      setProblem({ field: "name", text: "Your name is needed, so they know who is asking." });
+      setProblem({ field: "name", text: t("membersJoinWorkspaceDialog.problem.nameNeeded") });
       return;
     }
     if (answer.code === "unreachable" || answer.code === "offline") {
@@ -231,7 +231,7 @@ export function JoinWorkspaceDialog({
   const ask = async () => {
     if (stage.kind !== "found") return;
     if (!name.trim()) {
-      setProblem({ field: "name", text: "Your name is needed, so they know who is asking." });
+      setProblem({ field: "name", text: t("membersJoinWorkspaceDialog.problem.nameNeeded") });
       return;
     }
     setBusy(true);
@@ -267,10 +267,10 @@ export function JoinWorkspaceDialog({
       }
       setStage({ kind: "ended", code: answer.code, error: answer.error, invite: stage.invite });
     };
-    const t = setInterval(() => void tick(), POLL_MS);
+    const timer = setInterval(() => void tick(), POLL_MS);
     return () => {
       alive = false;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, [open, stage, name]);
 
@@ -289,7 +289,13 @@ export function JoinWorkspaceDialog({
 
   const invite = "invite" in stage && stage.invite ? { ...stage.invite, inviter: firstName(stage.invite.inviter) } : undefined;
   const title =
-    stage.kind === "welcome" ? "You're in" : stage.kind === "waiting" ? `Waiting for ${firstName(stage.invite.inviter)}` : stage.kind === "ended" ? ended(stage.code, invite?.inviter ?? (stage.host ? firstName(stage.host) : null), invite?.workspace ?? stage.workspace ?? null, stage.error).title : "Join a workspace";
+    stage.kind === "welcome"
+      ? t("membersJoinWorkspaceDialog.youreIn")
+      : stage.kind === "waiting"
+        ? t("membersJoinWorkspaceDialog.waitingFor", { name: firstName(stage.invite.inviter) })
+        : stage.kind === "ended"
+          ? ended(stage.code, invite?.inviter ?? (stage.host ? firstName(stage.host) : null), invite?.workspace ?? stage.workspace ?? null, stage.error).title
+          : t("membersJoinWorkspaceDialog.joinAWorkspace");
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -331,7 +337,7 @@ export function JoinWorkspaceDialog({
                 onClick={() => setInput(offer)}
                 className="-mt-2.5 flex items-center gap-2 self-start rounded-lg px-2 py-1 text-body text-brand-ink transition-colors duration-150 hover:bg-brand-soft"
               >
-                Use the invite on your clipboard: <span className="font-mono">{formatCode(codeIn(offer) ?? "")}</span>
+                {tr("membersJoinWorkspaceDialog.useClipboard", { code: <span className="font-mono">{formatCode(codeIn(offer) ?? "")}</span> })}
               </button>
             )}
             {problem?.field === "code" && (
@@ -354,8 +360,9 @@ export function JoinWorkspaceDialog({
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-[15px] font-semibold text-foreground">{stage.invite.workspace}</span>
                     <span className="truncate text-body text-muted-foreground">
-                      From {firstName(stage.invite.inviter)} · as {stage.invite.role === "admin" ? "an" : "a"} {ROLE_NAME[stage.invite.role]}
-                      {stage.invite.expiresAt ? ` · expires ${whenWords(stage.invite.expiresAt)}` : ""}
+                      {stage.invite.expiresAt
+                        ? t(stage.invite.role === "admin" ? "membersJoinWorkspaceDialog.found.adminExpires" : "membersJoinWorkspaceDialog.found.memberExpires", { name: firstName(stage.invite.inviter), when: whenWords(stage.invite.expiresAt) })
+                        : t(stage.invite.role === "admin" ? "membersJoinWorkspaceDialog.found.admin" : "membersJoinWorkspaceDialog.found.member", { name: firstName(stage.invite.inviter) })}
                     </span>
                   </div>
                   <Check size={18} className="text-success" aria-label={t("membersJoinWorkspaceDialog.inviteFound")} />
@@ -379,7 +386,7 @@ export function JoinWorkspaceDialog({
                   {stage.invite.password !== false && (
                     <label className="flex flex-1 flex-col gap-1.5">
                       <span className={cn("text-small", problem?.field === "password" ? "text-destructive" : "text-muted-foreground")}>
-                        Join password{stage.invite.password === null ? t("membersJoinWorkspaceDialog.ifAsked") : ""}
+                        {stage.invite.password === null ? t("membersJoinWorkspaceDialog.joinPasswordIfAsked") : t("membersJoinWorkspaceDialog.joinPassword")}
                       </span>
                       <div ref={passBox}>
                         <Input
@@ -410,14 +417,14 @@ export function JoinWorkspaceDialog({
 
             <div className="flex items-center gap-2.5">
               <span className="flex-1 text-pretty text-small text-muted-foreground">
-                {currentWorkspace ? `It opens beside ${currentWorkspace}. Nothing moves between them.` : t("membersJoinWorkspaceDialog.itOpensBesideYourOwn")}
+                {currentWorkspace ? t("membersJoinWorkspaceDialog.opensBeside", { workspace: currentWorkspace }) : t("membersJoinWorkspaceDialog.itOpensBesideYourOwn")}
               </span>
               <Button variant="ghost" size="lg" onClick={() => onOpenChange(false)}>
                 {t("common.cancel")}
               </Button>
               <Button size="lg" disabled={stage.kind !== "found" || busy} onClick={() => void ask()}>
                 {busy && stage.kind === "found" && <Loader2 size={14} className="animate-spin" />}
-                Ask to join
+                {t("membersJoinWorkspaceDialog.askToJoin")}
               </Button>
             </div>
           </div>
@@ -426,9 +433,9 @@ export function JoinWorkspaceDialog({
         {stage.kind === "waiting" && (
           <div className="mt-1.5 flex flex-col gap-5">
             <DialogDescription className="mt-0">
-              Your request is on {firstName(stage.invite.inviter)}'s screen. Read these words to each other. If they match, {firstName(stage.invite.inviter)} lets you in.
+              {t("membersJoinWorkspaceDialog.waiting.description", { name: firstName(stage.invite.inviter) })}
             </DialogDescription>
-            <div role="group" aria-label={`Check words: ${stage.phrase.split(" ").join(", ")}`} className="grid grid-cols-4 gap-2.5 max-sm:grid-cols-2">
+            <div role="group" aria-label={t("membersJoinWorkspaceDialog.checkWords", { words: formatList(stage.phrase.split(" "), { type: "unit", style: "short" }) })} className="grid grid-cols-4 gap-2.5 max-sm:grid-cols-2">
               {stage.phrase.split(" ").map((word, i) => (
                 <div key={i} className="flex animate-rise-in flex-col gap-0.5 rounded-xl border bg-muted/50 px-3.5 py-3" style={{ animationDelay: `${i * 50}ms`, animationFillMode: "backwards" }}>
                   <span className="text-caption font-semibold tabular-nums text-muted-foreground">{i + 1}</span>
@@ -440,12 +447,12 @@ export function JoinWorkspaceDialog({
               {stage.unreachable ? (
                 <>
                   <Clock size={18} className="shrink-0" />
-                  {firstName(stage.invite.inviter)}'s computer is not reachable. It may be asleep or offline; your request is saved, and goes through the moment it wakes.
+                  {t("membersJoinWorkspaceDialog.waiting.unreachable", { name: firstName(stage.invite.inviter) })}
                 </>
               ) : (
                 <>
                   <span className="size-2 rounded-full motion-safe:animate-pulse" style={{ background: stage.invite.mark.color }} />
-                  {firstName(stage.invite.inviter)}'s computer has your request
+                  {t("membersJoinWorkspaceDialog.waiting.hasRequest", { name: firstName(stage.invite.inviter) })}
                 </>
               )}
             </div>
@@ -473,8 +480,11 @@ export function JoinWorkspaceDialog({
               {t("membersJoinWorkspaceDialog.youreIn")}
             </p>
             <p className="text-pretty text-lead text-muted-foreground">
-              Welcome to {stage.welcome.workspace.name}, {stage.name.split(" ")[0]}.<br />
-              {firstName(stage.welcome.approvedBy)} let you in as {stage.welcome.role === "admin" ? "an" : "a"} {ROLE_NAME[stage.welcome.role]}.
+              {t("membersJoinWorkspaceDialog.welcome.to", { workspace: stage.welcome.workspace.name, name: stage.name.split(" ")[0] })}
+              <br />
+              {stage.welcome.role === "admin"
+                ? t("membersJoinWorkspaceDialog.welcome.letInAdmin", { name: firstName(stage.welcome.approvedBy) })
+                : t("membersJoinWorkspaceDialog.welcome.letInMember", { name: firstName(stage.welcome.approvedBy) })}
             </p>
             {stage.welcome.agents.length > 0 && (
               <div className="mt-3 flex w-full flex-col gap-3 rounded-2xl border bg-card p-4 text-left">
@@ -488,7 +498,7 @@ export function JoinWorkspaceDialog({
                   ))}
                   {stage.welcome.agentCount > 4 && (
                     <div className="flex flex-col items-center gap-1.5">
-                      <span className="grid size-12 place-items-center rounded-[14px] bg-muted text-ui font-semibold tabular-nums text-muted-foreground">+{stage.welcome.agentCount - 3}</span>
+                      <span className="grid size-12 place-items-center rounded-[14px] bg-muted text-ui font-semibold tabular-nums text-muted-foreground">{t("membersJoinWorkspaceDialog.moreCount", { count: stage.welcome.agentCount - 3 })}</span>
                       <span className="text-small text-foreground">{t("membersJoinWorkspaceDialog.more")}</span>
                     </div>
                   )}
@@ -503,7 +513,7 @@ export function JoinWorkspaceDialog({
                 onOpenChange(false);
               }}
             >
-              Open {stage.welcome.workspace.name}
+              {t("membersJoinWorkspaceDialog.openWorkspace", { workspace: stage.welcome.workspace.name })}
             </Button>
           </div>
         )}
@@ -556,7 +566,7 @@ function EndedView({
         )}
         {onOpen ? (
           <Button size="lg" onClick={onOpen}>
-            Open {workspace ?? t("membersJoinWorkspaceDialog.theWorkspace")}
+            {workspace ? t("membersJoinWorkspaceDialog.openWorkspace", { workspace }) : t("membersJoinWorkspaceDialog.openTheWorkspace")}
           </Button>
         ) : (
           <Button size="lg" onClick={onDone}>

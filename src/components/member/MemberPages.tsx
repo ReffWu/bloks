@@ -20,7 +20,7 @@ import { act, reachLine, useWorkspaces } from "@/lib/workspaces";
 import { MarkPicker } from "@/components/MarkPicker";
 import { toast } from "@/components/ui/toast";
 import type { WorkspaceInfo } from "@/types/bridge";
-import { t } from "@/lib/i18n";
+import { formatDate, formatNumber, t, tr } from "@/lib/i18n";
 
 function Page({ children }: { children: React.ReactNode }) {
   return (
@@ -30,7 +30,7 @@ function Page({ children }: { children: React.ReactNode }) {
   );
 }
 
-const money = (usd: number) => `$${usd.toFixed(2)}`;
+const money = (usd: number) => formatNumber(usd, { style: "currency", currency: "USD" });
 
 function Meter({ used, of, label }: { used: number; of: number; label: string }) {
   const share = of > 0 ? Math.min(1, used / of) : 1;
@@ -46,12 +46,12 @@ function Meter({ used, of, label }: { used: number; of: number; label: string })
 
 export function UsagePage({ usage, workspace }: { usage: MemberUsage | null; workspace: MemberWorkspace }) {
   const owner = workspace.owner.name;
-  const month = new Date().toLocaleDateString(undefined, { month: "long" });
+  const month = formatDate(new Date(), { month: "long" });
   return (
     <Page>
       <SettingsPageHeader
         title={t("memberPages.yourUsage")}
-        description={`What you have used in ${workspace.workspace.name} this month, against the limits ${owner} or an admin set for you. It runs on ${owner}'s engines and keys.`}
+        description={t("memberPages.usage.description", { workspace: workspace.workspace.name, owner })}
       />
       {!usage ? (
         <Skeleton className="h-40 rounded-2xl" />
@@ -65,22 +65,22 @@ export function UsagePage({ usage, workspace }: { usage: MemberUsage | null; wor
           <SettingsGroup title={month}>
             <SettingRow
               label={t("memberPages.spentOnKeys")}
-              description={usage.limits.monthlyUsd === null ? t("memberPages.noMonthlyLimitIsSet") : `Your limit is ${money(usage.limits.monthlyUsd)} a month.`}
+              description={usage.limits.monthlyUsd === null ? t("memberPages.noMonthlyLimitIsSet") : t("memberPages.usage.limit", { limit: money(usage.limits.monthlyUsd) })}
               control={<span className="text-lead tabular-nums text-foreground">{money(usage.spentUsd)}</span>}
             >
               {usage.limits.monthlyUsd !== null && <Meter used={usage.spentUsd} of={usage.limits.monthlyUsd} label={t("memberPages.spentOfYourMonthlyLimit")} />}
             </SettingRow>
             <SettingRow
               label="Bloks AI"
-              description={usage.limits.aiPercent === null ? t("memberPages.noShareIsSetFor") : `Your share is ${usage.limits.aiPercent}% of the workspace's monthly allowance.`}
-              control={<span className="text-lead tabular-nums text-foreground">{usage.aiPercent === null ? t("memberPages.none") : `${usage.aiPercent}%`}</span>}
+              description={usage.limits.aiPercent === null ? t("memberPages.noShareIsSetFor") : t("memberPages.usage.share", { share: usage.limits.aiPercent })}
+              control={<span className="text-lead tabular-nums text-foreground">{usage.aiPercent === null ? t("memberPages.none") : t("memberPages.usage.percent", { percent: usage.aiPercent })}</span>}
             >
               {usage.limits.aiPercent !== null && usage.aiPercent !== null && <Meter used={usage.aiPercent} of={usage.limits.aiPercent} label={t("memberPages.bloksAiUsedOfYour")} />}
             </SettingRow>
             <SettingRow
               label={t("memberPages.soloAgents")}
-              description={usage.limits.maxSolo === 0 ? t("memberPages.soloAgentsAreNotOn") : `You may make up to ${usage.limits.maxSolo}.`}
-              control={<span className="text-lead tabular-nums text-foreground">{usage.soloAgents} of {usage.limits.maxSolo}</span>}
+              description={usage.limits.maxSolo === 0 ? t("memberPages.soloAgentsAreNotOn") : t("memberPages.usage.maxSolo", { max: usage.limits.maxSolo })}
+              control={<span className="text-lead tabular-nums text-foreground">{t("memberPages.usage.soloOf", { made: usage.soloAgents, max: usage.limits.maxSolo })}</span>}
             />
           </SettingsGroup>
           <p className="px-1 text-pretty text-small text-muted-foreground">
@@ -115,7 +115,7 @@ export function AboutYouPage({ workspace }: { workspace: MemberWorkspace }) {
     <Page>
       <SettingsPageHeader
         title={t("memberPages.aboutYou")}
-        description={`What the agents in ${workspace.workspace.name} know about you. These notes are yours: other people here never see them, and agents only read them in your own conversations.`}
+        description={t("memberPages.about.description", { workspace: workspace.workspace.name })}
       />
       <form
         className="mb-8 flex gap-2"
@@ -142,7 +142,7 @@ export function AboutYouPage({ workspace }: { workspace: MemberWorkspace }) {
                 <SettingRow
                   key={n.id}
                   label={<span className="font-normal">{n.text}</span>}
-                  description={`From ${n.by.name}`}
+                  description={t("memberPages.about.from", { name: n.by.name })}
                   control={
                     <div className="flex gap-1">
                       <Button size="sm" variant="secondary" onClick={() => void run(() => memberApi.keepNote(n.id))}>
@@ -165,7 +165,7 @@ export function AboutYouPage({ workspace }: { workspace: MemberWorkspace }) {
                   key={n.id}
                   label={<span className="font-normal">{n.text}</span>}
                   control={
-                    <Button size="icon-sm" variant="ghost" aria-label={`Remove "${n.text}"`} onClick={() => void run(() => memberApi.dropNote(n.id))}>
+                    <Button size="icon-sm" variant="ghost" aria-label={t("memberPages.about.remove", { text: n.text })} onClick={() => void run(() => memberApi.dropNote(n.id))}>
                       <Trash2 size={14} />
                     </Button>
                   }
@@ -224,19 +224,19 @@ export function WorkspacePage({
         <div className="min-w-0">
           <h1 className="truncate text-heading font-semibold text-foreground">{ws.name}</h1>
           <p className="text-body text-muted-foreground">
-            {workspace.you.role === "admin" ? t("memberPages.youAreAnAdminHere") : t("memberPages.youAreAMemberHere")} · {owner}'s workspace
+            {workspace.you.role === "admin" ? t("memberPages.workspace.adminOf", { owner }) : t("memberPages.workspace.memberOf", { owner })}
           </p>
         </div>
       </div>
       <SettingsGroup>
         <SettingRow
           label={t("memberPages.howItIsReached")}
-          description={reach ?? `Through Bloks Cloud, from anywhere, while ${owner}'s computer is on.`}
+          description={reach ?? t("memberPages.workspace.throughCloud", { owner })}
           control={reach ? <Wifi size={16} className="text-muted-foreground" /> : <Cloud size={16} className="text-muted-foreground" />}
         />
         <SettingRow label={t("memberPages.yourPrivateConversations")} description={workspace.privacy.line} control={<Lock size={15} className="text-muted-foreground" />} />
         {entry && window.bloks?.workspaceUpdate && (
-          <SettingRow label={t("memberPages.yourMarkForIt")} description={`Only you see it. Everyone else sees the one ${owner} chose.`}>
+          <SettingRow label={t("memberPages.yourMarkForIt")} description={t("memberPages.workspace.markOnlyYou", { owner })}>
             <MarkPicker
               className="mt-4"
               value={shown}
@@ -250,17 +250,17 @@ export function WorkspacePage({
         )}
         <SettingRow
           label={t("memberPages.everythingElse")}
-          description={`Engines and keys, automations and the rest of the settings are ${owner}'s, on ${owner}'s computer.${workspace.you.role === "admin" ? " As an Admin you can invite and manage people in Members." : ""}`}
+          description={workspace.you.role === "admin" ? t("memberPages.workspace.elseAdmin", { owner }) : t("memberPages.workspace.else", { owner })}
         />
       </SettingsGroup>
       <SettingsGroup title={t("memberPages.leave")}>
         <SettingRow
-          label={`Leave ${ws.name}`}
-          description={`You lose every room and agent here at once, and your solo agents and private conversations are deleted from ${owner}'s computer. ${owner} is told.`}
+          label={t("memberPages.workspace.leaveTitle", { workspace: ws.name })}
+          description={t("memberPages.workspace.leaveDescription", { owner })}
           control={
             <Button variant="destructive" onClick={onLeave} disabled={leaving || !entry}>
               {leaving ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
-              Leave
+              {t("memberPages.leave")}
             </Button>
           }
         />
@@ -328,8 +328,7 @@ export function NewSoloAgentDialog({
             }}
           >
             <DialogDescription className="text-pretty">
-              An agent of your own. Only you see it and talk with it; it runs on {workspace.owner.name}'s computer and is kept there.
-              {` ${workspace.solo.count} of ${workspace.solo.max} made.`}
+              {t("memberPages.solo.description", { owner: workspace.owner.name })} {t("memberPages.solo.made", { made: workspace.solo.count, max: workspace.solo.max })}
             </DialogDescription>
             <div className="mt-5 flex flex-col gap-3.5">
               <label className="flex flex-col gap-1.5">
@@ -337,7 +336,7 @@ export function NewSoloAgentDialog({
                 <Input autoFocus value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder={t("memberPages.ivy")} />
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-body font-medium text-foreground">Its job <span className="font-normal text-muted-foreground">{t("memberPages.optional")}</span></span>
+                <span className="text-body font-medium text-foreground">{tr("memberPages.solo.itsJob", { optional: <span className="font-normal text-muted-foreground">{t("memberPages.optional")}</span> })}</span>
                 <Input value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder={t("memberPages.researchAssistant")} />
               </label>
               {workspace.engines.length > 1 && (
@@ -360,7 +359,7 @@ export function NewSoloAgentDialog({
               <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
               <Button type="submit" disabled={!name.trim() || busy}>
                 {busy && <Loader2 size={14} className="animate-spin" />}
-                Make agent
+                {t("memberPages.solo.make")}
               </Button>
             </div>
           </form>

@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { toast } from "@/components/ui/toast";
 import { useStore } from "@/state/store";
 import { useHostingMove } from "./useHostingMove";
+import { t } from "@/lib/i18n";
 
 export function HostingMoveToasts() {
   const state = useHostingMove();
@@ -21,7 +22,7 @@ export function HostingMoveToasts() {
       id: `move-${move.id}`,
       duration: left,
       // the card under Hosting has the list of workspaces to choose from
-      action: { label: "Change", onClick: () => dispatch({ type: "toggleAppSettings", open: true, page: "plan" }) },
+      action: { label: t("hostingMoveToasts.change"), onClick: () => dispatch({ type: "toggleAppSettings", open: true, page: "plan" }) },
     });
   }, [move?.id, move?.phase]);
 

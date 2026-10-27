@@ -7,15 +7,15 @@
 import { useState } from "react";
 import { Loader2 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { DEVICE_NAME, initials, ROLE_NAME, tintOf, type JoinRequest } from "@/lib/members";
-import { t } from "@/lib/i18n";
+import { initials, tintOf, type JoinRequest } from "@/lib/members";
+import { formatList, t } from "@/lib/i18n";
 
 function ago(at: number, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
-  if (s < 60) return "just now";
+  if (s < 60) return t("requestCard.justNow");
   const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  return `${Math.round(m / 60)} h ago`;
+  if (m < 60) return t("requestCard.minutesAgo", { minutes: m });
+  return t("requestCard.hoursAgo", { hours: Math.round(m / 60) });
 }
 
 export function RequestCard({
@@ -32,11 +32,11 @@ export function RequestCard({
   const first = request.name.split(" ")[0] || request.name;
   const words = (request.phrase ?? "").split(" ").filter(Boolean);
   const facts = [
-    request.forName ? `From your invite for ${request.forName}` : "From one of your invites",
-    `as ${request.role === "admin" ? "an" : "a"} ${ROLE_NAME[request.role]}`,
-    `on ${DEVICE_NAME[request.device]}`,
+    request.forName ? t("requestCard.fromInviteFor", { name: request.forName }) : t("requestCard.fromAnInvite"),
+    request.role === "admin" ? t("requestCard.asAdmin") : t("requestCard.asMember"),
+    request.device === "iphone" ? t("requestCard.onIphone") : request.device === "mac" ? t("requestCard.onMac") : t("requestCard.onBrowser"),
     ago(request.at),
-    ...(request.password === "correct" ? ["password correct"] : []),
+    ...(request.password === "correct" ? [t("requestCard.passwordCorrect")] : []),
   ];
 
   const act = async (which: "in" | "out", run: () => Promise<void>) => {
@@ -52,7 +52,7 @@ export function RequestCard({
 
   return (
     <section
-      aria-label={`${request.name} is asking to join`}
+      aria-label={t("requestCard.asking", { name: request.name })}
       className="flex animate-rise-in flex-col gap-[18px] rounded-[18px] border border-warning/40 bg-card px-6 py-[22px] shadow-[0_0_0_4px_color-mix(in_srgb,var(--warning)_8%,transparent)]"
     >
       <div className="flex items-center gap-3.5">
@@ -64,14 +64,14 @@ export function RequestCard({
           {initials(request.name)}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-[16px] font-semibold text-foreground">{request.name} is asking to join</span>
+          <span className="truncate text-[16px] font-semibold text-foreground">{t("requestCard.asking", { name: request.name })}</span>
           <span className="text-pretty text-body text-muted-foreground">{facts.join(" · ")}</span>
         </div>
       </div>
 
       <div className="flex flex-col gap-2.5">
-        <span className="text-pretty text-body text-foreground/80">Ask {first} to read out their four words. They should be exactly these:</span>
-        <div role="group" aria-label={`Check words: ${words.join(", ")}`} className="grid grid-cols-4 gap-2.5 max-sm:grid-cols-2">
+        <span className="text-pretty text-body text-foreground/80">{t("requestCard.askToRead", { name: first })}</span>
+        <div role="group" aria-label={t("requestCard.checkWords", { words: formatList(words, { type: "unit", style: "short" }) })} className="grid grid-cols-4 gap-2.5 max-sm:grid-cols-2">
           {words.map((word, i) => (
             <div key={i} className="flex flex-col gap-0.5 rounded-xl border bg-muted/50 px-3.5 py-3">
               <span className="text-caption font-semibold tabular-nums text-muted-foreground">{i + 1}</span>
@@ -87,11 +87,11 @@ export function RequestCard({
         </span>
         <Button variant="outline" size="lg" disabled={busy !== null} onClick={() => void act("out", onDecline)}>
           {busy === "out" && <Loader2 size={14} className="animate-spin" />}
-          Decline
+          {t("common.decline")}
         </Button>
         <Button size="lg" disabled={busy !== null} onClick={() => void act("in", onApprove)}>
           {busy === "in" && <Loader2 size={14} className="animate-spin" />}
-          They match, let {first} in
+          {t("requestCard.theyMatch", { name: first })}
         </Button>
       </div>
       {error && (

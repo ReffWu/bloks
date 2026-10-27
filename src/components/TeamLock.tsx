@@ -25,8 +25,9 @@ export function NeedsTeam({ className, what }: { className?: string; what?: stri
   );
 }
 
-export function UpgradeLink({ className, label = "Upgrade" }: { className?: string; label?: string }) {
+export function UpgradeLink({ className, label: given }: { className?: string; label?: string }) {
   const store = useOptionalStore();
+  const label = given ?? t("teamLock.upgrade");
   const look = cn(
     "inline-flex items-center gap-0.5 rounded font-medium text-brand-ink underline-offset-2 outline-none hover:underline",
     className,
@@ -53,8 +54,9 @@ export function UpgradeLink({ className, label = "Upgrade" }: { className?: stri
 
 /** The same way to Bloks Team as a button, for where it is the one thing
  * a screen offers rather than a note beside a choice. */
-export function UpgradeButton({ label = "Get Bloks Team" }: { label?: string }) {
+export function UpgradeButton({ label: given }: { label?: string }) {
   const store = useOptionalStore();
+  const label = given ?? t("teamLock.getBloksTeam");
   if (store) {
     return (
       <Button size="sm" className="shrink-0 gap-1.5" onClick={() => store.dispatch({ type: "toggleAppSettings", open: true, page: "plan" })}>

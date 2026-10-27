@@ -40,7 +40,7 @@ import { AgentView, RoomView } from "./MemberViews";
 import { distinctNames } from "@/lib/names";
 import { ownerOrNull } from "@/lib/yourName";
 import { AboutYouPage, MembersAdminPage, NewSoloAgentDialog, UsagePage, WorkspacePage } from "./MemberPages";
-import { t } from "@/lib/i18n";
+import { t, useLanguage } from "@/lib/i18n";
 
 const isElectron = navigator.userAgent.includes("Electron");
 const PLACE_KEY = "bloks-member-place";
@@ -66,9 +66,9 @@ const PAGE_ICON = { usage: Gauge, about: UserRound, members: Users, settings: Se
 /** Leaves the joined workspace this window shows, after asking. */
 async function leaveWorkspace(id: string, name: string, owner: string, started: () => void): Promise<boolean> {
   const yes = await confirm({
-    title: `Leave ${name}?`,
-    body: `You lose every room and agent in ${name} at once. Your solo agents and your private conversations there are deleted from ${owner}'s computer, and ${owner} is told you left.\n\nTo come back you need a new invite.`,
-    confirmLabel: "Leave",
+    title: t("memberApp.leave.title", { name }),
+    body: `${t("memberApp.leave.body", { name, owner })}\n\n${t("memberApp.leave.again")}`,
+    confirmLabel: t("memberApp.leave.confirm"),
     destructive: true,
   });
   if (!yes) return false;
@@ -76,9 +76,9 @@ async function leaveWorkspace(id: string, name: string, owner: string, started: 
   const said = await window.bloks?.workspaceLeave?.(id);
   if (said?.unreachable) {
     const anyway = await confirm({
-      title: `${owner}'s computer did not answer`,
-      body: `${name} could not be told you are leaving, so you are still a member there. Remove it from this Mac anyway? ${owner} can take you out from their side.`,
-      confirmLabel: "Remove from this Mac",
+      title: t("memberApp.leave.unreachableTitle", { owner }),
+      body: t("memberApp.leave.unreachableBody", { name, owner }),
+      confirmLabel: t("memberApp.leave.removeAnyway"),
       destructive: true,
     });
     if (!anyway) return false;
@@ -127,7 +127,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
   const entry = currentWorkspace(switcher);
   const member = mode.mode === "member";
   const me = workspace?.you.personId ?? "";
-  const owner = workspace?.owner.name ?? (mode.mode === "guest" ? mode.host : "The owner");
+  const owner = workspace?.owner.name ?? (mode.mode === "guest" ? mode.host : t("memberApp.theOwner"));
   // Everybody in the workspace a name could be mistaken among, the owner
   // included: each conversation tells its people apart against them all
   // (src/lib/names.ts), so somebody is called the same everywhere.
@@ -136,9 +136,11 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
     [owner, workspace?.members],
   );
   const called = useMemo(() => distinctNames(known), [known]);
+  // its words follow the language, so it is made again when that changes
+  const language = useLanguage();
   const nameOf = useCallback(
-    (id: string) => (id === me ? "You" : (called.get(id) ?? (id === "owner" ? owner : "Someone"))),
-    [called, owner, me],
+    (id: string) => (id === me ? t("memberApp.you") : (called.get(id) ?? (id === "owner" ? owner : t("memberApp.someone")))),
+    [called, owner, me, language],
   );
 
   const refresh = useCallback(async () => {
@@ -200,7 +202,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
         }
         if (frame.kind === "workspace.left" && workspace?.you.role === "admin") {
           const person = frame.person as { name?: string } | undefined;
-          toast(`${person?.name ?? "Someone"} left ${workspace.workspace.name}`);
+          toast(t("memberApp.left", { name: person?.name ?? t("memberApp.someone"), workspace: workspace.workspace.name }));
         }
       },
       [refresh, refreshUsage, workspace],
@@ -236,15 +238,15 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
 
   const deleteAgent = async (agent: MemberAgent) => {
     const yes = await confirm({
-      title: `Delete ${agent.name}?`,
-      body: `${agent.name} and your conversation with it are deleted from ${owner}'s computer for good. This cannot be undone.`,
-      confirmLabel: "Delete",
+      title: t("memberApp.deleteAgent.title", { agent: agent.name }),
+      body: t("memberApp.deleteAgent.body", { agent: agent.name, owner }),
+      confirmLabel: t("memberApp.deleteAgent.confirm"),
       destructive: true,
     });
     if (!yes) return;
     try {
       await memberApi.dropAgent(agent.id);
-      toast(`${agent.name} is deleted`);
+      toast(t("memberApp.deleteAgent.done", { agent: agent.name }));
       setPlace(null);
       await refresh();
     } catch (e) {
@@ -370,7 +372,7 @@ export function MemberApp({ mode }: { mode: Exclude<AppMode, { mode: "owner" }> 
           {!connected && loaded && !paused && (
             <span className="ml-3 flex min-w-0 items-center gap-1.5 text-small text-muted-foreground" role="status">
               <span className="size-1.5 shrink-0 rounded-full bg-warning" aria-hidden />
-              <span className="truncate">Reaching {owner}'s computer</span>
+              <span className="truncate">{t("memberApp.reaching", { owner })}</span>
             </span>
           )}
         </div>
@@ -442,14 +444,14 @@ function PausedPanel({ workspace, line, onLeave, leaving }: { workspace: MemberW
       <div role="status" className="flex max-w-[420px] flex-col items-center gap-4 text-center">
         <WorkspaceMark mark={workspace.workspace.mark} size={48} />
         <div className="flex flex-col gap-1.5">
-          <h1 className="text-balance text-title font-semibold text-foreground">{workspace.workspace.name} is paused for you</h1>
+          <h1 className="text-balance text-title font-semibold text-foreground">{t("memberApp.pausedTitle", { workspace: workspace.workspace.name })}</h1>
           <p className="text-pretty text-ui leading-relaxed text-muted-foreground">{line}</p>
           <p className="text-pretty text-body leading-relaxed text-muted-foreground">
             {t("memberApp.nothingOfYoursIsGone")}
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={onLeave} disabled={leaving} className="text-muted-foreground">
-          Leave {workspace.workspace.name}
+          {t("memberApp.leaveWorkspace", { workspace: workspace.workspace.name })}
         </Button>
       </div>
     </main>

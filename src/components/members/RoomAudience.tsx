@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import { api } from "@/state/store";
 import { membersApi, tintOf, initials, type Member } from "@/lib/members";
 import { roomAccessBody, roomAudienceLine } from "@/lib/memberRules";
-import { t } from "@/lib/i18n";
+import { formatList, t } from "@/lib/i18n";
 
 interface RoomRow {
   id: string;
@@ -64,8 +64,8 @@ export function RoomAudience({ roomId, className }: { roomId: string; className?
         value={room.audience}
         onChange={(audience) => void save(audience, [...chosen])}
         options={[
-          { value: "everyone", label: "Everyone" },
-          { value: "some", label: "Chosen people" },
+          { value: "everyone", label: t("roomAudience.everyone") },
+          { value: "some", label: t("roomAudience.chosenPeople") },
         ]}
       />
       <p className="mt-2 text-pretty text-small text-muted-foreground">{roomAudienceLine(room.audience, chosen.size, members.length, guests.length)}</p>
@@ -107,7 +107,7 @@ export function RoomAudience({ roomId, className }: { roomId: string; className?
       )}
       {guests.length > 0 && (
         <p className="mt-2 text-pretty text-small text-muted-foreground">
-          Guests of this room: {guests.map((g) => g.name).join(", ")}. They reach this room and nothing else here.
+          {t("roomAudience.guests", { names: formatList(guests.map((g) => g.name), { type: "unit", style: "short" }) })}
         </p>
       )}
       {error && <p role="alert" className="mt-2 text-small text-destructive">{error}</p>}

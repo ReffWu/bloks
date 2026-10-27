@@ -12,19 +12,24 @@
 // where the agent runs: its engine, its commands and its files are on
 // the machine Bloks runs on whichever is picked (GitHub 388), and the
 // words beside the choices say so.
+import { t, type MessageKey } from "./i18n.ts";
 
 export type ComputerMode = "cloud" | "sandbox" | "local" | "off";
 
-const MAC_COMPUTERS: ReadonlyArray<readonly [ComputerMode, string]> = [
-  ["cloud", "Cloud box"],
-  ["sandbox", "Local VM"],
-  ["local", "This computer"],
-  ["off", "Off"],
+// Keys, not words, so the list reads in the language it is drawn in.
+const MAC_COMPUTERS: ReadonlyArray<readonly [ComputerMode, MessageKey]> = [
+  ["cloud", "hosted.computer.cloud"],
+  ["sandbox", "hosted.computer.sandbox"],
+  ["local", "hosted.computer.local"],
+  ["off", "hosted.computer.off"],
 ];
 
-/** The choices to show: the server's when it sent any, else a Mac's. */
+/** The choices to show: the server's when it sent any, else a Mac's. The
+ * server's labels are its own words and are shown as they came. */
 export function computerOptions(fromServer?: Array<{ id: ComputerMode; label: string }> | null): ReadonlyArray<readonly [ComputerMode, string]> {
-  return fromServer?.length ? fromServer.map((choice) => [choice.id, choice.label] as const) : MAC_COMPUTERS;
+  return fromServer?.length
+    ? fromServer.map((choice) => [choice.id, choice.label] as const)
+    : MAC_COMPUTERS.map(([mode, key]) => [mode, t(key)] as const);
 }
 
 /** Whether an agent can be given the computer Bloks runs on. Off a Mac
@@ -47,14 +52,13 @@ export function firstPickedComputer(fromServer?: Array<{ id: ComputerMode; label
  * thisComputer() gives it. An agent on the cloud engine runs on its box,
  * and is told so instead. */
 export function computerMeaning(where: string, onBox: boolean, elsewhere?: string | null): string {
-  return onBox
-    ? "The desktop it can see and click. This engine runs on its cloud box."
-    : `The desktop it can see and click. Its commands and files run ${elsewhere ?? `on ${where}`} either way.`;
+  if (onBox) return t("hosted.meaning.onBox");
+  return elsewhere ? t("hosted.meaning.elsewhere", { place: elsewhere }) : t("hosted.meaning.here", { where });
 }
 
 /** Said under the choices when an agent is saved on "This computer" off
  * a Mac, which 3.0.8 offered there. It is kept, not rewritten, and means
  * no screen here. */
 export function savedOwnScreenNote(where: string): string {
-  return `Saved as This computer by an earlier version. Agents can see and click a computer's own screen only when Bloks runs on a Mac, so this agent has no screen. Its commands and files still run on ${where}. Choose Local VM or Cloud box to give it a screen.`;
+  return t("hosted.savedOwnScreen", { where });
 }
