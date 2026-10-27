@@ -187,6 +187,41 @@ export const INLINE_TEXT_LIMIT = 512 * 1024;
 
 type IncomingFile = Pick<File, "name" | "size" | "type" | "text">;
 
+type ImageIntake<T> = {
+  pathOf: (file: T) => string;
+  uploadImage: (file: T) => Promise<ImageAttachment | null>;
+  sameComputer?: boolean | (() => Promise<boolean>);
+};
+
+const said = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
+
+/**
+ * One picture, uploaded: what it became, or an Error in the words the
+ * user reads. Apart from intakeFiles so a picture can settle on its own
+ * chip (src/lib/pendingImages.ts), and be tried again, the same way.
+ */
+export async function intakeImage<T extends IncomingFile>(file: T, handlers: ImageIntake<T>): Promise<Attachment | null> {
+  try {
+    return await handlers.uploadImage(file);
+  } catch (error) {
+    // A HEIC photo this window cannot make a JPEG of still goes by its
+    // path to the server that can open it, as it always has. Anywhere
+    // else it is said, never passed on as a path.
+    let path = "";
+    if ((error as { unconverted?: boolean }).unconverted) {
+      try {
+        const here = handlers.sameComputer ?? true;
+        const sameComputer = typeof here === "boolean" ? here : await here().catch(() => false);
+        path = sameComputer ? handlers.pathOf(file) : "";
+      } catch {
+        // no disk path to give
+      }
+    }
+    if (path) return fileAttachment(file.name, path, file.size);
+    throw new Error(said(error, "upload failed"));
+  }
+}
+
 /**
  * The one intake for the picker, the drop and the paste, so a picked
  * file and a dropped one can never sort differently. The caller owns
@@ -197,16 +232,18 @@ type IncomingFile = Pick<File, "name" | "size" | "type" | "text">;
  * `sameComputer` says whether the server can open a path from here; left
  * out, it can, which is the app with its own server. When it cannot, a
  * path from here is never used: the file is sent with uploadFile.
+ *
+ * `onImage` takes every picture at once, before anything is awaited, for
+ * a chip of its own that settles by itself; those are not in what this
+ * answers with. Without it, pictures upload here, in turn, as before.
  */
 export async function intakeFiles<T extends IncomingFile>(
   files: readonly T[],
-  handlers: {
-    pathOf: (file: T) => string;
-    uploadImage: (file: T) => Promise<ImageAttachment | null>;
+  handlers: ImageIntake<T> & {
     uploadFile?: (file: T) => Promise<FileAttachment | null>;
-    sameComputer?: boolean | (() => Promise<boolean>);
     /** Told as a file starts on its way, for a line while it travels. */
     onSending?: (file: T) => void;
+    onImage?: (file: T) => void;
   },
 ): Promise<{ attachments: Attachment[]; refused: string | null }> {
   const attachments: Attachment[] = [];
@@ -214,31 +251,26 @@ export async function intakeFiles<T extends IncomingFile>(
   let here: boolean | null = null;
   const sameComputer = async () => {
     if (here !== null) return here;
-    const said = handlers.sameComputer ?? true;
-    here = typeof said === "boolean" ? said : await said().catch(() => false);
+    const told = handlers.sameComputer ?? true;
+    here = typeof told === "boolean" ? told : await told().catch(() => false);
     return here;
   };
-  const said = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
+  const { onImage } = handlers;
+  const rest = onImage
+    ? files.filter((file) => {
+        if (!isImage(file) && !isHeic(file)) return true;
+        onImage(file);
+        return false;
+      })
+    : files;
   // One at a time, so the chips keep the order the files were chosen in.
-  for (const file of files) {
+  for (const file of rest) {
     if (isImage(file) || isHeic(file)) {
       try {
-        const uploaded = await handlers.uploadImage(file);
+        const uploaded = await intakeImage(file, { ...handlers, sameComputer });
         if (uploaded) attachments.push(uploaded);
       } catch (error) {
-        // A HEIC photo this window cannot make a JPEG of still goes by its
-        // path to the server that can open it, as it always has. Anywhere
-        // else it is said, never passed on as a path.
-        let path = "";
-        if ((error as { unconverted?: boolean }).unconverted) {
-          try {
-            path = (await sameComputer()) ? handlers.pathOf(file) : "";
-          } catch {
-            // no disk path to give
-          }
-        }
-        if (path) attachments.push(fileAttachment(file.name, path, file.size));
-        else complaints.push(`${file.name || "image"}: ${said(error, "upload failed")}`);
+        complaints.push(`${file.name || "image"}: ${said(error, "upload failed")}`);
       }
       continue;
     }
@@ -511,7 +543,13 @@ const tooLargeForCloud = (image: Blob) =>
  * To a server elsewhere it goes in parts, the way any file does, since
  * one request through Bloks Cloud carries well under 10 MB, and through
  * Bloks Cloud it is made to fit CLOUD_IMAGE_BYTES first. */
-export async function uploadImageAttachment(file: File, fetcher?: Fetcher, tools: ImageTools = pageImageTools): Promise<ImageAttachment | null> {
+export async function uploadImageAttachment(
+  file: File,
+  fetcher?: Fetcher,
+  tools: ImageTools = pageImageTools,
+  /** Told once the picture is ready and starts going up, for its chip. */
+  onUploading?: () => void,
+): Promise<ImageAttachment | null> {
   if (!isImage(file) && !isHeic(file)) return null;
   const where = await destination(fetcher);
   let ready: File;
@@ -523,6 +561,7 @@ export async function uploadImageAttachment(file: File, fetcher?: Fetcher, tools
       throw new Error(`it is ${formatBytes(ready.size)}, and a picture sent to the computer this workspace runs on can be ${formatBytes(where.imageMaxBytes)} at most`);
     }
     try {
+      onUploading?.();
       const kept = await sendInParts(ready, { fetcher, partBytes: where.partBytes });
       if (kept.kind !== "image") throw new Error("it did not arrive as an image");
       return { kind: "image", id: newId(), path: kept.path, name: ready.name || "pasted image", bytes: kept.bytes, mime: kept.mime };
@@ -542,6 +581,7 @@ export async function uploadImageAttachment(file: File, fetcher?: Fetcher, tools
     const fitted = await fitImage(file, IMAGE_MAX_BYTES, tools);
     if (!fitted) throw new Error(`${file.name || "image"} is over 10 MB`);
     ready = asSent(fitted, file);
+    onUploading?.();
   }
   const response = await (fetcher ?? fetch)("/api/attachments", {
     method: "POST",

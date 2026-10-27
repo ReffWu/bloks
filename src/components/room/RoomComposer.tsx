@@ -14,6 +14,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type SetStateAction } from "react";
 import { CornerUpLeft } from "@/components/icons";
 import { File as FileIcon } from "@/components/icons";
+import { FileImage } from "@/components/icons";
 import { Mic } from "@/components/icons";
 import { Plus } from "@/components/icons";
 import { Undo2 } from "@/components/icons";
@@ -27,10 +28,8 @@ import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
 import { useQueuedNotice } from "@/components/WaitingStrip";
 import { useUnsentNotice } from "@/components/chat/HeldSends";
 import {
-  attachmentBasename,
   composeOutgoing,
   destination,
-  formatBytes,
   intakeFiles,
   isLongPaste,
   pasteAttachment,
@@ -38,6 +37,8 @@ import {
   uploadImageAttachment,
   type Attachment,
 } from "@/lib/attachments";
+import { heldLine } from "@/lib/pendingImages";
+import { AttachmentChips, usePendingImages } from "@/components/composer/Attachments";
 import {
   acceptDraft,
   boxFor,
@@ -144,30 +145,6 @@ function mentionRuns(text: string, names: readonly string[]): Array<{ text: stri
   return runs;
 }
 
-function AttachmentChip({ attachment: a, onRemove }: { attachment: Attachment; onRemove?: () => void }) {
-  return (
-    <span className="flex max-w-[240px] animate-pop-in items-center gap-1.5 rounded-xl border bg-muted/50 py-1 pl-1.5 pr-1 text-small text-foreground">
-      {a.kind === "image" ? (
-        <img src={`/api/attachments/${attachmentBasename(a.path)}`} alt={a.name} className="size-7 shrink-0 rounded-lg object-cover" />
-      ) : (
-        <FileIcon size={14} className="shrink-0 text-muted-foreground" />
-      )}
-      <span className="min-w-0 flex-1 truncate">{a.kind === "paste" ? `Pasted text, ${a.lines} lines` : a.name}</span>
-      <span className="shrink-0 text-muted-foreground">{formatBytes(a.bytes)}</span>
-      {onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label={`Remove ${a.kind === "paste" ? "pasted text" : a.name}`}
-        >
-          <X size={12} />
-        </button>
-      )}
-    </span>
-  );
-}
-
 /** What the next message answers, inside the box with the files. */
 function ReplyTag({ draft, onClear }: { draft: ReplyDraft; onClear: () => void }) {
   return (
@@ -255,6 +232,16 @@ export function RoomComposer({
   const [recoveries, setRecoveries] = useState(() => readRecoveries(draftKey));
   const [blockedRecovery, setBlockedRecovery] = useState<string | null>(null);
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
+  // a picture is a chip from the moment it lands, as in a chat
+  const images = usePendingImages({
+    onReady: (ready) => setAttachments((current) => [...current, ...ready]),
+    onFailed: (name, error) => setAttachNotice(`${name}: ${error}`),
+  });
+  const [sendHeld, setSendHeld] = useState(false);
+  const heldBy = heldLine(images.items);
+  useEffect(() => {
+    if (!heldBy) setSendHeld(false);
+  }, [heldBy]);
   const inputRef = useAutoSize(text);
   const pickerRef = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
@@ -273,7 +260,8 @@ export function RoomComposer({
     return () => {
       mounted.current = false;
       hide();
-      keepDraft(draftKey, latest.current);
+      const held = images.held();
+      keepDraft(draftKey, held.length ? { ...latest.current, attachments: [...latest.current.attachments, ...held] } : latest.current);
     };
   }, [draftKey]);
   // the keyboard follows from the box this one replaced (lib/drafts)
@@ -369,9 +357,10 @@ export function RoomComposer({
       uploadFile: (file) => uploadFileAttachment(file),
       sameComputer: async () => (await destination()).sameComputer,
       onSending: (file) => setAttachNotice(`Sending ${file.name || "the file"}…`),
+      onImage: (file) => images.add([file]),
     }).then(({ attachments: added, refused }) => {
       if (added.length) setAttachments((current) => [...current, ...added]);
-      setAttachNotice(refused);
+      if (added.length || refused) setAttachNotice(refused);
     });
   };
   // A file dropped anywhere in the window attaches here, as in a chat:
@@ -435,6 +424,9 @@ export function RoomComposer({
 
   const send = (stopFirst = false) => {
     const { text, attachments } = latest.current;
+    // the message waits for a picture still on its way, as in a chat,
+    // rather than going without it
+    if (heldLine(images.now())) return setSendHeld(true);
     if (!text.trim() && !attachments.length) {
       if (stopFirst) stopAll();
       return;
@@ -496,6 +488,16 @@ export function RoomComposer({
           onDismiss: () => setAttachNotice(null),
         }
       : null,
+    sendHeld && heldBy
+      ? {
+          id: "images-held",
+          tone: "info",
+          rank: RANK.feedback,
+          icon: <FileImage size={14} />,
+          title: heldBy,
+          onDismiss: () => setSendHeld(false),
+        }
+      : null,
     ...recoveries.map(
       (item): Notice => ({
         id: `unsent:${item.id}`,
@@ -529,7 +531,7 @@ export function RoomComposer({
     ),
   ].filter((n): n is Notice => n !== null);
 
-  const canSend = Boolean(text.trim()) || attachments.length > 0;
+  const canSend = Boolean(text.trim()) || attachments.length > 0 || images.items.length > 0;
   const named = [...members.map((m) => m.name), ...people.map((p) => p.name), ...(ownerName ? [ownerName] : [])];
   const reach = reachOf(text, {
     members,
@@ -540,12 +542,14 @@ export function RoomComposer({
     people: blok.sharing ? [...people.map((p) => p.name), ...(ownerName ? [ownerName] : [])] : [],
   });
 
-  const chips = (replyTo || attachments.length > 0) && (
+  const chips = (replyTo || attachments.length > 0 || images.items.length > 0) && (
     <>
       {replyTo && <ReplyTag draft={replyTo} onClear={onClearReply} />}
-      {attachments.map((a) => (
-        <AttachmentChip key={a.id} attachment={a} onRemove={() => setAttachments((cur) => cur.filter((x) => x.id !== a.id))} />
-      ))}
+      <AttachmentChips
+        attachments={attachments}
+        images={images}
+        onRemove={(id) => setAttachments((cur) => cur.filter((x) => x.id !== id))}
+      />
     </>
   );
 
@@ -727,6 +731,7 @@ export function RoomComposer({
               !e.shiftKey &&
               !text &&
               !attachments.length &&
+              !images.items.length &&
               e.currentTarget.selectionStart === 0 &&
               editLast()
             ) {

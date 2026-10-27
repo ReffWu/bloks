@@ -17,6 +17,7 @@ import { Hand } from "@/components/icons";
 import { Archive } from "@/components/icons";
 import { CornerUpLeft } from "@/components/icons";
 import { File as FileIcon } from "@/components/icons";
+import { FileImage } from "@/components/icons";
 import { Undo2 } from "@/components/icons";
 import { X } from "@/components/icons";
 import { FlaskConical } from "@/components/icons";
@@ -38,10 +39,8 @@ import { useUnsentNotice } from "./chat/HeldSends";
 import { UsageNotice } from "./composer/UsageNotice";
 import { useDeliveryPreview, type DeliveryPreview } from "@/lib/delivery";
 import {
-  attachmentBasename,
   composeOutgoing,
   destination,
-  formatBytes,
   intakeFiles,
   isLongPaste,
   pasteAttachment,
@@ -49,6 +48,8 @@ import {
   uploadImageAttachment,
   type Attachment,
 } from "@/lib/attachments";
+import { heldLine } from "@/lib/pendingImages";
+import { AttachmentChip, AttachmentChips, usePendingImages } from "./composer/Attachments";
 import { Button } from "@/components/ui/button";
 import { modKey } from "@/lib/thisComputer";
 import { edgeMask } from "@/lib/composerSize";
@@ -178,25 +179,6 @@ function VoiceMeter({ level }: { level: number }) {
   );
 }
 
-function AttachmentChip({ attachment: a, onRemove }: { attachment: Attachment; onRemove?: () => void }) {
-  return (
-    <span className="flex max-w-[240px] animate-pop-in items-center gap-1.5 rounded-xl border bg-muted/50 py-1 pl-1.5 pr-1 text-small text-foreground">
-      {a.kind === "image" ? (
-        <img src={`/api/attachments/${attachmentBasename(a.path)}`} alt={a.name} className="size-7 shrink-0 rounded-lg object-cover" />
-      ) : (
-        <FileIcon size={14} className="shrink-0 text-muted-foreground" />
-      )}
-      <span className="min-w-0 flex-1 truncate">{a.kind === "paste" ? `Pasted text, ${a.lines} lines` : a.name}</span>
-      <span className="shrink-0 text-muted-foreground">{formatBytes(a.bytes)}</span>
-      {onRemove && (
-        <button onClick={onRemove} className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" aria-label={`Remove ${a.kind === "paste" ? "pasted text" : a.name}`}>
-          <X size={12} />
-        </button>
-      )}
-    </span>
-  );
-}
-
 /** What the next message answers, inside the box with the files, since it
  * travels with the words rather than being something to read about. */
 function ReplyTag({ draft, onClear }: { draft: ReplyDraft; onClear: () => void }) {
@@ -298,6 +280,21 @@ export function Composer({
   });
   const [recoveries, setRecoveries] = useState(() => readRecoveries(draftKey));
   const [blockedRecovery, setBlockedRecovery] = useState<string | null>(null);
+  /** Why something did not become a chip, said once, dismissible. */
+  const [attachNotice, setAttachNotice] = useState<string | null>(null);
+  // A picture is a chip from the moment it lands, and joins the draft
+  // once the server has it (lib/pendingImages).
+  const images = usePendingImages({
+    onReady: (ready) => setAttachments((current) => [...current, ...ready]),
+    onFailed: (name, error) => setAttachNotice(`${name}: ${error}`),
+  });
+  // Send pressed while a picture still held it: the tray says why until
+  // nothing holds it any more.
+  const [sendHeld, setSendHeld] = useState(false);
+  const heldBy = heldLine(images.items);
+  useEffect(() => {
+    if (!heldBy) setSendHeld(false);
+  }, [heldBy]);
   useEffect(() => {
     if (prefill) setText(prefill.text);
   }, [prefill]);
@@ -343,7 +340,10 @@ export function Composer({
     return () => {
       mounted.current = false;
       hide();
-      keepDraft(draftKey, latest.current);
+      // a picture that was ready, held only behind one still going up,
+      // stays with the words; one still on its way goes with the box
+      const held = images.held();
+      keepDraft(draftKey, held.length ? { ...latest.current, attachments: [...latest.current.attachments, ...held] } : latest.current);
     };
   }, [draftKey]);
   // Layout, not passive: on the way out the box has to still be in the
@@ -374,8 +374,6 @@ export function Composer({
     setBlockedRecovery(null);
     inputRef.current?.focus();
   };
-  /** Why something did not become a chip, said once, dismissible. */
-  const [attachNotice, setAttachNotice] = useState<string | null>(null);
   /** A wider approval mode that Touch ID was not given for. */
   const [modeRefused, setModeRefused] = useState(false);
   const pickerRef = useRef<HTMLInputElement>(null);
@@ -440,9 +438,12 @@ export function Composer({
       uploadFile: (file) => uploadFileAttachment(file),
       sameComputer: async () => (await destination()).sameComputer,
       onSending: (file) => setAttachNotice(`Sending ${file.name || "the file"}…`),
+      // each picture is its own chip at once, and settles by itself
+      onImage: (file) => images.add([file]),
     }).then(({ attachments: added, refused }) => {
       if (added.length) setAttachments((current) => [...current, ...added]);
-      setAttachNotice(refused);
+      // pictures alone have nothing to say here: each chip says its own
+      if (added.length || refused) setAttachNotice(refused);
     });
   };
 
@@ -495,6 +496,11 @@ export function Composer({
     const stopOnly = () => {
       if (stopFirst) dispatch({ type: "interrupt", botId: bot.id });
     };
+    // A picture still on its way, or one that failed, would be left out
+    // of the message without a word. The message waits, the words stay,
+    // and the tray says why. The modifier does not stop the turn either:
+    // it was pressed to send, and nothing is sent.
+    if (heldLine(images.now())) return setSendHeld(true);
     if (rehearse) { stopOnly(); return void startRehearsal(); }
     if (!text.trim() && !attachments.length) { stopOnly(); return; }
     // `/goal` alone has nothing to aim at yet, so it opens the dialog
@@ -639,7 +645,8 @@ export function Composer({
     setRecording(true);
   };
 
-  const canSend = Boolean(text.trim()) || attachments.length > 0;
+  // a picture on its way counts: Send is pressed for it, and says why it waits
+  const canSend = Boolean(text.trim()) || attachments.length > 0 || images.items.length > 0;
 
   // While you hold the wheel the server refuses a turn, and it is right
   // to: you are the one driving. But a bare refusal after typing a
@@ -691,6 +698,16 @@ export function Composer({
           icon: <FileIcon size={14} />,
           title: attachNotice,
           onDismiss: () => setAttachNotice(null),
+        }
+      : null,
+    sendHeld && heldBy
+      ? {
+          id: "images-held",
+          tone: "info",
+          rank: RANK.feedback,
+          icon: <FileImage size={14} />,
+          title: heldBy,
+          onDismiss: () => setSendHeld(false),
         }
       : null,
     speechError
@@ -856,7 +873,7 @@ export function Composer({
     inputRef.current?.focus();
   };
 
-  const chips = (replyTo || attachments.length > 0 || rehearse || delivery) && (
+  const chips = (replyTo || attachments.length > 0 || images.items.length > 0 || rehearse || delivery) && (
     <>
       {delivery && (
         <DeliveryLine
@@ -865,9 +882,11 @@ export function Composer({
         />
       )}
       {replyTo && <ReplyTag draft={replyTo} onClear={() => onClearReply?.()} />}
-      {attachments.map((a) => (
-        <AttachmentChip key={a.id} attachment={a} onRemove={() => setAttachments((cur) => cur.filter((x) => x.id !== a.id))} />
-      ))}
+      <AttachmentChips
+        attachments={attachments}
+        images={images}
+        onRemove={(id) => setAttachments((cur) => cur.filter((x) => x.id !== id))}
+      />
       {rehearse && (
         // what rehearsing means, said where the words go, with who else
         // could try the same task beside it
@@ -1059,6 +1078,7 @@ export function Composer({
               !e.shiftKey &&
               !text &&
               !attachments.length &&
+              !images.items.length &&
               e.currentTarget.selectionStart === 0 &&
               e.currentTarget.selectionEnd === 0 &&
               onEditLast?.()
