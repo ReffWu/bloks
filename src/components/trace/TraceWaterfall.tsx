@@ -556,10 +556,9 @@ const TrackRow = memo(function TrackRow({
         <TooltipContent
           side="top"
           align="start"
-          className={cn(
-            "rounded-lg border px-3 py-2.5 font-normal shadow-lg",
-            island ? "border-white/10 bg-[#1a1a1e] text-[#ededf0] [--popover-foreground:#ededf0] [--muted-foreground:#8f8f99]" : "bg-popover text-popover-foreground",
-          )}
+          // the card is drawn outside the island, so it is told the
+          // island's palette itself: dark, whatever the app's theme
+          className={cn("rounded-lg border bg-popover px-3 py-2.5 font-normal text-popover-foreground shadow-lg", island && "dark")}
         >
           <SpanDetail
             title={span ? span.name : group.name}

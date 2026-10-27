@@ -29,6 +29,21 @@ export interface CuaPermissions {
   reason?: string;
 }
 
+/** Where the notch is and how big the island's window is
+ * (electron/notch.mjs), in points. */
+export interface NotchGeometry {
+  /** False on a display without one: the island hangs from the top
+   * centre of the screen as the same black shape. */
+  hasNotch: boolean;
+  notchWidth: number;
+  /** The menu bar's height: the island's band is the notch's own. */
+  menuBar: number;
+  /** The island at rest, ears and all. */
+  compact: { width: number; height: number };
+  /** The clear window it is drawn in. */
+  frame: { width: number; height: number };
+}
+
 /** A workspace's mark: a colour and nine blocks, row by row. */
 export interface WorkspaceMarkValue {
   color: string;
@@ -157,6 +172,9 @@ export type WorkspacesState =
       plan?: "cloud" | "team" | null;
       /** "Same accent in every workspace". */
       sameAccent?: boolean;
+      /** "Show working agents in the notch"; absent off macOS, where
+       * there is no notch to show them in. */
+      notch?: boolean;
       /** What the person is called in their own workspaces, once they
        * have said; null until then. Absent from an older app. */
       ownerName?: string | null;
@@ -257,6 +275,15 @@ declare global {
       prefsSameAccent?(on: boolean, showing: string): Promise<string | null>;
       /** What a banner clicked before this page loaded was about. */
       pendingNotifyTarget?(): Promise<string | null>;
+      /** Shows the working agents in the notch, or takes the island away. */
+      prefsNotch?(on: boolean): Promise<void>;
+      /** The island's page: the pointer is over the island, or has left
+       * it, so its window takes the mouse or lets it through. */
+      notchHover?(over: boolean): Promise<void>;
+      /** Brings the app forward on that conversation. */
+      notchOpen?(target: { botId: string; taskId: string }): Promise<void>;
+      notchGeometry?(): Promise<NotchGeometry | null>;
+      onNotchGeometry?(handler: (geometry: NotchGeometry) => void): () => void;
 
       /** Dictation, handled by a native helper rather than the web speech
        * APIs, which are not available offline. */

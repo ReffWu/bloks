@@ -257,6 +257,22 @@ export class NoticeDelivery {
  * (server/desktop-notice.ts BRIEF_TARGET). */
 export const BRIEF_TARGET = "brief:";
 
+/** One conversation of one agent, `conversation:<agent>/<conversation>`,
+ * each part URI-encoded: what a row in the notch opens, written by the
+ * desktop app (electron/notch.mjs, conversationTarget). */
+export const CONVERSATION_TARGET = "conversation:";
+
+export function conversationOf(target: string): { id: string; lane: string } | null {
+  if (!target.startsWith(CONVERSATION_TARGET)) return null;
+  const [id, lane, ...rest] = target.slice(CONVERSATION_TARGET.length).split("/");
+  if (!id || !lane || rest.length) return null;
+  try {
+    return { id: decodeURIComponent(id), lane: decodeURIComponent(lane) };
+  } catch {
+    return null;
+  }
+}
+
 /** The morning brief's notification, from its brief.ready frame, or null
  * when there is nothing to say or Overview is already in front of you. */
 export function briefNoticeFor(

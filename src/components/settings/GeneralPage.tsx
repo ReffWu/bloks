@@ -192,6 +192,20 @@ export function GeneralPage() {
           description="List each agent's conversations under it."
           control={<Switch aria-label="Show conversations in the sidebar" checked={conversations} onCheckedChange={setConversations} />}
         />
+        {/* the app says whether there is one: only on a Mac */}
+        {window.bloks?.prefsNotch && workspaces.available && typeof workspaces.notch === "boolean" && (
+          <SettingRow
+            label="Show working agents in the notch"
+            description="Who is at work, at the top of the screen. Point at it for what each one is doing."
+            control={
+              <Switch
+                aria-label="Show working agents in the notch"
+                checked={workspaces.notch}
+                onCheckedChange={(on) => void window.bloks?.prefsNotch?.(on)}
+              />
+            }
+          />
+        )}
       </SettingsGroup>
       {window.bloks && (
         <SettingsGroup title="Shortcut">

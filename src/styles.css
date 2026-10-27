@@ -989,3 +989,42 @@
     transition: none;
   }
 }
+
+/* ── the notch (notch/NotchIsland.tsx) ─────────────────────────────────
+ * The window is a clear frame over the menu bar, larger than the island,
+ * so the page in it has to be clear too. */
+:root[data-surface="notch"],
+:root[data-surface="notch"] body,
+:root[data-surface="notch"] #root {
+  background: transparent;
+}
+/* where the island meets the top of the screen it flares out, as the
+   hardware does: a quarter circle cut from a square of black each side */
+.notch-shoulder {
+  position: absolute;
+  top: 0;
+  width: var(--shoulder, 8px);
+  height: var(--shoulder, 8px);
+  pointer-events: none;
+}
+.notch-shoulder[data-side="left"] {
+  right: 100%;
+  background: radial-gradient(circle at 0 100%, transparent calc(var(--shoulder, 8px) - 0.5px), #000 var(--shoulder, 8px));
+}
+.notch-shoulder[data-side="right"] {
+  left: 100%;
+  background: radial-gradient(circle at 100% 100%, transparent calc(var(--shoulder, 8px) - 0.5px), #000 var(--shoulder, 8px));
+}
+/* a working agent's face breathes, in its own colour */
+.notch-pulse {
+  animation: notch-pulse 2.4s ease-in-out infinite;
+}
+@keyframes notch-pulse {
+  0%, 100% { box-shadow: 0 0 0 1.5px #000, 0 0 0 1.5px color-mix(in srgb, var(--c) 0%, transparent); }
+  50% { box-shadow: 0 0 0 1.5px #000, 0 0 0 4px color-mix(in srgb, var(--c) 45%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notch-pulse {
+    animation: none;
+  }
+}

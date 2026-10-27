@@ -22,7 +22,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { BRIEF_TARGET, briefNoticeFor, CheckInHold, NoticeDelivery, noticeFor, settlesReplies } from "@/lib/notify";
+import { BRIEF_TARGET, CONVERSATION_TARGET, conversationOf, briefNoticeFor, CheckInHold, NoticeDelivery, noticeFor, settlesReplies } from "@/lib/notify";
 import { itemProgress, isProgressText } from "@/lib/codexProgress";
 import { sendBotArchive } from "@/lib/botArchive";
 import { sendCardAnswer } from "@/lib/cardAnswer";
@@ -774,7 +774,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // a page of Settings by name: a pairing made from another
       // workspace's phone opens this one's Phone and devices
       else if (target.startsWith("settings:")) rawDispatch({ type: "toggleAppSettings", open: true, page: target.slice("settings:".length) });
-      else rawDispatch({ type: "select", id: target });
+      // one conversation by name, from a row in the notch: picked the way
+      // the sidebar picks it, so it is activated as well as shown
+      else if (target.startsWith(CONVERSATION_TARGET)) {
+        const to = conversationOf(target);
+        if (to) dispatch({ type: "select", id: to.id, lane: to.lane });
+      } else rawDispatch({ type: "select", id: target });
     };
     void bridge.pendingNotifyTarget?.().then(open).catch(() => {});
     return bridge.onNotifyActivate(({ target }) => open(target));

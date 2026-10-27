@@ -64,6 +64,7 @@ import {
 } from "./hosting-move.mjs";
 import { HOSTED_TARGET, OWN_LOCAL_KINDS, ServerAsks, othersFor, pairRefusal } from "./server-line.mjs";
 import { terminalQuery } from "./terminal-window.mjs";
+import { conversationTarget, createNotch, notchPlatform } from "./notch.mjs";
 import os from "node:os";
 
 // vendored by scripts/bundle-updater.mjs: the packaged app has no
@@ -100,6 +101,7 @@ import {
   rerollMark,
   setCurrent,
   setSameAccent,
+  setNotch,
   settle,
   shownMark,
   snapshot,
@@ -1038,6 +1040,8 @@ function workspacesState() {
     // new workspace's Team choice; and the one accent, when shared
     plan: accountPlan(),
     sameAccent: registry.prefs.sameAccent,
+    // the notch's switch, only where there is a notch to show it in
+    ...(notchPlatform() ? { notch: notchOn() } : {}),
   };
 }
 
@@ -1092,6 +1096,8 @@ async function switchWorkspace(id, { target = null, welcome = false, query = "" 
   }
   // the quick ask goes to the workspace you are in; the next one opens there
   if (moved && quickWin && !quickWin.isDestroyed()) quickWin.destroy();
+  // the notch shows the agents of the workspace you are in
+  if (moved) pointNotch(id);
   tellWorkspaces();
   applyBadge();
 }
@@ -1120,6 +1126,7 @@ function openMade(id) {
     void showIn(win, id);
   }
   if (quickWin && !quickWin.isDestroyed()) quickWin.destroy();
+  pointNotch(id);
   tellWorkspaces();
   applyBadge();
   void up.then((started) => {
@@ -1915,6 +1922,16 @@ handle("prefs:accent", (event, accent) => {
 // "Same accent in every workspace" (src/components/AccentPicker.tsx): on,
 // the window's accent becomes everyone's; off, each goes back to its own.
 // Answers the accent the asking window should draw in now.
+// "Show working agents in the notch" (src/components/settings/GeneralPage.tsx):
+// kept with the theme, since it is the person's and not a workspace's;
+// off, the island's window goes altogether.
+handle("prefs:notch", (_event, on) => {
+  if (!registry || typeof on !== "boolean") return;
+  registry = setNotch(registry, on);
+  saveRegistry();
+  tellWorkspaces();
+  notch.sync(notchOn());
+});
 handle("prefs:same-accent", (event, on, showing) => {
   const id = senderWorkspace(event);
   if (!registry || typeof on !== "boolean") return null;
@@ -2195,6 +2212,10 @@ function pointWindows(id) {
     if (win.isDestroyed() || (windowWorkspace.get(win) ?? shownId) !== id) continue;
     // a server that died again at once fails the load, and the next try
     // or the failure page points the window again
+    if (win === notch.window()) {
+      void showNotchIn(win, id);
+      continue;
+    }
     const query = win === quickWin ? "quick=1" : (terminalWins.get(win) ?? "");
     void showIn(win, id, query);
   }
@@ -2245,12 +2266,71 @@ function quickWindow() {
 /** Terminal windows, and the query each one loads. */
 const terminalWins = new Map();
 
-/** The main workspace window, rather than the quick ask panel or a
- * terminal of its own: the one links, menu commands and the Dock icon
- * are for. */
+/** The main workspace window, rather than the quick ask panel, the
+ * notch or a terminal of its own: the one links, menu commands and the
+ * Dock icon are for. */
 function isWorkspaceWindow(win) {
-  return Boolean(win) && !win.isDestroyed() && win !== quickWin && !terminalWins.has(win);
+  return Boolean(win) && !win.isDestroyed() && win !== quickWin && win !== notch.window() && !terminalWins.has(win);
 }
+
+// ── the notch ─────────────────────────────────────────────────────────
+// The agents at work in the MacBook's notch (electron/notch.mjs): a clear
+// window over the top of the screen, drawing the island from the page
+// with ?notch=1. Like the quick ask it shows the workspace you are in,
+// and like it, it is not a window links or the Dock are for.
+
+const notch = createNotch({
+  BrowserWindow,
+  screen,
+  preload: path.join(HERE, "preload.cjs"),
+  guard: (win) => guardNavigation(win),
+  load: (win) => void showNotchIn(win, shownId),
+});
+
+/** On unless turned off, and only on a Mac. */
+function notchOn() {
+  return notchPlatform() && registry?.prefs?.notch !== false;
+}
+
+/** The island's page, from workspace `id`'s server. While that server is
+ * starting, or will not, a clear page: the opening and failure pages are
+ * for a window someone is looking at, and this one would show them as a
+ * slab over the menu bar. pointWindows brings it back once it is up. */
+function showNotchIn(win, id) {
+  windowWorkspace.set(win, id);
+  const url = appUrl("notch=1", id);
+  return win.loadURL(url.startsWith("http") ? url : "about:blank").catch(() => {});
+}
+
+/** The island over to another workspace's agents. */
+function pointNotch(id) {
+  const win = notch.window();
+  if (win) void showNotchIn(win, id);
+}
+
+/** Only the island's own page speaks for it. */
+const fromNotch = (event) => Boolean(notch.window()) && event.sender === notch.window().webContents;
+
+handle("notch:hover", (event, over) => {
+  if (fromNotch(event)) notch.hover(over === true);
+});
+handle("notch:geometry", (event) => (fromNotch(event) ? notch.geometry() : null));
+// A row in the island: that conversation, in the window showing its
+// workspace, brought forward the way a banner's click brings it, and
+// through the same door (notify:activate).
+handle("notch:open", (event, target) => {
+  if (!fromNotch(event)) return;
+  const said = conversationTarget(target);
+  if (!said) return;
+  const id = windowWorkspace.get(notch.window()) ?? shownId;
+  const main = BrowserWindow.getAllWindows().find((w) => isWorkspaceWindow(w) && (windowWorkspace.get(w) ?? shownId) === id);
+  if (main && !main.webContents.isLoading()) {
+    raise(main);
+    main.webContents.send("notify:activate", { target: said });
+  } else {
+    void switchWorkspace(id, { target: said }).catch(() => {});
+  }
+});
 
 function openTerminalWindow(botId, workspace = shownId) {
   const query = terminalQuery(botId);
@@ -3118,6 +3198,8 @@ app.whenReady().then(async () => {
     await openWorkspaces();
   }
   createWindow();
+  // the island in the notch, once there is a workspace for it to show
+  notch.sync(notchOn());
   // the others come up behind the window, one at a time, so the one you
   // are looking at never waits on them
   if (registry && !remoteProfile) {

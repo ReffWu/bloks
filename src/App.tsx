@@ -27,6 +27,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutKeys } from "@/components/Shortcuts";
 import { Switcher } from "@/components/Switcher";
 import { QuickAsk } from "@/components/QuickAsk";
+import { NotchIsland } from "@/components/notch/NotchIsland";
 import { TraceDemo } from "@/components/trace/TraceDemo";
 import { Toaster, toast } from "@/components/ui/toast";
 import { ConfirmHost } from "@/components/ui/confirm";
@@ -237,6 +238,9 @@ export default function App() {
   // So does an agent's terminal popped out into a window of its own.
   const terminalFor = terminalWindowAgent(location.search);
   if (terminalFor) return <TerminalWindow botId={terminalFor} />;
+  // And the island in the notch, in a clear window over the menu bar,
+  // which reads the working agents and nothing else.
+  if (asked.has("notch")) return <NotchIsland demo={asked.has("demo")} />;
   // the trace panel with a made-up turn, to look at without an engine
   if (asked.get("trace") === "demo") return <TraceDemo />;
   return <WhichApp />;

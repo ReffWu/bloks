@@ -182,6 +182,8 @@ export function parseRegistry(text) {
       // accent it keeps while on
       sameAccent: raw?.prefs?.sameAccent === true,
       accent: typeof accent === "string" && ACCENT_ID.test(accent) ? accent : null,
+      // "Show working agents in the notch": on unless turned off
+      notch: raw?.prefs?.notch !== false,
       // what the person is called in every workspace of their own
       ownerName: cleanPersonName(raw?.prefs?.ownerName) || null,
     },
@@ -251,6 +253,13 @@ export function setSameAccent(registry, id, on, showing) {
     };
   }
   return { registry: next, accent: accentOf(next, id) };
+}
+
+/** "Show working agents in the notch" (electron/notch.mjs), on or off.
+ * Anything but a yes or a no leaves it as it was. */
+export function setNotch(registry, on) {
+  if (typeof on !== "boolean" || registry.prefs.notch === on) return registry;
+  return { ...registry, prefs: { ...registry.prefs, notch: on } };
 }
 
 const sorted = (list) => [...list].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
