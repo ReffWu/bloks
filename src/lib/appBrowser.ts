@@ -10,6 +10,7 @@
 // One small store for both, so a component asks one question: what is
 // the browser doing, and can I drive it from here.
 import { useEffect, useSyncExternalStore } from "react";
+import { formatNumber, t } from "./i18n.ts";
 
 export type TabBy = { kind: "person" } | { kind: "agent"; botId: string; name: string };
 
@@ -75,7 +76,7 @@ export function hostLabel(url: string | undefined): string {
 export function tabLabel(tab: Pick<BrowserTab, "title" | "url">): string {
   const title = tab.title?.trim();
   if (title && title !== tab.url && title !== "about:blank") return title;
-  return hostLabel(tab.url) || "New tab";
+  return hostLabel(tab.url) || t("appBrowser.newTab");
 }
 
 /** Whether the page arrived over a connection nobody else could read. */
@@ -87,11 +88,21 @@ export function isSecure(url: string | undefined): boolean {
  * to do about it, or null when nobody is doing anything worth a line. */
 export function controlLine(control: BrowserControl | undefined): { tone: "agent" | "person"; text: string; action: "takeOver" | "giveBack" } | null {
   if (!control || control.by === "idle") return null;
-  if (control.by === "agent") return { tone: "agent", text: `${control.name || "An agent"} is browsing`, action: "takeOver" };
+  if (control.by === "agent") {
+    return {
+      tone: "agent",
+      text: control.name ? t("appBrowser.control.agentBrowsing", { name: control.name }) : t("appBrowser.control.someAgentBrowsing"),
+      action: "takeOver",
+    };
+  }
   const who = control.waiting?.name ?? control.from?.name;
   return {
     tone: "person",
-    text: control.waiting ? `You have the browser. ${who} is waiting for it back` : who ? `You took over from ${who}` : "You have the browser",
+    text: control.waiting
+      ? t("appBrowser.control.waitingForIt", { name: who ?? "" })
+      : who
+        ? t("appBrowser.control.tookOverFrom", { name: who })
+        : t("appBrowser.control.youHaveIt"),
     action: "giveBack",
   };
 }
@@ -108,10 +119,15 @@ export function browsingFor(state: AppBrowserState | null | undefined, botId: st
 
 /** The size of a download, said plainly. */
 export function downloadSize(d: Pick<BrowserDownload, "bytes" | "total" | "state">): string {
-  const size = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
-  if (d.state === "progressing") return d.total > 0 ? `${size(d.bytes)} of ${size(d.total)}` : size(d.bytes);
-  if (d.state === "cancelled") return "Cancelled";
-  if (d.state === "interrupted") return "Did not finish";
+  const size = (n: number) =>
+    n >= 1024 * 1024
+      ? t("appBrowser.size.megabytes", { size: formatNumber(n / 1024 / 1024, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
+      : n >= 1024
+        ? t("appBrowser.size.kilobytes", { size: Math.round(n / 1024) })
+        : t("appBrowser.size.bytes", { size: n });
+  if (d.state === "progressing") return d.total > 0 ? t("appBrowser.size.progress", { done: size(d.bytes), total: size(d.total) }) : size(d.bytes);
+  if (d.state === "cancelled") return t("appBrowser.cancelled");
+  if (d.state === "interrupted") return t("appBrowser.didNotFinish");
   return size(d.total || d.bytes);
 }
 

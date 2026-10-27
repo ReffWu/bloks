@@ -13,32 +13,48 @@
 // engine running.
 import type { Message } from "../state/reducer.ts";
 import type { LiveAgent, LiveTraces, SpanKind, Trace, TraceSpan, TraceTotals } from "./trace.ts";
+import { formatNumber, t } from "./i18n.ts";
 
 // ── how the numbers read ──
+//
+// The short units ("12s", "2m 10s", "12.4k") are words too, written the
+// reader's way with the reader's decimal mark.
+
+const tenths = (n: number) => formatNumber(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** Minutes and seconds, or hours and minutes, the second part left out
+ * when it is nothing. */
+function hoursMinutesSeconds(hours: number, minutes: number, seconds: number): string {
+  if (hours) return minutes ? t("traceView.duration.hoursMinutes", { hours, minutes }) : t("traceView.duration.hours", { hours });
+  if (minutes) return seconds ? t("traceView.duration.minutesSeconds", { minutes, seconds }) : t("traceView.duration.minutes", { minutes });
+  return t("traceView.duration.seconds", { seconds });
+}
 
 /** "0.8s", "12s", "2m 10s", "1h 5m". Tenths only under ten seconds,
  * where they still say something; counted down, never up, so a running
  * step never shows a second it has not reached. */
 export function formatDuration(ms: number): string {
   const safe = Math.max(0, Number.isFinite(ms) ? ms : 0);
-  if (safe < 10_000) return `${(Math.floor(safe / 100) / 10).toFixed(1)}s`;
+  if (safe < 10_000) return t("traceView.duration.seconds", { seconds: tenths(Math.floor(safe / 100) / 10) });
   const seconds = Math.floor(safe / 1000);
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) return hoursMinutesSeconds(0, 0, seconds);
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return seconds % 60 ? `${minutes}m ${seconds % 60}s` : `${minutes}m`;
+  if (minutes < 60) return hoursMinutesSeconds(0, minutes, seconds % 60);
   const hours = Math.floor(minutes / 60);
-  return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+  return hoursMinutesSeconds(hours, minutes % 60, 0);
 }
 
 /** "$0.005", "$0.42", "$12.50". Null when there is nothing to say: an
  * engine that does not price its turns is not a turn that cost nothing. */
 export function formatCost(usd: number | null | undefined): string | null {
   if (usd === null || usd === undefined || !Number.isFinite(usd) || usd < 0) return null;
-  if (usd === 0) return "$0";
-  if (usd < 0.001) return "<$0.001";
-  if (usd < 0.01) return `$${usd.toFixed(3)}`;
-  if (usd < 1000) return `$${usd.toFixed(2)}`;
-  return `$${Math.round(usd).toLocaleString("en-US")}`;
+  const dollars = (amount: number, digits: number) =>
+    t("traceView.cost.dollars", { amount: formatNumber(amount, { minimumFractionDigits: digits, maximumFractionDigits: digits }) });
+  if (usd === 0) return dollars(0, 0);
+  if (usd < 0.001) return t("traceView.cost.under", { amount: formatNumber(0.001, { minimumFractionDigits: 3 }) });
+  if (usd < 0.01) return dollars(usd, 3);
+  if (usd < 1000) return dollars(usd, 2);
+  return dollars(Math.round(usd), 0);
 }
 
 /** "950", "12.4k", "124k", "1.2M". */
@@ -46,12 +62,9 @@ export function formatTokens(n: number | null | undefined): string | null {
   if (n === null || n === undefined || !Number.isFinite(n) || n < 0) return null;
   const whole = Math.round(n);
   if (whole < 1000) return String(whole);
-  const short = (value: number, unit: string) => {
-    const tenths = Math.floor(value * 10) / 10;
-    return value < 100 ? `${tenths.toFixed(1)}${unit}` : `${Math.floor(value)}${unit}`;
-  };
-  if (whole < 1_000_000) return short(whole / 1000, "k");
-  return short(whole / 1_000_000, "M");
+  const short = (value: number) => (value < 100 ? tenths(Math.floor(value * 10) / 10) : formatNumber(Math.floor(value)));
+  if (whole < 1_000_000) return t("traceView.tokens.thousands", { value: short(whole / 1000) });
+  return t("traceView.tokens.millions", { value: short(whole / 1_000_000) });
 }
 
 /** "3.6s · $0.12": what follows a bar, the cost only when there is one. */
@@ -86,15 +99,9 @@ export function tickStep(domainMs: number, maxTicks: number): number {
 
 /** "0s", "45s", "1m 30s", "2m", "1h 15m". */
 export function tickLabel(ms: number): string {
-  if (ms < MINUTE) return `${Math.round(ms / SECOND)}s`;
-  if (ms < HOUR) {
-    const minutes = Math.floor(ms / MINUTE);
-    const seconds = Math.round((ms % MINUTE) / SECOND);
-    return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
-  }
-  const hours = Math.floor(ms / HOUR);
-  const minutes = Math.round((ms % HOUR) / MINUTE);
-  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  if (ms < MINUTE) return hoursMinutesSeconds(0, 0, Math.round(ms / SECOND));
+  if (ms < HOUR) return hoursMinutesSeconds(0, Math.floor(ms / MINUTE), Math.round((ms % MINUTE) / SECOND));
+  return hoursMinutesSeconds(Math.floor(ms / HOUR), Math.round((ms % HOUR) / MINUTE), 0);
 }
 
 export interface RulerTick {

@@ -21,6 +21,10 @@
 //   this library, and a button that asks for one does nothing.
 //
 // Pure, so the routing is tested without a window (test/genui-actions).
+//
+// The words a form adds (Yes, None, "Party size: Four") are the person's
+// own message, so they are written in the person's language.
+import { t } from "../i18n.ts";
 
 /** The action event the renderer hands over (OpenUI's ActionEvent). */
 export interface GenUiEvent {
@@ -79,21 +83,21 @@ function humane(name: string): string {
 function readable(name: string, raw: unknown, labels: GenUiLabels): string | null {
   const value = raw && typeof raw === "object" && !Array.isArray(raw) && "value" in raw ? (raw as { value: unknown }).value : raw;
   if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "boolean") return value ? t("actions.yes") : t("actions.no");
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : null;
   if (typeof value === "string") return labels.option(name, value) ?? value;
   if (Array.isArray(value)) {
     const parts = value.map((v) => (typeof v === "string" ? (labels.option(name, v) ?? v) : String(v))).filter(Boolean);
     if (!parts.length) return null;
     // a range, from a slider or a pair of dates, reads as one
-    return parts.length === 2 ? `${parts[0]} to ${parts[1]}` : parts.join(", ");
+    return parts.length === 2 ? t("actions.range", { from: parts[0], to: parts[1] }) : parts.join(", ");
   }
   if (typeof value === "object") {
     // a group of checkboxes: the ones ticked
     const ticked = Object.entries(value as Record<string, unknown>)
       .filter(([, on]) => on === true)
       .map(([key]) => labels.option(name, key) ?? humane(key));
-    return ticked.length ? ticked.join(", ") : "None";
+    return ticked.length ? ticked.join(", ") : t("actions.none");
   }
   return null;
 }
@@ -107,7 +111,7 @@ export function formLines(formState: Record<string, unknown> | undefined, formNa
     .sort(([a], [b]) => labels.order(a) - labels.order(b))
     .flatMap(([name, raw]) => {
       const said = readable(name, raw, labels);
-      return said === null ? [] : [`${labels.field(name) ?? humane(name)}: ${said}`];
+      return said === null ? [] : [t("actions.fieldLine", { field: labels.field(name) ?? humane(name), value: said })];
     });
 }
 

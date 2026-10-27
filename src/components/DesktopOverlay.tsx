@@ -114,7 +114,7 @@ function SideChat({ bot }: { bot: Bot }) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder={`Message ${bot.name}`}
+          placeholder={t("desktopOverlay.messageAgent", { name: bot.name })}
           className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-body text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring/60"
         />
       </div>
@@ -146,8 +146,8 @@ export function DesktopOverlay({
   useEffect(() => {
     // settle-debounced: a drag emits dozens of layouts a second, and
     // none of the intermediate ones is worth a synchronous disk write
-    const t = setTimeout(() => localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)), 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)), 250);
+    return () => clearTimeout(timer);
   }, [layout]);
 
   useEffect(() => {
@@ -242,10 +242,10 @@ export function DesktopOverlay({
     <div className="flex items-center gap-0.5">
       {(
         [
-          ["left", PanelLeft, "Dock left"],
-          ["bottom", PanelBottom, "Dock bottom"],
-          ["right", PanelRight, "Dock right"],
-          ["float", PictureInPicture2, "Float"],
+          ["left", PanelLeft, t("desktopOverlay.dock.left")],
+          ["bottom", PanelBottom, t("desktopOverlay.dock.bottom")],
+          ["right", PanelRight, t("desktopOverlay.dock.right")],
+          ["float", PictureInPicture2, t("desktopOverlay.dock.float")],
         ] as const
       ).map(([dock, Icon, label]) => (
         <button
@@ -317,7 +317,7 @@ export function DesktopOverlay({
   const viewer = (
     <iframe
       src={url}
-      title={`${bot.name}'s desktop`}
+      title={t("desktopOverlay.agentDesktop", { name: bot.name })}
       className={cn("min-h-0 w-full flex-1 border-0 bg-black", dragging && "pointer-events-none")}
       allow="clipboard-read; clipboard-write"
     />
@@ -332,7 +332,7 @@ export function DesktopOverlay({
         <div className={cn("flex items-center gap-2", isElectron && platformOf() === "mac" && "pl-[66px]")}>
           <AgentAvatar bot={bot} size={26} />
           <span className="text-ui font-semibold text-foreground">
-            {bot.name}'s desktop
+            {t("desktopOverlay.agentDesktop", { name: bot.name })}
           </span>
         </div>
         <div className="flex items-center gap-1">

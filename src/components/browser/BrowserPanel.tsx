@@ -374,7 +374,8 @@ function Tabs({
               aria-selected={open}
               tabIndex={open ? 0 : -1}
               onClick={() => void act("selectTab", tab.id)}
-              title={`${label}${driver ? `\nDriven by ${driver}` : ""}\n${tab.url}`}
+              aria-label={driver ? t("browserPanel.tabDrivenBy", { tab: label, name: driver }) : undefined}
+              title={[label, ...(driver ? [t("browserPanel.drivenBy", { name: driver })] : []), tab.url].join("\n")}
               className={cn(
                 "flex h-7 max-w-[184px] items-center gap-1.5 rounded-md pl-2 pr-7 text-body outline-none transition-colors duration-150",
                 open ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -388,13 +389,12 @@ function Tabs({
                 <Globe size={13} className="shrink-0" aria-hidden />
               )}
               <span className="truncate">{label}</span>
-              {driver && <span className="sr-only">, driven by {driver}</span>}
             </button>
             <button
               type="button"
               tabIndex={-1}
-              aria-label={`Close ${label}`}
-              title={`Close ${label}`}
+              aria-label={t("browserPanel.closeTab", { tab: label })}
+              title={t("browserPanel.closeTab", { tab: label })}
               onClick={() => void act("closeTab", tab.id)}
               className={cn(
                 "absolute right-1 flex size-5 items-center justify-center rounded text-muted-foreground transition-[opacity,background-color,color] duration-150 hover:bg-foreground/10 hover:text-foreground",
@@ -494,7 +494,7 @@ function Shelf({ downloads, onClose }: { downloads: AppBrowserState["downloads"]
                 </p>
                 <p className={cn("truncate text-small", d.state === "interrupted" ? "text-destructive" : "text-muted-foreground")}>
                   {downloadSize(d)}
-                  {d.by ? ` · by ${d.by}` : ""}
+                  {d.by ? ` · ${t("browserPanel.downloadedBy", { name: d.by })}` : ""}
                 </p>
               </div>
               {d.state === "completed" && (
@@ -565,10 +565,14 @@ export function BrowsingOnMac({ botId, name }: { botId: string; name: string }) 
                 <span className="relative inline-flex size-2 rounded-full bg-brand" />
               </span>
             )}
-            Browsing on the Mac
+            {t("browserPanel.browsingOnTheMac")}
           </p>
           <p className="truncate text-small text-muted-foreground">
-            {doing === "driving" ? `${name}${where ? ` is on ${where}` : " is using the Bloks browser"}` : `You took over on the Mac. ${name} waits for it back.`}
+            {doing === "driving"
+              ? where
+                ? t("browserPanel.agentIsOn", { name, page: where })
+                : t("browserPanel.agentUsesBrowser", { name })
+              : t("browserPanel.youTookOverOnMac", { name })}
           </p>
         </div>
       </div>

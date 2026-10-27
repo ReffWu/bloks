@@ -43,6 +43,7 @@ import {
   slowestLeaf,
   spanDuration,
   sumTotals,
+  tickLabel,
   tickStep,
   ticksForWidth,
   timelineDomain,
@@ -55,7 +56,7 @@ import { cn } from "@/lib/cn";
 import { useLiveText, useTraceClock, type TraceClock } from "./clock";
 import { RollingNumber } from "./RollingNumber";
 import { BarGlyph, colorHex, kindWord, Legend, SpanDetail, Spinner, StepIcon } from "./parts";
-import { t } from "@/lib/i18n";
+import { t, useLanguage } from "@/lib/i18n";
 
 export type { TraceGroup } from "@/lib/traceView";
 
@@ -154,18 +155,18 @@ export function TraceWaterfall({ groups, now, variant = "panel", className }: Tr
 
   useEffect(() => {
     let dropping: ReturnType<typeof setTimeout> | null = null;
-    const stop = clock.subscribe((t, dt) => {
+    const stop = clock.subscribe((at, dt) => {
       const { groups, origin, running, reduce } = latest.current;
       const px = width.current;
       if (!px || !groups.length) return false;
-      const target = timelineDomain(groupsElapsed(groups, t), running);
+      const target = timelineDomain(groupsElapsed(groups, at), running);
       // the scale eases to a new reading rather than jumping to it
       let shown = domain.current;
       shown = !shown || reduce ? target : shown + (target - shown) * (1 - Math.exp(-dt / 170));
       if (Math.abs(target - shown) <= target * 0.0004) shown = target;
       domain.current = shown;
       const ms = String(px / shown);
-      const elapsed = String(Math.max(0, t - origin));
+      const elapsed = String(Math.max(0, at - origin));
       for (const el of [rulerRef.current, tracksRef.current]) {
         if (!el) continue;
         el.style.setProperty("--ms", ms);
@@ -240,7 +241,9 @@ export function TraceWaterfall({ groups, now, variant = "panel", className }: Tr
                   className={cn("trace-tick animate-fade-in", tick.leaving && "opacity-0")}
                   style={{ "--at": tick.at, top: (RULER_H - 16) / 2 - 1 } as CSSProperties}
                 >
-                  {tick.label}
+                  {/* labelled as drawn, so a change of language reaches a
+                      tick that was measured before it */}
+                  {tickLabel(tick.at)}
                 </span>
               ))}
               {ticks.map((tick) => (
@@ -344,22 +347,22 @@ function Metrics({ groups, clock, island }: { groups: TraceGroup[]; clock: Trace
   const cells: Array<{ label: string; value: string | null; ticks?: (now: number) => string; quiet?: string; why?: string; warn?: boolean }> = [
     // a clock ticks rather than rolls: it changes every frame, and a
     // wheel that never comes to rest cannot be read
-    { label: "Duration", value: "", ticks: (t) => formatDuration(groupsElapsed(groups, t)) },
+    { label: t("traceWaterfall.metric.duration"), value: "", ticks: (at) => formatDuration(groupsElapsed(groups, at)) },
     {
-      label: "Cost",
+      label: t("traceWaterfall.metric.cost"),
       value: formatCost(totals.cost),
-      quiet: running ? "Not yet" : "n/a",
-      why: running ? "Said when the turn ends" : "This engine does not price its turns",
+      quiet: running ? t("traceWaterfall.metric.notYet") : t("traceWaterfall.metric.notApplicable"),
+      why: running ? t("traceWaterfall.metric.costWhenEnds") : t("traceWaterfall.metric.costNotPriced"),
     },
     {
-      label: "Tokens",
+      label: t("traceWaterfall.metric.tokens"),
       value: formatTokens(totals.tokens),
-      quiet: running ? "Not yet" : "n/a",
-      why: running ? "Counted as the model answers" : "This engine did not count them",
+      quiet: running ? t("traceWaterfall.metric.notYet") : t("traceWaterfall.metric.notApplicable"),
+      why: running ? t("traceWaterfall.metric.tokensAsAnswered") : t("traceWaterfall.metric.tokensNotCounted"),
     },
-    { label: "Model calls", value: String(totals.modelCalls) },
-    { label: "Tool calls", value: String(totals.toolCalls) },
-    { label: "Errors", value: String(totals.errors), warn: totals.errors > 0 },
+    { label: t("traceWaterfall.metric.modelCalls"), value: String(totals.modelCalls) },
+    { label: t("traceWaterfall.metric.toolCalls"), value: String(totals.toolCalls) },
+    { label: t("traceWaterfall.metric.errors"), value: String(totals.errors), warn: totals.errors > 0 },
   ];
   // hairlines between the cells however they wrap: the gaps show the
   // border colour behind them
@@ -408,6 +411,8 @@ const TreeRow = memo(function TreeRow({
   fresh: boolean;
   onToggle: (key: string) => void;
 }) {
+  // a memo: the language is asked for so a change of it redraws the row
+  useLanguage();
   const span = row.span;
   const live = span ? span.end === null && group.trace.running : false;
   const failed = span?.status === "failed" || span?.kind === "error";
@@ -432,7 +437,7 @@ const TreeRow = memo(function TreeRow({
           type="button"
           onClick={() => onToggle(row.key)}
           aria-expanded={!row.collapsed}
-          aria-label={row.collapsed ? `Show ${span?.name ?? group.name}'s steps` : `Hide ${span?.name ?? group.name}'s steps`}
+          aria-label={row.collapsed ? t("traceWaterfall.showSteps", { name: span?.name ?? group.name }) : t("traceWaterfall.hideSteps", { name: span?.name ?? group.name })}
           className="-ml-1 flex shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
           style={{ width: size.icon + 2, height: size.icon + 2 }}
         >
@@ -514,6 +519,8 @@ const TrackRow = memo(function TrackRow({
   reduce: boolean;
   island: boolean;
 }) {
+  // a memo, like the tree's rows: the language redraws it too
+  useLanguage();
   const trace = group.trace;
   const span = row.span;
   // a trace that has ended has nothing running, whatever a span says
@@ -532,7 +539,7 @@ const TrackRow = memo(function TrackRow({
   const isMark = span?.kind === "error" || span?.kind === "compact";
   const cost = span ? span.cost : trace.totals.cost;
   const live = trace.running && (span ? span.end === null : true);
-  const took = (t: number) => (span ? spanDuration(span, traceElapsed(trace, t)) : traceElapsed(trace, t));
+  const took = (now: number) => (span ? spanDuration(span, traceElapsed(trace, now)) : traceElapsed(trace, now));
 
   const bar = (key: string, from: number, to: number | null, kind: ReturnType<typeof barKind>, piece: boolean) => (
     <span
@@ -575,7 +582,7 @@ const TrackRow = memo(function TrackRow({
             kindWord={kindWord(span)}
             status={span ? (span.end === null && trace.running ? "running" : span.status) : trace.running ? "running" : "ok"}
             started={span ? span.start : 0}
-            took={<LiveText clock={clock} live={live} format={(t) => formatDuration(took(t))} />}
+            took={<LiveText clock={clock} live={live} format={(now) => formatDuration(took(now))} />}
             tokens={span ? span.tokens : trace.totals.tokens}
             cost={cost}
           />
@@ -590,7 +597,7 @@ const TrackRow = memo(function TrackRow({
         ))}
         {!isMark && (
           <span className="trace-note text-caption tabular-nums text-muted-foreground" style={at(end) as CSSProperties}>
-            <LiveText clock={clock} live={live} format={(t) => barNote(took(t), cost)} />
+            <LiveText clock={clock} live={live} format={(now) => barNote(took(now), cost)} />
             {slowest && (
               <motion.span
                 layoutId={pill}

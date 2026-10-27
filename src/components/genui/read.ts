@@ -1,6 +1,7 @@
 // Reading props an agent wrote. While an answer streams a component can
 // arrive with half its props, and after it a model can still pass a
 // number where a word was meant, so nothing a renderer reads is assumed.
+import { formatNumber } from "@/lib/i18n";
 
 export interface Element {
   type: "element";
@@ -48,5 +49,5 @@ export function localImage(src: unknown): string | null {
 /** Numbers as people write them: thousands grouped, nothing silly after
  * the point. */
 export function figure(value: number): string {
-  return value.toLocaleString(undefined, { maximumFractionDigits: Math.abs(value) < 10 ? 2 : 1 });
+  return formatNumber(value, { maximumFractionDigits: Math.abs(value) < 10 ? 2 : 1 });
 }

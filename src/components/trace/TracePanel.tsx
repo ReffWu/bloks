@@ -82,7 +82,7 @@ export function TracePanel({
     };
   }, [path, visible, working, follow]);
 
-  const conversation = bot.tasks?.find((t) => t.id === taskId)?.title ?? "";
+  const conversation = bot.tasks?.find((task) => task.id === taskId)?.title ?? "";
   const trace = read?.trace ?? null;
   const ours = trace && ask.window ? traceCovers(trace, ask.window) : true;
   // the same groups until the trace changes: the chat beside it renders
@@ -113,7 +113,7 @@ export function TracePanel({
       ) : (
         <div className="flex flex-1 items-center justify-center px-8 text-center text-small text-muted-foreground">
           {error
-            ? `The timeline did not load. ${error}`
+            ? t("tracePanel.didNotLoad", { error })
             : !read
               ? ""
               : !trace

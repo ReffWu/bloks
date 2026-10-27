@@ -23,6 +23,7 @@ import { kindOf } from "@/lib/tool-summary";
 import type { TraceSpan } from "@/lib/trace";
 import { formatCost, formatDuration, formatTokens, type BarKind } from "@/lib/traceView";
 import { cn } from "@/lib/cn";
+import { t, type MessageKey } from "@/lib/i18n";
 
 /** An agent's colour as a hex value: a BlokColor by name, or a hex
  * colour as it came. */
@@ -76,11 +77,11 @@ export function BarGlyph({ kind, size }: { kind: BarKind; size: number }) {
   return null;
 }
 
-const STATUS_WORDS: Record<TraceSpan["status"], string> = {
-  running: "Running",
-  ok: "Done",
-  failed: "Failed",
-  stopped: "Stopped",
+const STATUS_WORDS: Record<TraceSpan["status"], MessageKey> = {
+  running: "traceParts.status.running",
+  ok: "traceParts.status.done",
+  failed: "traceParts.status.failed",
+  stopped: "traceParts.status.stopped",
 };
 
 /** The hover card for one step, or for an agent's whole turn. */
@@ -106,10 +107,10 @@ export function SpanDetail({
   cost?: number | null;
 }) {
   const said = [
-    ["Started", `${formatDuration(started)} in`],
-    ["Took", took],
-    ["Tokens", formatTokens(tokens)],
-    ["Cost", formatCost(cost)],
+    [t("traceParts.started"), t("traceParts.startedIn", { time: formatDuration(started) })],
+    [t("traceParts.took"), took],
+    [t("traceParts.tokens"), formatTokens(tokens)],
+    [t("traceParts.cost"), formatCost(cost)],
   ].filter(([, value]) => value !== null && value !== undefined) as Array<[string, ReactNode]>;
   return (
     <div className="flex w-[240px] max-w-[70vw] flex-col gap-2">
@@ -121,7 +122,7 @@ export function SpanDetail({
             status === "failed" ? "text-destructive" : status === "running" ? "text-popover-foreground" : "text-muted-foreground",
           )}
         >
-          {status === "running" ? kindWord : `${kindWord} · ${STATUS_WORDS[status]}`}
+          {status === "running" ? kindWord : `${kindWord} · ${t(STATUS_WORDS[status])}`}
         </span>
       </div>
       {detail && <div className="line-clamp-2 break-all font-mono text-caption leading-snug text-muted-foreground">{detail}</div>}
@@ -138,22 +139,22 @@ export function SpanDetail({
 }
 
 export function kindWord(span: TraceSpan | null): string {
-  if (!span) return "Turn";
+  if (!span) return t("traceParts.kind.turn");
   switch (span.kind) {
     case "model":
-      return "Model";
+      return t("traceParts.kind.model");
     case "tool":
-      return span.retry ? "Tool, again" : "Tool";
+      return span.retry ? t("traceParts.kind.toolAgain") : t("traceParts.kind.tool");
     case "agent":
-      return "Sub-agent";
+      return t("traceParts.kind.subAgent");
     case "wait":
-      return "Waiting";
+      return t("traceParts.kind.waiting");
     case "error":
-      return "Error";
+      return t("traceParts.kind.error");
     case "compact":
-      return "Compaction";
+      return t("traceParts.kind.compaction");
     default:
-      return "Turn";
+      return t("traceParts.kind.turn");
   }
 }
 
@@ -162,11 +163,11 @@ const SWATCH: CSSProperties = { position: "relative", top: "auto", left: "auto",
 
 export function Legend({ color, className }: { color: string; className?: string }) {
   const items: Array<{ kind: BarKind; label: string }> = [
-    { kind: "model", label: "Model" },
-    { kind: "tool", label: "Tool" },
-    { kind: "agent", label: "Sub-agent" },
-    { kind: "wait", label: "Waiting" },
-    { kind: "failed", label: "Failed" },
+    { kind: "model", label: t("traceParts.kind.model") },
+    { kind: "tool", label: t("traceParts.kind.tool") },
+    { kind: "agent", label: t("traceParts.kind.subAgent") },
+    { kind: "wait", label: t("traceParts.kind.waiting") },
+    { kind: "failed", label: t("traceParts.status.failed") },
   ];
   return (
     <div className={cn("flex flex-wrap items-center gap-x-3.5 gap-y-1 text-caption text-muted-foreground", className)} style={{ "--c": color } as CSSProperties}>

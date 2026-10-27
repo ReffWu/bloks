@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ComponentRenderer } from "@openuidev/react-lang";
 import { cn } from "@/lib/cn";
 import { elements, figure, list, num, text } from "./read";
-import { t } from "@/lib/i18n";
+import { formatNumber, t } from "@/lib/i18n";
 
 type Part = ComponentRenderer<Record<string, unknown>>;
 
@@ -48,7 +48,7 @@ function Legend({ names }: { names: string[] }) {
       {names.map((name, i) => (
         <span key={i} className="flex items-center gap-1.5">
           <span aria-hidden className="size-2 rounded-[3px]" style={{ background: series(i) }} />
-          {name || `Series ${i + 1}`}
+          {name || t("charts.seriesNumbered", { number: i + 1 })}
         </span>
       ))}
     </div>
@@ -65,7 +65,7 @@ function DataTable({ caption, labels, lines }: { caption: string; labels: string
           <th scope="col">{t("charts.label")}</th>
           {lines.map((line, i) => (
             <th key={i} scope="col">
-              {line.name || `Series ${i + 1}`}
+              {line.name || t("charts.seriesNumbered", { number: i + 1 })}
             </th>
           ))}
         </tr>
@@ -94,7 +94,7 @@ function Frame({ title, children, note }: { title?: string; children: React.Reac
   );
 }
 
-const dropNote = (dropped: number) => (dropped ? `${dropped} more series not shown` : undefined);
+const dropNote = (dropped: number) => (dropped ? t("charts.moreSeriesNotShown", { count: dropped }) : undefined);
 
 /**
  * Bars on their side. Every bar the same, every bar zero, or some below
@@ -110,8 +110,8 @@ export const BarChart: Part = ({ props }) => {
       ? { hi: lines.reduce((sum, l) => sum + Math.max(0, l.values[r] ?? 0), 0), lo: lines.reduce((sum, l) => sum + Math.min(0, l.values[r] ?? 0), 0) }
       : { hi: Math.max(0, ...lines.map((l) => l.values[r] ?? 0)), lo: Math.min(0, ...lines.map((l) => l.values[r] ?? 0)) },
   );
-  const top = Math.max(0, ...totals.map((t) => t.hi));
-  const bottom = Math.min(0, ...totals.map((t) => t.lo));
+  const top = Math.max(0, ...totals.map((total) => total.hi));
+  const bottom = Math.min(0, ...totals.map((total) => total.lo));
   const span = top - bottom || 1;
   const zero = (-bottom / span) * 100;
   const share = (v: number) => (Math.abs(v) / span) * 100;
@@ -162,7 +162,7 @@ export const BarChart: Part = ({ props }) => {
           ))}
         </div>
       </div>
-      <DataTable caption={axis || "Bar chart"} labels={labels} lines={lines} />
+      <DataTable caption={axis || t("charts.barChart")} labels={labels} lines={lines} />
     </Frame>
   );
 };
@@ -314,7 +314,7 @@ export const LineChart: Part = ({ props }) => {
               {lines.map((line, i) => (
                 <div key={i} className="flex items-center gap-1.5 text-muted-foreground">
                   <span className="size-2 shrink-0 rounded-[3px]" style={{ background: series(i) }} />
-                  <span className="min-w-0 flex-1 truncate">{line.name || `Series ${i + 1}`}</span>
+                  <span className="min-w-0 flex-1 truncate">{line.name || t("charts.seriesNumbered", { number: i + 1 })}</span>
                   <span className="tabular-nums text-foreground">{line.values[at] === null ? "" : figure(line.values[at]!)}</span>
                 </div>
               ))}
@@ -322,7 +322,7 @@ export const LineChart: Part = ({ props }) => {
           )}
         </div>
       </div>
-      <DataTable caption={axis || "Line chart"} labels={labels} lines={lines} />
+      <DataTable caption={axis || t("charts.lineChart")} labels={labels} lines={lines} />
     </Frame>
   );
 };
@@ -340,7 +340,7 @@ export const PieChart: Part = ({ props }) => {
   if (!raw.length) return null;
   const sorted = raw.length > MAX_SLICES ? [...raw].sort((a, b) => b.value - a.value) : raw;
   const slices = sorted.length > MAX_SLICES
-    ? [...sorted.slice(0, MAX_SLICES - 1), { label: "Other", value: sorted.slice(MAX_SLICES - 1).reduce((s, x) => s + x.value, 0), other: true }]
+    ? [...sorted.slice(0, MAX_SLICES - 1), { label: t("charts.other"), value: sorted.slice(MAX_SLICES - 1).reduce((s, x) => s + x.value, 0), other: true }]
     : sorted;
   const total = slices.reduce((sum, s) => sum + s.value, 0);
   const donut = text(props.variant) !== "pie";
@@ -396,9 +396,9 @@ export const PieChart: Part = ({ props }) => {
               className={cn("flex items-center gap-2 text-body transition-opacity duration-150", hover !== null && hover !== i && "opacity-50")}
             >
               <span aria-hidden className="size-2.5 shrink-0 rounded-[3px]" style={{ background: colour(i, slice) }} />
-              <span className="min-w-0 flex-1 truncate text-foreground">{slice.label || `Part ${i + 1}`}</span>
+              <span className="min-w-0 flex-1 truncate text-foreground">{slice.label || t("charts.partNumbered", { number: i + 1 })}</span>
               <span className="shrink-0 tabular-nums text-muted-foreground">{figure(slice.value)}</span>
-              <span className="w-10 shrink-0 text-right tabular-nums text-foreground">{Math.round((slice.value / total) * 100)}%</span>
+              <span className="w-10 shrink-0 text-right tabular-nums text-foreground">{formatNumber(slice.value / total, { style: "percent", maximumFractionDigits: 0 })}</span>
             </li>
           ))}
         </ul>

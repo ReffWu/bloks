@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import { useLabels } from "./host";
 import { elements, figure, isElement, list, num, text } from "./read";
-import { t } from "@/lib/i18n";
+import { t, useLanguage } from "@/lib/i18n";
 
 type Part = ComponentRenderer<Record<string, unknown>>;
 
@@ -316,6 +316,8 @@ export const Slider: Part = ({ props }) => {
   const span = max - min;
   const asked = num(props.step) ?? (text(props.variant) === "continuous" ? span / 100 : 1);
   const step = Math.max(asked > 0 ? asked : 1, span / (MAX_STOPS - 1)) || 1;
+  // the stops' labels are numbers written the reader's way
+  const language = useLanguage();
   const stops = useMemo<SliderStop<number>[]>(() => {
     const out: SliderStop<number>[] = [];
     for (let i = 0; min + i * step <= max + 1e-9 && out.length < MAX_STOPS; i++) {
@@ -323,7 +325,7 @@ export const Slider: Part = ({ props }) => {
       out.push({ value: v, label: figure(v) });
     }
     return out;
-  }, [min, max, step]);
+  }, [min, max, step, language]);
   const start = num(list(props.defaultValue)[0]);
   useSetDefaultValue({
     formName: field.formName,
@@ -355,9 +357,9 @@ export const DatePicker: Part = ({ props }) => {
     const [from, to] = [text(list(field.value)[0]), text(list(field.value)[1])];
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <UiInput id={id} type="date" aria-label={t("forms.from")} value={from} disabled={field.disabled} onChange={(e) => field.set([e.target.value, to], true)} className={look} />
-        <span className="text-small text-muted-foreground">{t("forms.to")}</span>
-        <UiInput type="date" aria-label={t("forms.to2")} value={to} min={from || undefined} disabled={field.disabled} onChange={(e) => field.set([from, e.target.value], true)} className={look} />
+        <UiInput id={id} type="date" aria-label={t("forms.rangeFrom")} value={from} disabled={field.disabled} onChange={(e) => field.set([e.target.value, to], true)} className={look} />
+        <span className="text-small text-muted-foreground">{t("forms.rangeBetween")}</span>
+        <UiInput type="date" aria-label={t("forms.rangeTo")} value={to} min={from || undefined} disabled={field.disabled} onChange={(e) => field.set([from, e.target.value], true)} className={look} />
       </div>
     );
   }

@@ -268,7 +268,7 @@ const MAX_ROWS = 200;
 
 function cell(value: unknown): ReactNode {
   if (typeof value === "number") return Number.isFinite(value) ? figure(value) : "";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "boolean") return value ? t("genuiParts.yes") : t("genuiParts.no");
   const words = text(value);
   return words ? <InlineMarkdown text={words} /> : null;
 }
@@ -333,7 +333,7 @@ export const Table: Part = ({ props }) => {
           </tbody>
         </table>
       </TableScroll>
-      {rows > shown && <div className="mt-1.5 text-small text-muted-foreground">{rows - shown} more rows not shown</div>}
+      {rows > shown && <div className="mt-1.5 text-small text-muted-foreground">{t("genuiParts.moreRowsNotShown", { count: rows - shown })}</div>}
     </div>
   );
 };
@@ -347,21 +347,21 @@ function StepMark({ state, index }: { state: string; index: number }) {
       return (
         <span className={cn(base, "bg-success/12 text-success")}>
           <Check size={11} strokeWidth={2.6} aria-hidden />
-          <span className="sr-only">{t("genuiParts.done")}</span>
+          <span className="sr-only">{t("genuiParts.step.done")}</span>
         </span>
       );
     case "doing":
       return (
         <span className={cn(base, "bg-brand-soft text-brand-ink")}>
           <CircleDot size={11} aria-hidden />
-          <span className="sr-only">{t("genuiParts.inProgress")}</span>
+          <span className="sr-only">{t("genuiParts.step.inProgress")}</span>
         </span>
       );
     case "failed":
       return (
         <span className={cn(base, "bg-destructive/10 text-destructive")}>
           <X size={11} strokeWidth={2.6} aria-hidden />
-          <span className="sr-only">{t("genuiParts.failed")}</span>
+          <span className="sr-only">{t("genuiParts.step.failed")}</span>
         </span>
       );
     case "todo":
@@ -551,7 +551,7 @@ export const Sources: Part = ({ props }) => {
       <ol className="mt-1 flex flex-col">
         {items.map((source, i) => {
           const url = safeHttpUrl(source.url);
-          const title = text(source.title) || (url ? new URL(url).host : "Source");
+          const title = text(source.title) || (url ? new URL(url).host : t("genuiParts.source"));
           const from = text(source.sourceName) || (url ? new URL(url).host.replace(/^www\./, "") : "");
           const row = (
             <>
@@ -600,7 +600,7 @@ export const Tabs: Part = ({ props, renderNode }) => {
             value={String(i)}
             className="flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-body font-medium text-muted-foreground outline-none transition-[background-color,color,box-shadow] duration-150 hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:not-focus-visible:shadow-[0_1px_2px_rgba(0,0,0,0.06),0_0_0_0.5px_rgba(0,0,0,0.06)] dark:data-[state=active]:not-focus-visible:shadow-[0_0_0_0.5px_rgba(255,255,255,0.08)]"
           >
-            {text(item.props.trigger) || `Tab ${i + 1}`}
+            {text(item.props.trigger) || t("genuiParts.tabNumbered", { number: i + 1 })}
           </TabsPrimitive.Trigger>
         ))}
       </TabsPrimitive.List>

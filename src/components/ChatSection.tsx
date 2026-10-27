@@ -33,7 +33,7 @@ import {
   type Health,
   type Step,
 } from "./ConnectionKit";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
 
 type Platform = "slack" | "discord";
 
@@ -72,11 +72,11 @@ const SLACK_SCOPES = ["channels:history", "groups:history", "channels:read", "gr
 
 /** One reading of a platform's state, the same words on every card. */
 function health(status: PlatformStatus): { tone: Health; label: string } {
-  if (!status.configured) return { tone: "off", label: "Not set up" };
-  if (!status.enabled) return { tone: "off", label: "Off" };
-  if (status.state === "connected") return { tone: "on", label: "Connected" };
-  if (status.state === "error") return { tone: "issue", label: "Not connected" };
-  return { tone: "wait", label: "Connecting" };
+  if (!status.configured) return { tone: "off", label: t("chatSection.health.notSetUp") };
+  if (!status.enabled) return { tone: "off", label: t("common.off") };
+  if (status.state === "connected") return { tone: "on", label: t("common.connected") };
+  if (status.state === "error") return { tone: "issue", label: t("chatSection.health.notConnected") };
+  return { tone: "wait", label: t("chatSection.health.connecting") };
 }
 
 export function ChatSection() {
@@ -200,14 +200,14 @@ function PlatformCard({
   const finishing = moment.armed && saved && status.state !== "error";
   const connectStep: Step = {
     key: "connect",
-    title: `Connect ${name}`,
+    title: t("chatSection.connectPlatform", { name }),
     state: saved ? (status.state === "connected" ? "done" : "wait") : busy ? "wait" : ready ? "now" : "later",
     body: saved ? (
-      <StepNote>Tokens saved. Waiting for {name} to answer.</StepNote>
+      <StepNote>{t("chatSection.tokensSaved", { name })}</StepNote>
     ) : (
       <Button variant="brand" size="sm" disabled={busy || !ready} onClick={connect}>
         {busy ? <Loader2 size={13} className="animate-spin" /> : null}
-        {busy ? "Checking with " + name : `Connect ${name}`}
+        {busy ? t("chatSection.checkingWith", { name }) : t("chatSection.connectPlatform", { name })}
       </Button>
     ),
   };
@@ -217,14 +217,15 @@ function PlatformCard({
       ? [
           {
             key: "app",
-            title: "Create a Slack app",
-            ...fieldStep(saved, botOk, "Done"),
+            title: t("chatSection.slack.createApp"),
+            ...fieldStep(saved, botOk, t("common.done")),
             body: (
               <>
                 <StepNote>
-                  Turn on Socket Mode. Give the bot these scopes, subscribe it to the{" "}
-                  <span className="font-mono">{t("chatSection.messageChannels")}</span> and <span className="font-mono">{t("chatSection.messageGroups")}</span>{" "}
-                  events, and install it.
+                  {tr("chatSection.slack.socketMode", {
+                    channels: <span className="font-mono">message.channels</span>,
+                    groups: <span className="font-mono">message.groups</span>,
+                  })}
                 </StepNote>
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {SLACK_SCOPES.map((scope) => (
@@ -239,8 +240,8 @@ function PlatformCard({
           },
           {
             key: "bot",
-            title: "Paste the bot token",
-            ...fieldStep(saved, botOk, "Saved"),
+            title: t("chatSection.slack.pasteBotToken"),
+            ...fieldStep(saved, botOk, t("common.saved")),
             body: (
               <SecretField
                 id="slack-bot-token"
@@ -257,8 +258,8 @@ function PlatformCard({
           },
           {
             key: "apptoken",
-            title: "Paste an app-level token",
-            ...fieldStep(saved, appOk, "Saved"),
+            title: t("chatSection.slack.pasteAppToken"),
+            ...fieldStep(saved, appOk, t("common.saved")),
             body: (
               <SecretField
                 id="slack-app-token"
@@ -279,8 +280,8 @@ function PlatformCard({
       : [
           {
             key: "bot",
-            title: "Create a Discord bot",
-            ...fieldStep(saved, discordOk, "Done"),
+            title: t("chatSection.discord.createBot"),
+            ...fieldStep(saved, discordOk, t("common.done")),
             body: (
               <>
                 <StepNote>
@@ -292,8 +293,8 @@ function PlatformCard({
           },
           {
             key: "token",
-            title: "Paste its token",
-            ...fieldStep(saved, discordOk, "Saved"),
+            title: t("chatSection.discord.pasteToken"),
+            ...fieldStep(saved, discordOk, t("common.saved")),
             body: (
               <SecretField
                 id="discord-token"
@@ -317,7 +318,7 @@ function PlatformCard({
       <ConnectionHeader
         icon={<MessagesSquare size={14} className="shrink-0 text-muted-foreground" />}
         title={name}
-        says={`Bring a shared room into a ${name} channel. People you let in name an agent to talk to it. Nothing new is opened on your network.`}
+        says={t("chatSection.platformSays", { name })}
         health={<HealthLine tone={h.tone} label={h.label} />}
         control={
           status.configured && (
@@ -331,7 +332,7 @@ function PlatformCard({
           <PairedMoment
             key="up"
             icon={<MessagesSquare size={18} />}
-            title={`${name} is connected`}
+            title={t("chatSection.platformConnected", { name })}
             detail={t("chatSection.pickAChannelForA")}
           />
         )}
@@ -339,11 +340,11 @@ function PlatformCard({
 
       {!status.configured && !settingUp ? (
         <Button size="sm" variant="secondary" className="mt-3" onClick={() => setSettingUp(true)}>
-          Set up {name}
+          {t("chatSection.setUpPlatform", { name })}
         </Button>
       ) : !status.configured ? (
         <>
-          <Checklist label={`Set up ${name}`} steps={steps} />
+          <Checklist label={t("chatSection.setUpPlatform", { name })} steps={steps} />
           <button
             onClick={() => {
               setSettingUp(false);
@@ -357,7 +358,7 @@ function PlatformCard({
           </button>
         </>
       ) : finishing ? (
-        <Checklist label={`Set up ${name}`} steps={steps} />
+        <Checklist label={t("chatSection.setUpPlatform", { name })} steps={steps} />
       ) : (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-3">
           <span className="min-w-0 text-small text-muted-foreground">
@@ -373,7 +374,7 @@ function PlatformCard({
             onClick={() => post({ forget: true })}
             className="text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline"
           >
-            Forget {name}
+            {t("chatSection.forgetPlatform", { name })}
           </button>
         </div>
       )}
@@ -425,7 +426,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
   const steps: Step[] = [
     {
       key: "meta",
-      title: "Add WhatsApp to a Meta app",
+      title: t("chatSection.whatsapp.addToMetaApp"),
       state: idOk ? "done" : "now",
       keep: true,
       body: (
@@ -437,7 +438,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
     },
     {
       key: "values",
-      title: "Paste three values",
+      title: t("chatSection.whatsapp.pasteThreeValues"),
       state: ready ? "done" : "now",
       keep: true,
       body: (
@@ -465,7 +466,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
             value={appSecret}
             onChange={setAppSecret}
             shape={SHAPE.waSecret}
-            hint={t("chatSection.n32LettersAndNumbersIn")}
+            hint={t("chatSection.whatsapp.appSecretHint")}
             onEnter={connect}
           />
         </div>
@@ -473,18 +474,18 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
     },
     {
       key: "connect",
-      title: "Connect WhatsApp",
+      title: t("chatSection.connectPlatform", { name: "WhatsApp" }),
       state: busy ? "wait" : ready ? "now" : "later",
       body: (
         <Button variant="brand" size="sm" disabled={busy || !ready} onClick={connect}>
           {busy ? <Loader2 size={13} className="animate-spin" /> : null}
-          {busy ? t("chatSection.checkingWithMeta") : t("chatSection.connectWhatsapp")}
+          {busy ? t("chatSection.checkingWith", { name: "Meta" }) : t("chatSection.connectPlatform", { name: "WhatsApp" })}
         </Button>
       ),
     },
     {
       key: "webhook",
-      title: "Point Meta's webhook here",
+      title: t("chatSection.whatsapp.pointWebhook"),
       state: "later",
     },
   ];
@@ -494,7 +495,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
       <ConnectionHeader
         icon={<MessagesSquare size={14} className="shrink-0 text-muted-foreground" />}
         title="WhatsApp"
-        says={t("chatSection.bringASharedRoomInto")}
+        says={t("chatSection.whatsapp.says")}
         health={<HealthLine tone={h.tone} label={h.label} />}
         control={
           status.configured && (
@@ -514,7 +515,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
           <PairedMoment
             key="up"
             icon={<MessagesSquare size={18} />}
-            title={status.number ? `Connected as ${status.number}` : t("chatSection.whatsappIsConnected")}
+            title={status.number ? t("chatSection.whatsapp.connectedAs", { number: status.number }) : t("chatSection.platformConnected", { name: "WhatsApp" })}
             detail={t("chatSection.oneLastStepInMeta")}
           />
         )}
@@ -522,11 +523,11 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
 
       {!status.configured && !settingUp ? (
         <Button size="sm" variant="secondary" className="mt-3" onClick={() => setSettingUp(true)}>
-          {t("chatSection.setUpWhatsapp")}
+          {t("chatSection.setUpPlatform", { name: "WhatsApp" })}
         </Button>
       ) : !status.configured ? (
         <>
-          <Checklist label={t("chatSection.setUpWhatsapp")} steps={steps} />
+          <Checklist label={t("chatSection.setUpPlatform", { name: "WhatsApp" })} steps={steps} />
           <button
             onClick={() => {
               setSettingUp(false);
@@ -547,8 +548,7 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
           {status.webhookUrl && status.verifyToken && (
             <div className="mt-3 space-y-2">
               <div className="text-small leading-relaxed text-muted-foreground">
-                Last step, in your app's WhatsApp settings: under Webhooks, paste these two, then subscribe to{" "}
-                <span className="font-mono">{t("chatSection.messages")}</span>.
+                {tr("chatSection.whatsapp.lastStep", { field: <span className="font-mono">messages</span> })}
               </div>
               <CopyRow label={t("chatSection.callbackUrl")} value={status.webhookUrl} />
               <CopyRow label={t("chatSection.verifyToken")} value={status.verifyToken} />
@@ -556,14 +556,14 @@ function WhatsAppCard({ status, onChange }: { status: WhatsAppStatus; onChange: 
           )}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-3">
             <span className="min-w-0 text-small text-muted-foreground">
-              {status.number ? `As ${status.number}` : t("chatSection.yourBusinessNumber")}
+              {status.number ? t("chatSection.whatsapp.asNumber", { number: status.number }) : t("chatSection.yourBusinessNumber")}
               {status.enabled && status.state === "error" && status.detail ? `. ${status.detail}` : ""}
             </span>
             <button
               onClick={() => post({ forget: true })}
               className="text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline"
             >
-              {t("chatSection.forgetWhatsapp")}
+              {t("chatSection.forgetPlatform", { name: "WhatsApp" })}
             </button>
           </div>
         </>
@@ -613,7 +613,7 @@ function SignalRoomsCard({ status, onChange }: { status: SignalStatus; onChange:
       <ConnectionHeader
         icon={<MessagesSquare size={14} className="shrink-0 text-muted-foreground" />}
         title={t("chatSection.signalGroups")}
-        says={t("chatSection.bringASharedRoomIntoA")}
+        says={t("chatSection.signal.says")}
         info={t("chatSection.throughSignalCliOnThis")}
         health={<HealthLine tone={h.tone} label={h.label} />}
         control={status.configured && <Switch aria-label={t("chatSection.signalGroups")} checked={status.enabled} disabled={busy} onCheckedChange={(on) => post({ enabled: on })} />}
@@ -621,7 +621,7 @@ function SignalRoomsCard({ status, onChange }: { status: SignalStatus; onChange:
       {status.configured ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-3">
           <span className="min-w-0 text-small text-muted-foreground">
-            {!status.enabled ? t("chatSection.switchedOff") : status.state === "error" ? status.detail || t("chatSection.notConnected") : `Rooms go through ${status.account}. Pick a group in a room's Share panel.`}
+            {!status.enabled ? t("chatSection.switchedOff") : status.state === "error" ? status.detail || t("chatSection.notConnected") : t("chatSection.signal.roomsGoThrough", { account: status.account ?? "" })}
           </span>
           <button onClick={() => post({ forget: true })} className="text-small text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-destructive hover:underline">
             {t("chatSection.forgetSignalGroups")}
@@ -676,10 +676,10 @@ function EmailCard() {
       .finally(() => setBusy(false));
   };
   const h: { tone: Health; label: string } = status.enabled
-    ? { tone: "on", label: "On" }
+    ? { tone: "on", label: t("chatSection.health.on") }
     : !status.cloud
-      ? { tone: "off", label: "Needs Cloud" }
-      : { tone: "off", label: "Off" };
+      ? { tone: "off", label: t("chatSection.health.needsCloud") }
+      : { tone: "off", label: t("common.off") };
   return (
     <div className="mb-9 rounded-2xl border bg-card p-5 last:mb-0">
       <ConnectionHeader

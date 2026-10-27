@@ -40,7 +40,7 @@ import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
 import { computerMeaning, computerOptions, firstPickedComputer, offersThisComputer } from "@/lib/hosted";
 import { useEscape } from "@/lib/useEscape";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, t } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -85,7 +85,7 @@ function RewindableFrame({ src, alt }: { src: string; alt: string }) {
       />
       {!live && (
         <span className="absolute left-2 top-2 rounded-md bg-black/70 px-1.5 py-0.5 text-caption font-semibold tabular-nums text-white">
-          {new Date(showing!.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}
+          {formatDate(showing!.at, { hour: "numeric", minute: "2-digit", second: "2-digit" })}
         </span>
       )}
       {tape.current.length > 1 && (
@@ -155,10 +155,10 @@ function LocalVmCard({ bot }: { bot: Bot }) {
         .then((s) => alive && setStatus(s))
         .catch(() => {});
     load();
-    const t = setInterval(load, 5_000);
+    const timer = setInterval(load, 5_000);
     return () => {
       alive = false;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, [bot.id]);
 
@@ -180,18 +180,18 @@ function LocalVmCard({ bot }: { bot: Bot }) {
         });
     };
     shoot();
-    const t = setInterval(shoot, 3_000);
+    const timer = setInterval(shoot, 3_000);
     return () => {
       alive = false;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, [status?.ready, visible]);
 
   return (
     <div className="mt-3">
       <div className="mb-1.5 flex items-center justify-between text-body font-medium text-muted-foreground">
-        <span>{bot.name}'s Local VM</span>
-        {status?.inUseBy && <span className="text-caption font-normal">{status.inUseBy} is using it</span>}
+        <span>{t("computerPanel.agentLocalVm", { name: bot.name })}</span>
+        {status?.inUseBy && <span className="text-caption font-normal">{t("computerPanel.inUseBy", { name: status.inUseBy })}</span>}
       </div>
       <div className="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/50">
         {frame && status?.ready ? (
@@ -225,7 +225,7 @@ function LocalVmCard({ bot }: { bot: Bot }) {
       ) : status !== null && !status.ready ? (
         <div className="mt-3 rounded-2xl border bg-card p-4">
           <div className="text-body leading-relaxed text-muted-foreground">
-            A free Linux desktop in a container on {thisComputer()}, separate from yours.
+            {t("computerPanel.localVmAbout", { computer: thisComputer() })}
           </div>
           <Button
             variant="secondary"
@@ -396,13 +396,13 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   };
 
   const emptyState: Record<Exclude<Phase, "ready" | "local" | "hosted">, string> = {
-    checking: "Checking…",
-    starting: "Starting your agent's computer…",
-    unconfigured: "No cloud computer configured",
-    "local-unavailable": "Local preview needs the desktop app",
-    "no-own-screen": "No screen: agents can see and click this computer's own screen only on a Mac. Its commands and files still run here. Choose Local VM below for a screen.",
-    off: "This agent's computer is off",
-    error: "Couldn't reach the computer",
+    checking: t("common.checking"),
+    starting: t("computerPanel.empty.starting"),
+    unconfigured: t("computerPanel.empty.unconfigured"),
+    "local-unavailable": t("computerPanel.empty.localUnavailable"),
+    "no-own-screen": t("computerPanel.empty.noOwnScreen"),
+    off: t("computerPanel.empty.off"),
+    error: t("computerPanel.empty.error"),
   };
 
   return (
@@ -439,12 +439,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
 
         {/* Screen preview */}
         <div className="mb-1.5 mt-3 flex items-center justify-between text-body font-medium text-muted-foreground">
-          <span>{bot.name}'s screen</span>
+          <span>{t("computerPanel.agentScreen", { name: bot.name })}</span>
           {phase === "local" && <span className="text-caption font-normal">{t("computerPanel.thisComputer")}</span>}
         </div>
         <div className="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/50">
           {frameSrc ? (
-            <RewindableFrame key={bot.id} src={frameSrc} alt={`${bot.name}'s screen`} />
+            <RewindableFrame key={bot.id} src={frameSrc} alt={t("computerPanel.agentScreen", { name: bot.name })} />
           ) : (
             <div className="flex flex-col items-center gap-2 px-6 text-center text-muted-foreground">
               {phase === "checking" || phase === "starting" || phase === "local" ? (
@@ -474,8 +474,8 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           <div className="mt-3 rounded-2xl border bg-card p-4">
             <div className="mb-3 text-body leading-relaxed text-muted-foreground">
               {ownScreen
-                ? t("computerPanel.addABoatApiKey")
-                : t("computerPanel.addABoatApiKeyTo")}
+                ? t("computerPanel.boat.addKey")
+                : t("computerPanel.boat.addKeyOrLocalVm")}
             </div>
             <ApiKeyRow
               bare
@@ -483,8 +483,8 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               label={t("computerPanel.boatApiKey")}
               placeholder={t("computerPanel.pasteYourBoatApiKey")}
               info={{
-                text: "A private cloud Linux computer for your agents. Boat is paid after its trial.",
-                linkLabel: "How to get a Boat API key",
+                text: t("computerPanel.boat.about"),
+                linkLabel: t("computerPanel.boat.howToGetKey"),
                 linkHref: "https://docs.boat.dev/api-keys",
               }}
               onSaved={(configured) => configured && setRetry((n) => n + 1)}
@@ -508,7 +508,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               ) : (
                 <ExternalLink size={14} />
               )}
-              Open desktop
+              {t("computerPanel.openDesktop")}
             </Button>
             {boxState !== "archived" && (
               <Button
@@ -518,7 +518,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
                 title={t("computerPanel.putTheComputerToSleep")}
               >
                 {pending === "sleep" ? <Loader2 size={14} className="animate-spin" /> : <Moon size={14} />}
-                Sleep
+                {t("computerPanel.sleep")}
               </Button>
             )}
           </div>
@@ -551,8 +551,8 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
                 {hosted
                   ? t("computerPanel.thisMachine")
                   : ownScreen
-                    ? t("computerPanel.cloudBoxIfThereIs")
-                    : t("computerPanel.cloudBoxIfThereIsOne")}
+                    ? t("computerPanel.automatic.fallsBackHere")
+                    : t("computerPanel.automatic.fallsBackNone")}
               </div>
             </div>
             <Switch
@@ -569,8 +569,8 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
           {!hosted && !bot.computer && !state.config?.box?.configured && (
             <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2 text-small text-muted-foreground">
               {ownScreen
-                ? t("computerPanel.noCloudBoxYetSo")
-                : t("computerPanel.noCloudBoxYetSoIt")}
+                ? t("computerPanel.noBox.usesThis")
+                : t("computerPanel.noBox.noScreen")}
             </div>
           )}
           <div
@@ -644,12 +644,12 @@ function HostedDesktop({ bot, desktop }: { bot: Bot; desktop: boolean }) {
       </div>
       <div className="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/50">
         {url ? (
-          <iframe title={`${bot.name}'s desktop`} src={url} referrerPolicy="no-referrer" className="h-full w-full border-0" />
+          <iframe title={t("computerPanel.agentDesktop", { name: bot.name })} src={url} referrerPolicy="no-referrer" className="h-full w-full border-0" />
         ) : (
           <div className="flex flex-col items-center gap-2 px-6 text-center text-muted-foreground">
             {desktop && !error ? <Loader2 size={18} className="animate-spin" /> : <Monitor size={22} />}
             <span className="text-small">
-              {error ?? (desktop ? t("computerPanel.openingTheDesktop") : `${bot.name} works in this machine's browser. No virtual desktop is set up to watch.`)}
+              {error ?? (desktop ? t("computerPanel.openingTheDesktop") : t("computerPanel.hostedNoDesktop", { name: bot.name }))}
             </span>
           </div>
         )}
@@ -697,8 +697,8 @@ function ComputerPermissions({ visible }: { visible: boolean }) {
   // CuaDriver install manages its own.
   if (!perms?.available || perms.owner !== "bloks") return null;
   const missing = [
-    !perms.accessibility && { label: "Accessibility", pane: "accessibility" as const },
-    !perms.screenRecording && { label: "Screen Recording", pane: "screen" as const },
+    !perms.accessibility && { label: t("computerPanel.permission.accessibility"), pane: "accessibility" as const },
+    !perms.screenRecording && { label: t("computerPanel.permission.screenRecording"), pane: "screen" as const },
   ].filter(Boolean) as Array<{ label: string; pane: "accessibility" | "screen" }>;
   if (!missing.length) return null;
 
@@ -714,14 +714,14 @@ function ComputerPermissions({ visible }: { visible: boolean }) {
     <div className="mt-3 rounded-2xl border bg-card p-4">
       <div className="text-body font-medium text-foreground">{t("computerPanel.computerUseNeedsPermission")}</div>
       <div className="mt-1 text-body leading-relaxed text-muted-foreground">
-        To see and use {thisComputer()}, Bloks needs {missing.map((m) => m.label).join(" and ")}.
-        {asked && t("computerPanel.noPromptTurnBloksOn")}
+        {t("computerPanel.permission.needs", { computer: thisComputer(), permissions: formatList(missing.map((m) => m.label)) })}
+        {asked && ` ${t("computerPanel.permission.noPrompt")}`}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {!asked && (
           <Button size="sm" onClick={ask} disabled={asking}>
             {asking && <Loader2 size={14} className="animate-spin" />}
-            Grant access
+            {t("computerPanel.permission.grantAccess")}
           </Button>
         )}
         {missing.map((m) => (
@@ -731,7 +731,7 @@ function ComputerPermissions({ visible }: { visible: boolean }) {
             variant="secondary"
             onClick={() => window.bloks?.permOpenSettings(m.pane)}
           >
-            Open {m.label} settings
+            {t("computerPanel.permission.openSettings", { pane: m.label })}
           </Button>
         ))}
       </div>
@@ -769,9 +769,10 @@ function TakeTheWheel({ bot }: { bot: Bot }) {
         </div>
         <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
           {hold
-            ? `${bot.name} waits until you hand it back` +
-              (hold.turnedAway ? `. ${hold.turnedAway} ${hold.turnedAway === 1 ? "thing" : "things"} turned away so far.` : ".")
-            : `Use it yourself. ${bot.name} waits while you do.`}
+            ? hold.turnedAway
+              ? t("computerPanel.wheel.heldTurnedAway", { name: bot.name, count: hold.turnedAway })
+              : t("computerPanel.wheel.held", { name: bot.name })
+            : t("computerPanel.wheel.offer", { name: bot.name })}
         </div>
       </div>
       <Button
