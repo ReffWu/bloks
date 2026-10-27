@@ -268,8 +268,12 @@ const BECAUSE_OF: Record<NonNullable<Proposal["trigger"]>, string> = {
   recovery: "after a step failed and it found another way",
   correction: "after you corrected it",
   deviation: "after it used this skill for real work",
-  agent: "who asked for this change",
+  agent: "asking for this change",
 };
+
+/** Who it is from, inside a sentence: an agent by its name, another app
+ * as "an app on this computer". */
+const fromWhom = (p: Proposal) => (p.by === "app" ? p.botName.charAt(0).toLowerCase() + p.botName.slice(1) : p.botName);
 
 /**
  * A skill the workspace wrote and has not installed.
@@ -321,7 +325,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           {proposal.because}
         </div>
         <div className="mt-1 text-small text-muted-foreground/80">
-          From {proposal.botName}
+          From {fromWhom(proposal)}
           {proposal.trigger ? `, ${BECAUSE_OF[proposal.trigger]}` : ""}.
           {patch && proposal.base !== undefined && ` Against ${proposal.base === 0 ? "the built-in text" : `version ${proposal.base}`}.`}{" "}
           {open ? "Hide" : "Show"}
