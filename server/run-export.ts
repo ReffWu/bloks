@@ -784,12 +784,14 @@ const OTHERS_VIA = new Set(["email", "whatsapp", "slack", "discord"]);
 
 /** Said to the agent and part of the conversation. */
 const said = (m: Message) => m.role === "user" && m.kind === "text" && !m.queued && !m.unsent;
-/** The owner's own words, typed here or from their own Telegram. */
+/** The owner's own words, typed here or from their own Telegram or Signal. */
 const ownWords = (m: Message) => said(m) && !m.agent && !m.via && !othersWords(m);
 function othersWords(m: Message): boolean {
   if (m.role !== "user") return false;
   if (m.author && m.author !== "owner") return true;
   if (m.telegramPerson || m.telegramDelegate) return true;
+  // a person the owner let in on Signal; the owner's own Signal has no personId
+  if (m.fromSignal?.personId) return true;
   return Boolean(m.via && OTHERS_VIA.has(m.via));
 }
 /** Who said a message that opened or joined a turn, as a record says it. */
@@ -797,6 +799,7 @@ function speaker(m: Message): string {
   if (m.agent) return `agent:${m.agent.peerName}`;
   if (m.author && m.author !== "owner") return "member";
   if (m.telegramPerson || m.telegramDelegate) return "telegram";
+  if (m.fromSignal?.personId) return "signal";
   if (m.via) return m.via;
   return "owner";
 }
@@ -1656,7 +1659,7 @@ export async function runExport(source: ExportSource, choice: ExportChoice, { ou
         : "Members' private conversations stay out: reading them is off for this workspace.",
     );
   }
-  if (choice.include.otherPeople) warnings.push("Other people's messages are in this export: members, people on Telegram, email and chat apps.");
+  if (choice.include.otherPeople) warnings.push("Other people's messages are in this export: members, people on Telegram and Signal, email and chat apps.");
   if (choice.include.memory) warnings.push("Agent memory is in this export, in each record's system message.");
 
   const partial = out ? `${out}.partial` : null;
@@ -1707,8 +1710,9 @@ export async function runExport(source: ExportSource, choice: ExportChoice, { ou
         leave("memberPrivate", asks.length);
         continue;
       }
-      // a guest's mail is somebody else's words, every turn of it
-      const lane = task.guestMail ? asks.map((a) => ({ ...a, others: true })) : asks;
+      // a guest's mail, or the conversation a person on Signal is answered
+      // in, is somebody else's words, every turn of it
+      const lane = task.guestMail || task.signalPerson ? asks.map((a) => ({ ...a, others: true })) : asks;
       const inDates = lane.filter((a) => (choice.from === null || a.at >= choice.from) && (choice.to === null || a.at <= choice.to));
       leave("dates", lane.length - inDates.length);
       if (!inDates.length) continue;

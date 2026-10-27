@@ -324,4 +324,25 @@ test("the transcript's turns are read the way a Redo reads them", () => {
   assert.equal(turns[0].corrected, true, "steered while it ran");
 });
 
+test("a person let in on Signal is somebody else, as a Telegram stranger is; the owner on Signal is the owner", () => {
+  const signal = { botId: "cody", generation: "g" };
+  const turns = transcriptTurns("lane", [
+    { id: "1", role: "user", kind: "text", text: "from my phone", at: 1_000, fromSignal: signal },
+    { id: "2", role: "bot", kind: "text", text: "ok", at: 1_001 },
+    { id: "3", role: "user", kind: "text", text: "hi, it's Kim", at: 1_002, fromSignal: { ...signal, personId: "sp-1" } },
+    { id: "4", role: "bot", kind: "text", text: "hello Kim", at: 1_003 },
+  ]);
+  assert.deepEqual(turns.map((t) => t.others), [false, true]);
+});
+
+test("a Signal person's own conversation is left out with other people's words", async (t) => {
+  const { data, source } = workspace(t);
+  const bots = JSON.parse(readFileSync(join(data, "bots.json"), "utf8"));
+  const before = reasons((await runExport(source, defaultChoice())).summary).others ?? 0;
+  // the Codex lane, answered for a person on Signal: every turn in it is theirs
+  for (const bot of bots) for (const task of bot.tasks ?? []) if (task.id === "lane-codex") task.signalPerson = "sp-1";
+  const after = await runExport({ ...source, bots }, defaultChoice());
+  assert.equal(reasons(after.summary).others, before + 1, "the owner's ask in that lane counts as theirs too");
+});
+
 type TrajectoryStep = TrajectoryRecord["steps"][number];
