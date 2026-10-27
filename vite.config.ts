@@ -1,10 +1,24 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+// The catalogues are imported with `with { type: "json" }`, which Node
+// needs (the tests load them) and the build strips. The dev server serves
+// JSON as a JavaScript module, so a browser told to expect JSON refuses it
+// and every language falls back to English: dropped here, in dev only.
+const catalogueImports: Plugin = {
+  name: "bloks-catalogue-imports",
+  apply: "serve",
+  enforce: "pre",
+  transform(code, id) {
+    if (!id.endsWith("/src/lib/i18n.ts")) return;
+    return code.replace(/(import\("\.\.\/locales\/[\w-]+\.json"), \{ with: \{ type: "json" \} \}\)/g, "$1)");
+  },
+};
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), catalogueImports],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
