@@ -18,7 +18,7 @@ import { useStore } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { Markdownish } from "./Markdown";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { formatDate, t } from "@/lib/i18n";
 
 export interface BriefResult {
   key: string;
@@ -44,15 +44,15 @@ const startOfDay = (at: number) => {
   const d = new Date(at);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 };
-const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const clock = (at: number) => formatDate(at, { hour: "numeric", minute: "2-digit" });
 
 /** "8:42 AM", "Yesterday 8:40 PM", "Tue 8:40 AM": as near as it is. */
 export function when(at: number, now = Date.now()): string {
   const days = Math.round((startOfDay(now) - startOfDay(at)) / 86_400_000);
   if (days === 0) return clock(at);
-  if (days === -1) return `Tomorrow ${clock(at)}`;
-  if (days === 1) return `Yesterday ${clock(at)}`;
-  return `${new Date(at).toLocaleDateString([], { weekday: "short" })} ${clock(at)}`;
+  if (days === -1) return t("briefCards.when.tomorrow", { time: clock(at) });
+  if (days === 1) return t("briefCards.when.yesterday", { time: clock(at) });
+  return t("briefCards.when.weekday", { day: formatDate(at, { weekday: "short" }), time: clock(at) });
 }
 
 /** The line under a card's name: where it stands, in a few words, and
@@ -60,22 +60,27 @@ export function when(at: number, now = Date.now()): string {
 function standing(r: BriefResult): { words: string; tone: "plain" | "muted" | "warning" | "destructive" } {
   switch (r.state) {
     case "failed":
-      return { words: r.at ? `Failed ${when(r.at)}` : "Failed", tone: "destructive" };
+      return { words: r.at ? t("briefCards.standing.failedAt", { when: when(r.at) }) : t("briefCards.standing.failed"), tone: "destructive" };
     case "late":
-      return { words: r.dueAt ? `Due ${when(r.dueAt)}, has not run yet` : "Has not run yet", tone: "warning" };
+      return { words: r.dueAt ? t("briefCards.standing.dueNotRun", { when: when(r.dueAt) }) : t("briefCards.standing.notRunYet"), tone: "warning" };
     case "running":
-      return { words: "Running now", tone: "plain" };
+      return { words: t("briefCards.standing.runningNow"), tone: "plain" };
     case "quiet":
-      return { words: r.at ? `Nothing needed you · ${when(r.at)}` : "Nothing needed you", tone: "muted" };
+      return { words: r.at ? t("briefCards.standing.quietAt", { when: when(r.at) }) : t("briefCards.standing.quiet"), tone: "muted" };
     case "unchanged":
-      return { words: r.checkedAt ? `No change · looked ${when(r.checkedAt)}` : "No change", tone: "muted" };
+      return { words: r.checkedAt ? t("briefCards.standing.unchangedAt", { when: when(r.checkedAt) }) : t("briefCards.standing.unchanged"), tone: "muted" };
     case "none":
-      return { words: r.nextAt ? `No report yet · first ${when(r.nextAt)}` : "No report yet", tone: "muted" };
+      return { words: r.nextAt ? t("briefCards.standing.noReportFirst", { when: when(r.nextAt) }) : t("briefCards.standing.noReport"), tone: "muted" };
     default:
       // words from before this brief's stretch of time are said as old
       return r.at
-        ? { words: r.fresh ? `${r.state === "changed" ? "Changed" : "Reported"} ${when(r.at)}` : `Last report ${when(r.at)}`, tone: r.fresh ? "plain" : "muted" }
-        : { words: "Reported", tone: "plain" };
+        ? {
+            words: r.fresh
+              ? t(r.state === "changed" ? "briefCards.standing.changedAt" : "briefCards.standing.reportedAt", { when: when(r.at) })
+              : t("briefCards.standing.lastReportAt", { when: when(r.at) }),
+            tone: r.fresh ? "plain" : "muted",
+          }
+        : { words: t("briefCards.standing.reported"), tone: "plain" };
   }
 }
 
@@ -137,7 +142,7 @@ export function ResultCard({ result, after, onOpen }: { result: BriefResult; aft
       )}
       {earlier && (
         <div className="mt-2.5 min-w-0 text-body leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
-          <p className="mb-1 text-small">Its last report{result.at ? `, ${when(result.at)}` : ""}:</p>
+          <p className="mb-1 text-small">{result.at ? t("briefCards.itsLastReportAt", { when: when(result.at) }) : t("briefCards.itsLastReport")}</p>
           <Markdownish text={result.text!} />
         </div>
       )}
@@ -155,7 +160,7 @@ export function ResultCard({ result, after, onOpen }: { result: BriefResult; aft
             <ArrowUpRight size={12} className="text-muted-foreground transition-colors duration-150 group-hover:text-foreground" />
           </button>
         )}
-        {result.nextAt && result.state !== "none" && <span>Next {when(result.nextAt)}</span>}
+        {result.nextAt && result.state !== "none" && <span>{t("briefCards.nextAt", { when: when(result.nextAt) })}</span>}
         {result.briefOnly && (
           <span className="inline-flex items-center gap-1" title={t("briefCards.itsReportsWaitHereWith")}>
             <BellOff size={11} />

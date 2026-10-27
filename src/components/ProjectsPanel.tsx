@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { BrowseFolderButton } from "@/components/ui/browse-folder";
 import { cn } from "@/lib/cn";
 import { EmptyState, PanelHeader, SkeletonRows } from "./OverviewParts";
-import { t } from "@/lib/i18n";
+import { formatList, t, type MessageKey } from "@/lib/i18n";
 
 interface FolderStanding {
   path: string;
@@ -46,10 +46,10 @@ export interface ProjectRow {
   broken: boolean;
 }
 
-const WHY: Record<FolderStanding["state"], string | null> = {
+const WHY: Record<FolderStanding["state"], MessageKey | null> = {
   ok: null,
-  missing: "missing",
-  "not-a-folder": "not a folder",
+  missing: "projectsPanel.folder.missing",
+  "not-a-folder": "projectsPanel.folder.notAFolder",
 };
 
 export function ProjectsPanel() {
@@ -151,7 +151,7 @@ export function ProjectsPanel() {
                       </div>
                       <div className="mt-0.5 text-small text-muted-foreground">
                         {members.length
-                          ? members.map((b) => b!.name).join(", ")
+                          ? formatList(members.map((b) => b!.name), { type: "unit" })
                           : t("projectsPanel.nobodyOnItYet")}
                       </div>
                     </div>
@@ -195,7 +195,7 @@ export function ProjectsPanel() {
                             <TriangleAlert size={12} className="shrink-0" />
                           )}
                           <span className="truncate font-mono">{folder.path}</span>
-                          {WHY[folder.state] && <span className="shrink-0">· {WHY[folder.state]}</span>}
+                          {WHY[folder.state] && <span className="shrink-0">· {t(WHY[folder.state]!)}</span>}
                         </div>
                       ))}
                     </div>
@@ -269,7 +269,7 @@ function ProjectForm({
           <button
             key={c}
             onClick={() => setColor(c)}
-            aria-label={c}
+            aria-label={t(`projectsPanel.color.${c}`)}
             className={cn(
               "size-5 rounded-full border-2 transition-transform duration-150 hover:scale-110",
               color === c ? "border-foreground" : "border-transparent",
@@ -282,7 +282,7 @@ function ProjectForm({
           <button
             key={s}
             onClick={() => setShape(s)}
-            aria-label={s}
+            aria-label={t(`projectsPanel.shape.${s}`)}
             className={cn(
               "rounded-md p-0.5 transition-colors duration-150",
               shape === s ? "bg-accent" : "hover:bg-accent/60",
@@ -294,7 +294,7 @@ function ProjectForm({
       </div>
 
       <label className="text-body text-muted-foreground">
-        Brief, shared with everyone on it
+        {t("projectsPanel.briefSharedWithEveryone")}
         <Textarea
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
@@ -305,13 +305,13 @@ function ProjectForm({
       </label>
 
       <label className="text-body text-muted-foreground">
-        Folders, one per line. Work happens in the first one found.
+        {t("projectsPanel.foldersOnePerLine")}
         <div className="mt-1 flex items-start gap-1.5">
           <Textarea
             value={folders}
             onChange={(e) => setFolders(e.target.value)}
             rows={2}
-            placeholder={t("projectsPanel.usersYouSrcApi")}
+            placeholder="/Users/you/src/api"
             className="resize-none font-mono text-small"
           />
           <BrowseFolderButton
@@ -323,11 +323,11 @@ function ProjectForm({
       </label>
 
       <label className="text-body text-muted-foreground">
-        Key paths, comma separated (a hint, not a filter)
+        {t("projectsPanel.keyPathsHint")}
         <Input
           value={include}
           onChange={(e) => setInclude(e.target.value)}
-          placeholder={t("projectsPanel.srcDocsMd")}
+          placeholder="src/**, docs/*.md"
           className="mt-1 font-mono text-small"
         />
       </label>

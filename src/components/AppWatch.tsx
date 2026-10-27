@@ -30,7 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import { useConnectors } from "@/lib/useConnectors";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, t, tr, type MessageKey } from "@/lib/i18n";
 
 export interface AppRun {
   at: number;
@@ -95,41 +95,46 @@ interface Account {
 }
 
 export const ago = (at?: number) => {
-  if (!at) return "never";
+  if (!at) return t("appWatch.ago.never");
   const minutes = Math.round((Date.now() - at) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t("appWatch.ago.justNow");
+  if (minutes < 60) return t("appWatch.ago.minutes", { n: minutes });
   const hours = Math.round(minutes / 60);
-  return hours < 24 ? `${hours} h ago` : new Date(at).toLocaleDateString();
+  return hours < 24 ? t("appWatch.ago.hours", { n: hours }) : formatDate(at);
 };
 
 const ease = [0.23, 1, 0.32, 1] as const;
 
+/** “Acme” or “invoice”: the words a filter listens for, any one of them. */
+const anyOf = (words: string[]) => formatList(words.map((w) => t("appWatch.quoted", { text: w })), { type: "disjunction" });
+
 /** When it acts, in words, the way the server's card says it. */
 export function appWhen(app: { toolkit: string; toolkitName?: string; trigger: string; triggerName?: string; filter?: string[] }): string {
   const event = (app.triggerName || app.trigger).replace(/\.$/, "");
-  const filter = app.filter?.length ? `, only when it mentions ${app.filter.map((f) => `“${f}”`).join(" or ")}` : "";
-  return `${app.toolkitName || app.toolkit} says “${event}”${filter}`;
+  const name = app.toolkitName || app.toolkit;
+  return app.filter?.length
+    ? t("appWatch.when.saysMentioning", { app: name, event, words: anyOf(app.filter) })
+    : t("appWatch.when.says", { app: name, event });
 }
 
 /** A list row's second line. */
 export function appRowStatus(w: { enabled: boolean; app?: AppView }): string | null {
   const app = w.app;
   if (!app) return null;
-  if (app.proposal) return "Waiting for your yes";
-  if (app.paused) return "Paused: disconnected";
+  if (app.proposal) return t("appWatch.row.waitingForYes");
+  if (app.paused) return t("appWatch.row.pausedDisconnected");
   if (!w.enabled) return null;
   const heard = app.runs.find((r) => r.outcome !== "missed");
-  return heard ? `Heard ${ago(heard.at)}` : "Listening";
+  return heard ? t("appWatch.row.heardAgo", { when: ago(heard.at) }) : t("appWatch.listening");
 }
 
-const OUTCOME: Record<AppRun["outcome"], string> = {
-  started: "Started",
-  queued: "Waiting",
-  filtered: "Filtered out",
-  held: "Held back",
-  failed: "Did not start",
-  missed: "Missed",
+const OUTCOME: Record<AppRun["outcome"], MessageKey> = {
+  started: "appWatch.outcome.started",
+  queued: "appWatch.outcome.queued",
+  filtered: "appWatch.outcome.filtered",
+  held: "appWatch.outcome.held",
+  failed: "appWatch.outcome.failed",
+  missed: "appWatch.outcome.missed",
 };
 
 // ── the form ───────────────────────────────────────────────────────────
@@ -167,7 +172,7 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
   const [filter, setFilter] = useState("");
 
   const keyed = apps?.projectKey !== false;
-  const type = types?.find((t) => t.slug === trigger);
+  const type = types?.find((option) => option.slug === trigger);
   const appLabel = connectors.cards?.find((c) => c.slug === toolkit)?.label ?? toolkit;
 
   // an app picked: its events and its accounts, both from Composio
@@ -203,13 +208,13 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
 
   const missingField = type?.fields.find((f) => f.required && (config[f.key] === undefined || config[f.key] === ""));
   const missing = !toolkit
-    ? "Pick an app."
+    ? t("appWatch.missing.app")
     : !trigger
-      ? "Pick an event."
+      ? t("appWatch.missing.event")
       : missingField
-        ? `Add ${missingField.title}.`
+        ? t("appWatch.missing.field", { field: missingField.title })
         : accounts && !accounts.length
-          ? `Connect a ${appLabel} account first.`
+          ? t("appWatch.missing.account", { app: appLabel })
           : undefined;
   useEffect(() => {
     onChange({
@@ -332,35 +337,35 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
 
       {toolkit && (
         <>
-          <div className="mt-6 mb-2 text-body font-medium text-foreground">When {appLabel} says</div>
+          <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("appWatch.whenAppSays", { app: appLabel })}</div>
           {typesError ? (
             <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{typesError}</div>
           ) : types === null ? (
             <div className="flex items-center gap-2 text-body text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" /> Asking Composio what {appLabel} can say
+              <Loader2 size={14} className="animate-spin" /> {t("appWatch.askingComposio", { app: appLabel })}
             </div>
           ) : types.length === 0 ? (
-            <div className="text-body text-muted-foreground">{appLabel} has no events Composio can send. Pick another app.</div>
+            <div className="text-body text-muted-foreground">{t("appWatch.noEvents", { app: appLabel })}</div>
           ) : (
             <div role="radiogroup" aria-label={t("appWatch.whichEvent")} className="flex max-h-[260px] flex-col gap-1 overflow-y-auto rounded-xl border p-1">
-              {types.map((t) => {
-                const on = trigger === t.slug;
+              {types.map((event) => {
+                const on = trigger === event.slug;
                 return (
                   <button
-                    key={t.slug}
+                    key={event.slug}
                     type="button"
                     role="radio"
                     aria-checked={on}
-                    onClick={() => setTrigger(t.slug)}
+                    onClick={() => setTrigger(event.slug)}
                     className={cn("flex flex-col items-start rounded-lg px-3 py-2 text-left transition-colors duration-150", on ? "bg-brand-soft" : "hover:bg-accent/60")}
                   >
                     <span className="flex w-full items-center justify-between gap-2 text-body font-medium text-foreground">
-                      {t.name}
+                      {event.name}
                       {on && <Check size={14} className="shrink-0 text-brand-ink" />}
                     </span>
-                    {t.description && <span className="text-small leading-snug text-muted-foreground">{t.description}</span>}
+                    {event.description && <span className="text-small leading-snug text-muted-foreground">{event.description}</span>}
                     <span className="text-caption text-muted-foreground/80">
-                      {t.delivery === "poll" ? "Arrives when Composio next looks, up to about 15 minutes" : "Arrives within seconds"}
+                      {event.delivery === "poll" ? t("appWatch.delivery.poll") : t("appWatch.delivery.webhook")}
                     </span>
                   </button>
                 );
@@ -382,11 +387,11 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
             <div className="mt-6 mb-2 text-body font-medium text-foreground">{t("appWatch.whichAccount")}</div>
             {accounts === null ? (
               <div className="flex items-center gap-2 text-body text-muted-foreground">
-                <Loader2 size={14} className="animate-spin" /> Looking for {appLabel} accounts
+                <Loader2 size={14} className="animate-spin" /> {t("appWatch.lookingForAccounts", { app: appLabel })}
               </div>
             ) : accounts.length === 0 ? (
               <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">
-                No {appLabel} account is connected in your Composio project yet. Connect one there, then pick this again.
+                {t("appWatch.noAccount", { app: appLabel })}
               </div>
             ) : (
               <div role="radiogroup" aria-label={t("appWatch.whichAccount")} className="flex flex-wrap gap-1.5">
@@ -399,7 +404,7 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
               </div>
             )}
             <label className="mt-6 mb-2 block text-body font-medium text-foreground" htmlFor="app-filter">
-              Only when it mentions <span className="font-normal text-muted-foreground">{t("appWatch.optional")}</span>
+              {tr("appWatch.onlyWhenItMentionsOptional", { optional: <span className="font-normal text-muted-foreground">{t("appWatch.optional")}</span> })}
             </label>
             <Input id="app-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("appWatch.acmeInvoice")} className="rounded-xl text-body" />
             <div className="mt-1.5 text-small text-muted-foreground">{t("appWatch.wholeWordsAnyOneOf")}</div>
@@ -415,12 +420,13 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
 /** Whether it can hear right now, in one line, and how worried to be. */
 function hearing(w: { enabled: boolean; app: AppView }, apps: AppsStatus | null): { text: string; tone: "ok" | "wait" | "warn" } {
   const name = w.app.toolkitName || w.app.toolkit;
-  if (w.app.proposal) return { text: "Nothing listens until you say yes.", tone: "wait" };
-  if (!w.enabled) return { text: w.app.paused?.note ?? "Paused. Switch it on to listen.", tone: w.app.paused ? "warn" : "wait" };
-  if (apps && !apps.projectKey) return { text: "Not listening: the Composio project key is gone. Add it in Settings, Apps and keys.", tone: "warn" };
-  if (apps?.listening === "live") return { text: `Listening. Events from ${name} arrive as they happen.`, tone: "ok" };
-  if (apps?.listening === "refused") return { text: `Not listening: ${apps.error ?? "Composio refused to send events here."}`, tone: "warn" };
-  return { text: `Connecting to Composio to hear ${name}.`, tone: "wait" };
+  if (w.app.proposal) return { text: t("appWatch.hearing.untilYes"), tone: "wait" };
+  // a pause's note is the server's own words
+  if (!w.enabled) return { text: w.app.paused?.note ?? t("appWatch.hearing.paused"), tone: w.app.paused ? "warn" : "wait" };
+  if (apps && !apps.projectKey) return { text: t("appWatch.hearing.noKey"), tone: "warn" };
+  if (apps?.listening === "live") return { text: t("appWatch.hearing.live", { app: name }), tone: "ok" };
+  if (apps?.listening === "refused") return { text: t("appWatch.hearing.refused", { why: apps.error ?? t("appWatch.hearing.refusedWhy") }), tone: "warn" };
+  return { text: t("appWatch.hearing.connecting", { app: name }), tone: "wait" };
 }
 
 export function AppWatchDetail({
@@ -469,11 +475,11 @@ export function AppWatchDetail({
     <div className="flex flex-col gap-4">
       {app.proposal && (
         <div className="flex flex-col gap-2 rounded-xl border border-brand/30 bg-brand-soft px-3.5 py-3 text-body text-foreground">
-          <div className="font-medium">{app.proposal.name} proposed this watcher</div>
+          <div className="font-medium">{t("appWatch.proposedBy", { name: app.proposal.name })}</div>
           <div className="text-muted-foreground">{t("appWatch.nothingListensAndNothingIs")}</div>
           <div className="flex gap-2">
             <Button size="sm" disabled={busy !== null} onClick={() => call("confirm", `/api/watchers/${w.id}/confirm`, { method: "POST", body: "{}" })}>
-              {busy === "confirm" ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} Start watching
+              {busy === "confirm" ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} {t("appWatch.startWatching")}
             </Button>
             <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => call("decline", `/api/watchers/${w.id}/decline`, { method: "POST", body: "{}" })}>
               {t("common.notNow")}
@@ -487,10 +493,10 @@ export function AppWatchDetail({
           <div className="flex items-center gap-2 text-lead font-semibold text-foreground">
             <Zap size={15} className="text-muted-foreground" /> {w.name}
           </div>
-          <div className="mt-0.5 text-body text-muted-foreground">When {appWhen(app)}.</div>
+          <div className="mt-0.5 text-body text-muted-foreground">{t("appWatch.whenEvent", { event: appWhen(app) })}</div>
           {app.madeBy && (
             <div className="mt-1 text-small text-muted-foreground">
-              Set up by {app.madeBy.name}, an admin. Its turns go to {bot?.name ?? t("appWatch.theAgent")}'s team conversation, as theirs.
+              {t("appWatch.setUpByAdmin", { admin: app.madeBy.name, name: bot?.name ?? t("appWatch.theAgent") })}
             </div>
           )}
         </div>
@@ -525,7 +531,7 @@ export function AppWatchDetail({
       )}
 
       <label className="flex flex-col gap-1.5 text-body text-muted-foreground">
-        Only when it mentions
+        {t("appWatch.onlyWhenItMentions")}
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -535,7 +541,7 @@ export function AppWatchDetail({
         />
       </label>
       <label className="flex flex-col gap-1.5 text-body text-muted-foreground">
-        What {bot?.name ?? t("appWatch.theAgent")} does when it happens
+        {t("appWatch.whatDoesWhenHappens", { name: bot?.name ?? t("appWatch.theAgent") })}
         <Textarea
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
@@ -545,7 +551,7 @@ export function AppWatchDetail({
       </label>
       {!app.madeBy && (
         <label className="flex flex-col gap-1.5 text-body text-muted-foreground">
-          Which chat it replies in
+          {t("appWatch.whichChatItRepliesIn")}
           <Input
             value={thread}
             onChange={(e) => setThread(e.target.value)}
@@ -558,7 +564,7 @@ export function AppWatchDetail({
       )}
       <div className="flex flex-wrap items-end gap-3 text-body text-muted-foreground">
         <label className="flex flex-col gap-1.5">
-          At most an hour
+          {t("appWatch.atMostAnHour")}
           <Input
             inputMode="numeric"
             value={perHour}
@@ -568,7 +574,7 @@ export function AppWatchDetail({
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          At most a day
+          {t("appWatch.atMostADay")}
           <Input
             inputMode="numeric"
             value={perDay}
@@ -577,7 +583,7 @@ export function AppWatchDetail({
             className="w-[96px] text-body text-foreground"
           />
         </label>
-        <span className="pb-2">{app.turnsToday} today</span>
+        <span className="pb-2">{t("appWatch.turnsToday", { count: app.turnsToday })}</span>
       </div>
 
       {w.lastError && !app.paused && <div className="rounded-lg bg-warning/10 px-3 py-2 text-body text-warning">{w.lastError}</div>}
@@ -597,7 +603,7 @@ export function AppWatchDetail({
                     r.outcome === "started" || r.outcome === "queued" ? "text-foreground" : r.outcome === "missed" || r.outcome === "failed" ? "text-warning" : "text-muted-foreground",
                   )}
                 >
-                  {OUTCOME[r.outcome]}
+                  {t(OUTCOME[r.outcome])}
                 </span>
                 <span className={cn("min-w-0 flex-1 text-foreground", r.outcome === "missed" ? "text-pretty" : "truncate")}>{r.summary}</span>
                 {r.laneId && bot && (
@@ -613,7 +619,7 @@ export function AppWatchDetail({
 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => call("check", `/api/watchers/${w.id}/check`, { method: "POST" })}>
-          {busy === "check" ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} Check now
+          {busy === "check" ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} {t("appWatch.checkNow")}
         </Button>
         <Button
           variant="ghost"
@@ -659,27 +665,27 @@ export function AppWatchCard({ plan, answered }: { plan: AppWatchPlan; answered?
       <div className="px-4 pt-4">
         <div className="text-caption font-semibold uppercase tracking-[0.1em] text-brand-ink">{started ? t("appWatch.watching") : answered ? t("appWatch.notWatching") : t("appWatch.proposedWatcher")}</div>
         <div className="mt-1 text-lead font-semibold text-foreground">
-          {plan.agentName} wants to act on {plan.appName}
+          {t("appWatch.card.wantsToAct", { name: plan.agentName, app: plan.appName })}
         </div>
       </div>
       <div className="mt-3 flex flex-col divide-y border-t">
-        {row("When", `${plan.appName} says “${plan.eventName}”`)}
-        {row("Only if it says", plan.filter.length ? plan.filter.map((f) => `“${f}”`).join(" or ") : "Any event")}
+        {row(t("appWatch.card.when"), t("appWatch.when.says", { app: plan.appName, event: plan.eventName }))}
+        {row(t("appWatch.card.onlyIfItSays"), plan.filter.length ? anyOf(plan.filter) : t("appWatch.card.anyEvent"))}
         {config.length > 0 &&
           row(
-            "Watching",
+            t("appWatch.watching"),
             <span className="font-mono text-small">
               {config.map(([k, v]) => `${k}: ${String(v)}`).join(", ")}
             </span>,
           )}
         {row(
-          "Who acts",
+          t("appWatch.card.whoActs"),
           <span className="flex items-center gap-2">
             {bot && <AgentAvatar bot={bot} size={20} />}
-            {plan.agentName}, in {plan.conversation}
+            {t("appWatch.card.agentIn", { name: plan.agentName, conversation: plan.conversation })}
           </span>,
         )}
-        {row("What it does", <span className="whitespace-pre-wrap">{plan.instruction}</span>)}
+        {row(t("appWatch.card.whatItDoes"), <span className="whitespace-pre-wrap">{plan.instruction}</span>)}
       </div>
       <div className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-3">
         {started ? (
@@ -687,7 +693,7 @@ export function AppWatchCard({ plan, answered }: { plan: AppWatchPlan; answered?
             <Check size={14} /> {t("appWatch.watchingChangeOrStopIt")}
           </span>
         ) : answered ? (
-          <span className="text-body text-muted-foreground">{answered === "Withdrawn" ? `${plan.agentName} withdrew it.` : t("appWatch.notWatching2")}</span>
+          <span className="text-body text-muted-foreground">{answered === "Withdrawn" ? t("appWatch.card.withdrew", { name: plan.agentName }) : t("appWatch.notWatchingSentence")}</span>
         ) : (
           <>
             <button
@@ -696,7 +702,7 @@ export function AppWatchCard({ plan, answered }: { plan: AppWatchPlan; answered?
               className="flex items-center gap-1.5 rounded-xl bg-brand-ink px-3.5 py-2 text-ui font-medium text-brand-foreground transition-[transform,filter] duration-150 hover:brightness-95 active:scale-[0.98] disabled:opacity-60"
             >
               {busy === "yes" && <Loader2 size={14} className="animate-spin" />}
-              Start watching
+              {t("appWatch.startWatching")}
             </button>
             <button
               onClick={() => answer(false)}
@@ -705,7 +711,7 @@ export function AppWatchCard({ plan, answered }: { plan: AppWatchPlan; answered?
             >
               {t("common.notNow")}
             </button>
-            <span className="text-small text-muted-foreground">What {plan.appName} sends reaches {plan.agentName} as data, never as instructions.</span>
+            <span className="text-small text-muted-foreground">{t("appWatch.card.asData", { app: plan.appName, name: plan.agentName })}</span>
           </>
         )}
         {error && <div className="w-full text-body text-destructive">{error}</div>}

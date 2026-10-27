@@ -38,13 +38,12 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import { SkeletonAvatar } from "@/components/ui/skeleton";
 import { SlidersHorizontal } from "@/components/icons";
 import { ResultCard, type BriefResult } from "./BriefCards";
 import { BriefCustomize, type ArrangedSection } from "./BriefCustomize";
 import { DEFAULT_SECTIONS, layoutOf } from "@/lib/briefLayout";
-import { t } from "@/lib/i18n";
+import { formatDate, formatNumber, t, tr, type MessageKey } from "@/lib/i18n";
 
 interface BriefPart {
   botId: string | null;
@@ -118,13 +117,13 @@ const startOfDay = (at: number) => {
 /** "Today", "Yesterday", or "Thu, Oct 15": a day as you would say it. */
 function dayLabel(at: number, now = Date.now()): string {
   const days = Math.round((startOfDay(now) - startOfDay(at)) / 86_400_000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  return new Date(at).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  if (days === 0) return t("briefPanel.today");
+  if (days === 1) return t("briefPanel.yesterday");
+  return formatDate(at, { weekday: "short", month: "short", day: "numeric" });
 }
 
-const fullDay = (at: number) => new Date(at).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const fullDay = (at: number) => formatDate(at, { weekday: "long", month: "long", day: "numeric" });
+const clock = (at: number) => formatDate(at, { hour: "numeric", minute: "2-digit" });
 
 /** "Since 6:40 PM yesterday": the stretch of time the brief covers. */
 function sinceLine(brief: Brief): string {
@@ -132,20 +131,17 @@ function sinceLine(brief: Brief): string {
   const days = Math.round((startOfDay(brief.at) - startOfDay(brief.since)) / 86_400_000);
   // the stepper already says which day this is, so the evening before is
   // only a weekday, and "yesterday" when the brief is today's
-  const when =
-    days === 0
-      ? ""
-      : days === 1 && dayLabel(brief.at) === "Today"
-        ? " yesterday"
-        : ` ${new Date(brief.since).toLocaleDateString([], { weekday: "long" })}`;
-  return `Since ${clock(brief.since)}${when}`;
+  const today = startOfDay(Date.now()) === startOfDay(brief.at);
+  if (days === 0) return t("briefPanel.since", { time: clock(brief.since) });
+  if (days === 1 && today) return t("briefPanel.sinceYesterday", { time: clock(brief.since) });
+  return t("briefPanel.sinceWeekday", { time: clock(brief.since), day: formatDate(brief.since, { weekday: "long" }) });
 }
 
 /** "08:30" as the clock on the wall says it: "8:30 AM", and "8 AM" on the hour. */
 function sayTime(time: string): string {
   const [hour, minute] = time.split(":").map(Number);
   const at = new Date(2000, 0, 1, hour, minute);
-  return at.toLocaleTimeString([], minute ? { hour: "numeric", minute: "2-digit" } : { hour: "numeric" });
+  return formatDate(at, minute ? { hour: "numeric", minute: "2-digit" } : { hour: "numeric" });
 }
 
 /**
@@ -169,6 +165,16 @@ function readItem(text: string): { lane: string; said: string; files: string } {
 /** "4 quiet check-ins, nothing needed you." is a footnote, not news. */
 const QUIET = /^\d+ quiet check-ins?, nothing needed you\.$/;
 
+/** "3 replies, about $1.20": what the night cost, as far as it is known. */
+function spendLine(spend: Brief["spend"]): string {
+  const count = spend.turns;
+  if (!spend.costKnown || spend.cost <= 0) return t("briefPanel.spend.replies", { count });
+  const cost = formatNumber(spend.cost, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (spend.estimated ?? 0) > 0
+    ? t("briefPanel.spend.repliesEstimated", { count, cost })
+    : t("briefPanel.spend.repliesAbout", { count, cost });
+}
+
 /** The times most people want; anything else is a tap on Other away. */
 const PRESET_TIMES = ["07:00", "08:00", "09:00"];
 
@@ -179,6 +185,22 @@ const PRESET_TIMES = ["07:00", "08:00", "09:00"];
  * conversation it opened, and, kept on this device, after a restart.
  */
 const HANDLED_KEY = "bloks-brief-handled";
+
+/** What became of a waiting card. Kept as a word of code, not of English,
+ * so a tick reads in whatever language the reader has now; the English
+ * labels an older version kept read the same once lowercased. */
+type Handled = "allowed" | "denied" | "answered" | "closed" | "opened";
+const HANDLED_WORDS: Record<Handled, MessageKey> = {
+  allowed: "briefPanel.handled.allowed",
+  denied: "briefPanel.handled.denied",
+  answered: "briefPanel.handled.answered",
+  closed: "briefPanel.handled.closed",
+  opened: "briefPanel.handled.opened",
+};
+const handledWords = (done: string) => {
+  const code = done.toLowerCase();
+  return code in HANDLED_WORDS ? t(HANDLED_WORDS[code as Handled]) : done;
+};
 const handled = new Map<string, string>(readHandled());
 
 function readHandled(): Array<[string, string]> {
@@ -201,10 +223,10 @@ function keepHandled() {
 
 /** A card answered in its conversation counts as handled here too, even
  * when it was answered somewhere the brief never saw. */
-function answeredLabel(card: { answered?: string; closed?: string; dismissed?: boolean } | undefined, kind: "approval" | "question") {
+function answeredLabel(card: { answered?: string; closed?: string; dismissed?: boolean } | undefined, kind: "approval" | "question"): Handled | null {
   if (!card) return null;
-  if (card.answered) return kind === "approval" ? (/deny|reject|decline/i.test(card.answered) ? "Denied" : "Allowed") : "Answered";
-  if (card.closed || card.dismissed) return "Closed";
+  if (card.answered) return kind === "approval" ? (/deny|reject|decline/i.test(card.answered) ? "denied" : "allowed") : "answered";
+  if (card.closed || card.dismissed) return "closed";
   return null;
 }
 
@@ -285,7 +307,7 @@ export function BriefPanel() {
   // plays, so the round has no gaps.
   const fetchPart = (id: string, at: number): Promise<string> =>
     fetch(`/api/briefs/${id}/parts/${at}/audio`).then(async (res) => {
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Couldn't play this part");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? t("briefPanel.couldntPlayPart"));
       return URL.createObjectURL(await res.blob());
     });
 
@@ -314,7 +336,7 @@ export function BriefPanel() {
         return player.play();
       })
       .catch((e: Error) => {
-        setError(e.message || "Playback was blocked. Press play again.");
+        setError(e.message || t("briefPanel.playbackBlocked"));
         stop();
       });
   };
@@ -374,7 +396,7 @@ export function BriefPanel() {
       .finally(() => setMaking(false));
   };
 
-  const markDone = (id: string, label: string) => {
+  const markDone = (id: string, label: Handled) => {
     handled.set(id, label);
     keepHandled();
     setDone(new Map(handled));
@@ -388,7 +410,7 @@ export function BriefPanel() {
     if (!w.requestId) return;
     setBusy(w.messageId);
     api(`/api/bots/${w.botId}/respond`, { method: "POST", body: JSON.stringify({ requestId: w.requestId, behavior }) })
-      .then(() => markDone(w.messageId, behavior === "allow" ? "Allowed" : "Denied"))
+      .then(() => markDone(w.messageId, behavior === "allow" ? "allowed" : "denied"))
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(null));
   };
@@ -467,7 +489,7 @@ export function BriefPanel() {
     return answeredLabel(card, w.kind) ?? undefined;
   };
   const waitingLeft = brief ? brief.waiting.filter((w) => !doneFor(w)).length : 0;
-  const reader = playing === null || !brief ? "" : playing === 0 ? "Overview" : brief.parts[playing]?.name ?? "";
+  const reader = playing === null || !brief ? "" : playing === 0 ? t("briefPanel.overview") : brief.parts[playing]?.name ?? "";
 
   return (
     <section aria-label={t("briefPanel.morningBrief")} className="flex min-w-0 flex-col">
@@ -534,14 +556,14 @@ export function BriefPanel() {
         ) : !brief ? (
           <div className="flex flex-col items-start gap-4 py-2">
             <p className="text-balance text-heading font-semibold text-foreground">
-              {enabled ? `Your first brief comes at ${sayTime(time)}.` : t("briefPanel.noBriefYet")}
+              {enabled ? t("briefPanel.firstBriefAt", { time: sayTime(time) }) : t("briefPanel.noBriefYet")}
             </p>
             <p className="max-w-md text-pretty text-ui leading-relaxed text-muted-foreground">
               {t("briefPanel.eachMorningAShortRead")}
             </p>
             <Button onClick={make} disabled={making}>
               {making ? <Loader2 size={13} className="animate-spin" /> : <Sunrise size={14} />}
-              Make one now
+              {t("briefPanel.makeOneNow")}
             </Button>
           </div>
         ) : (
@@ -560,10 +582,9 @@ export function BriefPanel() {
                 <p className="mt-2 text-body text-muted-foreground">
                   {[
                     sinceLine(brief),
-                    brief.spend.turns > 0
-                      ? `${plural(brief.spend.turns, "reply", "replies")}${brief.spend.costKnown && brief.spend.cost > 0 ? (brief.spend.estimated ?? 0) > 0 ? `, ~$${brief.spend.cost.toFixed(2)}` : `, about $${brief.spend.cost.toFixed(2)}` : ""}`
-                      : "",
-                    ...brief.ready.map((r) => `${r.count} ${r.count === 1 ? r.label : (r.many ?? `${r.label}s`)} ready`),
+                    brief.spend.turns > 0 ? spendLine(brief.spend) : "",
+                    // the server names what is ready, so its noun stays as it wrote it
+                    ...brief.ready.map((r) => t("briefPanel.ready", { count: r.count, what: r.count === 1 ? r.label : (r.many ?? `${r.label}s`) })),
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -653,7 +674,7 @@ export function BriefPanel() {
                             busy={busy === w.messageId}
                             onAnswer={(behavior) => answer(w, behavior)}
                             onOpen={() => {
-                              if (!w.requestId) markDone(w.messageId, "Opened");
+                              if (!w.requestId) markDone(w.messageId, "opened");
                               open(w.botId, w.threadId);
                             }}
                           />
@@ -669,14 +690,16 @@ export function BriefPanel() {
                       <ul className="flex flex-col gap-2">
                         {(brief.incidents ?? []).map((i) => (
                           <li key={i.id} className="text-body text-foreground">
-                            {i.title} failed: <span className="text-muted-foreground">{i.why}.</span>
-                            {i.needs ? <span className="text-warning"> Needs you: {i.needs}</span> : null}
+                            {tr("briefPanel.incidentFailed", { title: i.title, why: <span className="text-muted-foreground">{i.why}</span> })}
+                            {i.needs ? <span className="text-warning"> {t("briefPanel.needsYou", { needs: i.needs })}</span> : null}
                           </li>
                         ))}
                         {(brief.failing ?? []).map((f) => (
                           <li key={f.id} className="text-body text-foreground">
-                            The {f.kind} {f.name} kept failing, so it is paused:{" "}
-                            <span className="text-muted-foreground">{f.error}</span>
+                            {tr(f.kind === "watcher" ? "briefPanel.failingWatcher" : "briefPanel.failingRoutine", {
+                              name: f.name,
+                              error: <span className="text-muted-foreground">{f.error}</span>,
+                            })}
                           </li>
                         ))}
                       </ul>
@@ -790,7 +813,7 @@ export function BriefPanel() {
               <Switch checked={enabled} onCheckedChange={(on) => settings({ enabled: on })} aria-label={t("briefPanel.aBriefEveryMorning")} />
               {enabled ? t("briefPanel.everyMorningAt") : t("briefPanel.dailyBriefIsOff")}
             </label>
-            {enabled && <BriefTime time={time} onChange={(t) => settings({ time: t })} />}
+            {enabled && <BriefTime time={time} onChange={(next) => settings({ time: next })} />}
           </div>
         )}
       </div>
@@ -831,7 +854,7 @@ function WaitingRow({
             <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
               <Check size={11} strokeWidth={2.5} />
             </span>
-            <span className="shrink-0 text-foreground/80">{done}</span>
+            <span className="shrink-0 text-foreground/80">{handledWords(done)}</span>
             <span className="min-w-0 truncate">{item.title}</span>
           </motion.div>
         ) : (
@@ -845,7 +868,7 @@ function WaitingRow({
               <span className="min-w-0">
                 <span className="block text-ui text-foreground">{item.title}</span>
                 <span className="block text-small text-muted-foreground">
-                  {item.name} {item.kind === "approval" ? t("briefPanel.wantsYourOk") : t("briefPanel.hasAQuestion")}
+                  {t(item.kind === "approval" ? "briefPanel.wantsYourOk" : "briefPanel.hasAQuestion", { name: item.name })}
                 </span>
               </span>
             </button>
@@ -857,7 +880,7 @@ function WaitingRow({
                   </Button>
                   <Button size="sm" disabled={busy} onClick={() => onAnswer("allow")}>
                     {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={13} />}
-                    Allow
+                    {t("briefPanel.allow")}
                   </Button>
                 </>
               ) : (
@@ -895,7 +918,7 @@ function BriefTime({ time, onChange }: { time: string; onChange: (time: string) 
         size="sm"
         aria-label={t("briefPanel.briefTime")}
         value={value}
-        options={[...PRESET_TIMES.map((t) => ({ value: t, label: sayTime(t) })), { value: "other", label: "Other" }]}
+        options={[...PRESET_TIMES.map((preset) => ({ value: preset, label: sayTime(preset) })), { value: "other", label: t("briefPanel.otherTime") }]}
         onChange={(v) => {
           if (v === "other") return setOther(true);
           commit(v);

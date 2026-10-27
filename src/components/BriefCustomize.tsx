@@ -65,7 +65,7 @@ export function BriefCustomize({
           <SubHead>{t("briefCustomize.sections")}</SubHead>
           <ul className="-mx-2 flex flex-col" aria-label={t("briefCustomize.sectionsOfTheBrief")}>
             {sections.map((s, i) => {
-              const name = s.name ?? SECTION_NAMES[s.key] ?? s.key;
+              const name = s.name ?? (SECTION_NAMES[s.key] ? t(SECTION_NAMES[s.key]) : s.key);
               const source = s.kind === "routine" || s.kind === "watcher";
               const first = i === 0 || sections[i - 1].pinned !== s.pinned;
               const last = i === sections.length - 1 || sections[i + 1].pinned !== s.pinned;
@@ -81,7 +81,7 @@ export function BriefCustomize({
                   <div className="flex shrink-0 flex-col">
                     <button
                       type="button"
-                      aria-label={`Move ${name} up`}
+                      aria-label={t("briefCustomize.moveUp", { name })}
                       disabled={first}
                       onClick={() => keep(moveSection(sections, s.key, -1))}
                       className="rounded p-0.5 text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:opacity-30"
@@ -90,7 +90,7 @@ export function BriefCustomize({
                     </button>
                     <button
                       type="button"
-                      aria-label={`Move ${name} down`}
+                      aria-label={t("briefCustomize.moveDown", { name })}
                       disabled={last}
                       onClick={() => keep(moveSection(sections, s.key, 1))}
                       className="rounded p-0.5 text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:opacity-30"
@@ -115,7 +115,7 @@ export function BriefCustomize({
                         <Switch
                           checked={Boolean(s.briefOnly)}
                           onCheckedChange={(on) => onBriefOnly(s.key.slice("routine:".length), on)}
-                          aria-label={`${name}: report only in the brief`}
+                          aria-label={t("briefCustomize.reportOnlyInBrief", { name })}
                           className="scale-[0.8] origin-left"
                         />
                         <span className="-ml-1.5">{s.briefOnly ? t("briefCustomize.onlyInTheBriefNo") : t("briefCustomize.alsoNotifiesWhenItRuns")}</span>
@@ -125,7 +125,7 @@ export function BriefCustomize({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={s.pinned ? `Unpin ${name}` : `Pin ${name} to the top`}
+                    aria-label={s.pinned ? t("briefCustomize.unpin", { name }) : t("briefCustomize.pinNameToTop", { name })}
                     aria-pressed={s.pinned}
                     title={s.pinned ? t("briefCustomize.pinnedToTheTop") : t("briefCustomize.pinToTheTop")}
                     onClick={() => keep(togglePin(sections, s.key))}
@@ -136,7 +136,7 @@ export function BriefCustomize({
                   <Switch
                     checked={!s.hidden}
                     onCheckedChange={() => keep(toggleHidden(sections, s.key))}
-                    aria-label={source ? `${name} feeds the brief` : `Show ${name}`}
+                    aria-label={source ? t("briefCustomize.feedsTheBrief", { name }) : t("briefCustomize.show", { name })}
                     className="mt-1"
                   />
                 </li>
@@ -148,14 +148,14 @@ export function BriefCustomize({
           <div className="flex flex-col gap-3 pb-3 text-body text-foreground">
             <label className="flex items-start justify-between gap-4">
               <span>
-                One notification when it is ready
+                {t("briefCustomize.oneNotificationWhenReady")}
                 <span className="block text-small text-muted-foreground">{t("briefCustomize.opensThatMorningsBriefYour")}</span>
               </span>
               <Switch checked={notify} onCheckedChange={(on) => onSettings({ notify: on })} aria-label={t("briefCustomize.notifyWhenTheBriefIs")} />
             </label>
             <label className={cn("flex items-start justify-between gap-4 transition-opacity duration-150", !notify && "opacity-50")}>
               <span>
-                Also on a quiet morning
+                {t("briefCustomize.alsoOnAQuietMorning")}
                 <span className="block text-small text-muted-foreground">{t("briefCustomize.toHearThatAllIs")}</span>
               </span>
               <Switch checked={allClear} disabled={!notify} onCheckedChange={(on) => onSettings({ allClear: on })} aria-label={t("briefCustomize.notifyOnAQuietMorning")} />

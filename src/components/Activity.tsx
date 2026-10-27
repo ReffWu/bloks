@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { EmptyState, PanelHeader, SkeletonRows, SubHead } from "./OverviewParts";
 import { activityContext, type Fill } from "@/lib/contextCard";
-import { t } from "@/lib/i18n";
+import { formatNumber, t, tr } from "@/lib/i18n";
 
 export interface Spend {
   turns: number;
@@ -119,29 +119,29 @@ export interface Activity {
 function elapsed(since: number | undefined, now: number): string {
   if (!since) return "";
   const seconds = Math.max(0, Math.round((now - since) / 1000));
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) return t("activity.elapsed.seconds", { n: seconds });
   const minutes = Math.round(seconds / 60);
-  if (minutes < 90) return `${minutes}m`;
+  if (minutes < 90) return t("activity.elapsed.minutes", { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 36) return `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
+  if (hours < 36) return t("activity.elapsed.hours", { n: hours });
+  return t("activity.elapsed.days", { n: Math.round(hours / 24) });
 }
 
 /** "in 3 hours", for a deadline somebody has to act inside. */
 function until(at: number, now: number): string {
   const minutes = Math.round((at - now) / 60_000);
-  if (minutes <= 0) return "any moment";
-  if (minutes < 90) return `in ${minutes}m`;
+  if (minutes <= 0) return t("activity.until.anyMoment");
+  if (minutes < 90) return t("activity.until.minutes", { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 36) return `in ${hours}h`;
-  return `in ${Math.round(hours / 24)}d`;
+  if (hours < 36) return t("activity.until.hours", { n: hours });
+  return t("activity.until.days", { n: Math.round(hours / 24) });
 }
 
 /** 12,400 rather than 12400, and 1.2k once it stops being readable. */
 function tokens(n: number): string {
-  if (n < 10_000) return n.toLocaleString();
-  if (n < 1_000_000) return `${(n / 1_000).toFixed(1)}k`;
-  return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n < 10_000) return formatNumber(n);
+  if (n < 1_000_000) return t("activity.tokens.thousands", { n: formatNumber(n / 1_000, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) });
+  return t("activity.tokens.millions", { n: formatNumber(n / 1_000_000, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) });
 }
 
 /**
@@ -152,9 +152,10 @@ function tokens(n: number): string {
 function spentTokens(spend: Spend): string {
   const used = spend.input + spend.output;
   const unmeasured = spend.unmeasured ?? 0;
-  if (!unmeasured) return `${tokens(used)} tokens`;
-  const replies = `${unmeasured} ${unmeasured === 1 ? "reply" : "replies"}`;
-  return used > 0 ? `${tokens(used)} tokens, ${replies} not counted` : "Tokens not reported";
+  if (!unmeasured) return t("activity.tokens.count", { tokens: tokens(used) });
+  return used > 0
+    ? t("activity.tokens.someNotCounted", { tokens: tokens(used), count: unmeasured })
+    : t("activity.tokens.notReported");
 }
 
 /** Dollars, "~$" when any of it is an estimate from tokens, as the Usage
@@ -281,8 +282,8 @@ export function ActivityPanel() {
             value={view}
             onChange={setView}
             options={[
-              { value: "list", label: "List" },
-              { value: "map", label: "Map" },
+              { value: "list", label: t("activity.view.list") },
+              { value: "map", label: t("activity.view.map") },
             ]}
           />
         }
@@ -301,13 +302,18 @@ export function ActivityPanel() {
       {view === "list" && activity && (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-body tabular-nums text-muted-foreground">
           <span>
-            <span className="text-foreground">{activity.today.turns}</span> {activity.today.turns === 1 ? "reply" : "replies"} today
+            {tr("activity.repliesToday", {
+              count: activity.today.turns,
+              n: <span className="text-foreground">{formatNumber(activity.today.turns)}</span>,
+            })}
           </span>
           {activity.today.unmeasured ? (
             <span>{spentTokens(activity.today)}</span>
           ) : (
             <span>
-              <span className="text-foreground">{tokens(activity.today.input + activity.today.output)}</span> tokens
+              {tr("activity.tokens.count", {
+                tokens: <span className="text-foreground">{tokens(activity.today.input + activity.today.output)}</span>,
+              })}
             </span>
           )}
           {/* A zero here would read as "this was free" rather than as
@@ -315,7 +321,9 @@ export function ActivityPanel() {
               and a guess. */}
           {activity.costKnown ? (
             <span>
-              <span className="text-foreground">{money(activity.today.cost, (activity.today.estimated ?? 0) > 0)}</span> spent where known
+              {tr("activity.spentWhereKnown", {
+                amount: <span className="text-foreground">{money(activity.today.cost, (activity.today.estimated ?? 0) > 0)}</span>,
+              })}
             </span>
           ) : (
             <span>{t("activity.costUnavailable")}</span>
@@ -338,7 +346,7 @@ export function ActivityPanel() {
               action={
                 last ? (
                   <Button variant="secondary" size="sm" onClick={() => dispatch({ type: "select", id: last.id })}>
-                    Message {last.name}
+                    {t("activity.messageAgent", { name: last.name })}
                   </Button>
                 ) : (
                   <Button variant="secondary" size="sm" onClick={() => dispatch({ type: "toggleNewAgent", open: true })}>
@@ -364,8 +372,8 @@ export function ActivityPanel() {
                     <div className="text-body text-foreground">{row.asks}</div>
                     <div className="mt-0.5 text-small text-warning">
                       {row.botName}
-                      {row.laneTitle ? ` · ${row.laneTitle}` : ""} · asked {elapsed(row.since, now)} ago
-                      {row.until ? ` · stops ${until(row.until, now)}` : ""}
+                      {row.laneTitle ? ` · ${row.laneTitle}` : ""} · {t("activity.askedAgo", { elapsed: elapsed(row.since, now) })}
+                      {row.until ? ` · ${t("activity.stops", { when: until(row.until, now) })}` : ""}
                     </div>
                   </div>
                 }
@@ -406,11 +414,11 @@ export function ActivityPanel() {
                   <div className="min-w-0 flex-1">
                     <div className="text-body text-foreground">
                       {row.title}
-                      {row.count > 1 ? <span className="text-muted-foreground"> · {row.count} times</span> : null}
+                      {row.count > 1 ? <span className="text-muted-foreground"> · {t("activity.times", { count: row.count })}</span> : null}
                     </div>
                     <div className="mt-0.5 text-small">
                       <span className={cn(row.state === "needs-you" ? "text-warning" : "text-muted-foreground")}>{incidentState(row)}</span>
-                      <span className="text-muted-foreground"> · {elapsed(row.lastAt, now)} ago</span>
+                      <span className="text-muted-foreground"> · {t("activity.ago", { elapsed: elapsed(row.lastAt, now) })}</span>
                     </div>
                     {/* the failure's own words can be long; two lines are
                         enough to recognise it, and the card has the rest */}
@@ -446,10 +454,10 @@ export function ActivityPanel() {
                   main={
                     <div className="min-w-0 flex-1">
                       <div className="text-body text-foreground">
-                        The {row.kind} {row.name}
+                        {t(`activity.failing.${row.kind}`, { name: row.name })}
                       </div>
                       <div className="mt-0.5 text-small text-warning">
-                        Failed {row.failures} times in a row, stopped {elapsed(row.since, now)} ago
+                        {t("activity.failedTimesStopped", { count: row.failures, elapsed: elapsed(row.since, now) })}
                       </div>
                       <div className="mt-0.5 line-clamp-2 break-words text-small text-muted-foreground">{row.error}</div>
                     </div>
@@ -485,10 +493,10 @@ export function ActivityPanel() {
                 name={row.botName}
                 main={
                   <div className="min-w-0 flex-1">
-                    <div className="text-body text-foreground">{row.botName} is waiting for you</div>
+                    <div className="text-body text-foreground">{t("activity.isWaitingForYou", { name: row.botName })}</div>
                     <div className="mt-0.5 text-small text-warning">
-                      You took over {elapsed(row.since, now)} ago. Paused until you hand it back.
-                      {row.turnedAway ? ` ${row.turnedAway} turned away since.` : ""}
+                      {t("activity.youTookOver", { elapsed: elapsed(row.since, now) })}
+                      {row.turnedAway ? ` ${t("activity.turnedAwaySince", { count: row.turnedAway })}` : ""}
                     </div>
                   </div>
                 }
@@ -565,7 +573,7 @@ export function ActivityPanel() {
                   <div className="min-w-0 flex-1">
                     <div className="text-body text-foreground">{row.botName}</div>
                     <div className="mt-0.5 text-small text-muted-foreground">
-                      {row.today.turns} {row.today.turns === 1 ? "reply" : "replies"} ·{" "}
+                      {t("activity.replies", { count: row.today.turns })} ·{" "}
                       {spentTokens(row.today)}
                       {activity.costKnown && row.today.cost > 0 ? ` · ${money(row.today.cost)}` : ""}
                     </div>
@@ -581,7 +589,7 @@ export function ActivityPanel() {
                         </span>
                       )}
                       {row.running > 0 && (
-                        <span className="text-muted-foreground">{row.running} running</span>
+                        <span className="text-muted-foreground">{t("activity.runningCount", { count: row.running })}</span>
                       )}
                     </span>
                   ) : undefined
@@ -599,15 +607,15 @@ export function ActivityPanel() {
 function incidentState(row: Incident): string {
   switch (row.state) {
     case "with-lead":
-      return row.lead.kind === "agent" ? `With ${row.lead.name}` : "With you";
+      return row.lead.kind === "agent" ? t("activity.incident.withAgent", { name: row.lead.name }) : t("activity.incident.withYou");
     case "retrying":
-      return "Trying again";
+      return t("activity.incident.tryingAgain");
     case "needs-you":
-      return row.needs ? `Needs you: ${row.needs}` : "Needs you";
+      return row.needs ? t("activity.incident.needsYouFor", { needs: row.needs }) : t("activity.incident.needsYou");
     case "muted":
-      return "Listed while many things failed";
+      return t("activity.incident.muted");
     default:
-      return "Resolved";
+      return t("activity.incident.resolved");
   }
 }
 

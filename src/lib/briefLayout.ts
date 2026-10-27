@@ -7,6 +7,8 @@
 // back, which is the list as it now stands. Pinned sections stay in a
 // group of their own at the top, so a step never moves one across.
 
+import type { MessageKey } from "./i18n.ts";
+
 export interface LayoutSection {
   key: string;
   pinned: boolean;
@@ -23,12 +25,13 @@ export interface BriefLayout {
  * them shows them. */
 export const DEFAULT_SECTIONS = ["waiting", "failed", "agents", "memory"] as const;
 
-/** What a section is called, for the ones that are the brief's own. */
-export const SECTION_NAMES: Record<string, string> = {
-  waiting: "Waiting on you",
-  failed: "Something failed",
-  agents: "What your agents did",
-  memory: "Memory, tidied overnight",
+/** What a section is called, for the ones that are the brief's own: the
+ * catalogue key, so the name follows the reader's language. */
+export const SECTION_NAMES: Record<string, MessageKey> = {
+  waiting: "briefLayout.waiting",
+  failed: "briefLayout.failed",
+  agents: "briefLayout.agents",
+  memory: "briefLayout.memory",
 };
 
 /** Pinned first, keeping each group's order: what the server does too. */

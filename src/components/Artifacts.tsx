@@ -32,14 +32,14 @@ import { cn } from "@/lib/cn";
 import { modKey } from "@/lib/thisComputer";
 import { destination } from "@/lib/attachments";
 import { artifactHref, fileBase, fileTarget, openFailure, tooLargeHere, viewerFor, type Viewer } from "@/lib/sharedFile";
-import { t } from "@/lib/i18n";
+import { formatNumber, t } from "@/lib/i18n";
 
 type ArtifactMeta = NonNullable<Message["artifact"]>;
 
 function humanSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024) return t("artifacts.size.bytes", { n: bytes });
+  if (bytes < 1024 * 1024) return t("artifacts.size.kb", { n: formatNumber(bytes / 1024, { maximumFractionDigits: 0 }) });
+  return t("artifacts.size.mb", { n: formatNumber(bytes / 1024 / 1024, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) });
 }
 
 function kindOf(artifact: ArtifactMeta): { label: string; icon: React.ReactNode; viewer: Viewer } {
@@ -48,24 +48,24 @@ function kindOf(artifact: ArtifactMeta): { label: string; icon: React.ReactNode;
   const viewer = viewerFor(mime, name);
   switch (viewer) {
     case "iframe":
-      return { label: "Web page", icon: <FileCode size={18} />, viewer };
+      return { label: t("artifacts.kind.webPage"), icon: <FileCode size={18} />, viewer };
     case "pdf":
       return { label: "PDF", icon: <FileText size={18} />, viewer };
     case "image":
-      return { label: "Image", icon: <FileImage size={18} />, viewer };
+      return { label: t("artifacts.kind.image"), icon: <FileImage size={18} />, viewer };
     case "video":
-      return { label: "Video", icon: <FileVideo size={18} />, viewer };
+      return { label: t("artifacts.kind.video"), icon: <FileVideo size={18} />, viewer };
     case "table":
     case "sheet":
-      return { label: "Spreadsheet", icon: <FileSpreadsheet size={18} />, viewer };
+      return { label: t("artifacts.kind.spreadsheet"), icon: <FileSpreadsheet size={18} />, viewer };
     case "markdown":
-      return { label: "Markdown", icon: <FileText size={18} />, viewer };
+      return { label: t("artifacts.kind.markdown"), icon: <FileText size={18} />, viewer };
     case "text":
-      return { label: ext === "json" ? "JSON" : "Text", icon: <FileText size={18} />, viewer };
+      return { label: ext === "json" ? "JSON" : t("artifacts.kind.text"), icon: <FileText size={18} />, viewer };
   }
-  if (ext === "pptx") return { label: "Slides", icon: <Presentation size={18} />, viewer };
-  if (ext === "docx") return { label: "Document", icon: <FileText size={18} />, viewer };
-  return { label: "File", icon: <FileText size={18} />, viewer };
+  if (ext === "pptx") return { label: t("artifacts.kind.slides"), icon: <Presentation size={18} />, viewer };
+  if (ext === "docx") return { label: t("artifacts.kind.document"), icon: <FileText size={18} />, viewer };
+  return { label: t("artifacts.kind.file"), icon: <FileText size={18} />, viewer };
 }
 
 /** The file's bytes as text, or a sentence saying why not: a missing file
@@ -209,7 +209,8 @@ function anchorLabel(anchor: ArtifactNote["anchor"]): string {
     }
     return `${name}${(anchor.row ?? 0) + 1}`;
   }
-  return anchor.kind === "line" ? `L${(anchor.index ?? 0) + 1}` : `p${(anchor.index ?? 0) + 1}`;
+  const n = String((anchor.index ?? 0) + 1);
+  return anchor.kind === "line" ? t("artifacts.anchor.line", { n }) : t("artifacts.anchor.page", { n });
 }
 
 function GridTable({
@@ -267,7 +268,7 @@ function GridTable({
       </table>
       {rows.length > MAX_ROWS && (
         <div className="px-3 py-2 text-small text-muted-foreground">
-          Showing the first {MAX_ROWS} of {rows.length} rows; download for the rest.
+          {t("artifacts.showingFirstRows", { shown: MAX_ROWS, total: rows.length })}
         </div>
       )}
     </div>
@@ -520,7 +521,7 @@ export function ArtifactViewer({
                           className="w-full resize-none rounded-lg border border-input bg-background px-2 py-1.5 text-small outline-none"
                         />
                         <div className="mt-1 text-caption text-muted-foreground">
-                          {modKey()}Enter saves, Escape cancels
+                          {t("artifacts.enterSavesEscapeCancels", { mod: modKey() })}
                         </div>
                       </div>
                     )}
@@ -615,7 +616,7 @@ export function ArtifactViewer({
               <Button asChild size="sm" variant="secondary">
                 <a href={`${href}?download`} download={fileBase(artifact.name)}>
                   <Download size={13} />
-                  Download {fileBase(artifact.name)}
+                  {t("artifacts.downloadName", { name: fileBase(artifact.name) })}
                 </a>
               </Button>
             </div>
@@ -674,7 +675,7 @@ export function SharedFileLink({
         type="button"
         onClick={() => void open()}
         disabled={opening.phase === "opening"}
-        title={target?.kind === "artifact" ? `Open ${fileBase(target.name)}` : `Open ${href}`}
+        title={t("artifacts.openName", { name: target?.kind === "artifact" ? fileBase(target.name) : href })}
         className={cn(
           "inline cursor-pointer text-left underline decoration-dotted underline-offset-2 [overflow-wrap:anywhere] hover:opacity-80 disabled:cursor-progress disabled:opacity-60",
           className,

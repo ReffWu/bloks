@@ -28,7 +28,7 @@ import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { AUTOMATIONS_LIST, AUTOMATIONS_LIST_SIZE, useColumnFolded } from "@/lib/sideColumn";
 import { ShowColumn, SideColumn } from "./SideColumn";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, t, type MessageKey } from "@/lib/i18n";
 
 type ActionKind = "note" | "mention" | "message";
 
@@ -61,10 +61,11 @@ interface Fields {
   text: string;
 }
 
-const KIND: Record<ActionKind, { label: string; icon: typeof Zap; text: string; placeholder: string }> = {
-  note: { label: "Post a note", icon: Zap, text: "The note", placeholder: "Refund policy: full refund within 30 days, no questions asked." },
-  mention: { label: "Loop in", icon: UserPlus, text: "Why, if it helps (optional)", placeholder: "They own the launch plan." },
-  message: { label: "Message", icon: MessageSquare, text: "What to send", placeholder: "Check the press plan still matches the new date." },
+// keys, not words: this is read at every render, in the language of the moment
+const KIND: Record<ActionKind, { label: MessageKey; icon: typeof Zap; text: MessageKey; placeholder: MessageKey }> = {
+  note: { label: "intentsTab.kind.note.label", icon: Zap, text: "intentsTab.kind.note.text", placeholder: "intentsTab.kind.note.placeholder" },
+  mention: { label: "intentsTab.kind.mention.label", icon: UserPlus, text: "intentsTab.kind.mention.text", placeholder: "intentsTab.kind.mention.placeholder" },
+  message: { label: "intentsTab.kind.message.label", icon: MessageSquare, text: "intentsTab.kind.message.text", placeholder: "intentsTab.kind.message.placeholder" },
 };
 
 /** Days until a time, rounded the way a person says it. */
@@ -74,10 +75,10 @@ function daysUntil(at: number, now = Date.now()): number {
 
 const ago = (at: number) => {
   const minutes = Math.round((Date.now() - at) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t("intentsTab.ago.justNow");
+  if (minutes < 60) return t("intentsTab.ago.minutes", { n: minutes });
   const hours = Math.round(minutes / 60);
-  return hours < 24 ? `${hours} h ago` : new Date(at).toLocaleDateString();
+  return hours < 24 ? t("intentsTab.ago.hours", { n: hours }) : formatDate(at);
 };
 
 const fieldsOf = (row: IntentRow): Fields => ({
@@ -109,24 +110,28 @@ const phraseList = (raw: string) =>
 /** Why the form cannot be saved yet, or null. Mirrors the server's checks
  * closely enough to say so before asking. */
 function missing(f: Fields): string | null {
-  if (!phraseList(f.phrases).length) return "Add the words to listen for.";
-  if (!f.everywhere && !f.agents.length && !f.rooms.length) return "Pick where it listens.";
-  if (f.kind !== "note" && !f.botId) return "Pick an agent.";
-  if (f.kind !== "mention" && !f.text.trim()) return f.kind === "note" ? "Write the note." : "Write the message.";
+  if (!phraseList(f.phrases).length) return t("intentsTab.missing.words");
+  if (!f.everywhere && !f.agents.length && !f.rooms.length) return t("intentsTab.missing.places");
+  if (f.kind !== "note" && !f.botId) return t("intentsTab.missing.agent");
+  if (f.kind !== "mention" && !f.text.trim()) return f.kind === "note" ? t("intentsTab.missing.note") : t("intentsTab.missing.message");
   return null;
 }
 
 /** The intent as one sentence, as it is filled in. */
 function readback(f: Fields, names: { agent: (id: string) => string | undefined; room: (id: string) => string | undefined }): string {
   const phrases = phraseList(f.phrases);
-  const words = phrases.length ? phrases.map((p) => `“${p}”`).join(" or ") : "the words you pick";
+  const words = phrases.length
+    ? formatList(phrases.map((p) => t("intentsTab.readback.quoted", { phrase: p })), { type: "disjunction" })
+    : t("intentsTab.readback.theWordsYouPick");
+  const chosen = [
+    ...f.agents.map((id) => t("intentsTab.readback.agentConversations", { name: names.agent(id) ?? t("intentsTab.readback.anAgent") })),
+    ...f.rooms.map((id) => names.room(id) ?? t("intentsTab.readback.aRoom")),
+  ];
   const places = f.everywhere
-    ? "any conversation"
-    : [...f.agents.map((id) => `${names.agent(id) ?? "an agent"}'s conversations`), ...f.rooms.map((id) => names.room(id) ?? "a room")].join(", ") || "the places you pick";
-  const who = names.agent(f.botId) ?? "an agent";
-  const does =
-    f.kind === "note" ? "a note is posted there" : f.kind === "mention" ? `${who} is brought in` : `${who} gets a message`;
-  return `Whenever someone says ${words} in ${places}, ${does}. At most once a day in each conversation, for 90 days.`;
+    ? t("intentsTab.readback.anyConversation")
+    : chosen.length ? formatList(chosen, { type: "unit" }) : t("intentsTab.readback.thePlacesYouPick");
+  const who = names.agent(f.botId) ?? t("intentsTab.readback.anAgent");
+  return t(`intentsTab.readback.${f.kind}`, { words, places, who });
 }
 
 /** The fields, shared by a new intent and the page of one. */
@@ -165,8 +170,8 @@ function IntentForm({ value, onChange }: { value: Fields; onChange: (next: Field
         value={value.everywhere ? "everywhere" : "chosen"}
         onChange={(v) => set({ everywhere: v === "everywhere" })}
         options={[
-          { value: "everywhere", label: "Everywhere" },
-          { value: "chosen", label: "Chosen places" },
+          { value: "everywhere", label: t("intentsTab.everywhere") },
+          { value: "chosen", label: t("intentsTab.chosenPlaces") },
         ]}
       />
       <AnimatePresence initial={false} mode="popLayout">
@@ -227,7 +232,7 @@ function IntentForm({ value, onChange }: { value: Fields; onChange: (next: Field
               <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-150", on ? "bg-brand-ink text-brand-foreground" : "bg-muted text-muted-foreground")}>
                 <Icon size={14} />
               </span>
-              <span className="truncate text-body font-medium text-foreground">{KIND[k].label}</span>
+              <span className="truncate text-body font-medium text-foreground">{t(KIND[k].label)}</span>
             </button>
           );
         })}
@@ -243,13 +248,13 @@ function IntentForm({ value, onChange }: { value: Fields; onChange: (next: Field
         </div>
       )}
       <label className="mt-4 mb-2 text-body text-muted-foreground" htmlFor="intent-text">
-        {KIND[value.kind].text}
+        {t(KIND[value.kind].text)}
       </label>
       <Textarea
         id="intent-text"
         value={value.text}
         onChange={(e) => set({ text: e.target.value })}
-        placeholder={KIND[value.kind].placeholder}
+        placeholder={t(KIND[value.kind].placeholder)}
         className="min-h-[80px] rounded-xl text-body"
       />
       {value.kind === "mention" && (
@@ -345,14 +350,14 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
 
   const save = () => {
     setSaving(true);
-    void patch(bodyOf(fields), "Saved").finally(() => setSaving(false));
+    void patch(bodyOf(fields), t("intentsTab.saved")).finally(() => setSaving(false));
   };
   const remove = async () => {
     const proposal = row.status === "proposed";
     const yes = await confirm({
-      title: proposal ? "Decline this intent?" : "Delete this intent?",
-      body: proposal ? "It is removed and never listens." : "It stops listening, and its history goes with it.",
-      confirmLabel: proposal ? "Decline" : "Delete",
+      title: proposal ? t("intentsTab.confirmDecline.title") : t("intentsTab.confirmDelete.title"),
+      body: proposal ? t("intentsTab.confirmDecline.body") : t("intentsTab.confirmDelete.body"),
+      confirmLabel: proposal ? t("common.decline") : t("common.delete"),
       destructive: true,
     });
     if (!yes) return;
@@ -362,7 +367,7 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
   };
   const open = (threadId: string) => {
     if (state.bloks.some((r) => r.id === threadId)) return dispatch({ type: "select", id: threadId });
-    const bot = state.bots.find((b) => b.tasks?.some((t) => t.id === threadId));
+    const bot = state.bots.find((b) => b.tasks?.some((task) => task.id === threadId));
     if (bot) dispatch({ type: "select", id: bot.id, lane: threadId });
   };
   const proposer = row.by.kind === "agent" ? state.bots.find((b) => b.id === (row.by as { botId: string }).botId) : undefined;
@@ -375,11 +380,11 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
         <div className="flex flex-col gap-2 rounded-xl border border-brand/40 bg-brand-soft px-3.5 py-3 text-body text-foreground">
           <div className="flex items-center gap-2 font-medium">
             {proposer ? <AgentAvatar bot={proposer} size={20} /> : <Zap size={14} className="text-brand-ink" />}
-            {row.by.kind === "agent" ? row.by.name : t("common.anAgent")} suggests this
+            {row.by.kind === "agent" ? t("intentsTab.suggestsThis", { name: row.by.name }) : t("intentsTab.anAgentSuggestsThis")}
           </div>
           <div className="text-muted-foreground">{t("intentsTab.itDoesNothingUntilYou")}</div>
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => void patch({ approve: true }, "Approved")}>
+            <Button size="sm" onClick={() => void patch({ approve: true }, t("intentsTab.approved"))}>
               {t("common.approve")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => void remove()}>
@@ -407,10 +412,10 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
           <span>
             {row.state === "expired"
               ? t("intentsTab.stoppedListening90DaysAre")
-              : `Listens for ${left} more ${left === 1 ? "day" : "days"}. Fired ${row.firesToday} of 3 times today.`}
+              : t("intentsTab.listensForMore", { count: left, fired: row.firesToday })}
           </span>
           {(row.state === "expired" || left <= 14) && (
-            <Button size="sm" variant="secondary" onClick={() => void patch({ renew: true }, "Renewed for 90 days")}>
+            <Button size="sm" variant="secondary" onClick={() => void patch({ renew: true }, t("intentsTab.renewed"))}>
               {t("intentsTab.renew")}
             </Button>
           )}
@@ -422,7 +427,7 @@ function Detail({ row, onChanged }: { row: IntentRow; onChanged: () => void }) {
         <div className="flex items-center gap-3">
           <Button disabled={saving || Boolean(why)} onClick={save}>
             {saving && <Loader2 size={13} className="animate-spin" />}
-            Save changes
+            {t("intentsTab.saveChanges")}
           </Button>
           <Button variant="ghost" onClick={() => setFields(fieldsOf(row))}>
             {t("common.discard")}
@@ -489,14 +494,14 @@ export function IntentsTab() {
             const active = showing !== "new" && showing?.id === row.id;
             const status =
               row.state === "proposed"
-                ? "Needs your approval"
+                ? t("intentsTab.status.needsApproval")
                 : row.state === "paused"
-                  ? "Paused"
+                  ? t("intentsTab.status.paused")
                   : row.state === "expired"
-                    ? "Expired"
+                    ? t("intentsTab.status.expired")
                     : row.fires[0]
-                      ? `Fired ${ago(row.fires[0].at)}`
-                      : "Listening";
+                      ? t("intentsTab.status.firedAgo", { when: ago(row.fires[0].at) })
+                      : t("intentsTab.status.listening");
             return (
               <button
                 key={row.id}
@@ -523,7 +528,7 @@ export function IntentsTab() {
       </SideColumn>
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
         {/* the list folded away: the way back to it, named for what it lists */}
-        {folded && <ShowColumn id={AUTOMATIONS_LIST} text="Intents" label={t("intentsTab.showTheList")} className="-ml-2 -mt-2 mb-3" />}
+        {folded && <ShowColumn id={AUTOMATIONS_LIST} text={t("intentsTab.intents")} label={t("intentsTab.showTheList")} className="-ml-2 -mt-2 mb-3" />}
         {rows === null ? null : showing === "new" ? (
           <Draft
             onMade={(id) => {

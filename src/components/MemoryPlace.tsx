@@ -38,10 +38,9 @@ import { Input } from "@/components/ui/input";
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import { useColumnFolded, type SideColumnSize } from "@/lib/sideColumn";
 import { FoldedSwitchBar, FoldedSwitchSlot, SideColumn, SideSwitch, TitleTools } from "./SideColumn";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, formatNumber, t, tr, type MessageKey } from "@/lib/i18n";
 
 // ── what the server answers ────────────────────────────────────────────
 
@@ -153,19 +152,21 @@ function useMemorySearch(q: string): { hits: Hit[] | null; loading: boolean } {
 /** "just now", "5m ago", "3h ago", "2d ago", then the date. */
 function ago(at: number, now = Date.now()): string {
   const seconds = Math.max(0, (now - at) / 1000);
-  if (seconds < 45) return "just now";
+  if (seconds < 45) return t("memoryPlace.ago.justNow");
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return t("memoryPlace.ago.minutes", { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t("memoryPlace.ago.hours", { n: hours });
   const days = Math.round(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(at).toLocaleDateString([], { month: "short", day: "numeric" });
+  if (days < 7) return t("memoryPlace.ago.days", { n: days });
+  return formatDate(at, { month: "short", day: "numeric" });
 }
 
 /** Sizes the way the budget is said: 24 KB is 24,000 bytes. */
 function size(bytes: number): string {
-  return bytes < 1000 ? `${bytes} B` : `${(bytes / 1000).toFixed(bytes < 10_000 ? 1 : 0)} KB`;
+  if (bytes < 1000) return t("memoryPlace.size.bytes", { n: bytes });
+  const digits = bytes < 10_000 ? 1 : 0;
+  return t("memoryPlace.size.kb", { n: formatNumber(bytes / 1000, { minimumFractionDigits: digits, maximumFractionDigits: digits }) });
 }
 
 const lineCount = (text: string) => (text ? (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n").length : 0);
@@ -305,7 +306,7 @@ function BudgetMeter({ stats }: { stats: Stats | null }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-baseline gap-2">
           <span className="text-display font-semibold tabular-nums text-foreground">
-            {Math.min(100, Math.round(Math.max(lineShare, byteShare) * 100))}%
+            {formatNumber(Math.min(100, Math.round(Math.max(lineShare, byteShare) * 100)) / 100, { style: "percent" })}
           </span>
           <span className="text-body text-muted-foreground">{t("memoryPlace.full")}</span>
         </div>
@@ -327,8 +328,8 @@ function BudgetMeter({ stats }: { stats: Stats | null }) {
         <div>
           <div className="mb-1.5 flex items-baseline justify-between text-body">
             <span className="text-muted-foreground">{t("memoryPlace.lines")}</span>
-            <span className="tabular-nums text-foreground">
-              {stats.lines} <span className="text-muted-foreground">of {stats.maxLines}</span>
+            <span className="tabular-nums text-muted-foreground">
+              {tr("memoryPlace.meter.amountOf", { value: <span className="text-foreground">{formatNumber(stats.lines)}</span>, max: formatNumber(stats.maxLines) })}
             </span>
           </div>
           <Bar share={lineShare} tone={tone(lineShare)} />
@@ -336,8 +337,8 @@ function BudgetMeter({ stats }: { stats: Stats | null }) {
         <div>
           <div className="mb-1.5 flex items-baseline justify-between text-body">
             <span className="text-muted-foreground">{t("memoryPlace.size")}</span>
-            <span className="tabular-nums text-foreground">
-              {size(stats.bytes)} <span className="text-muted-foreground">of {size(stats.maxBytes)}</span>
+            <span className="tabular-nums text-muted-foreground">
+              {tr("memoryPlace.meter.amountOf", { value: <span className="text-foreground">{size(stats.bytes)}</span>, max: size(stats.maxBytes) })}
             </span>
           </div>
           <Bar share={byteShare} tone={tone(byteShare)} />
@@ -455,7 +456,7 @@ function CoreEditor({
           <Loader2 size={13} className="animate-spin text-muted-foreground" />
         ) : dirty ? (
           <span className="flex items-center gap-1.5 text-small text-warning">
-            <span className="size-1.5 rounded-full bg-warning" /> Unsaved changes
+            <span className="size-1.5 rounded-full bg-warning" /> {t("memoryPlace.unsavedChanges")}
           </span>
         ) : savedAt ? (
           <span className="flex items-center gap-1 text-small text-success">
@@ -470,7 +471,7 @@ function CoreEditor({
         )}
         <Button size="sm" onClick={save} disabled={!dirty || saving}>
           {saving && <Loader2 size={12} className="animate-spin" />}
-          Save
+          {t("common.save")}
           <span className="hidden text-caption opacity-60 sm:inline">⌘S</span>
         </Button>
       </div>
@@ -503,7 +504,7 @@ function CoreEditor({
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-4 py-2 text-small text-muted-foreground">
         <span className="tabular-nums">
-          {plural(lines, "line")} · {size(bytes)}
+          {t("memoryPlace.count.lines", { count: lines })} · {size(bytes)}
         </span>
         {error ? (
           <span className="text-destructive">{error}</span>
@@ -547,7 +548,7 @@ function TopicDialog({ bot, name, onClose }: { bot: Bot; name: string | null; on
         setBase(r.text ?? "");
         setDraft(r.text ?? "");
       })
-      .catch((e: Error & { status?: number }) => on && setError(e.status === 404 ? "This topic is gone." : e.message));
+      .catch((e: Error & { status?: number }) => on && setError(e.status === 404 ? t("memoryPlace.topicGone") : e.message));
     return () => {
       on = false;
     };
@@ -581,7 +582,7 @@ function TopicDialog({ bot, name, onClose }: { bot: Bot; name: string | null; on
       <DialogContent className="flex max-h-[86vh] max-w-[760px] flex-col gap-0 p-0">
         <div className="border-b px-6 pb-4 pt-5 pr-12">
           <DialogTitle className="text-title">{name ? topicTitle(name) : ""}</DialogTitle>
-          <DialogDescription className="mt-1 font-mono text-small">memory/{name}</DialogDescription>
+          <DialogDescription className="mt-1 font-mono text-small">{`memory/${name ?? ""}`}</DialogDescription>
         </div>
         <textarea
           value={draft}
@@ -601,7 +602,7 @@ function TopicDialog({ bot, name, onClose }: { bot: Bot; name: string | null; on
         <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3">
           {forgetting ? (
             <span className="flex items-center gap-2 text-body text-foreground">
-              Forget this topic?
+              {t("memoryPlace.forgetThisTopic")}
               <Button size="sm" variant="destructive" onClick={forget} disabled={busy}>
                 {t("memoryPlace.forget")}
               </Button>
@@ -621,7 +622,7 @@ function TopicDialog({ bot, name, onClose }: { bot: Bot; name: string | null; on
               <span className="text-success">{t("memoryPlace.savedUndoItFromRecent")}</span>
             ) : (
               <span className="text-muted-foreground tabular-nums">
-                {plural(lineCount(draft), "line")} · {size(byteCount(draft))}
+                {t("memoryPlace.count.lines", { count: lineCount(draft) })} · {size(byteCount(draft))}
               </span>
             )}
           </span>
@@ -632,7 +633,7 @@ function TopicDialog({ bot, name, onClose }: { bot: Bot; name: string | null; on
           )}
           <Button size="sm" onClick={save} disabled={!dirty || busy}>
             {busy && <Loader2 size={12} className="animate-spin" />}
-            Save
+            {t("common.save")}
           </Button>
         </div>
       </DialogContent>
@@ -670,7 +671,7 @@ function NewTopicDialog({ bot, open, onClose, onMade }: { bot: Bot; open: boolea
       <DialogContent className="max-w-[560px]">
         <DialogTitle>{t("memoryPlace.newTopic")}</DialogTitle>
         <DialogDescription>
-          {bot.name} reads it when the topic comes up.
+          {t("memoryPlace.readsItWhenTopicComesUp", { name: bot.name })}
         </DialogDescription>
         <div className="mt-4 flex flex-col gap-3">
           <Input
@@ -694,7 +695,7 @@ function NewTopicDialog({ bot, open, onClose, onMade }: { bot: Bot; open: boolea
             <span className="truncate font-mono text-small text-muted-foreground">{file ? `memory/${file}` : ""}</span>
             <Button onClick={make} disabled={!file || busy}>
               {busy && <Loader2 size={13} className="animate-spin" />}
-              Create
+              {t("memoryPlace.create")}
             </Button>
           </div>
         </div>
@@ -737,9 +738,9 @@ function Topics({ bot, stats, focus }: { bot: Bot; stats: Stats | null; focus: F
               </span>
               <span className="mt-4 flex items-center justify-between gap-2 text-small text-muted-foreground">
                 <span className="tabular-nums">
-                  {plural(topic.lines, "line")} · {size(topic.bytes)}
+                  {t("memoryPlace.count.lines", { count: topic.lines })} · {size(topic.bytes)}
                 </span>
-                <span>Changed {ago(topic.changedAt)}</span>
+                <span>{t("memoryPlace.changedAgo", { when: ago(topic.changedAt) })}</span>
               </span>
             </button>
           ))}
@@ -754,7 +755,7 @@ function Topics({ bot, stats, focus }: { bot: Bot; stats: Stats | null; focus: F
       )}
       {stats !== null && topics.length === 0 && (
         <p className="mt-3 text-body leading-relaxed text-muted-foreground">
-          No topics yet. {bot.name} adds them as it learns.
+          {t("memoryPlace.noTopicsYet", { name: bot.name })}
         </p>
       )}
       <TopicDialog bot={bot} name={open} onClose={() => setOpen(null)} />
@@ -818,7 +819,7 @@ function Timeline({ owner }: { owner: Owner }) {
   }
 
   const shown = all ? entries : entries.slice(0, SHOWN);
-  const day = (at: number) => new Date(at).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+  const day = (at: number) => formatDate(at, { weekday: "long", month: "short", day: "numeric" });
   let lastDay = "";
   return (
     <div>
@@ -827,17 +828,7 @@ function Timeline({ owner }: { owner: Owner }) {
         <span aria-hidden className="absolute bottom-3 left-[15px] top-3 w-px bg-border" />
         {shown.map((entry) => {
           const heading = day(entry.at) !== lastDay ? (lastDay = day(entry.at)) : null;
-          const who =
-            entry.by === "agent" && owner.kind === "agent"
-              ? owner.bot.name
-              : entry.by === "you"
-                ? "You"
-                : entry.by === "undo"
-                  ? "Undo"
-                  : entry.by === "tidy"
-                    ? "The nightly tidy"
-                    : "An agent";
-          const verb = entry.by === "undo" ? "put back" : entry.by === "tidy" ? (entry.created ? "started" : "tidied") : entry.created ? "started" : entry.deleted ? "forgot" : "changed";
+          const said = journalLine(entry, owner);
           const isOpen = expanded === entry.id;
           const canUndo = !entry.undoneBy && entry.by !== "undo" && !entry.big;
           return (
@@ -865,11 +856,13 @@ function Timeline({ owner }: { owner: Owner }) {
                     >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-ui text-foreground">
-                          <span className="font-medium">{who}</span> {verb}{" "}
-                          <span className="font-mono text-body">{entry.file}</span>
+                          {tr(said.key, {
+                            who: <span className="font-medium">{said.who}</span>,
+                            file: <span className="font-mono text-body">{entry.file}</span>,
+                          })}
                         </span>
                         <span className="mt-0.5 flex items-center gap-2 text-small text-muted-foreground">
-                          <span>{new Date(entry.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+                          <span>{formatDate(entry.at, { hour: "numeric", minute: "2-digit" })}</span>
                           {!entry.big && (entry.added > 0 || entry.removed > 0) && (
                             <span className="tabular-nums">
                               <span className="text-success">+{entry.added}</span>{" "}
@@ -890,7 +883,7 @@ function Timeline({ owner }: { owner: Owner }) {
                     {canUndo && (
                       <Button size="sm" variant="ghost" disabled={busy === entry.id} onClick={() => undo(entry)}>
                         {busy === entry.id ? <Loader2 size={12} className="animate-spin" /> : <Undo2 size={12} />}
-                        Undo
+                        {t("memoryPlace.undo")}
                       </Button>
                     )}
                   </div>
@@ -910,11 +903,26 @@ function Timeline({ owner }: { owner: Owner }) {
           onClick={() => setAll(true)}
           className="ml-11 mt-1 text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
         >
-          Show {plural(entries.length - SHOWN, "earlier change")}
+          {t("memoryPlace.showEarlierChanges", { count: entries.length - SHOWN })}
         </button>
       )}
     </div>
   );
+}
+
+/** "You changed memory/people.md": who did it and what, as one sentence
+ * per kind of hand, so each language can bend the verb to its subject. */
+function journalLine(entry: Entry, owner: Owner): { key: MessageKey; who: string } {
+  const did = (created: MessageKey, deleted: MessageKey, changed: MessageKey) => (entry.created ? created : entry.deleted ? deleted : changed);
+  if (entry.by === "undo") return { key: "memoryPlace.journal.undo", who: t("memoryPlace.journal.who.undo") };
+  if (entry.by === "tidy") {
+    return { key: entry.created ? "memoryPlace.journal.tidy.started" : "memoryPlace.journal.tidy.tidied", who: t("memoryPlace.journal.who.tidy") };
+  }
+  if (entry.by === "you") {
+    return { key: did("memoryPlace.journal.you.started", "memoryPlace.journal.you.forgot", "memoryPlace.journal.you.changed"), who: t("memoryPlace.journal.who.you") };
+  }
+  const who = entry.by === "agent" && owner.kind === "agent" ? owner.bot.name : t("memoryPlace.journal.who.anAgent");
+  return { key: did("memoryPlace.journal.agent.started", "memoryPlace.journal.agent.forgot", "memoryPlace.journal.agent.changed"), who };
 }
 
 // ── search results ─────────────────────────────────────────────────────
@@ -1010,14 +1018,14 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
       <DialogContent className="flex max-h-[86vh] max-w-[640px] flex-col">
         <DialogTitle>{t("memoryPlace.copyFromAnotherAgent")}</DialogTitle>
         <DialogDescription>
-          Pick topics or lines to copy into {bot.name}'s memory. You can undo it later.
+          {t("memoryPlace.copy.description", { name: bot.name })}
         </DialogDescription>
         {done ? (
           <div className="mt-5 flex flex-col gap-4">
             <div className="flex items-start gap-3 rounded-xl border bg-card p-4">
               <Check size={16} className="mt-0.5 shrink-0 text-success" />
               <div className="text-ui leading-relaxed text-foreground">
-                {done.copied ? `Copied ${plural(done.copied, "file")}. Undo from Recent changes.` : t("memoryPlace.nothingNewToCopy")}
+                {done.copied ? t("memoryPlace.copy.copied", { count: done.copied }) : t("memoryPlace.nothingNewToCopy")}
                 {done.skipped.length > 0 && (
                   <ul className="mt-1.5 text-body text-muted-foreground">
                     {done.skipped.map((line) => (
@@ -1061,7 +1069,7 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
             <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border">
               {source === null ? (
                 <div className="flex items-center gap-2 px-4 py-6 text-body text-muted-foreground">
-                  <Loader2 size={14} className="animate-spin" /> Reading {from.name}'s memory
+                  <Loader2 size={14} className="animate-spin" /> {t("memoryPlace.copy.reading", { name: from.name })}
                 </div>
               ) : (
                 <>
@@ -1116,11 +1124,13 @@ function CopyDialog({ bot, open, onClose }: { bot: Bot; open: boolean; onClose: 
             {error && <p className="mt-2 text-body text-destructive">{error}</p>}
             <div className="mt-4 flex items-center justify-between gap-3">
               <span className="text-body text-muted-foreground">
-                {picked ? `${plural(topics.size, "topic")}, ${plural(lines.size, "line")}` : t("memoryPlace.pickWhatToCopy")}
+                {picked
+                  ? formatList([t("memoryPlace.count.topics", { count: topics.size }), t("memoryPlace.count.lines", { count: lines.size })], { type: "unit" })
+                  : t("memoryPlace.pickWhatToCopy")}
               </span>
               <Button onClick={copy} disabled={!picked || busy}>
                 {busy && <Loader2 size={13} className="animate-spin" />}
-                Copy to {bot.name}
+                {t("memoryPlace.copy.copyTo", { name: bot.name })}
               </Button>
             </div>
           </div>
@@ -1173,9 +1183,9 @@ function useTidy(bot: Bot): [TidyState | null, () => void] {
 /** When a tidy ran, as the diary is dated: the night, or the moment it
  * was asked for. */
 function tidyWhen(run: TidyRun): string {
-  const day = new Date(run.at).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-  if (run.manual) return `${day}, ${new Date(run.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-  return Date.now() - run.at < 24 * 60 * 60 * 1000 ? "Last night" : `Night before ${day}`;
+  const day = formatDate(run.at, { weekday: "short", month: "short", day: "numeric" });
+  if (run.manual) return t("memoryPlace.tidy.manualAt", { day, time: formatDate(run.at, { hour: "numeric", minute: "2-digit" }) });
+  return Date.now() - run.at < 24 * 60 * 60 * 1000 ? t("memoryPlace.tidy.lastNight") : t("memoryPlace.tidy.nightBefore", { day });
 }
 
 /** What one night changed, file by file, read from the journal. */
@@ -1243,10 +1253,10 @@ function TidySection({ bot }: { bot: Bot }) {
     api(`/api/bots/${bot.id}/memory/tidy`, { method: "POST" })
       .then((r: { run: TidyRun }) => {
         if (r.run.state === "done") {
-          toast.success("Tidied", { description: r.run.diary || undefined });
+          toast.success(t("memoryPlace.tidy.toastTidied"), { description: r.run.diary || undefined });
           setOpen(r.run.id);
-        } else if (r.run.state === "nothing") toast("Nothing to tidy", { description: r.run.note });
-        else toast.error("Not tidied", { description: r.run.note });
+        } else if (r.run.state === "nothing") toast(t("memoryPlace.tidy.toastNothing"), { description: r.run.note });
+        else toast.error(t("memoryPlace.tidy.toastNotTidied"), { description: r.run.note });
       })
       .catch((e: Error) => toast.error(e.message))
       .finally(() => {
@@ -1257,16 +1267,19 @@ function TidySection({ bot }: { bot: Bot }) {
 
   const undo = async (run: TidyRun) => {
     const yes = await confirm({
-      title: "Undo this tidy?",
-      body: "Every file it changed goes back to how it was, as long as nothing has changed that file since.",
-      confirmLabel: "Undo tidy",
+      title: t("memoryPlace.tidy.confirmTitle"),
+      body: t("memoryPlace.tidy.confirmBody"),
+      confirmLabel: t("memoryPlace.tidy.confirmLabel"),
     });
     if (!yes) return;
     setUndoing(run.id);
     api(`/api/bots/${bot.id}/memory/tidy/${run.id}/undo`, { method: "POST" })
       .then((r: { failed: Array<{ file: string; error: string }> }) => {
-        if (r.failed.length) toast(`Partly undone`, { description: `${r.failed.map((f) => f.file).join(", ")} changed since, so it stayed.` });
-        else toast.success("Tidy undone");
+        if (r.failed.length) {
+          toast(t("memoryPlace.tidy.partlyUndone"), {
+            description: t("memoryPlace.tidy.changedSince", { files: formatList(r.failed.map((f) => f.file), { type: "unit" }) }),
+          });
+        } else toast.success(t("memoryPlace.tidy.undone"));
       })
       .catch((e: Error) => toast.error(e.message))
       .finally(() => {
@@ -1294,21 +1307,18 @@ function TidySection({ bot }: { bot: Bot }) {
           {tidy === null ? (
             " "
           ) : tidy.enabled ? (
-            <>
-              Between {tidy.hours.from} and {tidy.hours.to}, notes past their date go, repeats are merged, and anything contradicted moves to
-              archive.md with why. Every change shows here and can be undone.
-            </>
+            t("memoryPlace.tidy.between", { from: tidy.hours.from, to: tidy.hours.to })
           ) : (
-            <>
-              Off for every agent in{" "}
-              <button
-                className="underline underline-offset-2 hover:text-foreground"
-                onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "behaviour" })}
-              >
-                {t("memoryPlace.settingsBehaviour")}
-              </button>
-              . Tidy now still works.
-            </>
+            tr("memoryPlace.tidy.offIn", {
+              settings: (
+                <button
+                  className="underline underline-offset-2 hover:text-foreground"
+                  onClick={() => dispatch({ type: "toggleAppSettings", open: true, page: "behaviour" })}
+                >
+                  {t("memoryPlace.settingsBehaviour")}
+                </button>
+              ),
+            })
           )}
         </p>
         {tidy !== null && runs.length === 0 && (
@@ -1323,14 +1333,14 @@ function TidySection({ bot }: { bot: Bot }) {
                   <div className="min-w-0 flex-1">
                     <div className="text-small text-muted-foreground">
                       {tidyWhen(run)}
-                      {run.undoneAt ? t("memoryPlace.undone2") : ""}
+                      {run.undoneAt ? t("memoryPlace.undoneSuffix") : ""}
                     </div>
                     <p className={cn("mt-0.5 text-pretty text-ui leading-relaxed", run.state === "done" ? "text-foreground" : "text-muted-foreground")}>
                       {run.state === "done"
                         ? run.diary || t("memoryPlace.tidied")
                         : run.state === "nothing"
                           ? run.note ?? t("memoryPlace.nothingToTidy")
-                          : `Skipped: ${run.note ?? "it could not go ahead."}`}
+                          : t("memoryPlace.tidy.skipped", { why: run.note ?? t("memoryPlace.tidy.couldNotGoAhead") })}
                     </p>
                     {run.state === "done" && run.note && <p className="mt-0.5 text-pretty text-small text-muted-foreground">{run.note}</p>}
                   </div>
@@ -1343,7 +1353,7 @@ function TidySection({ bot }: { bot: Bot }) {
                       {!run.undoneAt && (
                         <Button size="sm" variant="ghost" disabled={undoing === run.id} onClick={() => void undo(run)}>
                           {undoing === run.id ? <Loader2 size={12} className="animate-spin" /> : <Undo2 size={12} />}
-                          Undo
+                          {t("memoryPlace.undo")}
                         </Button>
                       )}
                     </div>
@@ -1359,7 +1369,7 @@ function TidySection({ bot }: { bot: Bot }) {
             onClick={() => setAll(true)}
             className="w-full border-t px-4 py-2.5 text-left text-body text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
-            Show {plural(runs.length - NIGHTS_SHOWN, "earlier night")}
+            {t("memoryPlace.tidy.showEarlierNights", { count: runs.length - NIGHTS_SHOWN })}
           </button>
         )}
       </div>
@@ -1381,9 +1391,9 @@ function AgentPage({ bot, focus, onFocus }: { bot: Bot; focus: Focus; onFocus: (
       <PageHead
         mark={<AgentAvatar bot={bot} size={52} />}
         title={bot.name}
-        says={`What ${bot.name} remembers. Every change can be undone.`}
+        says={t("memoryPlace.agentSays", { name: bot.name })}
       >
-        <SearchField value={q} onChange={setQ} placeholder={`Search ${bot.name}'s memory`} className="w-[220px] lg:w-[260px]" />
+        <SearchField value={q} onChange={setQ} placeholder={t("memoryPlace.searchAgentMemory", { name: bot.name })} className="w-[220px] lg:w-[260px]" />
         <button
           onClick={() => setCopying(true)}
           className={cn(pill, "gap-1.5 bg-foreground px-4 text-body font-medium text-background hover:opacity-90")}
@@ -1395,9 +1405,9 @@ function AgentPage({ bot, focus, onFocus }: { bot: Bot; focus: Focus; onFocus: (
 
       {q.trim() && (
         <>
-          <SectionTitle aside={loading ? <Loader2 size={13} className="animate-spin" /> : hits && `${mine.length} found`}>{t("memoryPlace.results")}</SectionTitle>
+          <SectionTitle aside={loading ? <Loader2 size={13} className="animate-spin" /> : hits && t("memoryPlace.found", { count: mine.length })}>{t("memoryPlace.results")}</SectionTitle>
           {hits && mine.length === 0 && !loading ? (
-            <p className="text-ui text-muted-foreground">Nothing in {bot.name}'s memory matches “{q.trim()}”.</p>
+            <p className="text-ui text-muted-foreground">{t("memoryPlace.noAgentMatches", { name: bot.name, q: q.trim() })}</p>
           ) : (
             <div className="flex flex-col">
               {mine.map((hit, i) => (
@@ -1413,20 +1423,20 @@ function AgentPage({ bot, focus, onFocus }: { bot: Bot; focus: Focus; onFocus: (
 
       <TidySection bot={bot} />
 
-      <SectionTitle aside={stats?.lastChangedAt ? `Edited ${ago(stats.lastChangedAt)}` : undefined}>{t("memoryPlace.coreMemory")}</SectionTitle>
+      <SectionTitle aside={stats?.lastChangedAt ? t("memoryPlace.editedAgo", { when: ago(stats.lastChangedAt) }) : undefined}>{t("memoryPlace.coreMemory")}</SectionTitle>
       <CoreEditor
         owner={owner}
         focus={focus}
-        placeholder={`Nothing yet. ${bot.name} adds notes as it learns, or write your own, one fact per line.`}
+        placeholder={t("memoryPlace.corePlaceholder", { name: bot.name })}
       />
 
-      <SectionTitle aside={stats ? plural(stats.topics.length, "file") : undefined}>{t("memoryPlace.topics")}</SectionTitle>
+      <SectionTitle aside={stats ? t("memoryPlace.count.files", { count: stats.topics.length }) : undefined}>{t("memoryPlace.topics")}</SectionTitle>
       <Topics bot={bot} stats={stats} focus={focus} />
 
       <SectionTitle
         aside={
           <span className="flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-success" /> Live
+            <span className="size-1.5 rounded-full bg-success" /> {t("memoryPlace.live")}
           </span>
         }
       >
@@ -1455,7 +1465,7 @@ function SharedPage({ focus }: { focus: Focus }) {
       />
       <SectionTitle aside={t("memoryPlace.readAtTheStartOf")}>{t("memoryPlace.spaceUsed")}</SectionTitle>
       <BudgetMeter stats={stats} />
-      <SectionTitle aside={stats?.lastChangedAt ? `Edited ${ago(stats.lastChangedAt)}` : undefined}>{t("memoryPlace.forEveryAgent")}</SectionTitle>
+      <SectionTitle aside={stats?.lastChangedAt ? t("memoryPlace.editedAgo", { when: ago(stats.lastChangedAt) }) : undefined}>{t("memoryPlace.forEveryAgent")}</SectionTitle>
       <CoreEditor
         owner={owner}
         focus={focus}
@@ -1485,7 +1495,7 @@ function AboutYouPage() {
       />
       {suggested.length > 0 && (
         <>
-          <SectionTitle aside={plural(suggested.length, "suggestion")}>{t("memoryPlace.waitingForYou")}</SectionTitle>
+          <SectionTitle aside={t("memoryPlace.count.suggestions", { count: suggested.length })}>{t("memoryPlace.waitingForYou")}</SectionTitle>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {suggested.map((note) => (
               <Suggestion key={note.id} note={note} onDone={reload} />
@@ -1493,7 +1503,7 @@ function AboutYouPage() {
           </div>
         </>
       )}
-      <SectionTitle aside={notes ? `${kept.length} of 60` : undefined}>{t("memoryPlace.whatEveryAgentKnows")}</SectionTitle>
+      <SectionTitle aside={notes ? t("memoryPlace.keptOfMax", { kept: kept.length, max: 60 }) : undefined}>{t("memoryPlace.whatEveryAgentKnows")}</SectionTitle>
       <KeptNotes notes={notes} reload={reload} />
       <SectionTitle
         aside={
@@ -1550,10 +1560,10 @@ function PlaceRow({
 
 function statsLine(stats: Stats | null): React.ReactNode {
   if (!stats) return " ";
-  if (!stats.lines && !stats.topics.length) return "Empty";
+  if (!stats.lines && !stats.topics.length) return t("memoryPlace.empty");
   const lines = (
     <span className={cn(stats.truncated && "text-destructive", !stats.truncated && stats.lines / stats.maxLines >= NEAR && "text-warning")}>
-      {stats.lines} of {stats.maxLines} lines
+      {t("memoryPlace.linesOfMax", { lines: stats.lines, max: stats.maxLines })}
     </span>
   );
   return stats.lastChangedAt ? (
@@ -1581,7 +1591,7 @@ function SharedRow({ active, onClick }: { active: boolean; onClick: () => void }
         </MarkTile>
       }
       label={t("memoryPlace.shared")}
-      meta={stats && !stats.lines ? "For every agent" : statsLine(stats)}
+      meta={stats && !stats.lines ? t("memoryPlace.forEveryAgent") : statsLine(stats)}
       onClick={onClick}
     />
   );
@@ -1646,7 +1656,7 @@ function MemorySidebar({
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {searching && q.trim() ? (
           hits === null ? null : hits.length === 0 ? (
-            <p className="px-2.5 py-3 text-body leading-relaxed text-muted-foreground">Nothing in memory matches “{q.trim()}”.</p>
+            <p className="px-2.5 py-3 text-body leading-relaxed text-muted-foreground">{t("memoryPlace.noMatches", { q: q.trim() })}</p>
           ) : (
             hits.map((hit, i) => (
               <HitRow
@@ -1670,7 +1680,7 @@ function MemorySidebar({
                   </MarkTile>
                 }
                 label={t("memoryPlace.aboutYou")}
-                meta={waiting > 0 ? `${plural(waiting, "suggestion")} waiting` : "What every agent knows"}
+                meta={waiting > 0 ? t("memoryPlace.suggestionsWaiting", { count: waiting }) : t("memoryPlace.whatEveryAgentKnows")}
                 badge={
                   waiting > 0 ? (
                     <span className="rounded-full bg-warning/15 px-1.5 py-px text-caption font-semibold tabular-nums text-warning">{waiting}</span>
@@ -1710,7 +1720,7 @@ function PhonePicker({ target, agents, waiting, onPick }: { target: string; agen
         <Users size={14} /> {t("memoryPlace.shared")}
       </button>
       <button role="tab" aria-selected={target === "you"} onClick={() => onPick("you")} className={chip(target === "you")}>
-        <UserRound size={14} /> About you
+        <UserRound size={14} /> {t("memoryPlace.aboutYou")}
         {waiting > 0 && <span className="rounded-full bg-warning/15 px-1.5 text-caption tabular-nums text-warning">{waiting}</span>}
       </button>
       {agents.map((agent) => (
@@ -1731,7 +1741,7 @@ export function MemoryPlace() {
   // Asked for by a link or a pick, while it still exists; otherwise the
   // notes waiting on you, then the agent in view, then the first one.
   const asked = state.memoryTarget;
-  const exists = (t: string) => t === "you" || t === "shared" || agents.some((a) => a.id === t);
+  const exists = (place: string) => place === "you" || place === "shared" || agents.some((a) => a.id === place);
   const viewing = agents.find((a) => a.id === state.selectedId)?.id;
   const target = asked && exists(asked) ? asked : waiting > 0 ? "you" : (viewing ?? agents[0]?.id ?? "shared");
   const bot = agents.find((a) => a.id === target) ?? null;
@@ -1759,14 +1769,14 @@ export function MemoryPlace() {
       current={target}
       onPick={(next) => pick(next)}
       items={[
-        { id: "shared", label: "Shared", icon: <Users size={14} /> },
+        { id: "shared", label: t("memoryPlace.shared"), icon: <Users size={14} /> },
         {
           id: "you",
-          label: "About you",
+          label: t("memoryPlace.aboutYou"),
           icon: <UserRound size={14} />,
           badge:
             waiting > 0 ? (
-              <span aria-label={`${plural(waiting, "suggestion")} waiting`} className="rounded-full bg-warning/15 px-1.5 text-caption font-semibold tabular-nums text-warning">
+              <span aria-label={t("memoryPlace.suggestionsWaiting", { count: waiting })} className="rounded-full bg-warning/15 px-1.5 text-caption font-semibold tabular-nums text-warning">
                 {waiting}
               </span>
             ) : undefined,
@@ -1775,7 +1785,7 @@ export function MemoryPlace() {
           ? [
               {
                 id: "agents",
-                label: bot ? bot.name : "Agents",
+                label: bot ? bot.name : t("common.agents"),
                 icon: bot ? <AgentAvatar bot={bot} size={16} /> : <Brain size={14} />,
                 menu: agents.map((agent) => ({ id: agent.id, label: agent.name, icon: <AgentAvatar bot={agent} size={18} /> })),
               },
