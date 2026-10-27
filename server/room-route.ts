@@ -234,8 +234,10 @@ export async function pickAnswerers(input: {
   const { prompt, ids } = routePrompt(input);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<{ late: true }>((done) => {
+    // Held, not unref'd: it is cleared the moment the choice comes back,
+    // and a choice that never comes must still end at the deadline even
+    // when nothing else is keeping the process awake.
     timer = setTimeout(() => done({ late: true }), input.deadlineMs ?? ROUTE_DEADLINE_MS);
-    (timer as { unref?: () => void }).unref?.();
   });
   let reply: { text: string } | { late: true } | { failed: true };
   try {
