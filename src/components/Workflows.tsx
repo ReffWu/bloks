@@ -58,8 +58,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Slider, type SliderStop } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, inEnglish, t, tr, useLanguage, type MessageKey, type Params } from "@/lib/i18n";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
@@ -129,18 +128,45 @@ export interface Workflow {
 
 type Room = { id: string; name: string; memberIds?: string[] };
 
-/** Said as the middle of a sentence: "Only if Nova's answer mentions urgent". */
-const OPS: Array<[ConditionOp, string]> = [
-  ["contains", "mentions"],
-  ["not-contains", "does not mention"],
-  ["equals", "is exactly"],
-  ["starts-with", "starts with"],
-  ["ends-with", "ends with"],
-  ["not-empty", "says anything"],
-  ["empty", "says nothing"],
+/** The words for each test, as the condition editor's menu says them. */
+const OPS: Array<[ConditionOp, MessageKey]> = [
+  ["contains", "workflows.op.contains"],
+  ["not-contains", "workflows.op.notContains"],
+  ["equals", "workflows.op.equals"],
+  ["starts-with", "workflows.op.startsWith"],
+  ["ends-with", "workflows.op.endsWith"],
+  ["not-empty", "workflows.op.notEmpty"],
+  ["empty", "workflows.op.empty"],
 ];
-const opWord = (op: ConditionOp) => OPS.find(([o]) => o === op)?.[1] ?? op;
+const opWord = (op: ConditionOp) => {
+  const key = OPS.find(([o]) => o === op)?.[1];
+  return key ? t(key) : op;
+};
 const needsRight = (op: ConditionOp) => op !== "empty" && op !== "not-empty";
+
+/** A condition as a whole sentence, "Only if Nova's answer mentions
+ * “urgent”", one per test so a language can put the verb where it goes.
+ * `right` is what it looks for, already quoted, or null when it has none. */
+const CONDITIONS: Record<ConditionOp, { with: MessageKey; without: MessageKey }> = {
+  contains: { with: "workflows.cond.contains", without: "workflows.cond.containsOpen" },
+  "not-contains": { with: "workflows.cond.notContains", without: "workflows.cond.notContainsOpen" },
+  equals: { with: "workflows.cond.equals", without: "workflows.cond.equalsOpen" },
+  "starts-with": { with: "workflows.cond.startsWith", without: "workflows.cond.startsWithOpen" },
+  "ends-with": { with: "workflows.cond.endsWith", without: "workflows.cond.endsWithOpen" },
+  "not-empty": { with: "workflows.cond.notEmpty", without: "workflows.cond.notEmpty" },
+  empty: { with: "workflows.cond.empty", without: "workflows.cond.empty" },
+};
+function conditionSentence(op: ConditionOp, left: string, right: string | null): string {
+  const pair = CONDITIONS[op] ?? CONDITIONS.contains;
+  return right === null || !needsRight(op) ? t(pair.without, { left }) : t(pair.with, { left, right });
+}
+
+/** Words a condition looks for, in the reader's quotation marks. */
+const quoted = (text: string) => t("workflows.quoted", { text });
+
+/** How the reference names are worded: `t` for what is shown, `inEnglish`
+ * for a step's id, which has to stay the same whatever the language. */
+type Say = (key: MessageKey, params?: Params) => string;
 
 /**
  * What a step will be called, so an earlier answer can be referenced
@@ -169,19 +195,19 @@ function stepId(text: string, taken: string[]): string {
 function when(at: number): string {
   const date = new Date(at);
   const today = new Date().toDateString() === date.toDateString();
-  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return today ? time : `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+  const time = formatDate(date, { hour: "numeric", minute: "2-digit" });
+  return today ? time : t("workflows.dateTime", { date: formatDate(date, { month: "short", day: "numeric" }), time });
 }
 
 /** "3 hours from now", for a deadline somebody has to act inside. */
 function until(at: number): string {
   const minutes = Math.round((at - Date.now()) / 60_000);
-  if (minutes <= 0) return "any moment";
-  if (minutes < 90) return `${minutes} ${minutes === 1 ? "minute" : "minutes"} from now`;
+  if (minutes <= 0) return t("workflows.until.anyMoment");
+  if (minutes < 90) return t("workflows.until.minutes", { count: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 36) return `${hours} ${hours === 1 ? "hour" : "hours"} from now`;
+  if (hours < 36) return t("workflows.until.hours", { count: hours });
   const days = Math.round(hours / 24);
-  return `${days} ${days === 1 ? "day" : "days"} from now`;
+  return t("workflows.until.days", { count: days });
 }
 
 // ── earlier answers, by name ───────────────────────────────────────────
@@ -201,16 +227,12 @@ interface Reference {
   label: string;
 }
 
-function possessive(name: string): string {
-  return `${name}'s`;
-}
-
 /** What each trigger hands its steps as text, in its own terms. */
-function triggerTextLabel(kind: Workflow["trigger"]["kind"]): string {
-  if (kind === "message") return "The message";
-  if (kind === "reaction") return "The reacted message";
-  if (kind === "webhook") return "What the webhook sent";
-  return "What you typed";
+function triggerTextLabel(kind: Workflow["trigger"]["kind"], say: Say = t): string {
+  if (kind === "message") return say("workflows.ref.message");
+  if (kind === "reaction") return say("workflows.ref.reactedMessage");
+  if (kind === "webhook") return say("workflows.ref.webhookSent");
+  return say("workflows.ref.typed");
 }
 
 /**
@@ -218,7 +240,7 @@ function triggerTextLabel(kind: Workflow["trigger"]["kind"]): string {
  * each step: only what has run by then, which is the same line the server
  * draws when it refuses a forward reference.
  */
-function referencesFor(draft: Workflow, bots: Bot[]) {
+function referencesFor(draft: Workflow, bots: Bot[], say: Say = t) {
   const asks = new Map<string, number>();
   for (const s of draft.steps) if (s.action === "ask" && s.targetId) asks.set(s.targetId, (asks.get(s.targetId) ?? 0) + 1);
   const approvals = draft.steps.filter((s) => s.action === "approve").length;
@@ -226,28 +248,35 @@ function referencesFor(draft: Workflow, bots: Bot[]) {
   const stepName = (step: Step, index: number): string => {
     if (step.action === "ask") {
       const who = bots.find((b) => b.id === step.targetId)?.name;
-      if (!who) return `Step ${index + 1}'s answer`;
+      if (!who) return say("workflows.ref.stepAnswer", { n: index + 1 });
       // two steps asking the same agent need telling apart
-      return (asks.get(step.targetId!) ?? 0) > 1 ? `${possessive(who)} answer (step ${index + 1})` : `${possessive(who)} answer`;
+      return (asks.get(step.targetId!) ?? 0) > 1
+        ? say("workflows.ref.agentAnswerStep", { name: who, n: index + 1 })
+        : say("workflows.ref.agentAnswer", { name: who });
     }
-    if (step.action === "post") return `Step ${index + 1}'s post`;
-    return approvals > 1 ? `Your answer (step ${index + 1})` : "Your answer";
+    if (step.action === "post") return say("workflows.ref.stepPost", { n: index + 1 });
+    return approvals > 1 ? say("workflows.ref.yourAnswerStep", { n: index + 1 }) : say("workflows.ref.yourAnswer");
   };
 
   const label = (path: string): { label: string; known: boolean } => {
     const parts = path.split(".");
     if (parts[0] === "trigger" && parts.length === 2) {
-      if (parts[1] === "text") return { label: triggerTextLabel(draft.trigger.kind), known: true };
-      if (parts[1] === "emoji") return { label: "The emoji", known: true };
-      if (parts[1] === "from") return { label: "Who set it off", known: true };
-      return { label: `Trigger ${parts[1]}`, known: true };
+      if (parts[1] === "text") return { label: triggerTextLabel(draft.trigger.kind, say), known: true };
+      if (parts[1] === "emoji") return { label: say("workflows.ref.emoji"), known: true };
+      if (parts[1] === "from") return { label: say("workflows.ref.from"), known: true };
+      return { label: say("workflows.ref.trigger", { name: parts[1] }), known: true };
     }
     if (parts[0] === "steps" && parts.length === 3) {
       const index = draft.steps.findIndex((s) => s.id === parts[1]);
-      if (index < 0) return { label: `Missing step "${parts[1]}"`, known: false };
+      if (index < 0) return { label: say("workflows.ref.missing", { id: parts[1] }), known: false };
       const step = draft.steps[index];
       if (step.action === "approve") {
-        if (parts[2] === "approved") return { label: approvals > 1 ? `Whether you approved (step ${index + 1})` : "Whether you approved", known: true };
+        if (parts[2] === "approved") {
+          return {
+            label: approvals > 1 ? say("workflows.ref.approvedStep", { n: index + 1 }) : say("workflows.ref.approved"),
+            known: true,
+          };
+        }
         return { label: stepName(step, index), known: true };
       }
       return { label: stepName(step, index), known: true };
@@ -269,8 +298,8 @@ function referencesFor(draft: Workflow, bots: Bot[]) {
       }
     });
     out.reverse();
-    if (draft.trigger.kind !== "manual") out.push({ token: "{{trigger.text}}", label: triggerTextLabel(draft.trigger.kind) });
-    if (all && draft.trigger.kind === "reaction") out.push({ token: "{{trigger.emoji}}", label: "The emoji" });
+    if (draft.trigger.kind !== "manual") out.push({ token: "{{trigger.text}}", label: triggerTextLabel(draft.trigger.kind, say) });
+    if (all && draft.trigger.kind === "reaction") out.push({ token: "{{trigger.emoji}}", label: say("workflows.ref.emoji") });
     return out;
   };
 
@@ -292,38 +321,76 @@ function placeName(id: string | undefined, bots: Bot[], rooms: Room[]): string |
 }
 
 function triggerSentence(trigger: Workflow["trigger"], bots: Bot[], rooms: Room[]): string {
-  if (trigger.kind === "manual") return "You run it";
-  if (trigger.kind === "webhook") return "Its webhook is called";
+  if (trigger.kind === "manual") return t("workflows.trigger.manual");
+  if (trigger.kind === "webhook") return t("workflows.trigger.webhook");
   const place = placeName(trigger.targetId, bots, rooms);
   const room = trigger.targetKind === "room";
   if (trigger.kind === "reaction") {
-    const what = trigger.emoji ? `A ${trigger.emoji} reaction` : "A reaction";
-    return place ? `${what} in ${room ? place : `${possessive(place)} chat`}` : what;
+    const emoji = trigger.emoji;
+    if (!place) return emoji ? t("workflows.trigger.reactionEmoji", { emoji }) : t("workflows.trigger.reaction");
+    if (room) {
+      return emoji
+        ? t("workflows.trigger.reactionEmojiInRoom", { emoji, place })
+        : t("workflows.trigger.reactionInRoom", { place });
+    }
+    return emoji
+      ? t("workflows.trigger.reactionEmojiInChat", { emoji, name: place })
+      : t("workflows.trigger.reactionInChat", { name: place });
   }
-  if (!place) return "A message";
-  const where = room ? `in ${place}` : `to ${place}`;
-  return trigger.contains ? `A message ${where} mentions “${trigger.contains}”` : `Any message ${where}`;
+  if (!place) return t("workflows.trigger.message");
+  if (trigger.contains) {
+    return room
+      ? t("workflows.trigger.mentionsInRoom", { place, text: trigger.contains })
+      : t("workflows.trigger.mentionsToAgent", { name: place, text: trigger.contains });
+  }
+  return room ? t("workflows.trigger.anyInRoom", { place }) : t("workflows.trigger.anyToAgent", { name: place });
 }
 
 function stepTitle(step: Step, bots: Bot[], rooms: Room[]): string {
   if (step.action === "ask") {
     const who = bots.find((b) => b.id === step.targetId)?.name;
-    return who ? `Ask ${who}` : "Ask an agent";
+    return who ? t("workflows.stepTitle.ask", { name: who }) : t("workflows.askAnAgent");
   }
   if (step.action === "post") {
     const room = rooms.find((r) => r.id === step.targetId)?.name;
-    return room ? `Post in ${room}` : "Post in a room";
+    return room ? t("workflows.stepTitle.post", { room }) : t("workflows.postInARoom");
   }
-  return "Ask you";
+  return t("workflows.askYou");
 }
 
 /** The same line the server writes for the list, said while editing. */
 function describeDraft(draft: Workflow, bots: Bot[], rooms: Room[]): string {
   const count = draft.steps.length;
   const gates = draft.steps.filter((s) => s.action === "approve").length;
-  const body = plural(count, "step");
-  const opener = triggerSentence(draft.trigger, bots, rooms);
-  return gates ? `${opener}, then ${body}. ${gates === 1 ? "One waits for you." : `${gates} wait for you.`}` : `${opener}, then ${body}.`;
+  const trigger = triggerSentence(draft.trigger, bots, rooms);
+  if (!gates) return t("workflows.draftLine.plain", { trigger, count });
+  return gates === 1
+    ? t("workflows.draftLine.oneGate", { trigger, count })
+    : t("workflows.draftLine.gates", { trigger, count, gates });
+}
+
+/** The line under a workflow in the list: the same sentence the server's
+ * describe() writes (server/workflows.ts), said in the reader's language. */
+function describeWorkflow(workflow: Workflow): string {
+  const trigger = workflow.trigger;
+  const when =
+    trigger.kind === "manual"
+      ? t("workflows.summary.manual")
+      : trigger.kind === "webhook"
+        ? t("workflows.summary.webhook")
+        : trigger.kind === "reaction"
+          ? trigger.emoji
+            ? t("workflows.summary.reactionEmoji", { emoji: trigger.emoji })
+            : t("workflows.summary.reaction")
+          : trigger.contains
+            ? t("workflows.summary.mentions", { text: trigger.contains })
+            : t("workflows.summary.message");
+  const count = workflow.steps.length;
+  const gates = workflow.steps.filter((s) => s.action === "approve").length;
+  if (!gates) return t("workflows.summary.plain", { when, count });
+  return gates === 1
+    ? t("workflows.summary.oneGate", { when, count })
+    : t("workflows.summary.gates", { when, count, gates });
 }
 
 // ── what is missing, before the server says so ─────────────────────────
@@ -341,34 +408,39 @@ interface Problem {
 }
 
 function findProblems(draft: Workflow): { trigger: Problem | null; steps: Array<Problem | null> } {
-  const t = draft.trigger;
+  const trig = draft.trigger;
   const trigger: Problem | null =
-    (t.kind === "message" || t.kind === "reaction") && !t.targetId
-      ? { field: "where", say: "Pick where to watch." }
-      : t.kind === "reaction" && !t.emoji
-        ? { field: "emoji", say: "Pick an emoji." }
+    (trig.kind === "message" || trig.kind === "reaction") && !trig.targetId
+      ? { field: "where", say: t("workflows.problem.where") }
+      : trig.kind === "reaction" && !trig.emoji
+        ? { field: "emoji", say: t("workflows.problem.emoji") }
         : null;
   const seen: string[] = [];
   const steps = draft.steps.map((step, index): Problem | null => {
     let found: Problem | null = null;
-    if (step.action === "ask" && !step.targetId) found = { field: "target", say: "Pick an agent to ask." };
-    else if (step.action === "post" && !step.targetId) found = { field: "target", say: "Pick a room to post in." };
+    if (step.action === "ask" && !step.targetId) found = { field: "target", say: t("workflows.problem.agent") };
+    else if (step.action === "post" && !step.targetId) found = { field: "target", say: t("workflows.problem.room") };
     else if (!step.text.trim()) {
       found = {
         field: "text",
-        say: step.action === "approve" ? "Say what you are approving." : step.action === "post" ? "Say what to post." : "Say what to ask.",
+        say:
+          step.action === "approve"
+            ? t("workflows.problem.approveText")
+            : step.action === "post"
+              ? t("workflows.problem.postText")
+              : t("workflows.problem.askText"),
       };
-    } else if (step.action === "approve" && !step.targetId && !draft.steps.slice(0, index).some((s) => s.targetId) && !t.targetId) {
-      found = { field: "target", say: "Pick where to ask you." };
+    } else if (step.action === "approve" && !step.targetId && !draft.steps.slice(0, index).some((s) => s.targetId) && !trig.targetId) {
+      found = { field: "target", say: t("workflows.problem.askWhere") };
     } else if (step.when && needsRight(step.when.op) && !String(step.when.right ?? "").trim()) {
-      found = { field: "condition", say: "Finish the condition, or remove it." };
+      found = { field: "condition", say: t("workflows.problem.condition") };
     } else {
       const refs = [step.text, step.when?.left ?? "", step.when?.right ?? ""].flatMap((text) => [...text.matchAll(REFERENCE)].map((m) => m[1]));
       for (const ref of refs) {
         const parts = ref.split(".");
         if (parts[0] === "trigger") continue;
         if (parts[0] !== "steps" || parts.length !== 3 || !seen.includes(parts[1])) {
-          found = { field: "text", say: "Uses an answer that is not ready by then." };
+          found = { field: "text", say: t("workflows.problem.notReady") };
           break;
         }
       }
@@ -503,7 +575,11 @@ function WorkflowCard({
         <button
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          aria-label={open ? `Hide steps in ${workflow.name}` : `Show steps in ${workflow.name}`}
+          aria-label={
+            open
+              ? t("workflows.hideStepsIn", { name: workflow.name })
+              : t("workflows.showStepsIn", { name: workflow.name })
+          }
           title={open ? t("workflows.hideSteps") : t("workflows.showSteps")}
           className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
         >
@@ -516,26 +592,27 @@ function WorkflowCard({
               <span className="rounded-md bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">{t("workflows.off")}</span>
             )}
           </div>
-          <div className="mt-0.5 text-body text-muted-foreground">{workflow.summary}</div>
+          <div className="mt-0.5 text-body text-muted-foreground">{describeWorkflow(workflow)}</div>
           {/* The state worth putting on the outside of the card: a run
               that is sitting still because it is waiting for you looks
               exactly like a run that is stuck, unless it says so. */}
           {waiting?.waiting && (
             <div className="mt-2 flex items-center gap-1.5 text-body text-warning">
               <Hourglass size={13} />
-              Waiting for you. It {waiting.waiting.onTimeout === "continue" ? t("workflows.carriesOn") : "stops"}{" "}
-              {until(waiting.waiting.until)}.
+              {waiting.waiting.onTimeout === "continue"
+                ? t("workflows.waitingCarriesOn", { when: until(waiting.waiting.until) })
+                : t("workflows.waitingStops", { when: until(waiting.waiting.until) })}
             </div>
           )}
           {!waiting && latest && (
             <div className="mt-1 text-small text-muted-foreground">
-              Last run {when(latest.startedAt)} · {stateWord(latest)}
+              {t("workflows.lastRun", { when: when(latest.startedAt), state: stateWord(latest) })}
             </div>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Switch
-            aria-label={`${workflow.name}: on or off`}
+            aria-label={t("workflows.toggle", { name: workflow.name })}
             checked={workflow.enabled}
             onCheckedChange={(enabled) =>
               api(`/api/workflows/${workflow.id}`, { method: "PATCH", body: JSON.stringify({ enabled }) })
@@ -558,12 +635,15 @@ function WorkflowCard({
                   {i + 1}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="text-foreground">{stepTitle(step, bots, rooms)}:</span>
+                  <span className="text-foreground">{t("workflows.stepLineTitle", { title: stepTitle(step, bots, rooms) })}</span>
                   <span className="ml-1.5 text-muted-foreground">{readable(step.text, labelFor)}</span>
                   {step.when && (
                     <span className="mt-0.5 block text-small text-muted-foreground">
-                      Only if {readable(step.when.left, labelFor)} {opWord(step.when.op)}
-                      {needsRight(step.when.op) && step.when.right ? ` “${readable(step.when.right, labelFor)}”` : ""}
+                      {conditionSentence(
+                        step.when.op,
+                        readable(step.when.left, labelFor),
+                        step.when.right ? quoted(readable(step.when.right, labelFor)) : null,
+                      )}
                     </span>
                   )}
                 </span>
@@ -580,15 +660,15 @@ function WorkflowCard({
               size="sm"
               onClick={async () => {
                 const yes = await confirm({
-                  title: `Delete "${workflow.name}"?`,
-                  confirmLabel: "Delete",
+                  title: t("workflows.deleteTitle", { name: workflow.name }),
+                  confirmLabel: t("common.delete"),
                   destructive: true,
                 });
                 if (!yes) return;
                 api(`/api/workflows/${workflow.id}`, { method: "DELETE" })
                   .then(() => {
                     onChanged();
-                    toast(`Deleted "${workflow.name}"`);
+                    toast(t("workflows.deleted", { name: workflow.name }));
                   })
                   .catch((e: Error) => onError(e.message));
               }}
@@ -625,16 +705,17 @@ function WorkflowCard({
 
 function stateWord(run: Run): string {
   switch (run.state) {
+    // why it is held, and why it stopped, are the server's words
     case "running":
-      return run.held ?? "running";
+      return run.held ?? t("workflows.state.running");
     case "waiting":
-      return "waiting for you";
+      return t("workflows.state.waiting");
     case "done":
-      return "finished";
+      return t("workflows.state.done");
     case "stopped":
-      return run.error ?? "stopped";
+      return run.error ?? t("workflows.state.stopped");
     default:
-      return run.error ?? "failed";
+      return run.error ?? t("workflows.state.failed");
   }
 }
 
@@ -743,8 +824,13 @@ function Editor({
   const baseline = useRef(shapeOf(workflow ?? EMPTY));
   const dirty = shapeOf(draft) !== baseline.current;
 
-  const refs = useMemo(() => referencesFor(draft, bots), [draft, bots]);
-  const missing = useMemo(() => findProblems(draft), [draft]);
+  // the names and the problems are words, so they are made again in a new language
+  const language = useLanguage();
+  const refs = useMemo(() => referencesFor(draft, bots), [draft, bots, language]);
+  // a step's id is made from its words in English, so it is the same id
+  // whatever language it was written in
+  const idRefs = useMemo(() => referencesFor(draft, bots, inEnglish), [draft, bots]);
+  const missing = useMemo(() => findProblems(draft), [draft, language]);
 
   // A try: the run started from here, followed until it settles.
   const [runId, setRunId] = useState<string | null>(null);
@@ -767,7 +853,7 @@ function Editor({
         // they read, so a step that is only "Writer's answer" is called
         // that rather than after the braces underneath it.
         if (!next.id && next.text.trim()) {
-          next.id = stepId(readable(next.text, refs.label), d.steps.filter((_, j) => j !== index).map((other) => other.id));
+          next.id = stepId(readable(next.text, idRefs.label), d.steps.filter((_, j) => j !== index).map((other) => other.id));
         }
         return next;
       }),
@@ -899,20 +985,31 @@ function Editor({
   // what a try will really do, said before it does it: a post in a room is
   // the part other people may see
   const postsIn = [
-    ...new Set(draft.steps.filter((s) => s.action === "post" && s.targetId).map((s) => rooms.find((r) => r.id === s.targetId)?.name ?? "a room")),
+    ...new Set(
+      draft.steps
+        .filter((s) => s.action === "post" && s.targetId)
+        .map((s) => rooms.find((r) => r.id === s.targetId)?.name ?? t("workflows.aRoomInSentence")),
+    ),
   ];
+  const tryRuns = !postsIn.length
+    ? t("workflows.tryNote.plain")
+    : postsIn.length > 2
+      ? t("workflows.tryNote.postsInMore", { first: postsIn[0], second: postsIn[1] })
+      : t("workflows.tryNote.postsIn", { rooms: formatList(postsIn) });
   const tryNote = held
-    ? "Saved and switched off. Create turns it on."
-    : `Try it runs it once for real${postsIn.length ? `, and posts in ${postsIn.length > 2 ? `${postsIn.slice(0, 2).join(", ")} and more` : postsIn.join(" and ")}` : ""}.${!draft.id && draft.trigger.kind !== "manual" ? " It stays off until you press Create." : ""}`;
+    ? t("workflows.tryNote.held")
+    : !draft.id && draft.trigger.kind !== "manual"
+      ? `${tryRuns} ${t("workflows.tryNote.staysOff")}`
+      : tryRuns;
 
   const close = async () => {
     if (
       dirty &&
       !(await confirm({
-        title: "Close without saving?",
-        body: "Your changes to this workflow are lost.",
-        confirmLabel: "Discard changes",
-        cancelLabel: "Keep editing",
+        title: t("workflows.closeConfirm.title"),
+        body: t("workflows.closeConfirm.body"),
+        confirmLabel: t("workflows.closeConfirm.discard"),
+        cancelLabel: t("workflows.closeConfirm.keep"),
         destructive: true,
       }))
     ) {
@@ -925,9 +1022,9 @@ function Editor({
   const step = index >= 0 ? draft.steps[index] : null;
   const firstAt = missing.steps.findIndex(Boolean);
   const firstProblem = missing.trigger
-    ? `What sets it off: ${missing.trigger.say}`
+    ? t("workflows.firstProblem.trigger", { problem: missing.trigger.say })
     : firstAt >= 0
-      ? `Step ${firstAt + 1}: ${missing.steps[firstAt]!.say}`
+      ? t("workflows.stepColon", { n: firstAt + 1, text: missing.steps[firstAt]!.say })
       : null;
 
   /** Before sending anything, go to the first thing missing, if there
@@ -1218,9 +1315,11 @@ function Chain({
                 snippet={readable(step.text, labelFor)}
                 condition={
                   step.when
-                    ? `Only if ${readable(step.when.left, labelFor) || "…"} ${opWord(step.when.op)}${
-                        needsRight(step.when.op) ? ` ${step.when.right?.trim() ? `“${readable(step.when.right, labelFor)}”` : "…"}` : ""
-                      }`
+                    ? conditionSentence(
+                        step.when.op,
+                        readable(step.when.left, labelFor) || "…",
+                        step.when.right?.trim() ? quoted(readable(step.when.right, labelFor)) : "…",
+                      )
                     : null
                 }
                 bots={bots}
@@ -1250,7 +1349,7 @@ function Chain({
 
       {/* narrow: a strip */}
       <div ref={strip} aria-label={t("common.steps")} role="list" className="-mx-4 flex items-center overflow-x-auto px-4 py-1.5 [scrollbar-width:none] md:hidden">
-        <StripNode on={selected === "trigger"} onSelect={() => onSelect("trigger")} warn={loud && Boolean(missing.trigger)} label={t("workflows.when")}>
+        <StripNode on={selected === "trigger"} onSelect={() => onSelect("trigger")} warn={loud && Boolean(missing.trigger)} label={t("workflows.when")} isTrigger>
           <TriggerGlyph kind={draft.trigger.kind} size={24} />
         </StripNode>
         {draft.steps.map((step, i) => (
@@ -1384,7 +1483,7 @@ function StepNode({
     <button
       onClick={onSelect}
       aria-current={on ? "step" : undefined}
-      aria-label={`Step ${index + 1}: ${title}`}
+      aria-label={t("workflows.stepColon", { n: index + 1, text: title })}
       className={cn(NODE, nodeTone(on), state === "skipped" && "opacity-55")}
     >
       <StepGlyph step={step} bots={bots} />
@@ -1414,6 +1513,7 @@ function StripNode({
   onSelect,
   warn,
   label,
+  isTrigger,
   state,
   children,
 }: {
@@ -1421,6 +1521,8 @@ function StripNode({
   onSelect: () => void;
   warn: boolean;
   label: string;
+  /** The node for what sets it off, rather than a numbered step. */
+  isTrigger?: boolean;
   state?: RunStep["state"] | null;
   children: React.ReactNode;
 }) {
@@ -1428,7 +1530,7 @@ function StripNode({
     <button
       onClick={onSelect}
       aria-current={on ? "step" : undefined}
-      aria-label={label === "When" ? t("workflows.whatSetsItOff") : `Step ${label}`}
+      aria-label={isTrigger ? t("workflows.whatSetsItOff") : t("workflows.stepNumber", { n: label })}
       className={cn(
         "relative flex shrink-0 items-center gap-1.5 rounded-xl border px-2 py-1.5 outline-none transition-[border-color,background-color,scale] duration-150 active:scale-95",
         on ? "border-foreground/15 bg-card shadow-[0_1px_3px_var(--shadow-color)]" : "border-transparent",
@@ -1462,12 +1564,12 @@ function NodeMark({ state, small }: { state: RunStep["state"]; small?: boolean }
   }
   const look =
     state === "ok"
-      ? { cls: "bg-success/15 text-success", el: <Check size={icon} strokeWidth={3} />, say: "Done" }
+      ? { cls: "bg-success/15 text-success", el: <Check size={icon} strokeWidth={3} />, say: t("common.done") }
       : state === "waiting"
-        ? { cls: "bg-warning/15 text-warning", el: <Hourglass size={icon} />, say: "Waiting for you" }
+        ? { cls: "bg-warning/15 text-warning", el: <Hourglass size={icon} />, say: t("workflows.mark.waiting") }
         : state === "skipped"
-          ? { cls: "bg-muted text-muted-foreground", el: <ChevronRight size={icon} />, say: "Skipped" }
-          : { cls: "bg-destructive/10 text-destructive", el: <X size={icon} strokeWidth={3} />, say: state === "timed-out" ? "Timed out" : "Failed" };
+          ? { cls: "bg-muted text-muted-foreground", el: <ChevronRight size={icon} />, say: t("workflows.mark.skipped") }
+          : { cls: "bg-destructive/10 text-destructive", el: <X size={icon} strokeWidth={3} />, say: state === "timed-out" ? t("workflows.mark.timedOut") : t("workflows.mark.failed") };
   return (
     <motion.span
       key={state}
@@ -1552,11 +1654,11 @@ function Section({ title, aside, children, className }: { title: string; aside?:
   );
 }
 
-const TRIGGER_KINDS: Array<{ kind: Workflow["trigger"]["kind"]; label: string; line: string }> = [
-  { kind: "manual", label: "You run it", line: "Whenever you like" },
-  { kind: "message", label: "A message", line: "When something is said" },
-  { kind: "reaction", label: "A reaction", line: "When someone reacts" },
-  { kind: "webhook", label: "A webhook", line: "When another app calls" },
+const TRIGGER_KINDS: Array<{ kind: Workflow["trigger"]["kind"]; label: MessageKey; line: MessageKey }> = [
+  { kind: "manual", label: "workflows.trigger.manual", line: "workflows.kind.manualLine" },
+  { kind: "message", label: "workflows.trigger.message", line: "workflows.kind.messageLine" },
+  { kind: "reaction", label: "workflows.trigger.reaction", line: "workflows.kind.reactionLine" },
+  { kind: "webhook", label: "workflows.kind.webhook", line: "workflows.kind.webhookLine" },
 ];
 
 const EMOJI = ["👍", "✅", "🚀", "👀", "❤️", "🔥"];
@@ -1590,8 +1692,8 @@ function TriggerPane({
             on={trigger.kind === option.kind}
             onPick={() => onChange({ ...trigger, kind: option.kind })}
             face={<TriggerGlyph kind={option.kind} />}
-            title={option.label}
-            line={option.line}
+            title={t(option.label)}
+            line={t(option.line)}
           />
         ))}
       </div>
@@ -1612,7 +1714,7 @@ function TriggerPane({
             <Section title={t("workflows.onlyIfItMentions")} aside={<span className="text-small text-muted-foreground">{t("workflows.optional")}</span>}>
               <Input
                 value={trigger.contains ?? ""}
-                placeholder="invoice"
+                placeholder={t("workflows.containsPlaceholder")}
                 onChange={(e) => onChange({ ...trigger, contains: e.target.value })}
                 className="h-10 rounded-xl bg-card"
               />
@@ -1668,8 +1770,7 @@ function TriggerPane({
 
       {trigger.kind === "webhook" && (
         <p className="mt-6 text-pretty text-body leading-relaxed text-muted-foreground">
-          Save, then add a webhook for it under Webhooks. What it sends arrives as{" "}
-          <span className={PILL}>{triggerTextLabel("webhook")}</span>, ready to use in any step.
+          {tr("workflows.webhookHint", { label: <span className={PILL}>{triggerTextLabel("webhook")}</span> })}
         </p>
       )}
       {trigger.kind === "manual" && (
@@ -1715,12 +1816,17 @@ function StepPane({
   onRemove: () => void;
 }) {
   const field = useRef<TokenFieldHandle>(null);
-  const title = step.action === "ask" ? "What to ask" : step.action === "post" ? "What to post" : "What you are approving";
+  const title =
+    step.action === "ask"
+      ? t("workflows.textTitle.ask")
+      : step.action === "post"
+        ? t("workflows.textTitle.post")
+        : t("workflows.textTitle.approve");
 
   return (
     <>
       <PaneHeading
-        eyebrow={`Step ${index + 1} of ${count}`}
+        eyebrow={t("workflows.stepOf", { n: index + 1, count })}
         title={step.action === "ask" ? t("workflows.askAnAgent") : step.action === "post" ? t("workflows.postInARoom") : t("workflows.askYou")}
         aside={
           <div className="flex shrink-0 items-center gap-0.5">
@@ -1742,9 +1848,9 @@ function StepPane({
         value={step.action}
         onChange={(action) => action !== step.action && onChange({ action, targetId: "" })}
         options={[
-          { value: "ask", label: "Ask an agent" },
-          { value: "post", label: "Post in a room" },
-          { value: "approve", label: "Ask you" },
+          { value: "ask", label: t("workflows.askAnAgent") },
+          { value: "post", label: t("workflows.postInARoom") },
+          { value: "approve", label: t("workflows.askYou") },
         ]}
       />
 
@@ -1766,7 +1872,7 @@ function StepPane({
                   onPick={() => onChange({ targetId: room.id })}
                   face={<RoomFace room={room} bots={allBots} />}
                   title={room.name}
-                  line={plural(room.memberIds?.length ?? 0, "member")}
+                  line={t("workflows.members", { count: room.memberIds?.length ?? 0 })}
                 />
               ))}
             </div>
@@ -1821,8 +1927,8 @@ function StepPane({
               value={step.onTimeout === "continue" ? "continue" : "stop"}
               onChange={(onTimeout) => onChange({ onTimeout })}
               options={[
-                { value: "stop", label: "Stop" },
-                { value: "continue", label: "Carry on" },
+                { value: "stop", label: t("common.stop") },
+                { value: "continue", label: t("workflows.carryOn") },
               ]}
             />
             <p className="mt-2 text-small leading-relaxed text-muted-foreground">
@@ -1842,7 +1948,7 @@ function StepPane({
                   </span>
                 }
                 title={t("workflows.whereItGotTo")}
-                line={fallbackAsk ? `In ${fallbackAsk}` : "Nowhere yet, so pick an agent"}
+                line={fallbackAsk ? t("workflows.askIn", { name: fallbackAsk }) : t("workflows.askNowhere")}
               />
               {bots.map((bot) => (
                 <PickCard
@@ -1851,7 +1957,7 @@ function StepPane({
                   onPick={() => onChange({ targetId: bot.id })}
                   face={<AgentAvatar bot={bot} size={32} />}
                   title={bot.name}
-                  line={bot.title || "In their chat"}
+                  line={bot.title || t("workflows.inTheirChat")}
                 />
               ))}
             </div>
@@ -1965,10 +2071,12 @@ function AgentPicker({ value, agents, onPick }: { value?: string; agents: Bot[];
             onPick={() => onPick(bot.id)}
             face={<AgentAvatar bot={bot} size={32} />}
             title={bot.name}
-            line={bot.title || "No stated role"}
+            line={bot.title || t("workflows.noStatedRole")}
           />
         ))}
-        {shown.length === 0 && <p className="col-span-full py-3 text-body text-muted-foreground">Nobody matches “{query.trim()}”.</p>}
+        {shown.length === 0 && (
+          <p className="col-span-full py-3 text-body text-muted-foreground">{t("workflows.nobodyMatches", { query: query.trim() })}</p>
+        )}
       </div>
     </>
   );
@@ -2014,7 +2122,7 @@ function PlacePicker({
                     onPick={() => onPick(place.id, place.kind)}
                     face={bot ? <AgentAvatar bot={bot} size={32} /> : <RoomFace room={room!} bots={allBots} />}
                     title={place.name}
-                    line={bot ? bot.title || "Their chat" : plural(room?.memberIds?.length ?? 0, "member")}
+                    line={bot ? bot.title || t("workflows.theirChat") : t("workflows.members", { count: room?.memberIds?.length ?? 0 })}
                   />
                 );
               })}
@@ -2030,31 +2138,23 @@ function PlacePicker({
 
 /** Named stops, saved as the same minutes the server has always taken.
  * Seven days is the server's cap (MAX_TIMEOUT_MIN). */
-const WAITS: Array<SliderStop<number>> = [
-  { value: 60, label: "1h" },
-  { value: 4 * 60, label: "4h" },
-  { value: 12 * 60, label: "12h" },
-  { value: 24 * 60, label: "1 day" },
-  { value: 3 * 24 * 60, label: "3 days" },
-  { value: 7 * 24 * 60, label: "7 days" },
-];
+const WAITS = [60, 4 * 60, 12 * 60, 24 * 60, 3 * 24 * 60, 7 * 24 * 60];
 
+/** "1h", "1 day": a stop's name, said each time it is drawn. */
 function waitLabel(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 24 * 60 || minutes % (24 * 60)) return `${Math.round((minutes / 60) * 10) / 10}h`;
-  return plural(minutes / (24 * 60), "day");
+  if (minutes < 60) return t("workflows.wait.minutes", { n: minutes });
+  if (minutes < 24 * 60 || minutes % (24 * 60)) return t("workflows.wait.hours", { n: Math.round((minutes / 60) * 10) / 10 });
+  return t("workflows.wait.days", { count: minutes / (24 * 60) });
 }
 
 function WaitSlider({ value, onChange }: { value: number; onChange: (minutes: number) => void }) {
   // A wait saved before there were stops (two hours, typed by hand) keeps
   // its own stop, in its place, rather than being moved to the nearest
   // one just because the editor was opened.
-  const stops = useMemo(
-    () =>
-      WAITS.some((s) => s.value === value)
-        ? WAITS
-        : [...WAITS, { value, label: waitLabel(value) }].sort((a, b) => a.value - b.value),
-    [value],
+  const language = useLanguage();
+  const stops = useMemo<Array<SliderStop<number>>>(
+    () => (WAITS.includes(value) ? WAITS : [...WAITS, value].sort((a, b) => a - b)).map((m) => ({ value: m, label: waitLabel(m) })),
+    [value, language],
   );
   // The slider's thumb rides a rail as wide as the track, moved by
   // transform, and a moved box still counts toward its scroller's width.
@@ -2104,7 +2204,7 @@ function ConditionEditor({
   // A left side someone wrote by hand stays as written, and is still
   // offered back in the list so choosing again is a real choice.
   const custom = !options.some((o) => o.token === condition.left);
-  const leftLabel = readable(condition.left, labelFor) || "Pick an answer";
+  const leftLabel = readable(condition.left, labelFor) || t("workflows.pickAnAnswer");
 
   return (
     <motion.div
@@ -2146,7 +2246,7 @@ function ConditionEditor({
         <DropdownMenuContent align="start">
           {OPS.map(([op, word]) => (
             <DropdownMenuItem key={op} onSelect={() => onChange({ ...condition, op })}>
-              <span className="flex-1">{word}</span>
+              <span className="flex-1">{t(word)}</span>
               {op === condition.op && <Check size={13} />}
             </DropdownMenuItem>
           ))}
@@ -2160,7 +2260,7 @@ function ConditionEditor({
           multiline={false}
           autoFocus={fresh.current}
           aria-label={t("workflows.wordsToLookFor")}
-          placeholder="urgent"
+          placeholder={t("workflows.wordsPlaceholder")}
           className="min-w-[120px] flex-1 rounded-lg border border-input bg-background px-2.5 py-1 text-ui transition-[border-color] duration-150 focus-within:border-ring/60"
         />
       )}
@@ -2200,7 +2300,7 @@ function makePill(raw: string, path: string, labelFor: LabelFor): HTMLElement {
   pill.dataset.token = raw;
   pill.className = known ? PILL : PILL_UNKNOWN;
   pill.textContent = label;
-  pill.title = known ? label : `${label}: not something a step can read`;
+  pill.title = known ? label : t("workflows.unknownReference", { label });
   return pill;
 }
 

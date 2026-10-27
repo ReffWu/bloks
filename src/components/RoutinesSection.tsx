@@ -22,7 +22,8 @@ import { RoutinesDialog } from "./RoutinesDialog";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
-import { t } from "@/lib/i18n";
+import { formatDate, t } from "@/lib/i18n";
+import { describeSchedule } from "@/lib/routineDetails";
 
 export interface RoutineRun {
   id: string;
@@ -76,9 +77,9 @@ export interface Routine {
 
 /** The line under a routine saying when it next runs, or why it will not. */
 export function routineStatus(routine: Routine, whenNext: (at?: number | null) => string): string {
-  if (!routine.enabled) return "Paused";
-  if (routine.suspended === "archived") return "Paused while its agent is archived";
-  if (routine.failing) return "Stopped after failing again and again";
+  if (!routine.enabled) return t("common.paused");
+  if (routine.suspended === "archived") return t("routinesSection.status.archived");
+  if (routine.failing) return t("routinesSection.status.failing");
   return whenNext(routine.nextRunAt);
 }
 
@@ -94,8 +95,10 @@ function whenNext(at: number | null | undefined): string {
   const when = new Date(at);
   const now = new Date();
   const sameDay = when.toDateString() === now.toDateString();
-  const time = when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return sameDay ? `Next today ${time}` : `Next ${when.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  const time = formatDate(when, { hour: "numeric", minute: "2-digit" });
+  return sameDay
+    ? t("routinesSection.nextToday", { time })
+    : t("routinesSection.nextOn", { day: formatDate(when, { weekday: "short" }), time });
 }
 
 export function RoutinesSection({
@@ -142,7 +145,7 @@ export function RoutinesSection({
             {t("common.routines")}
           </div>
           <div className="mt-0.5 text-body text-muted-foreground">
-            What {targetName} does on a schedule.
+            {t("routinesSection.whatItDoes", { name: targetName })}
           </div>
         </>
       )}
@@ -164,7 +167,7 @@ export function RoutinesSection({
                     routine.enabled ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
-                  {routine.summary ?? routine.time}
+                  {describeSchedule(routine)}
                 </div>
                 <div className="mt-0.5 line-clamp-2 text-small text-muted-foreground">
                   {routine.prompt}
@@ -174,7 +177,11 @@ export function RoutinesSection({
                 </div>
               </div>
               <Switch
-                aria-label={`${routine.name || "This routine"}: on or off`}
+                aria-label={
+                  routine.name
+                    ? t("routinesSection.toggleNamed", { name: routine.name })
+                    : t("routinesSection.toggleUnnamed")
+                }
                 checked={routine.enabled}
                 onCheckedChange={(on) =>
                   write(
@@ -231,7 +238,7 @@ export function RoutinesSection({
       )}
 
       <div className="mt-2 text-caption leading-relaxed text-muted-foreground/70">
-        Routines run while Bloks is open. Runs missed while {thisComputer()} sleeps are skipped.
+        {t("routinesSection.runWhileOpen", { computer: thisComputer() })}
       </div>
     </div>
   );

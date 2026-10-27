@@ -13,10 +13,9 @@ import { api, useStore, type Message } from "@/state/store";
 import { AgentAvatar } from "./Avatar";
 import { ChangesCard } from "./ChangesCard";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PanelHeader, SkeletonRows } from "./OverviewParts";
-import { t } from "@/lib/i18n";
+import { formatDate, t, type MessageKey } from "@/lib/i18n";
 
 interface Attempt {
   id: string;
@@ -31,13 +30,13 @@ interface Attempt {
   changes: Message["changes"] | null;
 }
 
-const STATE: Record<Attempt["state"], string> = {
-  running: "Rehearsing",
-  ready: "Ready to review",
-  empty: "Changed nothing",
-  applied: "Applied",
-  discarded: "Discarded",
-  failed: "Did not finish",
+const STATE: Record<Attempt["state"], MessageKey> = {
+  running: "rehearsalsPanel.state.running",
+  ready: "rehearsalsPanel.state.ready",
+  empty: "rehearsalsPanel.state.empty",
+  applied: "rehearsalsPanel.state.applied",
+  discarded: "rehearsalsPanel.state.discarded",
+  failed: "rehearsalsPanel.state.failed",
 };
 
 export function RehearsalsPanel() {
@@ -86,7 +85,7 @@ export function RehearsalsPanel() {
               last && (
                 <Button variant="secondary" size="sm" onClick={() => dispatch({ type: "select", id: last.id })}>
                   <MessageSquare size={13} />
-                  Open {last.name}
+                  {t("rehearsalsPanel.openAgent", { name: last.name })}
                 </Button>
               )
             }
@@ -103,14 +102,14 @@ export function RehearsalsPanel() {
                     <div className="min-w-0">
                       <div className="line-clamp-2 text-ui font-medium text-foreground">{first.text}</div>
                       <div className="mt-0.5 truncate text-small text-muted-foreground">
-                        {new Date(first.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                        {formatDate(first.at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                         {" · "}
                         <span className="font-mono">{first.dir}</span>
                       </div>
                     </div>
                     {group.length > 1 && (
                       <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-caption text-muted-foreground">
-                        {plural(group.length, "attempt")}
+                        {t("rehearsalsPanel.attempts", { count: group.length })}
                       </span>
                     )}
                   </div>
@@ -131,7 +130,7 @@ export function RehearsalsPanel() {
                               )}
                             >
                               {a.state === "running" && <Loader2 size={10} className="animate-spin" />}
-                              {STATE[a.state]}
+                              {t(STATE[a.state])}
                             </span>
                           </div>
                           {a.changes && (

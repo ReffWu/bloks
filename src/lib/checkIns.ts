@@ -2,10 +2,14 @@
 // check-in sits on the calendar, and when a routine being written will
 // next run, so the editor can draw its week before it exists.
 //
+// The words here are the catalogue's, one whole phrase per shape, so a
+// language that says "toutes les 2 heures" says it the same way.
+//
 // The schedule itself is the server's (server/routines.ts, checkInsOn);
 // these only have to agree with it. A check-in's slots start where its
 // active hours begin and step by its interval to where they end, so a
 // day column can draw them without asking the server for every one.
+import { t } from "./i18n.ts";
 
 /** The same bounds the server keeps, so the editor says no before the
  * server has to. */
@@ -31,11 +35,11 @@ export function everyMinutes(count: string, unit: "min" | "hour"): number | null
 /** Why the editor cannot file this check-in yet, in a few words under
  * the field, or null when it can. */
 export function checkInProblem(every: number | null, hours: { from: string; to: string } | null): string | null {
-  if (every === null || every < MIN_EVERY || every > MAX_EVERY) return "Pick between 15 minutes and 24 hours.";
+  if (every === null || every < MIN_EVERY || every > MAX_EVERY) return t("checkIns.problem.range");
   if (hours) {
     const from = minutesOf(hours.from);
     const to = minutesOf(hours.to);
-    if (from === null || to === null || from >= to) return "End time must be after start time.";
+    if (from === null || to === null || from >= to) return t("checkIns.problem.endAfterStart");
   }
   return null;
 }
@@ -55,7 +59,7 @@ export function foldQuietRuns<R extends { quiet?: boolean }>(runs: readonly R[])
 
 /** "30m", "2h": a check-in's interval where there is no room for words. */
 export function intervalShort(every: number): string {
-  return every % 60 === 0 ? `${every / 60}h` : `${every}m`;
+  return every % 60 === 0 ? t("checkIns.short.hours", { n: every / 60 }) : t("checkIns.short.minutes", { n: every });
 }
 
 /** The intervals the editor's slider stops at. Every one is inside the
@@ -66,17 +70,17 @@ export const CHECK_IN_EVERY = [15, 30, 60, 120, 240, 480].filter((m) => m >= MIN
 
 /** "15 min", "1 hr", "1 day": short enough to sit under a slider's dot. */
 export function intervalLabel(every: number): string {
-  if (every >= 1440 && every % 1440 === 0) return every === 1440 ? "1 day" : `${every / 1440} days`;
-  if (every >= 60 && every % 60 === 0) return every === 60 ? "1 hr" : `${every / 60} hrs`;
-  return `${every} min`;
+  if (every >= 1440 && every % 1440 === 0) return t("checkIns.label.days", { count: every / 1440 });
+  if (every >= 60 && every % 60 === 0) return t("checkIns.label.hours", { count: every / 60 });
+  return t("checkIns.label.minutes", { count: every });
 }
 
 /** "every 30 min", "every hour", "once a day": an interval inside a sentence. */
 export function intervalPhrase(every: number): string {
-  if (every === 1440) return "once a day";
-  if (every === 60) return "every hour";
-  if (every % 60 === 0) return `every ${every / 60} hours`;
-  return `every ${every} min`;
+  if (every === 1440) return t("checkIns.phrase.onceADay");
+  if (every === 60) return t("checkIns.phrase.everyHour");
+  if (every % 60 === 0) return t("checkIns.phrase.everyHours", { count: every / 60 });
+  return t("checkIns.phrase.everyMinutes", { count: every });
 }
 
 /** What the editor knows about a schedule, before it is a routine. */
