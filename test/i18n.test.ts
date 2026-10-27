@@ -273,7 +273,13 @@ function sourceFiles(dir: string, match: RegExp): string[] {
   return out;
 }
 
-const CODE = [...sourceFiles(path.join(ROOT, "src"), /\.(tsx?|mjs)$/), ...sourceFiles(path.join(ROOT, "electron"), /\.mjs$/)];
+// The index of where things are in the app is the server's as well as the
+// app's (server/settings-index.ts), and its keys are the app's words.
+const CODE = [
+  ...sourceFiles(path.join(ROOT, "src"), /\.(tsx?|mjs)$/),
+  ...sourceFiles(path.join(ROOT, "electron"), /\.mjs$/),
+  path.join(ROOT, "server", "settings-index.ts"),
+];
 const parsed = CODE.map((file) => {
   const text = fs.readFileSync(file, "utf8");
   const kind = file.endsWith(".tsx") ? ts.ScriptKind.TSX : file.endsWith(".mjs") ? ts.ScriptKind.JS : ts.ScriptKind.TS;
