@@ -78,6 +78,10 @@ test("an export writes one line per record, where it was asked to or in the expo
   const text = readFileSync(join(`${data}-exports`, written![1]), "utf8");
   assert.ok(text.includes("sam@example.com"), "--keep emails leaves them in");
   assert.equal(text.trim().split("\n").length, 5);
+
+  const bare = await cli(["--no-metadata", "--out", join(home, "bare.jsonl")], env);
+  assert.equal(bare.code, 0, bare.err);
+  assert.ok(readFileSync(join(home, "bare.jsonl"), "utf8").trim().split("\n").every((line) => !("metadata" in JSON.parse(line))));
 });
 
 test("nothing matching, a wrong flag, and an agent's own shell each have their exit code", async (t) => {

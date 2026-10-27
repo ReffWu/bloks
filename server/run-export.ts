@@ -89,6 +89,10 @@ export interface ExportChoice {
   privacy: { emails: boolean; phones: boolean; homePaths: boolean; names: boolean };
   include: { memberPrivate: boolean; otherPeople: boolean; systemPrompt: boolean; memory: boolean };
   compression: { toolResultChars: number | null; repeats: boolean; capTokens: number | null };
+  /** A `metadata` key beside the OpenAI and ShareGPT shapes: what the
+   * record is from and how it was cut. Some trainers refuse a key they do
+   * not know, so it can be left out. The trajectory is all metadata. */
+  metadata: boolean;
 }
 
 /** What a new export starts from: the safe end of every switch. */
@@ -110,6 +114,7 @@ export function defaultChoice(): ExportChoice {
     privacy: { emails: true, phones: true, homePaths: true, names: true },
     include: { memberPrivate: false, otherPeople: false, systemPrompt: false, memory: false },
     compression: { toolResultChars: DEFAULT_RESULT_CHARS, repeats: true, capTokens: null },
+    metadata: true,
   };
 }
 
@@ -197,6 +202,7 @@ export function readChoice(body: unknown): ExportChoice | string {
   if (toolResultChars === undefined) return `tool results are shortened to ${MIN_RESULT_CHARS} characters or more`;
   const capTokens = count(compression.capTokens, { min: 100 });
   if (capTokens === undefined) return "the cap is 100 tokens or more";
+  if (raw.metadata !== undefined && typeof raw.metadata !== "boolean") return "metadata is true or false";
   return {
     format,
     unit,
@@ -224,6 +230,7 @@ export function readChoice(body: unknown): ExportChoice | string {
       memory: bool(include.memory, false),
     },
     compression: { toolResultChars, repeats: bool(compression.repeats, base.compression.repeats), capTokens },
+    metadata: bool(raw.metadata, base.metadata),
   };
 }
 
@@ -1548,8 +1555,10 @@ export function toTrajectory(record: TrajectoryRecord) {
   return record;
 }
 
-export function shaped(record: TrajectoryRecord, format: ExportFormat): unknown {
-  return format === "openai" ? toOpenAI(record) : format === "sharegpt" ? toShareGPT(record) : toTrajectory(record);
+export function shaped(record: TrajectoryRecord, format: ExportFormat, metadata = true): unknown {
+  if (format === "trajectory") return toTrajectory(record);
+  const { metadata: about, ...rest } = format === "openai" ? toOpenAI(record) : toShareGPT(record);
+  return metadata ? { ...rest, metadata: about } : rest;
 }
 
 // ── the export ────────────────────────────────────────────────────────
@@ -1683,7 +1692,7 @@ export async function runExport(source: ExportSource, choice: ExportChoice, { ou
     const tokens = recordTokens(short);
     if (choice.minTokens !== null && tokens < choice.minTokens) return leave("tooShort", turns);
     if (choice.maxTokens !== null && tokens > choice.maxTokens) return leave("tooLong", turns);
-    const shape = shaped(short, choice.format);
+    const shape = shaped(short, choice.format, choice.metadata);
     await write(JSON.stringify(shape));
     records++;
     turnsWritten += turns;

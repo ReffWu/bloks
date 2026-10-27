@@ -119,6 +119,20 @@ test("OpenAI chat records have tools, tool_calls answered by tool messages, and 
   );
 });
 
+test("a trainer that refuses unknown keys gets records with no metadata", async (t) => {
+  const { dir, source } = workspace(t);
+  for (const format of ["openai", "sharegpt"] as const) {
+    const { records } = await lines(source, choose({ format, metadata: false }), dir);
+    assert.ok(records.length > 0);
+    assert.ok(records.every((r) => !("metadata" in r)), format);
+  }
+  // the trajectory is Bloks's own shape: what it knows is the record
+  const { records } = await lines(source, choose({ format: "trajectory", metadata: false }), dir);
+  assert.ok(records.every((r) => r.engine || r.steps));
+  assert.equal((readChoice({}) as ExportChoice).metadata, true);
+  assert.match(String(readChoice({ metadata: "no" })), /metadata/);
+});
+
 test("ShareGPT records alternate human, gpt and tool, with calls and results as tagged blocks", async (t) => {
   const { dir, source } = workspace(t);
   const { records } = await lines(source, choose({ format: "sharegpt" }), dir);

@@ -57,6 +57,7 @@ Nothing is sent anywhere.
   --full-results                        leave tool results whole
   --keep-repeats                        keep repeated identical results
   --cap-tokens N                        cap each record at N tokens, estimated
+  --no-metadata                         leave out each record's metadata key, for trainers that refuse it
   --out FILE                            where to write (a new file in ~/.bloks-exports)
   --dry-run                             say what would be written and show the first record
   --json                                print the summary as JSON
@@ -65,7 +66,7 @@ Keys, tokens and passwords are always taken out.`;
 
 const KEEP = { emails: "emails", phones: "phones", paths: "homePaths", names: "names" } as const;
 const INCLUDE = { "member-private": "memberPrivate", "other-people": "otherPeople", "system-prompt": "systemPrompt", memory: "memory" } as const;
-const BOOLEAN_FLAGS = new Set(["--any-outcome", "--uncorrected", "--thumbs-up", "--complete-results", "--full-results", "--keep-repeats", "--dry-run", "--json", "--help", "-h"]);
+const BOOLEAN_FLAGS = new Set(["--any-outcome", "--uncorrected", "--thumbs-up", "--complete-results", "--full-results", "--keep-repeats", "--no-metadata", "--dry-run", "--json", "--help", "-h"]);
 
 /** The flags as a request body for readChoice. */
 export function parseExportArgs(args: readonly string[], agents: ExportSource["bots"]): { body: Record<string, any>; out: string | null; dryRun: boolean; json: boolean; help: boolean } {
@@ -106,6 +107,7 @@ export function parseExportArgs(args: readonly string[], agents: ExportSource["b
       repeats: !flags.has("--keep-repeats"),
       capTokens: one("--cap-tokens") ?? null,
     },
+    metadata: !flags.has("--no-metadata"),
   };
   for (const kept of list("--keep")) {
     const key = KEEP[kept as keyof typeof KEEP];
