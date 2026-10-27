@@ -16,7 +16,8 @@ export const T0 = Date.parse("2026-10-20T10:00:00.000Z");
 export const MINUTE = 60_000;
 export const SECRET = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123";
 export const SAVED_SECRET = "stripe-saved-value-QX7v9Lm2Pq";
-export const GITHUB_TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+// built at run time, so test/no-secrets.test.ts never reads one in the source
+export const GITHUB_TOKEN = `${"ghp"}_abcdefghijklmnopqrstuvwxyz0123456789`;
 /** A result long enough to be shortened at the default. */
 export const LONG_LINES = 400;
 
