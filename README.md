@@ -344,6 +344,14 @@ often each was used and then corrected. Agents can ask for a change too
   way. Or let Bloks run one for you: managed hosting is a private machine
   of your own that stays on, and moves your agents over when you sign up
   at [bloks.dev/pricing](https://bloks.dev/pricing).
+- **Scripts, CI and a terminal.** `bloks-server run Ada "Review the open
+  pull requests"` hands an agent a job, waits until it and every teammate
+  it handed work to are done, and prints the answer, or one JSON document
+  with `--json`, with exit codes a script can branch on. `bloks-server
+  team apply team.md` keeps a room and its agents in line with a team
+  file, changing only what differs. `bloks-server chat Ada` is a chat in
+  the terminal, approvals included. See
+  [docs/SCRIPTING.md](docs/SCRIPTING.md), with a GitHub Actions example.
 
 ### Bring what you have
 

@@ -68,6 +68,18 @@ a permission request (Claude Code and Codex natively, Gemini CLI over
 the Agent Client Protocol) precisely so this gate exists; a headless
 "approve everything" mode is not used.
 
+**Scripts are the owner, and ask like the owner.** `bloks-server run`,
+`team apply` and `chat` ([docs/SCRIPTING.md](docs/SCRIPTING.md)) speak
+as the person, so their routes (`/api/runs`, `/api/teams/apply`) answer
+only this computer and the owner's own paired devices, never an agent's
+credential or a member's device, and the commands refuse to run inside
+an agent's turn. On another computer they take a paired device's token
+from the environment or a file, never from the command line. None of
+them answers an approval or a question on its own: a run that meets one
+stops and says so, and the card waits in the app. Applying a team file
+never deletes or archives anything and never touches an agent's engine,
+keys or approvals.
+
 **The renderer is pinned to its own origin.** The packaged app serves its
 UI with a strict `Content-Security-Policy`: no remote script, no remote
 frames, no form posts, and `connect-src 'self'`. The Electron window runs

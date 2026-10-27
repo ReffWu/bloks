@@ -1949,6 +1949,40 @@ Rooms export to it, imports go through it, and the gallery at
 bloks.dev/teams is checked with the same parser before anything reaches
 the hire dialog.
 
+`bloks-server team apply` reads the same file into a workspace that may
+have the team already (`POST /api/teams/apply`, `server/team-apply.ts`).
+The room is found by its name, a member by the name the file gives it or,
+unnamed, by its role among the room's members; what matches is updated
+in place, what is missing is hired with the workspace's defaults for a
+new agent, and what is the same is left alone, so a second apply changes
+nothing. The lead the file ranks highest is crowned on that room alone.
+A member's look is applied only where the file states one, since the
+parser fills one in otherwise. Nothing is archived or deleted; `prune`
+takes the members the file no longer lists out of the room, and the
+agents stay. The plan is a plain function of the file and the workspace,
+so a dry run and the real apply cannot disagree.
+
+## Runs from a script
+
+`POST /api/runs` sends the owner's words to an agent, as typing them in
+the app does, and returns a run (`server/runs.ts`) that `GET
+/api/runs/:id` long polls. A run is the set of conversations the task
+reached: the one it went to, and every conversation an agent in the run
+hands work to (`sendUserMessage`, from the sender's lane in its chain)
+or a room it speaks into. It reads what happens off the same message
+frames the app folds (`broadcast`), its spend off the turn log, and how
+each lane's turn really ended off `settleOwners`, after retries and
+backups. It is done when every one of its conversations has been quiet
+(`laneQuiet`: not busy, not claimed, nothing queued, no changes card
+being made, no goal running) for a moment and a half on end, which is
+past the gap between a turn ending and the turn its handoff starts. An
+open card makes it `needs-you`; nothing in a run answers one.
+`POST /api/runs/:id/stop` stops every conversation in it. The owner's
+alone, from this computer or one of their devices; runs are in memory
+and a restart ends them. `bloks-server run` and `bloks-server chat`
+(`server/scripting-cli.ts`) are the two clients, described in
+[SCRIPTING.md](SCRIPTING.md).
+
 ## The morning brief
 
 `server/brief.ts` composes a brief from what is already stored: each

@@ -117,6 +117,12 @@ Code or Codex on this machine, or give agents API keys in the app.
     node bin/bloks-server.mjs update             # install the latest release
     node bin/bloks-server.mjs stop               # stop it
 
+From scripts, CI and a terminal:
+
+    node bin/bloks-server.mjs run Ada "TASK"     # hand an agent a job, print the answer
+    node bin/bloks-server.mjs team apply team.md # keep a room in line with a team file
+    node bin/bloks-server.mjs chat Ada           # talk to an agent here
+
 The owner can update it from the app too, in Settings, About. A new
 version is unpacked under versions/ in this folder, checked against the
 release's checksum, and switched to; if it does not start, this one comes
