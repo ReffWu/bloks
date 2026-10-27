@@ -17,6 +17,7 @@ import {
   archiveWith,
   diaryOf,
   expireLines,
+  MAX_LINE,
   parsePlan,
   tidyNight,
   TidyLog,
@@ -116,6 +117,21 @@ describe("the model's edits", () => {
     assert.deepEqual(parsed.archive.map((a) => a.line), [3]);
     assert.deepEqual(parsed.merge, [], "line 3 was already archived");
     assert.deepEqual(parsed.reword, [], "a reword that is not shorter is a rewrite");
+  });
+
+  test("a merge or reword longer than a line may be is refused whole, never cut", () => {
+    const long = (word: string) => Array.from({ length: 90 }, (_, i) => `${word}${i}`).join(" ");
+    const file = ["# Memory", "", `- ${long("alpha")}`, `- ${long("beta")}`, `- ${long("gamma")}${long(" delta")}`, ""].join("\n");
+    const merged = `${long("alpha")} ${long("beta")}`;
+    const reworded = long("gamma");
+    assert.ok(merged.length > MAX_LINE && reworded.length > MAX_LINE);
+    const parsed = parsePlan(JSON.stringify({ merge: [{ lines: [3, 4], text: merged }], reword: [{ line: 5, text: reworded }] }), file)!;
+    assert.deepEqual(parsed.merge, [], "a merge past the limit is dropped, not truncated");
+    assert.deepEqual(parsed.reword, [], "a reword past the limit is dropped, not truncated");
+    assert.equal(applyPlan(file, parsed).memory, file, "every original line stays word for word");
+    const fits = parsePlan(JSON.stringify({ merge: [{ lines: [3, 4], text: "alpha and beta" }] }), file)!;
+    assert.deepEqual(fits.merge, [{ lines: [3, 4], text: "alpha and beta" }]);
+    assert.match(tidyPrompt({ agent: "Nova", text: file, today: "2026-10-19", notes: [] }), new RegExp(`at most ${MAX_LINE} characters`));
   });
 
   test("a file near its budget may move lines into a topic, never the archive", () => {
