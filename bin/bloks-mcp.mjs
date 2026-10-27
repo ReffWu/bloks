@@ -7,7 +7,9 @@
 // on me". It is a deliberately small surface. It can read and talk; it
 // cannot answer approvals, delete anything, change settings or see keys,
 // because a tool driven by another model is exactly where a stray
-// instruction would do the most damage.
+// instruction would do the most damage. The one thing it may ask to
+// change is a skill, and asking is all it does: the change waits in
+// Skills for the person to keep, edit or dismiss.
 //
 // It talks to the Bloks running on this machine, over the same local API
 // the app uses, and finds it on the ports the app listens on. Nothing
@@ -295,6 +297,82 @@ const TOOLS = [
         .join("\n\n");
       const waiting = brief.waiting.map((w) => `- ${w.name}: ${w.title}`).join("\n");
       return [`${new Date(brief.at).toDateString()}. ${brief.headline}`, parts, waiting && `Waiting on you:\n${waiting}`].filter(Boolean).join("\n\n");
+    },
+  },
+  {
+    name: "list_skills",
+    description: "The skills in the Bloks library: id, name, what each is for, the version it is at, and how often it has been used.",
+    inputSchema: { type: "object", properties: {} },
+    run: async () => {
+      const { skills } = await call("GET", "/api/skills");
+      return (
+        (skills ?? [])
+          .map((s) => {
+            const used = s.uses ? `, used ${s.uses} ${s.uses === 1 ? "time" : "times"}` : "";
+            return `- ${s.id}: ${s.name}${s.description ? `. ${s.description}` : ""} (${s.source === "builtin" ? "built in" : `version ${s.revision}`}${used})`;
+          })
+          .join("\n") || "No skills yet."
+      );
+    },
+  },
+  {
+    name: "read_skill",
+    description:
+      "One skill in full, with the version it is at. Pass `version` to read an earlier one. Note the version: propose_skill_revision needs it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        skill: { type: "string", description: "The skill's id, as in list_skills" },
+        version: { type: "number", description: "An earlier version, as skill_history lists them (default: as it stands)" },
+      },
+      required: ["skill"],
+    },
+    run: async ({ skill, version }) => {
+      const id = encodeURIComponent(String(skill ?? "").trim());
+      if (!id) throw new Error("read_skill needs a skill id, from list_skills");
+      const asked = version === undefined || version === null ? "" : `?version=${Number(version)}`;
+      const { skill: s } = await call("GET", `/api/skills/${id}${asked}`);
+      const head = `${s.name}, version ${s.revision}${s.revision !== s.current ? ` (it is version ${s.current} now)` : ""}`;
+      return [head, ...(s.description ? [`For: ${s.description}`] : []), "", s.body].join("\n");
+    },
+  },
+  {
+    name: "skill_history",
+    description: "Every version of a skill: who changed it (you, an agent, a suggestion, the catalog), when, why, and how often each version was used and then corrected.",
+    inputSchema: { type: "object", properties: { skill: { type: "string" } }, required: ["skill"] },
+    run: async ({ skill }) => {
+      const id = encodeURIComponent(String(skill ?? "").trim());
+      if (!id) throw new Error("skill_history needs a skill id, from list_skills");
+      const history = await call("GET", `/api/skills/${id}/history`);
+      if (history.builtin) return "A built-in skill: version 0, as it ships with Bloks. A change to it becomes the person's own copy.";
+      return history.revisions
+        .map((r) => {
+          const who = r.by.kind === "person" ? "you" : r.by.name ?? r.by.kind;
+          const used = r.uses ? `, used ${r.uses}${r.corrected ? `, corrected ${r.corrected}` : ""}` : "";
+          return `- version ${r.n}${r.n === history.current ? " (current)" : ""}, ${new Date(r.at).toISOString().slice(0, 10)}, by ${who}: ${r.why}${used}`;
+        })
+        .join("\n");
+    },
+  },
+  {
+    name: "propose_skill_revision",
+    description:
+      "Propose new text for a skill, written against the version you read with read_skill. It does not change the skill: it waits in Bloks for the person to keep, edit or dismiss. Refused if the skill changed since that version; read it again and propose against the new one.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        skill: { type: "string", description: "The skill's id" },
+        from: { type: "number", description: "The version you read" },
+        why: { type: "string", description: "One line on what the change is for" },
+        text: { type: "string", description: "The skill's whole new instructions" },
+      },
+      required: ["skill", "from", "why", "text"],
+    },
+    run: async ({ skill, from, why, text }) => {
+      const id = encodeURIComponent(String(skill ?? "").trim());
+      if (!id) throw new Error("propose_skill_revision needs a skill id, from list_skills");
+      const answer = await call("POST", `/api/skills/${id}/revisions`, { from: Number(from), why: String(why ?? ""), body: String(text ?? ""), via: "mcp" });
+      return answer.said ?? "Staged for the person to review in Bloks.";
     },
   },
   {

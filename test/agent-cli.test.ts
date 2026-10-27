@@ -199,6 +199,21 @@ describe("reading one skill", () => {
     assert.equal(allows(ME, "DELETE", "/api/skills/release-notes").ok, false);
     assert.equal(allows(ME, "POST", "/api/skills").ok, false);
   });
+
+  test("its versions are read freely, and a change is only ever asked for", () => {
+    assert.equal(allows(ME, "GET", "/api/skills/release-notes/history").ok, true);
+    assert.equal(allows(ME, "GET", "/api/skills/release-notes/history/3").ok, true);
+    assert.equal(allows(ME, "GET", "/api/skills/release-notes/diff?from=2&to=3").ok, true);
+    assert.equal(allows(ME, "POST", "/api/skills/release-notes/revisions").ok, true);
+    // editing, restoring, making a built-in its own and keeping a
+    // suggestion are the person's (the routes refuse an agent as well)
+    assert.equal(allows(ME, "PUT", "/api/skills/release-notes").ok, false);
+    assert.equal(allows(ME, "POST", "/api/skills/release-notes/restore").ok, false);
+    assert.equal(allows(ME, "POST", "/api/skills/daily-brief/fork").ok, false);
+    assert.equal(allows(ME, "POST", "/api/skills/proposals/p-1").ok, false);
+    assert.equal(allows(ME, "DELETE", "/api/skills/proposals/p-1").ok, false);
+    assert.equal(allows(ME, "DELETE", "/api/skills/release-notes/history").ok, false);
+  });
 });
 
 describe("the rooms an agent is in", () => {

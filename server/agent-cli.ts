@@ -240,7 +240,17 @@ export const RULES: Rule[] = [
 
   // Skills it can consult, and its own settings.
   { method: "GET", path: "/api/skills", why: "see the skill library" },
-  { method: "GET", path: "/api/skills/:id", why: "read one of its skills in full" },
+  { method: "GET", path: "/api/skills/:id", why: "read one of its skills in full, as it stands or at an earlier version" },
+  // A skill's versions, and asking for a change. Asking is all it is: the
+  // route stages the change for the person whatever the body says, and
+  // refuses one written against a version that has moved on. Editing,
+  // restoring, keeping a suggestion and installing stay the person's
+  // (PUT /api/skills/:id, .../restore, .../fork, /api/skills/proposals,
+  // /api/skills/registry are not on this list, and refuse an agent too).
+  { method: "GET", path: "/api/skills/:id/history", why: "see who changed a skill, when and why, version by version, and how often each version was used" },
+  { method: "GET", path: "/api/skills/:id/history/:id", why: "read one earlier version of a skill in full" },
+  { method: "GET", path: "/api/skills/:id/diff", why: "see what changed in a skill between two versions" },
+  { method: "POST", path: "/api/skills/:id/revisions", why: "propose a revision of a skill against the version it read, for the person to keep, edit or dismiss; it never changes the skill by itself" },
 
   // Answering with something other than a paragraph.
   { method: "POST", path: "/api/bots/:me/show", why: "answer with a chart, a table or another component" },

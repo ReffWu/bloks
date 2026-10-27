@@ -208,7 +208,27 @@ import {
   parseAgentFile,
   profileFromFile,
 } from "./agent-transfer.ts";
-import { deleteSkill, disclose, getSkills, installSkill, listSkills, skillsPrompt, observedSkillLibrary, PAGE_DESIGN, PAGE_DESIGN_SHORT, withPageDesign } from "./skills.ts";
+import {
+  builtinSkill,
+  countChars,
+  deleteSkill,
+  disclose,
+  getSkills,
+  installSkill,
+  listSkills,
+  MAX_SKILL_CHARS as MAX_SKILL_BODY,
+  migrateSkillHistory,
+  parseMarkdown,
+  revisionOf,
+  skillAt,
+  skillHistory,
+  skillsPrompt,
+  observedSkillLibrary,
+  PAGE_DESIGN,
+  PAGE_DESIGN_SHORT,
+  withPageDesign,
+  type Skill,
+} from "./skills.ts";
 import {
   CATALOG_TTL_MS,
   MAX_CATALOG_BYTES,
@@ -333,16 +353,28 @@ import {
 import { backgroundWork, resolveBackgroundWork } from "./background-work.ts";
 import {
   ProposalStore,
+  DAILY_REVIEWS,
+  eagernessOf,
   fingerprintOf,
   parseProposal,
+  parseRevision,
   reviewPrompt,
+  revisionPrompt,
   patchPrompt,
   parseEdits,
   applyEdits,
   appendLesson,
+  stepsLines,
+  turnSigns,
+  whatToLearn,
+  type Eagerness,
+  type Proposal,
   type SkillEdit,
-  worthReviewing,
+  type TurnSigns,
+  type UsedSkill,
 } from "./proposals.ts";
+import { SkillUsage, skillsNamed } from "./skill-usage.ts";
+import { MAX_REVISIONS, oneLine, sameText, type Author } from "./skill-history.ts";
 import {
   MAX_PROJECTS,
   ProjectStore,
@@ -529,7 +561,7 @@ import {
   type LeadCandidate,
   type RaiseInput,
 } from "./incidents.ts";
-import { applyImport, detectSetup, ImportRecord, reviewOf, type ImportDeps, type McpEntry } from "./setup-import.ts";
+import { applyImport, detectSetup, ImportRecord, reviewOf, scrubSecrets, type ImportDeps, type McpEntry } from "./setup-import.ts";
 import {
   cleanDestination,
   cleanPicks as cleanSessionPicks,
@@ -892,6 +924,16 @@ const jobs = new JobStore();
 const projects = new ProjectStore();
 const workflows = new WorkflowStore();
 const proposals = new ProposalStore();
+// How often each skill, and each version of it, is used and then
+// corrected (server/skill-usage.ts). Counting costs nothing.
+const skillUsage = new SkillUsage(join(DATA_DIR, "skill-usage.json"));
+// Every skill written before versions existed comes in as version 1, as
+// it stands, before anything can read or change one.
+try {
+  migrateSkillHistory();
+} catch {
+  /* a record that cannot be started now is started the first time it is read */
+}
 // Every finished turn, with the engine that ran it (server/engine-report.ts).
 const turnLog = new TurnLogStore(join(DATA_DIR, "engine-turns.json"));
 // Every turn while it runs, so one cut off by Bloks stopping is picked up
@@ -2061,7 +2103,7 @@ function setupImportDeps(settings: Partial<BotRecord> = {}): ImportDeps {
       });
     },
     skills: () => listSkills().map((skill) => ({ id: skill.id, source: skill.source })),
-    installSkill: (input) => installSkill(input).id,
+    installSkill: (input) => installSkill(input, { by: { kind: "import", name: "an import" }, why: "Brought in from another tool" }).id,
     mcpServers: () => (cfg.mcpServers ?? []) as McpEntry[],
     saveMcpServers(list) {
       // a connection the app holds open was made with the old settings
@@ -5069,7 +5111,11 @@ bus.subscribe((event: RuntimeEvent) => {
       // the owner's to turn into the agent's standing skills.
       // Nor the lane strangers' mail is answered in, whoever's turn this was.
       const guestLane = guestEnded || Boolean(settledLane?.guestMail);
-      if (!personEnded && !command && !guestLane && !isSharedLane(event.threadId)) void reviewForSkill(bot.id, event.threadId).catch(() => {});
+      // Which skills this turn used, and whether the person's words put
+      // the agent right, are settled whatever the setting: counting is
+      // free. A turn handed to the backup is not over yet, so it waits.
+      const learned = handedOver ? null : settleSkillUses(event.threadId);
+      if (learned && !personEnded && !command && !guestLane && !isSharedLane(event.threadId)) void reviewForSkill(bot.id, event.threadId, learned).catch(() => {});
       const requester = laneRequester.get(event.threadId);
       laneRequester.delete(event.threadId);
       laneTelegramPerson.delete(event.threadId);
@@ -6640,6 +6686,14 @@ async function startClaimedTurn(
   // told us about themselves in settings. Two kinds compose here: the
   // agent's own one-line skills, and full library skills it has attached.
   const attached = getSkills(bot.skillIds ?? []);
+  // A skill the person named with a slash is one this turn uses, counted
+  // once against the version it is at (server/skill-usage.ts).
+  if (!guestMail && !personSource) {
+    for (const id of skillsNamed(personalWords, attached.map((s) => s.id))) {
+      const skill = attached.find((s) => s.id === id);
+      if (skill) noteSkillUse(task.id, skill);
+    }
+  }
   // Only a turn that gets a credential gets BLOKS_CLI in its environment
   // (see below), so anything else is told the path itself.
   const cliCommand = !sharing && runsAProcess(instance.driverKind) ? CLI_COMMAND : `node "${AGENT_CLI}"`;
@@ -11769,6 +11823,122 @@ async function microFold(botId: string, threadId: string): Promise<boolean> {
   return true;
 }
 
+// ── which skills a turn used ──
+//
+// A use is counted when it happens and once a turn, against the version
+// the skill was at (server/skill-usage.ts). What a turn used is kept
+// until it ends, for the review, and one turn longer, because the
+// person's next words are where a correction of it shows.
+const turnSkills = new Map<string, Map<string, number>>();
+const lastTurnSkills = new Map<string, UsedSkill[]>();
+/** Lanes remembered at once, so a lane that never ends a turn cannot
+ * grow these without bound. */
+const MAX_SKILL_LANES = 500;
+
+function noteSkillUse(threadId: string, skill: Skill, revision?: number) {
+  let seen = turnSkills.get(threadId);
+  if (!seen) {
+    if (turnSkills.size >= MAX_SKILL_LANES) turnSkills.delete(turnSkills.keys().next().value!);
+    turnSkills.set(threadId, (seen = new Map()));
+  }
+  if (seen.has(skill.id)) return;
+  let at = revision;
+  try {
+    at ??= revisionOf(skill);
+  } catch {
+    at = 0;
+  }
+  seen.set(skill.id, at);
+  skillUsage.used(skill.id, at);
+}
+
+/** The end of a turn, as far as skills go: what it used, what the turn
+ * before it used, what it showed, and the corrections counted. */
+function settleSkillUses(threadId: string): { used: UsedSkill[]; usedBefore: UsedSkill[]; signs: TurnSigns } {
+  const used = [...(turnSkills.get(threadId) ?? new Map<string, number>())].map(([id, revision]) => ({ id, revision }));
+  turnSkills.delete(threadId);
+  const usedBefore = lastTurnSkills.get(threadId) ?? [];
+  lastTurnSkills.delete(threadId);
+  if (used.length) {
+    if (lastTurnSkills.size >= MAX_SKILL_LANES) lastTurnSkills.delete(lastTurnSkills.keys().next().value!);
+    lastTurnSkills.set(threadId, used);
+  }
+  const signs = turnSigns(store.messagesFor(threadId));
+  // "no, not like that" after a turn that used a skill is about that
+  // version, and one said while it ran is about this turn's
+  if (signs.correctedAtStart) for (const s of usedBefore) skillUsage.corrected(s.id, s.revision);
+  if (signs.correctedDuring) for (const s of used) skillUsage.corrected(s.id, s.revision);
+  return { used, usedBefore, signs };
+}
+
+/** Reviews spent today, held to DAILY_REVIEWS. In memory: a restart is
+ * not a way around a ceiling that only exists to stop a busy day
+ * becoming a bill, and a day is short enough not to need the disk. */
+let reviewsToday = { day: "", count: 0 };
+function reviewAllowed(eagerness: Exclude<Eagerness, "off">): boolean {
+  const day = new Date().toDateString();
+  if (reviewsToday.day !== day) reviewsToday = { day, count: 0 };
+  return reviewsToday.count < DAILY_REVIEWS[eagerness];
+}
+
+/** A suggestion's text with anything that looks like a key taken out:
+ * whatever a turn handled can end up in what it wrote down. */
+const clean = (text: string) => scrubSecrets(text).text;
+
+/** A skill as the library lists it: with the version it is at and how
+ * much it is used, so the person can see which ones pull their weight. */
+function withVersion(skill: Skill) {
+  let revision = 0;
+  try {
+    revision = revisionOf(skill);
+  } catch {
+    /* a record that cannot be read now reads as no versions yet */
+  }
+  const { total } = skillUsage.of(skill.id);
+  return { ...skill, revision, uses: total.uses, corrected: total.corrected, lastUsed: total.lastUsed };
+}
+
+/** Who a kept suggestion's version is credited to. */
+function authorOf(p: Proposal): Author {
+  if (p.by === "agent" || p.by === "app") {
+    return { kind: "agent", name: p.botName, ...(p.botId ? { botId: p.botId } : {}), proposalId: p.id };
+  }
+  return { kind: "proposal", name: p.botName, ...(p.botId ? { botId: p.botId } : {}), proposalId: p.id };
+}
+
+/**
+ * A suggestion as the Skills page shows it. A change to a skill is shown
+ * as its diff against the skill as it is now, with the version it was
+ * written against and the version it would land on. `stale` when the
+ * edits no longer fit, or when an agent's whole revision was written
+ * against a version that has since moved on (`movedOn`).
+ */
+function shownProposal(p: Proposal, have: Skill[]) {
+  if (p.kind !== "patch" || !p.skillId) return p;
+  const current = have.find((s) => s.id === p.skillId);
+  if (!current) return { ...p, stale: true };
+  const now = revisionOf(current);
+  const builtin = current.source === "builtin";
+  if (p.whole) {
+    const movedOn = typeof p.base === "number" && p.base !== now;
+    return {
+      ...p,
+      current: now,
+      ...(builtin ? { builtin } : {}),
+      ...(movedOn ? { stale: true, movedOn: true } : {}),
+      diff: diffLines(current.body, p.body) ?? undefined,
+    };
+  }
+  const after = p.edits ? applyEdits(current.body, p.edits) : null;
+  return {
+    ...p,
+    current: now,
+    ...(builtin ? { builtin } : {}),
+    ...(after === null ? { stale: true } : { body: after }),
+    diff: diffLines(current.body, after ?? p.body) ?? undefined,
+  };
+}
+
 /**
  * Read a finished session back, and stage a skill if it taught one.
  *
@@ -11780,8 +11950,13 @@ async function microFold(botId: string, threadId: string): Promise<boolean> {
  * What comes back is staged and never installed. That is the whole shape
  * of the feature, and the reason it is safe to run unattended.
  */
-async function reviewForSkill(botId: string, threadId: string): Promise<boolean> {
-  if (!cfg.skills?.propose) return false;
+async function reviewForSkill(
+  botId: string,
+  threadId: string,
+  learned: { used: UsedSkill[]; usedBefore: UsedSkill[]; signs: TurnSigns },
+): Promise<boolean> {
+  const eagerness = eagernessOf(cfg.skills);
+  if (eagerness === "off") return false;
   const bot = store.bot(botId);
   if (!bot) return false;
   const instance = registry.get(bot.modelSelection.instanceId);
@@ -11799,7 +11974,61 @@ async function reviewForSkill(botId: string, threadId: string): Promise<boolean>
       text: m.text!,
     }));
 
-  if (!worthReviewing(turns, proposals.seenFor(threadId)).worth) return false;
+  const verdict = whatToLearn({
+    turns,
+    signs: learned.signs,
+    used: learned.used,
+    usedBefore: learned.usedBefore,
+    seen: proposals.seenFor(threadId),
+    eagerness,
+  });
+  if (verdict.kind === "nothing" || !reviewAllowed(eagerness)) return false;
+  reviewsToday.count++;
+  // what the turn did, step by step, so a turn that worked something out
+  // with tools rather than words can be read back too
+  const steps = stepsLines(learned.signs.did).map(clean);
+
+  // A skill that was just used and then had to be departed from, or was
+  // corrected: one reading of that skill, and an edit to it or nothing.
+  if (verdict.kind === "revise" && verdict.skill) {
+    const target = listSkills().find((s) => s.id === verdict.skill!.id);
+    if (!target) return false;
+    let said: string;
+    try {
+      said = await instance.generateText(revisionPrompt(target, turns, verdict.trigger ?? "correction", steps));
+    } catch {
+      return false;
+    }
+    const revision = parseRevision(said);
+    if (!revision) return false;
+    let edits = revision.edits.map((e) => ({ find: e.find, replace: clean(e.replace) }));
+    let body = edits.length ? applyEdits(target.body, edits) : null;
+    if (body === null && revision.lesson) {
+      edits = appendLesson("Lessons", clean(revision.lesson));
+      body = applyEdits(target.body, edits);
+    }
+    if (body === null) return false;
+    const staged = proposals.add({
+      kind: "patch",
+      botId,
+      botName: bot.name,
+      threadId,
+      skillId: target.id,
+      edits,
+      base: revisionOf(target),
+      trigger: verdict.trigger,
+      by: "review",
+      name: target.name,
+      description: target.description,
+      body,
+      because: revision.because,
+      at: Date.now(),
+      fingerprint: fingerprintOf(turns),
+    });
+    if (!staged) return false;
+    broadcast({ kind: "skills" });
+    return true;
+  }
 
   // Only skills a person could actually change are offered as targets: a
   // bundled one cannot be patched, so proposing a patch to it would be a
@@ -11807,7 +12036,7 @@ async function reviewForSkill(botId: string, threadId: string): Promise<boolean>
   const mine = listSkills().filter((s) => s.source === "user");
   let answer: string;
   try {
-    answer = await instance.generateText(reviewPrompt(turns, mine.map((s) => ({ id: s.id, name: s.name }))));
+    answer = await instance.generateText(reviewPrompt(turns, mine.map((s) => ({ id: s.id, name: s.name })), steps));
   } catch {
     return false;
   }
@@ -11822,21 +12051,21 @@ async function reviewForSkill(botId: string, threadId: string): Promise<boolean>
   // skill's own name and description stay; they are not the
   // conversation's to change.
   const target = parsed.kind === "patch" ? mine.find((s) => s.id === parsed.skillId) : undefined;
-  let patch: { skillId: string; name: string; description: string; body: string; edits: SkillEdit[] } | null = null;
+  let patch: { skillId: string; name: string; description: string; body: string; edits: SkillEdit[]; base: number } | null = null;
   if (target) {
     let edits: SkillEdit[] = [];
     try {
-      edits = parseEdits(await instance.generateText(patchPrompt(target, parsed.body)));
+      edits = parseEdits(await instance.generateText(patchPrompt(target, parsed.body))).map((e) => ({ find: e.find, replace: clean(e.replace) }));
     } catch {
       edits = [];
     }
     let body = applyEdits(target.body, edits);
     if (body === null) {
-      edits = appendLesson(parsed.name, parsed.body);
+      edits = appendLesson(parsed.name, clean(parsed.body));
       body = applyEdits(target.body, edits);
     }
     if (body === null) return false;
-    patch = { skillId: target.id, name: target.name, description: target.description, body, edits };
+    patch = { skillId: target.id, name: target.name, description: target.description, body, edits, base: revisionOf(target) };
   }
 
   // a patch to something that is not there, or that cannot be edited, is
@@ -11846,10 +12075,12 @@ async function reviewForSkill(botId: string, threadId: string): Promise<boolean>
     botId,
     botName: bot.name,
     threadId,
-    ...(patch ? { skillId: patch.skillId, edits: patch.edits } : {}),
+    ...(patch ? { skillId: patch.skillId, edits: patch.edits, base: patch.base } : {}),
+    trigger: verdict.trigger,
+    by: "review",
     name: patch?.name ?? parsed.name,
     description: patch?.description ?? parsed.description,
-    body: patch?.body ?? parsed.body,
+    body: patch?.body ?? clean(parsed.body),
     because: parsed.because,
     at: Date.now(),
     fingerprint: fingerprintOf(turns),
@@ -16527,7 +16758,9 @@ function configStatus() {
     },
     // off unless asked for: reading a session back spends tokens on work
     // nobody requested, and what it finds is staged rather than installed
-    skills: { propose: Boolean(cfg.skills?.propose) },
+    // `learn` is how eager: off, suggest or more (server/proposals.ts);
+    // `propose` is whether it is on at all, for a client that knows only that
+    skills: { propose: eagernessOf(cfg.skills) !== "off", learn: eagernessOf(cfg.skills) },
     // on unless turned off: notes from an agent's other conversations
     // ahead of the person's turn (recallAhead)
     recall: { beforeTurn: cfg.recall?.beforeTurn !== false },
@@ -19067,12 +19300,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           continue;
         }
         try {
-          const installed = installSkill({
-            id: skill.id,
-            name: skill.name,
-            description: skill.description,
-            body: skill.body,
-          });
+          const installed = installSkill(
+            {
+              id: skill.id,
+              name: skill.name,
+              description: skill.description,
+              body: skill.body,
+            },
+            { by: { kind: "import", name: "an agent file" }, why: "Came with an agent file" },
+          );
           carried.push(installed.id);
           here.add(installed.id);
           added++;
@@ -24822,17 +25058,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
     m = path.match(/^\/api\/skills\/registry\/([\w-]+)$/);
     if (m && method === "POST") {
+      // installing is the person's; an agent's rule for asking to change
+      // a skill has the same shape as this path, and must never be this
+      if (asAgent) return json(res, 403, { error: "Only the person installs skills. Ask them to, or propose a change with `bloks skill revise`." });
       try {
         const entries = await loadCatalog(false);
         const entry = entries.find((e) => e.id === m![1]);
         if (!entry) return json(res, 404, { error: "the catalog does not have that" });
-        const skill = installSkill({
-          id: entry.id,
-          name: entry.name,
-          description: entry.description,
-          body: entry.body,
-          ...markFor(entry),
-        });
+        const skill = installSkill(
+          {
+            id: entry.id,
+            name: entry.name,
+            description: entry.description,
+            body: entry.body,
+            ...markFor(entry),
+          },
+          { by: { kind: "catalog", name: "the catalog" }, why: `Version ${entry.version} from the catalog` },
+        );
         broadcast({ kind: "skills" });
         record({
           at: Date.now(),
@@ -24855,62 +25097,85 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // A change to a skill you have is shown as a change: the lines it
       // adds and removes against the skill as it is now, not a wall of
       // text to compare by eye. `stale` when the skill has moved on so
-      // far that the edits no longer fit.
+      // far that the edits no longer fit, or, for an agent's whole
+      // revision, when it has moved on at all.
       const have = listSkills();
-      return json(res, 200, {
-        proposals: proposals.list().map((p) => {
-          if (p.kind !== "patch" || !p.skillId) return p;
-          const current = have.find((s) => s.id === p.skillId);
-          if (!current) return { ...p, stale: true };
-          const after = p.edits ? applyEdits(current.body, p.edits) : null;
-          return {
-            ...p,
-            ...(after === null ? { stale: true } : { body: after }),
-            diff: diffLines(current.body, after ?? p.body) ?? undefined,
-          };
-        }),
-      });
+      return json(res, 200, { proposals: proposals.list().map((p) => shownProposal(p, have)) });
     }
     m = path.match(/^\/api\/skills\/proposals\/([\w-]+)$/);
     if (m && method === "POST") {
+      // Keeping a suggestion is the person's, whoever made it. An agent's
+      // rule for asking for a change has the same shape as this path.
+      if (asAgent) return json(res, 403, { error: "Only the person keeps a suggested change to a skill." });
       const staged = proposals.get(m[1]);
       if (!staged) return json(res, 404, { error: "no such suggestion" });
       const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const edited = typeof body.body === "string";
+      // the version the person was shown it against, so a skill that
+      // changed while the card was open is not changed again unseen
+      const seenAt = typeof body.from === "number" && Number.isInteger(body.from) ? body.from : undefined;
       // Edited before approving is the ordinary case, not an exception:
       // the suggestion is a draft with the words already written.
       // A change is applied to the skill as it is now, so anything written
       // into it since the suggestion was made survives. Its name and
       // description stay unless the person changed them here.
       let patchedBody: string | null = null;
-      let current: ReturnType<typeof listSkills>[number] | undefined;
+      let current: Skill | undefined;
       if (staged.kind === "patch" && staged.skillId) {
-        current = listSkills().find((s) => s.id === staged.skillId && s.source === "user");
+        // a built-in too: keeping a change to one makes it the person's
+        // own copy, starting from the text as it shipped
+        current = listSkills().find((s) => s.id === staged.skillId);
         if (!current) return json(res, 409, { error: "The skill this would change is gone. Dismiss the suggestion." });
-        patchedBody = staged.edits ? applyEdits(current.body, staged.edits) : null;
-        if (patchedBody === null && typeof body.body !== "string") {
-          return json(res, 409, { error: "The skill has changed since this was suggested, and the change no longer fits. Dismiss it." });
+        const now = revisionOf(current);
+        if (staged.whole) {
+          // A whole text written against version 3 would, kept on top of
+          // version 4, quietly undo whatever made 4. The person may still
+          // keep their own edit of it, which is a decision they made.
+          if (typeof staged.base === "number" && staged.base !== now && !edited) {
+            return json(res, 409, {
+              error: `${staged.botName} wrote this against version ${staged.base}, and the skill is version ${now} now. Keeping it would undo that change. Dismiss it, or edit it and keep your own text.`,
+              current: now,
+            });
+          }
+          patchedBody = staged.body;
+        } else {
+          patchedBody = staged.edits ? applyEdits(current.body, staged.edits) : null;
+          if (patchedBody === null && !edited) {
+            return json(res, 409, { error: "The skill has changed since this was suggested, and the change no longer fits. Dismiss it." });
+          }
         }
       }
       try {
-        const skill = installSkill({
-          ...(staged.kind === "patch" && staged.skillId ? { id: staged.skillId } : {}),
-          name: typeof body.name === "string" ? body.name : (current?.name ?? staged.name),
-          description: typeof body.description === "string" ? body.description : (current?.description ?? staged.description),
-          body: typeof body.body === "string" ? body.body : (patchedBody ?? staged.body),
-        });
+        const skill = installSkill(
+          {
+            ...(staged.kind === "patch" && staged.skillId ? { id: staged.skillId } : {}),
+            name: typeof body.name === "string" ? body.name : (current?.name ?? staged.name),
+            description: typeof body.description === "string" ? body.description : (current?.description ?? staged.description),
+            body: edited ? (body.body as string) : (patchedBody ?? staged.body),
+          },
+          {
+            by: authorOf(staged),
+            why: oneLine(body.why, staged.because),
+            ...(seenAt !== undefined && staged.kind === "patch" ? { from: seenAt } : {}),
+          },
+        );
         proposals.remove(staged.id);
         record({
           at: Date.now(),
-          kind: "skill.installed",
+          kind: staged.kind === "patch" ? "skill.changed" : "skill.installed",
           actor: "you",
-          summary: `Kept ${skill.name}, suggested by ${staged.botName}`,
-          detail: { skill: skill.id, from: staged.botName, kind: staged.kind },
+          summary:
+            staged.kind === "patch"
+              ? `Kept a change to ${skill.name}, from ${staged.botName}: version ${skill.revision}`
+              : `Kept ${skill.name}, suggested by ${staged.botName}`,
+          detail: { skill: skill.id, from: staged.botName, kind: staged.kind, revision: skill.revision },
         });
         broadcast({ kind: "skills" });
         return json(res, 200, { skill });
       } catch (e) {
         const status = (e as { status?: number }).status ?? 400;
-        return json(res, status, { error: e instanceof Error ? e.message : "that would not install" });
+        const current = (e as { current?: number }).current;
+        return json(res, status, { error: e instanceof Error ? e.message : "that would not install", ...(current !== undefined ? { current } : {}) });
       }
     }
     if (m && method === "DELETE") {
@@ -24920,18 +25185,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
 
     if (method === "GET" && path === "/api/skills") {
-      return json(res, 200, { skills: listSkills() });
+      return json(res, 200, { skills: listSkills().map(withVersion) });
     }
     if (method === "POST" && path === "/api/skills") {
       const body = await readBody(req);
       try {
-        const skill = installSkill({
-          markdown: typeof body.markdown === "string" ? body.markdown : undefined,
-          name: typeof body.name === "string" ? body.name : undefined,
-          description: typeof body.description === "string" ? body.description : undefined,
-          body: typeof body.body === "string" ? body.body : undefined,
-          id: typeof body.id === "string" ? body.id : undefined,
-        });
+        const skill = installSkill(
+          {
+            markdown: typeof body.markdown === "string" ? body.markdown : undefined,
+            name: typeof body.name === "string" ? body.name : undefined,
+            description: typeof body.description === "string" ? body.description : undefined,
+            body: typeof body.body === "string" ? body.body : undefined,
+            id: typeof body.id === "string" ? body.id : undefined,
+          },
+          { by: { kind: "person", name: "you" }, why: oneLine(body.why, "Written or imported here") },
+        );
         broadcast({ kind: "skills" });
         record({
           at: Date.now(),
@@ -24946,6 +25214,211 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return json(res, status, { error: e instanceof Error ? e.message : "bad skill" });
       }
     }
+    // ── a skill's versions ──
+    // Every change kept whole, with who made it and why
+    // (server/skill-history.ts). Reading is anyone's who may read the
+    // skill; restoring and making a built-in your own are the person's.
+    m = path.match(/^\/api\/skills\/([\w-]+)\/history$/);
+    if (m && method === "GET") {
+      const found = listSkills().find((s) => s.id === m![1]);
+      if (!found) return json(res, 404, { error: "no such skill" });
+      const usage = skillUsage.of(found.id);
+      const counted = (n: number) => usage.revisions[n] ?? { uses: 0, corrected: 0, lastUsed: null };
+      if (found.source === "builtin") {
+        const shipped = skillAt(found.id, 0)!;
+        return json(res, 200, {
+          id: found.id,
+          builtin: true,
+          current: 0,
+          revisions: [{ n: 0, at: 0, by: shipped.by, why: shipped.why, chars: countChars(shipped.body), ...counted(0) }],
+          usage: usage.total,
+          pruned: false,
+          max: MAX_REVISIONS,
+        });
+      }
+      const current = revisionOf(found);
+      const revisions = skillHistory()
+        .revisions(found.id)
+        .reverse()
+        .map((r) => ({
+          n: r.n,
+          at: r.at,
+          by: r.by,
+          why: r.why,
+          name: r.name,
+          chars: countChars(r.body),
+          ...(r.restoredFrom ? { restoredFrom: r.restoredFrom } : {}),
+          ...counted(r.n),
+        }));
+      return json(res, 200, {
+        id: found.id,
+        builtin: false,
+        // a copy of a built-in can always go back to the text it shipped with
+        ...(builtinSkill(found.id) ? { shipped: true } : {}),
+        current,
+        revisions,
+        usage: usage.total,
+        pruned: skillHistory().pruned(found.id),
+        max: MAX_REVISIONS,
+      });
+    }
+    m = path.match(/^\/api\/skills\/([\w-]+)\/history\/(\d+)$/);
+    if (m && method === "GET") {
+      const found = listSkills().find((s) => s.id === m![1]);
+      if (!found) return json(res, 404, { error: "no such skill" });
+      const revision = skillAt(found.id, Number(m[2]));
+      if (!revision) return json(res, 404, { error: `${found.name} has no version ${m[2]}. Its history lists the versions there are.` });
+      return json(res, 200, { revision: { ...revision, current: revisionOf(found) } });
+    }
+    m = path.match(/^\/api\/skills\/([\w-]+)\/diff$/);
+    if (m && method === "GET") {
+      // Between any two versions; by default the latest and the one
+      // before it, which is "what changed last".
+      const found = listSkills().find((s) => s.id === m![1]);
+      if (!found) return json(res, 404, { error: "no such skill" });
+      const current = revisionOf(found);
+      const numberOf = (name: string): number | null | undefined => {
+        const raw = url.searchParams.get(name);
+        if (raw === null || raw === "") return undefined;
+        return /^\d+$/.test(raw) ? Number(raw) : null;
+      };
+      const to = numberOf("to") ?? current;
+      const fromAsked = numberOf("from");
+      if (to === null || fromAsked === null) return json(res, 400, { error: "from and to are version numbers" });
+      const earlier = skillHistory().revisions(found.id).filter((r) => r.n < to).pop()?.n ?? (builtinSkill(found.id) ? 0 : to);
+      const from = fromAsked ?? earlier;
+      const a = skillAt(found.id, from);
+      const b = skillAt(found.id, to);
+      if (!a || !b) return json(res, 404, { error: `There is no version ${!a ? from : to} of ${found.name}.` });
+      const lines = diffLines(a.body, b.body);
+      return json(res, 200, {
+        from,
+        to,
+        lines: lines ?? [],
+        ...(lines === null ? { tooBig: true } : {}),
+        ...(a.name !== b.name ? { name: { from: a.name, to: b.name } } : {}),
+        ...(a.description !== b.description ? { description: { from: a.description, to: b.description } } : {}),
+      });
+    }
+    m = path.match(/^\/api\/skills\/([\w-]+)\/restore$/);
+    if (m && method === "POST") {
+      if (asAgent) return json(res, 403, { error: "Only the person restores a skill. Propose a change with `bloks skill revise`." });
+      const found = listSkills().find((s) => s.id === m![1]);
+      if (!found) return json(res, 404, { error: "no such skill" });
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const n = typeof body.revision === "number" && Number.isInteger(body.revision) ? body.revision : NaN;
+      const earlier = Number.isNaN(n) ? null : skillAt(found.id, n);
+      if (!earlier) return json(res, 404, { error: "There is no such version to restore." });
+      if (sameText(earlier, found)) return json(res, 400, { error: `Version ${n} is what ${found.name} says now.` });
+      try {
+        const skill = installSkill(
+          { id: found.id, name: earlier.name, description: earlier.description, body: earlier.body },
+          {
+            by: { kind: "person", name: "you" },
+            why: oneLine(body.why, n === 0 ? "Back to the text it shipped with" : `Restored version ${n}`),
+            restoredFrom: n,
+            ...(typeof body.from === "number" ? { from: body.from } : {}),
+          },
+        );
+        record({
+          at: Date.now(),
+          kind: "skill.changed",
+          actor: "you",
+          summary: `Restored ${skill.name} to version ${n}, as version ${skill.revision}`,
+          detail: { skill: skill.id, restored: n, revision: skill.revision },
+        });
+        broadcast({ kind: "skills" });
+        return json(res, 200, { skill });
+      } catch (e) {
+        const status = (e as { status?: number }).status ?? 400;
+        const current = (e as { current?: number }).current;
+        return json(res, status, { error: e instanceof Error ? e.message : "that would not restore", ...(current !== undefined ? { current } : {}) });
+      }
+    }
+    m = path.match(/^\/api\/skills\/([\w-]+)\/fork$/);
+    if (m && method === "POST") {
+      // A built-in stays as it ships; your own copy of it, under the same
+      // id, is what agents that have it read from then on.
+      if (asAgent) return json(res, 403, { error: "Only the person makes a built-in skill their own." });
+      const shipped = builtinSkill(m[1]);
+      if (!shipped) return json(res, 404, { error: "There is no built-in skill by that id." });
+      if (listSkills().some((s) => s.id === shipped.id && s.source === "user")) {
+        return json(res, 409, { error: `${shipped.name} is already your own copy.` });
+      }
+      try {
+        const skill = installSkill(
+          { id: shipped.id, name: shipped.name, description: shipped.description, body: shipped.body },
+          { by: { kind: "person", name: "you" }, why: "Made it your own", from: 0 },
+        );
+        broadcast({ kind: "skills" });
+        return json(res, 201, { skill });
+      } catch (e) {
+        const status = (e as { status?: number }).status ?? 400;
+        return json(res, status, { error: e instanceof Error ? e.message : "that could not be copied" });
+      }
+    }
+    m = path.match(/^\/api\/skills\/([\w-]+)\/revisions$/);
+    if (m && method === "POST") {
+      // A change asked for, against the version that was read. Always
+      // staged for the person, whoever asks: an agent from its turn, or
+      // another app on this computer. Refused when the skill has moved
+      // on, so two agents that read the same version cannot both land.
+      const found = listSkills().find((s) => s.id === m![1]);
+      if (!found) return json(res, 404, { error: "no such skill. `bloks skills` lists them." });
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      const now = revisionOf(found);
+      const from =
+        typeof body.from === "number" ? body.from : typeof body.from === "string" && /^\d+$/.test(body.from) ? Number(body.from) : NaN;
+      if (!Number.isInteger(from)) {
+        return json(res, 400, { error: `Say which version you read with from. ${found.name} is version ${now}; \`bloks skill ${found.id}\` shows it.`, current: now });
+      }
+      if (from !== now) {
+        return json(res, 409, {
+          error: `${found.name} is version ${now} now, not ${from}: it changed since you read it. Read it again with \`bloks skill ${found.id}\` and write your change against version ${now}.`,
+          current: now,
+        });
+      }
+      const why = oneLine(body.why, "");
+      if (!why) return json(res, 400, { error: "Say why in one line, with --why." });
+      const text = typeof body.body === "string" ? body.body : "";
+      const doc = /^\s*---\r?\n/.test(text) ? parseMarkdown(text) : { body: text.trim() };
+      const next = {
+        name: (typeof body.name === "string" ? body.name : (doc as { name?: string }).name ?? found.name).replace(/\s+/g, " ").trim().slice(0, 80) || found.name,
+        description: (typeof body.description === "string" ? body.description : (doc as { description?: string }).description ?? found.description).replace(/\s+/g, " ").trim().slice(0, 200),
+        body: doc.body.trim(),
+      };
+      if (!next.body) return json(res, 400, { error: "A revision needs the skill's new text." });
+      const length = countChars(next.body);
+      if (length > MAX_SKILL_BODY) {
+        return json(res, 413, { error: `That is ${length.toLocaleString("en-US")} characters; a skill is at most ${MAX_SKILL_BODY.toLocaleString("en-US")}.` });
+      }
+      if (sameText(next, found)) return json(res, 400, { error: "That is the skill as it stands, so there is nothing to change." });
+      const who = asAgent ? store.bot(asAgent.botId) : undefined;
+      const staged = proposals.add({
+        kind: "patch",
+        whole: true,
+        base: now,
+        by: asAgent ? "agent" : "app",
+        trigger: "agent",
+        botId: who?.id ?? "",
+        botName: who?.name ?? (body.via === "mcp" ? "An app over MCP" : "An app on this computer"),
+        threadId: asAgent?.taskId ?? "app",
+        skillId: found.id,
+        name: next.name,
+        description: next.description,
+        body: next.body,
+        because: why,
+        at: Date.now(),
+        fingerprint: createHash("sha256").update(`${found.id} ${now} ${next.name} ${next.description} ${next.body}`).digest("hex").slice(0, 32),
+      });
+      if (!staged) return json(res, 400, { error: "That could not be staged." });
+      broadcast({ kind: "skills" });
+      return json(res, 202, {
+        staged: true,
+        proposal: { id: staged.id, skill: found.id, base: now },
+        said: `Staged for the person to keep, edit or dismiss in Skills. ${found.name} is unchanged until they do.`,
+      });
+    }
     m = path.match(/^\/api\/skills\/([\w.-]+)$/);
     if (m && method === "GET") {
       // One skill, in full. This is the other half of keeping long skills
@@ -24953,7 +25426,59 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       // there is something to fetch it with. See server/skills.ts.
       const found = listSkills().find((s) => s.id === m![1]);
       if (!found) return json(res, 404, { error: "no such skill" });
-      return json(res, 200, { skill: found });
+      const current = revisionOf(found);
+      const asked = url.searchParams.get("version");
+      if (asked !== null && asked !== "") {
+        if (!/^\d+$/.test(asked)) return json(res, 400, { error: "version is a number, as the skill's history lists them" });
+        const n = Number(asked);
+        if (n !== current) {
+          const revision = skillAt(found.id, n);
+          if (!revision) return json(res, 404, { error: `${found.name} has no version ${n}. Its history lists the versions there are.` });
+          return json(res, 200, {
+            skill: { id: found.id, name: revision.name, description: revision.description, body: revision.body, source: found.source, revision: n, current, at: revision.at, why: revision.why },
+          });
+        }
+      }
+      // an agent reading the skill as it stands, from its turn, is using it
+      if (asAgent) noteSkillUse(asAgent.taskId, found, current);
+      return json(res, 200, { skill: { ...found, revision: current, current } });
+    }
+    if (m && method === "PUT") {
+      // The person editing a skill. `from` is the version they started
+      // from, so an edit made while something else changed it is refused
+      // rather than written over the top.
+      if (asAgent) return json(res, 403, { error: "Only the person edits a skill. Propose a change with `bloks skill revise`." });
+      const found = listSkills().find((s) => s.id === m![1]);
+      if (!found) return json(res, 404, { error: "no such skill" });
+      const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+      try {
+        const skill = installSkill(
+          {
+            id: found.id,
+            name: typeof body.name === "string" ? body.name : found.name,
+            description: typeof body.description === "string" ? body.description : found.description,
+            body: typeof body.body === "string" ? body.body : found.body,
+          },
+          {
+            by: { kind: "person", name: "you" },
+            why: oneLine(body.why, found.source === "builtin" ? "Made it your own" : "Edited"),
+            ...(typeof body.from === "number" ? { from: body.from } : {}),
+          },
+        );
+        record({
+          at: Date.now(),
+          kind: "skill.changed",
+          actor: "you",
+          summary: `Changed ${skill.name}: version ${skill.revision}`,
+          detail: { skill: skill.id, revision: skill.revision },
+        });
+        broadcast({ kind: "skills" });
+        return json(res, 200, { skill });
+      } catch (e) {
+        const status = (e as { status?: number }).status ?? 400;
+        const current = (e as { current?: number }).current;
+        return json(res, status, { error: e instanceof Error ? e.message : "that would not save", ...(current !== undefined ? { current } : {}) });
+      }
     }
     if (m && method === "DELETE") {
       const ok = deleteSkill(m[1]);
@@ -26340,9 +26865,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         wroteSomething = true;
       }
       if (body.skills && typeof body.skills === "object" && !Array.isArray(body.skills)) {
-        const propose = (body.skills as Record<string, unknown>).propose;
-        if (typeof propose === "boolean") {
-          Object.assign(cfg, saveConfig({ skills: { propose } }));
+        const asked = body.skills as Record<string, unknown>;
+        // both are saved, so a client that knows only the switch reads
+        // the same answer as one that knows the three settings
+        if (asked.learn === "off" || asked.learn === "suggest" || asked.learn === "more") {
+          Object.assign(cfg, saveConfig({ skills: { learn: asked.learn, propose: asked.learn !== "off" } }));
+          wroteSomething = true;
+        } else if (typeof asked.propose === "boolean") {
+          Object.assign(cfg, saveConfig({ skills: { propose: asked.propose, learn: asked.propose ? "suggest" : "off" } }));
           wroteSomething = true;
         }
       }

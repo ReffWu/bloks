@@ -783,7 +783,7 @@ const COMMANDS = {
       const { skills } = await request("GET", "/api/skills");
       // names and descriptions, because the whole library is the thing
       // this command exists to avoid pulling into a conversation
-      return (skills ?? []).map((s) => ({ id: s.id, name: s.name, description: s.description }));
+      return (skills ?? []).map((s) => ({ id: s.id, name: s.name, description: s.description, version: s.revision ?? 0 }));
     },
   },
   show: {
@@ -842,14 +842,72 @@ const COMMANDS = {
     },
   },
   skill: {
-    use: "skill <id>",
-    about: "read one skill in full",
-    run: ([id]) => {
-      if (!id) throw new Error("skill needs an id, from `skills`");
-      return request("GET", `/api/skills/${encodeURIComponent(id)}`);
+    use:
+      'skill <id> [--version <n>] | skill history <id> | skill diff <id> [--from <n>] [--to <n>] | skill revise <id> --from <version> --why "..." [--file <path>]',
+    about:
+      "read one skill in full, with the version it is at (--version reads an earlier one). " +
+      "history: who changed it, when and why, and how often each version was used. diff: what changed between two versions, by default the last change. " +
+      "revise: propose new text for the skill, written against the version you read (--from), with one line on why. The text comes from --file, or from stdin. " +
+      "It waits for the person to keep, edit or dismiss, and is refused if the skill changed since you read it: read it again and write against the new version. A built-in skill is version 0",
+    run: async (args) => {
+      const flags = parseFlags(args);
+      const [first, second] = positional(args);
+      const at = (id) => `/api/skills/${encodeURIComponent(id)}`;
+      // a skill could be called "history", so the word is a subcommand
+      // only when an id follows it
+      if (first === "history" && second) return request("GET", `${at(second)}/history`);
+      if (first === "diff" && second) {
+        const query = new URLSearchParams();
+        for (const key of ["from", "to"]) {
+          if (flags[key] === undefined) continue;
+          if (!/^\d+$/.test(flags[key])) throw new Error(`--${key} is a version number, as \`skill history ${second}\` lists them`);
+          query.set(key, flags[key]);
+        }
+        return request("GET", `${at(second)}/diff${query.size ? `?${query}` : ""}`);
+      }
+      if (first === "revise" && second) {
+        if (flags.from === undefined || !/^\d+$/.test(flags.from)) {
+          throw new Error(`revise needs --from, the version you read: \`skill ${second}\` says which it is`);
+        }
+        if (!flags.why || flags.why === "true") throw new Error('revise needs --why, one line on what the change is for');
+        const text = await revisionText(flags.file);
+        return request("POST", `${at(second)}/revisions`, { from: Number(flags.from), why: flags.why, body: text });
+      }
+      if (!first) throw new Error("skill needs an id, from `skills`");
+      if (flags.version !== undefined && !/^\d+$/.test(flags.version)) throw new Error("--version is a number, as `skill history <id>` lists them");
+      return request("GET", `${at(first)}${flags.version !== undefined ? `?version=${flags.version}` : ""}`);
     },
   },
 };
+
+/** The new text of a skill: a file the agent names, read as the agent,
+ * or what was piped in. Never a terminal waiting for typing, which would
+ * hang the turn. */
+async function revisionText(file) {
+  if (file && file !== "true" && file !== "-") {
+    const at = resolve(file);
+    let real;
+    try {
+      real = realpathSync(at);
+    } catch {
+      throw new Error(`there is no file at ${at}`);
+    }
+    const stat = statSync(real);
+    if (!stat.isFile()) throw new Error("--file is one file, not a folder");
+    // generous for a skill at its limit in any script, small enough that a
+    // wrong path to something huge is an error and not a hang
+    if (stat.size > 100_000) throw new Error("that file is too large to be a skill");
+    return readFileSync(real, "utf8");
+  }
+  if (process.stdin.isTTY) throw new Error("revise needs the new text: pass --file <path>, or pipe it in");
+  let text = "";
+  for await (const chunk of process.stdin) {
+    text += chunk;
+    if (text.length > 100_000) throw new Error("that is too much text to be a skill");
+  }
+  if (!text.trim()) throw new Error("revise needs the new text: pass --file <path>, or pipe it in");
+  return text;
+}
 
 /** An agent's engine as `agents` lists it: ready, not signed in, out until
  * a time on this Mac's clock, or unavailable. Nothing from a workspace too
