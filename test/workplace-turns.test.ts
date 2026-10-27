@@ -30,7 +30,7 @@ async function setup(t: TestContext) {
   const h = await startHarness({ HOME: root, ...fake.env, FAKE_SECRET_HERE: LOCAL_ONLY });
   t.after(async () => {
     await h.stop();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 });
   });
   const project = join(root, "project");
   mkdirSync(project, { recursive: true });
