@@ -33,6 +33,20 @@
 //                                one. The app's About page does the same
 //   bloks-server stop            stop the running server
 //
+// And for scripts, CI and a terminal (server/scripting-cli.ts):
+//
+//   bloks-server run AGENT "TASK" [--json] [--export DIR] [--timeout 30m]
+//                                give an agent a job, wait until it and any
+//                                teammate it handed work to are done, and
+//                                print the answer
+//   bloks-server team apply FILE [--dry-run]
+//                                make or update a room and its agents from
+//                                a team file, changing only what differs
+//   bloks-server chat AGENT      talk to an agent in this terminal
+//   bloks-server token --server URL --code 123456
+//                                trade a pairing code for a device token,
+//                                for the three above on another computer
+//
 // The rest talk to the running server, so run them in a second shell on
 // the same machine. backup and restore work with Bloks stopped too.
 // A passphrase is asked for in the terminal, or read from
@@ -152,6 +166,27 @@ async function answering() {
 async function backupCode() {
   const source = join(root, "server", "backup.ts");
   return import(pathToFileURL(existsSync(source) ? source : join(root, "dist-server", "backup.js")).href);
+}
+
+/** run, team, chat and token, which live with the server's code so the
+ * tests read them as they read the rest: its source in a checkout, the
+ * compiled copy in the download. */
+async function scripting(name) {
+  const source = join(root, "server", "scripting-cli.ts");
+  const code = await import(pathToFileURL(existsSync(source) ? source : join(root, "dist-server", "scripting-cli.js")).href);
+  const exitCode = await code.main(name, args, {
+    base: BASE,
+    stdin: process.stdin,
+    stdout: process.stdout,
+    stderr: process.stderr,
+    env: process.env,
+    onInterrupt(handler) {
+      process.on("SIGINT", handler);
+      return () => process.off("SIGINT", handler);
+    },
+  });
+  // what was written goes out before the process does
+  process.stdout.write("", () => process.exit(exitCode));
 }
 
 /** Typed without showing it, the way a password prompt is. */
@@ -494,6 +529,12 @@ if (handOver) {
     console.log((await answering()) ? "Asked Bloks to stop. It is still finishing up." : "Bloks has stopped.");
     break;
   }
+  case "run":
+  case "team":
+  case "chat":
+  case "token":
+    await scripting(command);
+    break;
   default:
-    fail("Commands: bloks-server [start], activate KEY, pair, status, drain, backup, restore FILE, update, stop");
+    fail("Commands: bloks-server [start], activate KEY, pair, status, drain, backup, restore FILE, update, stop, run AGENT TASK, team apply FILE, chat AGENT, token");
 }

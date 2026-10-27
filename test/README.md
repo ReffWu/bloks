@@ -38,6 +38,10 @@ there is nothing to install and nothing to configure.
 | `model-prices.test.ts` | Estimating an unpriced turn from the list prices, with no network. |
 | `palette.test.ts` | The colours, against the contrast they promise. |
 | `api.test.ts` | The real harness over real HTTP. |
+| `runs.test.ts` | When a run from a script is done: every conversation it reached, quiet for a moment. |
+| `scripting-run.test.ts` | `bloks-server run`, one test per exit code, handoffs and `--export`. |
+| `scripting-team.test.ts` | `bloks-server team apply`: create, update, dry run, a second apply changing nothing. |
+| `scripting-chat.test.ts` | `bloks-server chat` driven line by line, cards answered inline. |
 
 ## How to write one here
 
