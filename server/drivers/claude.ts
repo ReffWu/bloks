@@ -491,8 +491,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         for (const rule of personClaudeDenials(DATA_DIR)) argv.push("--disallowedTools", rule);
       }
       // extra editable folders, chiefly the agent's own workspace: memory
-      // updates must not stall on approval cards when cwd points elsewhere
-      for (const dir of turn.extraDirs ?? []) argv.push("--add-dir", dir);
+      // updates must not stall on approval cards when cwd points elsewhere.
+      // Folders on this computer, so none for a turn that works elsewhere.
+      if (!turn.place) for (const dir of turn.extraDirs ?? []) argv.push("--add-dir", dir);
 
       // A shared room: other people are reading. --restricted drops the
       // tools that run code and ignores the owner's settings files,
@@ -514,9 +515,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       // about themselves in settings, and the MCP config carries the
       // Composio key and any header or token a server needs. A private
       // file, in a folder of this turn's own, read only by the CLI, is not.
-      const system = (turn.system ?? "") + (turn.person ? readPersonClaudeInstructions(turn.cwd ?? homedir()) : "");
+      const system = (turn.system ?? "") + (turn.person && !turn.place ? readPersonClaudeInstructions(turn.cwd ?? homedir()) : "");
       let privateDir: string | null = null;
       const privateFile = (name: string, content: string) => {
+        // there, written ahead of the CLI by the place, in a folder of
+        // the turn's own that goes when the turn does
+        if (turn.place) return turn.place.file(name, content);
         privateDir ??= mkdtempSync(join(tmpdir(), "bloks-turn-"));
         const file = join(privateDir, name);
         writeFileSync(file, content, { mode: 0o600 });
@@ -675,6 +679,23 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       };
       allowed.push("mcp__bloks");
 
+      // Working elsewhere, every server stays on this computer, the bridge
+      // first among them: the CLI there reaches each over HTTP through
+      // Bloks' gate, with the turn's gate token and nothing else. A
+      // server's own key is added here, so it never leaves either.
+      if (turn.place) {
+        for (const [slug, server] of Object.entries(mcpServers)) {
+          const spec = server as { type?: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string> };
+          const reached = turn.place.mcp(slug, { transport: spec.type === "http" ? "http" : "stdio", ...spec });
+          if (reached) mcpServers[slug] = { type: "http", url: reached.url, headers: reached.headers };
+          else {
+            delete mcpServers[slug];
+            const at = allowed.indexOf(`mcp__${slug}`);
+            if (at !== -1) allowed.splice(at, 1);
+          }
+        }
+      }
+
       if (Object.keys(mcpServers).length) {
         // A file too, for the same reason: the servers' headers carry the
         // Composio key, a person's own MCP credentials and the box token.
@@ -689,14 +710,16 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
 
       const env = turnEnvironment(process.env, turn);
 
-      const child = spawn(config.cli, argv, {
-        cwd: turn.cwd ?? homedir(),
-        env,
-        stdio: ["pipe", "pipe", "pipe"],
-        // its own process group, so killing -pid takes the MCP servers too
-        detached: OWN_GROUP,
-        windowsHide: true,
-      });
+      const child = turn.place
+        ? turn.place.spawn(config.cli, argv, { env })
+        : spawn(config.cli, argv, {
+            cwd: turn.cwd ?? homedir(),
+            env,
+            stdio: ["pipe", "pipe", "pipe"],
+            // its own process group, so killing -pid takes the MCP servers too
+            detached: OWN_GROUP,
+            windowsHide: true,
+          });
       engines.add(child);
 
       let finished = false;

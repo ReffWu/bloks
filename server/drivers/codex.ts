@@ -749,6 +749,16 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
 
       let ownerReplyFolder: ReturnType<typeof makeCodexReplyFolder> | undefined;
       let replyBroker: AskBroker | undefined;
+      // Working elsewhere, Bloks' own bridges are named in the thread
+      // config over stdin, at their address through the gate, rather
+      // than in argv as a command to run here.
+      const bridgesThere: Record<string, unknown> = {};
+      const bridgeThere = (name: string, server: { command: string; args: string[]; env: Record<string, string> }, approve = false) => {
+        const reached = turn.place?.mcp(name, { transport: "stdio", ...server });
+        if (!reached) return;
+        bridgesThere[`mcp_servers.${name}`] = { url: reached.url, http_headers: reached.headers, ...(approve ? { default_tools_approval_mode: "approve" } : {}) };
+        for (const value of Object.values(reached.headers)) hiddenTokens.push(value, value.replace(/^Bearer /, ""));
+      };
 
       // The connectors, over the stdio bridge, because this CLI mounts
       // MCP servers as child processes and nothing else. The key rides
@@ -778,13 +788,27 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
         } catch (error) { replyBroker?.close(); ownerReplyFolder.close(); throw error; }
         finally { if (running.get(threadId) === pending) running.delete(threadId); }
         const prefix = "mcp_servers.bloks_reply";
-        appServerArgs.push("-c", `${prefix}.command=${JSON.stringify(process.execPath)}`,
+        if (turn.place) {
+          // the bridge stays here; Codex there reaches it through the gate
+          bridgeThere("bloks_reply", { command: process.execPath, args: [helper, ownerReplyFolder.socketPath], env: { ELECTRON_RUN_AS_NODE: "1", BLOKS_PUBLISH: "reply_to_sender" } }, true);
+        } else appServerArgs.push("-c", `${prefix}.command=${JSON.stringify(process.execPath)}`,
           "-c", `${prefix}.args=${JSON.stringify([helper, ownerReplyFolder.socketPath])}`,
           "-c", `${prefix}.default_tools_approval_mode="approve"`,
           "-c", `${prefix}.env.ELECTRON_RUN_AS_NODE="1"`,
           "-c", `${prefix}.env.BLOKS_PUBLISH="reply_to_sender"`);
       }
-      if (turn.integrations?.composio?.key) {
+      if (turn.integrations?.composio?.key && turn.place) {
+        // the connectors' key stays on this computer with the bridge
+        bridgeThere("bloks_connectors", {
+          command: process.execPath,
+          args: [connectorsHelper()],
+          env: {
+            BLOKS_COMPOSIO_KEY: turn.integrations.composio.key,
+            ...(turn.integrations.composio.url ? { BLOKS_COMPOSIO_URL: turn.integrations.composio.url } : {}),
+            ELECTRON_RUN_AS_NODE: "1",
+          },
+        });
+      } else if (turn.integrations?.composio?.key) {
         env.BLOKS_COMPOSIO_KEY = turn.integrations.composio.key;
         if (turn.integrations.composio.url) env.BLOKS_COMPOSIO_URL = turn.integrations.composio.url;
         // in the packaged app process.execPath is Electron; this makes it
@@ -799,7 +823,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       }
 
       const child = (() => {
-        try { return spawn(config.cli, appServerArgs, {
+        try { return turn.place ? turn.place.spawn(config.cli, appServerArgs, { env }) : spawn(config.cli, appServerArgs, {
           cwd: turn.cwd ?? homedir(),
           env,
           stdio: ["pipe", "pipe", "pipe"],
@@ -1413,7 +1437,14 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           // all that a policy without that list needs. The same read names
           // the person's own MCP servers, which the agent's keep clear of.
           let shell = shellConfig(turn.env);
-          const attached = turn.integrations?.mcpServers ?? [];
+          // Working elsewhere, each of the agent's servers is reached
+          // through the gate, so its command runs here and its key is added
+          // here; Codex there is handed only the address.
+          const attached = (turn.integrations?.mcpServers ?? []).flatMap((server) => {
+            if (!turn.place) return [server];
+            const reached = turn.place.mcp(server.name ?? "server", server);
+            return reached ? [{ name: server.name, transport: "http" as const, url: reached.url, headers: reached.headers }] : [];
+          });
           let theirs: string[] = [];
           if (shell || attached.length) {
             try {
@@ -1427,7 +1458,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           }
           const own = serverConfig(attached, { approve: !turn.untrusted && !turn.shared, taken: theirs });
           hiddenTokens.push(...own.secrets);
-          let servers: Record<string, unknown> | null = Object.keys(own.config).length ? own.config : null;
+          let servers: Record<string, unknown> | null = Object.keys(own.config).length || Object.keys(bridgesThere).length ? { ...bridgesThere, ...own.config } : null;
           // A server Codex cannot be handed is said, not dropped without a
           // word: once in the conversation, and again when what is left
           // out changes, not on every turn.

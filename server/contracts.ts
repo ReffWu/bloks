@@ -357,6 +357,40 @@ export interface SendTurnInput {
   compactOnly?: boolean;
   /** Names found only in this segment's personal messages, before notes. */
   skillNames?: string[];
+  /**
+   * Set when the agent works somewhere else: in a Docker container or on
+   * another machine over SSH (server/workplace-run.ts). A driver that
+   * runs a process starts it with `place.spawn` instead of spawn, hands
+   * it files with `place.file` instead of writing them here, and points
+   * it at every MCP server through `place.mcp`, which keeps the server
+   * itself on this computer. `cwd` is then the folder there, and
+   * `extraDirs` are left out: they are folders on this computer.
+   */
+  place?: PlaceRun;
+}
+
+/** One turn's process on another side. See SendTurnInput.place. */
+export interface PlaceRun {
+  /** Where, for a sentence: "container bloks-scout", "build-box". */
+  label: string;
+  /** The working folder there. */
+  cwd: string;
+  /** The engine, started there with its stdio carried here. `command` is
+   * the program as this computer would run it; the place says what it is
+   * called there. Only the turn's own environment and the driver's own
+   * switches in `env` go with it, never this computer's. */
+  spawn(command: string, args: string[], options?: { env?: Record<string, string | undefined> }): import("node:child_process").ChildProcessWithoutNullStreams;
+  /** A private file there for this turn, written ahead of the engine;
+   * answers its path there. Call before spawn. */
+  file(name: string, content: string): string;
+  /** An MCP server, as the engine there reaches it: over HTTP, through
+   * Bloks' gate, with the turn's own gate token. The server runs here
+   * (stdio) or is called from here (HTTP), with its own keys added here.
+   * Null for one that cannot be carried. */
+  mcp(
+    name: string,
+    server: { transport?: string; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string> },
+  ): { url: string; headers: Record<string, string> } | null;
 }
 
 export interface TurnStartResult {

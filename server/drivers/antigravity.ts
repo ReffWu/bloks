@@ -170,7 +170,9 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
       // The persona rides ahead of the message in the same prompt, since
       // headless agy offers no separate system channel.
       const prompt = turn.system ? `${turn.system}\n\n${turn.text}` : turn.text;
-      const viaStdin = await readsStdin();
+      // An agy there is asked nothing here first: the one this computer
+      // has, if any, says nothing about it, and a current one reads stdin.
+      const viaStdin = turn.place ? true : await readsStdin();
 
       const argv = [
         ...(viaStdin ? ["--input-format", "stream-json"] : ["--print", prompt]),
@@ -185,14 +187,16 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
       if (turn.model) argv.push("--model", turn.model);
       if (resume) argv.push("--conversation", resume);
 
-      const child = spawn(config.cli, argv, {
-        cwd: turn.cwd ?? homedir(),
-        // the turn's own credential (see server/agent-cli.ts)
-        env: { ...process.env, ...(turn.env ?? {}) },
-        stdio: ["pipe", "pipe", "pipe"],
-        detached: OWN_GROUP,
-        windowsHide: true,
-      });
+      const child = turn.place
+        ? turn.place.spawn(config.cli, argv, { env: { ...process.env, ...(turn.env ?? {}) } })
+        : spawn(config.cli, argv, {
+            cwd: turn.cwd ?? homedir(),
+            // the turn's own credential (see server/agent-cli.ts)
+            env: { ...process.env, ...(turn.env ?? {}) },
+            stdio: ["pipe", "pipe", "pipe"],
+            detached: OWN_GROUP,
+            windowsHide: true,
+          });
       engines.add(child);
       // The turn as one line, then the end of input: agy answers it and
       // exits. An older agy reads nothing here and gets the end at once.

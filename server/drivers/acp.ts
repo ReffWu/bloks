@@ -564,15 +564,19 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
         } catch (e) {
           throw new Error(`${spec.name} could not start: ${e instanceof Error ? e.message : String(e)}`);
         }
-        const child = spawn(launch.command, launch.args, {
-          cwd: turn.cwd ?? homedir(),
-          env: childEnv(turn.env),
-          stdio: ["pipe", "pipe", "pipe"],
-          // process groups are POSIX; on Windows the kill takes the tree
-          detached: OWN_GROUP,
-          windowsHide: true,
-          windowsVerbatimArguments: launch.windowsVerbatimArguments,
-        });
+        // Working elsewhere it is the agent's own command there, with its
+        // arguments, not this computer's launcher for it.
+        const child = turn.place
+          ? turn.place.spawn(config.cli, argv, { env: childEnv(turn.env) })
+          : spawn(launch.command, launch.args, {
+              cwd: turn.cwd ?? homedir(),
+              env: childEnv(turn.env),
+              stdio: ["pipe", "pipe", "pipe"],
+              // process groups are POSIX; on Windows the kill takes the tree
+              detached: OWN_GROUP,
+              windowsHide: true,
+              windowsVerbatimArguments: launch.windowsVerbatimArguments,
+            });
         engines.add(child);
 
         // `banner` is pi-acp's startup listing, which it also sends as an
@@ -947,7 +951,30 @@ export function acpDriver(spec: AcpSpec): ProviderDriver<AcpConfig> {
             // The connectors, over the stdio bridge, because ACP mounts
             // MCP servers as child processes it spawns itself. The key
             // travels as an env variable, never in argv.
-            const mcpServers = turn.integrations?.composio?.key
+            // Working elsewhere, the bridge stays here and the agent there
+            // reaches it over HTTP through the gate, which ACP offers only
+            // to an agent that says it takes HTTP servers; one that does not
+            // goes without its connectors rather than run the bridge there.
+            const bridgeThere = (() => {
+              if (!turn.place || !turn.integrations?.composio?.key) return null;
+              if (hello?.agentCapabilities?.mcpCapabilities?.http !== true) return [];
+              const reached = turn.place.mcp("bloks_connectors", {
+                transport: "stdio",
+                command: process.execPath,
+                args: [connectorsHelper()],
+                env: {
+                  BLOKS_COMPOSIO_KEY: turn.integrations.composio.key,
+                  ...(turn.integrations.composio.url ? { BLOKS_COMPOSIO_URL: turn.integrations.composio.url } : {}),
+                  ELECTRON_RUN_AS_NODE: "1",
+                },
+              });
+              return reached
+                ? [{ type: "http", name: "bloks_connectors", url: reached.url, headers: Object.entries(reached.headers).map(([name, value]) => ({ name, value })) }]
+                : [];
+            })();
+            const mcpServers = bridgeThere
+              ? bridgeThere
+              : turn.integrations?.composio?.key
               ? [
                   {
                     name: "bloks_connectors",

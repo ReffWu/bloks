@@ -429,6 +429,11 @@ export interface TaskRecord {
    * see moveTaskCwd). null means "the default", a cloud run, or the
    * workspace. */
   cwd?: string | null;
+  /** Where this lane's session lives when its agent works elsewhere:
+   * the place and its folder (laneWhere in server/workplace.ts). Absent
+   * is this computer. A session there is not one here, so a lane whose
+   * agent has moved starts a new one, told the conversation so far. */
+  where?: string;
   /** Lifetime spend in this lane, folded in as each turn settles. */
   usage?: { input: number; output: number; turns: number };
   /** What this lane looked like before the part we still send whole.
@@ -602,6 +607,13 @@ export interface BotRecord {
   /** The folder new turns run in. Unset means the agent's own
    * workspace; a path means the user chose a project folder. */
   cwd?: string | null;
+  /** Where its engine runs: unset is this computer, as it always was;
+   * otherwise a Docker container or another machine over SSH
+   * (server/workplace.ts). The owner's to set, never an agent's. */
+  workplace?: import("./workplace.ts").Workplace | null;
+  /** What Bloks last learned of that place (its home, whether it has
+   * Node, sign-ins the owner chose to copy there), under its key. */
+  workplaceSeen?: import("./workplace.ts").WorkplaceSeen | null;
   /** Whether this agent may reach the shared Composio connectors. The
    * key is workspace-wide; the grant is per agent. Unset means yes. */
   composio?: boolean;
@@ -1465,6 +1477,21 @@ export class Store {
     found.task.resumeCursors = {};
     found.task.lastInstanceId = "";
     // a reading measured a session that is not coming back
+    delete found.task.reading;
+    delete found.task.pendingCompaction;
+    this.saveBots();
+  }
+
+  /** The lane's agent works somewhere else now (or here again): the
+   * session it had lives where it was, so it starts a new one where the
+   * agent is, as moveTaskCwd does for a folder. */
+  moveTaskPlace(threadId: string, where: string | undefined) {
+    const found = this.taskByThread(threadId);
+    if (!found) return;
+    if (where) found.task.where = where;
+    else delete found.task.where;
+    found.task.resumeCursors = {};
+    found.task.lastInstanceId = "";
     delete found.task.reading;
     delete found.task.pendingCompaction;
     this.saveBots();

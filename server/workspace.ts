@@ -320,13 +320,23 @@ export function writeMemoryTopic(botId: string, name: string, text: string): boo
  * `how` is what this engine keeps it with: its own file tools, or the
  * memory_read and memory_write tools of an API engine that has no files.
  */
-export function memoryPrompt(botId: string, how: "files" | "tools" = "files"): string {
+export function memoryPrompt(botId: string, how: "files" | "tools" | "cli" | "readonly" = "files", cli = 'node "$BLOKS_CLI"'): string {
   const dir = workspaceDir(botId);
   const loaded = `auto-loaded each turn, the first ${MEMORY_MAX_LINES} lines and ${MEMORY_MAX_BYTES / 1000} KB; the rest is cut`;
+  // An agent working in a container or on another machine has none of
+  // this computer's files: its memory is reached through the command
+  // line, or, where that cannot run, only read.
+  if (how === "readonly") {
+    const memory = loadMemory(botId);
+    const said = "Your memory is kept on the person's computer, and where you work now you cannot change it. Say in your reply anything worth remembering, and the person can add it.";
+    return memory ? `${said}\n\nYour memory (MEMORY.md):\n${memory.text}${memory.truncated ? "\n[memory truncated]" : ""}` : said;
+  }
   const guidance = [
     how === "tools"
       ? `You keep persistent memory with the memory_read and memory_write tools: MEMORY.md (${loaded}) and topic files that you read when relevant.`
-      : `You keep persistent memory in ${join(dir, "MEMORY.md")} (${loaded}) and topic files under ${join(dir, "memory")}/ that you read when relevant.`,
+      : how === "cli"
+        ? `You keep persistent memory on the person's computer, through the command line: \`${cli} memory\` reads MEMORY.md (${loaded}), \`${cli} memory --write <text>\` replaces it, and \`${cli} memory --topics\`, \`--topic <name>\` and \`--topic <name> --write <text>\` list, read and write topic files that you read when relevant.`
+        : `You keep persistent memory in ${join(dir, "MEMORY.md")} (${loaded}) and topic files under ${join(dir, "memory")}/ that you read when relevant.`,
     "Curate it: keep it short, correct wrong notes, delete stale ones.",
     "Before ending a turn, retain a settled decision, a commitment you adopt for later work, or a correction when future work will need it, without waiting to be asked to remember.",
     "Use an existing canonical record rather than duplicate it; keep enough context and a useful topic pointer where needed to find it after the conversation is no longer available. Read the relevant records when later work depends on them.",
