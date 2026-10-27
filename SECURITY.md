@@ -63,6 +63,22 @@ window or an agent's token), the path must be a file that can run, the
 Cursor editor is refused where the Cursor CLI is meant, and every change
 is written to the activity ledger.
 
+**Bringing a setup over copies a key only when you tick it.** Bring
+your setup reads Claude Code's, Codex's, Cursor's, OpenClaw's and
+Hermes' files under your home folder, read only, by name, and never
+opens a file named like a credential (`auth.json`, `.credentials.json`,
+`.env`, tokens, keys, OpenClaw's `credentials` folder). An MCP server's
+environment and headers, and a chat app's token, arrive as names with
+empty values. Each value is typed in by you, or copied from the other
+tool's config because you ticked the box for that one value; a value is
+never sent to the window, never put in the record of what was imported
+or in what an undo keeps, and lands only where you would have typed it
+(`config.json`). A chat app's token is checked with that app and saved
+switched off. Rules an import makes are only ever as broad as the
+original when they allow, and an agent's own tool limits become denies
+for that agent alone. The routes answer only the owner, never an agent's
+credential or a member, and every import can be undone.
+
 **Approvals are the safety gate.** When a provider asks to do something
 risky, Bloks surfaces an approval card and blocks until you answer.
 Don't route around it. Engines reach Bloks over protocols that can carry

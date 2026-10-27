@@ -360,12 +360,15 @@ often each was used and then corrected. Agents can ask for a change too
 
 ### Bring what you have
 
-Bring your instructions, skills and tool servers over from Claude Code,
-Codex, OpenClaw or Hermes, reviewing each item first. Bring your past
-Claude Code and Codex sessions over as conversations and carry one on.
-Your workspace is backed up every day, and a whole workspace can be
-written out to one file and taken into an empty one elsewhere. Keys
-never travel.
+Bring your subagents, instructions, skills, commands, tool servers, rules
+and chat bots over from Claude Code, Codex, Cursor, OpenClaw or Hermes,
+reviewing each item first, grouped by what it becomes here. A name that
+is taken is yours to settle, a key comes only when you tick it, and the
+whole import can be undone. `bloks-server import --dry-run` shows what
+would come over from a terminal. Bring your past Claude Code and Codex
+sessions over as conversations and carry one on. Your workspace is
+backed up every day, and a whole workspace can be written out to one
+file and taken into an empty one elsewhere. Keys never travel in either.
 
 ## Install
 

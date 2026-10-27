@@ -175,6 +175,7 @@ Workspaces), written synchronously. No database.
 | `skill-usage.json` | How often each skill and each version was used, and corrected straight after |
 | `proposals.json` | Suggested skills and changes to skills, staged until the person keeps or dismisses them |
 | `setup-import.json` | What was brought over from other agent tools, by item: a digest, where it went, and the exact text added |
+| `setup-import-runs.json` | The newest 20 imports from other agent tools, step by step, for undo; never a key |
 | `session-import.json` | Which past Claude Code and Codex sessions became which lanes, with the digest of what came over |
 | `engine-sessions.json` | Engine session ids Bloks itself ran, so they are never offered back as past sessions |
 | `events/`, `native/` | Canonical events, and raw provider traffic |
@@ -2601,53 +2602,116 @@ only kept notes reach the prompt, and never in a shared room.
 ## Bringing a setup over
 
 `server/setup-import.ts` reads what a person already taught other agent
-tools, from a short list of known places under their home: Claude Code
-(`~/.claude/CLAUDE.md`, `~/.claude/skills/*/SKILL.md`, the top level
-`mcpServers` of `~/.claude.json`, and the allow and deny rules in
-`~/.claude/settings.json`), Codex (`~/.codex/AGENTS.md` and the
-`[mcp_servers.*]` tables of `~/.codex/config.toml`, read by a small TOML
-reader of its own), OpenClaw (`SOUL.md`, `IDENTITY.md`, `MEMORY.md`,
-`memory/*.md`, `USER.md` and `skills/*/SKILL.md` in
-`~/.openclaw/workspace`) and Hermes (`SOUL.md`, the memories folder and
-skills a few folders down in `~/.hermes`, each looked for rather than
-assumed). Nothing is searched for and nothing there is written.
+tools, from a short list of known places under their home. Nothing is
+searched for and nothing there is written.
 
-No credential is read or copied. A file named like one (`auth.json`,
-`.credentials.json`, `.env`, tokens, keys, keychains) is never opened,
+- Claude Code: `~/.claude/CLAUDE.md` (its `@path` imports are named, not
+  followed), `rules/**/*.md`, subagents in `agents/*.md`, skills in
+  `skills/*/SKILL.md`, commands in `commands/**/*.md` (a folder is a
+  `folder:name` namespace), the top level `mcpServers` of
+  `~/.claude.json`, and from `settings.json` the allow and deny rules,
+  the default `model`, and any `mcpServers` kept there although Claude
+  Code does not document them.
+- Codex: `AGENTS.override.md` in place of `AGENTS.md` when it has
+  anything in it, as Codex reads them; `[mcp_servers.*]`, `model` and
+  `model_reasoning_effort` from `config.toml` (a small TOML reader of
+  its own); `prompts/*.md` at the top of that folder; skills in
+  `~/.agents/skills` and the older `~/.codex/skills`.
+- Cursor: `~/.cursor/mcp.json` (with `${userHome}` filled in and
+  `${env:NAME}` read as a variable), subagents in `agents/*.md`, skills,
+  commands, and `.mdc` rules in `~/.cursor/rules`, a folder Cursor
+  documents only for projects, so each file is read on its own and a
+  broken one is named. Cursor keeps its user rules in its settings, not
+  a file, and the review says so.
+- OpenClaw: `~/.openclaw/openclaw.json` read as JSON5 (`server/json5.ts`)
+  for the workspace folder (only inside the home folder), the default
+  model, and the Telegram, Slack and Discord channels; then `SOUL.md`,
+  `IDENTITY.md`, `AGENTS.md`, `MEMORY.md`, `memory/*.md`, `USER.md` and
+  skills in the workspace, and the managed skills in `~/.openclaw/skills`.
+  WhatsApp, Signal and the rest are named as left out.
+- Hermes: `SOUL.md`, the memories folder and skills a few folders down
+  in `~/.hermes`, each looked for rather than assumed.
+
+What each becomes: a subagent is an agent, its prompt the instructions
+(or, past 4,000 characters, the opening plus the whole in `MEMORY.md`),
+its model mapped where an engine here runs it, its colour and effort
+kept, the skills and servers it names attached when Bloks has them by
+that name (including ones the same import just added, since skills and
+servers are applied first), and its tool limits as deny rules for that
+agent alone: a `tools` list refuses the acting tools it leaves out,
+`disallowedTools` go through the same translation as settings rules,
+and Cursor's `readonly` refuses the editing ones. Commands and prompts
+are skills with one line on top saying what `$ARGUMENTS` and `$1` were.
+A Cursor rule that always applies is instructions; any other kind is a
+skill. A default model is offered to the agent made for that tool, and
+refused with a reason when that engine is not set up. A chat app is
+connected through the same checks Settings makes (the app's own `getMe`
+or `auth.test`), saved switched off because the other tool may still be
+answering on that bot.
+
+No credential file is opened. A file named like one (`auth.json`,
+`.credentials.json`, `.env`, tokens, keys, keychains) is never read,
 and a link is followed only to see where it goes, so a `SKILL.md` that
 points at a credentials file is named as left out. Every file is capped
 by size. Text is scrubbed of anything key-shaped (provider key prefixes,
 bearer tokens, `name = value` pairs whose value looks generated,
 passwords in addresses, private key blocks) and the item says how many
-were taken out. An MCP server's environment and header values are
-dropped whole, never scrubbed: the names come across with empty values,
-and the server waits for the person to fill them in under Apps and keys
-(`PATCH /api/mcp-servers/:id`, names it already has only). A name with
-no value is never handed to an engine. Names that change how programs
-start (`PATH`, `NODE_OPTIONS` and the rest of `server/env-names.ts`) are
-not carried.
+were taken out. An MCP server's environment and header values, and a
+chat app's tokens, are slots: the item carries their names, the review
+shows a field for each, and a value is either typed by the person or
+copied from the other tool's config because the person ticked that one
+slot. The literal values are held in a `WeakMap` beside the scan, so no
+serialized scan, review, log or dry run can carry one; a value written
+as a variable (`${NAME}`, `$NAME`, `${env:NAME}`, Codex's `env_vars` and
+`bearer_token_env_var`) is named as one and never resolved. Names that
+change how programs start (`PATH`, `NODE_OPTIONS` and the rest of
+`server/env-names.ts`) are not carried, and a name left empty is never
+handed to an engine.
 
-`GET /api/setup-import` is the review: every item by source, with a
-preview, where it would go and whether it was brought over before.
-`POST` imports the items the window names, and only those. It reads the
-files again and takes from the window only which items and where, so an
-item whose digest no longer matches the review is refused. Instructions
-become an agent's instructions (if they fit) or a block in its
-`MEMORY.md`, written through the memory journal so the Memory place can
-undo it; `memory/*.md` files become topic files. A new agent is made once
-per source per import. Skills go to the library under a free id, never
-over somebody's skill, and no agent has them until the person attaches
-them. Servers go to the registry on no agent. Rules go through the
-policy's own checks and wait for the person to tick them: a Bloks rule
-looks at one thing, so a translation may be broader than the original
-only when it denies, and an allow that would let agents do more is left
-out with the reason. `USER.md` lines become suggestions in About you.
-`setup-import.json` keeps each item's digest, destination and the exact
-text it added, so importing again replaces that text in place, or says
-nothing changed, rather than adding a second copy. Both routes answer
-only Bloks on this computer, never an agent's credential, a paired phone
-or a remote window. The first run offers the review as an optional step
-when something new was found, and Settings has it as a page.
+`GET /api/setup-import` is the review: every item with a preview, where
+it would go, whether it was brought over before, anything here by the
+same name (`conflict`: a person's skill or an agent may be replaced, a
+skill that ships with Bloks or a server never is), the slots it needs,
+and `sameAs` when another tool's folder held the same thing (Cursor
+reads Claude Code's skills), which waits unticked. The window groups it
+by what each becomes (`src/lib/setupReview.ts`). `POST` imports the
+items the window names, and only those. It reads the files again and
+takes from the window only which items, where, how a clash is settled
+and the slot answers, so an item whose digest no longer matches the
+review is refused. Instructions become an agent's instructions (if they
+fit) or a block in its `MEMORY.md`, written through the memory journal;
+`memory/*.md` files become topic files. A new agent is made once per
+source per import. Skills go to the library under a free id unless the
+person said to replace theirs. Servers go to the registry on no agent.
+Rules wait for the person to tick them: a translation may be broader
+than the original only when it denies, an allowed command prefix
+becomes a `runs` rule (one plain command, nothing chained), an allowed
+`Read` of an absolute path names the `Read` tool, and an allow that
+would let agents do more is left out with the reason. `USER.md` lines
+become suggestions in About you. `setup-import.json` keeps each item's
+digest, destination and the exact text it added, so importing again
+replaces that text in place rather than adding a second copy.
+
+Every import that changed something is kept in `setup-import-runs.json`
+(`server/setup-undo.ts`, the newest 20) as steps: an agent made or
+changed (with its settings before), instructions and memory before and
+after, a skill added or replaced (with the one it replaced), a server
+added or updated (its earlier shape with values blanked), a rule or a
+suggestion added, a chat app connected (by a hash of its token). `POST
+/api/setup-import/undo` walks them back newest first, each only if what
+is there is still what the import left; anything changed since, a
+suggestion the person kept, or an agent they have talked with stays and
+says why. Agents it made are archived, not deleted. The record goes back
+to what it said before for each item that went back whole. The look
+returns `lastRun` so the offer outlives the window.
+
+All three routes answer only the owner at this computer or on their own
+paired devices, never an agent's credential or a member. The first run
+offers the review as an optional step when something new was found, and
+Settings has it as a page. `bloks-server import [tool] --dry-run
+[--json]` prints the same scan from a terminal, with no server needed
+and nothing written; the import itself is only in the app, where the
+slots are answered.
 
 ## Bringing past sessions over
 
