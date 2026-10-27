@@ -33,6 +33,7 @@ import { detailsFor } from "@/lib/appDetails";
 import { tryPrompt } from "@/lib/tryPrompt";
 import { SkillCatalog } from "./SkillCatalog";
 import { AddSkillDialog, ProposedSkill, type Proposal } from "./SkillsPanel";
+import { SkillDetail, usageWords } from "./SkillVersions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -566,7 +567,12 @@ function SkillsPage({
     setLoading(true);
     return Promise.all([
       api("/api/skills")
-        .then((r) => setSkills(r.skills ?? []))
+        .then((r) => {
+          const all: Skill[] = r.skills ?? [];
+          setSkills(all);
+          // the skill open in the window follows its new version
+          setOpen((was) => (was ? (all.find((s) => s.id === was.id) ?? was) : was));
+        })
         .catch(() => setSkills([])),
       api("/api/skills/proposals")
         .then((r) => setProposals(r.proposals ?? []))
@@ -699,7 +705,24 @@ function SkillsPage({
                         tile={<Tile>{skill.source === "builtin" ? <Lock size={16} /> : <Sparkles size={17} />}</Tile>}
                         name={skill.name}
                         line={skill.description}
-                        action={<Check size={16} className="mr-2 text-muted-foreground" aria-label="Installed" />}
+                        action={
+                          skill.uses ? (
+                            // which skills pull their weight: how often, and
+                            // amber when most uses were corrected straight after
+                            <span
+                              title={usageWords(skill.uses, skill.corrected ?? 0, skill.lastUsed ?? null)}
+                              aria-label={usageWords(skill.uses, skill.corrected ?? 0, skill.lastUsed ?? null)}
+                              className={cn(
+                                "mr-2 text-small tabular-nums",
+                                skill.uses >= 2 && (skill.corrected ?? 0) * 2 >= skill.uses ? "text-warning" : "text-muted-foreground",
+                              )}
+                            >
+                              {skill.uses} {skill.uses === 1 ? "use" : "uses"}
+                            </span>
+                          ) : (
+                            <Check size={16} className="mr-2 text-muted-foreground" aria-label="Installed" />
+                          )
+                        }
                       />
                     ))}
                   </div>
@@ -723,14 +746,20 @@ function SkillsPage({
       <AddSkillDialog open={adding} onOpenChange={setAdding} onInstalled={() => void load()} />
 
       <Dialog open={open !== null} onOpenChange={(next) => !next && setOpen(null)}>
-        <DialogContent className="flex max-h-[84vh] max-w-[680px] flex-col">
+        <DialogContent className="flex max-h-[88vh] max-w-[820px] flex-col">
           {open && (
             <>
               <DialogTitle className="pr-8">{open.name}</DialogTitle>
               {open.description && <DialogDescription>{open.description}</DialogDescription>}
-              <pre className="mt-4 min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/40 p-3.5 font-mono text-small leading-relaxed text-foreground">
-                {open.body}
-              </pre>
+              <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-auto">
+                <SkillDetail
+                  skill={open}
+                  onChanged={(next) => {
+                    if (next) setOpen((was) => (was ? { ...was, ...next } : was));
+                    void load();
+                  }}
+                />
+              </div>
               <div className="mt-4 flex items-center justify-between gap-3">
                 <span className="text-body text-muted-foreground">
                   {open.source === "builtin" ? "Built in" : "Yours"}

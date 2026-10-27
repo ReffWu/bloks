@@ -31,6 +31,7 @@ import { AddMcpServerDialog, BackLink, McpServerSettings, mcpTarget, useMcpServe
 import { cliPluginLine, GitHubPluginSettings, useCliPlugins } from "./CliPlugins";
 import { GitHubMark } from "./ProviderIcons";
 import { AddSkillDialog } from "./SkillsPanel";
+import { SkillDetail } from "./SkillVersions";
 import { ServiceIcon } from "./Customize";
 import { ComposioKeyDialog } from "./ComposioKeyDialog";
 import { AgentAvatar } from "./Avatar";
@@ -173,6 +174,7 @@ export function PluginSettings() {
       <SkillSettings
         skill={skill}
         onBack={() => setFocus(null)}
+        onChanged={() => void loadSkills()}
         onRemoved={() => {
           setFocus(null);
           void loadSkills();
@@ -431,7 +433,8 @@ export function PluginSettings() {
                     line={skill.description}
                     aside={
                       <span className="flex shrink-0 items-center gap-3 text-body text-muted-foreground">
-                        <span>{skill.source === "builtin" ? "Built in" : "Yours"}</span>
+                        <span>{skill.source === "builtin" ? "Built in" : `Yours, version ${skill.revision ?? 1}`}</span>
+                        {skill.uses ? <span className="tabular-nums">{skill.uses} {skill.uses === 1 ? "use" : "uses"}</span> : null}
                         <span className="tabular-nums">{usedBy(n)}</span>
                         <ChevronRight size={16} />
                       </span>
@@ -577,8 +580,19 @@ function AppSettings({
   );
 }
 
-/** A skill's page in Settings: what it says, and which agents use it. */
-function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () => void; onRemoved: () => void }) {
+/** A skill's page in Settings: what it says, every version it has been,
+ * and which agents use it. */
+function SkillSettings({
+  skill,
+  onBack,
+  onChanged,
+  onRemoved,
+}: {
+  skill: Skill;
+  onBack: () => void;
+  onChanged: () => void;
+  onRemoved: () => void;
+}) {
   const { state, dispatch } = useStore();
   const agents = state.bots.filter((b) => !b.hidden);
   const remove = async () => {
@@ -646,9 +660,7 @@ function SkillSettings({ skill, onBack, onRemoved }: { skill: Skill; onBack: () 
           </div>
         </Section>
         <Section title="Instructions">
-          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-xl bg-muted/40 p-4 font-mono text-body leading-relaxed text-foreground">
-            {skill.body}
-          </pre>
+          <SkillDetail skill={skill} onChanged={onChanged} />
         </Section>
       </div>
     </div>

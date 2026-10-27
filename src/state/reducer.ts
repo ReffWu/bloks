@@ -450,8 +450,9 @@ export interface ConfigStatus {
   /** `beforeTurn` is the size a native session is compacted at before a
    * turn, in tokens; 0 is never. */
   compaction?: { micro: boolean; idle?: boolean; beforeTurn?: number };
-  /** Whether finished sessions are read back for something worth keeping. */
-  skills?: { propose: boolean };
+  /** Whether finished sessions are read back for something worth keeping,
+   * and `learn`, how eagerly: off, suggest or suggest more. */
+  skills?: { propose: boolean; learn?: "off" | "suggest" | "more" };
   /** Whether agents are reminded of their other conversations before
    * your turn. On unless turned off. */
   recall?: { beforeTurn: boolean };
@@ -747,6 +748,13 @@ export interface Skill {
   description: string;
   body: string;
   source: "builtin" | "user";
+  /** The version it is at (server/skill-history.ts); 0 for a built-in. */
+  revision?: number;
+  /** How often it has been used, how often the person corrected it
+   * straight after, and when it was last used. */
+  uses?: number;
+  corrected?: number;
+  lastUsed?: number | null;
 }
 
 /** The tabs of the Automations page (src/components/AutomationsPanel.tsx). */

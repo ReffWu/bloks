@@ -246,7 +246,30 @@ export interface Proposal {
   diff?: DiffLine[];
   /** The skill has changed so much since that the change no longer fits. */
   stale?: boolean;
+  /** The version it was written against, and the version the skill is at
+   * now, which keeping it is checked against. */
+  base?: number;
+  current?: number;
+  /** What made it worth suggesting (server/proposals.ts, Trigger). */
+  trigger?: "conversation" | "tools" | "recovery" | "correction" | "deviation" | "agent";
+  /** An agent asked for it, or another app, rather than a review. */
+  by?: "review" | "agent" | "app";
+  /** An agent's whole new text, written against a version that has since
+   * moved on: keeping it as it is would undo that version. */
+  movedOn?: boolean;
+  /** A change to a built-in: keeping it makes your own copy. */
+  builtin?: boolean;
 }
+
+/** Why it is here, after "From Scout". */
+const BECAUSE_OF: Record<NonNullable<Proposal["trigger"]>, string> = {
+  conversation: "after a conversation that worked something out",
+  tools: "after a turn that took many steps",
+  recovery: "after a step failed and it found another way",
+  correction: "after you corrected it",
+  deviation: "after it used this skill for real work",
+  agent: "who asked for this change",
+};
 
 /**
  * A skill the workspace wrote and has not installed.
@@ -273,10 +296,13 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
   const act = (keep: boolean) => {
     setBusy(true);
     setError(null);
+    // a change is kept against the version it was shown against, so one
+    // that moved on while this card was open is refused, not stacked
+    const seen = patch && proposal.current !== undefined ? { from: proposal.current } : {};
     const call = keep
       ? api(`/api/skills/proposals/${proposal.id}`, {
           method: "POST",
-          body: JSON.stringify(patch && !editing ? {} : { name, description, body }),
+          body: JSON.stringify(patch && !editing ? seen : { ...seen, name, description, body }),
         })
       : api(`/api/skills/proposals/${proposal.id}`, { method: "DELETE" });
     call
@@ -295,9 +321,18 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           {proposal.because}
         </div>
         <div className="mt-1 text-small text-muted-foreground/80">
-          From {proposal.botName}. {open ? "Hide" : "Show"}
+          From {proposal.botName}
+          {proposal.trigger ? `, ${BECAUSE_OF[proposal.trigger]}` : ""}.
+          {patch && proposal.base !== undefined && ` Against ${proposal.base === 0 ? "the built-in text" : `version ${proposal.base}`}.`}{" "}
+          {open ? "Hide" : "Show"}
         </div>
       </button>
+
+      {patch && proposal.builtin && (
+        <div className="mt-2 text-small leading-relaxed text-muted-foreground">
+          Keeping this makes the built-in skill your own copy, with its versions from the text as it ships.
+        </div>
+      )}
 
       {/* An edited skill is somebody's own work, and a suggestion that
           would land on top of it should say so before it is approved. */}
@@ -308,8 +343,10 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
       )}
 
       {open && patch && proposal.stale && (
-        <div className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-small leading-relaxed text-warning">
-          The skill changed since this was suggested. Discard it.
+        <div role="status" className="mt-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-small leading-relaxed text-warning">
+          {proposal.movedOn
+            ? `Written against version ${proposal.base}, and the skill is version ${proposal.current} now. Keeping it as it is would undo that change. Edit it to keep your own text, or discard it.`
+            : "The skill changed since this was suggested. Discard it."}
         </div>
       )}
 
@@ -318,7 +355,7 @@ export function ProposedSkill({ proposal, onDone }: { proposal: Proposal; onDone
           <div className="max-h-[320px] overflow-auto rounded-lg border bg-background py-2">
             <DiffLines lines={proposal.diff} />
           </div>
-          {!proposal.stale && (
+          {(!proposal.stale || proposal.movedOn) && (
             <button
               onClick={() => setEditing(true)}
               className="mt-1.5 text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"

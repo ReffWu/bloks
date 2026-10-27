@@ -1,0 +1,508 @@
+// A skill opened: what it says, every version it has been, and what each
+// one changed.
+//
+// Shown wherever a skill opens (the Skills page and Settings, Plugins),
+// so "who changed this, and why" is answered beside the text rather than
+// somewhere else. Three things a person does here:
+//
+//   Edit it. The edit is saved against the version it started from, so
+//   one made while a suggestion was kept is refused rather than written
+//   over the top. A built-in is never edited; "Make it yours" copies it,
+//   and the copy keeps its versions from the text as it shipped.
+//
+//   Read the history: who made each version (you, an agent, a suggestion
+//   you kept, the catalogue), when, the one line on why, and how often
+//   that version was used and then corrected.
+//
+//   Compare any two, and put an earlier one back. Restoring adds a
+//   version rather than removing any, so it can itself be undone.
+import { useCallback, useEffect, useState } from "react";
+import { History, Loader2, Pencil, RotateCcw } from "@/components/icons";
+import { api, type Skill } from "@/state/store";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Segmented } from "@/components/ui/segmented";
+import { confirm } from "@/components/ui/confirm";
+import { toast } from "@/components/ui/toast";
+import { cn } from "@/lib/cn";
+import { plural } from "@/lib/plural";
+import { stamp } from "@/lib/when";
+import { MAX_SKILL_CHARS } from "@/lib/skillLength";
+import { DiffLines, type DiffLine } from "./DiffLines";
+import { SettingsSelect } from "./SettingsLayout";
+
+export interface Author {
+  kind: "person" | "agent" | "proposal" | "catalog" | "import" | "file" | "migration" | "builtin";
+  name?: string;
+}
+
+export interface VersionRow {
+  n: number;
+  at: number;
+  by: Author;
+  why: string;
+  chars: number;
+  restoredFrom?: number;
+  uses: number;
+  corrected: number;
+  lastUsed: number | null;
+}
+
+interface SkillHistoryAnswer {
+  id: string;
+  builtin: boolean;
+  /** A copy of a built-in, which can always go back to the shipped text. */
+  shipped?: boolean;
+  current: number;
+  /** Newest first. */
+  revisions: VersionRow[];
+  usage: { uses: number; corrected: number; lastUsed: number | null };
+  pruned: boolean;
+  max: number;
+}
+
+interface DiffAnswer {
+  from: number;
+  to: number;
+  lines: DiffLine[];
+  tooBig?: boolean;
+  name?: { from: string; to: string };
+  description?: { from: string; to: string };
+}
+
+/** Who made a version, in a few words. */
+export function authorWords(by: Author): string {
+  switch (by.kind) {
+    case "person":
+      return "You";
+    case "agent":
+      return `${by.name || "An agent"}, kept by you`;
+    case "proposal":
+      return `Suggested by ${by.name || "an agent"}, kept by you`;
+    case "catalog":
+      return "The catalogue";
+    case "import":
+      return "Brought in";
+    case "file":
+      return "Edited outside Bloks";
+    case "migration":
+      return "Before versions";
+    case "builtin":
+      return "As it ships";
+  }
+}
+
+/** How much a skill is used, in one line: counted when you name it with
+ * a slash or an agent reads it in full (server/skill-usage.ts). */
+export function usageWords(uses: number, corrected: number, lastUsed: number | null): string {
+  if (!uses) return "Not used yet";
+  const last = lastUsed ? `, last ${stamp(lastUsed)}` : "";
+  const fixes = corrected ? `. Corrected after ${corrected === uses ? "every one" : plural(corrected, "of them", "of them")}` : "";
+  return `Used ${plural(uses, "time")}${last}${fixes}`;
+}
+
+const versionWord = (n: number) => (n === 0 ? "As it ships" : `Version ${n}`);
+
+/** How long the instructions are against the limit, red once over it. */
+function Count({ text }: { text: string }) {
+  const length = [...text.trim()].length;
+  return (
+    <span className={cn("text-small tabular-nums", length > MAX_SKILL_CHARS ? "text-destructive" : "text-muted-foreground")}>
+      {length.toLocaleString()} / {MAX_SKILL_CHARS.toLocaleString()}
+    </span>
+  );
+}
+
+/**
+ * A skill, opened. `onChanged` is called after anything here wrote to it,
+ * with the skill as it now stands when that is known, so the page around
+ * it can refresh its list.
+ */
+export function SkillDetail({ skill, onChanged }: { skill: Skill; onChanged: (next?: Skill) => void }) {
+  const [view, setView] = useState<"text" | "history">("text");
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const builtin = skill.source === "builtin";
+
+  // a different skill opened in the same place starts at its text
+  useEffect(() => {
+    setView("text");
+    setEditing(false);
+  }, [skill.id]);
+
+  const makeOwn = () => {
+    setBusy(true);
+    api(`/api/skills/${skill.id}/fork`, { method: "POST" })
+      .then(({ skill: mine }) => {
+        toast.success(`${skill.name} is yours to change now`);
+        onChanged(mine);
+        setEditing(true);
+      })
+      .catch((e: Error) => toast.error(e.message))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Segmented<"text" | "history">
+          aria-label="Show"
+          size="sm"
+          value={view}
+          onChange={(next) => {
+            setView(next);
+            if (next === "history") setEditing(false);
+          }}
+          options={[
+            { value: "text", label: "Instructions" },
+            { value: "history", label: builtin ? "History" : `History${skill.revision ? ` (${skill.revision})` : ""}` },
+          ]}
+        />
+        <span className="text-small text-muted-foreground">
+          {builtin ? "Built in" : `Version ${skill.revision ?? 1}`}. {usageWords(skill.uses ?? 0, skill.corrected ?? 0, skill.lastUsed ?? null)}
+        </span>
+      </div>
+
+      {view === "text" ? (
+        editing && !builtin ? (
+          <SkillEditor
+            skill={skill}
+            onCancel={() => setEditing(false)}
+            onSaved={(next) => {
+              setEditing(false);
+              onChanged(next);
+            }}
+          />
+        ) : (
+          <>
+            <pre className="mt-3 max-h-[420px] min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/40 p-3.5 font-mono text-small leading-relaxed text-foreground">
+              {skill.body}
+            </pre>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {builtin ? (
+                <>
+                  <Button size="sm" variant="secondary" disabled={busy} onClick={makeOwn}>
+                    {busy ? <Loader2 size={13} className="animate-spin" /> : <Pencil size={13} />}
+                    Make it yours
+                  </Button>
+                  <span className="text-small text-muted-foreground">
+                    Built-in skills stay as they ship. Your copy keeps every version.
+                  </span>
+                </>
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+                  <Pencil size={13} />
+                  Edit
+                </Button>
+              )}
+            </div>
+          </>
+        )
+      ) : (
+        <SkillHistory skill={skill} onRestored={onChanged} onMakeOwn={builtin ? makeOwn : undefined} />
+      )}
+    </div>
+  );
+}
+
+/** Editing a skill of yours, saved as its next version. */
+function SkillEditor({ skill, onCancel, onSaved }: { skill: Skill; onCancel: () => void; onSaved: (next: Skill) => void }) {
+  const [name, setName] = useState(skill.name);
+  const [description, setDescription] = useState(skill.description);
+  const [body, setBody] = useState(skill.body);
+  const [why, setWhy] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const changed = name.trim() !== skill.name || description.trim() !== skill.description || body.trim() !== skill.body.trim();
+  const tooLong = [...body.trim()].length > MAX_SKILL_CHARS;
+
+  const save = () => {
+    setSaving(true);
+    setError(null);
+    api(`/api/skills/${skill.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name, description, body, why, from: skill.revision }),
+    })
+      .then(({ skill: next }) => {
+        toast.success(`Saved ${next.name} as version ${next.revision}`);
+        onSaved(next);
+      })
+      .catch((e: Error & { status?: number }) =>
+        // moved on while this was open: say so, and keep what was typed
+        setError(e.status === 409 ? `${e.message} Copy your text, close this and open the skill again.` : e.message),
+      )
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2">
+      <label className="block">
+        <span className="mb-1 block text-small font-medium text-muted-foreground">Name</span>
+        <Input value={name} onChange={(e) => setName(e.target.value)} className="text-body" />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-small font-medium text-muted-foreground">When to use it</span>
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} className="text-body" />
+      </label>
+      <label className="flex min-h-0 flex-1 flex-col">
+        <span className="mb-1 flex items-center justify-between text-small font-medium text-muted-foreground">
+          Instructions
+          <Count text={body} />
+        </span>
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          className="min-h-[220px] flex-1 resize-none font-mono text-small leading-relaxed"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-small font-medium text-muted-foreground">What changed</span>
+        <Input
+          value={why}
+          maxLength={200}
+          placeholder="One line, for the history"
+          onChange={(e) => setWhy(e.target.value)}
+          className="text-body"
+        />
+      </label>
+      {error && (
+        <div role="alert" className="text-small text-destructive">
+          {error}
+        </div>
+      )}
+      <div className="mt-1 flex gap-2">
+        <Button size="sm" disabled={saving || !changed || !body.trim() || !name.trim() || tooLong} onClick={save}>
+          {saving ? <Loader2 size={13} className="animate-spin" /> : "Save as a new version"}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={saving} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Every version, newest first; pick one to see what it changed. */
+function SkillHistory({
+  skill,
+  onRestored,
+  onMakeOwn,
+}: {
+  skill: Skill;
+  onRestored: (next?: Skill) => void;
+  onMakeOwn?: () => void;
+}) {
+  const [history, setHistory] = useState<SkillHistoryAnswer | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<number | null>(null);
+  const [against, setAgainst] = useState<number | null>(null);
+  const [diff, setDiff] = useState<DiffAnswer | null>(null);
+  const [diffError, setDiffError] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
+
+  const load = useCallback(() => {
+    setError(null);
+    return api(`/api/skills/${skill.id}/history`)
+      .then((answer: SkillHistoryAnswer) => {
+        setHistory(answer);
+        setPicked((was) => (was !== null && answer.revisions.some((r) => r.n === was) ? was : (answer.revisions[0]?.n ?? null)));
+      })
+      .catch((e: Error) => setError(e.message));
+  }, [skill.id]);
+  useEffect(() => {
+    void load();
+  }, [load, skill.revision]);
+
+  const rows = history?.revisions ?? [];
+  // by default a version is compared with the one before it: what it changed
+  const before = picked === null ? null : (rows.find((r) => r.n < picked)?.n ?? (history?.shipped && picked > 0 ? 0 : null));
+  const base = against ?? before;
+
+  useEffect(() => {
+    setAgainst(null);
+  }, [picked]);
+
+  useEffect(() => {
+    if (picked === null || base === null || history?.builtin) {
+      setDiff(null);
+      return;
+    }
+    let live = true;
+    setDiffError(null);
+    api(`/api/skills/${skill.id}/diff?from=${Math.min(base, picked)}&to=${Math.max(base, picked)}`)
+      .then((answer: DiffAnswer) => live && setDiff(answer))
+      .catch((e: Error) => live && setDiffError(e.message));
+    return () => {
+      live = false;
+    };
+  }, [skill.id, picked, base, history?.builtin]);
+
+  const restore = async (n: number) => {
+    const yes = await confirm({
+      title: n === 0 ? "Go back to the text it shipped with?" : `Restore version ${n}?`,
+      body: "It comes back as a new version. Nothing is lost: what it says now stays in the history.",
+      confirmLabel: "Restore",
+    });
+    if (!yes) return;
+    setRestoring(true);
+    api(`/api/skills/${skill.id}/restore`, { method: "POST", body: JSON.stringify({ revision: n, from: history?.current }) })
+      .then(({ skill: next }) => {
+        toast.success(`Restored as version ${next.revision}`);
+        onRestored(next);
+        void load();
+      })
+      .catch((e: Error) => toast.error(e.message))
+      .finally(() => setRestoring(false));
+  };
+
+  if (error) return <p className="mt-4 text-body text-destructive">{error}</p>;
+  if (!history) {
+    return (
+      <div className="mt-4 flex items-center gap-2 text-body text-muted-foreground" role="status">
+        <Loader2 size={14} className="animate-spin" />
+        Loading versions
+      </div>
+    );
+  }
+  if (history.builtin) {
+    return (
+      <div className="mt-4 flex flex-col items-start gap-3 rounded-xl border border-dashed p-4">
+        <History size={18} className="text-muted-foreground" />
+        <p className="text-body text-muted-foreground">
+          Built-in skills ship with Bloks and stay as they are. Make it yours to change it: your copy keeps every
+          version, starting from this one.
+        </p>
+        {onMakeOwn && (
+          <Button size="sm" variant="secondary" onClick={onMakeOwn}>
+            <Pencil size={13} />
+            Make it yours
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  const chosen = rows.find((r) => r.n === picked) ?? null;
+  const others = rows.filter((r) => r.n !== picked);
+  return (
+    <div className="mt-3 grid min-h-0 flex-1 grid-cols-1 gap-3 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
+      <ol aria-label="Versions" className="flex max-h-[220px] flex-col gap-1 overflow-auto md:max-h-[440px]">
+        {rows.map((row) => (
+          <li key={row.n}>
+            <button
+              onClick={() => setPicked(row.n)}
+              aria-pressed={row.n === picked}
+              className={cn(
+                "w-full rounded-lg px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring/50",
+                row.n === picked ? "bg-accent" : "hover:bg-accent/60",
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-body font-medium text-foreground">{versionWord(row.n)}</span>
+                {row.n === history.current && (
+                  <span className="rounded-full bg-brand/15 px-1.5 text-caption font-semibold text-brand-ink">Now</span>
+                )}
+                <span className="ml-auto shrink-0 text-caption text-muted-foreground">{stamp(row.at)}</span>
+              </div>
+              <div className="mt-0.5 truncate text-small text-muted-foreground">{authorWords(row.by)}</div>
+              <div className="mt-0.5 line-clamp-2 text-small text-foreground/85">{row.why}</div>
+              {row.uses > 0 && (
+                <div className={cn("mt-0.5 text-caption", row.corrected ? "text-warning" : "text-muted-foreground")}>
+                  {plural(row.uses, "use")}
+                  {row.corrected ? `, corrected ${row.corrected}` : ""}
+                </div>
+              )}
+            </button>
+          </li>
+        ))}
+        {history.pruned && (
+          <li className="px-2.5 py-2 text-caption text-muted-foreground">
+            Versions past the latest {history.max} are let go, except the first.
+          </li>
+        )}
+      </ol>
+
+      <div className="flex min-h-0 min-w-0 flex-col">
+        {chosen && (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-body font-medium text-foreground">{versionWord(chosen.n)}</span>
+              {chosen.restoredFrom !== undefined && (
+                <span className="text-small text-muted-foreground">put back {versionWord(chosen.restoredFrom).toLowerCase()}</span>
+              )}
+              {(others.length > 0 || history.shipped) && (
+                <label className="ml-auto flex items-center gap-2 text-small text-muted-foreground">
+                  Compared with
+                  <SettingsSelect
+                    aria-label="Compare with"
+                    value={base === null ? "" : String(base)}
+                    onChange={(e) => setAgainst(e.target.value === "" ? null : Number(e.target.value))}
+                    className="w-[150px]"
+                  >
+                    {base === null && <option value="">Nothing earlier</option>}
+                    {others.map((r) => (
+                      <option key={r.n} value={r.n}>
+                        {versionWord(r.n)}
+                      </option>
+                    ))}
+                    {history.shipped && !rows.some((r) => r.n === 0) && <option value="0">As it ships</option>}
+                  </SettingsSelect>
+                </label>
+              )}
+            </div>
+            <div className="mt-2 min-h-[160px] flex-1 overflow-auto rounded-lg border bg-background py-2" aria-label="What changed" role="region">
+              {base === null ? (
+                <p className="px-4 text-small text-muted-foreground">The first version there is. Nothing to compare it with.</p>
+              ) : diffError ? (
+                <p className="px-4 text-small text-destructive">{diffError}</p>
+              ) : !diff ? (
+                <p className="px-4 text-small text-muted-foreground">Comparing</p>
+              ) : (
+                <>
+                  {base > picked! && (
+                    <p className="px-4 pb-1 text-caption text-muted-foreground">
+                      From {versionWord(Math.min(base, picked!)).toLowerCase()} to {versionWord(Math.max(base, picked!)).toLowerCase()}.
+                    </p>
+                  )}
+                  {diff.name && (
+                    <p className="px-4 pb-1 text-small text-foreground">
+                      Renamed from “{diff.name.from}” to “{diff.name.to}”.
+                    </p>
+                  )}
+                  {diff.description && (
+                    <p className="px-4 pb-1 text-small text-foreground">When to use it changed to “{diff.description.to}”.</p>
+                  )}
+                  {diff.tooBig ? (
+                    <p className="px-4 text-small text-muted-foreground">Too large to compare line by line.</p>
+                  ) : diff.lines.some((l) => l.kind === "add" || l.kind === "del") ? (
+                    <DiffLines lines={diff.lines} />
+                  ) : (
+                    !diff.name && !diff.description && <p className="px-4 text-small text-muted-foreground">The instructions are the same.</p>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              {chosen.n !== history.current && (
+                <Button size="sm" variant="secondary" disabled={restoring} onClick={() => void restore(chosen.n)}>
+                  {restoring ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                  Restore this version
+                </Button>
+              )}
+              {history.shipped && chosen.n === history.current && (
+                <Button size="sm" variant="ghost" disabled={restoring} onClick={() => void restore(0)}>
+                  <RotateCcw size={13} />
+                  Back to the built-in text
+                </Button>
+              )}
+              <span className="text-small text-muted-foreground">
+                {usageWords(chosen.uses, chosen.corrected, chosen.lastUsed)}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

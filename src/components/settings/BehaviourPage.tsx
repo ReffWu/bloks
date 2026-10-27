@@ -204,26 +204,56 @@ function SilentCallLimit() {
  */
 function ProposeSkills() {
   const { state, dispatch } = useStore();
-  const on = state.config?.skills?.propose ?? false;
+  const learn: SkillLearning = state.config?.skills?.learn ?? (state.config?.skills?.propose ? "suggest" : "off");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const set = (propose: boolean) => {
+  const set = (next: SkillLearning) => {
     setSaving(true);
-    api("/api/config", { method: "PUT", body: JSON.stringify({ skills: { propose } }) })
+    setError("");
+    api("/api/config", { method: "PUT", body: JSON.stringify({ skills: { learn: next } }) })
       .then((status) => dispatch({ type: "configStatus", config: status }))
-      .catch(() => {})
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn't save that."))
       .finally(() => setSaving(false));
   };
 
   return (
     <SettingRow
       label="Suggest skills"
-      info="Nothing installs on its own. Suggestions wait in Skills, ready to keep with one press. Each check costs one small call on your own key, so this starts off."
-      description="After a chat that worked something out, suggest it as a skill."
-      control={<Switch aria-label="Suggest skills" checked={on} disabled={saving} onCheckedChange={set} />}
-    />
+      info="Nothing changes on its own. New skills and changes to yours wait in Skills, with the reason, for you to keep, edit or dismiss. Each check is a call to the agent's own model, two when it changes a skill you have, on your plan or key."
+      description={SKILL_LEARNING.find((o) => o.value === learn)?.says}
+      error={error}
+    >
+      <div className="mt-3 max-w-[460px]">
+        <Segmented<SkillLearning>
+          aria-label="Suggest skills"
+          size="sm"
+          value={learn}
+          onChange={(next) => !saving && next !== learn && set(next)}
+          options={SKILL_LEARNING.map((o) => ({ value: o.value, label: o.label }))}
+        />
+      </div>
+    </SettingRow>
   );
 }
+
+type SkillLearning = "off" | "suggest" | "more";
+
+/** The three settings, and what each costs. The ceilings are the
+ * server's DAILY_REVIEWS (server/proposals.ts). */
+const SKILL_LEARNING: Array<{ value: SkillLearning; label: string; says: string }> = [
+  { value: "off", label: "Off", says: "No checks, so nothing is spent." },
+  {
+    value: "suggest",
+    label: "Suggest",
+    says: "After a chat that clearly worked something out, or a skill you corrected. At most 20 checks a day.",
+  },
+  {
+    value: "more",
+    label: "Suggest more",
+    says: "Also after shorter ones, and after any skill that was used for real work. At most 60 checks a day.",
+  },
+];
 
 /**
  * How many turns in a row agents may start in one another before the
