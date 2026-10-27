@@ -28,6 +28,7 @@ import { clock } from "@/lib/transcript";
 import { api } from "@/state/store";
 import type { NotchGeometry } from "@/types/bridge";
 import { cn } from "@/lib/cn";
+import { t } from "@/lib/i18n";
 
 /** What a notch looks like when the app has not said: a MacBook's. */
 const FALLBACK: NotchGeometry = {
@@ -248,7 +249,7 @@ export function NotchIsland({ demo = false }: { demo?: boolean }) {
                 {waiting ? (
                   <span className="flex shrink-0 items-center gap-1.5 text-caption font-medium text-warning">
                     <span className={cn("size-1.5 rounded-full bg-warning", !reduce && "animate-pulse")} />
-                    Needs you
+                    {t("notchIsland.needsYou")}
                   </span>
                 ) : (
                   <span className="shrink-0 text-caption font-medium tabular-nums text-white/85">{clock(longest)}</span>
@@ -332,12 +333,12 @@ function Faces({ agents, reduce }: { agents: LiveAgent[]; reduce: boolean }) {
 function AgentRow({ agent, now, reduce, onOpen }: { agent: LiveAgent; now: number; reduce: boolean; onOpen: () => void }) {
   const step = currentStep(agent.trace);
   const asking = agent.state === "needs-you";
-  const doing = step ? `${step.name}${step.detail ? ` ${step.detail}` : ""}` : "Starting";
+  const doing = step ? `${step.name}${step.detail ? ` ${step.detail}` : ""}` : t("notchIsland.starting");
   return (
     <button
       type="button"
       onClick={onOpen}
-      title={`Open ${agent.taskTitle}`}
+      title={t("notchIsland.open", { title: agent.taskTitle })}
       className="group flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors duration-150 hover:bg-white/[0.07]"
     >
       <Face agent={agent} expression={asking ? "surprised" : "focused"} size={28} />
@@ -353,7 +354,7 @@ function AgentRow({ agent, now, reduce, onOpen }: { agent: LiveAgent; now: numbe
             <Spinner size={10} className="text-white/60" />
           )}
           <span className={cn("min-w-0 truncate", !asking && !reduce && "trace-shimmer")} style={{ "--trace-shine": "#fff" } as CSSProperties}>
-            {asking ? `Waiting for you${step?.detail ? `: ${step.detail}` : ""}` : doing}
+            {asking ? (step?.detail ? t("notchIsland.waitingForYouOn", { detail: step.detail }) : t("notchIsland.waitingForYou")) : doing}
           </span>
         </span>
       </span>

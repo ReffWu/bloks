@@ -150,7 +150,7 @@ function NameQuestion({ asking: q }: { asking: Asking }) {
     >
       <DialogTitle className="text-pretty pr-6">{t("yourNameDialog.whatShouldPeopleCallYou")}</DialogTitle>
       <DialogDescription className="text-pretty">
-        {q.why ?? t("yourNameDialog.everyoneYouLetInSees")} Your agents use it too, and you can change it any time in Settings.
+        {t("yourNameDialog.why", { why: q.why ?? t("yourNameDialog.everyoneYouLetInSees") })}
       </DialogDescription>
       <form
         className="mt-4 flex flex-col gap-4"

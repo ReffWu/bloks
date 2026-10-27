@@ -255,7 +255,7 @@ function WorkspaceList({ s }: { s: Extract<WorkspacesState, { available: true }>
     if (next.join() === ids.join()) return;
     setOrder(next);
     const at = next.indexOf(moved.id);
-    setSaid(`${moved.name} moved to ${at + 1} of ${next.length}.`);
+    setSaid(t("workspaceSwitcher.movedTo", { name: moved.name, position: at + 1, total: next.length }));
     void act(window.bloks?.workspaceReorder?.(next)).then((error) => {
       if (!error) return;
       setOrder(null);
@@ -435,7 +435,7 @@ export function WorkspaceSwitcher({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`${current.name}, switch workspace`}
+          aria-label={t("workspaceSwitcher.switchWorkspace", { name: current.name })}
           className={cn(
             // the height of the bar's own buttons, so it sits in their row
             // as one of them rather than as a heading above them
@@ -519,14 +519,14 @@ export function WorkspaceSwitcher({
             onSelect={() => store.dispatch({ type: "toggleAppSettings", open: true, page: "plan" })}
           >
             <Sparkles />
-            Plan
+            {t("workspaceSwitcher.plan")}
             <span className="ml-auto pl-3 text-small font-normal text-muted-foreground">{s.plan === "team" ? t("workspaceSwitcher.bloksTeam") : s.plan === "cloud" ? t("workspaceSwitcher.bloksCloud") : s.plan === null ? t("workspaceSwitcher.selfHosted") : ""}</span>
           </DropdownMenuItem>
         )}
         <DropdownMenuSub>
           <DropdownMenuSubTrigger
             icon={<BellOff />}
-            value={current.mute.muted ? "On" : undefined}
+            value={current.mute.muted ? t("workspaceSwitcher.on") : undefined}
             className="gap-2.5 rounded-[9px] py-2 text-ui font-medium"
           >
             {t("workspaceSwitcher.mute")}
@@ -551,7 +551,7 @@ export function WorkspaceSwitcher({
         {current.kind === "joined" && onLeave && (
           <DropdownMenuItem variant="destructive" className="gap-2.5 rounded-[9px] py-2 text-ui font-medium" onSelect={onLeave}>
             <LogOut />
-            Leave {current.name}
+            {t("workspaceSwitcher.leave", { name: current.name })}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

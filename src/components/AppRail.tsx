@@ -119,13 +119,13 @@ export function AppRail() {
             label={t("appRail.overview")}
             hint={
               activity.waiting > 0
-                ? `Overview: ${activity.waiting} waiting on you`
+                ? t("appRail.overviewWaiting", { count: activity.waiting })
                 : activity.failed > 0
-                  ? `Overview: ${activity.failed} failed and ${activity.failed === 1 ? "needs" : "need"} a look`
+                  ? t("appRail.overviewFailed", { count: activity.failed })
                   : briefNew
                   ? t("appRail.overviewANewMorningBrief")
                   : rehearsalsReady > 0
-                    ? `Overview: ${rehearsalsReady} rehearsal${rehearsalsReady === 1 ? "" : "s"} ready`
+                    ? t("appRail.overviewRehearsals", { count: rehearsalsReady })
                     : undefined
             }
             active={place === "overview"}
@@ -140,7 +140,7 @@ export function AppRail() {
           <RailButton
             label={t("common.memory")}
             active={place === "memory"}
-            hint={notesWaiting > 0 ? `Memory: ${notesWaiting} note${notesWaiting === 1 ? "" : "s"} about you to review` : undefined}
+            hint={notesWaiting > 0 ? t("appRail.memoryNotes", { count: notesWaiting }) : undefined}
             dot={notesWaiting > 0 ? "warning" : null}
             onClick={() => go("memory")}
           >
@@ -148,7 +148,7 @@ export function AppRail() {
           </RailButton>
           <RailButton
             label={t("common.plugins")}
-            hint={activity.suggested > 0 ? `Plugins and skills: ${activity.suggested} skill${activity.suggested === 1 ? "" : "s"} suggested` : t("appRail.pluginsAndSkills")}
+            hint={activity.suggested > 0 ? t("appRail.skillsSuggested", { count: activity.suggested }) : t("appRail.pluginsAndSkills")}
             active={place === "plugins"}
             dot={activity.suggested > 0 ? "warning" : null}
             onClick={() => go("plugins")}

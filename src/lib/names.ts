@@ -17,6 +17,8 @@
 // Plain functions over plain data, so the rule can be walked in a test
 // (test/names.test.ts). The phone keeps the same rule.
 
+import { t } from "./i18n.ts";
+
 /** The first word of a name, as a conversation calls them. */
 export function firstName(name: string): string {
   const clean = name.trim();
@@ -68,5 +70,5 @@ export function distinctNames(people: ReadonlyArray<{ id: string; name: string }
  * the told-apart name, else the fallback (a former member, "You"). */
 export function namer(people: ReadonlyArray<{ id: string; name: string }>): (id: string, fallback?: string) => string {
   const names = distinctNames(people);
-  return (id, fallback = "Someone") => names.get(id) ?? fallback;
+  return (id, fallback = t("names.someone")) => names.get(id) ?? fallback;
 }

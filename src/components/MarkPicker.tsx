@@ -13,40 +13,41 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { CHOICE_COLORS, CHOICE_PATTERNS, sameMark, type Mark } from "@/lib/workspaceMark";
 import { WorkspaceMark } from "./WorkspaceMark";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
-/** What each colour is called, for a screen reader and a tooltip. */
-const COLOR_NAMES: Record<string, string> = {
-  "#E9A83A": "Amber",
-  "#3E5BD9": "Indigo",
-  "#149E8E": "Teal",
-  "#8E4FC9": "Violet",
-  "#E8664A": "Coral",
-  "#D64C7F": "Rose",
-  "#2A86C7": "Blue",
-  "#7A8F2A": "Olive",
-  "#B86A3C": "Copper",
-  "#4D6478": "Slate",
-  "#3F9A5B": "Green",
-  "#5B5F6B": "Graphite",
+/** What each colour is called, for a screen reader and a tooltip: a
+ * catalogue key, put into words where it is read. */
+const COLOR_NAMES: Record<string, MessageKey> = {
+  "#E9A83A": "markPicker.color.amber",
+  "#3E5BD9": "markPicker.color.indigo",
+  "#149E8E": "markPicker.color.teal",
+  "#8E4FC9": "markPicker.color.violet",
+  "#E8664A": "markPicker.color.coral",
+  "#D64C7F": "markPicker.color.rose",
+  "#2A86C7": "markPicker.color.blue",
+  "#7A8F2A": "markPicker.color.olive",
+  "#B86A3C": "markPicker.color.copper",
+  "#4D6478": "markPicker.color.slate",
+  "#3F9A5B": "markPicker.color.green",
+  "#5B5F6B": "markPicker.color.graphite",
 };
 
-const PATTERN_NAMES: Record<string, string> = {
-  "010111101": "House",
-  "111101111": "Ring",
-  "101010101": "Cross",
-  "010111010": "Plus",
-  "010101010": "Diamond",
-  "111010010": "Tee",
-  "100100111": "Corner",
-  "100110111": "Steps",
-  "101101111": "Cup",
-  "110010011": "Zigzag",
-  "111000111": "Bars",
-  "101000101": "Dots",
+const PATTERN_NAMES: Record<string, MessageKey> = {
+  "010111101": "markPicker.shape.house",
+  "111101111": "markPicker.shape.ring",
+  "101010101": "markPicker.shape.cross",
+  "010111010": "markPicker.shape.plus",
+  "010101010": "markPicker.shape.diamond",
+  "111010010": "markPicker.shape.tee",
+  "100100111": "markPicker.shape.corner",
+  "100110111": "markPicker.shape.steps",
+  "101101111": "markPicker.shape.cup",
+  "110010011": "markPicker.shape.zigzag",
+  "111000111": "markPicker.shape.bars",
+  "101000101": "markPicker.shape.dots",
 };
 
-export const colorName = (color: string) => COLOR_NAMES[color.toUpperCase()] ?? "Colour";
+export const colorName = (color: string) => t(COLOR_NAMES[color.toUpperCase()] ?? "markPicker.colour");
 
 /** Colours above shapes, cell for cell, so the two rows line up; they
  * wrap at the same place when the space is narrow. */
@@ -135,8 +136,8 @@ export function MarkPicker({
               type="button"
               role="radio"
               aria-checked={on}
-              aria-label={worn ? `${colorName(c)}, another workspace wears this` : colorName(c)}
-              title={worn ? `${colorName(c)}: another workspace wears this with this shape` : colorName(c)}
+              aria-label={worn ? t("markPicker.colorWorn", { name: colorName(c) }) : colorName(c)}
+              title={worn ? t("markPicker.colorWornTitle", { name: colorName(c) }) : colorName(c)}
               tabIndex={on ? 0 : -1}
               disabled={disabled || worn}
               onClick={() => pick(mark, colorRow, i)}
@@ -160,7 +161,7 @@ export function MarkPicker({
       <div
         ref={shapeRow}
         role="radiogroup"
-        aria-label={t("markPicker.shape")}
+        aria-label={t("markPicker.shapeRow")}
         className={ROW}
         onKeyDown={arrows(patterns.length, patternAt, (i, dir) => {
           const free = freeFrom(patterns.length, i, dir, (j) => ({ color, pattern: patterns[j]! }));
@@ -171,15 +172,15 @@ export function MarkPicker({
           const mark = { color, pattern: p };
           const on = i === patternAt;
           const worn = !on && isTaken(mark);
-          const name = PATTERN_NAMES[p] ?? "Its own shape";
+          const name = t(PATTERN_NAMES[p] ?? "markPicker.itsOwnShape");
           return (
             <button
               key={p}
               type="button"
               role="radio"
               aria-checked={on}
-              aria-label={worn ? `${name}, another workspace wears this` : name}
-              title={worn ? `${name}: another workspace wears this` : name}
+              aria-label={worn ? t("markPicker.shapeWorn", { name }) : name}
+              title={worn ? t("markPicker.shapeWornTitle", { name }) : name}
               tabIndex={on ? 0 : -1}
               disabled={disabled || worn}
               onClick={() => pick(mark, shapeRow, i)}

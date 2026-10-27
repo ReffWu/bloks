@@ -22,7 +22,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
 import { BUSINESS_MARK, generateMark, sameMark, type Mark } from "@/lib/workspaceMark";
 import { act, useWorkspaces } from "@/lib/workspaces";
-import { checkDraft, cleanDraftName, draftName, errorPlace } from "@/lib/newWorkspace";
+import { businessName, checkDraft, cleanDraftName, draftName, errorPlace } from "@/lib/newWorkspace";
 import { MarkActions, MarkPicker } from "./MarkPicker";
 import { WorkspaceMark } from "./WorkspaceMark";
 import { NeedsTeam } from "./TeamLock";
@@ -96,7 +96,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
 
   const mark = marks[kind];
   const clean = cleanDraftName(name);
-  const shownName = clean || (kind === "business" ? "Business" : "Untitled");
+  const shownName = clean || (kind === "business" ? businessName() : t("newWorkspaceDialog.untitled"));
   // while one is being made the list already holds it, and it is not a clash
   const check = checkDraft({ kind, name }, list, making);
   const nameError = check.problem ?? (error?.place === "name" ? error.text : null);
@@ -122,7 +122,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
       if (asTeam) {
         // a window on a workspace you joined has somebody else's server
         // behind it, so the name is only handed to the app from there
-        const why = `Everyone you invite to ${clean || "Business"} sees it.`;
+        const why = t("newWorkspaceDialog.whyName", { name: clean || businessName() });
         const said = (s.available && s.ownerName) || (window.bloks?.workspace?.kind === "joined" ? await askYourName({ why, save: false }) : await ensureYourName({ why }));
         if (!said) return;
         ownerName = said;
@@ -191,13 +191,13 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
               onChange={(next) => {
                 setKind(next);
                 setError(null);
-                if (next === "business" && !clean) setName("Business");
-                if (next === "custom" && clean === "Business") setName("");
+                if (next === "business" && !clean) setName(businessName());
+                if (next === "custom" && clean === businessName()) setName("");
                 nameField.current?.focus();
               }}
               options={[
-                { value: "custom", label: "Its own name" },
-                { value: "business", label: "Business" },
+                { value: "custom", label: t("newWorkspaceDialog.kindOwnName") },
+                { value: "business", label: t("newWorkspaceDialog.kindBusiness") },
               ]}
             />
           )}
@@ -210,7 +210,7 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
               maxLength={40}
               autoComplete="off"
               spellCheck={false}
-              placeholder={kind === "business" ? t("newWorkspaceDialog.business") : t("newWorkspaceDialog.okaforStudio")}
+              placeholder={kind === "business" ? businessName() : t("newWorkspaceDialog.okaforStudio")}
               disabled={busy}
               onChange={(e) => {
                 setName(e.target.value);
@@ -234,18 +234,18 @@ export function NewWorkspaceDialog({ open, onOpenChange }: { open: boolean; onOp
                 if (error?.place === "team") setError(null);
               }}
               options={[
-                { value: "solo", label: "Just me" },
-                { value: "team", label: "Team", disabled: !teamOpen },
+                { value: "solo", label: t("workspaces.justMe") },
+                { value: "team", label: t("workspaces.team"), disabled: !teamOpen },
               ]}
             />
           </Field>
 
-          <Field label={t("newWorkspaceDialog.mark")} error={error?.place === "mark" ? error.text : markWorn ? "Another workspace has that mark. Choose another." : null}>
+          <Field label={t("newWorkspaceDialog.mark")} error={error?.place === "mark" ? error.text : markWorn ? t("newWorkspaceDialog.markTaken") : null}>
             {/* how it will look in the switcher, chosen right beside it */}
             <div className="rounded-[14px] border bg-sidebar/60 p-3">
               <div className="mb-2.5 flex min-w-0 items-center gap-3 pl-0.5">
                 <span key={mark ? `${mark.color}${mark.pattern}` : "none"} className="flex animate-pop-in">
-                  <WorkspaceMark mark={mark} size={36} label={`${shownName}'s mark`} />
+                  <WorkspaceMark mark={mark} size={36} label={t("newWorkspaceDialog.markOf", { name: shownName })} />
                 </span>
                 <span className={cn("min-w-0 flex-1 truncate text-lead font-semibold", clean || kind === "business" ? "text-foreground" : "text-muted-foreground")}>
                   {shownName}

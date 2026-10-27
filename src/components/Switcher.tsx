@@ -70,7 +70,7 @@ export function Switcher({ shown }: { shown: Viewed | null }) {
       const { bots, bloks } = live.current.state;
       if (bloks.some((room) => room.id === v.id)) return true;
       const bot = bots.find((b) => b.id === v.id && !b.hidden);
-      return Boolean(bot && (!v.lane || !bot.tasks || bot.tasks.some((t) => t.id === v.lane)));
+      return Boolean(bot && (!v.lane || !bot.tasks || bot.tasks.some((task) => task.id === v.lane)));
     };
 
     const open = (to: Viewed) => {
@@ -159,7 +159,7 @@ export function Switcher({ shown }: { shown: Viewed | null }) {
           const room = state.bloks.find((r) => r.id === v.id);
           const bot = room ? undefined : state.bots.find((b) => b.id === v.id);
           // which conversation, once the agent has more than one
-          const lane = bot && (bot.tasks?.length ?? 0) > 1 ? bot.tasks?.find((t) => t.id === v.lane)?.title : undefined;
+          const lane = bot && (bot.tasks?.length ?? 0) > 1 ? bot.tasks?.find((task) => task.id === v.lane)?.title : undefined;
           const active = index === choosing.at;
           return (
             <div

@@ -8,6 +8,7 @@
 // piece of this answers as if there were one.
 import { useSyncExternalStore } from "react";
 import type { WorkspaceInfo, WorkspacesState } from "@/types/bridge";
+import { formatDate, t, type MessageKey } from "./i18n.ts";
 
 let state: WorkspacesState = { available: false };
 let started = false;
@@ -58,51 +59,60 @@ export function currentWorkspace(s: WorkspacesState): WorkspaceInfo | null {
 /** "Just me", how many people, or "Team" before anyone has counted. A
  * workspace you joined says what you are there instead. */
 export function peopleLabel(ws: Pick<WorkspaceInfo, "team" | "members" | "kind"> & { role?: "member" | "admin" }): string {
-  if (ws.kind === "joined") return ws.role === "admin" ? "Admin" : "Member";
-  if (!ws.team) return "Just me";
-  if (ws.members === null) return "Team";
-  return ws.members === 1 ? "1 member" : `${ws.members} members`;
+  if (ws.kind === "joined") return ws.role === "admin" ? t("workspaces.admin") : t("workspaces.member");
+  if (!ws.team) return t("workspaces.justMe");
+  if (ws.members === null) return t("workspaces.team");
+  return t("workspaces.members", { count: ws.members });
 }
 
 /** The plain line a joined workspace reached only on its owner's own
  * network carries, or your hosted one, or null. */
 export function reachLine(ws: Pick<WorkspaceInfo, "kind" | "host"> & { lanOnly?: boolean }): string | null {
-  if (ws.kind === "hosted") return "Runs on your hosted machine, reached through Bloks Cloud. It keeps working when this computer is off.";
+  if (ws.kind === "hosted") return t("workspaces.reach.hosted");
   if (ws.kind !== "joined" || !ws.lanOnly) return null;
-  return `Reached only on ${ws.host ? `${ws.host}'s` : "its owner's"} network. Away from it, this workspace waits until you are back.`;
+  return ws.host ? t("workspaces.reach.hostsNetwork", { host: ws.host }) : t("workspaces.reach.ownersNetwork");
 }
 
 /** What the kind is called on its own line, under a name. */
 export function kindLabel(ws: Pick<WorkspaceInfo, "kind" | "team">): string {
-  if (ws.kind === "joined") return "Joined workspace";
-  if (ws.kind === "hosted") return "Hosted workspace";
-  return ws.team ? "Team workspace" : "Just me";
+  if (ws.kind === "joined") return t("workspaces.kind.joined");
+  if (ws.kind === "hosted") return t("workspaces.kind.hosted");
+  return ws.team ? t("workspaces.kind.team") : t("workspaces.justMe");
 }
+
+/** One mute choice. Its label is read when it is drawn, so the menu
+ * speaks the language chosen after this module loaded. */
+const muteChoice = (id: string, key: MessageKey) => ({
+  id,
+  get label(): string {
+    return t(key);
+  },
+});
 
 /** The mute menu's choices, in the order it lists them; the main process
  * holds the same list (electron/workspaces.mjs MUTE_CHOICES). */
-export const MUTE_CHOICES: ReadonlyArray<{ id: string; label: string }> = [
-  { id: "15m", label: "For 15 minutes" },
-  { id: "1h", label: "For 1 hour" },
-  { id: "3h", label: "For 3 hours" },
-  { id: "8h", label: "For 8 hours" },
-  { id: "24h", label: "For 24 hours" },
-  { id: "forever", label: "Until I turn it back on" },
+export const MUTE_CHOICES: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
+  muteChoice("15m", "workspaces.mute.for15m"),
+  muteChoice("1h", "workspaces.mute.for1h"),
+  muteChoice("3h", "workspaces.mute.for3h"),
+  muteChoice("8h", "workspaces.mute.for8h"),
+  muteChoice("24h", "workspaces.mute.for24h"),
+  muteChoice("forever", "workspaces.mute.forever"),
 ];
 
 /** How a mute reads beside its switch: "Until 3:40 PM", "Until tomorrow,
  * 9:00 AM", "Until you turn it back on", or null when not muted. */
 export function muteLabel(mute: WorkspaceInfo["mute"], now = Date.now()): string | null {
   if (!mute.muted) return null;
-  if (mute.until === "forever" || mute.until === null) return "Until you turn it back on";
+  if (mute.until === "forever" || mute.until === null) return t("workspaces.mute.untilBackOn");
   const at = new Date(mute.until);
-  const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const time = formatDate(at, { hour: "numeric", minute: "2-digit" });
   const today = new Date(now);
   const sameDay = at.toDateString() === today.toDateString();
-  if (sameDay) return `Until ${time}`;
+  if (sameDay) return t("workspaces.mute.until", { time });
   const tomorrow = new Date(now + 86_400_000);
-  if (at.toDateString() === tomorrow.toDateString()) return `Until tomorrow, ${time}`;
-  return `Until ${at.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  if (at.toDateString() === tomorrow.toDateString()) return t("workspaces.mute.untilTomorrow", { time });
+  return t("workspaces.mute.untilDay", { day: formatDate(at, { weekday: "short" }), time });
 }
 
 /** The workspace ⌘1 to ⌘9 reach: the nth in the list, as the switcher

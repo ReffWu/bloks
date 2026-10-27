@@ -14,6 +14,7 @@
 // The engines are asked about only when none can reply here (a key added
 // in Personal is Personal's alone). Every step can be skipped, and the
 // one reached is remembered, so quitting halfway comes back to it.
+import type { MessageKey } from "./i18n.ts";
 
 export type WelcomeStep = "business" | "engines" | "agents" | "invite";
 
@@ -24,11 +25,12 @@ export interface WelcomeShape {
   enginesReady: boolean | null;
 }
 
-const LABELS: Record<WelcomeStep, string> = {
-  business: "Name and logo",
-  engines: "Engines",
-  agents: "Agents",
-  invite: "Invite people",
+// Catalogue keys, put into words where the stepper draws them.
+const LABELS: Record<WelcomeStep, MessageKey> = {
+  business: "libWorkspaceWelcome.step.business",
+  engines: "libWorkspaceWelcome.step.engines",
+  agents: "libWorkspaceWelcome.step.agents",
+  invite: "libWorkspaceWelcome.step.invite",
 };
 
 /** Which welcome a workspace's window shows: the short one for a
@@ -38,7 +40,7 @@ export function welcomeKind(workspace: { kind?: string } | null | undefined): "w
 }
 
 /** The steps, in order, for what was chosen. */
-export function welcomeSteps(shape: WelcomeShape): Array<{ id: WelcomeStep; label: string }> {
+export function welcomeSteps(shape: WelcomeShape): Array<{ id: WelcomeStep; label: MessageKey }> {
   const ids: WelcomeStep[] = [];
   if (shape.kind === "business") ids.push("business");
   if (shape.enginesReady === false) ids.push("engines");

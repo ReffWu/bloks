@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, t } from "@/lib/i18n";
 
 type Engine = "claude" | "codex";
 
@@ -94,12 +94,10 @@ interface Result {
 /** Projects shown before "Show more": a long history is dozens of them. */
 const FIRST_PROJECTS = 12;
 
-const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
-
-const dayFormat = new Intl.DateTimeFormat([], { month: "short", day: "numeric" });
-const dayYearFormat = new Intl.DateTimeFormat([], { month: "short", day: "numeric", year: "numeric" });
 function day(at: number): string {
-  return new Date(at).getFullYear() === new Date().getFullYear() ? dayFormat.format(at) : dayYearFormat.format(at);
+  return new Date(at).getFullYear() === new Date().getFullYear()
+    ? formatDate(at, { month: "short", day: "numeric" })
+    : formatDate(at, { month: "short", day: "numeric", year: "numeric" });
 }
 
 /**
@@ -122,7 +120,7 @@ export function PastSessionsPrivacyLine({ className }: { className?: string }) {
     <div className={cn("flex items-start gap-2.5 rounded-xl bg-success/10 px-3 py-2.5", className)}>
       <ShieldCheck size={16} className="mt-px shrink-0 text-success" />
       <div className="min-w-0 text-body leading-relaxed">
-        <div className="font-medium text-foreground">Nothing leaves {thisComputer()}, and your sessions are only read, never changed.</div>
+        <div className="font-medium text-foreground">{t("pastSessions.privacy", { computer: thisComputer() })}</div>
         <div className="text-muted-foreground">{t("pastSessions.linesThatLookLikeKeys")}</div>
       </div>
     </div>
@@ -159,10 +157,10 @@ function SessionRow({ session, on, onChange }: { session: Session; on: boolean; 
           </span>
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-small text-muted-foreground">
-          <span>{[ENGINE[session.engine].name, day(session.lastAt), plural(session.messages, "message", "messages")].join(" · ")}</span>
+          <span>{[ENGINE[session.engine].name, day(session.lastAt), t("pastSessions.messages", { count: session.messages })].join(" · ")}</span>
           {session.imported && (
             <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-caption">
-              <Check size={11} /> With {session.imported.name}
+              <Check size={11} /> {t("pastSessions.withAgent", { name: session.imported.name })}
             </span>
           )}
         </div>
@@ -184,7 +182,7 @@ function ProjectCard({ project, picked, onPick }: { project: Project; picked: Se
           mixed={on > 0 && on < offered.length}
           disabled={offered.length === 0}
           onChange={(next) => onPick(offered.map((s) => s.key), next)}
-          label={`Every conversation in ${project.name}`}
+          label={t("pastSessions.everyConversationIn", { name: project.name })}
         />
         <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex min-w-0 flex-1 items-start gap-2 text-left">
           <div className="min-w-0 flex-1">
@@ -194,8 +192,10 @@ function ProjectCard({ project, picked, onPick }: { project: Project; picked: Se
             </div>
             {project.label && <div className="mt-0.5 truncate font-mono text-caption text-muted-foreground/80">{project.label}</div>}
             <div className="mt-0.5 text-small text-muted-foreground">
-              {plural(project.sessions.length, "conversation", "conversations")}, the latest {day(project.lastAt)}
-              {project.folder && !project.exists ? ". The folder is not there any more." : ""}
+              {t(project.folder && !project.exists ? "pastSessions.projectLineGone" : "pastSessions.projectLine", {
+                count: project.sessions.length,
+                day: day(project.lastAt),
+              })}
             </div>
           </div>
           <ChevronRight size={14} className={cn("mt-1 shrink-0 text-muted-foreground transition-transform duration-150", open && "rotate-90")} />
@@ -219,7 +219,7 @@ function Transcript({ session }: { session: Reviewed }) {
   return (
     <div className="mt-2 max-h-[320px] overflow-auto rounded-lg border bg-muted/40 p-2.5">
       {session.more + session.left > 0 && (
-        <div className="pb-2 text-caption text-muted-foreground">{plural(session.more + session.left, "earlier row", "earlier rows")} not shown here</div>
+        <div className="pb-2 text-caption text-muted-foreground">{t("pastSessions.earlierRows", { count: session.more + session.left })}</div>
       )}
       <ol className="flex flex-col gap-1.5">
         {session.rows.map((row, i) =>
@@ -249,18 +249,23 @@ function ReviewRow({ session, result, onOpen }: { session: Reviewed; result?: Re
         <span className="min-w-0 truncate text-ui font-medium text-foreground">{session.title}</span>
       </div>
       <div className="mt-0.5 text-small text-muted-foreground">
-        {day(session.startedAt)}
-        {day(session.startedAt) !== day(session.lastAt) ? ` to ${day(session.lastAt)}` : ""}, {plural(session.messages, "message", "messages")} and{" "}
-        {plural(session.tools, "tool call", "tool calls")}
+        {t("pastSessions.reviewLine", {
+          when:
+            day(session.startedAt) !== day(session.lastAt)
+              ? t("pastSessions.dayRange", { from: day(session.startedAt), to: day(session.lastAt) })
+              : day(session.startedAt),
+          messages: t("pastSessions.messages", { count: session.messages }),
+          tools: t("pastSessions.toolCalls", { count: session.tools }),
+        })}
       </div>
       <ul className="mt-1.5 flex flex-col gap-0.5 text-small leading-relaxed">
         <li className={session.resumes ? "text-foreground" : "text-muted-foreground"}>
-          {session.resumes ? `Carries on the same ${engine} session, in a copy, so yours stays as it is.` : session.why}
+          {session.resumes ? t("pastSessions.carriesOn", { engine }) : session.why}
         </li>
         {session.removed > 0 && (
-          <li className="text-muted-foreground">{plural(session.removed, "line that looked like a key or a password stays", "lines that looked like keys or passwords stay")} behind.</li>
+          <li className="text-muted-foreground">{t("pastSessions.secretsStay", { count: session.removed })}</li>
         )}
-        {session.left > 0 && <li className="text-muted-foreground">The earliest {plural(session.left, "row is", "rows are")} left out, to keep it to the latest.</li>}
+        {session.left > 0 && <li className="text-muted-foreground">{t("pastSessions.earliestLeftOut", { count: session.left })}</li>}
         {session.imported && <li className="text-warning">{t("pastSessions.alreadyAConversationHereSo")}</li>}
       </ul>
       <button
@@ -275,7 +280,7 @@ function ReviewRow({ session, result, onOpen }: { session: Reviewed; result?: Re
       {open && <Transcript session={session} />}
       {result && (
         <div className={cn("mt-1.5 flex flex-wrap items-center gap-2 text-small", result.ok ? "text-success" : "text-destructive")} aria-live="polite">
-          {result.ok ? t("pastSessions.broughtOver") : `Not brought over: ${result.error}`}
+          {result.ok ? t("pastSessions.broughtOver") : t("pastSessions.notBroughtOver", { error: result.error ?? "" })}
           {result.ok && result.laneId && onOpen && (
             <Button size="sm" variant="secondary" onClick={() => onOpen(result)}>
               {t("common.open")}
@@ -333,7 +338,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
     try {
       setReview(await api("/api/session-import/review", { method: "POST", body: JSON.stringify({ picks: [...picked], to: destination }) }));
     } catch (e) {
-      setProblem(e instanceof Error ? e.message : "The review could not be made.");
+      setProblem(e instanceof Error ? e.message : t("pastSessions.reviewFailed"));
     } finally {
       setBusy(null);
     }
@@ -357,18 +362,18 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
       const brought = outcome.results.filter((r) => r.ok);
       const failed = outcome.results.length - brought.length;
       if (brought.length) {
-        toast.success(`Brought over ${plural(brought.length, "conversation", "conversations")}`, {
-          ...(failed ? { description: `${failed} could not come over. The review says why.` } : {}),
-          ...(compact ? {} : { action: { label: "Open", onClick: () => open(brought[brought.length - 1]) } }),
+        toast.success(t("pastSessions.broughtOverCount", { count: brought.length }), {
+          ...(failed ? { description: t("pastSessions.someFailed", { count: failed }) } : {}),
+          ...(compact ? {} : { action: { label: t("common.open"), onClick: () => open(brought[brought.length - 1]) } }),
         });
       } else if (failed) {
-        toast.error("Nothing was brought over", { description: "The review says why." });
+        toast.error(t("pastSessions.nothingBroughtOver"), { description: t("pastSessions.theReviewSaysWhy") });
       }
       setPicked(new Set());
       onImported?.(brought.length);
       look();
     } catch (e) {
-      setProblem(e instanceof Error ? e.message : "Something went wrong. Nothing changed.");
+      setProblem(e instanceof Error ? e.message : t("pastSessions.somethingWentWrong"));
     } finally {
       setBusy(null);
     }
@@ -394,16 +399,15 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
           </Button>
           <h2 className="min-w-0 truncate text-ui font-semibold text-foreground">
             {"botId" in review.to
-              ? `To ${review.to.name}`
+              ? t("pastSessions.toAgent", { name: review.to.name })
               : review.to.hire.length === 1
-                ? `To a new agent for the ${review.to.hire[0].name} folder`
-                : `To a new agent for each of ${review.to.hire.map((h) => h.name).join(", ")}`}
+                ? t("pastSessions.toNewAgentFor", { name: review.to.hire[0].name })
+                : t("pastSessions.toNewAgentForEach", { names: formatList(review.to.hire.map((h) => h.name), { type: "unit" }) })}
           </h2>
         </div>
         {going > room && !done && (
           <div className="mb-3 rounded-xl bg-warning/10 px-3 py-2.5 text-body leading-relaxed text-foreground">
-            {"botId" in review.to ? review.to.name : t("pastSessions.thisAgent")} has room for {plural(room, "more conversation", "more conversations")}, so the rest will not come over. Close a few
-            of its conversations first, or go back and choose a new agent.
+            {t("pastSessions.noRoom", { name: "botId" in review.to ? review.to.name : t("pastSessions.thisAgent"), count: room })}
           </div>
         )}
         <ul className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
@@ -429,7 +433,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
               ) : going === 0 ? (
                 t("pastSessions.nothingNewToBringOver")
               ) : (
-                `Bring over ${plural(going, "conversation", "conversations")}`
+                t("pastSessions.bringOver", { count: going })
               )}
             </Button>
           )}
@@ -441,7 +445,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
   if (!listing.projects.length) {
     return (
       <div className="rounded-2xl border bg-card p-4">
-        <div className="text-ui font-medium text-foreground">{problem ? `Couldn't look: ${problem}` : t("pastSessions.noPastSessionsFound")}</div>
+        <div className="text-ui font-medium text-foreground">{problem ? t("pastSessions.couldntLook", { problem }) : t("pastSessions.noPastSessionsFound")}</div>
         <div className="mt-1 text-body leading-relaxed text-muted-foreground">
           {t("pastSessions.bloksLooksInClaudeProjects")}
         </div>
@@ -456,8 +460,11 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
   return (
     <div className="flex min-h-0 flex-col">
       <div className="mb-2 px-1 text-small text-muted-foreground">
-        {plural(sessions, "conversation", "conversations")} in {plural(listing.projects.length, "folder", "folders")}, newest first.
-        {listing.more > 0 ? ` ${plural(listing.more, "older one was", "older ones were")} left out of the list.` : ""}
+        {t("pastSessions.listing", {
+          conversations: t("pastSessions.conversations", { count: sessions }),
+          folders: t("pastSessions.folders", { count: listing.projects.length }),
+        })}
+        {listing.more > 0 ? ` ${t("pastSessions.olderLeftOut", { count: listing.more })}` : ""}
       </div>
       <div className="flex flex-col gap-2.5">
         {projects.map((project) => (
@@ -466,14 +473,14 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
       </div>
       {listing.projects.length > FIRST_PROJECTS && !showAll && (
         <Button size="sm" variant="ghost" className="mt-2 self-start" onClick={() => setShowAll(true)}>
-          Show {plural(listing.projects.length - FIRST_PROJECTS, "more folder", "more folders")}
+          {t("pastSessions.showMoreFolders", { count: listing.projects.length - FIRST_PROJECTS })}
         </Button>
       )}
       {listing.skipped.length > 0 && (
         <details className="group mt-3 px-1">
           <summary className="flex cursor-pointer list-none items-center gap-1 text-small text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
             <ChevronRight size={12} className="transition-transform duration-150 group-open:rotate-90" />
-            Left out ({listing.skipped.length})
+            {t("pastSessions.leftOut", { count: listing.skipped.length })}
           </summary>
           <ul className="mt-1.5 flex flex-col gap-1 pl-4">
             {listing.skipped.map((skip) => (
@@ -518,7 +525,7 @@ export function PastSessionsImport({ compact = false, onImported }: { compact?: 
             ) : count === 0 ? (
               t("pastSessions.nothingSelected")
             ) : (
-              `Review ${plural(count, "conversation", "conversations")}`
+              t("pastSessions.reviewCount", { count })
             )}
           </Button>
         </div>

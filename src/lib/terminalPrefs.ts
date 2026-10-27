@@ -6,13 +6,15 @@
 // tab or a terminal popped out into its own window comes up the way the
 // last one was left. No React and no browser here; the storage is handed
 // in, as in terminalLayout.ts.
+import { t, type MessageKey } from "./i18n.ts";
 
 export type CursorStyle = "block" | "bar" | "underline";
 
-export const CURSOR_STYLES: ReadonlyArray<{ id: CursorStyle; label: string }> = [
-  { id: "block", label: "Block" },
-  { id: "bar", label: "Bar" },
-  { id: "underline", label: "Underline" },
+/** Each label is a catalogue key, put into words where the menu draws it. */
+export const CURSOR_STYLES: ReadonlyArray<{ id: CursorStyle; label: MessageKey }> = [
+  { id: "block", label: "terminalPrefs.cursor.block" },
+  { id: "bar", label: "terminalPrefs.cursor.bar" },
+  { id: "underline", label: "terminalPrefs.cursor.underline" },
 ];
 
 /** Lines kept above the screen. More is more memory per tab, so it is a
@@ -47,7 +49,7 @@ export function clampFont(size: number): number {
 
 /** "10,000 lines", the way the menu says it. */
 export function scrollbackLabel(lines: number): string {
-  return `${lines.toLocaleString("en-US")} lines`;
+  return t("terminalPrefs.scrollbackLines", { count: lines });
 }
 
 /** Stored preferences, with the default for anything missing or wrong. */

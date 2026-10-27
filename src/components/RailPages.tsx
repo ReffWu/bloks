@@ -12,12 +12,12 @@ import { ActivityPanel } from "./Activity";
 import { ProjectsPanel } from "./ProjectsPanel";
 import { UsagePage } from "./UsagePage";
 import { useActivityCount } from "@/lib/activityCount";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, t } from "@/lib/i18n";
 
 /** A greeting for the time of day, as the page is opened. */
 function greeting(now = new Date()): string {
   const hour = now.getHours();
-  return hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  return hour < 5 ? t("railPages.goodEvening") : hour < 12 ? t("railPages.goodMorning") : hour < 18 ? t("railPages.goodAfternoon") : t("railPages.goodEvening");
 }
 
 /** The page settles in a beat at a time, top down, the way you read it:
@@ -44,11 +44,11 @@ const arrive = (order: number) => ({
  */
 function OverviewPage() {
   const activity = useActivityCount();
-  const today = new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+  const today = formatDate(new Date(), { weekday: "long", month: "long", day: "numeric" });
   const now: string[] = [];
-  if (activity.waiting > 0) now.push(`${activity.waiting} waiting on you`);
-  if (activity.failed > 0) now.push(`${activity.failed} failed and ${activity.failed === 1 ? "needs" : "need"} a look`);
-  if (activity.running > 0) now.push(`${activity.running} running`);
+  if (activity.waiting > 0) now.push(t("railPages.waiting", { count: activity.waiting }));
+  if (activity.failed > 0) now.push(t("railPages.failed", { count: activity.failed }));
+  if (activity.running > 0) now.push(t("railPages.running", { count: activity.running }));
   return (
     <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -57,7 +57,7 @@ function OverviewPage() {
             <p className="text-body text-muted-foreground">{today}</p>
             <h1 className="mt-1 text-balance text-display font-semibold text-foreground">{greeting()}</h1>
             <p className="mt-2 text-pretty text-ui text-muted-foreground">
-              {now.length ? `${now.join(", ")}.` : t("railPages.nothingRunningOrWaiting")}
+              {now.length ? t("railPages.nowLine", { items: formatList(now, { type: "unit" }) }) : t("railPages.nothingRunningOrWaiting")}
             </p>
           </motion.header>
           <div className="grid grid-cols-1 items-start gap-x-14 gap-y-12 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">

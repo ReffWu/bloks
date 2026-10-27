@@ -13,6 +13,11 @@
 // Ctrl+Tab means on a Mac too, the way browsers have it. The menu bar's
 // standard keys (copy, paste, hide, quit, full screen) are the system's
 // own and the menu lists them itself, so they are left out here.
+//
+// What a key does is kept as its catalogue key and put into words where
+// the sheet draws it, so the sheet speaks whatever language was chosen
+// after this module loaded.
+import type { MessageKey } from "./i18n.ts";
 
 export type Platform = "mac" | "other";
 
@@ -27,10 +32,10 @@ export interface Shortcut {
   /** One chord, or a few that belong together, such as a pair that are
    * each other's opposite (⌥↑ and ⌥↓). */
   keys: readonly Chord[];
-  /** What it does, as the sheet says it. */
-  does: string;
-  /** Where it means that, when it is not everywhere. */
-  when?: string;
+  /** What it does, as the sheet says it (a catalogue key). */
+  does: MessageKey;
+  /** Where it means that, when it is not everywhere (a catalogue key). */
+  when?: MessageKey;
   /** Heard only by the desktop app. A browser keeps these keys for its
    * own tabs and never passes them to the page. */
   desktopOnly?: boolean;
@@ -39,12 +44,12 @@ export interface Shortcut {
   macOnly?: boolean;
 }
 
-export const SHORTCUT_GROUPS: ReadonlyArray<{ id: ShortcutGroup; label: string }> = [
-  { id: "navigation", label: "Navigation" },
-  { id: "conversation", label: "Conversation" },
-  { id: "composer", label: "Composer" },
-  { id: "terminal", label: "Terminal" },
-  { id: "app", label: "App" },
+export const SHORTCUT_GROUPS: ReadonlyArray<{ id: ShortcutGroup; label: MessageKey }> = [
+  { id: "navigation", label: "libShortcuts.group.navigation" },
+  { id: "conversation", label: "libShortcuts.group.conversation" },
+  { id: "composer", label: "libShortcuts.group.composer" },
+  { id: "terminal", label: "libShortcuts.group.terminal" },
+  { id: "app", label: "libShortcuts.group.app" },
 ];
 
 export const SHORTCUTS: readonly Shortcut[] = [
@@ -53,187 +58,187 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: "palette",
     group: "navigation",
     keys: [["Mod", "K"]],
-    does: "Search everything",
+    does: "libShortcuts.does.palette",
   },
-  { id: "toggleSidebar", group: "navigation", keys: [["Mod", "B"]], does: "Show or hide the sidebar beside the page" },
-  { id: "back", group: "navigation", keys: [["Mod", "["]], does: "Back" },
-  { id: "forward", group: "navigation", keys: [["Mod", "]"]], does: "Forward again" },
+  { id: "toggleSidebar", group: "navigation", keys: [["Mod", "B"]], does: "libShortcuts.does.toggleSidebar" },
+  { id: "back", group: "navigation", keys: [["Mod", "["]], does: "libShortcuts.does.back" },
+  { id: "forward", group: "navigation", keys: [["Mod", "]"]], does: "libShortcuts.does.forward" },
   {
     id: "sidebarStep",
     group: "navigation",
     keys: [["Alt", "Up"], ["Alt", "Down"]],
-    does: "Previous or next agent or room",
+    does: "libShortcuts.does.sidebarStep",
   },
   {
     id: "sidebarWaiting",
     group: "navigation",
     keys: [["Alt", "Shift", "Up"], ["Alt", "Shift", "Down"]],
-    does: "Previous or next unread or waiting",
+    does: "libShortcuts.does.sidebarWaiting",
   },
   {
     id: "recent",
     group: "navigation",
     keys: [["Ctrl", "Tab"], ["Ctrl", "Shift", "Tab"]],
-    does: "Last conversation",
-    when: "keep pressing Tab to go further back",
+    does: "libShortcuts.does.recent",
+    when: "libShortcuts.when.recent",
     desktopOnly: true,
   },
   {
     id: "workspace",
     group: "navigation",
     keys: [["Mod", "1"], ["Mod", "9"]],
-    does: "Go to a workspace",
-    when: "1 is the first in the switcher, 9 the ninth",
+    does: "libShortcuts.does.workspace",
+    when: "libShortcuts.when.workspace",
     desktopOnly: true,
   },
   {
     id: "moveSection",
     group: "navigation",
     keys: [["Alt", "Up"], ["Alt", "Down"]],
-    does: "Move a section up or down",
-    when: "on a focused section heading",
+    does: "libShortcuts.does.moveSection",
+    when: "libShortcuts.when.moveSection",
   },
 
   // ── conversation ──
   // The tabs' keys, a browser's (conversationKeys.ts). The menu bar has
   // them too, under File and Window.
-  { id: "newConversation", group: "conversation", keys: [["Mod", "T"]], does: "New conversation", desktopOnly: true },
+  { id: "newConversation", group: "conversation", keys: [["Mod", "T"]], does: "libShortcuts.does.newConversation", desktopOnly: true },
   {
     id: "closeConversation",
     group: "conversation",
     keys: [["Mod", "W"]],
-    does: "Close this conversation",
-    when: "asks first when it has messages; General stays",
+    does: "libShortcuts.does.closeConversation",
+    when: "libShortcuts.when.closeConversation",
     desktopOnly: true,
   },
   {
     id: "conversationStep",
     group: "conversation",
     keys: [["Mod", "Shift", "["], ["Mod", "Shift", "]"]],
-    does: "Previous or next conversation",
-    when: "in tab order, outside the terminal",
+    does: "libShortcuts.does.conversationStep",
+    when: "libShortcuts.when.conversationStep",
     desktopOnly: true,
   },
   {
     id: "tabArrows",
     group: "conversation",
     keys: [["Left"], ["Right"], ["Home"], ["End"]],
-    does: "Move between conversation tabs",
-    when: "on a focused tab; Enter opens it",
+    does: "libShortcuts.does.tabArrows",
+    when: "libShortcuts.when.tabArrows",
   },
   {
     id: "laneArrows",
     group: "conversation",
     keys: [["Up"], ["Down"], ["Home"], ["End"]],
-    does: "Move between an agent's conversations",
-    when: "on one listed in the sidebar; Enter opens it",
+    does: "libShortcuts.does.laneArrows",
+    when: "libShortcuts.when.laneArrows",
   },
   {
     id: "find",
     group: "conversation",
     keys: [["Mod", "F"]],
-    does: "Find in this conversation",
+    does: "libShortcuts.does.find",
   },
   {
     id: "findStep",
     group: "conversation",
     keys: [["Enter"], ["Shift", "Enter"]],
-    does: "Next or previous match",
-    when: "while finding",
+    does: "libShortcuts.does.findStep",
+    when: "libShortcuts.when.findStep",
   },
   {
     id: "editLast",
     group: "conversation",
     keys: [["Up"]],
-    does: "Edit your last message",
-    when: "in an empty message box",
+    does: "libShortcuts.does.editLast",
+    when: "libShortcuts.when.editLast",
   },
 
   // ── composer ──
-  { id: "send", group: "composer", keys: [["Enter"]], does: "Send" },
-  { id: "newline", group: "composer", keys: [["Shift", "Enter"]], does: "New line" },
+  { id: "send", group: "composer", keys: [["Enter"]], does: "libShortcuts.does.send" },
+  { id: "newline", group: "composer", keys: [["Shift", "Enter"]], does: "libShortcuts.does.newline" },
   {
     id: "interrupt",
     group: "composer",
     keys: [["Mod", "Enter"]],
-    does: "Stop the agent, then send",
-    when: "while it is working",
+    does: "libShortcuts.does.interrupt",
+    when: "libShortcuts.when.interrupt",
   },
   {
     id: "stop",
     group: "composer",
     keys: [["Esc"]],
-    does: "Stop the agent",
-    when: "while it is working",
+    does: "libShortcuts.does.stop",
+    when: "libShortcuts.when.stop",
   },
   {
     id: "skill",
     group: "composer",
     keys: [["/"]],
-    does: "Use one of the agent's skills",
-    when: "at the start of a word",
+    does: "libShortcuts.does.skill",
+    when: "libShortcuts.when.skill",
   },
   {
     id: "mention",
     group: "composer",
     keys: [["@"]],
-    does: "Mention someone",
-    when: "in a room",
+    does: "libShortcuts.does.mention",
+    when: "libShortcuts.when.mention",
   },
   {
     id: "stopDictation",
     group: "composer",
     keys: [["Esc"]],
-    does: "Stop dictation",
-    when: "while dictating",
+    does: "libShortcuts.does.stopDictation",
+    when: "libShortcuts.when.stopDictation",
   },
 
   // ── terminal ──
   // Matched in terminalTabs.ts, which is also how the shell is told to
   // leave these keys alone.
-  { id: "terminalToggle", group: "terminal", keys: [["Ctrl", "`"]], does: "Show or hide the terminal" },
-  { id: "terminalNew", group: "terminal", keys: [["Ctrl", "Shift", "`"]], does: "New terminal tab" },
+  { id: "terminalToggle", group: "terminal", keys: [["Ctrl", "`"]], does: "libShortcuts.does.terminalToggle" },
+  { id: "terminalNew", group: "terminal", keys: [["Ctrl", "Shift", "`"]], does: "libShortcuts.does.terminalNew" },
   {
     id: "terminalClose",
     group: "terminal",
     keys: [["Ctrl", "Shift", "W"]],
-    does: "Close the terminal tab",
-    when: "in the terminal",
+    does: "libShortcuts.does.terminalClose",
+    when: "libShortcuts.when.terminalClose",
   },
   {
     id: "terminalStep",
     group: "terminal",
     keys: [["Mod", "Shift", "]"], ["Mod", "Shift", "["]],
-    does: "Next or previous terminal tab",
-    when: "in the terminal, or while it fills the window",
+    does: "libShortcuts.does.terminalStep",
+    when: "libShortcuts.when.terminalStep",
   },
   {
     id: "terminalFill",
     group: "terminal",
     keys: [["Mod", "Shift", "Enter"]],
-    does: "Terminal fills the window, or goes back",
-    when: "while the terminal is open",
+    does: "libShortcuts.does.terminalFill",
+    when: "libShortcuts.when.terminalFill",
   },
   {
     id: "terminalLeave",
     group: "terminal",
     keys: [["Esc"]],
-    does: "Leave the full window terminal",
-    when: "with the keyboard outside the terminal",
+    does: "libShortcuts.does.terminalLeave",
+    when: "libShortcuts.when.terminalLeave",
   },
 
   // ── app ──
-  { id: "settings", group: "app", keys: [["Mod", ","]], does: "Settings" },
-  { id: "newAgent", group: "app", keys: [["Mod", "N"]], does: "New agent" },
+  { id: "settings", group: "app", keys: [["Mod", ","]], does: "libShortcuts.does.settings" },
+  { id: "newAgent", group: "app", keys: [["Mod", "N"]], does: "libShortcuts.does.newAgent" },
   // ⌘W's old meaning, moved aside for the conversations
-  { id: "closeWindow", group: "app", keys: [["Mod", "Shift", "W"]], does: "Close the window", desktopOnly: true, macOnly: true },
-  { id: "shortcuts", group: "app", keys: [["Mod", "/"]], does: "Keyboard shortcuts" },
-  { id: "close", group: "app", keys: [["Esc"]], does: "Close what's open" },
+  { id: "closeWindow", group: "app", keys: [["Mod", "Shift", "W"]], does: "libShortcuts.does.closeWindow", desktopOnly: true, macOnly: true },
+  { id: "shortcuts", group: "app", keys: [["Mod", "/"]], does: "libShortcuts.does.shortcuts" },
+  { id: "close", group: "app", keys: [["Esc"]], does: "libShortcuts.does.close" },
   {
     id: "zoom",
     group: "app",
     keys: [["Mod", "+"], ["Mod", "-"], ["Mod", "0"]],
-    does: "Zoom in, zoom out, actual size",
+    does: "libShortcuts.does.zoom",
   },
 ];
 
@@ -306,7 +311,7 @@ export function keysFor(id: string, platform: Platform, desktop = true): string[
 export function shortcutSheet(
   desktop: boolean,
   platform: Platform = platformOf(),
-): Array<{ id: ShortcutGroup; label: string; shortcuts: Shortcut[] }> {
+): Array<{ id: ShortcutGroup; label: MessageKey; shortcuts: Shortcut[] }> {
   return SHORTCUT_GROUPS.map((group) => ({
     ...group,
     shortcuts: SHORTCUTS.filter((s) => s.group === group.id && heard(s, desktop, platform)),

@@ -39,7 +39,7 @@ import { openWorkspaceDialog } from "@/lib/workspaces";
 import { WakingStrip } from "@/components/WakingStrip";
 import { HostingMoveToasts } from "@/components/hosting/HostingMoveToasts";
 import { MovedBanner } from "@/components/hosting/MovedBanner";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
 
 /**
  * Whatever went wrong, said over every view as an error toast. It used to
@@ -184,7 +184,7 @@ function Shell() {
                   command to run and should not be told one */}
               {!state.connected && import.meta.env.DEV && (
                 <div className="text-small">
-                  Start it with <code className="rounded bg-muted px-1.5 py-0.5">{t("app.pnpmDevServer")}</code>
+                  {tr("app.startWith", { command: <code className="rounded bg-muted px-1.5 py-0.5">pnpm dev:server</code> })}
                 </div>
               )}
             </>

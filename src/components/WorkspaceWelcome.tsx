@@ -37,7 +37,7 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
   const ws = currentWorkspace(s);
   // the window knows its own kind before the list arrives (the preload)
   const kind = ws?.kind ?? window.bloks?.workspace?.kind ?? "custom";
-  const name = ws?.name ?? window.bloks?.workspace?.name ?? "this workspace";
+  const name = ws?.name ?? window.bloks?.workspace?.name ?? t("workspaceWelcome.thisWorkspace");
   const team = ws?.team === true;
   const engines = useEngines();
   const { hiring, hired, hireNote, hire } = useAgentHiring();
@@ -131,7 +131,7 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
           )}
         </div>
         {steps.length > 1 ? (
-          <Stepper steps={steps} step={shown} isOpen={(i) => i < at} onGo={go} layoutId="workspace-welcome-step" />
+          <Stepper steps={steps.map((st) => ({ id: st.id, label: t(st.label) }))} step={shown} isOpen={(i) => i < at} onGo={go} layoutId="workspace-welcome-step" />
         ) : (
           <span />
         )}
@@ -175,7 +175,7 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
                 hired={hired}
                 hiring={hiring}
                 onHire={hire}
-                title={`Who works in ${name}?`}
+                title={t("workspaceWelcome.whoWorksIn", { name })}
                 says={t("workspaceWelcome.pickTheKindsOfWork")}
               />
             </motion.div>
@@ -194,17 +194,17 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
             {shown === "engines" ? (
               <>
                 <ReadyDot state={!engines.instances ? "checking" : engines.ready ? "ready" : "missing"} />
-                <span className="truncate">{engines.readyEngine ? `${engines.readyEngine.name} is ready` : t("workspaceWelcome.noEngineReadyYetAgents")}</span>
+                <span className="truncate">{engines.readyEngine ? t("workspaceWelcome.engineReady", { name: engines.readyEngine.name }) : t("workspaceWelcome.noEngineReadyYetAgents")}</span>
               </>
             ) : shown === "agents" ? (
               <>
                 {hired.length > 0 && !hireNote && (
                   <span className="flex shrink-0 items-center">
                     {hired.map((h, i) => {
-                      const t = AGENT_TEMPLATES.find((x) => x.id === h.template);
-                      return t ? (
+                      const template = AGENT_TEMPLATES.find((x) => x.id === h.template);
+                      return template ? (
                         <span key={h.bot} className={cn("rounded-[8px] ring-2 ring-background", i > 0 && "-ml-1.5")}>
-                          <BlokAvatar color={t.color} shape={t.shape} expression="friendly" size={24} />
+                          <BlokAvatar color={template.color} shape={template.shape} expression="friendly" size={24} />
                         </span>
                       ) : null;
                     })}
@@ -213,7 +213,9 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
                 <span className="truncate max-sm:hidden">
                   {hireNote ??
                     (hired.length
-                      ? `${namesOf(hired.map((h) => AGENT_TEMPLATES.find((t) => t.id === h.template)?.name ?? "An agent"))} added`
+                      ? t("workspaceWelcome.added", {
+                          names: namesOf(hired.map((h) => AGENT_TEMPLATES.find((template) => template.id === h.template)?.name ?? t("common.anAgent"))),
+                        })
                       : t("workspaceWelcome.optionalYouCanAddAgents"))}
                 </span>
               </>
@@ -229,7 +231,7 @@ export function WorkspaceWelcome({ onDone }: { onDone: () => void }) {
           )}
           <Button size="lg" onClick={() => void goOn()} disabled={saving || hiring.length > 0}>
             {saving && <Loader2 size={15} className="animate-spin" />}
-            {last ? `Open ${name}` : t("common.continue")}
+            {last ? t("workspaceWelcome.openNamed", { name }) : t("common.continue")}
             {!last && <ArrowRight size={15} />}
           </Button>
         </div>
@@ -254,7 +256,7 @@ function BusinessBeat({ name, onName, error, onSubmit }: { name: string; onName:
       <BeatHeading title={t("workspaceWelcome.nameItAndAddYour")} says={t("workspaceWelcome.howItShowsInThe")} />
       <div className="flex items-center gap-5 rounded-2xl border bg-card p-5 max-sm:flex-col max-sm:items-start">
         <span key={ws?.logo ?? "mark"} className="flex animate-pop-in">
-          <WorkspaceMark mark={ws?.mark ?? null} logo={ws?.logo} size={72} label={`${name}'s mark`} />
+          <WorkspaceMark mark={ws?.mark ?? null} logo={ws?.logo} size={72} label={t("workspaceWelcome.markOf", { name })} />
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <form
@@ -323,7 +325,7 @@ function InviteBeat({ name }: { name: string }) {
   return (
     <Column>
       <BeatHeading
-        title={`Invite people to ${name}`}
+        title={t("workspaceWelcome.invitePeopleTo", { name })}
         says={t("workspaceWelcome.eachPersonGetsTheirOwn")}
       />
       <div className="flex flex-col items-start gap-3 rounded-2xl border bg-card p-5">
@@ -342,7 +344,7 @@ function InviteBeat({ name }: { name: string }) {
               {out > 0 && (
                 <span className="flex items-center gap-1.5 text-body text-muted-foreground">
                   <Check size={14} className="text-success" />
-                  {out === 1 ? t("workspaceWelcome.n1InvitationOut") : `${out} invitations out`}
+                  {t("workspaceWelcome.invitationsOut", { count: out })}
                 </span>
               )}
             </div>

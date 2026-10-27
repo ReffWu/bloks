@@ -15,21 +15,34 @@
 // against the card as well as the page, since the card is the harder of
 // the two in dark mode.
 
+import { t, type MessageKey } from "./i18n.ts";
+
 export interface Accent {
   id: string;
-  name: string;
+  /** What the colour is called, read in the language of the moment. */
+  readonly name: string;
   hex: string;
 }
 
+/** One accent, its name looked up each time it is read, so a picker
+ * drawn after a change of language says the new words. */
+const accent = (id: string, key: MessageKey, hex: string): Accent => ({
+  id,
+  hex,
+  get name() {
+    return t(key);
+  },
+});
+
 export const ACCENTS: Accent[] = [
-  { id: "deepBlue", name: "Deep blue", hex: "#004aad" },
-  { id: "orange", name: "Orange", hex: "#ff751f" },
-  { id: "orchid", name: "Orchid", hex: "#cb6ce6" },
-  { id: "red", name: "Red", hex: "#ff3131" },
-  { id: "coral", name: "Coral", hex: "#ff5757" },
-  { id: "cyan", name: "Cyan", hex: "#5ce1e6" },
-  { id: "green", name: "Green", hex: "#7ed957" },
-  { id: "amber", name: "Amber", hex: "#ffbd59" },
+  accent("deepBlue", "accent.deepBlue", "#004aad"),
+  accent("orange", "accent.orange", "#ff751f"),
+  accent("orchid", "accent.orchid", "#cb6ce6"),
+  accent("red", "accent.red", "#ff3131"),
+  accent("coral", "accent.coral", "#ff5757"),
+  accent("cyan", "accent.cyan", "#5ce1e6"),
+  accent("green", "accent.green", "#7ed957"),
+  accent("amber", "accent.amber", "#ffbd59"),
 ];
 
 export const DEFAULT_ACCENT = "deepBlue";

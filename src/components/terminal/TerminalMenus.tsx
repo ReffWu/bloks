@@ -53,7 +53,7 @@ import {
   type Scrollback,
   type TerminalPrefs,
 } from "@/lib/terminalPrefs";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
 /** A small square button in the terminal's header. */
 export function HeaderButton({
@@ -114,7 +114,7 @@ export function MoreMenu({
   /** The menu closed: the keyboard goes back to the shell. */
   onClosed: () => void;
 }) {
-  const style = CURSOR_STYLES.find((c) => c.id === prefs.cursorStyle)?.label ?? "Bar";
+  const style = t(CURSOR_STYLES.find((c) => c.id === prefs.cursorStyle)?.label ?? "terminalPrefs.cursor.bar");
   // Stepping the text size is something you do a few times in a row
   // while watching it change, so those items leave the menu open.
   const stay = (e: Event) => e.preventDefault();
@@ -140,7 +140,7 @@ export function MoreMenu({
             >
               {CURSOR_STYLES.map((c) => (
                 <DropdownMenuRadioItem key={c.id} value={c.id}>
-                  {c.label}
+                  {t(c.label)}
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
@@ -174,7 +174,7 @@ export function MoreMenu({
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger value={`${prefs.fontSize} px`}>{t("terminalMenus.textSize")}</DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger value={t("terminalMenus.fontSizePx", { size: prefs.fontSize })}>{t("terminalMenus.textSize")}</DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
             <DropdownMenuItem
               onSelect={(e) => (stay(e), onPrefs((p) => stepFont(p, 1)))}
@@ -218,16 +218,17 @@ export function MoreMenu({
   );
 }
 
-const MOVES: ReadonlyArray<{ position: TerminalPosition; label: string; Icon: typeof PanelLeft }> = [
-  { position: "left", label: "Move to the left", Icon: PanelLeft },
-  { position: "right", label: "Move to the right", Icon: PanelRight },
-  { position: "top", label: "Move to the top", Icon: PanelTop },
-  { position: "bottom", label: "Move to the bottom", Icon: PanelBottom },
+// Labels are catalogue keys, put into words where the menu draws them.
+const MOVES: ReadonlyArray<{ position: TerminalPosition; label: MessageKey; Icon: typeof PanelLeft }> = [
+  { position: "left", label: "terminalMenus.moveLeft", Icon: PanelLeft },
+  { position: "right", label: "terminalMenus.moveRight", Icon: PanelRight },
+  { position: "top", label: "terminalMenus.moveTop", Icon: PanelTop },
+  { position: "bottom", label: "terminalMenus.moveBottom", Icon: PanelBottom },
 ];
 
-const ARRANGEMENTS: ReadonlyArray<{ arrangement: TerminalArrangement; label: string; Icon: typeof PanelLeft }> = [
-  { arrangement: "fill", label: "Fill the window", Icon: PanelFill },
-  { arrangement: "split", label: "Side by side with the chat", Icon: PanelSplit },
+const ARRANGEMENTS: ReadonlyArray<{ arrangement: TerminalArrangement; label: MessageKey; Icon: typeof PanelLeft }> = [
+  { arrangement: "fill", label: "terminalMenus.arrangeFill", Icon: PanelFill },
+  { arrangement: "split", label: "terminalMenus.arrangeSplit", Icon: PanelSplit },
 ];
 
 /** One square choice in the layout menu: an icon, named for the ear. */
@@ -292,7 +293,7 @@ export function LayoutMenu({
           {MOVES.map(({ position, label, Icon }) => (
             <LayoutChoice
               key={position}
-              label={label}
+              label={t(label)}
               chosen={!fill && layout.position === position}
               onSelect={() => onLayout((l) => moveTerminal(l, position))}
             >
@@ -305,7 +306,7 @@ export function LayoutMenu({
           {ARRANGEMENTS.map(({ arrangement, label, Icon }) => (
             <LayoutChoice
               key={arrangement}
-              label={label}
+              label={t(label)}
               chosen={layout.arrangement === arrangement}
               onSelect={() => onLayout((l) => arrangeTerminal(l, arrangement))}
             >

@@ -75,7 +75,7 @@ let said = 0;
 
 function show(kind: ToastKind, message: string, options: ToastOptions = {}): string {
   const id = options.id ?? `toast-${++counter}`;
-  const existing = items.find((t) => t.id === id);
+  const existing = items.find((entry) => entry.id === id);
   const item: ToastItem = {
     id,
     kind,
@@ -87,7 +87,7 @@ function show(kind: ToastKind, message: string, options: ToastOptions = {}): str
     version: (existing?.version ?? 0) + 1,
   };
   if (existing) {
-    items = items.map((t) => (t.id === id ? item : t));
+    items = items.map((entry) => (entry.id === id ? item : entry));
   } else {
     // newest first, and the oldest goes once there are too many
     const next = [item, ...items];
@@ -103,9 +103,9 @@ function show(kind: ToastKind, message: string, options: ToastOptions = {}): str
 }
 
 function dismiss(id?: string) {
-  const leaving = id === undefined ? items : items.filter((t) => t.id === id);
+  const leaving = id === undefined ? items : items.filter((entry) => entry.id === id);
   if (!leaving.length) return;
-  items = id === undefined ? [] : items.filter((t) => t.id !== id);
+  items = id === undefined ? [] : items.filter((entry) => entry.id !== id);
   emit();
   for (const t of leaving) t.onDismiss?.();
 }

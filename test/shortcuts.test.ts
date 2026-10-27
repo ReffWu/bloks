@@ -11,6 +11,7 @@ import {
   SHORTCUTS,
   shortcutSheet,
 } from "../src/lib/shortcuts.ts";
+import { inEnglish } from "../src/lib/i18n.ts";
 import { lastEditable } from "../src/lib/transcript.ts";
 import type { Message } from "../src/state/reducer.ts";
 
@@ -18,7 +19,7 @@ describe("the shortcut list", () => {
   test("every entry has a key, says what it does, and sits in a group the sheet draws", () => {
     const groups = new Set(SHORTCUT_GROUPS.map((g) => g.id));
     for (const shortcut of SHORTCUTS) {
-      assert.ok(shortcut.does.trim(), `${shortcut.id} says nothing`);
+      assert.ok(inEnglish(shortcut.does).trim(), `${shortcut.id} says nothing`);
       assert.ok(shortcut.keys.length > 0, `${shortcut.id} has no key`);
       for (const chord of shortcut.keys) assert.ok(chord.length > 0, `${shortcut.id} has an empty chord`);
       assert.ok(groups.has(shortcut.group), `${shortcut.id} is in no group`);
@@ -67,7 +68,7 @@ describe("the shortcut list", () => {
     assert.deepEqual(keysFor("stop", "other"), ["Esc"]);
     const stop = SHORTCUTS.find((s) => s.id === "stop")!;
     assert.equal(stop.group, "composer");
-    assert.match(stop.when ?? "", /while it is working/);
+    assert.match(inEnglish(stop.when!), /while it is working/);
     // the two it shares the key with are still there
     assert.deepEqual(keysFor("stopDictation", "mac"), ["esc"]);
     assert.deepEqual(keysFor("close", "mac"), ["esc"]);
@@ -89,10 +90,10 @@ describe("the shortcut list", () => {
 
   test("closing says it asks first and that General stays, and stepping says the terminal's keys win in it", () => {
     const close = SHORTCUTS.find((s) => s.id === "closeConversation")!;
-    assert.match(close.when ?? "", /asks first/);
-    assert.match(close.when ?? "", /General/);
-    assert.match(SHORTCUTS.find((s) => s.id === "conversationStep")?.when ?? "", /outside the terminal/);
-    assert.match(SHORTCUTS.find((s) => s.id === "terminalStep")?.when ?? "", /in the terminal/);
+    assert.match(inEnglish(close.when!), /asks first/);
+    assert.match(inEnglish(close.when!), /General/);
+    assert.match(inEnglish(SHORTCUTS.find((s) => s.id === "conversationStep")!.when!), /outside the terminal/);
+    assert.match(inEnglish(SHORTCUTS.find((s) => s.id === "terminalStep")!.when!), /in the terminal/);
   });
 
   test("an id the list does not have gets no keys rather than a guess", () => {

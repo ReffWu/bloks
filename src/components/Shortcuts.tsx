@@ -145,14 +145,14 @@ function ShortcutsSheet() {
           {groups.map((group) => (
             <section key={group.id} className="mb-5 break-inside-avoid">
               <h3 className="pb-1 text-small font-medium text-muted-foreground">
-                {group.label}
+                {t(group.label)}
               </h3>
               {group.shortcuts.map((shortcut) => (
                 <div key={shortcut.id} className="flex items-start justify-between gap-3 py-[5px]">
                   <div className="min-w-0">
-                    <div className="text-body leading-snug text-foreground">{shortcut.does}</div>
+                    <div className="text-body leading-snug text-foreground">{t(shortcut.does)}</div>
                     {shortcut.when && (
-                      <div className="text-small leading-snug text-muted-foreground">{shortcut.when}</div>
+                      <div className="text-small leading-snug text-muted-foreground">{t(shortcut.when)}</div>
                     )}
                   </div>
                   <Keys keys={shortcut.keys.map((chord) => chordLabel(chord, platform))} className="pt-px" />

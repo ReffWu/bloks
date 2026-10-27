@@ -8,6 +8,7 @@
 // holds is told about it the moment it exists, while the window is still
 // on its way to it, and a dialog that read that list as it stood once
 // called its own new workspace's name taken.
+import { t } from "./i18n.ts";
 
 export type NewKind = "business" | "custom";
 
@@ -17,9 +18,15 @@ export function cleanDraftName(name: string): string {
   return name.replace(/\s+/g, " ").trim();
 }
 
-/** The name a draft will be made with: what was typed, or "Business". */
+/** The name a draft will be made with: what was typed, or "Business" in
+ * the reader's language, the name the dialog showed it with. */
 export function draftName(kind: NewKind, name: string): string {
-  return cleanDraftName(name) || (kind === "business" ? "Business" : "");
+  return cleanDraftName(name) || (kind === "business" ? businessName() : "");
+}
+
+/** What a Business workspace is called until it is given a name. */
+export function businessName(): string {
+  return t("newWorkspace.businessName");
 }
 
 /** Which field an answer from the main process is about, so its sentence
@@ -55,10 +62,10 @@ export function checkDraft(
   const name = draftName(draft.kind, draft.name);
   if (!name) return { ready: false, problem: null };
   if (draft.kind === "business" && list.some((w) => w.kind === "business")) {
-    return { ready: false, problem: "There is a Business workspace already." };
+    return { ready: false, problem: t("newWorkspace.businessExists") };
   }
   if (list.some((w) => w.name.toLowerCase() === name.toLowerCase())) {
-    return { ready: false, problem: `There is a workspace called ${name} already.` };
+    return { ready: false, problem: t("newWorkspace.nameTaken", { name }) };
   }
   return { ready: true, problem: null };
 }

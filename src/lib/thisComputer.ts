@@ -11,19 +11,32 @@
 // and Touch ID really are macOS, and softening those into "computer"
 // would make the instructions worse. Everything else is just the
 // machine the person is sitting at.
+//
+// Each phrase is a whole entry in the catalogue ("this Mac", "this PC"),
+// not "this" put beside a noun, because a language that agrees its
+// "this" with the noun has to see both.
+import { t } from "./i18n.ts";
+
+type Device = "mac" | "pc" | "computer";
+
+function device(platform?: string): Device {
+  const word = deviceWord(platform);
+  return word === "Mac" ? "mac" : word === "PC" ? "pc" : "computer";
+}
 
 /** The noun, for use mid-sentence: "stays on this Mac". */
 export function thisComputer(platform?: string): string {
-  return `this ${deviceWord(platform)}`;
+  return t(`thisComputer.this.${device(platform)}`);
 }
 
 /** The possessive form: "reach your PC over your network". */
 export function yourComputer(platform?: string): string {
-  return `your ${deviceWord(platform)}`;
+  return t(`thisComputer.your.${device(platform)}`);
 }
 
 /**
- * Mac, PC, or the neutral word when we cannot tell.
+ * Mac, PC, or the neutral word when we cannot tell. English on purpose:
+ * it is what code compares, and the phrases above are what people read.
  *
  * Read from the browser rather than plumbed through the desktop bridge,
  * because a phone and a plain browser tab render this UI too and
@@ -41,10 +54,10 @@ export function deviceWord(platform?: string): string {
 
 /** Sentence-start forms: "This PC already has a workspace." */
 export function ThisComputer(platform?: string): string {
-  return `This ${deviceWord(platform)}`;
+  return t(`thisComputer.thisAtStart.${device(platform)}`);
 }
 export function YourComputer(platform?: string): string {
-  return `Your ${deviceWord(platform)}`;
+  return t(`thisComputer.yourAtStart.${device(platform)}`);
 }
 
 /**

@@ -339,7 +339,7 @@ function TerminalView({
       {exited && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-muted/60 px-3 py-1.5 text-small text-muted-foreground">
           <span className="min-w-0 truncate">
-            The shell exited{info?.exitCode ? ` with ${info.exitCode}` : ""}.
+            {info?.exitCode ? t("terminal.exitedWith", { code: String(info.exitCode) }) : t("terminal.shellExited")}
           </span>
           <button
             type="button"
@@ -438,8 +438,8 @@ export function TerminalPanel({
   const platform = platformOf();
 
   const tabs = list ?? [];
-  const current = tabs.find((t) => t.id === active) ?? tabs[0] ?? null;
-  const ids = tabs.map((t) => t.id);
+  const current = tabs.find((tab) => tab.id === active) ?? tabs[0] ?? null;
+  const ids = tabs.map((tab) => tab.id);
 
   const setActive = useCallback(
     (id: string | null) => {
@@ -497,7 +497,7 @@ export function TerminalPanel({
 
   const newTab = useCallback(async () => {
     if (tabs.length >= MAX_TABS) {
-      toast(`${MAX_TABS} terminals is the most one agent can have open.`);
+      toast(t("terminal.tooMany", { count: MAX_TABS }));
       return;
     }
     const { cols, rows } = size.current ?? { cols: 80, rows: 24 };
@@ -512,14 +512,14 @@ export function TerminalPanel({
 
   const closeTab = useCallback(
     async (id: string) => {
-      const tab = tabs.find((t) => t.id === id);
+      const tab = tabs.find((tab) => tab.id === id);
       if (!tab) return;
       const busy = await terminalApi.busy(botId, id).catch(() => ({ running: false, command: undefined }));
       if (busy.running) {
         const yes = await confirm({
-          title: `Close ${tab.title}?`,
-          body: `${busy.command ? `${busy.command} is` : "Something is"} still running in it, and closing the tab ends it.`,
-          confirmLabel: "Close",
+          title: t("terminal.closeQuestion", { title: tab.title }),
+          body: busy.command ? t("terminal.commandStillRunning", { command: busy.command }) : t("terminal.somethingStillRunning"),
+          confirmLabel: t("common.close"),
           destructive: true,
         });
         if (!yes) return focusTab(current?.id ?? null);
@@ -544,7 +544,7 @@ export function TerminalPanel({
   const rename = useCallback(
     (id: string, title: string) => {
       setRenaming(null);
-      const before = tabs.find((t) => t.id === id)?.title;
+      const before = tabs.find((tab) => tab.id === id)?.title;
       if (!title.trim() || title.trim() === before) return focusTab(id);
       terminalApi.rename(botId, id, title).catch((e: Error) => toast.error(e.message));
       focusTab(id);
@@ -631,7 +631,7 @@ export function TerminalPanel({
   // the title of a window that is only this terminal
   useEffect(() => {
     if (mode !== "window") return;
-    document.title = current ? `${current.title} · ${botName}` : `Terminal · ${botName}`;
+    document.title = current ? `${current.title} · ${botName}` : t("terminal.windowTitle", { name: botName });
   }, [mode, current, botName]);
 
   const fill = mode === "fill";
@@ -646,7 +646,7 @@ export function TerminalPanel({
     <div
       ref={root}
       role="region"
-      aria-label={`Terminal for ${botName}`}
+      aria-label={t("terminal.regionLabel", { name: botName })}
       // where the conversation looks to tell whose ⌘⇧] it is
       data-terminal-panel={mode}
       className="flex h-full min-h-0 w-full min-w-0 flex-col bg-card"
@@ -701,7 +701,7 @@ export function TerminalPanel({
                   tabIndex={open ? 0 : -1}
                   onClick={() => select(tab.id)}
                   onDoubleClick={() => setRenaming(tab.id)}
-                  title={`${tab.title}\n${tab.cwd}\nDouble-click to rename. ${stepKeys} to switch.`}
+                  title={`${tab.title}\n${tab.cwd}\n${t("terminal.tabHint", { keys: stepKeys })}`}
                   className={cn(
                     "flex h-7 max-w-[176px] items-center gap-1.5 rounded-md pl-2.5 pr-7 text-body outline-none transition-colors duration-150",
                     open ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -718,8 +718,8 @@ export function TerminalPanel({
                   // the keyboard closes a tab with ⌃⇧W or from the menu,
                   // so these stay out of the tab order
                   tabIndex={-1}
-                  aria-label={`Close ${tab.title}`}
-                  title={`Close ${tab.title}`}
+                  aria-label={t("terminal.closeNamed", { title: tab.title })}
+                  title={t("terminal.closeNamed", { title: tab.title })}
                   onClick={() => void closeTab(tab.id)}
                   className={cn(
                     "absolute right-1 flex size-5 items-center justify-center rounded text-muted-foreground transition-[opacity,background-color,color] duration-150 hover:bg-foreground/10 hover:text-foreground",

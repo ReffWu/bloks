@@ -60,8 +60,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { plural } from "@/lib/plural";
-import { t } from "@/lib/i18n";
+import { formatList, t } from "@/lib/i18n";
 
 
 
@@ -169,7 +168,7 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
     >
       <div className="w-[300px] animate-pop-in rounded-2xl border bg-popover p-4 shadow-lg">
         <div className="text-ui font-semibold text-foreground">
-          File {filing.name} under…
+          {t("sidebar.fileUnder", { name: filing.name })}
         </div>
         <div className="mt-3 flex flex-col gap-1">
           {names.map((name) => (
@@ -215,7 +214,7 @@ function SectionPicker({ filing, onClose }: { filing: FilingState; onClose: () =
             onClick={() => fileTo(null)}
             className="mt-2 w-full rounded-lg px-2.5 py-1.5 text-left text-body text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            Remove from {filing.current}
+            {t("sidebar.removeFrom", { section: filing.current })}
           </button>
         )}
       </div>
@@ -305,10 +304,10 @@ function RowMenu({
     ) : (
       <Pin size={15} className="text-muted-foreground" />
     ),
-    filing.pinned ? "Unpin" : "Pin",
+    filing.pinned ? t("sidebar.unpin") : t("sidebar.pin"),
     () => placeIn(dispatch, filing, { section: filing.current, pinned: !filing.pinned }),
   );
-  const move = item(<Folder size={15} className="text-muted-foreground" />, "Move to section…", () => onFile(filing));
+  const move = item(<Folder size={15} className="text-muted-foreground" />, t("sidebar.moveToSection"), () => onFile(filing));
 
   return (
     <div
@@ -320,40 +319,40 @@ function RowMenu({
         pin,
         move,
         divider("d1"),
-        item(<Pencil size={15} className="text-muted-foreground" />, "Rename…", () => onRename(filing.id)),
+        item(<Pencil size={15} className="text-muted-foreground" />, t("sidebar.renameEllipsis"), () => onRename(filing.id)),
       ] : [
         pin,
         // the agent stands for General, so that is the conversation it marks
         item(
           <BellDot size={15} className="text-muted-foreground" />,
-          "Mark as unread",
+          t("sidebar.markAsUnread"),
           () => general && dispatch({ type: "markLaneUnread", botId: bot.id, taskId: general.id }),
         ),
         move,
         divider("d1"),
-        item(<Pencil size={15} className="text-muted-foreground" />, "Edit profile", () => {
+        item(<Pencil size={15} className="text-muted-foreground" />, t("sidebar.editProfile"), () => {
           dispatch({ type: "select", id: bot.id });
           dispatch({ type: "toggleSettings", open: true });
         }),
-        item(<Copy size={15} className="text-muted-foreground" />, "Duplicate", () =>
+        item(<Copy size={15} className="text-muted-foreground" />, t("sidebar.duplicate"), () =>
           dispatch({ type: "duplicateBot", botId: bot.id }),
         ),
-        item(<ClipboardCopy size={15} className="text-muted-foreground" />, "Copy conversation ID", () => {
+        item(<ClipboardCopy size={15} className="text-muted-foreground" />, t("sidebar.copyConversationId"), () => {
           // the menu closes on the click, so the toast is the only sign it worked
-          void navigator.clipboard?.writeText(bot.threadId).then(() => toast.success("Copied conversation ID"));
+          void navigator.clipboard?.writeText(bot.threadId).then(() => toast.success(t("sidebar.copiedConversationId")));
         }),
         divider("d2"),
         // The chat shows no tabs while an agent has one conversation
         // (GitHub 237), so a second one starts here as well as from the +
         // the conversations view puts on the row.
-        item(<Plus size={15} className="text-muted-foreground" />, "New conversation", () => {
+        item(<Plus size={15} className="text-muted-foreground" />, t("sidebar.newConversation"), () => {
           dispatch({ type: "select", id: bot.id });
           dispatch({ type: "newTask", botId: bot.id });
         }),
         // a goal for General, which is the conversation this row stands for
         general &&
           !general.noGoals &&
-          item(<Target size={15} className="text-muted-foreground" />, general.goal ? "Set a new goal" : "Set a goal", () => {
+          item(<Target size={15} className="text-muted-foreground" />, general.goal ? t("sidebar.setANewGoal") : t("sidebar.setAGoal"), () => {
             dispatch({ type: "select", id: bot.id, lane: general.id });
             dispatch({ type: "openGoal", botId: bot.id, taskId: general.id });
           }),
@@ -362,12 +361,12 @@ function RowMenu({
           general.state !== "working" &&
           item(
             <Eraser size={15} />,
-            "Clear conversation",
+            t("sidebar.clearConversation"),
             () =>
               void confirm({
-                title: "Clear this conversation?",
-                body: "Its messages are deleted.",
-                confirmLabel: "Clear",
+                title: t("sidebar.clearThisConversation"),
+                body: t("sidebar.itsMessagesAreDeleted"),
+                confirmLabel: t("common.clear"),
                 destructive: true,
               }).then((yes) => yes && dispatch({ type: "clearTask", botId: bot.id, taskId: general.id })),
             { danger: true },
@@ -377,13 +376,13 @@ function RowMenu({
         // where the confirm can name what goes. Archiving takes the agent
         // out of the list and stops it working; it keeps the
         // conversations, the rules, the rooms and the key.
-        item(<Archive size={15} className="text-muted-foreground" />, "Archive", () => {
+        item(<Archive size={15} className="text-muted-foreground" />, t("sidebar.archive"), () => {
           const wasOpen = state.selectedId === bot.id;
           dispatch({ type: "deleteBot", botId: bot.id });
-          toast.success(`Archived ${bot.name}`, {
+          toast.success(t("sidebar.archived", { name: bot.name }), {
             id: `archive-${bot.id}`,
             action: {
-              label: "Undo",
+              label: t("sidebar.undo"),
               onClick: () => {
                 dispatch({ type: "restoreBot", botId: bot.id });
                 if (wasOpen) dispatch({ type: "select", id: bot.id });
@@ -424,7 +423,7 @@ function BotListItem({
       <div
         className="group/agent relative"
         data-sidebar-row={bot.id}
-        data-sidebar-waiting={Boolean(bot.unread || bot.tasks?.some((t) => t.state === "needs-you"))}
+        data-sidebar-waiting={Boolean(bot.unread || bot.tasks?.some((task) => task.state === "needs-you"))}
       >
         <button
           data-lane-of={bot.id}
@@ -454,7 +453,7 @@ function BotListItem({
               <Loader2
                 size={12}
                 className="animate-spin text-brand motion-reduce:animate-none"
-                aria-label="working"
+                aria-label={t("sidebar.working")}
               />
             ) : (
               timestamp > 0 && (
@@ -470,8 +469,8 @@ function BotListItem({
             dispatch({ type: "select", id: bot.id });
             dispatch({ type: "newTask", botId: bot.id });
           }}
-          title={`New conversation with ${bot.name}`}
-          aria-label={`New conversation with ${bot.name}`}
+          title={t("sidebar.newConversationWith", { name: bot.name })}
+          aria-label={t("sidebar.newConversationWith", { name: bot.name })}
           className="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/agent:opacity-100"
         >
           <Plus size={14} />
@@ -482,7 +481,7 @@ function BotListItem({
   return (
     <button
       data-sidebar-row={bot.id}
-      data-sidebar-waiting={Boolean(bot.unread || bot.tasks?.some((t) => t.state === "needs-you"))}
+      data-sidebar-waiting={Boolean(bot.unread || bot.tasks?.some((task) => task.state === "needs-you"))}
       onClick={() => dispatch({ type: "select", id: bot.id })}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -513,8 +512,8 @@ function BotListItem({
           >
             {agentPreview(bot)}
           </span>
-          {bot.busy && !bot.tasks?.some((t) => t.state === "needs-you") ? (
-            <Loader2 size={13} className="shrink-0 animate-spin text-brand motion-reduce:animate-none" aria-label="working" />
+          {bot.busy && !bot.tasks?.some((task) => task.state === "needs-you") ? (
+            <Loader2 size={13} className="shrink-0 animate-spin text-brand motion-reduce:animate-none" aria-label={t("sidebar.working")} />
           ) : (
             bot.unread && <span className="size-2 shrink-0 rounded-full bg-brand" />
           )}
@@ -565,10 +564,10 @@ function RoomListItem({
   const preview = (
     <div className="mt-px truncate text-body text-muted-foreground">
       {working.length
-        ? `${working.map((m) => m.name).join(", ")} working…`
+        ? t("sidebar.roomWorking", { names: formatList(working.map((m) => m.name), { type: "unit" }) })
         : last
           ? previewLine(last)
-          : plural(members.length, "agent")}
+          : t("sidebar.agentCount", { count: members.length })}
     </div>
   );
 
@@ -939,7 +938,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
       {state.bots.some((b) => b.hidden) && (
         <DropdownMenuItem onClick={() => setShowArchived(true)}>
           <Archive size={15} />
-          Archived agents
+          {t("sidebar.archivedAgents")}
           <span className="ml-auto pl-3 text-caption text-muted-foreground">
             {state.bots.filter((b) => b.hidden).length}
           </span>
@@ -1046,7 +1045,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
       {projectMembers && (
         <button
           onClick={() => dispatch({ type: "openProject", id: null })}
-          title={`Showing ${projectName}. Click to show everything`}
+          title={t("sidebar.showingProject", { name: projectName })}
           className="mx-2 mb-1 flex items-center gap-2 rounded-lg bg-accent/70 px-2.5 py-1.5 text-left text-small text-foreground transition-colors duration-150 hover:bg-accent"
         >
           <FolderKanban size={13} className="shrink-0 text-muted-foreground" />
@@ -1079,7 +1078,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
               {unfiledRooms.length > 0 && (
                 <>
                   <div className="flex items-center justify-between px-2.5 pb-1 pt-1 text-small font-medium text-muted-foreground">
-                    Rooms
+                    {t("sidebar.rooms")}
                     <button
                       onClick={() => dispatch({ type: "toggleNewRoom", open: true })}
                       className="rounded p-0.5 transition-colors hover:text-foreground"
@@ -1090,7 +1089,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                   </div>
                   {drawList(unfiledRooms)}
                   <div className="flex items-center justify-between px-2.5 pb-1 pt-3 text-small font-medium text-muted-foreground">
-                    Agents
+                    {t("sidebar.agents")}
                     <button
                       onClick={() => setConversations(!conversations)}
                       aria-pressed={conversations}
@@ -1113,7 +1112,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean } = {}) {
                     rowDrop?.section === null && "border-brand/40 text-foreground",
                   )}
                 >
-                  Remove from {unfiling}
+                  {t("sidebar.removeFrom", { section: unfiling })}
                 </div>
               )}
             </div>
@@ -1252,8 +1251,10 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
                 <span className="block truncate text-ui font-medium text-foreground">{bot.name}</span>
                 {bot.archivedBy ? (
                   <span className="block truncate text-small text-muted-foreground" title={bot.archiveNote}>
-                    Archived by {state.bots.find((b) => b.id === bot.archivedBy)?.name ?? t("sidebar.theAgentThatHiredIt")}
-                    {bot.archiveNote ? `: ${bot.archiveNote}` : ""}
+                    {t(bot.archiveNote ? "sidebar.archivedByWithNote" : "sidebar.archivedBy", {
+                      name: state.bots.find((b) => b.id === bot.archivedBy)?.name ?? t("sidebar.theAgentThatHiredIt"),
+                      note: bot.archiveNote ?? "",
+                    })}
                   </span>
                 ) : (
                   bot.title && <span className="block truncate text-small text-muted-foreground">{bot.title}</span>
@@ -1278,14 +1279,14 @@ function ArchivedAgents({ onClose }: { onClose: () => void }) {
               <Button
                 size="icon-sm"
                 variant="ghost"
-                title={`Delete ${bot.name} for good`}
-                aria-label={`Delete ${bot.name} for good`}
+                title={t("sidebar.deleteForGoodNamed", { name: bot.name })}
+                aria-label={t("sidebar.deleteForGoodNamed", { name: bot.name })}
                 className="text-muted-foreground hover:text-destructive"
                 onClick={() =>
                   void confirm({
-                    title: `Delete ${bot.name} for good?`,
-                    body: "Its conversations and signing key are deleted. What it already signed stays readable.\n\nThis cannot be undone.",
-                    confirmLabel: "Delete for good",
+                    title: t("sidebar.deleteForGoodQuestion", { name: bot.name }),
+                    body: t("sidebar.deleteForGoodBody"),
+                    confirmLabel: t("sidebar.deleteForGood"),
                     destructive: true,
                   }).then((sure) => sure && dispatch({ type: "deleteBot", botId: bot.id, forget: true }))
                 }
