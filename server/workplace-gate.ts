@@ -243,7 +243,7 @@ export class Gate {
     res.on("close", () => abort.abort());
     try {
       const body = method === "GET" || method === "HEAD" || method === "DELETE" ? undefined : await readRaw(req);
-      const answer = await fetch(server.url, { method, headers, body, signal: abort.signal, redirect: "manual" });
+      const answer = await fetch(server.url, { method, headers, body: body ? new Uint8Array(body) : undefined, signal: abort.signal, redirect: "manual" });
       const back: Record<string, string> = {};
       for (const name of ["content-type", "mcp-session-id", "cache-control"]) {
         const value = answer.headers.get(name);

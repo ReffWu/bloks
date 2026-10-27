@@ -308,12 +308,21 @@ export function remoteCommand(place: Workplace, localCli: string): string {
 
 export type Support = { ok: true } | { ok: false; why: string };
 
+/** Whether this engine runs a program of its own that can be started on
+ * the other side: the ones the agent's credential is minted for
+ * (CLI_DRIVERS), and every agent that speaks ACP, Gemini CLI among them,
+ * which gets no credential but is a program all the same. Named, not
+ * inferred, so a driver added later works only here until somebody has
+ * decided it can work elsewhere. */
+export function runsThere(driverKind: string): boolean {
+  return CLI_DRIVERS.has(driverKind) || ACP_SPECS.some((spec) => spec.kind === driverKind);
+}
+
 /** Whether this engine can run on the other side, and if not, why. The
  * engines that run a process of their own speak stdio, which is what
- * crosses; the rest have no process to move. Named, not inferred, the
- * same rule the agent's credential follows (CLI_DRIVERS). */
+ * crosses; the rest have no process to move. */
 export function placeSupport(driverKind: string, engineName = "This engine"): Support {
-  if (CLI_DRIVERS.has(driverKind)) return { ok: true };
+  if (runsThere(driverKind)) return { ok: true };
   if (driverKind === "boxAgent") return { ok: false, why: `${engineName} already works on its own cloud computer, so there is nothing here to move.` };
   return {
     ok: false,

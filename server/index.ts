@@ -1239,7 +1239,7 @@ function placeTurnRefusal(
   turn: { driverKind: string; engine: string; own: boolean; sharing: boolean; rehearsal: boolean },
 ): string | null {
   const where = places.placePhrase(place);
-  if (!runsAProcess(turn.driverKind)) {
+  if (!places.runsThere(turn.driverKind)) {
     // an API backup answering for it runs nothing, here or there
     if (!turn.own) return null;
     const why = places.placeSupport(turn.driverKind, turn.engine);
@@ -7163,7 +7163,7 @@ async function startClaimedTurn(
   // asked of the turn has to be something that can happen there. An API
   // backup answering for it has no program and no files anywhere, and
   // answers from here as it always does.
-  const placeNow = bot.workplace && runsAProcess(instance.driverKind) ? bot.workplace : null;
+  const placeNow = bot.workplace && places.runsThere(instance.driverKind) ? bot.workplace : null;
   if (bot.workplace) {
     const refused = placeTurnRefusal(bot, bot.workplace, {
       driverKind: instance.driverKind,
