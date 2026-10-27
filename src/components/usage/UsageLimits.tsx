@@ -192,7 +192,7 @@ function BloksAiCard({ badge }: { badge: string | null }) {
   const used = status.usedPercent ?? (status.monthlyLeftPercent !== null ? 100 - status.monthlyLeftPercent : null);
   const today = status.usedTodayPercent ?? null;
   const daily = status.dailyLimitPercent ?? null;
-  const renews = renewsLine(status.renewsAt);
+  const renews = renewsLine(status.renewsAt, undefined, true);
   return (
     <Group title="Bloks AI" note={t("usageLimits.yourBloksAiAllowanceAs")}>
       <LimitCard
@@ -218,7 +218,7 @@ function BloksAiCard({ badge }: { badge: string | null }) {
               fill={used / 100}
               tone={status.low || used >= 100 ? "warning" : "brand"}
               used={t("usageLimits.percentUsed", { percent: percentText(used) })}
-              note={renews ? renews[0].toUpperCase() + renews.slice(1) : null}
+              note={renews}
             />
             {today !== null && daily !== null && (
               <LimitLine

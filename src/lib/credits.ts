@@ -102,29 +102,33 @@ export function meterLine(status: Pick<BloksAiStatus, "monthlyLeftPercent" | "le
   return share <= 0 ? t("credits.nothingLeft") : t("credits.leftThisMonth", { percent: percentText(share) });
 }
 
-/** Top-ups still to spend, in months' worth: "plus 1 top-up". */
-export function topUpsLine(topUps: number | null | undefined): string | null {
+/** Top-ups still to spend, in months' worth: "plus 1 top-up", or with
+ * `start` "Plus 1 top-up", for a line that opens with it. The capital is its
+ * own sentence rather than code upper-casing the first letter, which is
+ * not what every language does at the start of a line. */
+export function topUpsLine(topUps: number | null | undefined, start = false): string | null {
   if (!topUps || !(topUps > 0)) return null;
   const n = Math.round(topUps * 10) / 10;
-  if (n === 0) return t("credits.plusPartOfTopUp");
-  return t("credits.plusTopUps", { count: n });
+  if (n === 0) return t(start ? "credits.plusPartOfTopUpStart" : "credits.plusPartOfTopUp");
+  return t(start ? "credits.plusTopUpsStart" : "credits.plusTopUps", { count: n });
 }
 
-/** When the month starts again: "renews Nov 19". */
-export function renewsLine(renewsAt: number | null | undefined, locale?: string): string | null {
+/** When the month starts again: "renews Nov 19", or with `start`
+ * "Renews Nov 19". */
+export function renewsLine(renewsAt: number | null | undefined, locale?: string, start = false): string | null {
   if (!renewsAt) return null;
   const at = new Date(renewsAt);
   if (Number.isNaN(at.getTime())) return null;
   const options = { month: "short", day: "numeric" } as const;
-  return t("credits.renews", { date: locale ? at.toLocaleDateString(locale, options) : formatDate(at, options) });
+  return t(start ? "credits.renewsStart" : "credits.renews", { date: locale ? at.toLocaleDateString(locale, options) : formatDate(at, options) });
 }
 
-/** The line under the meter, joined: "plus 1 top-up · renews Nov 19". */
+/** The line under the meter, joined: "Plus 1 top-up · renews Nov 19". */
 export function allowanceNote(status: Pick<BloksAiStatus, "topUps" | "renewsAt" | "low">, locale?: string): string | null {
-  const parts = [topUpsLine(status.topUps), renewsLine(status.renewsAt, locale)].filter(Boolean) as string[];
+  const topUps = topUpsLine(status.topUps, true);
+  const parts = [topUps, renewsLine(status.renewsAt, locale, !topUps)].filter(Boolean) as string[];
   if (!parts.length) return status.low ? t("credits.runningLow") : null;
-  const line = parts.join(" · ");
-  return line[0].toUpperCase() + line.slice(1);
+  return parts.join(" · ");
 }
 
 /** What Top up buys, said without an amount, in the reader's language. */

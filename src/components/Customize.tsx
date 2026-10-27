@@ -117,14 +117,14 @@ function PluginsPage({
   const [unfolded, setUnfolded] = useState(false);
   const [addingServer, setAddingServer] = useState(false);
   const [addingSkill, setAddingSkill] = useState(false);
-  const [tried, setTried] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   const toKeys = () => dispatch({ type: "toggleAppSettings", open: true, page: "apps" });
   const toSettings = () => dispatch({ type: "openPluginSettings", focus: null });
   const openApp = (card: ToolkitCard) => dispatch({ type: "openCustomize", tab: "plugins", app: card.slug });
   const unfinished = (servers ?? []).filter((server) => (server.needs ?? []).length > 0);
   const tryNow = (card: ToolkitCard) => {
     const bot = tryPrompt(state, dispatch, t("customize.tryPrompt", { app: card.label, prompt: detailsFor(card).prompts[0] }));
-    if (!bot) setTried(t("customize.noAgentCanUseApps"));
+    if (!bot) setTried(true);
   };
 
   const q = search.trim().toLowerCase();
@@ -253,7 +253,7 @@ function PluginsPage({
               })}
             </p>
           )}
-          {(error || tried) && <p className="mt-4 text-body text-destructive">{error ?? tried}</p>}
+          {(error || tried) && <p className="mt-4 text-body text-destructive">{error ?? t("customize.noAgentCanUseApps")}</p>}
 
           {unfinished.length > 0 && !q && (
             <>

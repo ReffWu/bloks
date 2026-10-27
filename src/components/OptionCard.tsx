@@ -390,7 +390,7 @@ function SettledApproval({
       <Minus size={12} />
     );
   // the thing itself when there is one, else what kind of thing it was
-  const what = view.short || settledWords(view, "what") || sentence(view.verb.replace(/^wants to /, ""));
+  const what = view.short || settledWords(view, "what") || view.verb;
   const why = card.cutOff ? t("optionCard.closedWhenBloksStopped") : card.closed;
 
   return (
@@ -407,14 +407,14 @@ function SettledApproval({
       }
     >
       <p className="text-small text-muted-foreground">
-        {settledWords(view, "asked") ?? `${name} ${view.verb.replace(/^wants to /, "asked to ")}.`}
+        {settledWords(view, "asked") ?? tr(view.ask.key, { ...view.ask.params, agent: name })}
         {view.askedBy ? ` ${t("optionCard.askedForBySentence", { name: view.askedBy })}` : ""}
       </p>
       {view.detail && <Detail detail={view.detail} cut={view.cut} quiet />}
       {why && <p className="text-small text-muted-foreground">{why}</p>}
       {remembered && (
         <p className="text-small text-muted-foreground">
-          {t("optionCard.savedARule", { rule: remembered.label.charAt(0).toLowerCase() + remembered.label.slice(1) })}
+          {t("optionCard.savedARule", { rule: remembered.label })}
         </p>
       )}
     </SettledLine>
@@ -456,8 +456,6 @@ function SettledLine({
     </div>
   );
 }
-
-const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** A settled approval says what was asked in the past ("Juno asked to
  * run a command.") and, with nothing shorter to show, what it was ("Run

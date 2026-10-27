@@ -1231,15 +1231,16 @@ function ComputerRow({ bot, patch, onBox }: { bot: Bot; patch: (p: Patch) => voi
           decide it. */}
       {!hosted && !bot.computer && !state.config?.box?.configured && (
         <Note>
-          {ownScreen
-            ? t("settingsPanel.noCloudBoxIsSet")
-            : t("settingsPanel.noCloudBoxIsSetUp")}{" "}
-          <button
-            className="font-medium text-foreground underline-offset-2 hover:underline"
-            onClick={() => dispatch({ type: "toggleComputer", open: true })}
-          >
-            {t("settingsPanel.setOneUp")}
-          </button>
+          {tr(ownScreen ? "settingsPanel.noCloudBoxIsSet" : "settingsPanel.noCloudBoxIsSetUp", {
+            setup: (
+              <button
+                className="font-medium text-foreground underline-offset-2 hover:underline"
+                onClick={() => dispatch({ type: "toggleComputer", open: true })}
+              >
+                {t("settingsPanel.setOneUp")}
+              </button>
+            ),
+          })}
         </Note>
       )}
       {bot.computer && (
