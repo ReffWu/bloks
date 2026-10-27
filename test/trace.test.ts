@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { RuntimeEvent } from "../server/contracts.ts";
-import { MAX_SPANS, MIN_MODEL_MS, LaneTurns, buildTrace, emptyTrace, readTurn, slim } from "../server/trace.ts";
+import { MAX_SPANS, MIN_MODEL_MS, LaneTurns, buildTrace, emptyTrace, readTurn, slim, turnAt, turnCovers } from "../server/trace.ts";
 
 const T0 = Date.parse("2026-10-26T10:00:00.000Z");
 
@@ -449,4 +449,26 @@ test("an events file is read back by turn, or for its last turn, from its end an
   assert.equal(await readTurn(file, "t1", { bytes: tail }), null);
   assert.equal((await readTurn(file, "t2", { bytes: tail }))![0].type, "turn.started", "a read starting on a line's first byte keeps that line");
   assert.equal((await readTurn(file, "t2", { bytes: tail - 1 }))![0].type, "item.started", "one byte later, it is a fragment and goes");
+});
+
+test("a moment names the turn running then, or the last to start before it", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "bloks-trace-at-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "lane-1.ndjson");
+  const one = turn("codex", [[0, { type: "turn.started" }], [100, started("a", "shell")], [200, done("a")], [300, end()]], "t1");
+  const two = turn("codex", [[1_000, { type: "turn.started" }], [1_300, end()]], "t2");
+  const open = turn("codex", [[2_000, { type: "turn.started" }], [2_100, started("c", "shell")]], "t3");
+  writeFileSync(file, [...one, ...two, ...open].map((e) => JSON.stringify(e)).join("\n") + "\n");
+
+  assert.equal(await turnAt(file, T0 + 150), "t1");
+  assert.equal(await turnAt(file, T0 + 1_000), "t2", "its first moment is its own");
+  assert.equal(await turnAt(file, T0 + 1_500), "t2", "between turns, the one before");
+  assert.equal(await turnAt(file, T0 + 9_000), "t3");
+  assert.equal(await turnAt(file, T0 - 1), null, "before anything");
+  assert.equal(await turnAt(join(dir, "missing.ndjson"), T0), null);
+
+  assert.equal(turnCovers(one, T0 + 300), true);
+  assert.equal(turnCovers(one, T0 + 301), false, "a finished turn ends at its last event");
+  assert.equal(turnCovers(open, T0 + 60_000), true, "an open one runs on to now");
+  assert.equal(turnCovers(null, T0), false);
 });

@@ -43,7 +43,7 @@ import { ENGINE_PACKAGES, engineUpdates } from "./engine-updates.ts";
 import { FEATURES } from "./features.ts";
 import { ReplyNotifications, settledFrame, settledReply } from "./reply-notifications.ts";
 import { TextPreview } from "./text-preview.ts";
-import { LaneTurns, buildTrace, emptyTrace, readTurn, type LiveTraces, type Trace } from "./trace.ts";
+import { LaneTurns, buildTrace, emptyTrace, readTurn, turnAt, turnCovers, type LiveTraces, type Trace } from "./trace.ts";
 import { AnswerReady, answerDue, answersAllowed, attentionFrom, Viewing, viewingReport, type Attention } from "./answer-ready.ts";
 import { attentionRoute, keepAttention, readAttention, sameAttention } from "./attention.ts";
 import { LiveActivities } from "./live-activities.ts";
@@ -24949,6 +24949,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
             botId: bot.id,
             name: bot.name,
             color: bot.color,
+            ...(bot.shape ? { shape: bot.shape } : {}),
+            ...(bot.avatarAt ? { avatarAt: bot.avatarAt } : {}),
             taskId: task.id,
             taskTitle: task.title,
             state,
@@ -24963,11 +24965,24 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const lane = store.bot(m[1])?.tasks.find((t) => t.id === m![2]);
       if (!lane) return json(res, 404, { error: "no such task" });
       const now = Date.now();
-      const named = url.searchParams.get("turn")?.trim() || null;
+      let named = url.searchParams.get("turn")?.trim() || null;
       if (named && !/^[\w.:-]{1,200}$/.test(named)) return json(res, 400, { error: "that is not a turn id" });
-      const kept = named ? turnTraces.find(lane.id, named) : (turnTraces.current(lane.id) ?? turnTraces.last(lane.id));
-      const events = kept ?? (await readTurn(join(EVENTS_DIR, `${lane.id}.ndjson`), named));
-      return json(res, 200, { trace: events ? traceOf(events, now) : null });
+      // A transcript knows when something was said, not which turn said
+      // it, so a folded turn asks by its time: the turn running then.
+      const atParam = url.searchParams.get("at");
+      const at = atParam === null ? null : Number(atParam);
+      if (at !== null && !Number.isFinite(at)) return json(res, 400, { error: "at is a time in milliseconds" });
+      const file = join(EVENTS_DIR, `${lane.id}.ndjson`);
+      let kept = named ? turnTraces.find(lane.id, named) : (turnTraces.current(lane.id) ?? turnTraces.last(lane.id));
+      if (!named && at !== null && !turnCovers(kept, at)) {
+        const held = [turnTraces.current(lane.id), turnTraces.last(lane.id)].find((events) => turnCovers(events, at));
+        kept = held ?? null;
+        if (!kept) named = await turnAt(file, at);
+        if (!kept && !named) return json(res, 200, { trace: null, now });
+      }
+      const events = kept ?? (await readTurn(file, named));
+      // the server's clock, so a panel lines its playhead up with this one
+      return json(res, 200, { trace: events ? traceOf(events, now) : null, now });
     }
 
     // ── what is running, and what it costs ──

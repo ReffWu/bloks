@@ -13,8 +13,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { api, type Bot } from "@/state/store";
-import { taskTracePath, type Trace } from "@/lib/trace";
-import { traceClockOffset, traceCovers, type TraceAsk } from "@/lib/traceView";
+import { taskTracePath, type TaskTrace, type Trace } from "@/lib/trace";
+import { clockOffset, traceClockOffset, traceCovers, type TraceAsk } from "@/lib/traceView";
 import { usePageVisible } from "@/lib/pageVisible";
 import { useEscape } from "@/lib/useEscape";
 import { TraceWaterfall } from "./TraceWaterfall";
@@ -46,7 +46,7 @@ export function TracePanel({
   // a fold names its turn, or its time; the working line follows the turn
   // going now, and the one after it when it starts
   const follow = !ask.turnId && !ask.window;
-  const path = taskTracePath(bot.id, taskId, ask.turnId);
+  const path = taskTracePath(bot.id, taskId, { turnId: ask.turnId, at: ask.window?.from });
 
   const pathRef = useRef(path);
   useEffect(() => {
@@ -57,10 +57,13 @@ export function TracePanel({
     let timer: ReturnType<typeof setTimeout> | null = null;
     const once = async () => {
       try {
-        const body: { trace: Trace | null } = await api(path);
+        const body: TaskTrace = await api(path);
         if (!alive) return;
         const at = Date.now();
-        setRead({ trace: body.trace ?? null, now: at + traceClockOffset(body.trace ?? null, at) });
+        // the server says its clock; an older one does not, and a running
+        // trace's own length stands in for it
+        const offset = typeof body.now === "number" ? clockOffset(body.now, at) : traceClockOffset(body.trace ?? null, at);
+        setRead({ trace: body.trace ?? null, now: at + offset });
         setError(null);
         // again while there is a turn going to follow; a finished one
         // does not change
@@ -114,7 +117,7 @@ export function TracePanel({
               ? ""
               : !trace
                 ? "No turn to show yet. The timeline starts with the next one."
-                : "This turn's timeline is not here. The newest turn of a conversation is the one that can be opened."}
+                : "This turn's timeline is not kept any more."}
         </div>
       )}
     </aside>

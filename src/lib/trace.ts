@@ -67,6 +67,10 @@ export interface LiveAgent {
   name: string;
   /** The agent's BlokColor. */
   color: string;
+  /** Its pixel face's shape, and its own picture's upload time if it has
+   * one, so the notch draws the face the rest of the app does. */
+  shape?: string;
+  avatarAt?: number | null;
   taskId: string;
   taskTitle: string;
   state: "working" | "needs-you";
@@ -83,12 +87,17 @@ export interface LiveTraces {
 /** GET /api/bots/:id/tasks/:task/trace */
 export interface TaskTrace {
   trace: Trace | null;
+  /** The server's clock when it answered. */
+  now?: number;
 }
 
 export const LIVE_TRACES_PATH = "/api/trace/live";
 
-/** The running turn, else the last one; or the one named. */
-export function taskTracePath(botId: string, taskId: string, turnId?: string | null): string {
+/** The running turn, else the last one; or the one named; or the one
+ * that was running at a moment, which is all a transcript can name. */
+export function taskTracePath(botId: string, taskId: string, which: { turnId?: string | null; at?: number | null } = {}): string {
   const base = `/api/bots/${encodeURIComponent(botId)}/tasks/${encodeURIComponent(taskId)}/trace`;
-  return turnId ? `${base}?turn=${encodeURIComponent(turnId)}` : base;
+  if (which.turnId) return `${base}?turn=${encodeURIComponent(which.turnId)}`;
+  if (typeof which.at === "number" && Number.isFinite(which.at)) return `${base}?at=${Math.round(which.at)}`;
+  return base;
 }

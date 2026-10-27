@@ -103,7 +103,7 @@ process.stdin.on("data", async function take(c) {
 
   // nothing has run: nobody is live, and the lane has no trace
   assert.deepEqual((await h.json("/api/trace/live")).agents, []);
-  assert.deepEqual(await h.json(own), { trace: null });
+  assert.equal((await h.json(own)).trace, null);
 
   const paths = ["/api/activity", "/api/trace/live", own];
   await h.fetch(`/api/bots/${bot.id}/messages`, {
@@ -180,7 +180,14 @@ process.stdin.on("data", async function take(c) {
     "the model's writing after the call is drawn, with its message's tokens",
   );
   assert.deepEqual((await h.json(`${own}?turn=${encodeURIComponent(trace.turnId)}`)).trace.turnId, trace.turnId);
-  assert.deepEqual(await h.json(`${own}?turn=no-such-turn`), { trace: null });
+  const none = await h.json(`${own}?turn=no-such-turn`);
+  assert.equal(none.trace, null);
+  assert.ok(typeof none.now === "number" && Math.abs(none.now - Date.now()) < 60_000, "the answer carries the server's clock");
+  // a fold asks by time: during the turn finds it, before any turn finds none
+  const during = trace.startedAt + Math.max(1, Math.floor((trace.endedAt - trace.startedAt) / 2));
+  assert.equal((await h.json(`${own}?at=${during}`)).trace.turnId, trace.turnId);
+  assert.equal((await h.json(`${own}?at=${trace.startedAt - 60_000}`)).trace, null);
+  assert.equal((await h.fetch(`${own}?at=soon`)).status, 400);
   assert.equal((await h.fetch(`${own}?turn=${encodeURIComponent("../../etc")}`)).status, 400);
   assert.equal((await h.fetch(`/api/bots/${bot.id}/tasks/not-a-lane/trace`)).status, 404);
 
@@ -192,4 +199,5 @@ process.stdin.on("data", async function take(c) {
   assert.equal(again.turnId, trace.turnId);
   assert.deepEqual(again.totals, trace.totals);
   assert.equal((await h.json(`${own}?turn=${encodeURIComponent(trace.turnId)}`)).trace.spans.length, trace.spans.length);
+  assert.equal((await h.json(`${own}?at=${during}`)).trace.turnId, trace.turnId, "by time from the file too");
 });

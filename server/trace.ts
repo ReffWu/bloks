@@ -90,6 +90,10 @@ export interface LiveTraces {
     name: string;
     /** The agent's BlokColor. */
     color: string;
+    /** Its pixel face's shape, and when its own picture was uploaded if
+     * it has one, so the notch draws the face the rest of the app does. */
+    shape?: string;
+    avatarAt?: number | null;
     taskId: string;
     taskTitle: string;
     state: "working" | "needs-you";
@@ -701,4 +705,60 @@ export async function readTurn(
 
   if (turnId) return named.length ? named : null;
   return threadId ? (latest.current(threadId) ?? latest.last(threadId)) : null;
+}
+
+/** True when a turn's events cover the moment `at`: from its first event
+ * to its last, or on to now while it has not ended. */
+export function turnCovers(events: readonly RuntimeEvent[] | null, at: number): boolean {
+  if (!events?.length) return false;
+  const first = Date.parse(events[0].createdAt);
+  const ended = events.some((e) => e.type === "turn.completed");
+  const last = ended ? Date.parse(events[events.length - 1].createdAt) : Infinity;
+  return first <= at && at <= last;
+}
+
+/**
+ * The id of the turn that was running at `at`, from a lane's events file,
+ * or the last one to start before it. What a transcript can name: its
+ * messages carry a time, not a turn.
+ *
+ * Only the start and end of each turn are parsed, and only from the same
+ * tail of the file readTurn reads, so this costs one pass over lines it
+ * mostly skips.
+ */
+export async function turnAt(file: string, at: number, { bytes = SCAN_BYTES }: { bytes?: number } = {}): Promise<string | null> {
+  let size: number;
+  try {
+    size = statSync(file).size;
+  } catch {
+    return null;
+  }
+  const from = size > bytes ? size - bytes - 1 : 0;
+  let partial = from > 0;
+  let best: { turnId: string; start: number } | null = null;
+  await new Promise<void>((resolve) => {
+    const stream = createReadStream(file, { start: from });
+    const split = lineSplitter((line) => {
+      if (partial) {
+        partial = false;
+        return;
+      }
+      if (!line.includes('"turn.started"')) return;
+      let event: RuntimeEvent;
+      try {
+        event = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (event?.type !== "turn.started" || !event.turnId) return;
+      const start = Date.parse(event.createdAt);
+      // the latest turn to start at or before the moment asked about
+      if (start <= at && (!best || start >= best.start)) best = { turnId: event.turnId, start };
+    });
+    stream.on("data", split);
+    stream.on("error", () => resolve());
+    stream.on("close", () => resolve());
+    stream.on("end", () => resolve());
+  });
+  return (best as { turnId: string } | null)?.turnId ?? null;
 }

@@ -376,7 +376,11 @@ describe("which turn a fold opens", () => {
   });
 });
 
-test("the per-conversation route, with or without a named turn", () => {
+test("the per-conversation route, with a named turn, a moment, or neither", () => {
   assert.equal(taskTracePath("b1", "t 2"), "/api/bots/b1/tasks/t%202/trace");
-  assert.equal(taskTracePath("b1", "t2", "turn/9"), "/api/bots/b1/tasks/t2/trace?turn=turn%2F9");
+  assert.equal(taskTracePath("b1", "t2", { turnId: "turn/9" }), "/api/bots/b1/tasks/t2/trace?turn=turn%2F9");
+  assert.equal(taskTracePath("b1", "t2", { at: 1_800_000_000_000.4 }), "/api/bots/b1/tasks/t2/trace?at=1800000000000");
+  // a turn the engine named wins over a time
+  assert.equal(taskTracePath("b1", "t2", { turnId: "x", at: 5 }), "/api/bots/b1/tasks/t2/trace?turn=x");
+  assert.equal(taskTracePath("b1", "t2", { at: Number.NaN }), "/api/bots/b1/tasks/t2/trace");
 });

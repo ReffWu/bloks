@@ -21,7 +21,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { BlokAvatar } from "@/components/Avatar";
 import { Spinner, colorHex } from "@/components/trace/parts";
 import { TraceWaterfall } from "@/components/trace/TraceWaterfall";
-import { BLOK_COLORS, shapeForBot, type BlokColor } from "@/lib/mascot";
+import { BLOK_COLORS, shapeForBot, type BlokColor, type BlokExpression, type BlokShape } from "@/lib/mascot";
 import { LIVE_TRACES_PATH, type LiveAgent, type LiveTraces } from "@/lib/trace";
 import { currentStep, fixtureLive, type TraceGroup } from "@/lib/traceView";
 import { clock } from "@/lib/transcript";
@@ -285,6 +285,26 @@ export function NotchIsland({ demo = false }: { demo?: boolean }) {
   );
 }
 
+/** The agent's own picture when it has one, else its pixel face in the
+ * shape it was given, as everywhere else in the app. */
+function Face({ agent, expression, size }: { agent: LiveAgent; expression: BlokExpression; size: number }) {
+  if (agent.avatarAt) {
+    return (
+      <img
+        src={`/api/bots/${agent.botId}/avatar?v=${agent.avatarAt}`}
+        width={size}
+        height={size}
+        draggable={false}
+        alt=""
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  const shape = shapeForBot({ id: agent.botId, name: agent.name, shape: agent.shape as BlokShape | undefined });
+  return <BlokAvatar color={blokColor(agent.color)} shape={shape} expression={expression} size={size} />;
+}
+
 /** Up to three faces, overlapping, the one waiting on you in front. */
 function Faces({ agents, reduce }: { agents: LiveAgent[]; reduce: boolean }) {
   const shown = agents.slice(0, 3);
@@ -300,7 +320,7 @@ function Faces({ agents, reduce }: { agents: LiveAgent[]; reduce: boolean }) {
           className={cn("relative rounded-[6px]", i > 0 && "-ml-[7px]", agent.state === "working" && !reduce && "notch-pulse")}
           style={{ zIndex: shown.length - i, "--c": colorHex(agent.color), boxShadow: "0 0 0 1.5px #000" } as CSSProperties}
         >
-          <BlokAvatar color={blokColor(agent.color)} shape={shapeForBot({ id: agent.botId, name: agent.name })} expression="focused" size={18} />
+          <Face agent={agent} expression="focused" size={18} />
         </motion.span>
       ))}
       {more > 0 && <span className="ml-1 text-micro font-medium tabular-nums text-white/60">+{more}</span>}
@@ -320,7 +340,7 @@ function AgentRow({ agent, now, reduce, onOpen }: { agent: LiveAgent; now: numbe
       title={`Open ${agent.taskTitle}`}
       className="group flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors duration-150 hover:bg-white/[0.07]"
     >
-      <BlokAvatar color={blokColor(agent.color)} shape={shapeForBot({ id: agent.botId, name: agent.name })} expression={asking ? "surprised" : "focused"} size={28} />
+      <Face agent={agent} expression={asking ? "surprised" : "focused"} size={28} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-baseline gap-1.5 text-small">
           <span className="shrink-0 font-semibold text-white">{agent.name}</span>
