@@ -513,7 +513,8 @@ describe("sharing back", () => {
     const skill = { name: "tidy", title: "Tidy up", description: "Tidy a draft", body: "Use this when.\n\n1. x", version: "3", author: "Ada", tags: ["writing", "edit"] };
     const back = parseSkillFile(writeSkillFile(skill), "tidy", "tidy");
     assert.deepEqual(back, { ...skill });
-    assert.equal(scrubForSharing("token ghp_abcdefghijklmnopqrstuvwxyz0123"), "token [removed]");
+    // built here so no tracked file carries the shape (test/no-secrets.test.ts)
+    assert.equal(scrubForSharing(`token ghp_${"abcdefghijklmnopqrstuvwxyz0123"}`), "token [removed]");
   });
 });
 

@@ -428,7 +428,8 @@ export class BrowserGate {
         waiting.waiters = waiting.waiters.filter((w) => w !== done);
         resolve("pending");
       }, waitMs);
-      timer.unref?.();
+      // held, not unref'd: an answer clears it, and one that never comes
+      // must still end the wait on time
       const done = (d: Decision) => {
         clearTimeout(timer);
         resolve(d);
@@ -484,7 +485,7 @@ export class BrowserGate {
         this.freeWaiters = this.freeWaiters.filter((w) => w !== free);
         resolve(false);
       }, ms);
-      timer.unref?.();
+      // held for the same reason as the card's wait above
       this.freeWaiters.push(free);
     });
   }
