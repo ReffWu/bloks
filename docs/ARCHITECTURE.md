@@ -2495,6 +2495,63 @@ stretch of speech is a segment. The renderer posts segments to
 turn in its Meetings lane with `notesPrompt`, and `actionItems` reads
 "- Owner: task" lines back out of the reply for one-press handoff.
 
+## The Bloks browser
+
+A browser in the desktop window, beside the chat, that agents drive and
+the person watches and takes over. Three parts, each in its own place:
+
+- **The app** (`electron/app-browser.mjs`, wired in `electron/main.mjs`).
+  Each workspace has one `AppBrowser`: its tabs, who drives each (the
+  person or an agent, by id and name), who has the wheel (`idle`,
+  `agent`, `person`, with whom the person took it from and who waits),
+  and its downloads. A tab is a `WebContentsView` in the session
+  `persist:bloks-browser-<workspace>`, sandboxed, with no preload, and
+  with its `webContents.debugger` attached. An agent's command is a
+  short run of Chrome DevTools Protocol calls on that debugger
+  (`runOnTab`): `Accessibility.getFullAXTree` for a snapshot, whose refs
+  (`e1`, `e2`) name `backendDOMNodeId`s and last until the next
+  navigation; `DOM.getBoxModel` and `Input.dispatchMouseEvent` for a
+  click, after `Runtime.callFunctionOn` asks what is really at the
+  element's middle; `DOM.focus` and `Input.insertText` for typing;
+  `DOM.setFileInputFiles` for an upload; `Page.captureScreenshot` for a
+  picture. Every call is bounded at twenty seconds. `refusedNavigation`
+  and the server's navigation policy are applied on `will-navigate`,
+  `will-redirect` and `setWindowOpenHandler`, and loopback requests to
+  any Bloks port are cancelled in the session's `webRequest`. The panel
+  in the page tells the app where its page box is (`browser:bounds`, null
+  while a dialog or menu is over it, so the native view never covers
+  one) and what the person does (`browser:do`, a fixed list of actions);
+  the app tells the page its state (`browser:state`) and asks for the
+  panel when an agent starts browsing (`browser:reveal`). Downloads go to
+  `<workspace data>/browser-downloads`.
+- **The server** (`server/app-browser.ts`, routes in `server/index.ts`).
+  `POST /api/agent/browser` takes an agent's command, checks it
+  (`validateCommand`), decides the site (`siteVerdict`: refused, denied,
+  go, or ask), asks the app over the desktop line (`desktopLine.ask("browser")`),
+  and frames what comes back (`frameUntrusted`). A site to ask about, and
+  a password, payment or upload field the app reports as `needs`, become
+  an approval card in the agent's conversation with request id
+  `browser:<random>`; `/api/bots/:id/respond` hands the answer to the
+  `BrowserGate`, and the waiting action goes on, or is refused, or after
+  about two minutes answers `202 pending`, so the agent tries again and
+  finds the answer. While the person has the wheel, the app answers
+  `held`, and the server waits for its next `browser.state` before
+  trying again, up to a minute and a half. The settings are
+  `app-browser.json` in the workspace's folder (`GET`/`PUT
+  /api/browser/settings`); `GET /api/browser` and `/api/browser/frame` are
+  the person's other devices' view; `POST /api/browser/command` is the MCP
+  server's way in, local only, with no cards. A turn's site grants end
+  with the turn, and so does an agent's hold on the browser.
+- **The page** (`src/components/browser/BrowserPanel.tsx`,
+  `src/lib/appBrowser.ts`, `src/components/settings/BrowserPage.tsx`).
+  The dock on the chat's right, resizable and over the chat when the
+  window is too narrow, opened from the header's globe; tabs with the
+  driving agent's face, the address bar, back, forward, reload, the line
+  saying who has the browser with Take over and Give back, and the
+  downloads shelf. Anywhere without the app, the agent's conversation
+  shows "Browsing on the Mac" from the server's `browser.app` frames, with
+  the picture from `/api/browser/frame` every two seconds while visible.
+
 ## Terminals
 
 `server/terminal.ts` keeps up to eight shells per agent, each in the
@@ -2841,13 +2898,15 @@ out.
 ## MCP server
 
 `bin/bloks-mcp.mjs` is a dependency-free stdio MCP server that finds the
-local Bloks on its known ports and offers thirteen tools (list agents and
+local Bloks on its known ports and offers twenty five tools: thirteen of
+its own (list agents and
 rooms, ask an agent and wait for the reply, post in a room, read a
 conversation or one message, search, the latest brief, what is waiting,
 and the skills: list them, read one at a version, its history, and
-propose a revision, which only ever stages it). It has no tool that
-approves, deletes or configures. `/api/mcp-config` gives the command to
-paste, using the runtime the server itself runs on.
+propose a revision, which only ever stages it), and the Bloks browser's
+twelve (`browser_open` and the rest, through `POST /api/browser/command`).
+It has no tool that approves, deletes or configures. `/api/mcp-config`
+gives the command to paste, using the runtime the server itself runs on.
 
 ## Lanes, unread and the sidebar
 

@@ -228,6 +228,25 @@ with a credential that ends with the turn. When something fails for
 good, an **incident desk** hands it to the lead to retry once, pass on,
 or bring to you, instead of letting it fail quietly or in a storm.
 
+### A browser you can watch
+
+The desktop app has a browser of its own, docked beside the chat, with
+tabs, an address bar and a downloads shelf. Agents drive it with
+`bloks browser` (and other AI apps through the MCP server): open a page,
+read it, list what is on it, click, type, choose, scroll, wait and take a
+picture. You watch it happen, each tab showing which agent drives it,
+and **Take over** whenever you like; the agent's next step waits until
+you **Give back**. Each workspace browses in a session of its own, so
+its sign-ins stay its own and never the app's.
+
+It is careful in the same way the rest of Bloks is. In Ask first, a site
+not on your list asks on a card the first time an agent goes there;
+blocked sites are never opened; a password, a card number or a file to
+upload always asks you, whatever the mode. What a page says reaches an
+agent framed as untrusted data, never as instructions. On your phone the
+conversation says the agent is browsing on the Mac, with a small live
+picture of the page.
+
 ### Careful by default
 
 - **Approvals say what will run.** A card shows the command, file, diff
@@ -343,7 +362,8 @@ often each was used and then corrected. Agents can ask for a change too
   email address you can forward things to.
 - **Your other AI apps.** Bloks is an MCP server: Claude Desktop, Claude
   Code or Cursor can hand your agents work and read their conversations,
-  but never approve, delete or change settings.
+  and use the Bloks browser on sites your rules allow, but never approve,
+  delete, change settings or fill in a password.
 - **Always on.** `bloks-server` runs a workspace on a machine that stays
   on, and the desktop app, the phone and the browser reach it the same
   way. Or let Bloks run one for you: managed hosting is a private machine

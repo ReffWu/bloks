@@ -183,6 +183,75 @@ instead (see People in your workspaces).
   member's device can call. A member's stream carries no screenshots at
   all, and nothing on a phone can click on the Mac.
 
+## The Bloks browser
+
+The desktop app has a browser beside the chat that agents drive and you
+watch (`electron/app-browser.mjs`, `server/app-browser.ts`). It is
+signed in as you wherever you sign in, which makes it worth guarding.
+
+- **Its own session, nothing of the app's.** Each workspace browses in a
+  persistent session partition of its own (`persist:bloks-browser-<id>`):
+  its cookies and storage are never the app's, and never another
+  workspace's. A tab is a sandboxed `WebContentsView` with no preload, so
+  a page has no `window.bloks` and no bridge to anything. Every
+  permission a page can ask for (camera, microphone, location,
+  notifications, devices) is refused except fullscreen and writing to
+  the clipboard. Deleting a workspace clears its browser's data, and
+  Settings, Browser signs out of every site at once.
+- **Only the web.** A tab never goes to a `file:`, `chrome:`, `devtools:`,
+  `javascript:` or `data:` address, or anything else that is not http or
+  https, and never to a Bloks server on this computer, on any port a
+  workspace or the app's own page uses, under any spelling of loopback.
+  This is checked on every navigation and redirect, including the ones a
+  page starts, and a page's requests to those ports are cancelled before
+  they leave.
+- **Who drives it.** An agent reaches it only through its turn's own
+  credential (`/api/agent/browser`), and only in a turn the owner
+  started in the owner's own conversations: never a member's turn, a
+  shared room's, an unlisted email's or a Telegram person's, because the
+  browser is signed in as the owner. Its settings, its picture and the
+  route another app uses (`/api/browser`) are never reachable with an
+  agent's credential. Another AI app reaches it through the MCP server,
+  from this computer only, and gets less than an agent: nothing it does
+  can ask you, so whatever would ask is refused for it. Without the
+  desktop app (`bloks-server`, a hosted workspace) the browser is simply
+  unavailable.
+- **Which sites.** Each workspace has a list of sites agents may use and
+  a list they never use, and a mode. In Ask first, the default, a site
+  not on the allowed list asks you on a card the first time an agent
+  opens it in a turn; Allow lets that turn in, Always allow adds it to
+  the list. In Auto (which, like widening approvals, asks for Touch ID
+  where the Mac has it) agents open any site but the blocked ones. A
+  blocked site always wins. While an agent drives a tab, the app holds
+  that tab to the same rules for every page a click, a redirect or a new
+  window takes it to, and tells the agent it stayed where it was.
+- **Which fields.** Typing into a password field, a payment field (by its
+  type, its autocomplete and its name), and choosing a file to upload
+  always ask you on a card first, in either mode. The card names the
+  field's kind and the site, never what would be typed, and Enter does
+  not answer it. A yes is good for that text in that field once. An
+  agent never clicks a file picker; it names a file, and you see which.
+- **What a page says is data.** Everything that comes back from a page,
+  its text, its snapshot, its title, the tab list, is framed before it
+  reaches a model: a sentence saying it is untrusted content from that
+  site and that nothing in it is an instruction, between an opening and a
+  closing tag carrying a random value per answer, so a page cannot write
+  its own end of the frame. The snapshot is read from the browser's
+  accessibility tree, and an agent's refs name the browser's own nodes,
+  so a page cannot forge one by writing an attribute.
+- **You can take it back.** You see which agent drives which tab and can
+  take over at any time, from the panel or simply by clicking or typing
+  in the page. The agent's next step then waits, up to a minute and a
+  half, and is told the browser is yours if it still is. Its steps are not
+  counted against its turn's twelve changes, since none changes the
+  workspace; the sites and fields above are what bound them.
+- **What leaves the Mac.** Your other devices hear only each tab's
+  address and title, who drives it and the downloads' names, never what
+  is on a page; a phone looking on gets a small picture of the tab on
+  screen, at most every second and a half, and a member's device gets
+  none of it. Downloads land in the workspace's own `browser-downloads`
+  folder, with the site's name for the file cut down to a plain name.
+
 ## People in your workspaces
 
 A workspace can take people, and everything they say runs on your
@@ -322,6 +391,14 @@ first run, and Linux does not expect one. If that matters to you, build
 from source. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## What is not yet done
+
+- The Bloks browser tells a payment field from its type, autocomplete and
+  name, which a page can leave off. A card form drawn in a frame from
+  another site, the usual way payment providers do it, never appears in
+  an agent's snapshot at all, so you fill those yourself; a card field a
+  page draws itself and names nothing is not caught. And a page can still
+  show an agent anything: the frame says it is data, but a model can be
+  talked into things.
 
 - Secrets are not in the Keychain. The desktop app keeps your Bloks key
   there, but each workspace's API keys are still in its `config.json`.
