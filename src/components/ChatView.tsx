@@ -157,7 +157,7 @@ export function ChatView({ bot }: { bot: Bot }) {
   // people by the name a conversation calls them, told apart where two
   // share a first name (src/lib/names.ts)
   const nameOf = useNamer();
-  const personName = (id: string) => nameOf(id, "A former member");
+  const personName = (id: string) => nameOf(id, t("chatView.formerMember"));
   // On a desktop the conversation's tabs sit up in the title bar, in the
   // row with the window's own buttons; on a phone they stay under the header
   const titleSlot = useTitlebarSlot();
@@ -215,7 +215,7 @@ export function ChatView({ bot }: { bot: Bot }) {
     () => (withPeople ? receiptsAt(said.map((m) => m.id), new Set(groupRuns.keys()), reads, "owner", new Map(said.map((m) => [m.id, senderOf(m)]))) : new Map<string, string[]>()),
     [withPeople, said, groupRuns, reads],
   );
-  const readerName = (id: string) => (id === "owner" ? (roster.owner ?? "You") : personName(id));
+  const readerName = (id: string) => (id === "owner" ? (roster.owner ?? t("chatView.you")) : personName(id));
   const receiptsFor = (id: string) => {
     const who = receiptRows.get(id);
     return who?.length ? <SeenBy people={who.map((p) => ({ id: p, name: readerName(p) }))} /> : undefined;
@@ -226,7 +226,7 @@ export function ChatView({ bot }: { bot: Bot }) {
     ) : telegramSpeaker(m) ? (
       <PersonAvatar id={telegramSpeaker(m)!.personId} name={telegramSpeaker(m)!.name} />
     ) : (
-      <PersonAvatar id={m.author ?? "owner"} name={m.author ? personName(m.author) : (roster.owner ?? "You")} />
+      <PersonAvatar id={m.author ?? "owner"} name={m.author ? personName(m.author) : (roster.owner ?? t("chatView.you"))} />
     );
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [forwarding, setForwarding] = useState<{ message: Message; author: string } | null>(null);
@@ -278,7 +278,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       .then((r) => {
         if (r.sent === false) {
           setPrefill({ text: r.text ?? text, nonce: Date.now() });
-          dispatch({ type: "error", message: r.error ?? "Rewound, but your message wasn't sent." });
+          dispatch({ type: "error", message: r.error ?? t("chatView.rewoundNotSent") });
         }
         return null;
       })
@@ -526,9 +526,9 @@ export function ChatView({ bot }: { bot: Bot }) {
     const anything = laneHasMessages(lane) || (open && bot.messages.length > 0);
     if (!anything) return dispatch({ type: "closeTask", botId: bot.id, taskId });
     void confirm({
-      title: `Close "${lane?.title ?? "this conversation"}"?`,
-      body: "Its messages are deleted.",
-      confirmLabel: "Close",
+      title: lane?.title ? t("chatView.closeNamed", { title: lane.title }) : t("chatView.closeThis"),
+      body: t("chatView.messagesDeleted"),
+      confirmLabel: t("common.close"),
       destructive: true,
     }).then((yes) => yes && dispatch({ type: "closeTask", botId: bot.id, taskId }));
   };
@@ -539,12 +539,12 @@ export function ChatView({ bot }: { bot: Bot }) {
     const lane = bot.tasks?.find((t) => t.id === open);
     const why = closeRefusal(bot.tasks ?? [], open);
     if (why === "first") {
-      toast.info(`"${lane?.title ?? "General"}" stays open`, {
+      toast.info(t("chatView.staysOpen", { title: lane?.title ?? t("common.general") }), {
         id: "close-first",
-        description: "An agent always keeps its first conversation. Clear it to start over.",
+        description: t("chatView.keepsFirst"),
       });
     } else if (why === "working") {
-      toast.info("Stop it before closing", { id: "close-working", description: `"${lane?.title}" is still working.` });
+      toast.info(t("chatView.stopBeforeClosing"), { id: "close-working", description: t("chatView.stillWorking", { title: lane?.title ?? "" }) });
     } else closeLane(open);
   };
 
@@ -559,9 +559,9 @@ export function ChatView({ bot }: { bot: Bot }) {
     if (chord === "new") {
       // where the strip stops offering its +
       if (tasks.length >= MAX_TASKS) {
-        toast.info(`${bot.name} has ${MAX_TASKS} conversations open`, {
+        toast.info(t("chatView.tooMany", { name: bot.name, count: MAX_TASKS }), {
           id: "new-full",
-          description: "Close one to start another.",
+          description: t("chatView.closeOne"),
         });
         return;
       }
@@ -810,10 +810,10 @@ export function ChatView({ bot }: { bot: Bot }) {
               <LandMark on={lit === m.id} />
             {/* in a group the bubble names its sender; with one agent, a
                 line over the words says whose they are */}
-            {!group && (m.telegramPerson || m.telegramGroup) && <div className="mb-1 text-small text-muted-foreground">Message from {telegramSpeaker(m)!.name} (Telegram)</div>}
-            {!group && m.telegramDelegate && <div className="mb-1 text-small text-muted-foreground">Message from {m.telegramDelegate.name} (Telegram, full access)</div>}
+            {!group && (m.telegramPerson || m.telegramGroup) && <div className="mb-1 text-small text-muted-foreground">{t("chatView.telegramFrom", { name: telegramSpeaker(m)!.name })}</div>}
+            {!group && m.telegramDelegate && <div className="mb-1 text-small text-muted-foreground">{t("chatView.telegramDelegate", { name: m.telegramDelegate.name })}</div>}
             {!group && m.role === "user" && m.author && <div className="mb-1 text-small font-medium text-muted-foreground">{personName(m.author)}</div>}
-            {m.telegramSent && <div className="mb-1 text-small text-muted-foreground">To {m.telegramSent.name} (Telegram): {m.telegramSent.state === "sent" ? "sent" : m.telegramSent.state === "sending" ? "sending" : m.telegramSent.state === "failed" ? "failed" : t("chatView.deliveryUncertain")}</div>}
+            {m.telegramSent && <div className="mb-1 text-small text-muted-foreground">{t(m.telegramSent.state === "sent" ? "chatView.telegramSent.sent" : m.telegramSent.state === "sending" ? "chatView.telegramSent.sending" : m.telegramSent.state === "failed" ? "chatView.telegramSent.failed" : "chatView.telegramSent.uncertain", { name: m.telegramSent.name })}</div>}
             {after && (
               <AfterAgentLink
                 peerId={after.peerId}
@@ -826,7 +826,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               // a folded check-in below says no time of its own
               hideTime={list[offset + 1]?.quiet ? false : timeSaidBelow(m, list[offset + 1])}
               fresh={fresh}
-              author={telegramSpeaker(m)?.name ?? (m.role === "user" ? (m.author ? personName(m.author) : "You") : bot.name)}
+              author={telegramSpeaker(m)?.name ?? (m.role === "user" ? (m.author ? personName(m.author) : t("chatView.you")) : bot.name)}
               onReply={setReplyTo}
               onForward={(message, author) => setForwarding({ message, author })}
               onReact={(messageId, emoji) => reactTo(bot.threadId, messageId, emoji)}
@@ -840,7 +840,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               highlight={finding ? query : ""}
               isHit={absolute === currentHit}
               editNow={editAsk?.id === m.id ? editAsk.nonce : undefined}
-              nameOf={(id) => (id === "user" ? "You" : (state.bots.find((b) => b.id === id)?.name ?? bot.name))}
+              nameOf={(id) => (id === "user" ? t("chatView.you") : (state.bots.find((b) => b.id === id)?.name ?? bot.name))}
               group={
                 group
                   ? {
@@ -913,7 +913,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             size="icon"
             onClick={() => setTerminalOpen((open) => !open)}
             className={cn(terminalOpen && "bg-accent text-foreground")}
-            title={`Terminal in ${bot.name}'s folder  ${keysFor("terminalToggle", platformOf())[0]}`}
+            title={`${t("chatView.terminalIn", { name: bot.name })}  ${keysFor("terminalToggle", platformOf())[0]}`}
             aria-label={t("chatView.terminal")}
             aria-pressed={terminalOpen}
           >
@@ -925,7 +925,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               size="icon"
               onClick={() => setBrowserPanel({ open: !browserPanel.open })}
               className={cn("relative", browserPanel.open && "bg-accent text-foreground")}
-              title={someoneBrowsing && browserState?.control.by === "agent" ? `Browser: ${browserState.control.name} is browsing` : t("chatView.browser")}
+              title={someoneBrowsing && browserState?.control.by === "agent" ? t("chatView.browsing", { name: browserState.control.name }) : t("chatView.browser")}
               aria-label={t("chatView.browser")}
               aria-pressed={browserPanel.open}
             >
@@ -963,9 +963,9 @@ export function ChatView({ bot }: { bot: Bot }) {
         onClose={closeLane}
         onClear={(taskId) => {
           void confirm({
-            title: "Clear this conversation?",
-            body: "Its messages are deleted.",
-            confirmLabel: "Clear",
+            title: t("chatView.clearThis"),
+            body: t("chatView.messagesDeleted"),
+            confirmLabel: t("common.clear"),
             destructive: true,
           }).then((yes) => yes && dispatch({ type: "clearTask", botId: bot.id, taskId }));
         }}
@@ -1004,14 +1004,14 @@ export function ChatView({ bot }: { bot: Bot }) {
               ? ""
               : hits.length === 0
                 ? t("chatView.noMatches")
-                : `${Math.min(hitAt, hits.length - 1) + 1} of ${hits.length}`}
+                : t("chatView.matchOf", { at: Math.min(hitAt, hits.length - 1) + 1, total: hits.length })}
           </span>
           <div className="flex shrink-0 items-center gap-0.5">
             <button
               onClick={() => setHitAt((at) => stepHit(at, hits.length, -1))}
               disabled={hits.length === 0}
               aria-label={t("chatView.previousMatch")}
-              title={`Previous match  ${keysFor("findStep", platformOf())[1]}`}
+              title={`${t("chatView.previousMatch")}  ${keysFor("findStep", platformOf())[1]}`}
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
               <ChevronUp size={15} />
@@ -1020,7 +1020,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               onClick={() => setHitAt((at) => stepHit(at, hits.length, 1))}
               disabled={hits.length === 0}
               aria-label={t("chatView.nextMatch")}
-              title={`Next match  ${keysFor("findStep", platformOf())[0]}`}
+              title={`${t("chatView.nextMatch")}  ${keysFor("findStep", platformOf())[0]}`}
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
               <ChevronDown size={15} />
@@ -1028,7 +1028,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             <button
               onClick={closeFind}
               aria-label={t("chatView.closeFind")}
-              title={`Close  ${keysFor("close", platformOf())[0]}`}
+              title={`${t("common.close")}  ${keysFor("close", platformOf())[0]}`}
               className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <X size={15} />
@@ -1061,7 +1061,7 @@ export function ChatView({ bot }: { bot: Bot }) {
               className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-small text-muted-foreground transition-colors duration-150 hover:border-foreground/25 hover:text-foreground disabled:opacity-60"
             >
               {earlier.loading && <Loader2 size={12} className="animate-spin" />}
-              Show earlier messages ({start + earlier.remaining} more)
+              {t("chatView.showEarlier", { count: start + earlier.remaining })}
             </button>
           ) : (
             first && (

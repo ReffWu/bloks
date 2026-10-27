@@ -19,6 +19,10 @@
 // agent, or this tool for every agent, each named for what it lets
 // through. Anything that looks like it can delete or overwrite work gets
 // no shortcut at all: no Enter to allow, no rule from the card.
+//
+// What the card says is said in the reader's language, each line one
+// whole sentence, so the agent's name sits where the translation puts it.
+import { t, type MessageKey, type Params } from "./i18n.ts";
 
 export type ApprovalKind =
   | "command"
@@ -64,7 +68,12 @@ export interface AlwaysScope {
 
 export interface ApprovalView {
   kind: ApprovalKind;
-  /** "wants to run a command", to follow the agent's name. */
+  /** The whole sentence, "{agent} wants to run a command", for the card
+   * to fill with the agent's name where the language puts it. */
+  ask: { key: MessageKey; params: Params };
+  /** "wants to run a command", to follow the agent's name: the sentence
+   * above with the name left out, for a card that still draws the two
+   * apart. English reads the same either way; `ask` is the one to draw. */
   verb: string;
   detail?: ApprovalDetail;
   /** One line for the settled card: the command, the file, the page. */
@@ -115,17 +124,17 @@ function kindOf(tool: string): ApprovalKind {
  * one still has its first few fields intact, and those are usually the
  * ones that matter (file_path comes before the text being written). */
 function readJson(text: string): { fields: Record<string, unknown>; whole: boolean } | null {
-  const t = text.trim();
-  if (!t.startsWith("{")) return null;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return null;
   try {
-    const parsed = JSON.parse(t);
+    const parsed = JSON.parse(trimmed);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return { fields: parsed, whole: true };
   } catch {
     // cut short: take the pairs that closed before the cut
   }
   const fields: Record<string, unknown> = {};
   const pair = /"((?:[^"\\]|\\.)+)"\s*:\s*("(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?|true|false|null)(?=\s*[,}])/g;
-  for (const m of t.matchAll(pair)) {
+  for (const m of trimmed.matchAll(pair)) {
     try {
       fields[JSON.parse(`"${m[1]}"`)] = JSON.parse(m[2]);
     } catch {
@@ -160,44 +169,47 @@ function basename(path: string): string {
 
 /** Shapes of command that can lose work for good. A short list on
  * purpose: a warning on every command would teach people to skip it. */
-const RISKY: Array<[RegExp, string]> = [
-  [/\bsudo\b/, "This one asks for admin rights."],
-  [/\brm\s+(-[a-z]*[rf][a-z]*\b|--recursive|--force)/i, "This one can delete files for good."],
-  [/\bgit\s+push\b[^\n]*(--force\b|--force-with-lease\b|\s-f\b)/, "This one can overwrite history on the remote."],
-  [/\bgit\s+reset\s+--hard\b/, "This one throws away uncommitted work."],
-  [/\bgit\s+clean\s+-[a-z]*f/i, "This one deletes untracked files."],
-  [/\bgit\s+checkout\s+--?\s*\.(\s|$)/, "This one throws away uncommitted work."],
-  [/\b(mkfs|diskutil\s+erase\w*)\b/, "This one can erase a disk."],
-  [/\bdd\s+[^\n]*\bof=/, "This one writes straight to a disk or file."],
-  [/\bdrop\s+(table|database|schema)\b/i, "This one deletes data from a database."],
-  [/\btruncate\s+table\b/i, "This one deletes data from a database."],
-  [/\bchmod\s+-R\b|\bchown\s+-R\b/, "This one changes permissions on everything under a folder."],
+const RISKY: Array<[RegExp, MessageKey]> = [
+  [/\bsudo\b/, "approvalCard.risk.admin"],
+  [/\brm\s+(-[a-z]*[rf][a-z]*\b|--recursive|--force)/i, "approvalCard.risk.deleteForGood"],
+  [/\bgit\s+push\b[^\n]*(--force\b|--force-with-lease\b|\s-f\b)/, "approvalCard.risk.forcePush"],
+  [/\bgit\s+reset\s+--hard\b/, "approvalCard.risk.uncommitted"],
+  [/\bgit\s+clean\s+-[a-z]*f/i, "approvalCard.risk.untracked"],
+  [/\bgit\s+checkout\s+--?\s*\.(\s|$)/, "approvalCard.risk.uncommitted"],
+  [/\b(mkfs|diskutil\s+erase\w*)\b/, "approvalCard.risk.eraseDisk"],
+  [/\bdd\s+[^\n]*\bof=/, "approvalCard.risk.rawWrite"],
+  [/\bdrop\s+(table|database|schema)\b/i, "approvalCard.risk.database"],
+  [/\btruncate\s+table\b/i, "approvalCard.risk.database"],
+  [/\bchmod\s+-R\b|\bchown\s+-R\b/, "approvalCard.risk.permissions"],
   // the Bloks browser's cards for a field the person decides on
   // (server/app-browser.ts): never a yes on Enter
-  [/^Type into a password field on \S+ in the Bloks browser$/, "This one types a password into a website."],
-  [/^Type into a payment field on \S+ in the Bloks browser$/, "This one types card details into a website."],
-  [/^Upload .+ to \S+ in the Bloks browser$/, "This one hands one of your files to a website."],
+  [/^Type into a password field on \S+ in the Bloks browser$/, "approvalCard.risk.password"],
+  [/^Type into a payment field on \S+ in the Bloks browser$/, "approvalCard.risk.payment"],
+  [/^Upload .+ to \S+ in the Bloks browser$/, "approvalCard.risk.upload"],
 ];
 
 export function riskOf(kind: ApprovalKind, text: string | undefined): string | undefined {
-  if (kind === "delete") return "This one deletes files.";
+  if (kind === "delete") return t("approvalCard.risk.delete");
   if (!text || (kind !== "command" && kind !== "other" && kind !== "mcp")) return undefined;
-  for (const [pattern, why] of RISKY) if (pattern.test(text)) return why;
+  for (const [pattern, why] of RISKY) if (pattern.test(text)) return t(why);
   return undefined;
 }
 
-/** Names for what a tool rule lets through, by kind. */
-const NOUN: Record<ApprovalKind, { any: string; doing: string } | null> = {
-  command: { any: "Any command", doing: "running commands" },
-  edit: { any: "Any file edit", doing: "editing files" },
-  write: { any: "Any file write", doing: "writing files" },
-  read: { any: "Any file read", doing: "reading files" },
+/** What a tool rule lets through, by kind: each scope's label and note
+ * is its own sentence under `approvalCard.scope.<noun>`, and a kind with
+ * none is named by its tool ("Any create_issue call"). */
+type Noun = "command" | "edit" | "write" | "read" | "move" | "fetch" | "search" | "webSearch" | "agent";
+const NOUN: Record<ApprovalKind, Noun | null> = {
+  command: "command",
+  edit: "edit",
+  write: "write",
+  read: "read",
   delete: null,
-  move: { any: "Any file move", doing: "moving files" },
-  fetch: { any: "Any page", doing: "opening pages" },
-  search: { any: "Any search", doing: "searching files" },
-  "web-search": { any: "Any web search", doing: "searching the web" },
-  agent: { any: "Any helper agent", doing: "starting helper agents" },
+  move: "move",
+  fetch: "fetch",
+  search: "search",
+  "web-search": "webSearch",
+  agent: "agent",
   mcp: null,
   other: null,
 };
@@ -288,35 +300,38 @@ export function readApproval(card: CardLike, agent: { id: string; name: string }
   if (kind === "mcp" && detail?.kind === "fields") detail = { ...detail, name: mcpTool };
 
   const files = Array.isArray(args.edits) ? args.edits.length : 0;
-  const verb = (() => {
+  const ask = ((): ApprovalView["ask"] => {
+    const name = { agent: agent.name };
     switch (kind) {
       case "command":
-        return "wants to run a command";
+        return { key: "approvalCard.ask.command", params: name };
       case "edit":
-        return path || detail?.kind === "path" ? (files > 1 ? `wants to make ${files} edits to a file` : "wants to edit a file") : "wants to make an edit";
+        if (!(path || detail?.kind === "path")) return { key: "approvalCard.ask.anEdit", params: name };
+        return files > 1 ? { key: "approvalCard.ask.edits", params: { ...name, count: files } } : { key: "approvalCard.ask.edit", params: name };
       case "write":
-        return "wants to write a file";
+        return { key: "approvalCard.ask.write", params: name };
       case "read":
-        return "wants to read a file";
+        return { key: "approvalCard.ask.read", params: name };
       case "delete":
-        return "wants to delete a file";
+        return { key: "approvalCard.ask.delete", params: name };
       case "move":
-        return "wants to move a file";
+        return { key: "approvalCard.ask.move", params: name };
       case "fetch":
-        return "wants to open a page";
+        return { key: "approvalCard.ask.fetch", params: name };
       case "web-search":
-        return "wants to search the web";
+        return { key: "approvalCard.ask.webSearch", params: name };
       case "search":
-        return "wants to search your files";
+        return { key: "approvalCard.ask.search", params: name };
       case "agent":
-        return "wants to start a helper agent";
+        return { key: "approvalCard.ask.agent", params: name };
       case "mcp":
-        return server ? `wants to use ${server}` : "wants to use a connected app";
+        return server ? { key: "approvalCard.ask.useApp", params: { ...name, app: server } } : { key: "approvalCard.ask.connectedApp", params: name };
       default:
-        if (!tool) return "needs your approval";
-        return `wants to use ${tool}`;
+        if (!tool) return { key: "approvalCard.ask.approval", params: name };
+        return { key: "approvalCard.ask.useTool", params: { ...name, tool } };
     }
   })();
+  const verb = t(ask.key, { ...ask.params, agent: "" }).trim();
 
   const short = (() => {
     switch (detail?.kind) {
@@ -352,30 +367,29 @@ export function readApproval(card: CardLike, agent: { id: string; name: string }
     if (tool === "Bash" && detail?.kind === "command" && !cut && !json && detail.text.length < 200) {
       scopes.push({
         id: "command",
-        label: "This exact command",
-        note: `${agent.name} runs it again without asking. Nothing else changes.`,
+        label: t("approvalCard.scope.exactCommand"),
+        note: t("approvalCard.scope.exactCommandNote", { agent: agent.name }),
         rule: { effect: "allow", field: "command", op: "equals", value: detail.text, botId: agent.id },
       });
     }
     const noun = NOUN[kind];
-    const any = noun?.any ?? `Any ${mcpTool ?? tool} call`;
-    const doing = noun?.doing ?? `using ${mcpTool ?? tool}`;
+    const said = { agent: agent.name, tool: mcpTool ?? tool };
     scopes.push({
       id: "agent",
-      label: `${any}, for ${agent.name}`,
-      note: `${agent.name} stops asking before ${doing}.`,
+      label: noun ? t(`approvalCard.scope.${noun}.agent`, said) : t("approvalCard.scope.tool.agent", said),
+      note: noun ? t(`approvalCard.scope.${noun}.agentNote`, said) : t("approvalCard.scope.tool.agentNote", said),
       rule: { effect: "allow", field: "tool", op: "equals", value: tool, botId: agent.id },
     });
     scopes.push({
       id: "everyone",
-      label: `${any}, for every agent`,
-      note: `No agent asks before ${doing}.`,
+      label: noun ? t(`approvalCard.scope.${noun}.everyone`) : t("approvalCard.scope.tool.everyone", said),
+      note: noun ? t(`approvalCard.scope.${noun}.everyoneNote`) : t("approvalCard.scope.tool.everyoneNote", said),
       rule: { effect: "allow", field: "tool", op: "equals", value: tool },
       wide: true,
     });
   }
 
-  return { kind, verb, detail, short, cut, askedBy, risk, scopes };
+  return { kind, ask, verb, detail, short, cut, askedBy, risk, scopes };
 }
 
 /** How an answer to an approval reads once it has settled. The engines'

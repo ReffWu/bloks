@@ -121,7 +121,7 @@ export function WorkingClock({
   threadKey,
   working,
   messages,
-  label = "Working",
+  label = t("live.working"),
 }: {
   threadKey: string;
   working: boolean;
@@ -232,10 +232,10 @@ export function WorkingLine({
   })();
   const call = runningCall(messages.slice(start));
   const step = provisioning
-    ? "Setting up its computer"
+    ? t("live.settingUp")
     : streaming
-      ? "Writing"
-      : ((call?.tool && stepWords(call.tool)) ?? "Working");
+      ? t("live.writing")
+      : ((call?.tool && stepWords(call.tool)) ?? t("live.working"));
   const fast = working && showsSpeedStatus(speed) ? speed : undefined;
   const opens = Boolean(onOpenTrace && working && !provisioning);
   const Opener = opens ? "button" : "span";
@@ -273,7 +273,7 @@ export function WorkingLine({
               how the turn has gone so far: its timeline, beside the chat. */}
           <Opener
             {...(opens
-              ? { type: "button" as const, onClick: onOpenTrace, title: "See this turn's timeline", "aria-label": "See this turn's timeline" }
+              ? { type: "button" as const, onClick: onOpenTrace, title: t("live.seeTimeline"), "aria-label": t("live.seeTimeline") }
               : {})}
             className={cn(
               "group/step flex min-w-0 items-center gap-2 rounded-md text-left",
@@ -365,7 +365,7 @@ export function LiveBrowser({ botId, frame }: { botId: string; frame: { png: str
       <div className="max-w-[82%] overflow-hidden rounded-xl border sm:max-w-[68%]">
         <div className="flex items-center gap-1.5 border-b px-2.5 py-1.5 text-small text-muted-foreground">
           <span className={cn("size-1.5 rounded-full bg-success", inView && "motion-safe:animate-pulse")} />
-          Live browser. Click or type to help.
+          {t("live.browserHelp")}
         </div>
         <img
           src={`data:${safeMime};base64,${frame.png}`}

@@ -25,7 +25,6 @@ import { useRef, useState } from "react";
 import { Plus } from "@/components/icons";
 import { X } from "@/components/icons";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import { contextTitle, measuredContext, type LaneContext } from "@/lib/contextCard";
 import { rovingTo } from "@/lib/conversationKeys";
 import { t } from "@/lib/i18n";
@@ -207,7 +206,7 @@ export function TaskStrip({
         const parted = !active && index !== activeIndex - 1 && index !== tasks.length - 1;
         const total = (task.usage?.input ?? 0) + (task.usage?.output ?? 0);
         const usage = formatTokens(total)
-          ? ` · ${task.usage!.input.toLocaleString()} in, ${task.usage!.output.toLocaleString()} out, ${plural(task.usage!.turns, "reply", "replies")}`
+          ? ` · ${t("taskStrip.usage", { input: task.usage!.input, output: task.usage!.output, count: task.usage!.turns })}`
           : "";
         if (renaming === task.id) {
           return (
@@ -243,7 +242,7 @@ export function TaskStrip({
               tabs[to].focus();
             }}
             onDoubleClick={onRename ? () => setRenaming(task.id) : undefined}
-            title={`${task.title}${onRename ? ". Double-click to rename" : ""}${usage}`}
+            title={`${onRename ? t("taskStrip.titleRename", { title: task.title }) : task.title}${usage}`}
             className={cn(
               "group/tab relative flex h-full min-w-[96px] max-w-[220px] flex-1 basis-[200px] cursor-default items-center gap-2 rounded-t-[10px] pl-3 pr-1.5 text-body outline-none transition-colors duration-150",
               active
@@ -266,7 +265,7 @@ export function TaskStrip({
             <button
               tabIndex={-1}
               disabled={task.state === "working"}
-              aria-label={isGeneral ? `Clear ${task.title}` : `Close ${task.title}`}
+              aria-label={isGeneral ? t("taskStrip.clearNamed", { title: task.title }) : t("taskStrip.closeNamed", { title: task.title })}
               title={
                 task.state === "working"
                   ? t("taskStrip.stopItBeforeClosing")
@@ -305,9 +304,9 @@ export function TaskStrip({
 
       <span className="mb-2 ml-auto shrink-0 self-center pl-3 text-caption text-muted-foreground/80">
         {needsYou > 0
-          ? `${needsYou} waiting on you`
+          ? t("taskStrip.waitingOnYou", { count: needsYou })
           : running > 0
-            ? `${running} running`
+            ? t("taskStrip.running", { count: running })
             : null}
       </span>
     </div>

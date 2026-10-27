@@ -43,7 +43,7 @@ export function RecalledNotes({ notes }: { notes: RecalledNote[] }) {
         className="flex items-center gap-1 rounded-full px-2 py-0.5 text-small text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
       >
         <BookOpen size={12} />
-        Recalled {notes.length === 1 ? t("recalledNotes.n1Note") : `${notes.length} notes`}
+        {t("recalledNotes.recalled", { count: notes.length })}
         <ChevronDown size={12} className={cn("transition-transform duration-200", open && "rotate-180")} />
       </button>
       {open && (

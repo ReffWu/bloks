@@ -48,7 +48,29 @@ export function richText(text: string): boolean {
 /** The line over a goal turn: from Bloks, and which turn of how many. */
 export function goalLabel(text: string): string {
   const { turn } = goalNoteForPerson(text);
-  return turn ? `From Bloks, toward your goal · step ${turn.of} of ${turn.budget}` : "From Bloks, toward your goal";
+  return turn ? t("bubble.goalStep", { step: turn.of, budget: turn.budget }) : t("bubble.goal");
+}
+
+/** The line over a message that came from somewhere other than the
+ * person typing it: a routine, a watcher, an intent, a webhook, a goal,
+ * a failure, or email. */
+function viaLabel(message: Message): string {
+  switch (message.via) {
+    case "routine":
+      return message.routine?.name ? t("bubble.fromRoutineNamed", { name: message.routine.name }) : t("bubble.fromRoutine");
+    case "watcher":
+      return t("bubble.fromYourWatcher");
+    case "intent":
+      return message.intent?.name ? t("bubble.fromIntentNamed", { name: message.intent.name }) : t("bubble.fromIntent");
+    case "webhook":
+      return t("bubble.fromAWebhook");
+    case "goal":
+      return goalLabel(message.text ?? "");
+    case "incident":
+      return t("bubble.fromBloksAboutSomethingThat");
+    default:
+      return t("bubble.byEmail");
+  }
 }
 
 /**
@@ -126,7 +148,7 @@ export function Rewound({ messages }: { messages: Message[] }) {
         {/* what was said, not the cards and notes around it */}
         {(() => {
           const n = words.length || messages.length;
-          return n === 1 ? "1 message rewound" : `${n} messages rewound`;
+          return t("bubble.rewound", { count: n });
         })()}
         {words.length > 0 && <ChevronDown size={12} className={cn("transition-transform duration-200", open && "rotate-180")} />}
       </button>
@@ -461,7 +483,7 @@ export function Bubble({
                     <span>{redoing ? t("bubble.redoing") : t("bubble.enterRedoesEscapeCancels")}</span>
                   </div>
                   <div className="text-small leading-snug text-muted-foreground" role="status">
-                    {redoError ?? redoLine(offer, agentName ?? "the agent")}
+                    {redoError ?? redoLine(offer, agentName ?? t("bubble.theAgent"))}
                   </div>
                 </>
               ) : (
@@ -510,7 +532,7 @@ export function Bubble({
           <>
             {fromSomewhere && (
               <div className="mb-0.5 text-caption opacity-80">
-                {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? t("bubble.fromYourWatcher") : message.via === "intent" ? `From your standing intent${message.intent?.name ? ` ${message.intent.name}` : ""}` : message.via === "webhook" ? t("bubble.fromAWebhook") : message.via === "goal" ? goalLabel(message.text ?? "") : message.via === "incident" ? t("bubble.fromBloksAboutSomethingThat") : t("bubble.byEmail")}
+                {viaLabel(message)}
               </div>
             )}
             {message.replyTo && <ReplyContext replyTo={message.replyTo} onAccent={group.mine && editing === null && message.via !== "goal" && message.via !== "incident"} />}
@@ -571,7 +593,7 @@ export function Bubble({
       <div className={cn("flex max-w-[82%] flex-col items-end sm:max-w-[68%]", editing !== null && "w-full")}>
         {(message.via === "watcher" || message.via === "email" || message.via === "webhook" || message.via === "routine" || message.via === "goal" || message.via === "intent" || message.via === "incident") && (
           <div className="mb-1 px-1 text-caption text-muted-foreground">
-            {message.via === "routine" ? `From your routine${message.routine?.name ? ` ${message.routine.name}` : ""}` : message.via === "watcher" ? t("bubble.fromYourWatcher") : message.via === "intent" ? `From your standing intent${message.intent?.name ? ` ${message.intent.name}` : ""}` : message.via === "webhook" ? t("bubble.fromAWebhook") : message.via === "goal" ? goalLabel(message.text ?? "") : message.via === "incident" ? t("bubble.fromBloksAboutSomethingThat") : t("bubble.byEmail")}
+            {viaLabel(message)}
           </div>
         )}
         <div
@@ -654,7 +676,9 @@ export function IntentNote({ message, fresh }: { message: Message; fresh?: boole
       <div className="flex max-w-[560px] gap-2.5 rounded-2xl border bg-card px-3.5 py-2.5">
         <Zap size={15} className="mt-0.5 shrink-0 text-brand-ink" aria-hidden />
         <div className="min-w-0">
-          <div className="text-caption text-muted-foreground">Standing intent{message.intent?.name ? ` · ${message.intent.name}` : ""}</div>
+          <div className="text-caption text-muted-foreground">
+            {message.intent?.name ? t("bubble.intentNamed", { name: message.intent.name }) : t("bubble.intent")}
+          </div>
           <div className="whitespace-pre-wrap text-ui leading-relaxed text-foreground">{message.text}</div>
         </div>
       </div>

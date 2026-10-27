@@ -14,6 +14,7 @@ import { cn } from "@/lib/cn";
 import { dismissUnsent, heldToShow, isHostedWindow, useHeldSends, useUnsentReason, useWake, type HeldSend } from "@/lib/waking";
 import type { Message } from "@/state/store";
 import { GroupMessage } from "./Group";
+import { t } from "@/lib/i18n";
 
 /** The composer's word on a send that waited for your hosted workspace and
  * came back because it never woke: the reason, beside the words it handed
@@ -51,7 +52,7 @@ export function HeldSends({
   const held = useHeldSends(conversation);
   const shown = heldToShow(held, { waking: wake.waking, hosted: isHostedWindow() }, said, queued);
   if (!shown.length) return null;
-  const why = wake.waking ? "Sends when your hosted workspace is awake" : "Sending";
+  const why = wake.waking ? t("heldSends.whenAwake") : t("heldSends.sending");
   return (
     <>
       {shown.map((send, i) =>

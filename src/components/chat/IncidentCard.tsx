@@ -57,7 +57,7 @@ export function IncidentNotice({ message, fresh }: { message: Message; fresh?: b
     setBusy(what);
     api(`/api/incidents/${mark.id}/${what}`, { method: "POST" })
       .then((r: { note?: string }) => {
-        if (what === "retry") toast(r.note ?? "Trying it again");
+        if (what === "retry") toast(r.note ?? t("incidentCard.tryingItAgain"));
       })
       .catch((e: Error) => toast.error(e.message))
       .finally(() => setBusy(null));
@@ -133,9 +133,9 @@ export function FailingNotice({ message, fresh }: { message: Message; fresh?: bo
   };
   const remove = async () => {
     const yes = await confirm({
-      title: `Remove ${what.name}?`,
-      body: `The ${what.kind} and its history go. The conversation keeps what it said.`,
-      confirmLabel: "Remove",
+      title: t("incidentCard.removeTitle", { name: what.name }),
+      body: what.kind === "routine" ? t("incidentCard.removeRoutineBody") : t("incidentCard.removeWatcherBody"),
+      confirmLabel: t("common.remove"),
       destructive: true,
     });
     if (!yes) return;

@@ -23,7 +23,7 @@ import { AgentAvatar } from "./Avatar";
 import { Markdownish } from "./Markdown";
 import { queuedLine, stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { t, tr, type MessageKey } from "@/lib/i18n";
 
 interface ExchangeEntry {
   id: string;
@@ -39,7 +39,11 @@ interface ExchangeEntry {
   text: string;
 }
 
-const STATUS_WORDS: Record<string, string> = { queued: "waiting", failed: "not delivered", uncertain: "may not have arrived" };
+const STATUS_WORDS: Record<string, MessageKey> = {
+  queued: "agentExchange.waiting",
+  failed: "agentExchange.notDelivered",
+  uncertain: "agentExchange.mayNotHaveArrived",
+};
 
 /** One compact row in an agent's chat for a message to or from another agent. */
 export function AgentExchangeRow({
@@ -58,7 +62,11 @@ export function AgentExchangeRow({
   const incoming = !message.takeBack && message.agent?.dir === "in";
   const peer = state.bots.find((b) => b.id === note.peerId);
   const name = peer?.name ?? note.peerName;
-  const label = message.takeBack ? `Took back messages to ${name}` : incoming ? `Message from ${name}` : `Messaged ${name}`;
+  const label = message.takeBack
+    ? t("agentExchange.tookBackTo", { name })
+    : incoming
+      ? t("agentExchange.messageFrom", { name })
+      : t("agentExchange.messaged", { name });
   const Icon = incoming ? ArrowDownLeft : ArrowUpRight;
   const status = message.takeBack ? undefined : message.agent?.status;
   const failed = status === "failed";
@@ -74,7 +82,7 @@ export function AgentExchangeRow({
         {peer && <AgentAvatar bot={peer} size={16} className="shrink-0" />}
         <span className="shrink-0 font-medium text-foreground/90">{label}</span>
         {status && STATUS_WORDS[status] && (
-          <span className={cn("shrink-0", failed && "text-destructive")}>({STATUS_WORDS[status]})</span>
+          <span className={cn("shrink-0", failed && "text-destructive")}>({t(STATUS_WORDS[status])})</span>
         )}
         {preview && <span className="min-w-0 truncate">{preview}</span>}
         {/* still one line: how long it waited is a hover away */}
@@ -105,7 +113,7 @@ export function AfterAgentLink({ peerId, peerName, onOpen }: { peerId: string; p
         className="flex items-center gap-1 rounded-md px-1 text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         <CornerDownRight size={11} className="shrink-0" />
-        After a message from {name}
+        {t("agentExchange.afterMessageFrom", { name })}
       </button>
     </div>
   );
@@ -138,7 +146,7 @@ export function AgentExchangeDialog({
     let alive = true;
     api(`/api/bots/${botId}/exchange/${peerId}`)
       .then((r) => alive && setEntries(r.messages ?? []))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : "Couldn't load these messages."));
+      .catch((e) => alive && setError(e instanceof Error ? e.message : t("agentExchange.couldntLoad")));
     return () => {
       alive = false;
     };
@@ -160,7 +168,7 @@ export function AgentExchangeDialog({
           {me && <AgentAvatar bot={me} size={20} />}
           {peer && <AgentAvatar bot={peer} size={20} className="-ml-2 ring-2 ring-background" />}
           <DialogTitle className="min-w-0 flex-1 truncate text-ui">
-            {me?.name ?? t("agentExchange.thisAgent")} and {peer?.name ?? t("agentExchange.theOtherAgent")}
+            {t("agentExchange.between", { me: me?.name ?? t("agentExchange.thisAgent"), peer: peer?.name ?? t("agentExchange.theOtherAgent") })}
           </DialogTitle>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -182,16 +190,24 @@ export function AgentExchangeDialog({
                 >
                   <div className="mb-1 flex items-center gap-2 text-small text-muted-foreground">
                     {who && <AgentAvatar bot={who} size={16} />}
-                    <span className="font-medium text-foreground">{entry.fromName}</span>
-                    {/* context, not a message: it stayed in the speaker's own chat */}
-                    <span>{entry.dir === "take-back" ? `took back waiting messages to ${entry.toName}` : entry.dir === "reply" ? `in its own chat, not sent to ${entry.toName}` : `to ${entry.toName}`}</span>
+                    {/* the speaker's name and what they did are one sentence, each
+                        part its own flex item as before; a reply is context, not
+                        a message: it stayed in the speaker's own chat */}
+                    {tr(
+                      entry.dir === "take-back"
+                        ? "agentExchange.entry.tookBack"
+                        : entry.dir === "reply"
+                          ? "agentExchange.entry.ownChat"
+                          : "agentExchange.entry.to",
+                      { from: <span className="font-medium text-foreground">{entry.fromName}</span>, to: entry.toName },
+                    )}
                     {entry.status === "failed" && <span className="text-destructive">{t("agentExchange.notDelivered")}</span>}
                     {entry.status === "uncertain" && <span>{t("agentExchange.mayNotHaveArrived")}</span>}
                     <span className="ml-auto shrink-0 tabular-nums">{stamp(entry.at)}</span>
                   </div>
                   {newLane && (
                     <div className="mb-1 text-caption text-muted-foreground/80">
-                      in {owner}'s {entry.laneTitle}
+                      {t("agentExchange.inLane", { owner, lane: entry.laneTitle })}
                     </div>
                   )}
                   <div className="text-ui leading-relaxed text-foreground">

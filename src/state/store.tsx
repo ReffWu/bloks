@@ -58,6 +58,7 @@ import { toast } from "@/components/ui/toast";
 import { openJoinDialog, workspaceFrame } from "@/lib/members";
 import { loadPlan } from "@/lib/planClient";
 import { hasOwnBrowser, noteBrowserState } from "@/lib/appBrowser";
+import { formatDate, t } from "../lib/i18n.ts";
 
 export * from "./reducer";
 
@@ -1141,7 +1142,7 @@ export function useStore() {
 }
 
 export function formatTime(at: number) {
-  return new Date(at).toLocaleTimeString([], {
+  return formatDate(at, {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -1157,7 +1158,7 @@ export function formatWhen(at: number) {
   const now = new Date();
   const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   if (at >= midnight) return formatTime(at);
-  if (at >= midnight - 86_400_000) return "Yesterday";
-  if (at >= midnight - 6 * 86_400_000) return then.toLocaleDateString([], { weekday: "short" });
-  return then.toLocaleDateString([], { month: "short", day: "numeric" });
+  if (at >= midnight - 86_400_000) return t("store.yesterday");
+  if (at >= midnight - 6 * 86_400_000) return formatDate(then, { weekday: "short" });
+  return formatDate(then, { month: "short", day: "numeric" });
 }

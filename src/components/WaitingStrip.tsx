@@ -48,9 +48,9 @@ function takeBack(threadId: string, messageId: string) {
   // No undo exists for this, so the question is asked once, as the
   // bubble's own Delete asks it.
   void confirm({
-    title: "Take this message back?",
-    body: "This can't be undone.",
-    confirmLabel: "Take back",
+    title: t("waitingStrip.takeBackTitle"),
+    body: t("waitingStrip.cantUndo"),
+    confirmLabel: t("waitingStrip.takeBack"),
     destructive: true,
   }).then((yes) => {
     if (yes) void api(`/api/threads/${threadId}/messages/${messageId}`, { method: "DELETE" }).catch(() => {});
@@ -134,21 +134,25 @@ function WaitingRow({
   );
 
   const queuedAt = message.queuedAt ?? message.at;
+  const time = stamp(queuedAt);
   const status = message.unsent
-    ? "Not sent. Bloks restarted before it could go."
+    ? t("waitingStrip.status.unsent")
     : editing !== null
-      ? "Queued, waits until you save or cancel"
+      ? t("waitingStrip.status.editing")
       : message.waitsFor === "restart"
-        ? `Queued at ${stamp(queuedAt)}, sends after Bloks restarts`
+        ? t("waitingStrip.status.restart", { time })
         : message.waitsFor === "pause"
-          ? `Queued at ${stamp(queuedAt)}, sends when the pause ends${message.waitsUntil ? ` at ${stamp(message.waitsUntil)}` : ""}`
+          ? message.waitsUntil
+            ? t("waitingStrip.status.pauseUntil", { time, until: stamp(message.waitsUntil) })
+            : t("waitingStrip.status.pause", { time })
         : working
           ? message.delivery?.route === "queued"
             ? // why it waits, when that was decided: read as work for
-              // after this turn, chosen, or the agent's setting
-              `${message.delivery.line}, queued at ${stamp(queuedAt)}`
-            : `Queued at ${stamp(queuedAt)}, sends when this reply finishes`
-          : `Queued at ${stamp(queuedAt)}`;
+              // after this turn, chosen, or the agent's setting (the
+              // server's words)
+              t("waitingStrip.status.why", { why: message.delivery.line, time })
+            : t("waitingStrip.status.afterReply", { time })
+          : t("waitingStrip.status.queued", { time });
 
   return (
     <div
@@ -159,7 +163,7 @@ function WaitingRow({
       data-waiting={message.id}
     >
       <div className="min-w-0 flex-1 py-0.5">
-        {sender && <div className="text-small font-medium text-muted-foreground">From {sender}</div>}
+        {sender && <div className="text-small font-medium text-muted-foreground">{t("waitingStrip.from", { sender })}</div>}
         {editing !== null ? (
           <div className="flex flex-col gap-1.5">
             <textarea
@@ -255,27 +259,32 @@ function WaitingRow({
   );
 }
 
-/** Who queued a message in an agent's conversation, or null for you. */
+/** Who queued a message in an agent's conversation, or null for you:
+ * a name, or what stands for one, read after "From". */
 export function waitingSender(m: Message): string | null {
   const sender = m.telegramPerson ?? m.telegramGroup;
-  if (sender) return sender.name + (sender.group ? " in " + sender.group.title : "") + " (Telegram)";
-  if (m.telegramDelegate) return `${m.telegramDelegate.name} (Telegram)`;
+  if (sender) {
+    return sender.group
+      ? t("waitingStrip.sender.telegramIn", { name: sender.name, group: sender.group.title })
+      : t("waitingStrip.sender.telegram", { name: sender.name });
+  }
+  if (m.telegramDelegate) return t("waitingStrip.sender.telegram", { name: m.telegramDelegate.name });
   if (m.agent?.dir === "in") return m.agent.peerName;
   switch (m.via) {
     case "watcher":
-      return "your watcher";
+      return t("waitingStrip.sender.watcher");
     case "intent":
-      return `your standing intent${m.intent?.name ? ` ${m.intent.name}` : ""}`;
+      return m.intent?.name ? t("waitingStrip.sender.intentNamed", { name: m.intent.name }) : t("waitingStrip.sender.intent");
     case "webhook":
-      return "a webhook";
+      return t("waitingStrip.sender.webhook");
     case "email":
-      return "email";
+      return t("waitingStrip.sender.email");
     case "goal":
-      return "your goal";
+      return t("waitingStrip.sender.goal");
     case "incident":
-      return "Bloks, about something that failed";
+      return t("waitingStrip.sender.incident");
     case "routine":
-      return `your routine${m.routine?.name ? ` ${m.routine.name}` : ""}`;
+      return m.routine?.name ? t("waitingStrip.sender.routineNamed", { name: m.routine.name }) : t("waitingStrip.sender.routine");
     default:
       return null;
   }
@@ -327,8 +336,8 @@ export function useQueuedNotice({
     icon: <Hourglass size={14} />,
     title:
       unsent === messages.length
-        ? `${unsent === 1 ? "A message" : `${unsent} messages`} didn't send.`
-        : `${messages.length === 1 ? "A message is" : `${messages.length} messages are`} waiting to send.`,
+        ? t("waitingStrip.didntSend", { count: unsent })
+        : t("waitingStrip.waiting", { count: messages.length }),
     actions: mineQueued && working && onSendNow && <TrayButton onClick={onSendNow}>{t("waitingStrip.sendNow")}</TrayButton>,
     keepOpen: asked || editing.size > 0,
     body: (

@@ -24,6 +24,7 @@
 //   trust.
 import type { Message } from "@/state/reducer";
 import { toolLabel } from "./tool-summary.ts";
+import { t } from "./i18n.ts";
 
 export interface Thread {
   /** The message the conversation hangs off. */
@@ -125,7 +126,7 @@ export function replyCounts(messages: Message[]): Map<string, number> {
 /** "3 replies", and nothing at all for none. */
 export function replyLabel(count: number): string | null {
   if (count <= 0) return null;
-  return count === 1 ? "1 reply" : `${count} replies`;
+  return t("threads.replies", { count });
 }
 
 /** A line of a message short enough to stand in for it in a list. */
@@ -134,16 +135,18 @@ export function preview(message: Message, max = 140): string {
   if (text) return text.length > max ? `${text.slice(0, max - 1)}…` : text;
   switch (message.kind) {
     case "artifact":
-      return message.artifact?.name ?? "a file";
+      return message.artifact?.name ?? t("threads.aFile");
     case "options":
-      return message.card?.title ?? "a question";
+      return message.card?.title ?? t("threads.aQuestion");
     case "activity":
-      return message.tool ? toolLabel(message.tool) : "did something";
+      return message.tool ? toolLabel(message.tool) : t("threads.didSomething");
     case "screen":
-      return "a screenshot";
+      return t("threads.aScreenshot");
     case "changes":
-      if (!message.changes) return "changed files";
-      return `${message.changes.rehearsal && message.changes.rehearsal.state !== "applied" ? "would change" : "changed"} ${message.changes.total} file${message.changes.total === 1 ? "" : "s"}`;
+      if (!message.changes) return t("threads.changedFiles");
+      return message.changes.rehearsal && message.changes.rehearsal.state !== "applied"
+        ? t("threads.wouldChange", { count: message.changes.total })
+        : t("threads.changed", { count: message.changes.total });
     default:
       return "…";
   }

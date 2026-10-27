@@ -39,7 +39,7 @@ export function JumpToLatest({
             <button
               type="button"
               onClick={onJump}
-              aria-label={fresh > 0 ? `${fresh} new, jump to latest` : t("jumpToLatest.jumpToLatest")}
+              aria-label={fresh > 0 ? t("jumpToLatest.newJump", { count: fresh }) : t("jumpToLatest.jumpToLatest")}
               title={t("jumpToLatest.jumpToLatest")}
               className={cn(
                 "flex h-8 items-center gap-1.5 rounded-full border text-small font-medium transition-[background-color,scale] duration-150 ease-out active:scale-[0.96]",
@@ -53,7 +53,7 @@ export function JumpToLatest({
               <ArrowDown size={14} strokeWidth={2.25} className="shrink-0" />
               {fresh > 0 && (
                 <span aria-live="polite" className="tabular-nums">
-                  {fresh > 99 ? "99+" : fresh} new
+                  {t("jumpToLatest.new", { count: fresh > 99 ? "99+" : fresh })}
                 </span>
               )}
             </button>

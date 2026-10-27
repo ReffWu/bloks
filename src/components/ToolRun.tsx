@@ -133,7 +133,7 @@ function Repeated({ count }: { count: number }) {
       title={t("toolRun.sameCallSameInputsAgain")}
     >
       <Repeat size={11} aria-hidden />
-      Repeated {count} times
+      {t("toolRun.repeated", { count })}
     </span>
   );
 }

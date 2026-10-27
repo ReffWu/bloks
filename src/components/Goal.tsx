@@ -19,13 +19,14 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider, numberStops } from "@/components/ui/slider";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
 
 function goalPath(botId: string, taskId: string) {
   return `/api/bots/${botId}/tasks/${taskId}/goal`;
 }
 
-const GOAL_STEPS = numberStops(1, MAX_GOAL_TURNS, (n) => `${n} ${n === 1 ? "step" : "steps"}`);
+// made where it draws, so the stops speak the language chosen now
+const goalSteps = () => numberStops(1, MAX_GOAL_TURNS, (n) => t("goal.steps", { count: n }));
 
 /** The goal's line in the composer's tray, until the open conversation's
  * goal is done. A blocked or spent goal moves up the tray, since the next
@@ -70,14 +71,14 @@ export function useGoalNotice(bot: Bot): Notice | null {
       </span>
     ),
     detail: error ? <span className="text-destructive">{error}</span> : <span className="tabular-nums">{goalState(goal)}</span>,
-    hint: [goal.text, goal.check && `Done when \`${goal.check}\` passes`, goal.lastReason].filter(Boolean).join("\n"),
+    hint: [goal.text, goal.check && t("goal.doneWhen", { check: goal.check }), goal.lastReason].filter(Boolean).join("\n"),
     actions: action && (
       <TrayButton disabled={busy} onClick={() => change({ method: "PATCH", body: JSON.stringify(action.body) })}>
         {action.label}
       </TrayButton>
     ),
     onDismiss: busy ? undefined : () => change({ method: "DELETE" }),
-    dismissLabel: "Clear goal",
+    dismissLabel: t("goal.clear"),
   };
 }
 
@@ -129,8 +130,8 @@ export function GoalDialog() {
       <DialogContent className="w-[calc(100vw-32px)] max-w-[460px]">
         <DialogTitle>{t("goal.setAGoal")}</DialogTitle>
         <DialogDescription>
-          {bot.name} keeps going until it's done, needs you, or runs out of steps.
-          {going && t("goal.thisReplacesTheCurrentGoal")}
+          {t("goal.keepsGoing", { name: bot.name })}
+          {going && ` ${t("goal.replacesCurrent")}`}
         </DialogDescription>
         <form
           className="mt-4 flex flex-col gap-3.5"
@@ -158,7 +159,7 @@ export function GoalDialog() {
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-body font-medium text-foreground">
-              Check <span className="font-normal text-muted-foreground">{t("goal.optional")}</span>
+              {tr("goal.check", { optional: <span className="font-normal text-muted-foreground">{t("goal.optional")}</span> })}
             </span>
             <Input
               value={check}
@@ -167,7 +168,7 @@ export function GoalDialog() {
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
-              placeholder={t("goal.pnpmTest")}
+              placeholder="pnpm test"
               className="font-mono text-body"
             />
             <span className="text-small leading-relaxed text-muted-foreground">
@@ -176,7 +177,7 @@ export function GoalDialog() {
           </label>
           <div className="flex flex-col gap-2">
             <span className="text-body font-medium text-foreground">{t("goal.stepLimit")}</span>
-            <Slider aria-label={t("goal.stepLimit")} stops={GOAL_STEPS} value={turns} onChange={setTurns} onCommit={setTurns} />
+            <Slider aria-label={t("goal.stepLimit")} stops={goalSteps()} value={turns} onChange={setTurns} onCommit={setTurns} />
           </div>
           {error && <div className="text-body text-destructive">{error}</div>}
           <div className="mt-1 flex justify-end gap-2">

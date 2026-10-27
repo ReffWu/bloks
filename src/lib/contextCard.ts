@@ -6,7 +6,10 @@
 // be tested without a DOM. The engine's readings and window, and the
 // person's compaction line, come from the server (server/context.ts,
 // server/plan-usage.ts); this only
-// decides how to say it, and when there is nothing honest to say.
+// decides how to say it, and when there is nothing honest to say, in
+// the reader's language: "about" belongs to each sentence whole, since
+// it does not sit in the same place in every language.
+import { formatLocale, t } from "./i18n.ts";
 
 /** How full a lane is, as the server sends it with each lane and with
  * each of Activity's running rows. */
@@ -82,11 +85,9 @@ export function shortTokens(n: number): string {
  * rather than 0%, which would read as empty. */
 export function percent(fraction: number): string {
   if (!Number.isFinite(fraction) || fraction <= 0) return "0%";
-  if (fraction < 0.005) return "under 1%";
+  if (fraction < 0.005) return t("contextCard.underOnePercent");
   return `${Math.round(fraction * 100)}%`;
 }
-
-const SUMMARISED = "Earlier messages were summarised.";
 
 /** Text keeps the real share; the wire and drawn ring are capped at one. */
 export function contextShare(context: Fill): number {
@@ -96,7 +97,7 @@ export function contextShare(context: Fill): number {
 function contextPercent(context: Fill): string {
   const share = contextShare(context);
   // Whole-percent rounding must not hide a crossing just past the line.
-  return share > 1 && Math.round(share * 100) === 100 ? "over 100%" : percent(share);
+  return share > 1 && Math.round(share * 100) === 100 ? t("contextCard.overAllPercent") : percent(share);
 }
 
 function approximateLimit(context: Fill): boolean {
@@ -107,38 +108,56 @@ function approximateLimit(context: Fill): boolean {
  * the earlier part was summarised. "About" when the window is a guess. */
 export function contextCard(context: LaneContext): { share: string; tokens: string; summarised: string | null; compaction: string | null } {
   const about = approximateLimit(context);
+  const percent = contextPercent(context);
+  const used = shortTokens(context.used);
+  const limit = shortTokens(context.limit);
+  // two sentences, each with its own "about": the line can be exact
+  // while the model's window is a guess
+  const compaction = context.modelLimit !== undefined
+    ? [
+        about ? t("contextCard.summarisesAtAbout", { limit }) : t("contextCard.summarisesAt", { limit }),
+        context.window === "table"
+          ? t("contextCard.modelMaxAbout", { max: shortTokens(context.modelLimit) })
+          : t("contextCard.modelMax", { max: shortTokens(context.modelLimit) }),
+      ].join(" ")
+    : null;
   return {
-    share: `${about ? "About " : ""}${contextPercent(context)} full`,
-    tokens: `${shortTokens(context.used)} of ${about ? "about " : ""}${shortTokens(context.limit)} tokens`,
-    summarised: context.summarised ? SUMMARISED : null,
-    compaction: context.modelLimit !== undefined
-      ? `Summarises at ${about ? "about " : ""}${shortTokens(context.limit)}. Model max ${context.window === "table" ? "about " : ""}${shortTokens(context.modelLimit)}.`
-      : null,
+    share: about ? t("contextCard.shareAbout", { percent }) : t("contextCard.share", { percent }),
+    tokens: about ? t("contextCard.tokensAbout", { used, limit }) : t("contextCard.tokens", { used, limit }),
+    summarised: context.summarised ? t("contextCard.summarised") : null,
+    compaction,
   };
 }
 
 /** The ring's name for a screen reader, which cannot see the ring. */
 export function ringLabel(context: LaneContext): string {
-  return `Context ${approximateLimit(context) ? "about " : ""}${contextPercent(context)} full`;
+  const percent = contextPercent(context);
+  return approximateLimit(context) ? t("contextCard.ringAbout", { percent }) : t("contextCard.ring", { percent });
 }
 
 /** What a chip or a sidebar row says on hover. */
 export function contextTitle(context: LaneContext): string {
-  if (!measuredContext(context)) return "Earlier messages summarised";
-  return `Context ${approximateLimit(context) ? "about " : ""}${contextPercent(context)} full` +
-    (context.summarised ? ", earlier messages summarised" : "");
+  if (!measuredContext(context)) return t("contextCard.titleSummarised");
+  const percent = contextPercent(context);
+  const about = approximateLimit(context);
+  if (context.summarised) {
+    return about ? t("contextCard.titleAboutSummarised", { percent }) : t("contextCard.titleFullSummarised", { percent });
+  }
+  return about ? t("contextCard.ringAbout", { percent }) : t("contextCard.ring", { percent });
 }
 
 /** What Activity adds to a running lane's line once it is half full, or
  * null when it is not, or nothing measured it. */
 export function activityContext(context: Fill | null | undefined): string | null {
   if (!context || !measuredContext(context) || contextShare(context) < 0.5) return null;
-  return `context ${approximateLimit(context) ? "about " : ""}${contextPercent(context)} full`;
+  const percent = contextPercent(context);
+  return approximateLimit(context) ? t("contextCard.activityAbout", { percent }) : t("contextCard.activity", { percent });
 }
 
 // ── the plan ───────────────────────────────────────────────────────────
 
-/** Claude Code's weekly windows for one model family. */
+/** Claude Code's weekly windows for one model family, by the family's
+ * name, which stays as it is in every language. */
 const WEEKLY_FOR: Record<string, string> = {
   seven_day_opus: "Opus",
   seven_day_sonnet: "Sonnet",
@@ -146,15 +165,15 @@ const WEEKLY_FOR: Record<string, string> = {
 
 /** A window by its length, which is how both engines describe them. */
 export function planWindowLabel(window: Pick<PlanWindow, "id" | "minutes">): string {
-  if (WEEKLY_FOR[window.id]) return `Weekly limit, ${WEEKLY_FOR[window.id]}`;
-  if (window.id === "seven_day_overage_included") return "Weekly limit, with extra usage";
+  if (WEEKLY_FOR[window.id]) return t("contextCard.weeklyFor", { model: WEEKLY_FOR[window.id] });
+  if (window.id === "seven_day_overage_included") return t("contextCard.weeklyExtra");
   const minutes = window.minutes;
-  if (!minutes || minutes <= 0) return "Limit";
-  if (minutes < 60) return `${minutes}-minute limit`;
-  if (minutes < 24 * 60) return `${Math.round(minutes / 60)}-hour limit`;
-  if (minutes === 24 * 60) return "Daily limit";
-  if (minutes === 7 * 24 * 60) return "Weekly limit";
-  return `${Math.round(minutes / (24 * 60))}-day limit`;
+  if (!minutes || minutes <= 0) return t("contextCard.limit");
+  if (minutes < 60) return t("contextCard.minuteLimit", { count: minutes });
+  if (minutes < 24 * 60) return t("contextCard.hourLimit", { count: Math.round(minutes / 60) });
+  if (minutes === 24 * 60) return t("contextCard.dailyLimit");
+  if (minutes === 7 * 24 * 60) return t("contextCard.weeklyLimit");
+  return t("contextCard.dayLimit", { count: Math.round(minutes / (24 * 60)) });
 }
 
 /**
@@ -171,13 +190,14 @@ export function resetPhrase(
   const left = resetsAt - now;
   if (left <= 0) return null;
   const minutes = Math.ceil(left / 60_000);
-  if (minutes < 60) return `Resets in ${minutes} min`;
+  if (minutes < 60) return t("contextCard.resetsInMinutes", { minutes });
   if (minutes < 24 * 60) {
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
-    return rest ? `Resets in ${hours} h ${rest} min` : `Resets in ${hours} h`;
+    return rest ? t("contextCard.resetsInHoursMinutes", { hours, minutes: rest }) : t("contextCard.resetsInHours", { hours });
   }
-  const when = new Intl.DateTimeFormat(format.locale, {
+  // `locale` is for tests; the app says it the way the chosen language does
+  const when = new Intl.DateTimeFormat(format.locale ?? formatLocale(), {
     weekday: "short",
     ...(left >= 6 * 24 * 60 * 60_000 ? { month: "short", day: "numeric" } : {}),
     hour: "numeric",
@@ -185,7 +205,7 @@ export function resetPhrase(
     ...(format.timeZone ? { timeZone: format.timeZone } : {}),
   }).format(new Date(resetsAt));
   // some ICU versions put a narrow no-break space before AM and PM
-  return `Resets ${when.replace(/[  ]/g, " ")}`;
+  return t("contextCard.resetsAt", { when: when.replace(/[  ]/g, " ") });
 }
 
 export interface PlanRow {
@@ -216,10 +236,10 @@ export function planRows(plan: PlanUsage | null | undefined, now: number, format
       return {
         id: w.id,
         label: planWindowLabel(w),
-        used: `${percent(w.used)} used`,
+        used: t("contextCard.used", { percent: percent(w.used) }),
         fill: Math.max(0, Math.min(1, w.used)),
         reset: resetPhrase(w.resetsAt, now, format),
-        note: out ? "Limit reached" : w.status === "warning" ? "Near the limit" : null,
+        note: out ? t("contextCard.limitReached") : w.status === "warning" ? t("contextCard.nearLimit") : null,
         near: out || w.status === "warning",
       };
     });
@@ -249,7 +269,7 @@ export interface Spent {
 
 /** "12 replies", "1 reply". */
 export function repliesPhrase(turns: number): string {
-  return `${turns} ${turns === 1 ? "reply" : "replies"}`;
+  return t("contextCard.replies", { count: turns });
 }
 
 /**
@@ -260,12 +280,12 @@ export function repliesPhrase(turns: number): string {
  * means its engine did not.
  */
 export function spendPhrase(spent: Spent | null | undefined, costKnown: boolean): string {
-  if (!spent || spent.turns <= 0) return "Nothing yet";
+  if (!spent || spent.turns <= 0) return t("contextCard.nothingYet");
   const cost = spent.cost ?? 0;
-  if (!costKnown || !(cost > 0)) return "Not reported";
+  if (!costKnown || !(cost > 0)) return t("contextCard.notReported");
   // an estimate from tokens is written as one, as the Usage page does
   const mark = (spent.estimated ?? 0) > 0 ? "~" : "";
-  if (cost < 0.01) return `Under ${mark}$0.01`;
+  if (cost < 0.01) return t("contextCard.under", { amount: `${mark}$0.01` });
   return `${mark}$${cost.toFixed(2)}`;
 }
 
@@ -273,5 +293,5 @@ export function spendPhrase(spent: Spent | null | undefined, costKnown: boolean)
  * from an engine that counted none, which a bare 0 would hide. */
 export function tokensPhrase(n: number, spent: Spent | null | undefined): string {
   if (n > 0) return shortTokens(n);
-  return spent && spent.turns > 0 && (spent.unmeasured ?? 0) >= spent.turns ? "Not reported" : "0";
+  return spent && spent.turns > 0 && (spent.unmeasured ?? 0) >= spent.turns ? t("contextCard.notReported") : "0";
 }

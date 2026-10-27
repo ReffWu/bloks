@@ -10,6 +10,10 @@
 // (a test that fails, a grep that finds nothing), and a red number on
 // every turn would teach people to ignore it. They are still marked in
 // the opened list.
+//
+// Each count is its own phrase in the reader's language, and the phrases
+// are listed the way that language lists them.
+import { formatList, formatLocale, t, type MessageKey } from "./i18n.ts";
 
 export interface ToolLike {
   name: string;
@@ -40,25 +44,20 @@ export function kindOf(name: string): ToolKind {
   return "other";
 }
 
-function count(n: number, one: string, many: string) {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
 /** "Ran 3 commands, read 5 files, used 2 other tools". */
 export function summarize(tools: ToolLike[]): string {
   const by: Record<ToolKind, number> = { command: 0, read: 0, search: 0, edit: 0, other: 0 };
   for (const tool of tools) by[kindOf(tool.name)]++;
   const parts: string[] = [];
-  if (by.command) parts.push(`ran ${count(by.command, "command", "commands")}`);
-  if (by.read) parts.push(`read ${count(by.read, "file", "files")}`);
-  if (by.search) parts.push(`searched ${by.search === 1 ? "once" : `${by.search} times`}`);
-  if (by.edit) parts.push(`edited ${count(by.edit, "file", "files")}`);
-  if (by.other) {
-    const noun = parts.length ? "other tool" : "tool";
-    parts.push(`used ${count(by.other, noun, `${noun}s`)}`);
-  }
-  const line = parts.join(", ");
-  return line.charAt(0).toUpperCase() + line.slice(1);
+  if (by.command) parts.push(t("toolSummary.ran", { count: by.command }));
+  if (by.read) parts.push(t("toolSummary.read", { count: by.read }));
+  if (by.search) parts.push(t("toolSummary.searched", { count: by.search }));
+  if (by.edit) parts.push(t("toolSummary.edited", { count: by.edit }));
+  if (by.other) parts.push(t(parts.length ? "toolSummary.usedOther" : "toolSummary.used", { count: by.other }));
+  // "ran 3 commands, read 5 files": a unit list, which English writes
+  // with commas and no "and"
+  const line = parts.length ? formatList(parts, { type: "unit", style: "short" }) : "";
+  return line.charAt(0).toLocaleUpperCase(formatLocale()) + line.slice(1);
 }
 
 /** Whether any call in the run is still going. */
@@ -87,32 +86,32 @@ const TESTS = /(^|[\s;&|/(])(test|tests|vitest|jest|pytest|mocha|rspec|playwrigh
 const INSTALL = /\b(npm|pnpm|yarn|bun|pip3?|brew|gem|poetry|uv|cargo)\s+(i|install|add|ci)\b/i;
 const BUILD = /(^|[\s;&|/(])(build|tsc|make|compile)(\s|$|\))/i;
 
-const NAMED: Record<string, string> = {
-  websearch: "Searching the web",
-  web_search: "Searching the web",
-  webfetch: "Reading a web page",
-  web_fetch: "Reading a web page",
-  open_url: "Opening a web page",
-  ls: "Looking through files",
-  list: "Looking through files",
-  write: "Writing a file",
-  create: "Writing a file",
-  write_file: "Writing a file",
-  todowrite: "Planning",
-  task: "Handing work to a helper",
-  agent: "Handing work to a helper",
-  ask_user: "Waiting for your answer",
-  memory_read: "Checking its memory",
-  memory_write: "Saving to memory",
-  search_history: "Looking back through messages",
-  read_message: "Looking back through messages",
+const NAMED: Record<string, MessageKey> = {
+  websearch: "toolSummary.step.searchingWeb",
+  web_search: "toolSummary.step.searchingWeb",
+  webfetch: "toolSummary.step.readingPage",
+  web_fetch: "toolSummary.step.readingPage",
+  open_url: "toolSummary.step.openingPage",
+  ls: "toolSummary.step.lookingThroughFiles",
+  list: "toolSummary.step.lookingThroughFiles",
+  write: "toolSummary.step.writingFile",
+  create: "toolSummary.step.writingFile",
+  write_file: "toolSummary.step.writingFile",
+  todowrite: "toolSummary.step.planning",
+  task: "toolSummary.step.handingToHelper",
+  agent: "toolSummary.step.handingToHelper",
+  ask_user: "toolSummary.step.waitingForAnswer",
+  memory_read: "toolSummary.step.checkingMemory",
+  memory_write: "toolSummary.step.savingMemory",
+  search_history: "toolSummary.step.lookingBack",
+  read_message: "toolSummary.step.lookingBack",
 };
 
 function commandWords(command: string): string {
-  if (TESTS.test(command)) return "Running tests";
-  if (INSTALL.test(command)) return "Installing packages";
-  if (BUILD.test(command)) return "Building";
-  return "Running a command";
+  if (TESTS.test(command)) return t("toolSummary.step.runningTests");
+  if (INSTALL.test(command)) return t("toolSummary.step.installing");
+  if (BUILD.test(command)) return t("toolSummary.step.building");
+  return t("toolSummary.step.runningCommand");
 }
 
 /** "Running tests", "Reading a file", "Searching the web": what this
@@ -120,25 +119,25 @@ function commandWords(command: string): string {
 export function stepWords(tool: Pick<ToolLike, "name" | "command">): string | null {
   const name = tool.name.trim();
   const peer = /^messaged (.+)$/.exec(name);
-  if (peer) return `Messaging ${peer[1]}`;
+  if (peer) return t("toolSummary.step.messaging", { name: peer[1] });
   // the OpenAI-compatible driver labels a call "name: argument"
   const labelled = /^([\w.-]+):\s(.*)$/s.exec(name);
   const server = /^mcp__([^_]+)__/.exec(name)?.[1];
   const bare = (labelled ? labelled[1] : name).replace(/^mcp__[^_]+__/, "");
   const named = NAMED[bare.toLowerCase()];
-  if (named) return named;
+  if (named) return t(named);
   if (bare === "computer_exec") return commandWords(tool.command ?? labelled?.[2] ?? "");
   switch (kindOf(bare)) {
     case "command":
       return commandWords(tool.command ?? labelled?.[2] ?? name);
     case "read":
-      return "Reading a file";
+      return t("toolSummary.step.readingFile");
     case "search":
-      return "Searching the files";
+      return t("toolSummary.step.searchingFiles");
     case "edit":
-      return "Editing a file";
+      return t("toolSummary.step.editingFile");
     default:
-      return server ? `Using ${server}` : null;
+      return server ? t("toolSummary.step.using", { app: server }) : null;
   }
 }
 

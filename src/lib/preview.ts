@@ -7,9 +7,11 @@
 //
 // Mirrors the iPhone app's preview line and conversation row, word
 // for word, so the same
-// conversation reads the same on both.
+// conversation reads the same on both (in English; here the words are
+// the catalogue's, so they follow the language chosen).
 import type { Message } from "@/state/reducer";
 import { toolLabel } from "./tool-summary.ts";
+import { t } from "./i18n.ts";
 
 /** The newest message that is in the conversation, for the row's line
  * and time. One still waiting to reach the agent, or one that never
@@ -46,56 +48,56 @@ export function describeComponent(component: Record<string, unknown>): string {
   const named = typeof component.title === "string" ? component.title.trim() : "";
   switch (component.kind) {
     case "chart":
-      return named || "A chart";
+      return named || t("preview.chart");
     case "table":
-      return named || "A table";
+      return named || t("preview.table");
     case "decision":
-      return typeof component.question === "string" ? component.question : "A recommendation";
+      return typeof component.question === "string" ? component.question : t("preview.recommendation");
     case "steps":
-      return named || "Some steps";
+      return named || t("preview.steps");
     case "quote":
-      return typeof component.text === "string" ? component.text : "A quote";
+      return typeof component.text === "string" ? component.text : t("preview.quote");
     case "refused":
-      return typeof component.what === "string" ? `Refused: ${component.what}` : "Refused";
+      return typeof component.what === "string" ? t("preview.refusedWhat", { what: component.what }) : t("preview.refused");
     default:
       // A kind a newer harness knows about and this build does not.
-      return "An answer";
+      return t("preview.answer");
   }
 }
 
 /** What the last message in a conversation says, in one line. */
 export function previewLine(last: Message | undefined): string {
-  if (!last) return "New agent";
+  if (!last) return t("preview.newAgent");
   // Taken back, whatever it used to be: the row should not still
   // advertise words somebody removed.
-  if (last.deleted) return "Message taken back";
+  if (last.deleted) return t("preview.takenBack");
   switch (last.kind) {
     case "options":
-      return last.card ? last.card.title : "Asked you something";
+      return last.card ? last.card.title : t("preview.asked");
     case "activity":
       if (last.takeBack) {
         const count = last.takeBack.messages.length;
-        return `Took back ${count} message${count === 1 ? "" : "s"}`;
+        return t("preview.tookBack", { count });
       }
-      return last.tool ? toolLabel(last.tool) : "Working";
+      return last.tool ? toolLabel(last.tool) : t("preview.working");
     case "screen":
-      return "Shared a screen frame";
+      return t("preview.screen");
     case "artifact":
-      return last.artifact ? `Saved ${last.artifact.name}` : "Saved a file";
+      return last.artifact ? t("preview.saved", { name: last.artifact.name }) : t("preview.savedFile");
     case "connector":
-      return last.connector ? `Connect ${last.connector.label}` : "Connect an app";
+      return last.connector ? t("preview.connect", { app: last.connector.label }) : t("preview.connectApp");
     case "secret":
-      return last.secret ? `Needs your ${last.secret.label}` : "Needs a key";
+      return last.secret ? t("preview.needsYour", { label: last.secret.label }) : t("preview.needsKey");
     case "component":
-      return last.component ? describeComponent(last.component) : "An answer";
+      return last.component ? describeComponent(last.component) : t("preview.answer");
     case "changes":
-      if (!last.changes) return "Changed files";
+      if (!last.changes) return t("preview.changedFiles");
       // a rehearsal waiting, or let go, never touched the folder
       return last.changes.rehearsal && last.changes.rehearsal.state !== "applied"
-        ? `Would change ${last.changes.total} file${last.changes.total === 1 ? "" : "s"}`
+        ? t("preview.wouldChange", { count: last.changes.total })
         : changedLine(last.changes.total - (last.changes.shared?.total ?? 0), last.changes.shared?.total);
     default:
-      return last.text ? plainText(withoutInterface(last.text)) || "An interactive answer" : "";
+      return last.text ? plainText(withoutInterface(last.text)) || t("preview.interactive") : "";
   }
 }
 
@@ -109,10 +111,9 @@ export function withoutInterface(text: string): string {
  * agents in its folder claims only its own, and says how many more
  * changed around it rather than counting them as its work. */
 export function changedLine(total: number, shared = 0): string {
-  const files = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
-  if (!shared) return `Changed ${files(total)}`;
-  if (!total) return `${files(shared)} changed while others were working here`;
-  return `Changed ${files(total)}, ${shared} more while others were working here`;
+  if (!shared) return t("preview.changed", { count: total });
+  if (!total) return t("preview.changedAround", { count: shared });
+  return t("preview.changedPlusAround", { count: total, shared });
 }
 
 /** An agent as its row in the list needs it. `messages` are its open
@@ -154,11 +155,11 @@ export function lastHeardAt(bot: RowAgent): number | undefined {
 export function agentPreview(bot: RowAgent): string {
   // a lane waiting on a human outranks everything: that is the row the
   // user should open next
-  if (bot.tasks?.some((t) => t.state === "needs-you")) return "Waiting for you…";
-  if (bot.busy) return "Working…";
-  if (unseenHistory(bot)) return bot.title?.trim() || "Open to see what was said";
+  if (bot.tasks?.some((t) => t.state === "needs-you")) return t("preview.waitingForYou");
+  if (bot.busy) return t("preview.workingNow");
+  if (unseenHistory(bot)) return bot.title?.trim() || t("preview.openToSee");
   // an empty lane on an agent that has others is a fresh conversation,
   // not a fresh agent, which is what the shared wording would say
-  if (!bot.messages.length && (bot.tasks?.length ?? 0) > 1) return "New conversation";
+  if (!bot.messages.length && (bot.tasks?.length ?? 0) > 1) return t("preview.newConversation");
   return previewLine(lastSaid(bot.messages));
 }

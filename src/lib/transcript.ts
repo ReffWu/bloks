@@ -15,6 +15,7 @@
 //
 // And what is not worth a row each: a run of quiet check-ins is one line.
 import type { Message } from "@/state/reducer";
+import { t } from "./i18n.ts";
 
 /** How long a reply at the tail of a turn that is still working holds
  * the working line off. Long enough to cover the frames a finished turn
@@ -61,11 +62,12 @@ export function turnStartedAt(messages: readonly Message[]): number | null {
  * unit so it does not jitter as it counts. */
 export function clock(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
+  // the units are the language's; the digits stay a clock's
+  if (seconds < 60) return t("transcript.clockSeconds", { seconds: String(seconds) });
   const minutes = Math.floor(seconds / 60);
   const pad = (n: number) => String(n).padStart(2, "0");
-  if (minutes < 60) return `${minutes}m ${pad(seconds % 60)}s`;
-  return `${Math.floor(minutes / 60)}h ${pad(minutes % 60)}m`;
+  if (minutes < 60) return t("transcript.clockMinutes", { minutes: String(minutes), seconds: pad(seconds % 60) });
+  return t("transcript.clockHours", { hours: String(Math.floor(minutes / 60)), minutes: pad(minutes % 60) });
 }
 
 /** The last window of a long transcript, plus how much stays folded. */
@@ -163,7 +165,7 @@ export function quietRunAt<T extends Pick<Message, "quiet" | "deleted">>(message
 export function quietLine(run: readonly Pick<Message, "role" | "at">[], time: (at: number) => string): string {
   const count = run.filter((m) => m.role === "user").length || 1;
   const last = run[run.length - 1];
-  return `${count} quiet check-in${count === 1 ? "" : "s"}${last?.at ? `, last at ${time(last.at)}` : ""}`;
+  return last?.at ? t("transcript.quietLast", { count, time: time(last.at) }) : t("transcript.quiet", { count });
 }
 
 export function splitWaiting(messages: readonly Message[]): { said: Message[]; waiting: Message[] } {

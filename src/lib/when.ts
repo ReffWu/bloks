@@ -9,6 +9,7 @@
 // The formatters are made once. A long conversation stamps every message
 // it renders and renders again on every streamed word, and a fresh
 // Intl.DateTimeFormat for each of them would cost more than the row.
+import { formatDate, t } from "./i18n.ts";
 
 const SHAPES = {
   time: { hour: "numeric", minute: "2-digit" },
@@ -20,12 +21,14 @@ const SHAPES = {
 
 const made = new Map<string, Intl.DateTimeFormat>();
 
-/** `locale` is for tests; the app always says it the reader's way. */
+/** `locale` is for tests; the app always says it the reader's way, in
+ * the language they chose (formatDate keeps its own formatters). */
 function format(at: number, shape: keyof typeof SHAPES, locale?: string): string {
-  const key = `${locale ?? ""}:${shape}`;
+  if (locale === undefined) return formatDate(at, SHAPES[shape]);
+  const key = `${locale}:${shape}`;
   let formatter = made.get(key);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat(locale ?? [], SHAPES[shape]);
+    formatter = new Intl.DateTimeFormat(locale, SHAPES[shape]);
     made.set(key, formatter);
   }
   return formatter.format(at);
@@ -61,8 +64,8 @@ export function dayLine(at: number, now = Date.now(), locale?: string): string {
   // midnight, twenty minutes ago was yesterday, and a day the clocks
   // change on is still one day long.
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1).getTime();
-  if (day === dayStart(now)) return `Today ${format(at, "time", locale)}`;
-  if (day === yesterday) return `Yesterday ${format(at, "time", locale)}`;
+  if (day === dayStart(now)) return t("when.today", { time: format(at, "time", locale) });
+  if (day === yesterday) return t("when.yesterday", { time: format(at, "time", locale) });
   return format(at, sameYear(at, now) ? "day" : "dayYear", locale);
 }
 
@@ -92,5 +95,5 @@ export function timeSaidBelow(message: Said, next: Said | undefined, now = Date.
  * just said. */
 export function queuedLine(queuedAt: number, sentAt: number, now = Date.now(), locale?: string): string {
   const sent = sameDay(queuedAt, sentAt) ? format(sentAt, "time", locale) : stamp(sentAt, now, locale);
-  return `Queued at ${stamp(queuedAt, now, locale)}, sent at ${sent}`;
+  return t("when.queuedSent", { queued: stamp(queuedAt, now, locale), sent });
 }

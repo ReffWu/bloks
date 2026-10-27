@@ -18,8 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
-import { t } from "@/lib/i18n";
+import { formatDate, t, tr, type MessageKey } from "@/lib/i18n";
 
 interface JobOffer {
   botId: string;
@@ -43,19 +42,19 @@ interface Job {
   result?: string;
 }
 
-const STATE_LABEL: Record<Job["state"], string> = {
-  open: "Waiting for someone",
-  claimed: "In progress",
-  done: "Done",
-  failed: "Did not finish",
-  cancelled: "Cancelled",
+const STATE_LABEL: Record<Job["state"], MessageKey> = {
+  open: "jobBoard.state.open",
+  claimed: "jobBoard.state.claimed",
+  done: "jobBoard.state.done",
+  failed: "jobBoard.state.failed",
+  cancelled: "jobBoard.state.cancelled",
 };
 
 function when(at: number): string {
   const date = new Date(at);
   const today = new Date().toDateString() === date.toDateString();
-  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return today ? time : `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+  const time = formatDate(date, { hour: "numeric", minute: "2-digit" });
+  return today ? time : t("jobBoard.dayTime", { day: formatDate(date, { month: "short", day: "numeric" }), time });
 }
 
 export function JobBoard() {
@@ -132,11 +131,11 @@ export function JobBoard() {
         />
         <div className="mt-2 flex items-center justify-between gap-3">
           <span className="text-small text-muted-foreground">
-            {plural(state.bots.filter((b) => !b.hidden).length, "agent")} can see the board
+            {t("jobBoard.canSee", { count: state.bots.filter((b) => !b.hidden).length })}
           </span>
           <Button size="sm" disabled={posting || (!title.trim() && !brief.trim())} onClick={post}>
             {posting && <Loader2 size={12} className="animate-spin" />}
-            Post it
+            {t("jobBoard.postIt")}
           </Button>
         </div>
         {error && (
@@ -180,10 +179,10 @@ export function JobBoard() {
                         job.state === "failed" && "text-destructive",
                       )}
                     >
-                      {STATE_LABEL[job.state]}
+                      {t(STATE_LABEL[job.state])}
                     </span>
-                    {job.claimedName && <span>· taken by {job.claimedName}</span>}
-                    <span>· posted {when(job.postedAt)}</span>
+                    {job.claimedName && <span>· {t("jobBoard.takenBy", { name: job.claimedName })}</span>}
+                    <span>· {t("jobBoard.posted", { when: when(job.postedAt) })}</span>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5">
@@ -235,7 +234,7 @@ export function JobBoard() {
                 <div className="mt-2 flex flex-col gap-1">
                   {refusals.map((offer) => (
                     <div key={`${offer.botId}-${offer.at}`} className="text-small text-muted-foreground">
-                      <span className="text-foreground/70">{offer.name}</span> passed: {offer.passed}
+                      {tr("jobBoard.passed", { name: <span className="text-foreground/70">{offer.name}</span>, reason: offer.passed ?? "" })}
                     </div>
                   ))}
                 </div>

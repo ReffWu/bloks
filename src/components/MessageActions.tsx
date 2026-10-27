@@ -34,7 +34,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { confirm } from "@/components/ui/confirm";
 import { stamp } from "@/lib/when";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { formatDate, formatLocale, t } from "@/lib/i18n";
 
 export type ReplyDraft = { id?: string; author: string; excerpt: string };
 
@@ -120,8 +120,9 @@ export function Reactions({
  * hover away, so this can afford to be loose. */
 export function sinceLine(at: number, now = Date.now(), locale?: string): string {
   const minutes = Math.floor((now - at) / 60_000);
-  if (minutes < 1) return "just now";
-  const say = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  if (minutes < 1) return t("messageActions.justNow");
+  // `locale` is for tests; the app says it in the chosen language
+  const say = new Intl.RelativeTimeFormat(locale ?? formatLocale(), { numeric: "auto" });
   if (minutes < 60) return say.format(-minutes, "minute");
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return say.format(-hours, "hour");
@@ -160,7 +161,7 @@ function onMinute(change: () => void) {
 function SaidAt({ at }: { at: number }) {
   const now = useSyncExternalStore(onMinute, () => minuteNow);
   return (
-    <Tip label={new Date(at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })}>
+    <Tip label={formatDate(at, { dateStyle: "full", timeStyle: "short" })}>
       <time
         dateTime={new Date(at).toISOString()}
         className="px-1.5 text-caption tabular-nums whitespace-nowrap text-muted-foreground"
@@ -274,7 +275,7 @@ export function MessageActionBar({
     setTimeout(() => void confirm(question).then((yes) => yes && then()), 0);
   const size = look === "row" ? 16 : 14;
   const copyAction: Action = {
-    label: copied ? "Copied" : "Copy",
+    label: copied ? t("common.copied") : t("common.copy"),
     icon: copied ? (
       <Check size={size} strokeWidth={2.2} className="text-success" />
     ) : (
@@ -282,23 +283,23 @@ export function MessageActionBar({
     ),
     run: copy,
   };
-  const reply: Action = { label: "Reply", icon: <CornerUpLeft size={size} strokeWidth={1.8} />, run: () => onReply(draft) };
+  const reply: Action = { label: t("messageActions.reply"), icon: <CornerUpLeft size={size} strokeWidth={1.8} />, run: () => onReply(draft) };
   const forward: Action = {
-    label: "Forward",
+    label: t("messageActions.forward"),
     icon: <Send size={size - 1} strokeWidth={1.8} />,
     run: () => onForward(message, author),
   };
-  const edit: Action | null = onEdit ? { label: "Edit", icon: <Pencil size={size - 1} strokeWidth={1.8} />, run: onEdit } : null;
+  const edit: Action | null = onEdit ? { label: t("common.edit"), icon: <Pencil size={size - 1} strokeWidth={1.8} />, run: onEdit } : null;
   const rewind: Action | null = onRewind
     ? {
-        label: "Rewind to here",
+        label: t("messageActions.rewindToHere"),
         icon: <History size={size - 1} strokeWidth={1.8} />,
         run: () =>
           ask(
             {
-              title: "Rewind to before this message?",
-              body: "It and everything after are removed, and file changes since then are undone. Your message returns to the box.",
-              confirmLabel: "Rewind",
+              title: t("messageActions.rewindTitle"),
+              body: t("messageActions.rewindBody"),
+              confirmLabel: t("messageActions.rewind"),
               destructive: true,
             },
             onRewind,
@@ -307,11 +308,15 @@ export function MessageActionBar({
     : null;
   const remove: Action | null = onDelete
     ? {
-        label: "Delete",
+        label: t("common.delete"),
         icon: <Trash2 size={size - 1} strokeWidth={1.8} />,
         // No undo exists for this, so the question is asked once and
         // names what goes.
-        run: () => ask({ title: "Delete this message?", body: "This can't be undone.", confirmLabel: "Delete", destructive: true }, onDelete),
+        run: () =>
+          ask(
+            { title: t("messageActions.deleteTitle"), body: t("messageActions.cantUndo"), confirmLabel: t("common.delete"), destructive: true },
+            onDelete,
+          ),
         destructive: true,
       }
     : null;
@@ -497,7 +502,7 @@ export function ReplyChip({ draft, onClear }: { draft: ReplyDraft; onClear: () =
     <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft px-3 py-1.5">
       <CornerUpLeft size={13} className="shrink-0 text-brand-ink" />
       <span className="min-w-0 flex-1 text-small leading-snug">
-        <span className="font-medium text-brand-ink">Replying to {draft.author}</span>
+        <span className="font-medium text-brand-ink">{t("messageActions.replyingTo", { name: draft.author })}</span>
         <span className="block truncate text-muted-foreground">{draft.excerpt}</span>
       </span>
       <button
@@ -525,7 +530,8 @@ export function ForwardDialog({
   const { state, dispatch } = useStore();
   const [sent, setSent] = useState<string | null>(null);
 
-  const body = `(Forwarded from ${author})\n> ${(message.text ?? "").trim().split("\n").join("\n> ")}`;
+  // the person's own message, so its heading is in their language
+  const body = `${t("messageActions.forwardedFrom", { name: author })}\n> ${(message.text ?? "").trim().split("\n").join("\n> ")}`;
 
   const forward = (target: { id: string; kind: "agent" | "room" }) => {
     if (sent) return;

@@ -21,6 +21,7 @@
 // only draw it.
 import type { Message } from "@/state/reducer";
 import { progressIds } from "./codexProgress.ts";
+import { t } from "./i18n.ts";
 
 /** Who started a turn, when it was not the person. */
 export type Asker =
@@ -423,19 +424,16 @@ export function lastFoldKey(rows: readonly TurnRow[]): string {
   return "";
 }
 
-function count(n: number, one: string): string {
-  return `${n} ${one}${n === 1 ? "" : "s"}`;
-}
-
 /** "40 sec", "8 min", "1 hr 5 min": how long a turn took, to the
  * nearest unit worth saying. */
 export function workedFor(ms: number): string {
   const seconds = Math.max(1, Math.round(ms / 1000));
-  if (seconds < 60) return `${seconds} sec`;
+  if (seconds < 60) return t("libTurnFold.seconds", { seconds });
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return t("libTurnFold.minutes", { minutes });
   const rest = minutes % 60;
-  return rest ? `${Math.floor(minutes / 60)} hr ${rest} min` : `${Math.floor(minutes / 60)} hr`;
+  const hours = Math.floor(minutes / 60);
+  return rest ? t("libTurnFold.hoursMinutes", { hours, minutes: rest }) : t("libTurnFold.hours", { hours });
 }
 
 /**
@@ -444,13 +442,23 @@ export function workedFor(ms: number): string {
  * calls are commands when every one of them was (`kindOf` is
  * tool-summary's), and tool actions when the turn also read,
  * searched or edited. Goal steps count whole turns, not these tool rows.
+ * The first says who worked when `by` names them, and opens the line
+ * when `opens` does, so each is a whole phrase in any language.
  */
-export function foldWords(fold: TurnFold, kindOf: (name: string) => string): string[] {
-  const words = [`worked ${workedFor(fold.ms)}`];
+export function foldWords(fold: TurnFold, kindOf: (name: string) => string, o: { by?: string; opens?: boolean } = {}): string[] {
+  const time = workedFor(fold.ms);
+  const words = [
+    o.by !== undefined
+      ? t("libTurnFold.workedBy", { name: o.by, time })
+      : o.opens
+        ? t("libTurnFold.workedOpens", { time })
+        : t("libTurnFold.worked", { time }),
+  ];
   if (fold.tools.length) {
-    words.push(count(fold.tools.length, fold.tools.every((name) => kindOf(name) === "command") ? "command" : "tool action"));
+    const commands = fold.tools.every((name) => kindOf(name) === "command");
+    words.push(t(commands ? "libTurnFold.commands" : "libTurnFold.toolActions", { count: fold.tools.length }));
   }
-  if (fold.files) words.push(count(fold.files, "file"));
+  if (fold.files) words.push(t("libTurnFold.files", { count: fold.files }));
   return words;
 }
 
@@ -463,20 +471,20 @@ export function foldWords(fold: TurnFold, kindOf: (name: string) => string): str
 export function askerWords(asker: Asker, o: { name?: string; turn?: { of: number; budget: number } } = {}): string {
   switch (asker.by) {
     case "telegram":
-      return `Message from ${asker.name} (Telegram)`;
+      return t("libTurnFold.asker.telegram", { name: asker.name });
     case "agent":
-      return `${o.name ?? asker.peerName} asked`;
+      return t("libTurnFold.asker.agent", { name: o.name ?? asker.peerName });
     case "routine":
-      return `From your routine${asker.name ? ` ${asker.name}` : ""}`;
+      return asker.name ? t("libTurnFold.asker.routineNamed", { name: asker.name }) : t("libTurnFold.asker.routine");
     case "watcher":
-      return "From your watcher";
+      return t("libTurnFold.asker.watcher");
     case "webhook":
-      return "From a webhook";
+      return t("libTurnFold.asker.webhook");
     case "intent":
-      return `From your standing intent${asker.name ? ` ${asker.name}` : ""}`;
+      return asker.name ? t("libTurnFold.asker.intentNamed", { name: asker.name }) : t("libTurnFold.asker.intent");
     case "goal":
-      return o.turn ? `Toward your goal, step ${o.turn.of} of ${o.turn.budget}` : "Toward your goal";
+      return o.turn ? t("libTurnFold.asker.goalStep", { step: o.turn.of, budget: o.turn.budget }) : t("libTurnFold.asker.goal");
     case "incident":
-      return "About something that failed";
+      return t("libTurnFold.asker.incident");
   }
 }

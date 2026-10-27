@@ -424,7 +424,7 @@ function MarkdownList({
               {item.task && <Check size={10} strokeWidth={3} />}
             </span>
           )}
-          {item.task !== null && <span className="sr-only">{item.task ? t("markdown.done") : t("markdown.toDo")}</span>}
+          {item.task !== null && <span className="sr-only">{`${item.task ? t("markdown.taskDone") : t("markdown.taskToDo")} `}</span>}
           <span className={cn(item.task && "text-muted-foreground")}>
             {linesOf(item.lines, `${keyBase}-${i}`, highlight, names)}
           </span>
