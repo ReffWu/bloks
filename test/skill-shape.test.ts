@@ -5,9 +5,15 @@
 // to say when to leave it alone, and this is what stops the next skill
 // added here from quietly skipping that.
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 
-import { listSkills } from "../server/skills.ts";
+// The skills folder is fixed when the module loads, so a throwaway one is
+// named first: listing the library must never read the person's own.
+process.env.BLOKS_DATA_DIR = mkdtempSync(join(tmpdir(), "bloks-skill-shape-"));
+const { listSkills } = await import("../server/skills.ts");
 
 const builtins = () => listSkills().filter((skill) => skill.source === "builtin");
 

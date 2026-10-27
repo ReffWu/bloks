@@ -9893,6 +9893,10 @@ async function routeRoomMessage(blok: BlokRecord, message: Message, text: string
   if (!lead) return [];
   // one who could answer is no choice to make, and no call to pay for
   if (candidates.length === 1) return [lead.id];
+  // A member past their limit has every turn refused anyway, so the lead
+  // takes it to say so; asking a model first would spend the owner's
+  // money on a message that was never going to run.
+  if (author.personId && workspacePeople.limitRefusal(author.personId)) return [lead.id];
 
   const said = store.messagesFor(blok.id);
   const at = said.findIndex((m) => m.id === message.id);
