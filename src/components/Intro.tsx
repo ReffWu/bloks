@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { composioKeyMistake } from "@/lib/keyShape";
 import type { BlokExpression } from "@/lib/mascot";
-import { t } from "@/lib/i18n";
+import { t, tr, type MessageKey } from "@/lib/i18n";
 
 export const INTRO_KEY = "bloks-intro-v1";
 /** Plugin picks made during the intro, read by the plugins panel later. */
@@ -54,14 +54,15 @@ const IDLE_EXPRESSIONS: BlokExpression[] = [
   "excited",
 ];
 
-/** The five-role reveal in the jobs vignette. */
-const CAST = [
-  { name: "Chief of Staff", color: "blue", shape: "star" },
-  { name: "Research Analyst", color: "cyan", shape: "bit" },
-  { name: "Growth Marketer", color: "pink", shape: "burst" },
-  { name: "Inbox Manager", color: "green", shape: "diamond" },
-  { name: "Support Agent", color: "orange", shape: "cloud" },
-] as const;
+/** The five-role reveal in the jobs vignette. Names are keys, read
+ * where they draw so the cast speaks the reader's language. */
+const CAST: readonly { name: MessageKey; color: "blue" | "cyan" | "pink" | "green" | "orange"; shape: "star" | "bit" | "burst" | "diamond" | "cloud" }[] = [
+  { name: "intro.cast.chiefOfStaff", color: "blue", shape: "star" },
+  { name: "intro.cast.researchAnalyst", color: "cyan", shape: "bit" },
+  { name: "intro.cast.growthMarketer", color: "pink", shape: "burst" },
+  { name: "intro.cast.inboxManager", color: "green", shape: "diamond" },
+  { name: "intro.cast.supportAgent", color: "orange", shape: "cloud" },
+];
 
 /** The everyday-tools grid. Slugs match the connector catalog (the same
  * ones the Plugins panel connects through Composio), and the domains feed
@@ -120,8 +121,8 @@ export function Intro({ onDone }: { onDone: () => void }) {
   };
 
   useEffect(() => {
-    const t = setTimeout(() => setSkippable(true), 2000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setSkippable(true), 2000);
+    return () => clearTimeout(timer);
   }, []);
 
   // the two automatic stages advance themselves; everything after has a
@@ -129,12 +130,12 @@ export function Intro({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     if (pinned) return;
     if (stage === "logo") {
-      const t = setTimeout(() => setStage("workspace"), 5600);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => setStage("workspace"), 5600);
+      return () => clearTimeout(timer);
     }
     if (stage === "workspace") {
-      const t = setTimeout(() => setStage("welcome"), 2800);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => setStage("welcome"), 2800);
+      return () => clearTimeout(timer);
     }
   }, [stage]);
 
@@ -209,7 +210,7 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
       .then((c: any) => {
         if (c?.composio?.configured) {
           setStep("grid");
-          void refreshStatus(EVERYDAY.map((t) => t.slug));
+          void refreshStatus(EVERYDAY.map((tool) => tool.slug));
         } else {
           setStep("key");
         }
@@ -231,12 +232,12 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
         // the status check answers 200 with an error when Composio refuses
         if (!r?.configured || r.error) throw new Error(r?.error ?? "");
         setStep("grid");
-        void refreshStatus(EVERYDAY.map((t) => t.slug));
+        void refreshStatus(EVERYDAY.map((tool) => tool.slug));
       })
       .catch((e: Error) =>
         // Composio's own reason when it gave one (a refused key and an
         // unreachable service need different next steps)
-        setError(e.message ? `${e.message} Or skip for now.` : "That key didn't work. Check it and try again, or skip for now."),
+        setError(e.message ? t("intro.keyRefusedOrSkip", { reason: e.message }) : t("intro.keyDidNotWork")),
       )
       .finally(() => setSaving(false));
   };
@@ -260,7 +261,7 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
       .finally(() => setBusySlug(null));
   };
 
-  const connected = EVERYDAY.filter((t) => status[t.slug]?.connected).map((t) => t.slug);
+  const connected = EVERYDAY.filter((tool) => status[tool.slug]?.connected).map((tool) => tool.slug);
 
   if (step === "probe") return null;
 
@@ -278,7 +279,7 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
             value={key}
             onChange={(e) => setKey(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && saveKey()}
-            placeholder={t("intro.ck")}
+            placeholder="ck_…"
             spellCheck={false}
             autoComplete="off"
             className="w-full rounded-lg border bg-background px-3 py-2.5 text-ui text-foreground outline-none transition-colors focus:border-brand"
@@ -297,11 +298,13 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
           </button>
         </div>
         <p className="intro-rise mt-4 text-small text-muted-foreground/70 [animation-delay:380ms]">
-          No key yet?{" "}
-          <a href="https://composio.dev" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
-            {t("intro.getAFreeOneAt")}
-          </a>
-          , or skip and do this later in Plugins.
+          {tr("intro.noKeyYet", {
+            link: (
+              <a href="https://composio.dev" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
+                {t("intro.getAFreeOneAt")}
+              </a>
+            ),
+          })}
         </p>
       </Panel>
     );
@@ -346,7 +349,7 @@ function PluginsStage({ onDone }: { onDone: (connected: string[]) => void }) {
         {t("intro.cardsTurnGreenOnceYoure")}
       </p>
       <Button className="mt-5" onClick={() => onDone(connected)}>
-        {connected.length ? `Continue with ${connected.length} connected` : t("common.continue")}
+        {connected.length ? t("intro.continueWithConnected", { count: connected.length }) : t("common.continue")}
       </Button>
     </Panel>
   );
@@ -479,8 +482,8 @@ function WorkspaceStage() {
   const [expression, setExpression] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => setExpression((e) => e + 1), 650);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setExpression((e) => e + 1), 650);
+    return () => clearInterval(timer);
   }, []);
 
   return (
@@ -494,7 +497,7 @@ function WorkspaceStage() {
         />
       </div>
       <div className="mt-6 text-lead font-medium text-foreground">
-        Setting up your Bloks workspace
+        {t("intro.settingUpWorkspace")}
         <span className="intro-ellipsis" />
       </div>
       <div className="mt-4 h-1 w-44 overflow-hidden rounded-full bg-muted">
@@ -511,19 +514,21 @@ function WorkspaceStage() {
 // spreadsheet, fills the week's numbers in, and a toast confirms the
 // report. Choreographed with one step counter so every actor reads off
 // the same clock.
-const SHEET_ROWS = [
-  ["Day", "Sessions", "Revenue"],
-  ["Mon", "1,204", "$8.2k"],
-  ["Tue", "1,377", "$9.1k"],
-  ["Wed", "1,890", "$11.4k"],
-  ["Thu", "2,041", "$12.9k"],
-] as const;
+// the staged sheet's words are read where they draw; its figures are
+// props in a scene, the same in every language
+const SHEET_ROWS = (): readonly (readonly string[])[] => [
+  [t("intro.sheet.day"), t("intro.sheet.sessions"), t("intro.sheet.revenue")],
+  [t("intro.sheet.mon"), "1,204", "$8.2k"],
+  [t("intro.sheet.tue"), "1,377", "$9.1k"],
+  [t("intro.sheet.wed"), "1,890", "$11.4k"],
+  [t("intro.sheet.thu"), "2,041", "$12.9k"],
+];
 
-const STAT_TILES = [
-  ["Revenue", "$41.6k", "+12%"],
-  ["Sessions", "6,512", "+8%"],
-  ["Signups", "214", "+19%"],
-] as const;
+const STAT_TILES = (): readonly (readonly [string, string, string])[] => [
+  [t("intro.sheet.revenue"), "$41.6k", "+12%"],
+  [t("intro.sheet.sessions"), "6,512", "+8%"],
+  [t("intro.sheet.signups"), "214", "+19%"],
+];
 
 function ComputersStage({ onNext }: { onNext: () => void }) {
   // 0 idle · 1 cursor to dock · 2 browser opens, charts rise · 3 cursor to
@@ -533,17 +538,17 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
   useEffect(() => {
     const BEATS = [500, 900, 2400, 900, 2800];
     let i = 0;
-    let t: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout>;
     const next = () => {
       if (i >= BEATS.length) return;
-      t = setTimeout(() => {
+      timer = setTimeout(() => {
         i += 1;
         setStep(i);
         next();
       }, BEATS[i]);
     };
     next();
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, []);
 
   // where the agent's cursor is, per step, in percent of the screen area
@@ -573,7 +578,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
               <span className="size-2 rounded-full bg-foreground/15" />
               <span className="size-2 rounded-full bg-foreground/15" />
               <div className="ml-1 flex-1 rounded-md bg-background px-2.5 py-1 text-caption text-muted-foreground">
-                {t("intro.dashboardBloksDev")}
+                dashboard.bloks.dev
               </div>
             </div>
             <div className="px-4 pb-1 pt-3 text-small font-semibold text-foreground">
@@ -581,7 +586,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
             </div>
             {/* stat tiles land one by one before the chart rises */}
             <div className="flex gap-2 px-4 pt-1.5">
-              {STAT_TILES.map(([label, value, delta], i) => (
+              {STAT_TILES().map(([label, value, delta], i) => (
                 <div
                   key={label}
                   className="flex-1 rounded-lg border bg-background/60 px-2.5 py-1.5 transition-all duration-300"
@@ -625,7 +630,7 @@ function ComputersStage({ onNext }: { onNext: () => void }) {
             </div>
             <table className="w-full border-collapse">
               <tbody>
-                {SHEET_ROWS.map((row, r) => (
+                {SHEET_ROWS().map((row, r) => (
                   <tr key={r} className={cn("border-b last:border-0", r === 0 && "bg-muted/40")}>
                     {row.map((cell, c) => {
                       const order = r * row.length + c;
@@ -744,8 +749,8 @@ function DockIcon({
 function JobsStage({ onNext }: { onNext: () => void }) {
   const [spread, setSpread] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setSpread(true), 550);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setSpread(true), 550);
+    return () => clearTimeout(timer);
   }, []);
 
   const R = 118; // orbit radius in px
@@ -785,7 +790,7 @@ function JobsStage({ onNext }: { onNext: () => void }) {
                   )}
                   style={{ transitionDelay: `${350 + i * 70}ms` }}
                 >
-                  {member.name}
+                  {t(member.name)}
                 </span>
               </div>
             </div>

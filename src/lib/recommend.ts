@@ -8,17 +8,51 @@
 // The mapping is deliberately plain data. It is a starting point that
 // gets edited constantly as we learn what people actually pick, and a
 // clever scoring function would make that editing harder, not easier.
+import { t } from "./i18n.ts";
 
-/** The kinds of work somebody can claim, in the order they are offered. */
+/** The kinds of work somebody can claim, in the order they are offered.
+ * Each reads its label and hint in the reader's language when drawn. */
 export const WORK_TYPES = [
-  { id: "building", label: "Building software", hint: "Code, reviews, shipping" },
-  { id: "writing", label: "Writing", hint: "Drafts, docs, posts" },
-  { id: "selling", label: "Sales and outreach", hint: "Pipeline, follow-ups" },
-  { id: "marketing", label: "Marketing", hint: "Campaigns, content, growth" },
-  { id: "support", label: "Customer support", hint: "Tickets, answers, escalations" },
-  { id: "research", label: "Research", hint: "Reading, comparing, summarising" },
-  { id: "running", label: "Running a company", hint: "The whole week at once" },
-  { id: "admin", label: "Email and admin", hint: "Inbox, calendar, chasing" },
+  {
+    id: "building",
+    get label() { return t("recommend.building.label"); },
+    get hint() { return t("recommend.building.hint"); },
+  },
+  {
+    id: "writing",
+    get label() { return t("recommend.writing.label"); },
+    get hint() { return t("recommend.writing.hint"); },
+  },
+  {
+    id: "selling",
+    get label() { return t("recommend.selling.label"); },
+    get hint() { return t("recommend.selling.hint"); },
+  },
+  {
+    id: "marketing",
+    get label() { return t("recommend.marketing.label"); },
+    get hint() { return t("recommend.marketing.hint"); },
+  },
+  {
+    id: "support",
+    get label() { return t("recommend.support.label"); },
+    get hint() { return t("recommend.support.hint"); },
+  },
+  {
+    id: "research",
+    get label() { return t("recommend.research.label"); },
+    get hint() { return t("recommend.research.hint"); },
+  },
+  {
+    id: "running",
+    get label() { return t("recommend.running.label"); },
+    get hint() { return t("recommend.running.hint"); },
+  },
+  {
+    id: "admin",
+    get label() { return t("recommend.admin.label"); },
+    get hint() { return t("recommend.admin.hint"); },
+  },
 ] as const;
 
 export type WorkTypeId = (typeof WORK_TYPES)[number]["id"];

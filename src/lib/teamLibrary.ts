@@ -11,7 +11,13 @@
 // Members carry no names on purpose. A name is an identity, and identity
 // is assigned at hire time from NAME_POOL, so the Head of Marketing you
 // hire is "Juno", not a person literally called "Head of Marketing".
+//
+// A team's name and line, and each seat's title, are what the person
+// reads, so they come from the catalogue (teamLibrary.<team>) in the
+// reader's language each time they are read; a seat's description and
+// skills are its standing instructions to a model and stay in English.
 import type { BlokColor, BlokShape } from "@/lib/mascot";
+import { t, type MessageKey } from "./i18n.ts";
 
 export interface LibraryMember {
   title: string;
@@ -29,14 +35,39 @@ export interface LibraryTeam {
   members: LibraryMember[];
 }
 
-export const TEAM_LIBRARY: LibraryTeam[] = [
+/** A team as written here: its shown words as catalogue keys. */
+type Written<T extends LibraryTeam> = Omit<T, "name" | "blurb" | "members"> & {
+  name: MessageKey;
+  blurb: MessageKey;
+  members: Array<Omit<LibraryMember, "title"> & { title: MessageKey }>;
+};
+
+/** A seat or a team with its words read in the reader's language
+ * whenever they are asked for, so a shelf drawn after a change of
+ * language reads in the new one. */
+function shownTeam({ name, blurb, members, ...team }: Written<LibraryTeam>): LibraryTeam {
+  return Object.defineProperties(
+    {
+      ...team,
+      members: members.map(({ title, ...member }) =>
+        Object.defineProperty(member, "title", { get: () => t(title), enumerable: true }) as LibraryMember,
+      ),
+    },
+    {
+      name: { get: () => t(name), enumerable: true },
+      blurb: { get: () => t(blurb), enumerable: true },
+    },
+  ) as LibraryTeam;
+}
+
+const TEAMS: Written<LibraryTeam>[] = [
   {
     slug: "sales",
-    name: "Sales",
-    blurb: "Finds prospects, works the pipeline, writes the proposals.",
+    name: "teamLibrary.sales.name",
+    blurb: "teamLibrary.sales.blurb",
     members: [
       {
-        title: "Head of Sales",
+        title: "teamLibrary.sales.headOfSales",
         description:
           "Runs the pipeline and owns the number. Reviews everything the team produces before it reaches a prospect, and kills deals that waste the team's time.",
         skills: [
@@ -48,7 +79,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "star",
       },
       {
-        title: "SDR",
+        title: "teamLibrary.sales.sdr",
         description:
           "Hunts for prospects that fit the ideal customer profile and opens conversations. Optimises for replies, not volume.",
         skills: [
@@ -60,7 +91,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "bit",
       },
       {
-        title: "Account Executive",
+        title: "teamLibrary.sales.accountExecutive",
         description:
           "Takes qualified conversations to a signed deal. Maps stakeholders, handles objections in writing, and keeps momentum with a next step after every touch.",
         skills: [
@@ -72,7 +103,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "burst",
       },
       {
-        title: "Sales Ops Analyst",
+        title: "teamLibrary.sales.salesOpsAnalyst",
         description:
           "Keeps the pipeline honest: stages current, numbers reconciled, forecasts grounded in evidence rather than optimism.",
         skills: [
@@ -84,7 +115,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "diamond",
       },
       {
-        title: "Proposal Writer",
+        title: "teamLibrary.sales.proposalWriter",
         description:
           "Turns discovery notes into proposals and statements of work that read like the buyer wrote the requirements themselves.",
         skills: [
@@ -99,11 +130,11 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
   },
   {
     slug: "marketing",
-    name: "Marketing",
-    blurb: "Content, channels and campaigns, reviewed before anything ships.",
+    name: "teamLibrary.marketing.name",
+    blurb: "teamLibrary.marketing.blurb",
     members: [
       {
-        title: "Head of Marketing",
+        title: "teamLibrary.marketing.headOfMarketing",
         description:
           "Owns positioning and the calendar. Approves everything public-facing, and rejects work that is on-brand but off-strategy.",
         skills: [
@@ -115,7 +146,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "star",
       },
       {
-        title: "Content Writer",
+        title: "teamLibrary.marketing.contentWriter",
         description:
           "Writes the long-form: posts, guides, landing pages. Argues one idea per piece and cuts everything that does not serve it.",
         skills: [
@@ -127,7 +158,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "cloud",
       },
       {
-        title: "Social Media Manager",
+        title: "teamLibrary.marketing.socialMediaManager",
         description:
           "Runs the feeds. Turns launches and long-form into native posts per platform, and drafts replies rather than posting anything itself.",
         skills: [
@@ -139,7 +170,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "burst",
       },
       {
-        title: "SEO Specialist",
+        title: "teamLibrary.marketing.seoSpecialist",
         description:
           "Finds the queries worth winning and shapes content to win them, without ever making a page read like it was written for a crawler.",
         skills: [
@@ -151,7 +182,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "bit",
       },
       {
-        title: "Performance Marketer",
+        title: "teamLibrary.marketing.performanceMarketer",
         description:
           "Owns paid channels and conversion. Treats every campaign as an experiment with a hypothesis, a budget cap and a kill criterion.",
         skills: [
@@ -166,11 +197,11 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
   },
   {
     slug: "engineering",
-    name: "Engineering",
-    blurb: "Designs, builds and ships, with review before merge.",
+    name: "teamLibrary.engineering.name",
+    blurb: "teamLibrary.engineering.blurb",
     members: [
       {
-        title: "Tech Lead",
+        title: "teamLibrary.engineering.techLead",
         description:
           "Owns architecture and code review. Prefers boring technology, small diffs and reversible decisions, and writes down the reasoning either way.",
         skills: [
@@ -182,7 +213,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "star",
       },
       {
-        title: "Backend Engineer",
+        title: "teamLibrary.engineering.backendEngineer",
         description:
           "Builds services, APIs and data models. Designs for the failure case first and instruments everything worth debugging at 2am.",
         skills: [
@@ -194,7 +225,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "bit",
       },
       {
-        title: "Frontend Engineer",
+        title: "teamLibrary.engineering.frontendEngineer",
         description:
           "Builds the interface. Sweats loading, empty and error states as much as the happy path, and keeps components small enough to reason about.",
         skills: [
@@ -206,7 +237,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "cloud",
       },
       {
-        title: "QA Engineer",
+        title: "teamLibrary.engineering.qaEngineer",
         description:
           "Breaks things before users do. Writes test plans from the spec, hunts edge cases, and files reports that reproduce in three steps.",
         skills: [
@@ -218,7 +249,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "invader",
       },
       {
-        title: "DevOps Engineer",
+        title: "teamLibrary.engineering.devopsEngineer",
         description:
           "Owns the pipeline from merge to production. Automates the boring parts, monitors the scary parts, and treats infrastructure as code.",
         skills: [
@@ -233,11 +264,11 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
   },
   {
     slug: "support",
-    name: "Customer Support",
-    blurb: "Answers fast, escalates the right things, writes the docs.",
+    name: "teamLibrary.support.name",
+    blurb: "teamLibrary.support.blurb",
     members: [
       {
-        title: "Support Lead",
+        title: "teamLibrary.support.supportLead",
         description:
           "Owns the queue and the tone. Reviews tricky replies, spots patterns across tickets, and turns repeat problems into product feedback.",
         skills: [
@@ -249,7 +280,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "star",
       },
       {
-        title: "Triage Agent",
+        title: "teamLibrary.support.triageAgent",
         description:
           "First touch on everything inbound. Sorts by urgency and product area, answers the known cases from the knowledge base, routes the rest.",
         skills: [
@@ -261,7 +292,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "bit",
       },
       {
-        title: "Solutions Specialist",
+        title: "teamLibrary.support.solutionsSpecialist",
         description:
           "Digs into the hard tickets: reproduces problems, finds workarounds, and writes the customer an answer that actually closes the loop.",
         skills: [
@@ -273,7 +304,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "burst",
       },
       {
-        title: "Knowledge Writer",
+        title: "teamLibrary.support.knowledgeWriter",
         description:
           "Turns solved tickets into help-center articles so the same question is never answered twice by hand.",
         skills: [
@@ -288,11 +319,11 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
   },
   {
     slug: "operations",
-    name: "Operations",
-    blurb: "Keeps the company running: projects, money, people, calendar.",
+    name: "teamLibrary.operations.name",
+    blurb: "teamLibrary.operations.blurb",
     members: [
       {
-        title: "Chief of Staff",
+        title: "teamLibrary.operations.chiefOfStaff",
         description:
           "The connective tissue. Tracks every commitment made anywhere, keeps priorities honest, and briefs the founder on exactly what needs a decision.",
         skills: [
@@ -304,7 +335,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "star",
       },
       {
-        title: "Project Coordinator",
+        title: "teamLibrary.operations.projectCoordinator",
         description:
           "Keeps workstreams moving: statuses current, blockers surfaced early, and no task quietly orphaned between owners.",
         skills: [
@@ -316,7 +347,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "diamond",
       },
       {
-        title: "Finance Analyst",
+        title: "teamLibrary.operations.financeAnalyst",
         description:
           "Watches the money. Tracks burn against plan, reconciles the odd numbers, and turns spreadsheets into one-paragraph answers.",
         skills: [
@@ -328,7 +359,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "bit",
       },
       {
-        title: "Recruiter",
+        title: "teamLibrary.operations.recruiter",
         description:
           "Fills the open roles. Writes job posts that sound like the team, screens for evidence over vibes, and keeps every candidate warm.",
         skills: [
@@ -340,7 +371,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "cloud",
       },
       {
-        title: "Executive Assistant",
+        title: "teamLibrary.operations.executiveAssistant",
         description:
           "Guards the calendar and the inbox. Batches the trivial, drafts the routine, and protects deep-work time like it is revenue.",
         skills: [
@@ -355,11 +386,11 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
   },
   {
     slug: "research",
-    name: "Research",
-    blurb: "Investigates markets and evidence, then writes it up properly.",
+    name: "teamLibrary.research.name",
+    blurb: "teamLibrary.research.blurb",
     members: [
       {
-        title: "Research Director",
+        title: "teamLibrary.research.researchDirector",
         description:
           "Frames the questions worth answering and reviews every finding before it is believed. Allergic to conclusions that outrun their evidence.",
         skills: [
@@ -371,7 +402,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "star",
       },
       {
-        title: "Market Analyst",
+        title: "teamLibrary.research.marketAnalyst",
         description:
           "Maps markets and competitors: who buys, who sells, at what price, and where the gaps are. Separates observed facts from vendor marketing.",
         skills: [
@@ -383,7 +414,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "bit",
       },
       {
-        title: "Data Analyst",
+        title: "teamLibrary.research.dataAnalyst",
         description:
           "Turns raw numbers into findings. States assumptions, shows the work, and says plainly when the data cannot answer the question.",
         skills: [
@@ -395,7 +426,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "diamond",
       },
       {
-        title: "Fact Checker",
+        title: "teamLibrary.research.factChecker",
         description:
           "Attacks the team's own drafts before anyone outside sees them. Verifies every claim to a source and flags what is stale.",
         skills: [
@@ -407,7 +438,7 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
         shape: "invader",
       },
       {
-        title: "Report Writer",
+        title: "teamLibrary.research.reportWriter",
         description:
           "Assembles the team's findings into documents people actually read: executive summary first, evidence behind it, appendix for the brave.",
         skills: [
@@ -421,6 +452,8 @@ export const TEAM_LIBRARY: LibraryTeam[] = [
     ],
   },
 ];
+
+export const TEAM_LIBRARY: LibraryTeam[] = TEAMS.map(shownTeam);
 
 /** Names given to newly hired teammates. Short, warm, deliberately not
  * job descriptions. */

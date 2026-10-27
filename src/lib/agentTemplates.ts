@@ -5,13 +5,27 @@
 //
 // A skill is written the way this product defines one: when to
 // use it, what it needs, the sequence of work, and what needs approval.
+//
+// Two kinds of words live here. A role's description and skills are
+// instructions to a model, so they stay as written, in English, whatever
+// the person reads. What a role shows on screen (its name, its line, how
+// it greets you and the question it asks first) is the reader's, so it is
+// kept in the catalogue under agentTemplates.<role> and read each time it
+// is asked for: a role looked at after a change of language speaks the
+// new one. An agent made from a role keeps the words it was made with.
 import type { BlokColor, BlokShape } from "@/lib/mascot";
+import { hasMessage, inEnglish, t } from "./i18n.ts";
 
 export interface AgentTemplate {
   /** Stable key, also how we detect "you already have one of these". */
   id: string;
   name: string;
+  /** Its name, in English whatever the reader's language: an agent made
+   * from the role before a change of language is still known by it. */
+  englishName: string;
   title: string;
+  /** The role as said in a sentence: "a writer", "an inbox manager". */
+  inSentence: string;
   /** Persona sent to the provider as the agent's standing instructions. */
   description: string;
   /** Named capabilities, folded into the persona. */
@@ -26,11 +40,63 @@ export interface AgentTemplate {
   match: string[];
 }
 
-export const AGENT_TEMPLATES: AgentTemplate[] = [
+/** Where a role's on-screen words are kept: agentTemplates.<words>. */
+type RoleWords =
+  | "chiefOfStaff"
+  | "inboxManager"
+  | "researchAnalyst"
+  | "growthMarketer"
+  | "salesOutbound"
+  | "engineer"
+  | "recruiter"
+  | "support"
+  | "bookkeeper"
+  | "writer"
+  | "ops"
+  | "personalAssistant";
+
+/** A role as written here: everything but the words it shows. */
+interface Role extends Omit<AgentTemplate, "name" | "englishName" | "title" | "inSentence" | "greeting" | "setup"> {
+  words: RoleWords;
+  /** How many answers its setup question offers (setup.option1, 2, ...). */
+  options: number;
+}
+
+type Shown = "name" | "title" | "inSentence" | "greeting";
+
+/** The answers to a setup question, from `<stem>.setup.option1` on. */
+function optionsOf(stem: `agentTemplates.${RoleWords | "generic"}`, count: number): string[] {
+  const out: string[] = [];
+  for (let i = 1; i <= count; i++) {
+    const key = `${stem}.setup.option${i}`;
+    if (hasMessage(key)) out.push(t(key));
+  }
+  return out;
+}
+
+/** A role with its on-screen words read in the reader's language each
+ * time they are asked for. */
+function withWords({ words, options, ...role }: Role): AgentTemplate {
+  const say = (part: Shown) => t(`agentTemplates.${words}.${part}`);
+  const shown = (get: () => unknown): PropertyDescriptor => ({ get, enumerable: true });
+  return Object.defineProperties(role, {
+    name: shown(() => say("name")),
+    englishName: shown(() => inEnglish(`agentTemplates.${words}.name`)),
+    title: shown(() => say("title")),
+    inSentence: shown(() => say("inSentence")),
+    greeting: shown(() => say("greeting")),
+    setup: shown(() => ({
+      title: t(`agentTemplates.${words}.setup.title`),
+      subtitle: t(`agentTemplates.${words}.setup.subtitle`),
+      options: optionsOf(`agentTemplates.${words}`, options),
+    })),
+  }) as AgentTemplate;
+}
+
+const ROLES: Role[] = [
   {
     id: "chief-of-staff",
-    name: "Chief of Staff",
-    title: "Keeps the week on track",
+    words: "chiefOfStaff",
     description:
       "You are my chief of staff. You hold the whole picture of my week: commitments, open threads, and what is slipping. Each morning you brief me on what matters and what changed. You are direct, you lead with the decision I need to make, and you never pad an update to look busy.",
     skills: [
@@ -41,13 +107,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "purple",
     shape: "star",
-    greeting:
-      "I'm your chief of staff. I'll hold the whole picture of your week: your commitments, and what's quietly slipping. Then I'll brief you on what actually needs you.",
-    setup: {
-      title: "When should I brief you?",
-      subtitle: "I'll pull your day together and lead with what needs a decision.",
-      options: ["Every morning at 8", "Weekday evenings", "Only when I ask"],
-    },
+    options: 3,
     match: [
       "chief of staff",
       "staff",
@@ -61,8 +121,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   },
   {
     id: "inbox-manager",
-    name: "Inbox Manager",
-    title: "Keeps the inbox at zero",
+    words: "inboxManager",
     description:
       "You manage my email. You triage everything that arrives, draft replies for anything routine in my voice, and surface only what genuinely needs me. You never send anything without my approval unless I have explicitly told you a category is safe to send on its own.",
     skills: [
@@ -73,23 +132,12 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "green",
     shape: "cloud",
-    greeting:
-      "I'll keep your inbox at zero: triaging what arrives, drafting the routine replies, and only bringing you what actually needs you.",
-    setup: {
-      title: "How much rope do you want to give me?",
-      subtitle: "You can widen this any time once you see how I write.",
-      options: [
-        "Draft everything, I'll send",
-        "Auto-send routine replies, flag the rest",
-        "Just triage, no drafts",
-      ],
-    },
+    options: 3,
     match: ["inbox", "email", "mail", "triage", "replies", "correspondence"],
   },
   {
     id: "research-analyst",
-    name: "Research Analyst",
-    title: "Deep dives, tight briefs",
+    words: "researchAnalyst",
     description:
       "You are a research analyst. When I give you a topic you investigate it properly, primary sources first, and come back with a short, well-sourced brief. You separate what is established fact from what is contested or your inference, and you say plainly when the evidence is thin.",
     skills: [
@@ -100,13 +148,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "blue",
     shape: "diamond",
-    greeting:
-      "Give me a topic and I'll come back with a tight, sourced brief. Primary sources first, and I'll tell you where the evidence is thin.",
-    setup: {
-      title: "How deep should I go by default?",
-      subtitle: "You can always ask me to go further on a specific question.",
-      options: ["Quick scan, 5 minutes", "Standard brief with sources", "Exhaustive deep dive"],
-    },
+    options: 3,
     match: [
       "research",
       "analyst",
@@ -120,8 +162,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   },
   {
     id: "growth-marketer",
-    name: "Growth Marketer",
-    title: "Campaigns, copy, experiments",
+    words: "growthMarketer",
     description:
       "You run my marketing. You write copy that sounds like a person, design experiments with a clear hypothesis and success metric, and report results honestly, including the losers. You care more about what moved the number than what looked clever.",
     skills: [
@@ -132,13 +173,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "orange",
     shape: "burst",
-    greeting:
-      "I'll run your marketing: campaigns, copy, and experiments with a real hypothesis behind each one. I'll tell you when something loses.",
-    setup: {
-      title: "What are we pushing right now?",
-      subtitle: "This shapes the angles I write and the metrics I watch.",
-      options: ["Getting first users", "Growing signups", "Launching something new"],
-    },
+    options: 3,
     match: [
       "marketing",
       "market my",
@@ -155,8 +190,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   },
   {
     id: "sales-outbound",
-    name: "Sales Outbound",
-    title: "Pipeline and outreach",
+    words: "salesOutbound",
     description:
       "You run my outbound. You research accounts before writing a word, score prospects on real intent signals rather than firmographics alone, and draft outreach in my voice that references something specific and true about that account. You never send without approval.",
     skills: [
@@ -167,19 +201,12 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "teal",
     shape: "bit",
-    greeting:
-      "I'll run your outbound: researching accounts, scoring real intent, and drafting outreach in your voice. Nothing sends without your nod.",
-    setup: {
-      title: "Who are we selling to?",
-      subtitle: "I'll research this segment before I write anything.",
-      options: ["Startups and founders", "Mid-market companies", "Enterprise", "I'll describe it"],
-    },
+    options: 4,
     match: ["sales", "outbound", "prospect", "pipeline", "leads", "outreach", "crm", "deals"],
   },
   {
     id: "engineer",
-    name: "Engineer",
-    title: "Ships code, fixes bugs",
+    words: "engineer",
     description:
       "You are a senior engineer on my projects. You read the surrounding code before writing any, match its conventions, and keep changes tight and reviewable. You verify your work by running it rather than asserting it works, and you say plainly when something is still broken.",
     skills: [
@@ -190,13 +217,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "cyan",
     shape: "invader",
-    greeting:
-      "Point me at a repo or a bug. I read the surrounding code first, keep changes reviewable, and verify by running things rather than claiming they work.",
-    setup: {
-      title: "What should I work on?",
-      subtitle: "I'll get oriented in the codebase before touching anything.",
-      options: ["Fixing bugs", "Building features", "Reviewing code", "All of it"],
-    },
+    options: 4,
     match: [
       "engineer",
       "code",
@@ -213,8 +234,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   },
   {
     id: "recruiter",
-    name: "Talent Scout",
-    title: "Sourcing and screening",
+    words: "recruiter",
     description:
       "You help me hire. You source candidates against the actual bar for the role rather than keyword-matching résumés, screen for signal over pedigree, and write to people like a human being. You tell me when a shortlist is weak instead of padding it to look full.",
     skills: [
@@ -225,19 +245,12 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "coral",
     shape: "triangle",
-    greeting:
-      "Tell me who you need and I'll build a real shortlist, screened against the actual bar, with a reason for every name. I'll say so if it's thin.",
-    setup: {
-      title: "What are you hiring for?",
-      subtitle: "I'll turn this into a scorecard before I start sourcing.",
-      options: ["Engineering", "Go-to-market", "Operations", "I'll describe it"],
-    },
+    options: 4,
     match: ["recruit", "hiring", "hire", "candidate", "talent", "sourcing", "interview"],
   },
   {
     id: "support",
-    name: "Customer Support",
-    title: "Front line, always on",
+    words: "support",
     description:
       "You handle my customer support. You answer from what is actually documented rather than guessing, resolve what you can, and escalate anything involving refunds, outages, or an angry customer straight to me. Your tone stays warm and plain even when the customer is not.",
     skills: [
@@ -248,23 +261,12 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "red",
     shape: "drop",
-    greeting:
-      "I'll take the front line: triaging tickets, drafting answers from what's actually documented, and escalating anything that needs a human.",
-    setup: {
-      title: "What should always come straight to you?",
-      subtitle: "Everything else I'll handle and summarize.",
-      options: [
-        "Refunds and billing",
-        "Angry or at-risk customers",
-        "Anything I haven't seen before",
-      ],
-    },
+    options: 3,
     match: ["support", "customer", "tickets", "helpdesk", "service", "zendesk", "intercom"],
   },
   {
     id: "bookkeeper",
-    name: "Bookkeeper",
-    title: "Receipts, expenses, invoices",
+    words: "bookkeeper",
     description:
       "You keep my books tidy. You categorize expenses consistently, chase the receipts I forget, and flag anything that looks wrong: duplicate charges, a subscription I forgot, a number out of line with last month. You never guess at a category; you ask.",
     skills: [
@@ -275,13 +277,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "pink",
     shape: "diamond",
-    greeting:
-      "I'll keep the books tidy: coding expenses, chasing the receipts you forget, and flagging anything that looks off before it compounds.",
-    setup: {
-      title: "What do you want me watching?",
-      subtitle: "I'll start there and expand once I know your normal.",
-      options: ["Business expenses", "Personal spending", "Both, kept separate"],
-    },
+    options: 3,
     match: [
       "expense",
       "receipt",
@@ -296,8 +292,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   },
   {
     id: "writer",
-    name: "Writer",
-    title: "Drafts in your voice",
+    words: "writer",
     description:
       "You write for me. You learn my voice from what I have already written and match it rather than defaulting to corporate register. You write plainly, cut adjectives that carry no information, and never open with a throat-clearing sentence. When you do not know something, you leave a marked gap instead of inventing it.",
     skills: [
@@ -308,19 +303,12 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "yellow",
     shape: "cloud",
-    greeting:
-      "Give me a rough brief and I'll draft in your voice. Show me a few things you've written and I'll match how you actually sound.",
-    setup: {
-      title: "What am I mostly writing?",
-      subtitle: "It helps to see a sample of your writing early on.",
-      options: ["Posts and essays", "Docs and specs", "Emails and updates", "A mix"],
-    },
+    options: 4,
     match: ["writ", "draft", "blog", "essay", "newsletter", "editor", "content", "ghostwrit"],
   },
   {
     id: "ops",
-    name: "Operations",
-    title: "Keeps the machine running",
+    words: "ops",
     description:
       "You run my operations. You keep systems tidy, catch the small failures before they compound, and automate the recurring work rather than doing it manually forever. When you find yourself repeating a task, you propose turning it into a routine.",
     skills: [
@@ -331,19 +319,12 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "green",
     shape: "bit",
-    greeting:
-      "I'll keep the machine running: catching small failures before they compound, and turning anything I do twice into a routine.",
-    setup: {
-      title: "What breaks most often?",
-      subtitle: "I'll start watching there.",
-      options: ["Data getting messy", "Things falling through cracks", "Manual repetitive work"],
-    },
+    options: 3,
     match: ["operations", "ops", "admin", "process", "workflow", "automate", "logistics"],
   },
   {
     id: "personal-assistant",
-    name: "Personal Assistant",
-    title: "Life admin, handled",
+    words: "personalAssistant",
     description:
       "You handle my life admin. Bookings, appointments, renewals, the errands that pile up. You act on the small stuff and check with me on anything that costs real money or locks in a date. You keep a running list of what you are waiting on.",
     skills: [
@@ -354,13 +335,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     ],
     color: "blue",
     shape: "star",
-    greeting:
-      "I'll take the life admin: bookings, renewals, and the small things that pile up. I'll check with you before anything that costs real money.",
-    setup: {
-      title: "What should I take off your plate first?",
-      subtitle: "I'll keep a running list of what I'm waiting on.",
-      options: ["Scheduling and bookings", "Renewals and deadlines", "Errands and to-dos"],
-    },
+    options: 3,
     match: [
       "assistant",
       "personal",
@@ -375,14 +350,19 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   },
 ];
 
+export const AGENT_TEMPLATES: AgentTemplate[] = ROLES.map(withWords);
+
 /** Default greeting + setup for an agent that matched no template. */
 export const GENERIC_SETUP = {
-  greeting:
-    "I'm ready. Tell me what you need and I'll get to work. The more context you give me up front, the better I'll be at it.",
-  setup: {
-    title: "How should we work together?",
-    subtitle: "This shapes how much I check in versus just handle things.",
-    options: ["Check with me before acting", "Act on the small stuff, ask on the big", "Keep me posted, I trust you"],
+  get greeting(): string {
+    return t("agentTemplates.generic.greeting");
+  },
+  get setup(): AgentTemplate["setup"] {
+    return {
+      title: t("agentTemplates.generic.setup.title"),
+      subtitle: t("agentTemplates.generic.setup.subtitle"),
+      options: optionsOf("agentTemplates.generic", 3),
+    };
   },
 };
 
@@ -435,7 +415,7 @@ export function suggestName(description: string): string {
     .split(/\s+/)
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 
-  if (!words.length) return "Assistant";
+  if (!words.length) return t("agentTemplates.fallbackName");
   const picked = words.slice(0, 2);
   const name = titleCase(picked);
   return name.length > 28 ? titleCase(picked.slice(0, 1)) : name;

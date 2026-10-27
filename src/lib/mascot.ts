@@ -1,3 +1,5 @@
+import { t } from "./i18n.ts";
+
 export const BLOK_COLOR_NAMES = [
   "green",
   "blue",
@@ -38,6 +40,16 @@ export const BLOK_SHAPES = [
 ] as const;
 
 export type BlokShape = (typeof BLOK_SHAPES)[number];
+
+/** A color or a shape as a person reads it, for a swatch's label: the
+ * names above are ids and stay as they are in saved agents. */
+export function colorName(color: BlokColor): string {
+  return t(`mascot.color.${color}`);
+}
+
+export function shapeName(shape: BlokShape): string {
+  return t(`mascot.shape.${shape}`);
+}
 
 export const BLOK_EXPRESSIONS = [
   "deadpan",

@@ -105,7 +105,7 @@ export function TeamHireDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[85vh] w-full max-w-[500px] flex-col gap-0 overflow-hidden p-0">
         <div className="flex h-[52px] shrink-0 items-center border-b px-5">
-          <DialogTitle className="text-lead">Hire {team.name}</DialogTitle>
+          <DialogTitle className="text-lead">{t("teamHireDialog.title", { team: team.name })}</DialogTitle>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 pb-2 pt-3">
@@ -129,7 +129,7 @@ export function TeamHireDialog({
                       {member.seniority === 5 && <Crown size={11} className="shrink-0 text-brand-ink" />}
                     </span>
                     <span className="block truncate text-small text-muted-foreground">
-                      {seat.kind === "new" ? `New agent: ${seat.name}` : chosen?.name}
+                      {seat.kind === "new" ? t("teamHireDialog.newAgentNamed", { name: seat.name }) : chosen?.name}
                     </span>
                   </span>
                   <select
@@ -147,7 +147,7 @@ export function TeamHireDialog({
                     }
                     className="max-w-[150px] shrink-0 rounded-lg border border-input bg-background px-2 py-1.5 text-small text-foreground outline-none focus:border-ring/60"
                   >
-                    <option value="">New: {drawnNames[i]}</option>
+                    <option value="">{t("teamHireDialog.newSeatOption", { name: drawnNames[i] })}</option>
                     {agents.map((agent) => (
                       <option
                         key={agent.id}
@@ -202,8 +202,9 @@ export function TeamHireDialog({
 
         <div className="flex items-center justify-between gap-3 border-t px-5 py-3.5">
           <span className="text-small text-muted-foreground">
-            {newCount} new
-            {seats.length - newCount > 0 && ` · ${seats.length - newCount} existing`}
+            {seats.length - newCount > 0
+              ? t("teamHireDialog.seatsNewAndExisting", { fresh: newCount, existing: seats.length - newCount })
+              : t("teamHireDialog.seatsNew", { count: newCount })}
           </span>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose}>

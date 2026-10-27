@@ -46,7 +46,7 @@ import {
   type AgentDraft,
   type DraftField,
 } from "@/lib/agentDraft";
-import { BLOK_COLORS, BLOK_COLOR_NAMES, BLOK_SHAPES, type BlokColor, type BlokShape } from "@/lib/mascot";
+import { BLOK_COLORS, BLOK_COLOR_NAMES, BLOK_SHAPES, colorName, shapeName, type BlokColor, type BlokShape } from "@/lib/mascot";
 import { AvatarLanding, BeatHeading, BeatLabel as Label, PreviewCard, Stepper, beat } from "./Beats";
 import { TEAM_LIBRARY } from "@/lib/teamLibrary";
 import { BlokAvatar } from "./Avatar";
@@ -57,17 +57,17 @@ import { AGENT_FILE_ACCEPT, ImportAgentDialog, readAgentFile } from "./ImportAge
 import { TeamHireDialog, type HireableTeam } from "./TeamHireDialog";
 import { APPROVAL_MODES, ApprovalsChooser, confirmWidening, useWorkspaceApprovals, type ApprovalMode } from "./ApprovalsChooser";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import { useEscape } from "@/lib/useEscape";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
 
 const isElectron = navigator.userAgent.includes("Electron");
 
 type Step = "job" | "identity" | "setup";
-const STEPS: Array<{ id: Step; label: string }> = [
-  { id: "job", label: "The job" },
-  { id: "identity", label: "Who they are" },
-  { id: "setup", label: "How they work" },
+// a function, so the stepper reads its words in the language of the moment
+const STEPS = (): Array<{ id: Step; label: string }> => [
+  { id: "job", label: t("newAgentScreen.step.job") },
+  { id: "identity", label: t("newAgentScreen.step.identity") },
+  { id: "setup", label: t("newAgentScreen.howTheyWork") },
 ];
 
 /** What the agent knows, before it exists: its line, its standing
@@ -95,12 +95,6 @@ interface GalleryTeam {
   blurb: string;
   author?: string;
   members: HireableTeam["members"];
-}
-
-/** A role as said in a sentence: "a writer", "an inbox manager". */
-function asRole(template: AgentTemplate): string {
-  const role = template.name.toLowerCase();
-  return `${/^[aeiou]/.test(role) ? "an" : "a"} ${role}`;
 }
 
 function randomIdentity(): { color: BlokColor; shape: BlokShape } {
@@ -335,7 +329,7 @@ export function NewAgentScreen() {
   const chooseApprovals = async (next: ApprovalMode) => {
     if (next === mode) return;
     setRefused(false);
-    if (!(await confirmWidening(mode, next, shownName || "this agent"))) {
+    if (!(await confirmWidening(mode, next, shownName || t("newAgentScreen.thisAgent")))) {
       setRefused(true);
       return;
     }
@@ -367,14 +361,14 @@ export function NewAgentScreen() {
           .then((r: { bot?: Partial<Bot> }) => {
             if (r?.bot) made = { ...made, ...r.bot, messages: made.messages };
           })
-          .catch((e: Error) => dispatch({ type: "error", message: `${bot.name} is here, but not everything was set: ${e.message}` }));
+          .catch((e: Error) => dispatch({ type: "error", message: t("newAgentScreen.hereButNotAllSet", { name: bot.name, reason: e.message }) }));
       }
       if (folder.trim()) {
         await api(`/api/bots/${bot.id}`, { method: "PATCH", body: JSON.stringify({ cwd: folder.trim() }) })
           .then((r: { bot?: Partial<Bot> }) => {
             if (r?.bot) made = { ...made, ...r.bot, messages: made.messages };
           })
-          .catch((e: Error) => dispatch({ type: "error", message: `${bot.name} is here, but the folder was not set: ${e.message}` }));
+          .catch((e: Error) => dispatch({ type: "error", message: t("newAgentScreen.hereButNoFolder", { name: bot.name, reason: e.message }) }));
       }
       // closes this screen and opens the first conversation
       dispatch({ type: "botAdded", bot: made });
@@ -390,7 +384,7 @@ export function NewAgentScreen() {
     const craft = persona.description.trim();
     void hire(
       {
-        name: shownName || "Assistant",
+        name: shownName || t("agentTemplates.fallbackName"),
         title: persona.title.trim() || template?.title || (described ? suggestTitle(described) : ""),
         description: described ? (craft ? `${described}\n\n${craft}` : described) : craft,
         skills: persona.skills.map((s) => s.trim()).filter(Boolean),
@@ -447,10 +441,10 @@ export function NewAgentScreen() {
 
   const engineLabel = (() => {
     const pick = engine ?? defaults?.modelSelection ?? null;
-    if (!pick) return "Workspace default";
+    if (!pick) return t("newAgentScreen.workspaceDefault");
     const inst = state.instances.find((i) => i.instanceId === pick.instanceId);
     const model = inst?.models.options.find((o) => o.id === (pick.model || inst.models.default));
-    return model?.label ?? inst?.displayName ?? "Workspace default";
+    return model?.label ?? inst?.displayName ?? t("newAgentScreen.workspaceDefault");
   })();
 
   return (
@@ -519,7 +513,7 @@ export function NewAgentScreen() {
             </Button>
           ) : null}
         </div>
-        <Stepper steps={STEPS} step={step} isOpen={(i) => i === 0 || ready} onGo={goTo} layoutId="new-agent-step" />
+        <Stepper steps={STEPS()} step={step} isOpen={(i) => i === 0 || ready} onGo={goTo} layoutId="new-agent-step" />
         <div className="flex items-center gap-1 justify-self-end">
           <Button variant="ghost" className="max-sm:hidden" onClick={() => fileRef.current?.click()} title={t("newAgentScreen.importAnAgentFromA")}>
             <Upload size={14} />
@@ -634,9 +628,9 @@ export function NewAgentScreen() {
                 greeting={greeting}
                 skills={previewSkills}
                 facts={[
-                  ["Engine", engineLabel],
-                  ["Asks", APPROVAL_MODES.find((m) => m.id === mode)?.label ?? "Ask first"],
-                  ["Works in", folder.trim() || defaults?.cwd || "Their own workspace"],
+                  [t("common.engine"), engineLabel],
+                  [t("newAgentScreen.fact.asks"), APPROVAL_MODES.find((m) => m.id === mode)?.label ?? t("newAgentScreen.fact.askFirst")],
+                  [t("newAgentScreen.fact.worksIn"), folder.trim() || defaults?.cwd || t("newAgentScreen.theirOwnWorkspace")],
                 ]}
                 creating={creating}
                 empty={step === "job" && !ready}
@@ -667,7 +661,11 @@ export function NewAgentScreen() {
             )}
             <Button size="lg" onClick={hireDescribed} disabled={creating || !shownName} className="min-w-0 shrink">
               {creating ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-              <span className="truncate">{creating ? `Getting ${shownName} ready` : `Hire ${shownName || "them"}`}</span>
+              <span className="truncate">{creating
+                  ? t("newAgentScreen.gettingReady", { name: shownName })
+                  : shownName
+                    ? t("newAgentScreen.hireNamed", { name: shownName })
+                    : t("newAgentScreen.hireThem")}</span>
             </Button>
           </div>
         </div>
@@ -749,7 +747,7 @@ function JobBeat({
           <span className="flex min-w-0 items-center gap-1.5 truncate text-small text-muted-foreground">
             {template ? (
               <>
-                As {asRole(template)}
+                {t("newAgentScreen.asRole", { role: template.inSentence })}
                 <button
                   onClick={onClearTemplate}
                   aria-label={t("newAgentScreen.notThisRole")}
@@ -759,7 +757,7 @@ function JobBeat({
                 </button>
               </>
             ) : heard ? (
-              `Sounds like ${asRole(heard)}`
+              t("newAgentScreen.soundsLike", { role: heard.inSentence })
             ) : has ? (
               t("newAgentScreen.aRoleOfItsOwn")
             ) : (
@@ -774,35 +772,35 @@ function JobBeat({
       </div>
 
       <section className="mt-10">
-        <Label aside={<span className="text-small text-muted-foreground">{AGENT_TEMPLATES.length} roles</span>}>
+        <Label aside={<span className="text-small text-muted-foreground">{t("newAgentScreen.roleCount", { count: AGENT_TEMPLATES.length })}</span>}>
           {t("newAgentScreen.orStartFromARole")}
         </Label>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {AGENT_TEMPLATES.map((t, i) => {
-            const have = taken.has(t.name.toLowerCase());
-            const on = template?.id === t.id;
+          {AGENT_TEMPLATES.map((role, i) => {
+            const have = taken.has(role.name.toLowerCase()) || taken.has(role.englishName.toLowerCase());
+            const on = template?.id === role.id;
             return (
               <motion.button
-                key={t.id}
+                key={role.id}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(i, 8) * 0.025, duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
                 disabled={creating}
-                onClick={() => onPick(t)}
+                onClick={() => onPick(role)}
                 className={cn(
                   "group flex min-w-0 items-center gap-3 rounded-xl border bg-card px-3 py-2.5 text-left outline-none transition-[border-color,background-color,scale] duration-150 ease-out hover:border-foreground/20 hover:bg-accent/40 active:scale-[0.985]",
                   on && "border-brand bg-brand-soft",
                 )}
               >
-                <BlokAvatar color={t.color} shape={t.shape} expression="friendly" size={34} />
+                <BlokAvatar color={role.color} shape={role.shape} expression="friendly" size={34} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
-                    <span className="truncate text-ui font-medium text-foreground">{t.name}</span>
+                    <span className="truncate text-ui font-medium text-foreground">{role.name}</span>
                     {have && (
-                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-caption text-muted-foreground">You have one</span>
+                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-caption text-muted-foreground">{t("newAgentScreen.youHaveOne")}</span>
                     )}
                   </span>
-                  <span className="block truncate text-body text-muted-foreground">{t.title}</span>
+                  <span className="block truncate text-body text-muted-foreground">{role.title}</span>
                 </span>
                 <ArrowRight
                   size={14}
@@ -854,14 +852,16 @@ function JobBeat({
       {/* Someone who already has an agent should not have to build it
           again. Quiet, because most people arrive without one. */}
       <div className="mt-8 flex items-center gap-1.5 text-body text-muted-foreground">
-        Already have one?
-        <button
-          onClick={onImport}
-          className="rounded-md px-1 py-0.5 font-medium text-foreground underline-offset-2 transition-colors duration-150 hover:underline"
-        >
-          {t("newAgentScreen.importAFile")}
-        </button>
-        or drop it here.
+        {tr("newAgentScreen.alreadyHaveOne", {
+          import: (
+            <button
+              onClick={onImport}
+              className="rounded-md px-1 py-0.5 font-medium text-foreground underline-offset-2 transition-colors duration-150 hover:underline"
+            >
+              {t("newAgentScreen.importAFile")}
+            </button>
+          ),
+        })}
       </div>
       {fileError && <div className="mt-2 text-small text-destructive">{fileError}</div>}
     </>
@@ -880,8 +880,8 @@ function TeamShelf({ onTeam }: { onTeam: (team: HireableTeam) => void }) {
       .then((r) => {
         // the premade six are on the gallery too, for people without the
         // app; here they are already on the shelf above
-        const premade = new Set(TEAM_LIBRARY.map((t) => t.slug));
-        setGallery((r.teams ?? []).filter((t: GalleryTeam) => !premade.has(t.slug)));
+        const premade = new Set(TEAM_LIBRARY.map((team) => team.slug));
+        setGallery((r.teams ?? []).filter((team: GalleryTeam) => !premade.has(team.slug)));
       })
       .catch(() => {
         setGallery([]);
@@ -900,7 +900,7 @@ function TeamShelf({ onTeam }: { onTeam: (team: HireableTeam) => void }) {
             key={team.slug}
             name={team.name}
             blurb={team.blurb}
-            byline={team.author ? `by ${team.author}` : undefined}
+            author={team.author}
             members={team.members}
             onHire={() => onTeam({ name: team.name, members: team.members })}
           />
@@ -931,13 +931,14 @@ function TeamShelf({ onTeam }: { onTeam: (team: HireableTeam) => void }) {
 function TeamTile({
   name,
   blurb,
-  byline,
+  author,
   members,
   onHire,
 }: {
   name: string;
   blurb: string;
-  byline?: string;
+  /** Who shared a gallery team. */
+  author?: string;
   members: HireableTeam["members"];
   onHire: () => void;
 }) {
@@ -959,12 +960,12 @@ function TeamTile({
             )}
           </span>
         ))}
-        <span className="ml-auto text-small text-muted-foreground">{plural(members.length, "agent")}</span>
+        <span className="ml-auto text-small text-muted-foreground">{t("newAgentScreen.agentCount", { count: members.length })}</span>
       </span>
       <span className="mt-2.5 text-ui font-medium text-foreground">{name}</span>
       <span className="mt-0.5 line-clamp-2 text-small leading-relaxed text-muted-foreground">
         {blurb}
-        {byline ? ` ${byline}.` : ""}
+        {author ? ` ${t("newAgentScreen.byAuthor", { author })}` : ""}
       </span>
     </button>
   );
@@ -1044,10 +1045,10 @@ function IdentityBeat({
   return (
     <>
       <BeatHeading
-        title={shownName ? `Meet ${shownName}` : t("newAgentScreen.whoAreThey")}
+        title={shownName ? t("newAgentScreen.meetName", { name: shownName }) : t("newAgentScreen.whoAreThey")}
         says={
           template
-            ? `Set up as ${asRole(template)}, with ${plural(persona.skills.length, "skill")}. Make them yours.`
+            ? t("newAgentScreen.setUpAs", { role: template.inSentence, count: persona.skills.length })
             : t("newAgentScreen.changeAnythingYouLike")
         }
       />
@@ -1128,8 +1129,8 @@ function IdentityBeat({
                 key={color}
                 role="radio"
                 aria-checked={identity.color === color}
-                aria-label={color}
-                title={color}
+                aria-label={colorName(color)}
+                title={colorName(color)}
                 onClick={() => setIdentity({ ...identity, color })}
                 className={cn(
                   "size-8 rounded-full outline-none transition-[scale,box-shadow] duration-150 ease-out hover:scale-110 active:scale-95",
@@ -1145,8 +1146,8 @@ function IdentityBeat({
                 key={shape}
                 role="radio"
                 aria-checked={identity.shape === shape}
-                aria-label={`${shape} shape`}
-                title={shape}
+                aria-label={t("newAgentScreen.shapeLabel", { shape: shapeName(shape) })}
+                title={shapeName(shape)}
                 onClick={() => setIdentity({ ...identity, shape })}
                 className={cn(
                   "flex aspect-square items-center justify-center rounded-xl outline-none transition-[background-color,scale] duration-150 ease-out hover:bg-accent active:scale-[0.94]",
@@ -1164,12 +1165,13 @@ function IdentityBeat({
         <Label
           aside={
             <span className="text-small text-muted-foreground">
-              {personaDrafted ? t("newAgentScreen.suggested2") : ""}
-              {plural(persona.skills.length, "skill")}
+              {personaDrafted
+                ? t("newAgentScreen.suggestedSkillCount", { count: persona.skills.length })
+                : t("newAgentScreen.skillCount", { count: persona.skills.length })}
             </span>
           }
         >
-          What {shownName || "they"} know{shownName ? "s" : ""}
+          {shownName ? t("newAgentScreen.whatNameKnows", { name: shownName }) : t("newAgentScreen.whatTheyKnow")}
         </Label>
         <div className="rounded-2xl border bg-card p-4">
           {/* The person's own words lead, as written: they become the top
@@ -1213,7 +1215,7 @@ function IdentityBeat({
                       skills[i] = e.target.value;
                       editPersona({ skills });
                     }}
-                    aria-label={`Skill ${i + 1}`}
+                    aria-label={t("newAgentScreen.skillNumber", { number: i + 1 })}
                     className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-body leading-relaxed text-muted-foreground outline-none transition-colors duration-150 hover:bg-accent/50 focus:bg-accent/60 focus:text-foreground"
                   />
                   <button
@@ -1319,7 +1321,7 @@ function SetupBeat({
   return (
     <>
       <BeatHeading
-        title={shownName ? `How ${shownName} works` : t("newAgentScreen.howTheyWork")}
+        title={shownName ? t("newAgentScreen.howNameWorks", { name: shownName }) : t("newAgentScreen.howTheyWork")}
         says={t("newAgentScreen.defaultsAreSetChangeAnything")}
       />
 
@@ -1338,7 +1340,7 @@ function SetupBeat({
               </span>
             }
             title={t("newAgentScreen.workspaceDefault")}
-            line={defaultEngine ? label(defaultEngine.instanceId, defaultEngine.model) : "What Bloks gives every new agent"}
+            line={defaultEngine ? label(defaultEngine.instanceId, defaultEngine.model) : t("newAgentScreen.whatBloksGives")}
           />
           {usable.map((inst) => (
             <EngineOption
@@ -1356,7 +1358,7 @@ function SetupBeat({
           ))}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-body text-muted-foreground" data-keep-escape>
-          Or pick a model:
+          {t("newAgentScreen.orPickAModel")}
           <div className="rounded-lg border bg-card">
             <ModelPicker value={engine} onPick={setEngine} noneLabel={t("newAgentScreen.workspaceDefault")} />
           </div>
@@ -1404,8 +1406,8 @@ function SetupBeat({
 }
 
 function approvalsNote(mode: ApprovalMode, workspaceMode: ApprovalMode): string | null {
-  if (mode === workspaceMode) return "Workspace default";
-  return "This agent only";
+  if (mode === workspaceMode) return t("newAgentScreen.workspaceDefault");
+  return t("newAgentScreen.thisAgentOnly");
 }
 
 function EngineOption({

@@ -5,6 +5,10 @@
 // only which items, where, how a clash is settled and the values the
 // person typed or said to copy (server/setup-import.ts). So what is
 // built here is a list of decisions, never content.
+//
+// The lines the review says are said in the reader's language; the
+// items' own titles and previews are the files' words and stay as read.
+import { t, type MessageKey } from "./i18n.ts";
 
 export type SetupKind = "agent" | "instructions" | "memory" | "skill" | "mcp" | "setting" | "rule" | "fact" | "channel";
 export type SetupDestination = "agent" | "brief" | "memory" | "skills" | "mcp" | "engine" | "rules" | "about" | "channel";
@@ -80,15 +84,15 @@ export interface Choice {
 /** The groups, in the order a person would set things up by hand: who
  * the agents are, what they know, what they can use, what they may do,
  * what they know about you, and where they can be reached. */
-export const GROUPS: Array<{ id: string; label: string; kinds: SetupKind[] }> = [
-  { id: "agents", label: "Agents", kinds: ["agent"] },
-  { id: "knowledge", label: "Instructions and memory", kinds: ["instructions", "memory"] },
-  { id: "skills", label: "Skills", kinds: ["skill"] },
-  { id: "servers", label: "MCP servers", kinds: ["mcp"] },
-  { id: "models", label: "Models", kinds: ["setting"] },
-  { id: "rules", label: "Rules", kinds: ["rule"] },
-  { id: "about", label: "About you", kinds: ["fact"] },
-  { id: "chat", label: "Chat apps", kinds: ["channel"] },
+export const GROUPS: Array<{ id: string; label: MessageKey; kinds: SetupKind[] }> = [
+  { id: "agents", label: "setupReview.group.agents", kinds: ["agent"] },
+  { id: "knowledge", label: "setupReview.group.knowledge", kinds: ["instructions", "memory"] },
+  { id: "skills", label: "setupReview.group.skills", kinds: ["skill"] },
+  { id: "servers", label: "setupReview.group.servers", kinds: ["mcp"] },
+  { id: "models", label: "setupReview.group.models", kinds: ["setting"] },
+  { id: "rules", label: "setupReview.group.rules", kinds: ["rule"] },
+  { id: "about", label: "setupReview.group.about", kinds: ["fact"] },
+  { id: "chat", label: "setupReview.group.chat", kinds: ["channel"] },
 ];
 
 export interface Group {
@@ -98,11 +102,15 @@ export interface Group {
 }
 
 /** Every item, grouped by what it becomes, each group in source order.
- * Groups with nothing in them are left out. */
+ * Groups with nothing in them are left out. A group's label is read as
+ * it is drawn, so a grouping kept from before a change of language
+ * still says the new one. */
 export function groupReview(review: SetupReview): Group[] {
   return GROUPS.map((group) => ({
     id: group.id,
-    label: group.label,
+    get label() {
+      return t(group.label);
+    },
     entries: review.sources.flatMap((source) => source.items.filter((item) => group.kinds.includes(item.kind)).map((item) => ({ item, source }))),
   })).filter((group) => group.entries.length > 0);
 }
@@ -150,28 +158,32 @@ export function pickFor(item: SetupItem, choice: Choice) {
 export function conflictLine(item: SetupItem): string {
   const c = item.conflict;
   if (!c) return "";
-  const what = c.kind === "skill" ? "A skill" : c.kind === "agent" ? "An agent" : "An MCP server";
-  return `${what} called ${c.name} is already here.`;
+  const key = c.kind === "skill" ? "setupReview.conflict.skill" : c.kind === "agent" ? "setupReview.conflict.agent" : "setupReview.conflict.mcp";
+  return t(key, { name: c.name });
 }
 
 /** Where a ticked item ends up, in a line, for the kinds with nothing to choose. */
 export function landingLine(item: SetupItem): string {
   switch (item.kind) {
     case "skill":
-      return "Added to Skills. Attach it to an agent to use it.";
+      return t("setupReview.landing.skill");
     case "mcp":
-      return "Added to MCP servers. Attach it to an agent to use it.";
+      return t("setupReview.landing.mcp");
     case "rule":
-      return `Becomes a rule: ${item.rule?.summary ?? item.preview}.`;
+      return t("setupReview.landing.rule", { rule: item.rule?.summary ?? item.preview });
     case "fact":
-      return "Suggested in About you.";
+      return t("setupReview.landing.fact");
     case "agent": {
       const a = item.agent;
-      const parts = [a?.model ? `runs on ${a.model}` : "", a?.skills.length ? `with ${a.skills.length === 1 ? "its skill" : "its skills"} if Bloks has them` : ""].filter(Boolean);
-      return `Becomes an agent${parts.length ? `, ${parts.join(", ")}` : ""}.`;
+      const skills = a?.skills.length ?? 0;
+      if (a?.model && skills) return t("setupReview.landing.agentModelSkills", { model: a.model, count: skills });
+      if (a?.model) return t("setupReview.landing.agentModel", { model: a.model });
+      if (skills) return t("setupReview.landing.agentSkills", { count: skills });
+      return t("setupReview.landing.agent");
     }
     case "channel":
-      return item.channel?.perAgent ? "" : `Connects ${item.channel?.name ?? "it"} for shared rooms, switched off.`;
+      if (item.channel?.perAgent) return "";
+      return item.channel?.name ? t("setupReview.landing.channel", { name: item.channel.name }) : t("setupReview.landing.channelUnnamed");
     default:
       return "";
   }

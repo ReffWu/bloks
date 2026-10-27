@@ -8,6 +8,7 @@
 //
 // The geometry lives here, pure, so the arithmetic that keeps clusters
 // from overlapping can be tested without drawing anything.
+import { t } from "./i18n.ts";
 
 export interface MapAgent {
   id: string;
@@ -67,13 +68,15 @@ export function layoutTeamMap(
   const edges: MapEdge[] = [];
   const clusters: MapCluster[] = [];
 
+  // agents with no section share one cluster, named in the reader's language
+  const everyone = t("libTeamMap.everyone");
   const bySection = new Map<string, MapAgent[]>();
   for (const agent of agents) {
-    const name = agent.section?.trim() || "Everyone";
+    const name = agent.section?.trim() || everyone;
     bySection.set(name, [...(bySection.get(name) ?? []), agent]);
   }
 
-  const sectionOf = new Map(agents.map((a) => [a.id, a.section?.trim() || "Everyone"]));
+  const sectionOf = new Map(agents.map((a) => [a.id, a.section?.trim() || everyone]));
   const busyOf = new Map(agents.map((a) => [a.id, Boolean(a.busy)]));
 
   // rooms whose members share a section ride inside that cluster; the
