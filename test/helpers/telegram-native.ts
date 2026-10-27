@@ -388,7 +388,9 @@ process.stdin.once("data", async (input) => {
 }
 
 /** `paired` false leaves the agent with no Telegram bot at all. */
-export async function fixture(t: TestContext, engine: "codex" | "claude" = "codex", clock = false, paired = true) {
+/** `extra` is more of the harness's environment, for a test that points it
+ * at a stub of its own. */
+export async function fixture(t: TestContext, engine: "codex" | "claude" = "codex", clock = false, paired = true, extra: Record<string, string> = {}) {
   const root = mkdtempSync(join(tmpdir(), "bloks-telegram-native-"));
   mkdirSync(join(root, ".bloks"), { recursive: true });
   writeFileSync(join(root, ".bloks/config.json"), JSON.stringify({ instances: {
@@ -399,6 +401,7 @@ export async function fixture(t: TestContext, engine: "codex" | "claude" = "code
   const env = {
     HOME: root, NODE_OPTIONS: `--import=${preload}${clock ? ` --import=${new URL("./telegram-clock.mjs", import.meta.url).href}` : ""}`, BLOKS_TEST_TELEGRAM_URL: tg.url,
     OPENAI_API_KEY: "", ANTHROPIC_API_KEY: "", ELEVENLABS_API_KEY: "",
+    ...extra,
   };
   let h: Awaited<ReturnType<typeof startHarness>>;
   try { h = await startHarness(env); }
