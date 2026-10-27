@@ -213,6 +213,14 @@ last, reviews what came back and makes the call. An agent's memory
 follows it between rooms and one to ones, so you can ask your Chief of
 Staff privately what it thought of the group's plan.
 
+A room decides who answers a message that names nobody: everyone, only
+the lead, or **Auto**, where a small fast model picks the member whose
+role fits ("Scout picked: pricing question", above the reply, opens to
+why) and the lead answers whenever it is slow, unsure or unreachable.
+Naming someone with @ always wins, and the same choice is said in a room
+carried into Slack, Discord or WhatsApp. It uses an engine your agents
+already run on unless you pick one in Settings, Behaviour.
+
 A lead that needs more people can propose a team: who it wants, what each
 owns, which skills to give them. You approve or you don't. Agents can
 message each other, hire, open rooms, and stop a teammate they outrank,

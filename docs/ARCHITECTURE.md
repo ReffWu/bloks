@@ -107,6 +107,31 @@ out. Either way the room gets one notice saying who named whom and that
 posting there carries on, where the mention used to be stored and
 dropped without a word.
 
+**Who answers a message that names nobody** is the room's `answers`:
+`everyone`, `lead`, or `auto` (`server/room-route.ts`; a room from before
+reads its old `leadOnly`, which stays true for `lead` and `auto` alike so
+older clients still see the fallback). Naming a member with @ always
+reaches exactly who was named and never consults anything. In an Auto
+room, `routeRoomMessage` in `server/index.ts` gathers the members the
+sender may address there (`mayAddressInRoom` in `server/access.ts`: the
+sender and the agent both in the room), the last six lines and the new
+message, and asks one engine's `generateText` once. The engine is the
+one chosen in Settings (`rooms.router` in config.json), or by default the
+room's own: the first member engine with a small model, else the first
+with a one-shot call, so the room's words go nowhere its agents were not
+already sending them. The prompt gives members as short ids (`m1`, `m2`)
+with name, role and brief, and puts the room's words in a `<data>` block
+as JSON whose `<` and `>` are escaped, so nothing written in the room can
+close the block. The reply must be one JSON object with `ids` from that
+list (at most three), a `topic`, a `reason` and a `confidence` from 0 to
+1. An unknown id, too many, a missing or low confidence, no ids, an error
+or 2.5 seconds without an answer each mean the lead answers instead. The
+outcome (`RoomRoute`: who, topic, reason, or the fallback and why) is
+patched onto the person's message, which the room draws as a quiet line
+above the reply that opens to the reason, and for a room carried into a
+chat channel it is said there as a notice before the reply. A message an
+agent posts is never routed: it reaches only whom it names, as before.
+
 Team formation (`server/teams.ts`) sits on top: a senior agent can emit a
 fenced plan, which becomes an approval card. Only your yes creates the
 agents and the room.

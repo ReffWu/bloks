@@ -179,6 +179,20 @@ behind it are built to be narrow.
 - **Private means private.** A member's one to one with an agent is
   theirs. You can turn on reading members' private conversations for the
   workspace, and every member is told which way it is set.
+- **A room's Auto reads the room as data.** In a room set to Auto, a
+  message that names nobody is shown to a small model, with the members'
+  names, roles and briefs and the last few lines, so it can pick who
+  answers. Anybody in the room, a guest from a chat channel included, may
+  write words meant to steer it, so they go in as escaped JSON inside a
+  block marked as data, and the answer must be one JSON object naming ids
+  from the list it was given; anything else, or no answer in 2.5 seconds,
+  and the lead answers. It can only pick agents the sender could have
+  named in that room themselves (`mayAddressInRoom` in
+  `server/access.ts`). By default it uses an engine the room's agents
+  already run on, so the room's words reach no provider they were not
+  already going to; a different one is your choice in Settings. Only you
+  can set a room to Auto: an agent's credential may not, since each
+  message then costs a call on your engine.
 
 Who sees what is decided in one file, `server/access.ts`, as plain
 functions a test can walk. Workspaces never share a folder, so an agent
