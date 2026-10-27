@@ -234,6 +234,7 @@ import {
   planMicro,
   shouldCompact,
   summaryPrompt,
+  keptSummary,
   BEFORE_TURN_CEILING,
   BEFORE_TURN_AT,
   boundHandoff,
@@ -11464,6 +11465,20 @@ async function foldAfterTurn(botId: string, threadId: string): Promise<void> {
   }
 }
 
+/** True when a lane's summary changed under a fold that was writing a
+ * new one: dropped with `bloks summary --clear`, taken back with its
+ * messages, or written by another fold. Each of those wins. */
+function contextMovedOn(botId: string, threadId: string, from: TaskRecord["context"]): boolean {
+  return store.bot(botId)?.tasks.find((t) => t.id === threadId)?.context !== from;
+}
+
+/** A new summary within the limit, said in the log when it was not. */
+function keptSummaryOf(threadId: string, summary: string): string {
+  const kept = keptSummary(summary);
+  if (kept.cut) console.warn(`[fold] the summary for ${threadId} was ${summary.length} characters and was cut to the limit`);
+  return kept.summary;
+}
+
 /** A message as a summary hears it. A Telegram person's words, and a
  * reply sent to them, keep their sender: folded as plain user text they
  * would come back as the owner's, ahead of turns that may run in full
@@ -11513,11 +11528,14 @@ async function foldContext(botId: string, threadId: string, force = false, hando
   const plan = planCompaction(asTurns, budget, force ? 2 : 6);
   if (!plan.fold.length) return false;
 
+  const from = task.context;
   const summary = (await instance.generateText(summaryPrompt(task.context?.summary ?? null, plan.fold))).trim();
   if (!summary) return false;
+  // dropped while this was being written: the old one must not come back
+  if (contextMovedOn(botId, threadId, from)) return false;
 
   store.setTaskContext(threadId, {
-    summary: summary.slice(0, 8_000),
+    summary: keptSummaryOf(threadId, summary),
     through: already + plan.fold.length,
     at: Date.now(),
   });
@@ -11568,6 +11586,7 @@ async function microFold(botId: string, threadId: string): Promise<boolean> {
   // Where micro-compaction took over. Fixed the first time it moves, so a
   // lane that folded the old way first keeps that part fully summarised.
   const microFrom = task.context?.microFrom ?? through;
+  const from = task.context;
   let summary = task.context?.summary ?? "";
 
   if (plan.absorb) {
@@ -11590,8 +11609,9 @@ async function microFold(botId: string, threadId: string): Promise<boolean> {
     }
   }
 
+  if (contextMovedOn(botId, threadId, from)) return false;
   store.setTaskContext(threadId, {
-    summary: summary.slice(0, 8_000),
+    summary: keptSummaryOf(threadId, summary),
     through: plan.through,
     at: Date.now(),
     microFrom,
@@ -21508,6 +21528,31 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
       startFresh(lane.id);
       return json(res, 200, { ok: true, fresh: "now" });
+    }
+
+    // What a conversation's older messages were folded into, read or
+    // dropped (GitHub 405). A summary that has gone stale otherwise stays
+    // until the next fold happens to rewrite it, and an agent that keeps
+    // one conversation may not want a fresh session to get rid of it.
+    // Dropping it is what taking messages back already does: the next
+    // turn replays the transcript and folds again when that fills up.
+    m = path.match(/^\/api\/bots\/([\w-]+)\/tasks\/([\w-]+)\/summary$/);
+    if (m && (method === "GET" || method === "DELETE")) {
+      if (asAgent && asAgent.taskId !== m[2]) {
+        return json(res, 403, { error: "an agent can read or drop the summary only of the conversation it is in" });
+      }
+      const lane = store.bot(m[1])?.tasks.find((t) => t.id === m![2]);
+      if (!lane) return json(res, 404, { error: "no such task" });
+      if (method === "GET") {
+        const context = lane.context;
+        return json(res, 200, { summary: context ? { text: context.summary, covers: context.through, at: new Date(context.at).toISOString() } : null });
+      }
+      const had = !!lane.context;
+      if (had) {
+        store.setTaskContext(lane.id, null);
+        broadcast({ kind: "bot", bot: clientBot(store.bot(m[1])) });
+      }
+      return json(res, 200, { ok: true, dropped: had });
     }
 
     // A conversation's goal (server/goals.ts): set, paused, resumed, given

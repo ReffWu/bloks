@@ -417,6 +417,29 @@ export function summaryPrompt(existing: string | null, fold: Turn[]): string {
   ].join("\n");
 }
 
+/** The longest summary a lane keeps. The prompts ask for far less, so
+ * only a summary that ignored them gets here. */
+export const SUMMARY_MAX_CHARS = 8_000;
+
+/** Said at the end of a summary that had to be cut, so the agent reading
+ * it knows something is missing rather than taking the cut for the end. */
+export const SUMMARY_CUT_MARK = `[This summary ran past ${SUMMARY_MAX_CHARS.toLocaleString("en-US")} characters and the rest was cut.]`;
+
+/**
+ * A summary as a lane may keep it.
+ *
+ * Within the limit it is unchanged. Past it, it is cut at the last line
+ * break that fits (or the last space, for one long line) and marked, so
+ * the cut never lands mid-word and never passes silently.
+ */
+export function keptSummary(summary: string): { summary: string; cut: boolean } {
+  if (summary.length <= SUMMARY_MAX_CHARS) return { summary, cut: false };
+  const room = SUMMARY_MAX_CHARS - SUMMARY_CUT_MARK.length - 2;
+  const head = summary.slice(0, room);
+  const at = head.lastIndexOf("\n") > room / 2 ? head.lastIndexOf("\n") : head.lastIndexOf(" ");
+  return { summary: `${(at > 0 ? head.slice(0, at) : head).trimEnd()}\n\n${SUMMARY_CUT_MARK}`, cut: true };
+}
+
 /** The line put in the transcript so a summary is visibly a summary and
  * not something the person said. */
 export function summaryTurn(summary: string): Turn {

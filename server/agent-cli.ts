@@ -253,6 +253,8 @@ export const RULES: Rule[] = [
   { method: "PATCH", path: "/api/bots/:me/tasks/:id", why: "rename one of its own conversations" },
   { method: "DELETE", path: "/api/bots/:me/tasks/:id", why: "close one of its own conversations, once its turn there ends" },
   { method: "POST", path: "/api/bots/:me/tasks/:id/fresh", why: "start a fresh engine session in the conversation it is in, keeping the transcript" },
+  { method: "GET", path: "/api/bots/:me/tasks/:id/summary", why: "read what the older messages of the conversation it is in were summarised into" },
+  { method: "DELETE", path: "/api/bots/:me/tasks/:id/summary", why: "drop a stale summary of the conversation it is in, so the next turn replays and summarises again" },
 ];
 
 /**

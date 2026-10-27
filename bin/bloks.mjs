@@ -764,6 +764,18 @@ const COMMANDS = {
       return request("POST", `/api/bots/${me.botId}/tasks/${me.taskId}/fresh`);
     },
   },
+  summary: {
+    use: "summary [--clear]",
+    about:
+      "what the older messages of the conversation you are in were summarised into, if they were. --clear drops a summary that is stale or wrong: " +
+      "the transcript stays, and your next turn replays it and summarises again when it fills up. Keep anything the summary held that you still need in memory first",
+    run: async (args) => {
+      if (args.some((arg) => arg !== "--clear")) throw new Error("summary takes only --clear");
+      const me = await request("GET", "/api/agent/whoami");
+      const route = `/api/bots/${me.botId}/tasks/${me.taskId}/summary`;
+      return request(args.includes("--clear") ? "DELETE" : "GET", route);
+    },
+  },
   skills: {
     use: "skills",
     about: "the skill library, names and what each is for",
