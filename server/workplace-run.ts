@@ -497,9 +497,9 @@ export class Workplaces {
         if (!bloksUrl) return null;
         return { url: `${bloksUrl}/mcp/${slug}`, headers: { Authorization: `Bearer ${gateToken}` } };
       },
-      spawn(command: string, args: string[], options?: { env?: Record<string, string | undefined> }) {
-        return self.spawnThere(active, command, args, shippedEnv(env, options?.env, process.env), gate.tunnel, sentinel);
-      },
+      // the engine there, as docker exec -i or ssh -T, which spawnThere
+      // starts hidden like every other console program here
+      spawn: (command, args, options) => self.spawnThere(active, command, args, shippedEnv(env, options?.env, process.env), gate.tunnel, sentinel),
     };
     return { run: placeRun, texts, outbox };
   }

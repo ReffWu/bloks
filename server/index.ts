@@ -1231,6 +1231,15 @@ const workplaces: Workplaces = new Workplaces({
   },
 });
 
+/** What is known of the place an agent is set to work in now. A Test of
+ * a draft says things about somewhere it is not set to work, which are
+ * not this place's to show. */
+function placeStatusOf(bot: BotRecord): places.PlaceStatus | null {
+  const status = workplaces.status(bot.id);
+  if (!bot.workplace || !status) return null;
+  return status.kind === bot.workplace.kind && status.label === places.placeLabel(bot.workplace) ? status : null;
+}
+
 /** Why a turn cannot run where its agent works, in words for whoever
  * asked, or null when it can. */
 function placeTurnRefusal(
@@ -3146,7 +3155,7 @@ function clientBot(bot: BotRecord | null) {
     // Where it works now, as the header says it: starting, working,
     // dropped, stopped while idle. Null for an agent on this computer.
     workplaceStatus: bot.workplace
-      ? (workplaces.status(bot.id) ?? { kind: bot.workplace.kind, label: places.placeLabel(bot.workplace), state: "idle", at: 0 })
+      ? (placeStatusOf(bot) ?? { kind: bot.workplace.kind, label: places.placeLabel(bot.workplace), state: "idle", at: 0 })
       : null,
     // lanes ship as summaries: state is derived here so every client
     // renders the same truth without holding every lane's transcript.
@@ -7969,8 +7978,10 @@ async function startClaimedTurn(
       // A session lives where its engine ran. A lane whose agent now works
       // somewhere else (or here again) starts a new session where it is,
       // told the conversation so far, the way a moved folder does.
+      // An API backup answering for an agent that works elsewhere has no
+      // session anywhere, and leaves the one there as it is.
       const whereNowKey = placeNow ? places.laneWhere(placeNow) : undefined;
-      if (!sharing && task.where !== whereNowKey) {
+      if (!sharing && (placeNow || !bot.workplace) && task.where !== whereNowKey) {
         const before = task.where;
         store.moveTaskPlace(task.id, whereNowKey);
         if (before !== undefined || placeNow) {
@@ -18774,6 +18785,10 @@ async function rewindLane(found: BotRecord, task: TaskRecord, index: number, kee
     left.length
       ? `Left alone, because they changed since: ${named(left.map(([path]) => path))}.`
       : "",
+    // working elsewhere, what it changed there was never photographed here
+    task.where && found.workplace && !filesAreHere(found.workplace)
+      ? `What it changed ${places.placePhrase(found.workplace)} stays as it is: those files are not on this computer.`
+      : "",
     "Its memory notes are unchanged.",
   ].filter(Boolean);
   const notice = store.appendMessage(laneId, { role: "bot", kind: "notice", text: parts.join(" ") });
@@ -18856,6 +18871,9 @@ function redoPreview(laneId: string, messageId: string) {
     offered: true as const,
     ...redoCounts(takenBack(messages, plan.start, true)),
     files: checkpoints.wouldRestore(checkpoints.undoableSince(laneId, messages[plan.start].at)).length,
+    // where its files are when they are not here, so the line can say
+    // they stay as they are rather than say nothing about them
+    ...(task.where && found.workplace && !filesAreHere(found.workplace) ? { filesElsewhere: places.placePhrase(found.workplace) } : {}),
     working: Boolean(task.busy),
     /** How many of the person's messages go again: more than one when
      * the message was part of a turn other words of theirs joined. */
@@ -22069,12 +22087,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return {
           workplace: place,
           seen: place && now.workplaceSeen?.key === places.placeKey(place) ? now.workplaceSeen : null,
-          status: place ? workplaces.status(bot.id) : null,
+          status: placeStatusOf(now),
           engine: { name: engine, driverKind },
           support: places.placeSupport(driverKind, engine),
           networkOff: places.networkOffSupport(driverKind, engine),
           lineHosts: places.LINE_HOSTS[driverKind] ?? null,
           localFolder,
+          localFolderShown: shownPath(localFolder),
           defaults: {
             image: places.DEFAULT_IMAGE,
             name: places.containerNameFor(
@@ -22121,7 +22140,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           if (sharing && place.kind === "docker" && place.source === "image") return json(res, 409, { error: `${sharing.name} already works in a container named ${place.name}. Choose another name.` });
         }
         const before = bot.workplace ?? null;
-        if (before && (!place || places.placeKey(before) !== places.placeKey(place))) workplaces.forget(bot.id);
+        if (!before || !place || places.placeKey(before) !== places.placeKey(place)) workplaces.forget(bot.id);
         store.patchBot(bot.id, { workplace: place, ...(place && bot.workplaceSeen?.key === places.placeKey(place) ? {} : { workplaceSeen: null }) });
         broadcast({ kind: "bot", bot: clientBot(store.bot(bot.id)) });
         return json(res, 200, view());

@@ -871,7 +871,9 @@ export function testReport(input: {
         (install ? ` Install it there: ${install}` : ` Install it there, or set the engine command to where it is.`),
     );
   } else {
-    checks.push({ id: "engine", ok: true, label: probe.version ? `${engineName} ${probe.version}` : `${engineName} is installed` });
+    // "2.1.299 (Claude Code)" names the engine twice beside its name
+    const version = probe.version.replace(/\s*\([^)]*\)\s*$/, "");
+    checks.push({ id: "engine", ok: true, label: version ? `${engineName} ${version}` : `${engineName} is installed` });
     const signed = signedInThere(input.driverKind, probe);
     if (signed === false) {
       checks.push({ id: "signedIn", ok: false, label: "Not signed in there" });

@@ -379,7 +379,7 @@ export interface PlaceRun {
    * the program as this computer would run it; the place says what it is
    * called there. Only the turn's own environment and the driver's own
    * switches in `env` go with it, never this computer's. */
-  spawn(command: string, args: string[], options?: { env?: Record<string, string | undefined> }): import("node:child_process").ChildProcessWithoutNullStreams;
+  spawn: (command: string, args: string[], options?: { env?: Record<string, string | undefined> }) => import("node:child_process").ChildProcessWithoutNullStreams;
   /** A private file there for this turn, written ahead of the engine;
    * answers its path there. Call before spawn. */
   file(name: string, content: string): string;

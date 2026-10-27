@@ -14,6 +14,8 @@ import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
+import { redoLine } from "../src/lib/redo.ts";
+import { placeLine, placeTrouble } from "../src/lib/workplace.ts";
 import { Gate } from "../server/workplace-gate.ts";
 import { allowedTarget, frame, hostLine } from "../server/workplace-line.ts";
 import {
@@ -480,6 +482,30 @@ test("frames carry their type, connection and length", () => {
   const ready = hostLine({ stdin: new PassThrough(), stdout }, { gate: { host: "127.0.0.1", port: 9 }, hosts: [] }).ready;
   stdout.end(frame(5, 0, Buffer.from("EADDRINUSE")));
   return assert.rejects(ready, /EADDRINUSE/);
+});
+
+// ── the header's words ─────────────────────────────────────────────────
+
+test("the header says where an agent works, and a lost connection as one", () => {
+  const box = { kind: "docker" as const, label: "container bloks-scout", at: 0 };
+  const host = { kind: "ssh" as const, label: "build-box", at: 0 };
+  assert.equal(placeLine(null, true), null);
+  assert.equal(placeLine({ ...box, state: "ready" }, true), "Working in container bloks-scout");
+  assert.equal(placeLine({ ...box, state: "idle" }, false), "In container bloks-scout");
+  assert.equal(placeLine({ ...box, state: "starting" }, true), "Starting container bloks-scout");
+  assert.equal(placeLine({ ...box, state: "stopped" }, false), "Container bloks-scout is stopped");
+  assert.equal(placeLine({ ...host, state: "working" }, true), "Working on build-box over SSH");
+  assert.equal(placeLine({ ...host, state: "ready" }, false), "On build-box over SSH");
+  assert.equal(placeLine({ ...host, state: "dropped" }, false), "Lost build-box, reconnecting");
+  assert.equal(placeLine({ ...host, state: "unreachable" }, false), "Cannot reach build-box");
+  assert.equal(placeTrouble({ ...host, state: "reconnecting" }), true);
+  assert.equal(placeTrouble({ ...host, state: "ready" }), false);
+});
+
+test("taking a message back from an agent working elsewhere says its files there stay", () => {
+  const offer = { offered: true as const, messages: 2, files: 0, sent: false, working: false, resend: 1, filesElsewhere: "on build-box over SSH" };
+  assert.equal(redoLine(offer, "Scout"), "Removes 2 messages. Files it changed on build-box over SSH stay as they are.");
+  assert.equal(redoLine({ ...offer, working: true }, "Scout"), "Stops Scout and removes 2 messages. Files it changed on build-box over SSH stay as they are.");
 });
 
 // ── helpers ────────────────────────────────────────────────────────────

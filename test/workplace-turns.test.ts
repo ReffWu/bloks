@@ -173,6 +173,10 @@ test("over SSH the engine runs on the host, reaches Bloks through a reverse tunn
   assert.ok(!allArgs(fake).includes(COMPOSIO) && !allArgs(fake).includes(LOCAL_ONLY));
   await idle(h, bot);
   assert.ok(await waitFor(async () => (await messagesOf(h, bot)).some((m) => m.kind === "artifact" && m.artifact?.name === "report.md")));
+  // taking that message back says its files there stay as they are
+  const asked = (await messagesOf(h, bot)).find((m) => m.role === "user" && m.text === "Build it.");
+  const redo = await h.json(`/api/threads/${bot.threadId}/messages/${asked.id}/redo`);
+  assert.equal(redo.filesElsewhere, "on build-box over SSH", JSON.stringify(redo));
 
   // the link goes partway through the next turn
   rmSync(seen);
