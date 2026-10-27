@@ -375,10 +375,14 @@ export function computerName(env: NodeJS.ProcessEnv = process.env, platform: str
 
 export function pairingStatus(config: AppConfig = loadConfig()): PairingStatus {
   const enabled = remoteEnabled(config);
+  // bloks-server stays on loopback by design, so no restart would ever
+  // bring it onto the network, and no address on it is one a phone could
+  // dial: Bloks Cloud is the only door, and the status says so
+  const cloudOnly = process.env.BLOKS_LOOPBACK_ONLY === "1";
   return {
     enabled,
     listening: boundToNetwork ? "network" : "loopback",
-    restartRequired: enabled !== boundToNetwork,
+    restartRequired: !cloudOnly && enabled !== boundToNetwork,
     pending: pairingPending(),
     devices: devices(config).map((d) => ({
       id: d.id,
@@ -387,7 +391,7 @@ export function pairingStatus(config: AppConfig = loadConfig()): PairingStatus {
       ...(seen.has(d.id) ? { lastSeen: seen.get(d.id) } : {}),
       ...(clients.has(d.id) ? { client: clients.get(d.id) } : {}),
     })),
-    addresses: enabled ? lanAddresses() : [],
+    addresses: enabled && !cloudOnly ? lanAddresses() : [],
   };
 }
 
@@ -401,7 +405,9 @@ export function pairingStatus(config: AppConfig = loadConfig()): PairingStatus {
 //
 // That is the same trust the six digit code carries, and it holds for the
 // same reason: the link is only ever shown to whoever is at the host's own
-// terminal or screen. It works once, for fifteen minutes.
+// terminal or screen, or on one of the owner's own paired devices, which
+// already reaches everything the link would let in (GitHub 403). It works
+// once, for fifteen minutes.
 //
 // Unused links are kept in ~/.bloks (the secret's digest and expiry, never
 // the secret), beside the paired devices' digests, which are the same kind

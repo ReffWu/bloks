@@ -97,12 +97,16 @@ instead (see People in your workspaces).
   somebody turns it on at the computer, and the workspace listens on the
   network only after Bloks restarts with it on. A six digit code and its
   QR are made when somebody presses Pair a phone, and the routes that
-  make or cancel one answer only on this computer. A code works once,
-  lasts five minutes, and five wrong tries close it. It is held in
+  make or cancel one answer only on this computer and on your own paired
+  devices, which are the only way in to a workspace on a server with no
+  screen; never a member's device or an agent's credential. A code works
+  once, lasts five minutes, and five wrong tries close it. It is held in
   memory, never on disk, and the window closes it when the panel showing
   it closes. A pairing link, for a device on another network, works once
-  for fifteen minutes and is shown only on the computer too. The one
-  other way a pairing is made is for a phone you already paired, below.
+  for fifteen minutes and is shown only in those same places. Switching
+  phone access off and removing every device answer only on the computer,
+  since from a device they would cut that device off too. The one other
+  way a pairing is made is for a phone you already paired, below.
 - **Finding the computer again.** On a Mac, while phone access is on and
   the workspace listens on the network, the desktop app announces it on
   the local network as `_bloks._tcp` (`server/announce.ts`): the

@@ -25625,18 +25625,41 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
 
     // ── pairing (see server/pairing.ts) ──
-    // Everything that changes the boundary is loopback only: you have to
-    // be at the Mac to let a device in, or to throw one out.
+    // Letting a device in is the owner's: at this computer, or from one of
+    // their own paired devices, which is the only way in to a workspace on
+    // a server with no screen (GitHub 403). A code, a QR or a link makes
+    // one more of the owner's devices, so it is nothing the device asking
+    // could not already reach. Never an agent's, and never a member's,
+    // whose devices are answered above and whose credential on this
+    // computer is taken at its word here.
+    //
+    // What closes the door on everyone stays at this computer: turning
+    // phone access off, or removing every device, cuts loose the device
+    // asking too, and a server with no screen is then reached by nobody
+    // until somebody is at it. One other device can be removed from a
+    // device, so a lost phone is not kept until then, but never the device
+    // asking.
+    const pairingHere = !asAgent && (local ? !namesMember() : ownerDevice);
+    // which computer the devices reach, for the card to name when it is
+    // not the one the window is on, and which listed device is this one
+    const pairingView = (saved?: AppConfig) => ({
+      ...pairingStatus(saved),
+      computer: computerName(),
+      here: local,
+      ...(caller ? { thisDevice: caller.id } : {}),
+    });
+    const onlyAtComputer = (what: string) => `${what} only on ${computerName()} itself: from a device, it would cut that device off too.`;
     if (method === "GET" && path === "/api/pair") {
-      if (!local) return json(res, 403, { error: "not from here" });
-      return json(res, 200, pairingStatus());
+      if (!pairingHere) return json(res, 403, { error: "not from here" });
+      return json(res, 200, pairingView());
     }
     if ((method === "PUT" || method === "PATCH") && path === "/api/pair") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!pairingHere) return json(res, 403, { error: "not from here" });
       const body = await readBody(req);
       if (typeof body.enabled !== "boolean") {
         return json(res, 400, { error: "enabled must be true or false" });
       }
+      if (!local && !body.enabled) return json(res, 403, { error: onlyAtComputer("Phone access can be turned off") });
       const saved = setRemoteEnabled(body.enabled);
       if (!body.enabled) {
         deviceSettings.forgetDevices();
@@ -25653,26 +25676,34 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       announceHere();
       const status = pairingStatus(saved);
       broadcast({ kind: "pairing", ...status });
-      return json(res, 200, status);
+      return json(res, 200, pairingView(saved));
     }
     // A link that pairs a device through Bloks Cloud, for a computer that
-    // is not on the same network (server/pairing.ts). This machine only:
-    // the link is the whole credential, so it is only ever shown here.
+    // is not on the same network (server/pairing.ts). The link is the
+    // whole credential, so it is only ever shown here or on one of the
+    // owner's own devices, which reach this through the same sealed line.
     if (method === "POST" && path === "/api/pair/link") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!pairingHere) return json(res, 403, { error: "not from here" });
       const made = makePairLink();
       if (!made) return json(res, 409, { error: "Turn on Bloks Cloud first: pairing from anywhere goes through it." });
       return json(res, 200, { link: made.link, webLink: made.webLink, expiresAt: made.expiresAt });
     }
     if (method === "POST" && path === "/api/pair/start") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!pairingHere) return json(res, 403, { error: "not from here" });
       if (!remoteEnabled()) return json(res, 409, { error: "turn on pairing first" });
+      // bloks-server answers nothing on its network, so a code would be
+      // one no phone could ever trade in
+      if (process.env.BLOKS_LOOPBACK_ONLY === "1") {
+        return json(res, 409, { error: `Phones reach ${computerName()} only through Bloks Cloud. Pair with a link instead.`, code: "cloud-only" });
+      }
       const started = startPairing();
       broadcast({ kind: "pairing", ...pairingStatus() });
+      // this computer's own addresses on its network, never the device
+      // asking: a QR drawn on another computer still sends the phone here
       return json(res, 200, { ...started, addresses: pairingStatus().addresses, port: PORT, name: computerName() });
     }
     if (method === "POST" && path === "/api/pair/cancel") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!pairingHere) return json(res, 403, { error: "not from here" });
       cancelPairing();
       broadcast({ kind: "pairing", ...pairingStatus() });
       return json(res, 200, { ok: true });
@@ -25698,7 +25729,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       return json(res, 200, claimed);
     }
     if (method === "DELETE" && path === "/api/pair/devices") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!pairingHere) return json(res, 403, { error: "not from here" });
+      if (!local) return json(res, 403, { error: onlyAtComputer("Every device can be removed") });
       const saved = revokeAll();
       deviceSettings.forgetDevices();
       whereabouts.forgetDevices();
@@ -25710,7 +25742,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
     m = path.match(/^\/api\/pair\/devices\/([\w-]+)$/);
     if (m && method === "DELETE") {
-      if (!local) return json(res, 403, { error: "not from here" });
+      if (!pairingHere) return json(res, 403, { error: "not from here" });
+      if (caller?.id === m[1]) {
+        return json(res, 403, { error: `That is the device asking. Remove it from another of your devices, or on ${computerName()} itself.` });
+      }
       const ok = revokeDevice(m[1], (saved) => {
         broadcast({ kind: "pairing", ...pairingStatus(saved) });
       });

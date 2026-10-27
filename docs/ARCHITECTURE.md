@@ -324,8 +324,10 @@ key per direction from it (`server/relay-crypto.ts`), every request and
 every event frame is sealed for one device, and the relay in between
 carries ciphertext it cannot open. A browser keeps the two keys as
 non-extractable WebCrypto keys and never the token. Routes that mint new
-pairings answer only on this machine, but for the one that lets the
-owner's paired phone pair another workspace of theirs (below). A member's
+pairings answer this machine and the owner's own paired devices, the only
+way in to a server with no screen, and never a member's device or an
+agent; switching phone access off and removing every device answer this
+machine alone, since from a device they cut that device off too. A member's
 device, or a desktop app that joined the workspace, reaches it the same
 way with a member credential and is held to its own surface (see People
 in a workspace); one that joined on the owner's network alone calls it
@@ -340,7 +342,13 @@ digit code and a QR token, in memory only, one at a time, for five
 minutes; the window asks for the next just before one runs out while the
 panel is open and visible, and `POST /api/pair/cancel` closes it the
 moment the panel closes. `POST /api/pair/claim` takes either credential
-and counts every try, and five checked tries close the code.
+and counts every try, and five checked tries close the code. The QR
+carries the server's own addresses, wherever the card is drawn.
+bloks-server never listens on the network, so there `GET /api/pair` says
+so (loopback, no restart pending, no addresses), `start` refuses, and the
+card shows the Bloks Cloud link (`POST /api/pair/link`) as a QR instead.
+Where the card is on another computer, `computer` and `here` name the one
+the phones reach.
 
 A phone whose saved address went stale finds the Mac again on its own.
 While phone access is on and the server listens on the network, a server

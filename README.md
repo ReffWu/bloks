@@ -567,8 +567,8 @@ yet. The short version:
   protocols that can carry a permission request for exactly that reason.
 - Everything a member's device may call is named in one file, and
   anything unnamed is refused.
-- A pairing code exists only once you ask for one at the computer, works
-  once, and lasts five minutes.
+- A pairing code exists only once you ask for one, at the computer or on
+  one of your own paired devices, works once, and lasts five minutes.
 - Keys sit in a `0600` file, not the Keychain. That is the top open item.
 - There is no analytics token in this repository.
 - Released macOS builds are signed and notarized. One you build yourself

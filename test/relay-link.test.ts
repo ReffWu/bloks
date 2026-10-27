@@ -196,11 +196,13 @@ describe("the relay link", () => {
     // the local-only surface must not open just because the request
     // arrived on loopback: this is the whole point of the relay path. A
     // mutating request needs its freshness stamp to clear the replay gate.
+    // Removing every device is one: the owner's own phone may pair another
+    // (GitHub 403), but not cut every device loose, itself included.
     relay.ask(
       "ask-2",
       seal(sealKey, deviceId, {
-        method: "POST",
-        path: "/api/pair/start",
+        method: "DELETE",
+        path: "/api/pair/devices",
         ts: Date.now(),
         nonce: "n-2",
       }),

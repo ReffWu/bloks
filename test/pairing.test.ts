@@ -137,16 +137,17 @@ test("revoking a device locks it out immediately", async (t) => {
   assert.equal((await h.fetchRemote("/api/bots", { token })).status, 401);
 });
 
-test("a paired device cannot let another device in, or throw one out", async (t) => {
+// The owner's own device may let another device in, which a server with
+// no screen has no other way to do (test/pairing-remote.test.ts), but
+// closing the door on everyone cuts that device off too, so it waits for
+// somebody at the Mac.
+test("a paired device cannot switch pairing off, or throw every device out", async (t) => {
   const h = await startHarness();
   t.after(() => h.stop());
 
   const token = (await pairADevice(h)).body.token;
-  // opening the door has to happen at the Mac, by someone who can see it
   for (const [method, path] of [
-    ["POST", "/api/pair/start"],
     ["PUT", "/api/pair"],
-    ["GET", "/api/pair"],
     ["DELETE", "/api/pair/devices"],
   ] as const) {
     const res = await h.fetchRemote(path, {
@@ -156,6 +157,9 @@ test("a paired device cannot let another device in, or throw one out", async (t)
     });
     assert.equal(res.status, 403, `${method} ${path} should be loopback only`);
   }
+  const status = await h.json("/api/pair");
+  assert.equal(status.enabled, true);
+  assert.equal(status.devices.length, 1);
 });
 
 test("a website on the same wifi cannot use a stolen token", async (t) => {

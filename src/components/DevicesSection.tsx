@@ -18,6 +18,14 @@
 //
 // A phone arriving is the end of the flow, so it gets a moment of its own
 // before it joins the list, and the card becomes the list.
+//
+// The window can be on another computer than the workspace, a server with
+// no screen among them (GitHub 403). Then the card names the computer the
+// phones reach, the QR still sends them there and never here, and a server
+// that answers nothing on its network (bloks-server) pairs with a link
+// through Bloks Cloud instead of a code no phone could trade in. Turning
+// phone access off stays with that computer, which the card says rather
+// than offering a switch that would cut this window off.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { Check } from "@/components/icons";
@@ -33,13 +41,14 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { deviceLabels } from "@/lib/deviceLabels";
 import { usePageVisible } from "@/lib/pageVisible";
-import { thisComputer } from "@/lib/thisComputer";
+import { cloudOnly, pairingAway, pairingTrouble } from "@/lib/pairing";
+import { ThisComputer, thisComputer } from "@/lib/thisComputer";
 import { ConnectionError, ConnectionHeader, ConnectionNote, HealthLine, PairedMoment, type Health } from "./ConnectionKit";
 
 async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(pairingTrouble(res.status, body.error, `${res.status} ${res.statusText}`));
   return body;
 }
 
@@ -63,6 +72,14 @@ interface PairStatus {
   restartRequired?: boolean;
   addresses: string[];
   devices: Device[];
+  /** What the server listens on: loopback with no restart pending is a
+   * server only Bloks Cloud reaches. */
+  listening?: "loopback" | "network";
+  /** The computer the phones reach, and whether it is this one. */
+  computer?: string;
+  here?: boolean;
+  /** This window's own device, when it is one of the paired ones. */
+  thisDevice?: string;
 }
 
 /** The code on screen: what the server minted, drawn. */
@@ -175,11 +192,17 @@ function PairedList({
   devices,
   now,
   fresh,
+  place,
+  self,
   onRemove,
 }: {
   devices: Device[];
   now: number;
   fresh: string | null;
+  /** The computer they reach, as a sentence says it. */
+  place: string;
+  /** The device this window is, which is removed from another one. */
+  self?: string;
   onRemove: (device: Device) => void;
 }) {
   const labels = deviceLabels(devices, now);
@@ -202,23 +225,27 @@ function PairedList({
               <div className="truncate text-body font-medium text-foreground">{label.name}</div>
               {label.detail && <div className="truncate text-small tabular-nums text-muted-foreground">{label.detail}</div>}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Remove ${label.name}`}
-              className="hover:bg-destructive/10 hover:text-destructive"
-              onClick={async () => {
-                const yes = await confirm({
-                  title: `Remove ${label.name}?`,
-                  body: `It can't reach ${thisComputer()} until you pair it again.`,
-                  confirmLabel: "Remove",
-                  destructive: true,
-                });
-                if (yes) onRemove(device);
-              }}
-            >
-              Remove
-            </Button>
+            {device.id === self ? (
+              <span className="shrink-0 px-2 text-small text-muted-foreground">{ThisComputer()}</span>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Remove ${label.name}`}
+                className="hover:bg-destructive/10 hover:text-destructive"
+                onClick={async () => {
+                  const yes = await confirm({
+                    title: `Remove ${label.name}?`,
+                    body: `It can't reach ${place} until you pair it again.`,
+                    confirmLabel: "Remove",
+                    destructive: true,
+                  });
+                  if (yes) onRemove(device);
+                }}
+              >
+                Remove
+              </Button>
+            )}
           </li>
         );
       })}
@@ -257,8 +284,10 @@ function PairingControls() {
   /** No code on screen, and none asked for until somebody says so: the
    * server closed the last one early, or could not make one. */
   const [stopped, setStopped] = useState<"closed" | "failed" | null>(null);
-  const [browserLink, setBrowserLink] = useState<{ web: string; pair: string; expiresAt: number } | null>(null);
+  const [browserLink, setBrowserLink] = useState<{ web: string; pair: string; expiresAt: number; qr: string | null } | null>(null);
   const [copied, setCopied] = useState<"web" | "pair" | null>(null);
+  /** The last link asked for could not be made. */
+  const [linkFailed, setLinkFailed] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
   /** The phone that just paired, holding the stage for a moment. */
@@ -276,6 +305,7 @@ function PairingControls() {
   /** Whether a code belongs on screen right now. A code that arrives
    * after this went false is closed at once rather than shown. */
   const wanted = useRef(false);
+  const linking = useRef(false);
 
   const hold = useCallback((next: PairCode | null) => {
     held.current = next;
@@ -380,7 +410,17 @@ function PairingControls() {
   }, [fresh]);
 
   const listening = Boolean(status?.enabled && !status.restartRequired);
-  const want = flow && listening && visible && !arrived;
+  // only Bloks Cloud reaches the workspace, so the panel is a link
+  const viaCloud = cloudOnly(status);
+  const want = flow && listening && visible && !arrived && !viaCloud;
+  // the computer the phones reach, named when it is not this one
+  const away = pairingAway(status);
+  const place = away ?? thisComputer();
+  // no switch on another computer: on is how this window got here, and
+  // off from here would cut it off too, so the server keeps that for itself
+  const offElsewhere = away
+    ? `Phone access is turned off only on ${away} itself: from here it would cut ${thisComputer()} off from this workspace too.`
+    : undefined;
 
   // The code lives exactly as long as this: the panel open, phone access
   // on, the page in view, and no phone mid-arrival. When any of that
@@ -426,14 +466,49 @@ function PairingControls() {
   // The server hands back the same pairing twice, once for a browser and
   // once for the Bloks app or another computer. Both are shown: keeping
   // only the browser one left people building the other by hand.
-  const makeBrowserLink = () => {
+  // It is drawn as a QR too, for the iPhone's camera, which reads it the
+  // way the Bloks app does: through Bloks Cloud to the computer the
+  // workspace runs on, from any network, and never to this one.
+  const makeBrowserLink = useCallback(() => {
+    if (linking.current) return;
+    linking.current = true;
     setError(null);
     setCopied(null);
     api("/api/pair/link", { method: "POST" })
-      .then((made) => setBrowserLink({ web: made.webLink ?? made.link, pair: made.link, expiresAt: made.expiresAt }))
-      .catch((e: Error) => setError(e.message));
-  };
+      .then(async (made) => {
+        const qr = await QRCode.toDataURL(made.link, {
+          errorCorrectionLevel: "M",
+          margin: 1,
+          width: 288,
+          color: { dark: "#111111", light: "#ffffff" },
+        }).catch(() => null);
+        setNow(Date.now());
+        setBrowserLink({ web: made.webLink ?? made.link, pair: made.link, expiresAt: made.expiresAt, qr });
+      })
+      .catch((e: Error) => {
+        setError(e.message);
+        setLinkFailed(true);
+      })
+      .finally(() => {
+        linking.current = false;
+      });
+  }, []);
   const browserSecondsLeft = browserLink ? Math.max(0, Math.round((browserLink.expiresAt - now) / 1000)) : 0;
+
+  // Where a link is the only way in, opening the panel is asking for one.
+  // One that could not be made is not asked for again until somebody does.
+  const wantLink = flow && viaCloud && visible && !arrived;
+  useEffect(() => {
+    if (!wantLink) setLinkFailed(false);
+  }, [wantLink]);
+  useEffect(() => {
+    if (wantLink && !browserLink && !linkFailed && !linking.current) {
+      makeBrowserLink();
+    }
+  }, [wantLink, browserLink, linkFailed, makeBrowserLink]);
+
+  // the link the cloud panel shows, while it still works
+  const panelLink = viaCloud && browserLink && browserSecondsLeft > 0 ? browserLink : null;
 
   const devices = status?.devices ?? [];
   // Someone who has never paired a phone is shown how; someone who has
@@ -446,7 +521,7 @@ function PairingControls() {
       ? { tone: "wait", label: "Restart needed" }
       : !status.enabled
         ? { tone: "off", label: "Off" }
-        : code
+        : code || (panelLink && flow)
           ? { tone: "wait", label: "Waiting" }
           : devices.length > 0
             ? { tone: "on", label: `${devices.length} paired` }
@@ -455,13 +530,18 @@ function PairingControls() {
   // The switch alone does not open the door: the server decides what it
   // listens on when it starts. Without saying so, somebody turns this on
   // and watches their phone fail to connect for no reason they can see,
-  // so the code waits for the restart.
+  // so the code waits for the restart. On another computer it is that
+  // computer's Bloks to restart, which this app's own restart never is.
   const restart = status?.restartRequired ? (
     <ConnectionNote className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span className="min-w-0 flex-1">
-        {status.enabled ? "Restart Bloks to finish turning this on." : "Restart Bloks to stop listening on your network."}
+        {away
+          ? `Restart Bloks on ${away} to finish turning this on.`
+          : status.enabled
+            ? "Restart Bloks to finish turning this on."
+            : "Restart Bloks to stop listening on your network."}
       </span>
-      {window.bloks?.relaunch ? (
+      {away ? null : window.bloks?.relaunch ? (
         <Button size="sm" variant="secondary" onClick={() => void window.bloks?.relaunch?.()}>
           <RotateCw size={13} />
           Restart now
@@ -472,49 +552,88 @@ function PairingControls() {
     </ConnectionNote>
   ) : null;
 
-  const panel =
-    flow && listening && !arrived ? (
-      <>
-        <PairingCode
-          code={code}
-          msLeft={msLeft}
-          stopped={stopped}
-          lead={onboarding ? "Scan this code with your iPhone." : "On your iPhone, open Bloks and tap Scan the code."}
-          onAgain={() => {
-            setError(null);
-            setStopped(null);
-          }}
-          onLink={makeBrowserLink}
-          onClose={() => setFlow(false)}
-        />
-        {browserLink && browserSecondsLeft > 0 && (
-          <div className="mt-3 rounded-xl border bg-muted/30 p-4" data-browser-link>
-            <div className="text-body font-medium text-foreground">Pair with a link</div>
-            <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
-              Works once, for {Math.ceil(browserSecondsLeft / 60)} more minute{browserSecondsLeft > 60 ? "s" : ""}.
-              Anyone who opens a link gets access, so keep it private.
-            </div>
-            <PairLinkRow
-              label="Open in a browser"
-              link={browserLink.web}
-              copied={copied === "web"}
-              onCopy={() => void navigator.clipboard.writeText(browserLink.web).then(() => setCopied("web"))}
-            />
-            <PairLinkRow
-              label="Paste into the Bloks app or another computer"
-              link={browserLink.pair}
-              copied={copied === "pair"}
-              onCopy={() => void navigator.clipboard.writeText(browserLink.pair).then(() => setCopied("pair"))}
-            />
-            <div className="mt-2 flex justify-end">
-              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setBrowserLink(null)}>
-                Done
-              </Button>
-            </div>
+  const linkRows = (link: { web: string; pair: string }) => (
+    <>
+      <PairLinkRow
+        label="Open in a browser"
+        link={link.web}
+        copied={copied === "web"}
+        onCopy={() => void navigator.clipboard.writeText(link.web).then(() => setCopied("web"))}
+      />
+      <PairLinkRow
+        label="Paste into the Bloks app or another computer"
+        link={link.pair}
+        copied={copied === "pair"}
+        onCopy={() => void navigator.clipboard.writeText(link.pair).then(() => setCopied("pair"))}
+      />
+    </>
+  );
+
+  // A code for a phone on the network the workspace answers on, with a
+  // link beside it for one that is not; or, where only Bloks Cloud
+  // reaches the workspace, the link alone.
+  const panel = !(flow && listening && !arrived) ? null : viaCloud ? (
+    <PairingLink
+      link={panelLink}
+      secondsLeft={browserSecondsLeft}
+      failed={linkFailed}
+      expired={Boolean(browserLink) && browserSecondsLeft === 0}
+      place={place}
+      rows={panelLink && linkRows(panelLink)}
+      onAgain={() => {
+        setLinkFailed(false);
+        setBrowserLink(null);
+      }}
+      onClose={() => setFlow(false)}
+    />
+  ) : (
+    <>
+      <PairingCode
+        code={code}
+        msLeft={msLeft}
+        stopped={stopped}
+        lead={
+          away
+            ? `Scan this with your iPhone on the same network as ${away}.`
+            : onboarding
+              ? "Scan this code with your iPhone."
+              : "On your iPhone, open Bloks and tap Scan the code."
+        }
+        onAgain={() => {
+          setError(null);
+          setStopped(null);
+        }}
+        onLink={makeBrowserLink}
+        onClose={() => setFlow(false)}
+      />
+      {browserLink && browserSecondsLeft > 0 && (
+        <div className="mt-3 rounded-xl border bg-muted/30 p-4" data-browser-link>
+          <div className="text-body font-medium text-foreground">Pair with a link</div>
+          <div className="mt-0.5 text-small leading-relaxed text-muted-foreground">
+            Works once, for {Math.ceil(browserSecondsLeft / 60)} more minute{browserSecondsLeft > 60 ? "s" : ""}.
+            Anyone who opens a link gets access, so keep it private.
           </div>
-        )}
-      </>
-    ) : null;
+          {linkRows(browserLink)}
+          <div className="mt-2 flex justify-end">
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setBrowserLink(null)}>
+              Done
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  // An older server's refusal leaves nothing known about where the phones
+  // reach, so the line says only that, and the error line the way on.
+  const unanswered = !status && Boolean(error);
+  const says = unanswered
+    ? "Phones pair with the computer this workspace runs on."
+    : status && !status.enabled
+      ? `Off, so these can't reach ${place} until you turn it on.`
+      : away
+        ? `Your paired phones reach ${away}, where this workspace runs, ${viaCloud ? "through Bloks Cloud" : "over its network or through Bloks Cloud"}.`
+        : `Your paired phones reach ${thisComputer()} ${viaCloud ? "through Bloks Cloud" : "over your network"}.`;
 
   // The words of the onboarding are the iPhone walkthrough's, word for
   // word, so the two screens read as one set of instructions.
@@ -524,10 +643,17 @@ function PairingControls() {
         <ConnectionHeader
           icon={<Smartphone size={14} className="shrink-0 text-muted-foreground" />}
           title="Pair your iPhone"
-          says="Talk to your agents from your phone, and approve their work from your Lock Screen."
+          says={
+            away
+              ? `Talk to your agents on ${away} from your phone, and approve their work from your Lock Screen.`
+              : "Talk to your agents from your phone, and approve their work from your Lock Screen."
+          }
+          info={offElsewhere}
           health={health && <HealthLine tone={health.tone} label={health.label} />}
           control={
-            <Switch aria-label="Phone access" checked={status.enabled} onCheckedChange={(on) => (on ? pairPhone() : setEnabled(false))} />
+            !away && (
+              <Switch aria-label="Phone access" checked={status.enabled} onCheckedChange={(on) => (on ? pairPhone() : setEnabled(false))} />
+            )
           }
         />
         <ConnectionError>{error}</ConnectionError>
@@ -556,13 +682,10 @@ function PairingControls() {
       <ConnectionHeader
         icon={<Smartphone size={14} className="shrink-0 text-muted-foreground" />}
         title="Phone access"
-        says={
-          status && !status.enabled
-            ? `Off, so these can't reach ${thisComputer()} until you turn it on.`
-            : `Your paired phones reach ${thisComputer()} over your network.`
-        }
+        says={says}
+        info={offElsewhere}
         health={health && <HealthLine tone={health.tone} label={health.label} />}
-        control={<Switch aria-label="Phone access" checked={status?.enabled ?? false} onCheckedChange={setEnabled} />}
+        control={!away && !unanswered && <Switch aria-label="Phone access" checked={status?.enabled ?? false} onCheckedChange={setEnabled} />}
       />
 
       <ConnectionError>{error}</ConnectionError>
@@ -574,7 +697,7 @@ function PairingControls() {
             key={arrived.id}
             icon={isBrowser(arrived.name) ? <Globe size={18} /> : <Smartphone size={18} />}
             title={`${arrived.name} is paired`}
-            detail={`It can reach ${thisComputer()} now. Remove it here any time.`}
+            detail={`It can reach ${place} now. Remove it here any time.`}
           />
         )}
       </AnimatePresence>
@@ -584,6 +707,8 @@ function PairingControls() {
           devices={devices}
           now={now}
           fresh={fresh}
+          place={place}
+          self={status?.thisDevice}
           onRemove={(device) =>
             api(`/api/pair/devices/${device.id}`, { method: "DELETE" })
               .then(load)
@@ -600,7 +725,93 @@ function PairingControls() {
           </Button>
         ))}
 
-      {status === null && <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" />}
+      {status === null && !error && <Loader2 size={14} className="mt-3 animate-spin text-muted-foreground" />}
+    </div>
+  );
+}
+
+/** The open window where only Bloks Cloud reaches the workspace: the
+ * pairing link as a QR, the same link to copy, and how long it has left.
+ * A link is not renewed on its own the way a code is: it lasts fifteen
+ * minutes, and whoever opens it in time is one of the owner's devices, so
+ * a new one is made only when somebody asks. */
+function PairingLink({
+  link,
+  secondsLeft,
+  failed,
+  expired,
+  place,
+  rows,
+  onAgain,
+  onClose,
+}: {
+  link: { qr: string | null } | null;
+  secondsLeft: number;
+  failed: boolean;
+  expired: boolean;
+  place: string;
+  rows: React.ReactNode;
+  onAgain: () => void;
+  onClose: () => void;
+}) {
+  const stopped = failed || expired;
+  return (
+    <div className="relative mt-4 rounded-xl border bg-muted/30 p-4" data-browser-link>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onClose}
+        aria-label="Close pairing"
+        className="absolute right-2 top-2 text-muted-foreground"
+      >
+        Close
+      </Button>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
+        {/* the QR always sits on white; a themed QR is an unscannable QR */}
+        <div
+          className={cn(
+            "flex size-[148px] shrink-0 items-center justify-center rounded-lg",
+            stopped ? "border border-dashed text-muted-foreground/60" : "bg-white p-2 shadow-sm ring-1 ring-black/5",
+          )}
+        >
+          {stopped ? (
+            <Smartphone size={20} aria-hidden />
+          ) : link?.qr ? (
+            <img src={link.qr} alt="Pairing code to scan with the Bloks app" className="size-[132px]" />
+          ) : link ? (
+            <span className="px-2 text-center text-caption text-neutral-500">Copy the link instead</span>
+          ) : (
+            <Loader2 size={16} className="animate-spin text-neutral-400" />
+          )}
+        </div>
+        <div className="min-w-[220px] flex-1">
+          {stopped ? (
+            <>
+              <p className="text-body font-medium text-foreground">{expired ? "That link ran out." : "No link right now."}</p>
+              <p className="mt-0.5 text-pretty text-small text-muted-foreground">
+                {expired ? "Links work for fifteen minutes. Get a new one when you're ready." : "Try again in a moment."}
+              </p>
+              <Button size="sm" variant="secondary" className="mt-3" onClick={onAgain}>
+                New link
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="pr-14 text-pretty text-body font-medium text-foreground">
+                On your iPhone, open Bloks and tap Scan the code, or scan it with the Camera.
+              </p>
+              <p className="mt-1 text-pretty text-small text-muted-foreground">
+                It pairs with {place} through Bloks Cloud, from any network. Anyone who opens it in time becomes one of your devices, so
+                keep it to yourself.
+              </p>
+              <div className="mt-3 text-small tabular-nums text-muted-foreground">
+                {link ? `Works once, for ${Math.ceil(secondsLeft / 60)} more minute${secondsLeft > 60 ? "s" : ""}.` : "Works once."}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      {!stopped && rows}
     </div>
   );
 }
