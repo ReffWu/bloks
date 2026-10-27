@@ -41,6 +41,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { overlayChoice, renderBadge } from "./taskbar-badge.mjs";
 import { normalizeBadgeCount, resolveWindowState } from "./window-state.mjs";
 import { appMenuTemplate, TAB_COMMANDS } from "./app-menu.mjs";
 import { menuLanguage, menuWords } from "./menu-words.mjs";
@@ -3209,9 +3210,22 @@ async function answerScreen(child, id) {
  * arithmetic, because only it knows what counts as unread right now);
  * the others count on their servers. Each workspace's mute and level
  * decide whether its number is added at all. Windows has no badge, so it
- * gets a small overlay on the taskbar icon instead.
+ * gets a red overlay on the taskbar icon instead, drawn in
+ * taskbar-badge.mjs (never the app icon, which read as a stray logo).
  */
-let badgeOverlay = null;
+const badgeOverlays = new Map();
+/** The overlay for one choice, at 100% and 200% so it stays crisp on a
+ * high-DPI taskbar. Built once per look, since there are only ten. */
+function overlayImage({ kind, label }) {
+  const key = `${kind}:${label}`;
+  let image = badgeOverlays.get(key);
+  if (!image) {
+    image = nativeImage.createFromBitmap(renderBadge(kind, label, 16), { width: 16, height: 16 });
+    image.addRepresentation({ scaleFactor: 2, width: 32, height: 32, buffer: renderBadge(kind, label, 32) });
+    badgeOverlays.set(key, image);
+  }
+  return image;
+}
 /** The count the window on screen last reported. */
 let shownCount = 0;
 /** What each workspace's server last said is waiting. */
@@ -3230,11 +3244,8 @@ function applyBadge() {
   if (process.platform === "win32") {
     const win = mainWindow();
     if (!win) return;
-    badgeOverlay ??= nativeImage.createFromPath(APP_ICON).resize({ width: 16, height: 16 });
-    win.setOverlayIcon(
-      count > 0 && !badgeOverlay.isEmpty() ? badgeOverlay : null,
-      count > 0 ? `${count} unread` : "",
-    );
+    const choice = overlayChoice(count);
+    win.setOverlayIcon(choice.kind === "none" ? null : overlayImage(choice), choice.description);
     return;
   }
   app.setBadgeCount(count);
