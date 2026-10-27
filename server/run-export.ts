@@ -291,12 +291,16 @@ export function storedSecrets(cfg: Record<string, any>): string[] {
   return [...new Set(values.filter((v): v is string => typeof v === "string" && v.length >= 8))];
 }
 
-/** Names from the people file, the Telegram people and the owner's own. */
+/** Names from the people file, the Telegram and Signal people and the owner's own. */
 export function knownNames(people: unknown, cfg: Record<string, any>): string[] {
   const names: unknown[] = [cfg.profile?.name];
   const list = isObject(people) && Array.isArray(people.people) ? people.people : [];
   for (const person of list) names.push(person?.name);
   for (const bot of Object.values(isObject(cfg.telegram?.bots) ? cfg.telegram.bots : {}) as any[]) {
+    for (const person of Object.values(isObject(bot?.people) ? bot.people : {}) as any[]) names.push(person?.name);
+  }
+  for (const bot of Object.values(isObject(cfg.signal?.bots) ? cfg.signal.bots : {}) as any[]) {
+    names.push(bot?.ownerName);
     for (const person of Object.values(isObject(bot?.people) ? bot.people : {}) as any[]) names.push(person?.name);
   }
   return [...new Set(names.filter((n): n is string => typeof n === "string" && n.trim().length >= 2).map((n) => n.trim()))];

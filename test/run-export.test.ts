@@ -17,6 +17,7 @@ import {
   defaultChoice,
   diskSource,
   functionName,
+  knownNames,
   readChoice,
   runExport,
   shorten,
@@ -333,6 +334,15 @@ test("a person let in on Signal is somebody else, as a Telegram stranger is; the
     { id: "4", role: "bot", kind: "text", text: "hello Kim", at: 1_003 },
   ]);
   assert.deepEqual(turns.map((t) => t.others), [false, true]);
+});
+
+test("the names taken out include the people let in on Signal", () => {
+  const cfg = {
+    profile: { name: "Sam Lee" },
+    telegram: { bots: { cody: { people: { a: { name: "Kim Park" } } } } },
+    signal: { bots: { cody: { ownerName: "Sam", people: { b: { name: "Ana Ruiz" } } } } },
+  };
+  assert.deepEqual(knownNames({ people: [{ name: "Jo Chen" }] }, cfg).sort(), ["Ana Ruiz", "Jo Chen", "Kim Park", "Sam", "Sam Lee"]);
 });
 
 test("a Signal person's own conversation is left out with other people's words", async (t) => {
