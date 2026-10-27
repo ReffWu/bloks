@@ -123,7 +123,7 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     group: "agents",
     description: "How agents remember, take turns and recover, for every agent here.",
     keywords:
-      "behavior working with agents skills suggest recall remember memory other conversations tidy nightly archive turn limit consecutive chain replies stuck silent tool call background subagents tasks finish stop incident incidents desk failure lead retry interrupt queue messages while working steer correction files changes rooms room auto route router who answers pick small model compaction compact summarise summarize idle cache long tokens",
+      "behavior working with agents skills suggest suggestions learn learning improve revise recall remember memory other conversations tidy nightly archive turn limit consecutive chain replies stuck silent tool call background subagents tasks finish stop incident incidents desk failure lead retry interrupt queue messages while working steer correction files changes rooms room auto route router who answers pick small model compaction compact summarise summarize idle cache long tokens",
     rows: [
       "Suggest skills",
       "Bring up other conversations",
