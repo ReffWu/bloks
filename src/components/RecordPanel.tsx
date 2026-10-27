@@ -49,6 +49,7 @@ const LABEL: Record<string, string> = {
   "skill.installed": "Skill added",
   "skill.deleted": "Skill removed",
   "skill.changed": "Skill changed",
+  "team.installed": "Team installed",
   "routine.ran": "Routine",
   "job.posted": "Job posted",
   "workflow.ran": "Workflow",

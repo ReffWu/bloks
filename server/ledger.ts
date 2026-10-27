@@ -47,6 +47,7 @@ export type LedgerKind =
   | "skill.installed"
   | "skill.deleted"
   | "skill.changed"
+  | "team.installed"
   | "routine.ran"
   | "job.posted"
   | "workflow.ran"

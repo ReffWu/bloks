@@ -239,7 +239,32 @@ import {
   parseCatalog,
   updateCount,
   type RegistryEntry,
+  hashBody,
 } from "./skill-registry.ts";
+import {
+  CATALOG_ITEM_MAX_BYTES,
+  CATALOG_URL,
+  CatalogError,
+  detectKind,
+  itemKey,
+  itemUrl,
+  linkFilename,
+  normalizeLink,
+  parseSkillFile,
+  scrubForSharing,
+  sha256Hex,
+  skillItemStanding,
+  skillPlan,
+  teamChanges,
+  teamForSharing,
+  teamItemStanding,
+  teamPlan,
+  writeSkillFile,
+  type CatalogItem,
+  type HeldSkill,
+  type SkillFile,
+} from "./catalog.ts";
+import { CatalogInstalls, CatalogSource, checkSourceUrl, StagedReviews, type Staged, type TeamInstall } from "./catalog-source.ts";
 import { REPORT_UNCERTAIN, type ReservedReport, type ReportResponse, AgentTokens, allows, capabilities, keptBackRefusal, CLI_FROM_ENV, cliBriefing, cliMovedNote, messageHint, runsAProcess, secretHint, type AgentToken } from "./agent-cli.ts";
 import {
   CACHE_LIFETIME_MS,
@@ -656,7 +681,7 @@ import { rangeDays, summarize, usageReport, UsageStore, USAGE_RANGES, type Usage
 import { monthBounds, monthKey, monthSpend, providerCreditNotice, readLimit, spendNotices, spendRefusal, spendStatus, MAX_LIMIT_USD, type SpendStatus } from "./spend-limits.ts";
 import { PriceBook, PRICES_URL, readOwnPrice, type OwnPrice } from "./model-prices.ts";
 import { TeamLibrary } from "./team-library.ts";
-import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, parseTeamFile, TeamFileError, teamFromManifest, writeTeamFile, type GalleryTeam, type TeamFile } from "./team-file.ts";
+import { GALLERY_MAX_BYTES, GALLERY_URL, parseGallery, MAX_TEAM_ROUTINES, parseTeamFile, TeamFileError, teamFromManifest, type GalleryTeam, type TeamFile, type TeamFileMember, type TeamFileRoutine } from "./team-file.ts";
 import * as artifacts from "./artifacts.ts";
 import { closeHeld, openInside, openUnder, readHeld, streamHeld } from "./open-inside.ts";
 import * as workspace from "./workspace.ts";
@@ -1337,6 +1362,395 @@ function installedMarks() {
   }
   return map;
 }
+// ── the catalogue of teams and skills (server/catalog.ts) ─────────────
+
+/** Where the catalogue is read from: the environment, then the person's
+ * own choice, then this repository's. */
+function catalogUrl(): string {
+  return process.env.BLOKS_CATALOG_URL || cfg.catalog?.url || CATALOG_URL;
+}
+const catalogSource = new CatalogSource({ dir: join(DATA_DIR, "catalog"), url: catalogUrl });
+const catalogInstalls = new CatalogInstalls(join(DATA_DIR, "catalog-installs.json"));
+const stagedReviews = new StagedReviews();
+
+function heldSkills(): HeldSkill[] {
+  return listSkills().map((s) => ({
+    id: s.id,
+    name: s.name,
+    body: s.body,
+    source: s.source,
+    ...(s.registry ? { registry: s.registry } : {}),
+    ...(s.version ? { version: s.version } : {}),
+    ...(s.sha256 ? { sha256: s.sha256 } : {}),
+  }));
+}
+
+/** A team's install record while its room is still here. A room that has
+ * gone takes the record with it: installing again is a fresh install. */
+function liveInstall(key: string): TeamInstall | null {
+  const record = catalogInstalls.get(key);
+  if (!record) return null;
+  if (!bloks.get(record.roomId)) {
+    catalogInstalls.forgetRoom(record.roomId);
+    return null;
+  }
+  return record;
+}
+
+/** A catalogue skill's file from the cache, read, or null. */
+function cachedSkill(item: CatalogItem): SkillFile | null {
+  const bytes = catalogSource.cached(item);
+  if (!bytes) return null;
+  try {
+    return parseSkillFile(new TextDecoder().decode(bytes), item.id);
+  } catch {
+    return null;
+  }
+}
+
+/** One row of the catalogue page: the item, where it stands here, and
+ * whether it would install offline. */
+function catalogRow(item: CatalogItem, held: HeldSkill[]) {
+  const standing =
+    item.kind === "skill"
+      ? skillItemStanding(item, held.find((s) => s.id === item.id) ?? null, cachedSkill(item))
+      : teamItemStanding(item, liveInstall(itemKey(item)));
+  return { ...item, standing, offline: Boolean(catalogSource.cached(item)) };
+}
+
+/** A skill's id from the name of the file it came in. */
+function skillIdFromFilename(filename = ""): string {
+  const parts = filename.split("/").filter(Boolean);
+  const last = parts.at(-1) ?? "";
+  const stem = /^skill\.md$/i.test(last) ? (parts.at(-2) ?? "") : last.replace(/\.(md|markdown|txt)$/i, "");
+  return stem.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "skill";
+}
+
+/** A team from any of the doors, read by the same parser the hire dialog
+ * uses; a file may also be an older JSON export. */
+function readTeam(text: string, origin: Staged["origin"]) {
+  const trimmed = text.trim();
+  if (origin === "file" && trimmed.startsWith("{")) {
+    try {
+      return teamFromManifest(JSON.parse(trimmed));
+    } catch (e) {
+      if (e instanceof TeamFileError) throw e;
+      throw new TeamFileError("That file could not be read as a team.");
+    }
+  }
+  return parseTeamFile(text);
+}
+
+/**
+ * The catalogue's skills a team uses, each fetched and checked against
+ * the index. One that cannot be had is said, not guessed at: the plan
+ * shows it as left out, with why.
+ */
+async function skillsForTeam(team: TeamFile): Promise<{ available: Map<string, SkillFile>; texts: Record<string, string>; why: Record<string, string> }> {
+  const wanted = [...new Set(team.members.flatMap((m) => m.uses ?? []))];
+  const available = new Map<string, SkillFile>();
+  const texts: Record<string, string> = {};
+  const why: Record<string, string> = {};
+  if (!wanted.length) return { available, texts, why };
+  let items: CatalogItem[] = [];
+  try {
+    items = (await catalogSource.index(false)).items;
+  } catch {
+    for (const id of wanted) why[id] = "The catalogue could not be reached, so it is left out";
+    return { available, texts, why };
+  }
+  for (const id of wanted) {
+    const item = items.find((i) => i.kind === "skill" && i.id === id);
+    if (!item) continue;
+    try {
+      const text = await catalogSource.item(item);
+      available.set(id, parseSkillFile(text, id, id));
+      texts[id] = text;
+    } catch (e) {
+      why[id] = e instanceof CatalogError && e.status === 409 ? "It did not match the catalogue's fingerprint, so it is left out" : "It could not be fetched, so it is left out";
+    }
+  }
+  return { available, texts, why };
+}
+
+/**
+ * The review of one item before it is installed: what it is, exactly
+ * what installing it would create, and for an update, what changed. The
+ * bytes reviewed are staged under a token, and installing takes that
+ * token, so what is installed is what was shown.
+ */
+async function catalogReview(input: { text: string; origin: Staged["origin"]; item?: CatalogItem; url?: string; filename?: string }) {
+  const kind = input.item?.kind ?? detectKind(input.text, input.filename ?? (input.url ? linkFilename(input.url) : ""));
+  const sha256 = sha256Hex(input.text);
+  const source = {
+    origin: input.origin,
+    ...(input.item ? { item: input.item } : {}),
+    ...(input.url ? { url: input.url, host: new URL(input.url).host } : {}),
+    ...(input.filename ? { filename: input.filename.slice(0, 120) } : {}),
+  };
+  if (kind === "skill") {
+    const skill = parseSkillFile(input.text, input.item?.id ?? skillIdFromFilename(input.filename ?? (input.url ? linkFilename(input.url) : "")), input.item?.id);
+    const plan = skillPlan(skill, heldSkills(), input.origin === "catalogue");
+    const staged = stagedReviews.put(
+      { kind, text: input.text, sha256, origin: input.origin, skillId: skill.name, ...(input.item ? { item: input.item } : {}), ...(input.url ? { url: input.url } : {}) },
+      newId(),
+    );
+    return { token: staged.token, kind, ...source, sha256, text: input.text, skill, plan };
+  }
+  const team = readTeam(input.text, input.origin);
+  const { available, texts, why } = await skillsForTeam(team);
+  const plan = teamPlan(team, available, heldSkills());
+  for (const s of plan.skills) if (s.state === "missing" && why[s.id]) s.says = why[s.id];
+  const key = input.item ? itemKey(input.item) : input.url ? `link:${input.url}` : null;
+  const record = key ? liveInstall(key) : null;
+  let update = null;
+  if (record) {
+    let before: TeamFile | null = null;
+    try {
+      before = parseTeamFile(record.text);
+    } catch {
+      /* a record from a file that no longer reads: offered as new */
+    }
+    if (before) {
+      const { changes, diff } = teamChanges({ text: record.text, team: before }, { text: input.text, team });
+      update = {
+        roomId: record.roomId,
+        roomName: bloks.get(record.roomId)?.name ?? team.name,
+        version: record.version,
+        installedAt: record.installedAt,
+        same: record.sha256 === sha256,
+        changes,
+        diff,
+      };
+    }
+  }
+  const staged = stagedReviews.put(
+    {
+      kind,
+      text: input.text,
+      sha256,
+      origin: input.origin,
+      ...(input.item ? { item: input.item } : {}),
+      ...(input.url ? { url: input.url } : {}),
+      skills: texts,
+    },
+    newId(),
+  );
+  return { token: staged.token, kind, ...source, sha256, text: input.text, team, plan, update };
+}
+
+/** A routine from a team file, filed paused: a schedule somebody else
+ * wrote runs only once the person has looked at it and switched it on. */
+function fileTeamRoutine(targetKind: "room" | "agent", targetId: string, routine: TeamFileRoutine): Routine | null {
+  const clean = normalizeRoutine({
+    targetKind,
+    targetId,
+    prompt: routine.prompt,
+    time: routine.time,
+    days: routine.days,
+    ...(routine.name ? { name: routine.name } : {}),
+    enabled: false,
+  });
+  return clean ? routines.create(clean) : null;
+}
+
+/** The skills a staged team brought, installed where the library has no
+ * skill of that id. One already here is never replaced by a team: the
+ * plan said so, and a team is not the place to overwrite a skill. */
+function installTeamSkills(staged: Staged): string[] {
+  const here = new Set(listSkills().map((s) => s.id));
+  const added: string[] = [];
+  for (const [id, text] of Object.entries(staged.skills ?? {})) {
+    if (here.has(id)) continue;
+    const skill = parseSkillFile(text, id, id);
+    installSkill({ id, name: skill.title, description: skill.description, body: skill.body, registry: id, version: skill.version ?? "1", sha256: hashBody(skill.body) });
+    added.push(id);
+  }
+  return added;
+}
+
+/**
+ * Installs what was reviewed. A team makes new agents with connected
+ * apps, the browser and tool servers off, a room around them, the
+ * skills they use, and their routines paused. An update changes the
+ * agents the last install made, keeps anything the person changed since,
+ * adds who and what is new, and takes nothing away.
+ */
+async function installStaged(staged: Staged, body: Record<string, unknown>) {
+  if (staged.kind === "skill") {
+    const skill = parseSkillFile(staged.text, staged.skillId ?? staged.item?.id ?? "skill", staged.item?.id);
+    const fromCatalogue = staged.origin === "catalogue" && staged.item;
+    const installed = installSkill({
+      id: skill.name,
+      name: skill.title,
+      description: skill.description,
+      body: skill.body,
+      ...(fromCatalogue ? { registry: staged.item!.id, version: skill.version ?? staged.item!.version, sha256: hashBody(skill.body) } : {}),
+    });
+    broadcast({ kind: "skills" });
+    record({
+      at: Date.now(),
+      kind: "skill.installed",
+      actor: "you",
+      summary: `Installed ${installed.name} from ${fromCatalogue ? "the catalogue" : staged.url ? new URL(staged.url).host : "a file"}`,
+      detail: { skill: installed.id, version: skill.version ?? "1", sha256: staged.sha256 },
+    });
+    return { kind: "skill" as const, skillIds: [installed.id], botIds: [], routineIds: [], notes: [] as string[] };
+  }
+
+  const team = readTeam(staged.text, staged.origin);
+  const key = staged.item ? itemKey(staged.item) : staged.url ? `link:${staged.url}` : null;
+  const previous = key ? liveInstall(key) : null;
+  const notes: string[] = [];
+  const addedSkills = installTeamSkills(staged);
+  if (addedSkills.length) broadcast({ kind: "skills" });
+  const library = new Set(listSkills().map((s) => s.id));
+  const usesHere = (m: TeamFileMember) => (m.uses ?? []).filter((id) => library.has(id));
+  const names: unknown[] = Array.isArray(body.names) ? body.names : [];
+  const settings = await newAgentSettings();
+  const routineIds: string[] = [];
+  let routinesRefused = 0;
+  const file = (kind: "room" | "agent", id: string, r: TeamFileRoutine) => {
+    const made = fileTeamRoutine(kind, id, r);
+    if (made) routineIds.push(made.id);
+    else routinesRefused++;
+  };
+
+  /** One new agent for a member, careful from the start. */
+  const hire = (member: TeamFileMember, name: string | undefined) => {
+    const bot = store.createBot({
+      name: name || member.title,
+      title: member.title,
+      description: member.description,
+      skills: member.skills,
+      seniority: member.seniority,
+      color: member.color,
+      shape: member.shape,
+      skillIds: usesHere(member),
+      greeting: `${name || member.title} here. ${member.title || "Ready to work."}`,
+      setup: { title: "Installed with the team", subtitle: "", options: [] },
+    });
+    // Connected apps, the browser and tool servers start off: what this
+    // agent may reach is the person's to grant, not a team file's.
+    store.patchBot(bot.id, { ...settings, composio: false, browser: false, mcpServers: [], activeWithYouAt: Date.now() });
+    broadcast({ kind: "bot", bot: { ...clientBot(store.bot(bot.id))!, messages: store.messagesFor(bot.threadId) } });
+    return bot;
+  };
+
+  const wantsUpdate = body.mode === "update" && previous;
+  if (!wantsUpdate) {
+    const hired = team.members.map((member, i) => hire(member, clamp(names[i], MAX_NAME_CHARS)));
+    const blok = bloks.create(clamp(body.roomName, MAX_NAME_CHARS) ?? team.name, hired.map((h) => h.id), Date.now());
+    broadcast({ kind: "blok", blok });
+    for (const r of team.routines ?? []) file("room", blok.id, r);
+    team.members.forEach((member, i) => {
+      for (const r of member.routines ?? []) file("agent", hired[i].id, r);
+    });
+    if (key) {
+      catalogInstalls.put({
+        key,
+        title: team.name,
+        version: team.version ?? staged.item?.version ?? "1",
+        sha256: staged.sha256,
+        text: staged.text,
+        roomId: blok.id,
+        members: team.members.map((m, i) => ({ title: m.title, botId: hired[i].id, description: m.description, skills: m.skills, uses: m.uses ?? [] })),
+        routineIds,
+        installedAt: Date.now(),
+      });
+    }
+    if (routinesRefused) notes.push(`${routinesRefused} routine${routinesRefused === 1 ? " was" : "s were"} not added: the workspace holds at most ${MAX_ROUTINES}.`);
+    if (routineIds.length) broadcast({ kind: "routines" });
+    record({
+      at: Date.now(),
+      kind: "team.installed",
+      actor: "you",
+      summary: `Installed ${team.name} from ${staged.origin === "catalogue" ? "the catalogue" : staged.url ? new URL(staged.url).host : "a file"}: ${hired.length} agents`,
+      detail: { team: staged.item?.id ?? staged.url ?? "a file", sha256: staged.sha256, room: blok.id, agents: hired.length, skills: addedSkills.length, routines: routineIds.length },
+    });
+    return { kind: "team" as const, roomId: blok.id, botIds: hired.map((h) => h.id), skillIds: addedSkills, routineIds, notes };
+  }
+
+  // ── an update, onto the room the last install made ──
+  const room = bloks.get(previous.roomId)!;
+  let before: TeamFile | null = null;
+  try {
+    before = parseTeamFile(previous.text);
+  } catch {
+    /* compared against nothing: every routine counts as new */
+  }
+  const keyOf = (title: string) => title.trim().toLowerCase();
+  const members: TeamInstall["members"] = [];
+  const botIds: string[] = [];
+  let kept = 0;
+  for (const [i, member] of team.members.entries()) {
+    const was = previous.members.find((m) => keyOf(m.title) === keyOf(member.title));
+    const bot = was ? store.bot(was.botId) : null;
+    if (was && bot && !bot.archivedAt) {
+      // Changed here since the install: the person's version stays, and
+      // the record keeps what was installed, so the next update still
+      // knows this one is theirs.
+      const editedHere = (bot.description ?? "") !== was.description || JSON.stringify(bot.skills ?? []) !== JSON.stringify(was.skills);
+      const skillIds = [...new Set([...(bot.skillIds ?? []).filter((id) => !was.uses.includes(id)), ...usesHere(member)])];
+      if (editedHere) {
+        kept++;
+        store.patchBot(bot.id, { skillIds, seniority: member.seniority });
+        members.push({ ...was, uses: member.uses ?? [] });
+      } else {
+        store.patchBot(bot.id, { title: member.title, description: member.description, skills: member.skills, skillIds, seniority: member.seniority });
+        members.push({ title: member.title, botId: bot.id, description: member.description, skills: member.skills, uses: member.uses ?? [] });
+      }
+      broadcast({ kind: "bot", bot: { ...clientBot(store.bot(bot.id))!, messages: store.messagesFor(store.bot(bot.id)!.threadId) } });
+      continue;
+    }
+    if (room.memberIds.length + botIds.length >= MAX_MEMBERS) {
+      notes.push(`${member.title} was not added: a room holds at most ${MAX_MEMBERS} agents.`);
+      continue;
+    }
+    const made = hire(member, clamp(names[i], MAX_NAME_CHARS));
+    botIds.push(made.id);
+    members.push({ title: member.title, botId: made.id, description: member.description, skills: member.skills, uses: member.uses ?? [] });
+  }
+  // members the new version dropped stay, and stay recorded
+  for (const was of previous.members) if (!members.some((m) => m.botId === was.botId)) members.push(was);
+  if (botIds.length) {
+    const patched = bloks.patch(room.id, { memberIds: [...room.memberIds, ...botIds] });
+    if (patched) broadcast({ kind: "blok", blok: patched });
+  }
+  // new routines only; one the new version dropped stays on the calendar
+  const known = new Set<string>();
+  const sig = (target: string, r: TeamFileRoutine) => `${keyOf(target)}|${r.days.join(",")}|${r.time}|${r.prompt}`;
+  for (const r of before?.routines ?? []) known.add(sig("room", r));
+  for (const m of before?.members ?? []) for (const r of m.routines ?? []) known.add(sig(m.title, r));
+  for (const r of team.routines ?? []) if (!known.has(sig("room", r))) file("room", room.id, r);
+  for (const member of team.members) {
+    const botId = members.find((m) => keyOf(m.title) === keyOf(member.title))?.botId;
+    if (!botId) continue;
+    for (const r of member.routines ?? []) if (!known.has(sig(member.title, r))) file("agent", botId, r);
+  }
+  if (kept) notes.push(`${kept} agent${kept === 1 ? " you changed keeps" : "s you changed keep"} your version.`);
+  if (routinesRefused) notes.push(`${routinesRefused} routine${routinesRefused === 1 ? " was" : "s were"} not added: the workspace holds at most ${MAX_ROUTINES}.`);
+  if (routineIds.length) broadcast({ kind: "routines" });
+  catalogInstalls.put({
+    ...previous,
+    title: team.name,
+    version: team.version ?? staged.item?.version ?? previous.version,
+    sha256: staged.sha256,
+    text: staged.text,
+    members,
+    routineIds: [...previous.routineIds, ...routineIds],
+    updatedAt: Date.now(),
+  });
+  record({
+    at: Date.now(),
+    kind: "team.installed",
+    actor: "you",
+    summary: `Updated ${team.name} to version ${team.version ?? "?"}`,
+    detail: { team: staged.item?.id ?? staged.url ?? "a file", sha256: staged.sha256, room: room.id, added: botIds.length, kept, skills: addedSkills.length, routines: routineIds.length },
+  });
+  return { kind: "team" as const, roomId: room.id, botIds, skillIds: addedSkills, routineIds, notes };
+}
+
 const routines = new RoutineStore();
 routines.settleOrphanRuns();
 /** The incident desk's list (server/incidents.ts). */
@@ -24474,24 +24888,47 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         }));
       return json(res, 200, { bloksTeam: 1, name: blok.name, members });
     }
-    // The same room as a Markdown team file, for handing to someone.
+    // The same room as a Markdown team file, for handing to someone: the
+    // catalogue's own format (server/catalog.ts), with the library skills
+    // each member uses and the room's routines, and with this workspace's
+    // secrets, addresses, numbers and the hire's project brief taken out.
+    // An agent's own routines go only when a team install filed them;
+    // the rest are that agent's life, not the team's.
     m = path.match(/^\/api\/bloks\/([\w-]+)\/team\.md$/);
     if (m && method === "GET") {
       const blok = bloks.get(m[1]);
       if (!blok) return json(res, 404, { error: "no such room" });
       const roster = blok.memberIds.map((id) => store.bot(id)).filter((b): b is BotRecord => Boolean(b));
       const ranks = ranksForExport(roster, blok.leadId);
-      const members = roster
-        .map((b) => ({
+      const library = new Set(listSkills().map((s) => s.id));
+      const installed = catalogInstalls.list().find((r) => r.roomId === blok.id) ?? null;
+      const teamFiled = new Set(catalogInstalls.list().flatMap((r) => r.routineIds));
+      const asLine = (r: Routine): TeamFileRoutine[] =>
+        r.every || r.repeat === "once" ? [] : [{ days: r.days, time: r.time, ...(r.name ? { name: r.name } : {}), prompt: r.prompt }];
+      const room = routines.routines.filter((r) => r.targetKind === "room" && r.targetId === blok.id).flatMap(asLine).slice(0, MAX_TEAM_ROUTINES);
+      let left = MAX_TEAM_ROUTINES - room.length;
+      const members = roster.map((b) => {
+        const own = routines.routines.filter((r) => r.targetKind === "agent" && r.targetId === b.id && teamFiled.has(r.id)).flatMap(asLine).slice(0, Math.max(0, left));
+        left -= own.length;
+        return {
           title: b.title || b.name,
           description: b.description ?? "",
           skills: b.skills ?? [],
+          uses: (b.skillIds ?? []).filter((id) => library.has(id)),
+          routines: own,
           seniority: ranks.get(b.id) ?? 1,
           color: b.color,
           shape: b.shape,
-        }));
+        };
+      });
+      let blurb: string | undefined;
+      try {
+        blurb = installed ? parseTeamFile(installed.text).blurb : undefined;
+      } catch {
+        /* the installed file no longer reads: written without its line */
+      }
       res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store" });
-      return res.end(writeTeamFile({ name: blok.name, members }));
+      return res.end(teamForSharing({ name: blok.name, ...(blurb ? { blurb } : {}), members, routines: room }, storedSecrets()));
     }
     // A team file (Markdown, or an older JSON manifest) read for the hire
     // dialog. Nothing is created here; hiring is its own step.
@@ -24788,6 +25225,115 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       if (!content) return json(res, 404, { error: "That file was not kept: it was deleted, or too big to keep." });
       res.writeHead(200, { "content-type": "application/octet-stream", "content-length": content.length, "cache-control": "no-store" });
       return res.end(content);
+    }
+
+    // ── the catalogue: ready teams and skills (server/catalog.ts) ──
+    // Browsing, a review that says exactly what an install creates, and
+    // the install itself, which takes the reviewed bytes by token. The
+    // person's alone: an agent's credential never reaches these, and a
+    // member's requests never reach this far (serveMember).
+    if (path === "/api/catalog" || path.startsWith("/api/catalog/")) {
+      if (asAgent) return json(res, 403, { error: "the catalogue is the person's" });
+      const failed = (e: unknown, fallback: number) => {
+        const status = e instanceof CatalogError ? e.status : ((e as { status?: number })?.status ?? fallback);
+        const message = e instanceof TeamFileError || e instanceof CatalogError ? e.message : redactSecrets(e instanceof Error ? e.message : String(e));
+        return json(res, status, { error: message });
+      };
+      if (method === "GET" && path === "/api/catalog") {
+        try {
+          const answer = await catalogSource.index(url.searchParams.get("refresh") === "1");
+          const held = heldSkills();
+          const items = answer.items.map((item) => catalogRow(item, held));
+          return json(res, 200, {
+            items,
+            updates: items.filter((i) => i.standing.state === "outdated").length,
+            fetchedAt: answer.fetchedAt,
+            offline: answer.offline,
+            ...(answer.error ? { error: answer.error } : {}),
+            source: { url: answer.url, custom: answer.url !== CATALOG_URL },
+          });
+        } catch (e) {
+          return failed(e, 502);
+        }
+      }
+      // One item in full, for its page: checked against the index first.
+      m = path.match(/^\/api\/catalog\/(team|skill)\/([a-z0-9-]{1,64})$/);
+      if (m && method === "GET") {
+        try {
+          const answer = await catalogSource.index(false);
+          const item = answer.items.find((i) => i.kind === m![1] && i.id === m![2]);
+          if (!item) return json(res, 404, { error: "The catalogue does not have that." });
+          const text = await catalogSource.item(item);
+          const row = catalogRow(item, heldSkills());
+          if (item.kind === "skill") return json(res, 200, { item: row, text, skill: parseSkillFile(text, item.id, item.id) });
+          return json(res, 200, { item: row, text, team: parseTeamFile(text) });
+        } catch (e) {
+          return failed(e, 502);
+        }
+      }
+      // What installing would create. Nothing is created here.
+      if (method === "POST" && path === "/api/catalog/review") {
+        const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+        try {
+          if ((body.kind === "team" || body.kind === "skill") && typeof body.id === "string") {
+            const answer = await catalogSource.index(false);
+            const item = answer.items.find((i) => i.kind === body.kind && i.id === body.id);
+            if (!item) return json(res, 404, { error: "The catalogue does not have that." });
+            return json(res, 200, { review: await catalogReview({ text: await catalogSource.item(item), origin: "catalogue", item }) });
+          }
+          if (typeof body.url === "string") {
+            const link = normalizeLink(body.url);
+            if (!link.ok) return json(res, 400, { error: link.error });
+            // A link to a catalogue item is that item, and is checked
+            // against the index like any other.
+            const answer = await catalogSource.index(false).catch(() => null);
+            const item = answer?.items.find((i) => itemUrl(answer.url, i) === link.url);
+            if (item) return json(res, 200, { review: await catalogReview({ text: await catalogSource.item(item), origin: "catalogue", item }) });
+            const fetched = await catalogSource.fetchLink(link.url);
+            return json(res, 200, { review: await catalogReview({ text: fetched.text, origin: "link", url: link.url }) });
+          }
+          if (typeof body.text === "string") {
+            if (Buffer.byteLength(body.text, "utf8") > CATALOG_ITEM_MAX_BYTES) return json(res, 413, { error: "That file is too large to install." });
+            if (!body.text.trim()) return json(res, 400, { error: "That file is empty." });
+            const filename = typeof body.filename === "string" ? body.filename : "";
+            return json(res, 200, { review: await catalogReview({ text: body.text, origin: "file", filename }) });
+          }
+          return json(res, 400, { error: "Say which item, link or file to review." });
+        } catch (e) {
+          return failed(e, 400);
+        }
+      }
+      // Installs what was reviewed, by its token. A review is used once.
+      if (method === "POST" && path === "/api/catalog/install") {
+        const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+        const staged = stagedReviews.take(body.token);
+        if (!staged) return json(res, 410, { error: "That review has expired. Open it again to install." });
+        try {
+          return json(res, 201, { result: await installStaged(staged, body) });
+        } catch (e) {
+          return failed(e, 400);
+        }
+      }
+      // Where the catalogue is read from. Empty puts it back to this
+      // repository's own.
+      if (path === "/api/catalog/source" && (method === "GET" || method === "PUT")) {
+        if (method === "PUT") {
+          const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+          const wanted = typeof body.url === "string" ? body.url.trim() : "";
+          if (wanted && wanted !== CATALOG_URL) {
+            const checked = checkSourceUrl(wanted);
+            if (!checked.ok) return json(res, 400, { error: checked.error });
+            Object.assign(cfg, saveConfig({ catalog: { url: checked.url } }));
+          } else {
+            Object.assign(cfg, saveConfig({ catalog: { url: "" } }));
+          }
+        }
+        return json(res, 200, {
+          url: catalogUrl(),
+          default: CATALOG_URL,
+          fromEnvironment: Boolean(process.env.BLOKS_CATALOG_URL),
+        });
+      }
     }
 
     // ── search: every transcript, one query ──
@@ -26798,6 +27344,28 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         said: `Staged for the person to keep, edit or dismiss in Skills. ${found.name} is unchanged until they do.`,
       });
     }
+
+    // A skill as a SKILL.md, the catalogue's format, for handing to
+    // someone or sending to the catalogue, with this workspace's secrets,
+    // addresses and numbers taken out.
+    m = path.match(/^\/api\/skills\/([\w-]+)\/skill\.md$/);
+    if (m && method === "GET") {
+      if (asAgent) return json(res, 403, { error: "that is the person's" });
+      const found = listSkills().find((s) => s.id === m![1]);
+      if (!found) return json(res, 404, { error: "no such skill" });
+      const secrets = storedSecrets();
+      const clean = (text: string) => scrubForSharing(text, secrets).trim();
+      res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store" });
+      return res.end(
+        writeSkillFile({
+          name: found.id,
+          title: clean(found.name),
+          description: clean(found.description),
+          body: clean(found.body),
+          version: found.version ?? "1",
+        }),
+      );
+    }
     m = path.match(/^\/api\/skills\/([\w.-]+)$/);
     if (m && method === "GET") {
       // One skill, in full. This is the other half of keeping long skills
@@ -28657,7 +29225,23 @@ function unfilled(server: { env?: Record<string, string>; headers?: Record<strin
  * failed. Never hand one back to the UI (or into a log) verbatim. */
 function redactSecrets(message: string): string {
   let out = message;
-  const stored = [
+  for (const secret of storedSecrets()) {
+    if (secret && secret.length >= 8) out = out.split(secret).join("[redacted]");
+  }
+  // and anything that merely looks like a key we haven't stored. A Cloud
+  // licence is the sharp case: one pasted for activation that failed was
+  // never written to the config, so the list above cannot cover it.
+  return out
+    .replace(/\b(sk|ck|ak|gsk|xai)[-_][A-Za-z0-9_-]{12,}/g, "[redacted]")
+    .replace(/\bblok_live_[0-9a-f]{32}\b/g, "[redacted]")
+    // GitHub's own shapes, classic and fine-grained
+    .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, "[redacted]");
+}
+
+/** Every credential this workspace keeps, for anything that must make
+ * sure none of them leaves in a message or a shared file. */
+function storedSecrets(): Array<string | undefined | null> {
+  return [
     cfg.xai?.key,
     cfg.composio?.key,
     cfg.composio?.apiKey,
@@ -28670,17 +29254,6 @@ function redactSecrets(message: string): string {
     cfg.credits?.token,
     creditsEnvToken() ?? undefined,
   ];
-  for (const secret of stored) {
-    if (secret && secret.length >= 8) out = out.split(secret).join("[redacted]");
-  }
-  // and anything that merely looks like a key we haven't stored. A Cloud
-  // licence is the sharp case: one pasted for activation that failed was
-  // never written to the config, so the list above cannot cover it.
-  return out
-    .replace(/\b(sk|ck|ak|gsk|xai)[-_][A-Za-z0-9_-]{12,}/g, "[redacted]")
-    .replace(/\bblok_live_[0-9a-f]{32}\b/g, "[redacted]")
-    // GitHub's own shapes, classic and fine-grained
-    .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, "[redacted]");
 }
 
 // Read once, here, and never again while the process lives: see the

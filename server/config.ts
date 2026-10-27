@@ -197,6 +197,10 @@ export interface AppConfig {
    * or "more". Unset reads `propose`, which is what it was when it was
    * one switch: on is "suggest". */
   skills?: { propose?: boolean; learn?: "off" | "suggest" | "more" };
+  /** Where the catalogue of teams and skills is read from: an index.json
+   * over https (server/catalog.ts). Empty or unset is this repository's
+   * own; BLOKS_CATALOG_URL, when set, wins over both. */
+  catalog?: { url?: string };
   /** How long a tool call may go without a word from the engine before
    * Bloks stops the turn, in minutes; 0 is never. Unset is the default
    * in server/drivers/stall.ts. `backgroundWork` is whether a turn waits
@@ -403,6 +407,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "shortcuts",
     "compaction",
     "skills",
+    "catalog",
     "turns",
     "recall",
     "memory",
