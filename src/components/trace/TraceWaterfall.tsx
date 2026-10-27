@@ -52,7 +52,7 @@ import {
   type TraceRow,
 } from "@/lib/traceView";
 import { cn } from "@/lib/cn";
-import { useLiveString, useLiveText, useTraceClock, type TraceClock } from "./clock";
+import { useLiveText, useTraceClock, type TraceClock } from "./clock";
 import { RollingNumber } from "./RollingNumber";
 import { BarGlyph, colorHex, kindWord, Legend, SpanDetail, Spinner, StepIcon } from "./parts";
 
@@ -232,7 +232,7 @@ export function TraceWaterfall({ groups, now, variant = "panel", className }: Tr
             <div className="flex shrink-0 items-center px-3 text-caption text-muted-foreground" style={{ width: size.tree }}>
               Steps
             </div>
-            <div ref={rulerRef} className="trace-timeline relative min-w-0 flex-1 border-l text-caption tabular-nums text-muted-foreground">
+            <div ref={rulerRef} className="trace-timeline trace-ruler relative min-w-0 flex-1 border-l text-caption tabular-nums text-muted-foreground">
               {ticks.map((tick) => (
                 <span
                   key={tick.at}
@@ -337,12 +337,13 @@ export function TraceWaterfall({ groups, now, variant = "panel", className }: Tr
 
 function Metrics({ groups, clock, island }: { groups: TraceGroup[]; clock: TraceClock; island: boolean }) {
   const totals = sumTotals(groups, clock.read());
-  const duration = useLiveString(clock, (t) => formatDuration(groupsElapsed(groups, t)));
   // A cost is said when a turn ends, so a running one has none yet; an
   // engine that never prices its turns has none at all. Neither is $0.
   const running = groups.some((g) => g.trace.running);
-  const cells: Array<{ label: string; value: string | null; quiet?: string; why?: string; warn?: boolean }> = [
-    { label: "Duration", value: duration },
+  const cells: Array<{ label: string; value: string | null; ticks?: (now: number) => string; quiet?: string; why?: string; warn?: boolean }> = [
+    // a clock ticks rather than rolls: it changes every frame, and a
+    // wheel that never comes to rest cannot be read
+    { label: "Duration", value: "", ticks: (t) => formatDuration(groupsElapsed(groups, t)) },
     {
       label: "Cost",
       value: formatCost(totals.cost),
@@ -366,7 +367,14 @@ function Metrics({ groups, clock, island }: { groups: TraceGroup[]; clock: Trace
       {cells.map((cell) => (
         <div key={cell.label} className={cn("min-w-0", island ? "bg-black px-2.5 py-1.5" : "bg-background px-3 py-2")}>
           <div className="truncate text-caption text-muted-foreground">{cell.label}</div>
-          {cell.value === null ? (
+          {cell.ticks ? (
+            <LiveText
+              clock={clock}
+              live={running}
+              format={cell.ticks}
+              className={cn("block font-medium tabular-nums text-foreground", island ? "text-small" : "text-ui")}
+            />
+          ) : cell.value === null ? (
             <div className={cn("truncate text-muted-foreground", island ? "text-small" : "text-ui")} title={cell.why}>
               {cell.quiet}
             </div>
@@ -600,7 +608,7 @@ const TrackRow = memo(function TrackRow({
 });
 
 /** Words that follow the clock without rendering anything around them. */
-function LiveText({ clock, format, live }: { clock: TraceClock; format: (now: number) => string; live: boolean }) {
+function LiveText({ clock, format, live, className }: { clock: TraceClock; format: (now: number) => string; live: boolean; className?: string }) {
   const ref = useLiveText<HTMLSpanElement>(clock, format, live);
-  return <span ref={ref} />;
+  return <span ref={ref} className={className} />;
 }

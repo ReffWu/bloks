@@ -911,9 +911,16 @@
   transform: translate3d(calc(var(--at) * var(--ms) * 1px), 0, 0);
   transition: opacity 240ms ease-out;
 }
+/* A label that runs past the ruler's edge fades out rather than being
+ * cut through a word ("1m 15"). */
+.trace-ruler {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
 .trace-tick {
   position: absolute;
   left: 0;
+  white-space: nowrap;
   transform: translate3d(calc(var(--at) * var(--ms) * 1px + 5px), 0, 0);
   transition: opacity 240ms ease-out;
 }

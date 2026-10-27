@@ -8,7 +8,7 @@
 // one more frame (the ruler settling after a rescale). It never steps
 // back for a reading a moment behind the one before it, which is what
 // keeps the playhead from twitching on every poll.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 /** Called each frame with the time (epoch ms, the server's clock) and the
  * milliseconds since the last frame. Answers true to be called again even
@@ -111,16 +111,4 @@ export function useLiveText<T extends HTMLElement>(clock: TraceClock, format: (n
     });
   }, [clock, live]);
   return ref;
-}
-
-/** The same, as state, for text that has to be rendered (rolling digits).
- * It renders only when the words change. */
-export function useLiveString(clock: TraceClock, format: (now: number) => string): string {
-  const [text, setText] = useState(() => format(clock.read()));
-  const said = useRef(format);
-  said.current = format;
-  useEffect(() => clock.subscribe((now) => setText(said.current(now))), [clock]);
-  // new data between frames: said at once
-  const fresh = format(clock.read());
-  return fresh === text ? text : fresh;
 }
