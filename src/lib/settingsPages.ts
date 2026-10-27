@@ -204,6 +204,14 @@ export const SETTINGS_PAGE_LIST: readonly SettingsPageInfo[] = [
     rows: ["Local VM", "Boat API key", "Sleep idle cloud computers after"],
   },
   {
+    id: "browser",
+    label: "Browser",
+    group: "connections",
+    description: "The browser beside the chat: which sites agents may use there, and when they ask.",
+    keywords: "browser web sites allow deny block list ask first auto downloads sign out cookies password card upload take over",
+    rows: ["Asks", "Sites agents may use", "Sites agents never use", "Downloads", "Sign out of every site"],
+  },
+  {
     id: "past-sessions",
     label: "Past conversations",
     group: "data",

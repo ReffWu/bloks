@@ -85,6 +85,7 @@ import { BehaviourPage } from "./settings/BehaviourPage";
 import { GeneralPage } from "./settings/GeneralPage";
 import { PlanPage } from "./settings/PlanPage";
 import { AboutYouPage, AppsPage, ComputersPage, RulesPage, VoicesPage } from "./settings/pages";
+import { BrowserPage } from "./settings/BrowserPage";
 
 type Icon = React.ComponentType<{ size?: number; className?: string }>;
 
@@ -107,6 +108,7 @@ const ICONS: Record<string, Icon> = {
   devices: Smartphone,
   chat: MessageCircle,
   computers: Monitor,
+  browser: Globe,
   "past-sessions": MessagesSquare,
   "bring-setup": Luggage,
   record: History,
@@ -178,6 +180,8 @@ function PageBody({ id }: { id: string }) {
       );
     case "computers":
       return <ComputersPage />;
+    case "browser":
+      return <BrowserPage />;
     case "past-sessions":
       return <PastSessionsPage />;
     case "bring-setup":

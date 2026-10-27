@@ -392,6 +392,15 @@ declare global {
       /** An agent's terminal in a window of its own, or the one already
        * open brought forward. Absent in an app older than tabs. */
       terminalWindow?(botId: string): Promise<void>;
+      /** The Bloks browser beside the chat (electron/app-browser.mjs):
+       * what it shows, where its panel is (null when off screen, and the
+       * tab hides), what the person does in it, and the app asking for
+       * the panel when an agent starts browsing. Absent in an older app. */
+      browserState?(): Promise<import("../lib/appBrowser").AppBrowserState | null>;
+      browserBounds?(rect: { x: number; y: number; width: number; height: number } | null): Promise<import("../lib/appBrowser").AppBrowserState | null>;
+      browserDo?(action: import("../lib/appBrowser").BrowserDo, arg?: string): Promise<{ ok?: boolean; error?: string; url?: string }>;
+      onBrowserState?(handler: (state: import("../lib/appBrowser").AppBrowserState) => void): () => void;
+      onBrowserReveal?(handler: (payload: { by?: string }) => void): () => void;
       onQuickOpened(handler: () => void): () => void;
       /** Whether this Mac can prove who is at the keyboard: "biometry",
        * "password", or "unavailable". */

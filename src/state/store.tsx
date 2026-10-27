@@ -57,6 +57,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { openJoinDialog, workspaceFrame } from "@/lib/members";
 import { loadPlan } from "@/lib/planClient";
+import { hasOwnBrowser, noteBrowserState } from "@/lib/appBrowser";
 
 export * from "./reducer";
 
@@ -1046,6 +1047,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "computer":
           rawDispatch({ type: "computerState", botId: frame.botId, state: String(frame.state ?? "") });
+          break;
+        case "browser.app":
+          // the Mac's browser, for a page that is not on the Mac; the
+          // desktop app hears its own browser first-hand (src/lib/appBrowser.ts)
+          if (!hasOwnBrowser()) noteBrowserState(frame.state);
           break;
         case "blok":
           rawDispatch({ type: "blokPatched", blok: frame.blok });

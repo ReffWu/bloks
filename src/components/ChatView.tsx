@@ -18,6 +18,9 @@ import { MessageComponent } from "./Gallery";
 import { GenUiHost } from "./genui/host";
 import { Composer } from "./Composer";
 import { useTerminalDock } from "./terminal/TerminalDock";
+import { BrowserDock, BrowsingOnMac, useBrowserReveal, useBrowserState } from "./browser/BrowserPanel";
+import { hasOwnBrowser, setBrowserPanel, useBrowserPanel } from "@/lib/appBrowser";
+import { Globe } from "@/components/icons";
 import { stepTab, terminalChord } from "@/lib/terminalTabs";
 import { closeRefusal, conversationChord, keysOwner, keysWhere, type ConversationChord } from "@/lib/conversationKeys";
 import { toast } from "@/components/ui/toast";
@@ -641,6 +644,14 @@ export function ChatView({ bot }: { bot: Bot }) {
     "terminal.position": { status: "observed", value: terminal.layout.position },
     "terminal.arrangement": { status: "observed", value: terminal.layout.arrangement },
   });
+  // The Bloks browser (browser/BrowserPanel.tsx): its panel in the desktop
+  // app, opened by the app too when an agent starts browsing, and news of
+  // the Mac's anywhere else.
+  useBrowserReveal();
+  const browserPanel = useBrowserPanel();
+  const browserState = useBrowserState();
+  const someoneBrowsing = browserState?.control.by === "agent";
+  const botNames = useMemo(() => Object.fromEntries(state.bots.map((b) => [b.id, b.name])), [state.bots]);
 
   // the two-agent exchange opened from one of its rows, if any
   const [exchange, setExchange] = useState<{ peerId: string; messageId: string; text: string } | null>(null);
@@ -894,6 +905,22 @@ export function ChatView({ bot }: { bot: Bot }) {
           >
             <SquareTerminal size={17} />
           </Button>
+          {hasOwnBrowser() && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setBrowserPanel({ open: !browserPanel.open })}
+              className={cn("relative", browserPanel.open && "bg-accent text-foreground")}
+              title={someoneBrowsing && browserState?.control.by === "agent" ? `Browser: ${browserState.control.name} is browsing` : "Browser"}
+              aria-label="Browser"
+              aria-pressed={browserPanel.open}
+            >
+              <Globe size={17} />
+              {someoneBrowsing && !browserPanel.open && (
+                <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 animate-pulse rounded-full bg-brand" />
+              )}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -997,7 +1024,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       )}
       {/* The conversation and the terminal, which can sit on any side of
           it (terminal/TerminalDock.tsx). */}
-      <div ref={terminal.body} className="flex min-h-0 min-w-0 flex-1">
+      <div ref={terminal.body} className="relative flex min-h-0 min-w-0 flex-1">
       {terminal.slot("left")}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {terminal.slot("top")}
@@ -1091,6 +1118,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       <JumpToLatest show={away && !empty} fresh={freshBelow} onJump={toLatest} />
       </div>
 
+      <BrowsingOnMac botId={bot.id} name={bot.name} />
       {terminal.slot("bottom")}
       <GoalDialog />
       {/* approvals, other conversations, the engine, what waits, guest
@@ -1118,6 +1146,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           onClose={() => setTraceAsk(null)}
         />
       )}
+      <BrowserDock botNames={botNames} />
       </div>
       {terminal.overlay}
       {terminal.panel}

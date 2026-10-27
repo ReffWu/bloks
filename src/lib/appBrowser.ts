@@ -1,0 +1,223 @@
+// The Bloks browser, as the page sees it.
+//
+// In the desktop app the browser is the app's own (electron/app-browser.mjs):
+// this page draws its panel, tells the app where the panel is, and hears
+// from the app what each tab shows and who drives it. Anywhere else (a
+// phone, bloks.dev/web, another computer) there is no browser here at
+// all, only the Mac's, and the workspace's server says what it is doing
+// (GET /api/browser and its "browser.app" frames).
+//
+// One small store for both, so a component asks one question: what is
+// the browser doing, and can I drive it from here.
+import { useEffect, useSyncExternalStore } from "react";
+
+export type TabBy = { kind: "person" } | { kind: "agent"; botId: string; name: string };
+
+export type BrowserControl =
+  | { by: "idle" }
+  | { by: "agent"; botId: string; name: string; since: number }
+  | { by: "person"; since: number; from?: { botId: string; name: string }; waiting?: { botId: string; name: string } };
+
+export interface BrowserTab {
+  id: string;
+  url: string;
+  title: string;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  by: TabBy;
+}
+
+export interface BrowserDownload {
+  id: string;
+  name: string;
+  path: string;
+  bytes: number;
+  total: number;
+  state: "progressing" | "completed" | "cancelled" | "interrupted";
+  at: number;
+  by?: string;
+}
+
+export interface AppBrowserState {
+  tabs: BrowserTab[];
+  activeTabId: string | null;
+  control: BrowserControl;
+  downloads: BrowserDownload[];
+}
+
+/** What the panel asks the app to do (electron/main.mjs browser:do). */
+export type BrowserDo =
+  | "navigate" | "newTab" | "closeTab" | "selectTab" | "back" | "forward" | "reload" | "stop"
+  | "takeOver" | "giveBack" | "openExternal" | "openDownload" | "revealDownload" | "openDownloads"
+  | "clearDownloads" | "forgetSites";
+
+// ── pure ───────────────────────────────────────────────────────────────
+
+/** The address as the bar shows it while nobody is typing: the page's
+ * own, nothing for a blank tab. */
+export function shownAddress(url: string | undefined): string {
+  if (!url || url === "about:blank") return "";
+  return url;
+}
+
+/** A host to name a page by, without www. */
+export function hostLabel(url: string | undefined): string {
+  try {
+    const parsed = new URL(url ?? "");
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.hostname.replace(/^www\./, "") : "";
+  } catch {
+    return "";
+  }
+}
+
+/** A tab's name on its chip: its title, else its host, else New tab. */
+export function tabLabel(tab: Pick<BrowserTab, "title" | "url">): string {
+  const title = tab.title?.trim();
+  if (title && title !== tab.url && title !== "about:blank") return title;
+  return hostLabel(tab.url) || "New tab";
+}
+
+/** Whether the page arrived over a connection nobody else could read. */
+export function isSecure(url: string | undefined): boolean {
+  return /^https:\/\//i.test(url ?? "");
+}
+
+/** The line over the page saying who has the browser, and the one thing
+ * to do about it, or null when nobody is doing anything worth a line. */
+export function controlLine(control: BrowserControl | undefined): { tone: "agent" | "person"; text: string; action: "takeOver" | "giveBack" } | null {
+  if (!control || control.by === "idle") return null;
+  if (control.by === "agent") return { tone: "agent", text: `${control.name || "An agent"} is browsing`, action: "takeOver" };
+  const who = control.waiting?.name ?? control.from?.name;
+  return {
+    tone: "person",
+    text: control.waiting ? `You have the browser. ${who} is waiting for it back` : who ? `You took over from ${who}` : "You have the browser",
+    action: "giveBack",
+  };
+}
+
+/** Whether the browser is busy for this agent: driving, or waiting on the
+ * person who took it over. What the phone's strip shows. */
+export function browsingFor(state: AppBrowserState | null | undefined, botId: string): "driving" | "waiting" | null {
+  const control = state?.control;
+  if (!control) return null;
+  if (control.by === "agent" && control.botId === botId) return "driving";
+  if (control.by === "person" && (control.waiting?.botId === botId || control.from?.botId === botId)) return "waiting";
+  return null;
+}
+
+/** The size of a download, said plainly. */
+export function downloadSize(d: Pick<BrowserDownload, "bytes" | "total" | "state">): string {
+  const size = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
+  if (d.state === "progressing") return d.total > 0 ? `${size(d.bytes)} of ${size(d.total)}` : size(d.bytes);
+  if (d.state === "cancelled") return "Cancelled";
+  if (d.state === "interrupted") return "Did not finish";
+  return size(d.total || d.bytes);
+}
+
+/** The panel's width, kept usable on both sides of its edge. */
+export const BROWSER_SIZE = { min: 360, chat: 380, fallback: 560 } as const;
+
+export function clampBrowserWidth(width: number, room: number): number {
+  const max = Math.max(BROWSER_SIZE.min, room - BROWSER_SIZE.chat);
+  return Math.round(Math.min(max, Math.max(BROWSER_SIZE.min, Number.isFinite(width) ? width : BROWSER_SIZE.fallback)));
+}
+
+/** Below this the chat and the browser cannot share the window, and the
+ * browser covers the chat until it is closed. */
+export const BROWSER_SIDE_BY_SIDE = BROWSER_SIZE.min + BROWSER_SIZE.chat;
+
+// ── the store ──────────────────────────────────────────────────────────
+
+let current: AppBrowserState | null = null;
+const listeners = new Set<() => void>();
+const tell = () => {
+  for (const listener of listeners) listener();
+};
+
+/** What the app or the server last said. */
+export function noteBrowserState(state: unknown) {
+  current = state && typeof state === "object" && Array.isArray((state as AppBrowserState).tabs) ? (state as AppBrowserState) : null;
+  tell();
+}
+
+let started = false;
+/** Hears the app, in the desktop app, once for the whole page; the
+ * server's frames reach noteBrowserState through the store's stream. */
+function start(load: () => Promise<unknown>) {
+  if (started) return;
+  started = true;
+  const bridge = typeof window !== "undefined" ? window.bloks : undefined;
+  if (bridge?.onBrowserState) {
+    bridge.onBrowserState((state) => noteBrowserState(state));
+    void bridge.browserState?.().then((state) => noteBrowserState(state)).catch(() => {});
+  } else {
+    void load().catch(() => {});
+  }
+}
+
+/** Whether this page has the browser itself (the desktop app) rather
+ * than only news of the Mac's. */
+export function hasOwnBrowser(): boolean {
+  return typeof window !== "undefined" && Boolean(window.bloks?.browserBounds);
+}
+
+export function useAppBrowser(load: () => Promise<unknown>): AppBrowserState | null {
+  useEffect(() => start(load), [load]);
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    () => current,
+  );
+}
+
+// ── the panel, open or not ─────────────────────────────────────────────
+
+const OPEN_KEY = "bloks-browser-open";
+const WIDTH_KEY = "bloks-browser-width";
+
+function readNumber(key: string, fallback: number): number {
+  try {
+    const n = Number(localStorage.getItem(key));
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+let panel = {
+  open: (() => {
+    try {
+      return localStorage.getItem(OPEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  })(),
+  width: readNumber(WIDTH_KEY, BROWSER_SIZE.fallback),
+};
+const panelListeners = new Set<() => void>();
+
+export function setBrowserPanel(next: Partial<typeof panel>) {
+  panel = { ...panel, ...next };
+  try {
+    localStorage.setItem(OPEN_KEY, panel.open ? "1" : "0");
+    localStorage.setItem(WIDTH_KEY, String(Math.round(panel.width)));
+  } catch {
+    /* storage refused; the panel still works for this window */
+  }
+  for (const listener of panelListeners) listener();
+}
+
+/** Whether the panel is open, and how wide: one for every conversation,
+ * so moving between agents keeps it where it was. */
+export function useBrowserPanel(): typeof panel {
+  return useSyncExternalStore(
+    (listener) => {
+      panelListeners.add(listener);
+      return () => panelListeners.delete(listener);
+    },
+    () => panel,
+  );
+}
