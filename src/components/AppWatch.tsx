@@ -353,7 +353,10 @@ export function AppDraftFields({ apps, onChange }: { apps: AppsStatus | null; on
                     onClick={() => setTrigger(t.slug)}
                     className={cn("flex flex-col items-start rounded-lg px-3 py-2 text-left transition-colors duration-150", on ? "bg-brand-soft" : "hover:bg-accent/60")}
                   >
-                    <span className="text-body font-medium text-foreground">{t.name}</span>
+                    <span className="flex w-full items-center justify-between gap-2 text-body font-medium text-foreground">
+                      {t.name}
+                      {on && <Check size={14} className="shrink-0 text-brand-ink" />}
+                    </span>
                     {t.description && <span className="text-small leading-snug text-muted-foreground">{t.description}</span>}
                     <span className="text-caption text-muted-foreground/80">
                       {t.delivery === "poll" ? "Arrives when Composio next looks, up to about 15 minutes" : "Arrives within seconds"}
@@ -586,10 +589,10 @@ export function AppWatchDetail({
           <ul className="flex flex-col gap-1">
             {app.runs.map((r) => (
               <li key={`${r.at}-${r.eventId ?? r.outcome}`} className="flex items-baseline gap-3 text-body">
-                <span className="w-[86px] shrink-0 text-muted-foreground">{ago(r.at)}</span>
+                <span className="w-[72px] shrink-0 text-muted-foreground sm:w-[86px]">{ago(r.at)}</span>
                 <span
                   className={cn(
-                    "w-[92px] shrink-0 text-small font-medium",
+                    "w-[78px] shrink-0 text-small font-medium sm:w-[92px]",
                     r.outcome === "started" || r.outcome === "queued" ? "text-foreground" : r.outcome === "missed" || r.outcome === "failed" ? "text-warning" : "text-muted-foreground",
                   )}
                 >

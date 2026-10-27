@@ -9425,7 +9425,16 @@ async function appLook(w: Watcher): Promise<{ fired: boolean; note: string }> {
   broadcast({ kind: "watchers" });
   const name = app.toolkitName || app.toolkit;
   if (appListening.state === "live") return { fired: false, note: `Listening. ${name} is connected, and events arrive as they happen.` };
-  if (appListening.state === "refused") return { fired: false, note: appListening.error ?? "Composio refused to send events here." };
+  if (appListening.state === "refused") {
+    // Refused stays refused on its own; a look by hand is the person
+    // asking it to try once more, say after fixing the project at Composio.
+    const said = appListening.error ?? "Composio refused to send events here.";
+    appDelivery?.stop();
+    appDelivery = null;
+    appListening = { state: "down" };
+    syncAppDelivery();
+    return { fired: false, note: `${said} Trying again now.` };
+  }
   return { fired: false, note: `${name} is connected. Bloks is ${appListening.state === "connecting" ? "connecting to" : "reconnecting to"} Composio to hear its events.` };
 }
 

@@ -29,12 +29,14 @@ cost; and with a Bloks key, bloks.dev is asked, with that key, about your
 plan. Everything else on the wire is the engines (Claude Code, Codex and
 the rest), the voice vendors whose keys you save (the text being read
 aloud, to ElevenLabs, OpenAI, Fish Audio or xAI), and whatever connectors
-you configure, talking to their own services, and Bloks Cloud when you
-turn it on, which carries sealed traffic it cannot read. A Chatterbox
-server for voices must be on this computer or its local network (a
-loopback, private or link-local address, or a local name): Bloks refuses
-an address on the internet, since every reply read aloud is sent there
-as text with no key. On a Mac with phone access on, the desktop app
+you configure, talking to their own services (with an app watcher on,
+that includes a WebSocket to the realtime service Composio delivers
+events through), and Bloks Cloud when you turn it on, which carries
+sealed traffic it cannot read. A Chatterbox server for voices must be on
+this computer or its local network (a loopback, private or link-local
+address, or a local name): Bloks refuses an address on the internet,
+since every reply read aloud is sent there as text with no key. On a Mac
+with phone access on, the desktop app
 also says on the local network where each listening workspace is (see
 Phones and other devices).
 
@@ -258,6 +260,40 @@ Bloks therefore:
 The same caution applies to anything an agent reads and treats as
 instructions: web pages, issue comments, and email are untrusted input,
 not commands.
+
+## Events from your apps
+
+An app watcher starts a turn when something happens in an app you
+connected through Composio: an email arrives, an issue is labelled, a
+message is posted. Whoever caused the event wrote what it says, so it is
+handled as a stranger's words (`server/app-watch.ts`):
+
+- **It is data, fenced.** The event is cut down to its readable fields,
+  with anything named like a token, secret, password, cookie or key, and
+  any long blob, left out before a model sees it. What is left sits
+  between two markers carrying a nonce made for that one turn, under a
+  line saying it was written by whoever caused the event and is not to be
+  followed as instructions; a marker inside the event is defused. The
+  person's own instruction comes after the fence.
+- **Nothing listens until a person says so.** An agent can only propose
+  an app watcher. The proposal is a card showing the app, the event, the
+  filter, which agent acts and where, and nothing is set up at Composio
+  until the owner presses Start watching. Agents cannot confirm, change
+  or list accounts for one (`server/agent-cli.ts`).
+- **It is bounded.** The same event twice is one event, a plain-words
+  filter is checked before any model is woken, and each watcher starts at
+  most a few turns an hour and a capped number a day.
+- **Admins are trusted with it.** The apps watched are the owner's
+  connections. An admin may set up an app watcher for an agent whose team
+  conversation they are on; its turns go there, and run as the admin's,
+  so they carry none of the owner's tools the admin could not ask for
+  themselves. The event itself is read in that conversation, so make
+  someone an admin only if you would let them read what your apps send.
+  Members who are not admins cannot set one up.
+- **Composio's project key is needed, and stays here.** Watching needs
+  the project key (`ak_`) beside the Connect key. It is sent only to
+  Composio, to make and remove triggers and to authorise the realtime
+  channel events arrive on; it never reaches a turn.
 
 **The macOS builds are signed and notarized.** Everything on the
 Releases page is built by CI from a tag. The macOS `.dmg` and `.zip` are

@@ -293,6 +293,11 @@ often each was used and then corrected. Agents can ask for a change too
   when nothing needs you.
 - **Watchers** on a folder, a web page, a feed or a place: "when an
   invoice lands here, file it", "when I land, send me the hotel address".
+- **App watchers**: an agent starts when something happens in a
+  connected app. "Whenever I get an email from Acme, draft a reply",
+  "when an issue is labelled bug, triage it". An agent can propose one;
+  nothing listens until you say yes on its card, and what the app sends
+  reaches the agent as data, never as instructions.
 - **Standing intents**: words that come up in a conversation bring an
   agent in or message one.
 - **Workflows** with a trigger, some steps and a person who says yes, kept

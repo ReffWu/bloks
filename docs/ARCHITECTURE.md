@@ -2125,6 +2125,67 @@ place watcher's side. Only the owner's own agents may keep one, it speaks
 only in the owner's own lanes, and it is not counted for a hosted
 machine's next wake.
 
+### App watchers
+
+An app watcher (`kind: "app"`, `server/app-watch.ts`) acts on an event
+in an app connected through Composio. Its `app` holds the toolkit and
+trigger type by Composio's names, the config the type declares (checked
+against the type's JSON schema by `checkConfig`), the connected account,
+an optional filter of plain words, `perHour` (6 unless set, at most 30)
+and `perDay` (30, at most 200), the trigger instance id once there is
+one, and `runs`, newest first, what each event became: `started`,
+`queued`, `filtered`, `held`, `failed` or `missed`, with the lane and
+message of the turn it started. Its target only reads `toolkit/TRIGGER`.
+
+Composio's trigger side is its project REST API, v3.1, with the project
+key (`ak_`, `composio.apiKey`), in `server/composio-triggers.ts`: trigger
+types per toolkit, active connected accounts, `trigger_instances/{slug}/
+upsert` with the account and the config, `manage/{id}` to switch one on
+or off or remove it. The Connect key that opens connections is not taken
+there. A desktop app has no public address, and Composio delivers to a
+webhook URL, so events arrive the way Composio's own SDK subscribes: its
+realtime channel, a private Pusher channel per project
+(`private-{project}_triggers`) authorised through Composio with the
+project key, spoken directly over the WebSocket Node has, whole events
+and chunked ones. One connection serves every app watcher and exists only
+while one listens (`syncAppDelivery`); it reconnects on its own with a
+growing wait, stops on a refused key, and pings a quiet line. It sits
+behind `TriggerDelivery`, whose `catchesUp` says whether events sent
+while it was down arrive later: false for the realtime channel, which
+does not replay, true for a webhook through the relay should one be
+added. Since it does not catch up, the time it was not listening is
+recorded: `app-delivery.json` keeps when it last heard (written each
+minute while live), and coming up after a gap of two minutes or more
+records a `missed` run on each listening watcher, from the later of then
+and when that watcher started listening.
+
+An event (`readEvent`, Composio's V3, V2 and V1 envelopes alike) goes to
+the watchers whose trigger it names; others are dropped unread. Each is
+handled once by its id (`firstHearing`), then the filter (words in the
+event's values, never its keys, as an intent matches), then the limits,
+then a turn: the event cut down by `trimPayload` (credentials by name and
+blobs by shape left out, HTML read as words, long text and lists cut),
+fenced between markers carrying a nonce made for the turn, under a line
+that says whose words they are (`appEventTurn`). The turn goes where any
+watcher's goes, or queues behind a busy lane, with `via: "watcher"`.
+
+The owner makes one in Watchers or with `POST /api/watchers`, which makes
+the trigger at Composio first. An agent's `POST` is always a proposal:
+nothing at Composio, the watcher off, and a card in the conversation it
+asked from (`card.appWatch`) answered with `POST /api/watchers/:id/
+confirm` or `/decline`, which no agent rule reaches; an agent may
+withdraw its proposal or stop its own, and may not change one. Switching
+one off switches its trigger off; on again asks Composio whether the
+account is still connected first. A different event, config or account is
+a new trigger instance, the old one removed. Removing a connection in
+Bloks, a lifecycle event saying an account expired (should Composio send
+one down the channel), or the quarter-hourly look at each listening
+watcher's account finding it gone pauses every watcher on it with
+`paused` and a notice in its conversation. An admin manages their own
+through `/api/member/app-watchers` (`server/member-access.ts`): only for
+an agent whose team conversation they are on, its turns there as the
+admin's own, never rehearsing.
+
 ## Location
 
 `server/location.ts`. The owner's iPhone says where it is, once the owner
