@@ -18,15 +18,15 @@ import type { Bot, Message, RoomPerson } from "@/state/reducer";
 import { AgentAvatar } from "./Avatar";
 import { splitAttachments } from "@/lib/attachments";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { formatDate, formatList, t } from "@/lib/i18n";
 
 function when(at: number): string {
   if (!at) return "";
   const date = new Date(at);
   const today = new Date().toDateString() === date.toDateString();
   return today
-    ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : date.toLocaleDateString([], { month: "short", day: "numeric" });
+    ? formatDate(date, { hour: "numeric", minute: "2-digit" })
+    : formatDate(date, { month: "short", day: "numeric" });
 }
 
 /** What a message says, with the files it carried named rather than
@@ -36,8 +36,15 @@ function said(message: Message): Message {
   const { display, images, files } = splitAttachments(message.text);
   const carried = images.length + files.length;
   if (!carried) return message;
-  const note = carried === 1 ? (images.length ? "an image" : "a file") : `${carried} files`;
-  return { ...message, text: display ? `${display} (with ${note})` : `Shared ${note}` };
+  const oneImage = carried === 1 && images.length > 0;
+  const text = display
+    ? oneImage
+      ? t("forumLens.withAnImage", { text: display })
+      : t("forumLens.withFiles", { text: display, count: carried })
+    : oneImage
+      ? t("forumLens.sharedAnImage")
+      : t("forumLens.sharedFiles", { count: carried });
+  return { ...message, text };
 }
 
 /** Whoever is not an agent: you, or somebody the room is shared with,
@@ -72,12 +79,12 @@ export function ForumLens({
   const nameOf = (message: Message) =>
     message.role === "user"
       ? message.author
-        ? (people.find((p) => p.id === message.author)?.name ?? "A former member")
-        : "You"
+        ? (people.find((p) => p.id === message.author)?.name ?? t("forumLens.aFormerMember"))
+        : t("forumLens.you")
       : message.from
-        ? (members.find((b) => b.id === message.from)?.name ?? "Agent")
+        ? (members.find((b) => b.id === message.from)?.name ?? t("common.agent"))
         : // the room's own lines, its opening one among them
-          "Room";
+          t("forumLens.room");
   const threads = threadsFrom(messages.map(said), nameOf);
   const [open, setOpen] = useState<string | null>(null);
 
@@ -154,8 +161,8 @@ function ThreadRow({
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-x-2 text-small text-muted-foreground">
             {replies ? <span className="text-brand-ink">{replies}</span> : <span>{t("forumLens.noRepliesYet")}</span>}
-            {thread.participants.length > 1 && <span>· {thread.participants.join(", ")}</span>}
-            {thread.replies.length > 0 && <span>· last {when(thread.lastAt)}</span>}
+            {thread.participants.length > 1 && <span>· {formatList(thread.participants, { type: "unit" })}</span>}
+            {thread.replies.length > 0 && <span>{t("forumLens.lastAt", { when: when(thread.lastAt) })}</span>}
           </span>
         </span>
         <span className="mt-0.5 shrink-0 text-muted-foreground">

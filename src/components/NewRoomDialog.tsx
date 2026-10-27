@@ -33,11 +33,10 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
-import { plural } from "@/lib/plural";
 import { roomLead } from "@/lib/roomLead";
 import { ROOM_ANSWERS, answersWords, type RoomAnswers } from "@/lib/roomRoute";
 import { MAX_MEMBERS, roomCandidates, togglePicked } from "@/lib/roomEdit";
-import { t } from "@/lib/i18n";
+import { t, tr } from "@/lib/i18n";
 
 interface GalleryTeam {
   slug: string;
@@ -106,7 +105,7 @@ export function NewRoomDialog() {
 
   const removeSaved = (id: string) => {
     api(`/api/team-library/${id}`, { method: "DELETE" })
-      .then(() => setSaved((prev) => (prev ?? []).filter((t) => t.id !== id)))
+      .then(() => setSaved((prev) => (prev ?? []).filter((team) => team.id !== id)))
       .catch(() => {});
   };
 
@@ -136,8 +135,8 @@ export function NewRoomDialog() {
       // the premade six are on the gallery too, for people without the
       // app; here they are already on the shelf above
       .then((r) => {
-        const premade = new Set(TEAM_LIBRARY.map((t) => t.slug));
-        setGalleryTeams((r.teams ?? []).filter((t: GalleryTeam) => !premade.has(t.slug)));
+        const premade = new Set(TEAM_LIBRARY.map((team) => team.slug));
+        setGalleryTeams((r.teams ?? []).filter((team: GalleryTeam) => !premade.has(team.slug)));
       })
       .catch((e: Error) => {
         setGalleryTeams([]);
@@ -154,18 +153,18 @@ export function NewRoomDialog() {
     dispatch({ type: "openTeamLink", slug: null });
     setLinkError(null);
     setTab("library");
-    const premade = TEAM_LIBRARY.find((t) => t.slug === slug);
+    const premade = TEAM_LIBRARY.find((team) => team.slug === slug);
     if (premade) {
       hire({ name: premade.name, members: premade.members } as HireableTeam);
       return;
     }
     api("/api/teams/gallery")
       .then((r) => {
-        const team = (r.teams ?? []).find((t: GalleryTeam) => t.slug === slug);
+        const team = (r.teams ?? []).find((found: GalleryTeam) => found.slug === slug);
         if (team) hire({ name: team.name, members: team.members });
-        else setLinkError("That team is not in the gallery any more.");
+        else setLinkError(t("newRoomDialog.linkGone"));
       })
-      .catch((e: Error) => setLinkError(`Couldn't reach the gallery: ${e.message}`));
+      .catch((e: Error) => setLinkError(t("newRoomDialog.linkUnreachable", { error: e.message })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.teamLink]);
 
@@ -210,7 +209,7 @@ export function NewRoomDialog() {
             <DialogTitle className="text-heading">{t("newRoomDialog.newRoom")}</DialogTitle>
             <DialogDescription className="mt-0.5">
               {preset
-                ? `A fresh start with the same team. ${preset.from} stays as it is.`
+                ? t("newRoomDialog.freshStart", { from: preset.from })
                 : t("newRoomDialog.agentsWorkTogetherHereTap")}
             </DialogDescription>
           </div>
@@ -220,8 +219,8 @@ export function NewRoomDialog() {
             value={tab}
             onChange={setTab}
             options={[
-              { value: "agents", label: "Your agents" },
-              { value: "library", label: "Team library" },
+              { value: "agents", label: t("newRoomDialog.yourAgents") },
+              { value: "library", label: t("newRoomDialog.teamLibrary") },
             ]}
           />
         </header>
@@ -343,7 +342,7 @@ export function NewRoomDialog() {
                     <button
                       onClick={() => removeSaved(team.id)}
                       title={t("newRoomDialog.removeFromLibrary")}
-                      aria-label={`Remove ${team.name} from the library`}
+                      aria-label={t("newRoomDialog.removeTeamFromLibrary", { name: team.name })}
                       className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
                     >
                       <X size={13} />
@@ -368,7 +367,7 @@ export function NewRoomDialog() {
                   rel="noreferrer"
                   className="text-small text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 >
-                  {t("newRoomDialog.bloksDevTeams")}
+                  bloks.dev/teams
                 </a>
               }
             >
@@ -384,7 +383,7 @@ export function NewRoomDialog() {
                     key={team.slug}
                     name={team.name}
                     blurb={team.blurb}
-                    byline={team.author ? `by ${team.author}` : undefined}
+                    author={team.author}
                     members={team.members}
                     onHire={() => hire({ name: team.name, members: team.members })}
                   />
@@ -392,19 +391,21 @@ export function NewRoomDialog() {
               )}
             </Shelf>
             <p className="mt-5 text-small leading-relaxed text-muted-foreground">
-              Hiring a team creates its agents and room. You can edit them later.{" "}
-              {/* the catalogue's teams come with their skills and routines,
-                  reviewed on the Catalogue page (CatalogPage.tsx) */}
-              <button
-                onClick={() => {
-                  close();
-                  openCatalog(dispatch, "team");
-                }}
-                className="underline underline-offset-2 hover:text-foreground"
-              >
-                {t("newRoomDialog.moreTeamsWithTheirSkills")}
-              </button>
-              .
+              {tr("newRoomDialog.hiringCreates", {
+                // the catalogue's teams come with their skills and routines,
+                // reviewed on the Catalogue page (CatalogPage.tsx)
+                link: (
+                  <button
+                    onClick={() => {
+                      close();
+                      openCatalog(dispatch, "team");
+                    }}
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    {t("newRoomDialog.moreTeamsWithTheirSkills")}
+                  </button>
+                ),
+              })}
             </p>
           </div>
         )}
@@ -415,7 +416,7 @@ export function NewRoomDialog() {
           <div className="mr-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <label className="flex cursor-pointer items-center gap-1.5 rounded-md py-1 transition-colors duration-150 hover:text-foreground has-[:focus-visible]:text-foreground">
               <Upload size={12} />
-              Import a team file (.md)
+              {t("newRoomDialog.importTeamFile")}
               <input
                 type="file"
                 accept=".md,.markdown,text/markdown,.json,application/json"
@@ -436,7 +437,7 @@ export function NewRoomDialog() {
                 {t("common.cancel")}
               </Button>
               <Button onClick={create} disabled={picked.length < 2 || creating !== false} className="min-w-[132px] max-sm:flex-1">
-                {creating !== false ? t("newRoomDialog.opening") : picked.length < 2 ? `Pick ${2 - picked.length} more` : t("newRoomDialog.createRoom")}
+                {creating !== false ? t("newRoomDialog.opening") : picked.length < 2 ? t("newRoomDialog.pickMore", { count: 2 - picked.length }) : t("newRoomDialog.createRoom")}
               </Button>
             </div>
           )}
@@ -455,7 +456,7 @@ export function useModelLabel(): (bot: Bot) => string {
   return (bot: Bot) => {
     const instance = state.instances.find((i) => i.instanceId === bot.modelSelection.instanceId);
     const option = instance?.models.options.find((o) => o.id === bot.modelSelection.model);
-    return option?.label ?? (bot.modelSelection.model || instance?.models.default || "Default");
+    return option?.label ?? (bot.modelSelection.model || instance?.models.default || t("newRoomDialog.defaultModel"));
   };
 }
 
@@ -490,9 +491,11 @@ export function MemberPicker({
     <>
       <div className={cn("mb-2.5 flex items-center justify-between gap-3 px-6", className)}>
         <span className="text-body font-medium text-muted-foreground">
-          Members
+          {t("common.members")}
           <span className="ml-1.5 tabular-nums text-muted-foreground/80">
-            {picked.length ? `${picked.length} of ${MAX_MEMBERS}` : `up to ${MAX_MEMBERS}`}
+            {picked.length
+              ? t("newRoomDialog.pickedOfMax", { picked: picked.length, max: MAX_MEMBERS })
+              : t("newRoomDialog.upToMax", { max: MAX_MEMBERS })}
           </span>
         </span>
         {agents.length > SEARCH_ABOVE && (
@@ -563,7 +566,7 @@ export function MemberPicker({
         })}
         {shown.length === 0 && (
           <p className="col-span-full py-6 text-center text-body text-muted-foreground">
-            {agents.length ? `No agent matches “${query.trim()}”.` : t("newRoomDialog.noAgentsYetTryThe")}
+            {agents.length ? t("newRoomDialog.noAgentMatches", { query: query.trim() }) : t("newRoomDialog.noAgentsYetTryThe")}
           </p>
         )}
       </div>
@@ -719,7 +722,7 @@ function CrownButton({
     <button
       type="button"
       aria-pressed={on}
-      aria-label={on ? `${name} leads` : `Make ${name} the lead`}
+      aria-label={on ? t("newRoomDialog.nameLeads", { name }) : t("newRoomDialog.makeNameTheLead", { name })}
       title={on ? t("newRoomDialog.leads") : t("newRoomDialog.makeLead")}
       onClick={onPick}
       className={cn(
@@ -747,18 +750,27 @@ function Shelf({ title, aside, children }: { title: string; aside?: React.ReactN
   );
 }
 
+/** How big a team is, who leads it and who wrote it, as one line. */
+function teamLine(count: number, lead: string | undefined, author: string | undefined): string {
+  if (lead && author) return t("newRoomDialog.teamSizeLedBy", { count, lead, author });
+  if (lead) return t("newRoomDialog.teamSizeLed", { count, lead });
+  if (author) return t("newRoomDialog.teamSizeBy", { count, author });
+  return t("newRoomDialog.teamSize", { count });
+}
+
 /** One team on a shelf: what it is for, its faces with the lead crowned,
  * and a click to hire it. */
 function TeamCard({
   name,
   blurb,
-  byline,
+  author,
   members,
   onHire,
 }: {
   name: string;
   blurb: string;
-  byline?: string;
+  /** Who wrote it, for a team from the gallery. */
+  author?: string;
   members: HireableTeam["members"];
   onHire: () => void;
 }) {
@@ -781,9 +793,7 @@ function TeamCard({
       <span className="mt-3 text-ui font-medium text-foreground">{name}</span>
       <span className="mt-0.5 line-clamp-2 flex-1 text-small leading-relaxed text-muted-foreground">{blurb}</span>
       <span className="mt-2.5 truncate text-caption text-muted-foreground">
-        {plural(members.length, "agent")}
-        {lead ? `, led by the ${lead.title}` : ""}
-        {byline ? `, ${byline}` : ""}
+        {teamLine(members.length, lead?.title, author)}
       </span>
     </button>
   );

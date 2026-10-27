@@ -16,6 +16,7 @@
 //
 //   How to say who is working, in one line.
 import type { Message } from "@/state/reducer";
+import { t } from "./i18n.ts";
 
 /** One member passing the turn to another. */
 export interface Handoff {
@@ -152,6 +153,7 @@ export function unsaid(
 /** "Ada", "Ada and Ben", "Ada, Ben and Cy", "Ada, Ben and 2 others". */
 export function namesLine(list: readonly string[]): string {
   if (list.length <= 1) return list[0] ?? "";
-  if (list.length <= 3) return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
-  return `${list.slice(0, 2).join(", ")} and ${list.length - 2} others`;
+  if (list.length === 2) return t("roomVoices.two", { a: list[0], b: list[1] });
+  if (list.length === 3) return t("roomVoices.three", { a: list[0], b: list[1], c: list[2] });
+  return t("roomVoices.others", { a: list[0], b: list[1], count: list.length - 2 });
 }

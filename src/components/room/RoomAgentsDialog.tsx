@@ -61,7 +61,7 @@ export function RoomAgentsDialog({ blok, onClose }: { blok: Blok; onClose: () =>
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[min(860px,92vh)] w-[calc(100vw-24px)] max-w-[960px] flex-col gap-0 overflow-hidden p-0">
         <header className="border-b px-6 pb-4 pt-5 pr-14">
-          <DialogTitle className="truncate text-heading">Agents in {blok.name}</DialogTitle>
+          <DialogTitle className="truncate text-heading">{t("roomAgentsDialog.title", { name: blok.name })}</DialogTitle>
           <DialogDescription className="mt-0.5">
             {t("roomAgentsDialog.addOrRemoveAgentsThe")}
           </DialogDescription>
@@ -105,7 +105,7 @@ export function RoomAgentsDialog({ blok, onClose }: { blok: Blok; onClose: () =>
               disabled={!change || picked.length < MIN_MEMBERS || saving}
               className="min-w-[112px] max-sm:flex-1"
             >
-              {saving ? t("roomAgentsDialog.saving") : picked.length < MIN_MEMBERS ? `Pick ${MIN_MEMBERS - picked.length} more` : t("common.save")}
+              {saving ? t("roomAgentsDialog.saving") : picked.length < MIN_MEMBERS ? t("roomAgentsDialog.pickMore", { count: MIN_MEMBERS - picked.length }) : t("common.save")}
             </Button>
           </div>
         </footer>

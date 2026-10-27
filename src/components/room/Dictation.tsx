@@ -7,14 +7,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic } from "@/components/icons";
 import { RANK, TrayButton, type Notice } from "@/components/composer/Tray";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
 /** What the helper's error words mean to a person. */
-const SPEECH_TROUBLE: Record<string, string> = {
-  "speech-not-authorized": "Dictation needs Speech Recognition access. It's separate from the microphone.",
-  "recognizer-unavailable": "English speech recognition isn't available on this Mac right now.",
-  "mic-failed": "Couldn't open the microphone. Another app may be using it.",
-  "recognition-error": "Dictation stopped. Try again, or check your microphone.",
+const SPEECH_TROUBLE: Record<string, MessageKey> = {
+  "speech-not-authorized": "dictation.speech.notAuthorized",
+  "recognizer-unavailable": "dictation.speech.recognizerUnavailable",
+  "mic-failed": "dictation.speech.micFailed",
+  "recognition-error": "dictation.speech.recognitionError",
 };
 
 /** Five bars that move with the voice, so listening never looks deaf. */
@@ -65,7 +65,7 @@ export function useDictation(text: string, onText: (next: string) => void, off =
       }
       if (typeof line.error === "string") {
         setRecording(false);
-        setError(SPEECH_TROUBLE[line.error] ?? "Dictation stopped unexpectedly.");
+        setError(t(SPEECH_TROUBLE[line.error] ?? "dictation.speech.stoppedUnexpectedly"));
         setPane(line.error === "speech-not-authorized" ? "speech" : "mic");
         return;
       }
@@ -75,7 +75,7 @@ export function useDictation(text: string, onText: (next: string) => void, off =
       setRecording(false);
       setLevel(0);
       if (code === 1) {
-        setError((current) => current ?? "Allow Microphone and Speech Recognition in System Settings, Privacy & Security.");
+        setError((current) => current ?? t("dictation.speech.allowInSettings"));
       }
     });
     void bridge.speechStart();
@@ -94,7 +94,7 @@ export function useDictation(text: string, onText: (next: string) => void, off =
   /** Settles the grant first: a microphone macOS refused looked like a
    * button that did nothing. */
   const toggle = async () => {
-    if (!window.bloks) return setError("Dictation needs the desktop app.");
+    if (!window.bloks) return setError(t("dictation.speech.needsDesktop"));
     if (recording) return setRecording(false);
     setError(null);
     setDenied(false);
@@ -103,7 +103,7 @@ export function useDictation(text: string, onText: (next: string) => void, off =
     if (mic === "not-determined") mic = (await window.bloks.permRequestMic().catch(() => false)) ? "granted" : "denied";
     if (mic === "denied" || mic === "restricted") {
       setDenied(true);
-      setError("Bloks doesn't have microphone access.");
+      setError(t("dictation.speech.noMicAccess"));
       return;
     }
     base.current = text.trim();

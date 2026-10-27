@@ -1,6 +1,7 @@
 // The composer's `/` list (#51): which skill is being typed, which ones
 // match, what inserting one does, and which parts of the text to mark as
 // a skill. Kept apart from the component so it can be tested without a DOM.
+import { t, type MessageKey } from "./i18n.ts";
 
 export interface Command {
   id: string;
@@ -19,7 +20,10 @@ export const BLOKS_COMMANDS: Command[] = [
   {
     id: "goal",
     name: "goal",
-    description: "Keep working until this is done",
+    // read as the list draws it, so it follows the language
+    get description() {
+      return t("slashCommands.goal");
+    },
     source: "bloks",
     kind: "command",
   },
@@ -94,10 +98,10 @@ export function matches(commands: Command[], query: string, limit = 8, atStart =
 }
 
 /** What each source is called in the list. */
-export const SOURCE_LABELS: Record<Command["source"], string> = {
-  bloks: "Bloks",
-  library: "Agent skills",
-  engine: "Engine",
+const SOURCE_LABELS: Record<Command["source"], MessageKey> = {
+  bloks: "slashCommands.source.bloks",
+  library: "slashCommands.source.library",
+  engine: "slashCommands.source.engine",
 };
 
 /**
@@ -110,7 +114,7 @@ export const SOURCE_LABELS: Record<Command["source"], string> = {
 export function grouped(commands: Command[]): Array<{ source: Command["source"]; label: string; commands: Command[] }> {
   const order: Array<Command["source"]> = ["bloks", "library", "engine"];
   return order
-    .map((source) => ({ source, label: SOURCE_LABELS[source], commands: commands.filter((c) => c.source === source) }))
+    .map((source) => ({ source, label: t(SOURCE_LABELS[source]), commands: commands.filter((c) => c.source === source) }))
     .filter((g) => g.commands.length > 0);
 }
 

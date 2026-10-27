@@ -12,7 +12,7 @@ import { api } from "@/state/store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { thisComputer } from "@/lib/thisComputer";
-import { t } from "@/lib/i18n";
+import { formatDate, t, type MessageKey } from "@/lib/i18n";
 
 interface Entry {
   seq: number;
@@ -36,40 +36,44 @@ type VerifyResult =
 
 /** Plain words for each kind, so the list reads as a sentence rather than
  * as a set of event names. */
-const LABEL: Record<string, string> = {
-  genesis: "Record started",
-  approval: "Approval",
-  "agent.created": "Agent made",
-  "approvals.changed": "Approvals changed",
-  "engine.installed": "Engine installed",
-  "agent.imported": "Agent brought in",
-  "agent.exported": "Agent exported",
-  "agent.archived": "Agent archived",
-  "agent.restored": "Agent restored",
-  "agent.deleted": "Agent deleted",
-  "skill.installed": "Skill added",
-  "skill.deleted": "Skill removed",
-  "skill.changed": "Skill changed",
-  "team.installed": "Team installed",
-  "routine.ran": "Routine",
-  "job.posted": "Job posted",
-  "workflow.ran": "Workflow",
-  "policy.changed": "Rule",
-  "control.taken": "You took over",
-  "control.released": "You handed back",
-  "conversation.rewound": "Rewound",
-  "setup.imported": "Setup brought over",
-  "setup.undone": "Setup import undone",
-  "sessions.imported": "Past sessions brought over",
-  "server.update": "Server update",
-  "home.call": "Home Assistant",
+const LABEL: Record<string, MessageKey> = {
+  genesis: "recordPanel.kind.genesis",
+  approval: "recordPanel.kind.approval",
+  "agent.created": "recordPanel.kind.agentCreated",
+  "approvals.changed": "recordPanel.kind.approvalsChanged",
+  "engine.installed": "recordPanel.kind.engineInstalled",
+  "agent.imported": "recordPanel.kind.agentImported",
+  "agent.exported": "recordPanel.kind.agentExported",
+  "agent.archived": "recordPanel.kind.agentArchived",
+  "agent.restored": "recordPanel.kind.agentRestored",
+  "agent.deleted": "recordPanel.kind.agentDeleted",
+  "skill.installed": "recordPanel.kind.skillInstalled",
+  "skill.deleted": "recordPanel.kind.skillDeleted",
+  "skill.changed": "recordPanel.kind.skillChanged",
+  "team.installed": "recordPanel.kind.teamInstalled",
+  "routine.ran": "recordPanel.kind.routineRan",
+  "job.posted": "recordPanel.kind.jobPosted",
+  "workflow.ran": "recordPanel.kind.workflowRan",
+  "policy.changed": "recordPanel.kind.policyChanged",
+  "control.taken": "recordPanel.kind.controlTaken",
+  "control.released": "recordPanel.kind.controlReleased",
+  "conversation.rewound": "recordPanel.kind.conversationRewound",
+  "setup.imported": "recordPanel.kind.setupImported",
+  "setup.undone": "recordPanel.kind.setupUndone",
+  "sessions.imported": "recordPanel.kind.sessionsImported",
+  "server.update": "recordPanel.kind.serverUpdate",
+  "home.call": "recordPanel.kind.homeCall",
 };
 
 function when(at: number): string {
   const date = new Date(at);
   const today = new Date().toDateString() === date.toDateString();
-  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return today ? time : `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+  const time = formatDate(date, { hour: "numeric", minute: "2-digit" });
+  return today ? time : t("recordPanel.dateTime", { date: formatDate(date, { month: "short", day: "numeric" }), time });
+}
+
+function capitalized(text: string): string {
+  return `${text[0].toUpperCase()}${text.slice(1)}`;
 }
 
 export function RecordPanel() {
@@ -131,10 +135,11 @@ export function RecordPanel() {
               {result.ok
                 ? result.entries === 0
                   ? t("recordPanel.nothingRecordedYet")
-                  : `All ${result.entries} entries check out. Nothing was changed.`
-                : `${result.reason[0].toUpperCase()}${result.reason.slice(1)}${
-                    result.seq !== null ? `, at entry ${result.seq}` : ""
-                  }.`}
+                  : t("recordPanel.allCheckOut", { count: result.entries })
+                : // the reason is the server's own words
+                  result.seq !== null
+                  ? t("recordPanel.brokenAt", { reason: capitalized(result.reason), seq: String(result.seq) })
+                  : t("recordPanel.broken", { reason: capitalized(result.reason) })}
             </span>
           </div>
         )}
@@ -143,13 +148,12 @@ export function RecordPanel() {
           <div className="mt-2 rounded-xl bg-destructive/10 px-3 py-2.5 text-small text-destructive">
             {stray === 1
               ? t("recordPanel.oneLineInTheFile")
-              : `${stray} lines in the file aren't entries.`}
+              : t("recordPanel.strayLines", { count: stray })}
           </div>
         )}
 
         <div className="mt-2 rounded-xl bg-muted/50 px-3 py-2.5 text-small leading-relaxed text-muted-foreground">
-          This catches edited lines and checks signatures. Someone with access
-          to {thisComputer()} could still rewrite the whole file.
+          {t("recordPanel.whatTheCheckProves", { computer: thisComputer() })}
         </div>
       </div>
 
@@ -186,23 +190,21 @@ export function RecordPanel() {
               <span className="block text-body text-foreground">{entry.summary}</span>
               <span className="mt-0.5 block text-small text-muted-foreground">
                 <span className="sm:hidden">{when(entry.at)} · </span>
-                {LABEL[entry.kind] ?? entry.kind}
+                {LABEL[entry.kind] ? t(LABEL[entry.kind]) : entry.kind}
                 {entry.actor && entry.kind !== "genesis" ? ` · ${entry.actor}` : ""}
                 {entry.detail?.answer ? ` · ${entry.detail.answer}` : ""}
-                {entry.detail?.decidedBy ? ` · decided by ${entry.detail.decidedBy}` : ""}
+                {entry.detail?.decidedBy ? ` · ${t("recordPanel.decidedBy", { name: String(entry.detail.decidedBy) })}` : ""}
                 {/* Only ever said about an entry that carries a signature.
                     Silence here means nobody claimed it, which is the
                     normal case and not something to flag. */}
                 {entry.signature === "ok" && (
                   <span className="text-success" title={entry.signedBy}>
-                    {" "}
-                    · signed
+                    {` · ${t("recordPanel.signed")}`}
                   </span>
                 )}
                 {entry.signature === "bad" && (
                   <span className="text-destructive" title={entry.signedBy}>
-                    {" "}
-                    · bad signature
+                    {` · ${t("recordPanel.badSignature")}`}
                   </span>
                 )}
               </span>

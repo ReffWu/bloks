@@ -20,6 +20,7 @@
 // Only the bookkeeping is here, so it can be tested without a page. The
 // composer owns the network and the picture's object URL.
 import type { Attachment } from "./attachments.js";
+import { t } from "./i18n.ts";
 
 export type PendingStage = "preparing" | "uploading" | "failed" | "ready";
 
@@ -125,11 +126,11 @@ export function heldLine(list: readonly PendingImage[]): string | null {
   const held = sendHeldBy(list);
   if (held === "failed") {
     const failed = list.filter((item) => item.stage === "failed").length;
-    return failed === 1 ? "An image didn't upload. Retry or remove it to send." : `${failed} images didn't upload. Retry or remove them to send.`;
+    return t("pendingImages.failed", { count: failed });
   }
   if (held === "pending") {
     const going = list.filter((item) => item.stage === "preparing" || item.stage === "uploading").length;
-    return going === 1 ? "Waiting for an image to upload." : `Waiting for ${going} images to upload.`;
+    return t("pendingImages.waiting", { count: going });
   }
   return null;
 }

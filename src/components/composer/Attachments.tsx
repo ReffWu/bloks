@@ -31,13 +31,12 @@ import {
   uploadingPending,
   type PendingImage,
 } from "@/lib/pendingImages";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
-const STAGE: Record<PendingImage["stage"], string> = {
-  preparing: "Preparing",
-  uploading: "Uploading",
-  failed: "Didn't upload",
-  ready: "",
+const STAGE: Record<Exclude<PendingImage["stage"], "ready">, MessageKey> = {
+  preparing: "composerAttachments.preparing",
+  uploading: "composerAttachments.uploading",
+  failed: "composerAttachments.didntUpload",
 };
 
 const chipButton = "shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
@@ -61,7 +60,11 @@ export function AttachmentChip({
   const [unseen, setUnseen] = useState(false);
   const shown = a ?? pending?.attachment ?? null;
   const stage = shown ? null : (pending?.stage ?? null);
-  const name = shown ? (shown.kind === "paste" ? "pasted text" : shown.name) : (pending?.name ?? "image");
+  const name = shown
+    ? shown.kind === "paste"
+      ? t("composerAttachments.pastedText")
+      : shown.name
+    : (pending?.name ?? t("composerAttachments.image"));
   const src = shown?.kind === "image" ? `/api/attachments/${attachmentBasename(shown.path)}` : !shown && pending ? pending.preview : "";
   const going = stage === "preparing" || stage === "uploading";
   return (
@@ -97,17 +100,17 @@ export function AttachmentChip({
       ) : (
         <FileIcon size={14} className="shrink-0 text-muted-foreground" />
       )}
-      <span className="min-w-0 flex-1 truncate">{shown?.kind === "paste" ? `Pasted text, ${shown.lines} lines` : name}</span>
+      <span className="min-w-0 flex-1 truncate">{shown?.kind === "paste" ? t("composerAttachments.pastedLines", { count: shown.lines }) : name}</span>
       <span className={cn("shrink-0", stage === "failed" ? "text-warning" : "text-muted-foreground")} aria-live="polite">
-        {stage ? STAGE[stage] : shown ? formatBytes(shown.bytes) : ""}
+        {stage && stage !== "ready" ? t(STAGE[stage]) : shown ? formatBytes(shown.bytes) : ""}
       </span>
       {stage === "failed" && onRetry && (
-        <button type="button" onClick={onRetry} className={chipButton} aria-label={`Retry ${name}`} title={t("composerAttachments.retry")}>
+        <button type="button" onClick={onRetry} className={chipButton} aria-label={t("composerAttachments.retryName", { name })} title={t("composerAttachments.retry")}>
           <RefreshCw size={12} />
         </button>
       )}
       {onRemove && (
-        <button type="button" onClick={onRemove} className={chipButton} aria-label={`Remove ${name}`}>
+        <button type="button" onClick={onRemove} className={chipButton} aria-label={t("composerAttachments.removeName", { name })}>
           <X size={12} />
         </button>
       )}
@@ -205,7 +208,7 @@ export function usePendingImages({
       // the chip's own id, so the chip it becomes is the same one
       .then((attachment) => commit(settlePending(list.current, id, attempt, { attachment: attachment && { ...attachment, id } })))
       .catch((error: unknown) => {
-        const words = error instanceof Error && error.message ? error.message : "upload failed";
+        const words = error instanceof Error && error.message ? error.message : t("composerAttachments.uploadFailed");
         const before = list.current;
         commit(settlePending(before, id, attempt, { error: words }));
         // only for one still here: a removed one failing is nobody's news
@@ -215,7 +218,13 @@ export function usePendingImages({
 
   const add = (files: File[]) => {
     if (!files.length) return;
-    const added = files.map((file) => ({ id: newId(), file, name: file.name || "pasted image", bytes: file.size, preview: preview(file) }));
+    const added = files.map((file) => ({
+      id: newId(),
+      file,
+      name: file.name || t("composerAttachments.pastedImage"),
+      bytes: file.size,
+      preview: preview(file),
+    }));
     const next = addPending(list.current, added);
     commit(next);
     for (const item of next.slice(-added.length)) run(item);

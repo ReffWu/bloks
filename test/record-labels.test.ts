@@ -19,7 +19,7 @@ test("every ledger kind has a label in the record panel", () => {
   assert.ok(kinds.length >= 8, "no kinds were found, so this test proves nothing");
 
   const labels = source("../src/components/RecordPanel.tsx").match(
-    /const LABEL: Record<string, string> = \{([\s\S]*?)\};/,
+    /const LABEL: Record<string, MessageKey> = \{([\s\S]*?)\};/,
   );
   assert.ok(labels, "the LABEL map is not where this test expects it");
   const known = new Set([...labels[1].matchAll(/"?([\w.]+)"?:\s*"/g)].map((m) => m[1]));

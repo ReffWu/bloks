@@ -32,7 +32,7 @@ import {
 } from "@/lib/contextCard";
 import { ContextRing } from "./TaskStrip";
 import { useDismiss } from "./composer/Shell";
-import { t } from "@/lib/i18n";
+import { formatList, t } from "@/lib/i18n";
 
 /** Past this the ring and its bar take the warning colour. */
 const NEAR = 0.8;
@@ -82,7 +82,7 @@ interface Today {
  * for a parent that opens it from somewhere other than the ring. */
 export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const { state } = useStore();
-  const lane = bot.tasks?.find((t) => t.id === (bot.activeTaskId ?? bot.threadId));
+  const lane = bot.tasks?.find((task) => task.id === (bot.activeTaskId ?? bot.threadId));
   const context = composerContext(lane?.context);
   const instanceId = bot.modelSelection.instanceId;
   const [own, setOwn] = useState(false);
@@ -177,7 +177,7 @@ export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open
               <p className="mt-1 leading-snug text-muted-foreground">{t("composerRing.nothingSentYet")}</p>
             )}
           </Section>
-          <Section title={`${bot.name} today`} aside={spent && spent.turns > 0 ? repliesPhrase(spent.turns) : undefined}>
+          <Section title={t("composerRing.agentToday", { name: bot.name })} aside={spent && spent.turns > 0 ? repliesPhrase(spent.turns) : undefined}>
             {today === null || today.failed ? (
               <p className="mt-1 leading-snug text-muted-foreground">{today ? t("composerRing.couldntCheckJustNow") : t("common.checking")}</p>
             ) : (
@@ -186,14 +186,14 @@ export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open
                 {spent && spent.turns > 0 && (
                   <Fact
                     label={t("composerRing.tokens")}
-                    value={spent.input + spent.output > 0 ? shortTokens(spent.input + spent.output) : "Not reported"}
+                    value={spent.input + spent.output > 0 ? shortTokens(spent.input + spent.output) : t("composerRing.notReported")}
                   />
                 )}
               </>
             )}
           </Section>
           {rows.length > 0 && (
-            <Section title={t("composerRing.plan")} aside={[engine, named].filter(Boolean).join(", ") || undefined}>
+            <Section title={t("composerRing.plan")} aside={formatList([engine, named].filter(Boolean) as string[], { type: "unit" }) || undefined}>
               {rows.map((row) => (
                 <div key={row.id} className="mt-2">
                   <div className="flex items-baseline justify-between gap-3">
@@ -202,7 +202,9 @@ export function ComposerRing({ bot, open: held, onOpenChange }: { bot: Bot; open
                   </div>
                   <Bar fill={row.fill} near={row.near} />
                   {(row.note || row.reset) && (
-                    <div className="mt-1 text-muted-foreground">{[row.note, row.reset].filter(Boolean).join(". ")}</div>
+                    <div className="mt-1 text-muted-foreground">
+                      {row.note && row.reset ? t("composerRing.noteThenReset", { note: row.note, reset: row.reset }) : (row.note || row.reset)}
+                    </div>
                   )}
                 </div>
               ))}

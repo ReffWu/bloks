@@ -65,9 +65,10 @@ export function UsageNotice({ bot }: { bot: Bot }) {
     >
       <p className="min-w-0 basis-48 flex-1 leading-snug [overflow-wrap:anywhere]">
         <span className={notice.level === "stop" ? "font-semibold text-destructive" : "font-medium text-foreground"}>
-          {source}: {notice.title}
+          {/* the title is the server's own words */}
+          {t("composerUsageNotice.title", { source, title: notice.title })}
         </span>
-        <span className="text-muted-foreground"> · {details}</span>
+        <span className="text-muted-foreground">{` · ${details}`}</span>
       </p>
       <button
         type="button"

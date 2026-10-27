@@ -23,6 +23,10 @@
 // the way the iPhone app sends one: a JPEG that fits, a screenshot left a
 // PNG when it already does. A HEIC photo always goes as a JPEG, since no
 // server here takes HEIC as a picture (GitHub 333).
+//
+// The reasons a file is refused are said in the reader's language. What
+// a server says back is passed on in its own words.
+import { formatNumber, t } from "./i18n.ts";
 
 export type PasteAttachment = {
   kind: "paste";
@@ -218,7 +222,7 @@ export async function intakeImage<T extends IncomingFile>(file: T, handlers: Ima
       }
     }
     if (path) return fileAttachment(file.name, path, file.size);
-    throw new Error(said(error, "upload failed"));
+    throw new Error(said(error, t("libAttachments.uploadFailed")));
   }
 }
 
@@ -270,7 +274,9 @@ export async function intakeFiles<T extends IncomingFile>(
         const uploaded = await intakeImage(file, { ...handlers, sameComputer });
         if (uploaded) attachments.push(uploaded);
       } catch (error) {
-        complaints.push(`${file.name || "image"}: ${said(error, "upload failed")}`);
+        complaints.push(
+          t("libAttachments.complaint", { name: file.name || t("libAttachments.image"), reason: said(error, t("libAttachments.uploadFailed")) }),
+        );
       }
       continue;
     }
@@ -305,11 +311,15 @@ export async function intakeFiles<T extends IncomingFile>(
         const sent = await handlers.uploadFile(file);
         if (sent) attachments.push(sent);
       } catch (error) {
-        complaints.push(`${file.name || "That file"}: ${said(error, "it could not be sent")}`);
+        complaints.push(
+          t("libAttachments.complaint", { name: file.name || t("libAttachments.thatFile"), reason: said(error, t("libAttachments.couldNotBeSent")) }),
+        );
       }
       continue;
     }
-    complaints.push(`${file.name || "That file"} can't be attached from here`);
+    complaints.push(
+      file.name ? t("libAttachments.cantAttachHere", { name: file.name }) : t("libAttachments.thatFileCantAttachHere"),
+    );
   }
   return { attachments, refused: complaints.length ? complaints.join("; ") : null };
 }
@@ -334,7 +344,7 @@ export async function sendInParts(
     if (!response.ok) {
       // a server older than this app has nowhere to put a file
       const older = body?.code === "unknown_route";
-      const words = older ? "the computer this workspace runs on needs an update before it can take files" : (body?.error ?? "it could not be sent");
+      const words = older ? t("libAttachments.serverNeedsUpdate") : (body?.error ?? t("libAttachments.couldNotBeSent"));
       throw Object.assign(new Error(words), { status: response.status, older });
     }
     return body;
@@ -382,10 +392,10 @@ export async function sendInParts(
 export async function uploadFileAttachment(file: Sendable, fetcher?: Fetcher): Promise<FileAttachment | null> {
   const where = await destination(fetcher);
   if (file.size > where.fileMaxBytes) {
-    throw new Error(`it is ${formatBytes(file.size)}, and a file sent to the computer this workspace runs on can be ${formatBytes(where.fileMaxBytes)} at most`);
+    throw new Error(t("libAttachments.fileTooBig", { size: formatBytes(file.size), max: formatBytes(where.fileMaxBytes) }));
   }
   const kept = await sendInParts(file, { fetcher, partBytes: where.partBytes });
-  return { kind: "file", id: newId(), path: kept.path, name: file.name || ("name" in kept ? kept.name : "file"), bytes: kept.bytes };
+  return { kind: "file", id: newId(), path: kept.path, name: file.name || ("name" in kept ? kept.name : t("libAttachments.file")), bytes: kept.bytes };
 }
 
 // ── pictures made to fit ───────────────────────────────────────────────
@@ -487,11 +497,9 @@ async function drawJpeg(bitmap: ImageBitmap, at: JpegTry): Promise<Blob> {
   canvas.height = at.height;
   paint(canvas.getContext("2d")!);
   return new Promise((resolve, reject) =>
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("the picture could not be made smaller"))), "image/jpeg", at.quality),
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error(t("libAttachments.couldNotShrink")))), "image/jpeg", at.quality),
   );
 }
-
-const UNCONVERTED = "it is a HEIC photo, which has to go as a JPEG, and this window cannot make one. Export it as a JPEG and attach that";
 
 /**
  * A picture as it should travel within `budget` bytes. Itself when it fits
@@ -510,7 +518,7 @@ export async function fitImage(image: Blob & { name?: string }, budget: number, 
   if (!opened) {
     if (!isHeic(image)) return null;
     const jpeg = await tools.heicAsJpeg(image);
-    if (!jpeg) throw Object.assign(new Error(UNCONVERTED), { unconverted: true });
+    if (!jpeg) throw Object.assign(new Error(t("libAttachments.heicUnconverted")), { unconverted: true });
     return fitImage(jpeg, budget, tools);
   }
   try {
@@ -528,6 +536,7 @@ export async function fitImage(image: Blob & { name?: string }, budget: number, 
 /** A picture made from another, as a file named for what it now is. */
 function asSent(image: Blob, original: File): File {
   if (image === original) return original;
+  // a file name the server keeps, so the same in every language
   const name = (original.name || "pasted image").replace(/\.[^./\\]{1,8}$/, "");
   return new File([image], `${name}.${image.type === "image/png" ? "png" : "jpg"}`, { type: image.type || "image/jpeg" });
 }
@@ -535,8 +544,8 @@ function asSent(image: Blob, original: File): File {
 const tooLargeForCloud = (image: Blob) =>
   new Error(
     image.type === "image/gif"
-      ? `it is a GIF of ${formatBytes(image.size)}, which goes as it is so that it keeps moving, and that is too large to send through Bloks Cloud`
-      : `it is ${formatBytes(image.size)}, too large to send through Bloks Cloud`,
+      ? t("libAttachments.gifTooLargeForCloud", { size: formatBytes(image.size) })
+      : t("libAttachments.tooLargeForCloud", { size: formatBytes(image.size) }),
   );
 
 /** Persist an image server-side; the prompt will carry the saved path.
@@ -558,13 +567,13 @@ export async function uploadImageAttachment(
     // carry a picture as big as the server takes
     ready = asSent((await fitImage(file, where.throughCloud ? CLOUD_IMAGE_BYTES : where.imageMaxBytes, tools)) ?? file, file);
     if (ready.size > where.imageMaxBytes) {
-      throw new Error(`it is ${formatBytes(ready.size)}, and a picture sent to the computer this workspace runs on can be ${formatBytes(where.imageMaxBytes)} at most`);
+      throw new Error(t("libAttachments.imageTooBig", { size: formatBytes(ready.size), max: formatBytes(where.imageMaxBytes) }));
     }
     try {
       onUploading?.();
       const kept = await sendInParts(ready, { fetcher, partBytes: where.partBytes });
-      if (kept.kind !== "image") throw new Error("it did not arrive as an image");
-      return { kind: "image", id: newId(), path: kept.path, name: ready.name || "pasted image", bytes: kept.bytes, mime: kept.mime };
+      if (kept.kind !== "image") throw new Error(t("libAttachments.notAnImage"));
+      return { kind: "image", id: newId(), path: kept.path, name: ready.name || t("libAttachments.pastedImage"), bytes: kept.bytes, mime: kept.mime };
     } catch (error) {
       // a server older than this app still takes an image in one piece
       if (!(error as { older?: boolean }).older) throw error;
@@ -579,7 +588,7 @@ export async function uploadImageAttachment(
   } else {
     // the app's own server: as it is up to its cap, and made to fit that
     const fitted = await fitImage(file, IMAGE_MAX_BYTES, tools);
-    if (!fitted) throw new Error(`${file.name || "image"} is over 10 MB`);
+    if (!fitted) throw new Error(t("libAttachments.over10Mb", { name: file.name || t("libAttachments.image") }));
     ready = asSent(fitted, file);
     onUploading?.();
   }
@@ -590,14 +599,14 @@ export async function uploadImageAttachment(
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
-    throw new Error(detail?.error ?? "upload failed");
+    throw new Error(detail?.error ?? t("libAttachments.uploadFailed"));
   }
   const saved = await response.json();
   return {
     kind: "image",
     id: newId(),
     path: saved.path,
-    name: ready.name || "pasted image",
+    name: ready.name || t("libAttachments.pastedImage"),
     bytes: saved.bytes,
     mime: saved.mime,
   };
@@ -679,8 +688,10 @@ export function attachmentBasename(path: string): string {
   return path.split(/[\\/]/).at(-1) ?? "";
 }
 
+const ONE_PLACE = { minimumFractionDigits: 1, maximumFractionDigits: 1 } as const;
+
 export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024) return t("libAttachments.bytes", { size: formatNumber(bytes) });
+  if (bytes < 1024 * 1024) return t("libAttachments.kilobytes", { size: formatNumber(bytes / 1024, ONE_PLACE) });
+  return t("libAttachments.megabytes", { size: formatNumber(bytes / (1024 * 1024), ONE_PLACE) });
 }

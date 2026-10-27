@@ -62,7 +62,7 @@ export function SlashMenu({
                     <span className="min-w-0 flex-1 truncate text-body text-muted-foreground">{c.description || c.name}</span>
                     {c.source === "engine" && (
                       <span className="shrink-0 text-caption text-muted-foreground/80">
-                        {c.kind === "command" ? "command" : "skill"}
+                        {c.kind === "command" ? t("slashMenu.kind.command") : t("slashMenu.kind.skill")}
                       </span>
                     )}
                   </button>

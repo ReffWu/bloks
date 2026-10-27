@@ -31,8 +31,8 @@ export function SendStop({
   mode,
   onSend,
   onStop,
-  sendLabel = "Send",
-  stopLabel = "Stop (Esc)",
+  sendLabel = t("shell.send"),
+  stopLabel = t("shell.stopEsc"),
 }: {
   /** idle: nothing to send. send: something to send. stop: working, and
    * nothing typed to add to it. */

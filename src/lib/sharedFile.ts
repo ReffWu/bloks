@@ -8,6 +8,8 @@
 // /api/artifacts/resolve). The rules for what a name may be mirror
 // safeName in server/artifacts.ts; the server judges again either way.
 
+import { t } from "./i18n.ts";
+
 export type FileTarget =
   | { kind: "artifact"; botId: string; name: string }
   | { kind: "path"; path: string };
@@ -112,16 +114,16 @@ export function fileBase(name: string): string {
  * open, or when nothing says how much the way here carries. */
 export function tooLargeHere(size: number, openMaxBytes: number | null): string | null {
   if (!openMaxBytes || !(size > openMaxBytes)) return null;
-  return `Too large to open through Bloks Cloud, which opens files up to ${Math.floor(openMaxBytes / 1024 / 1024)} MB.`;
+  return t("sharedFile.tooLargeForCloud", { size: Math.floor(openMaxBytes / 1024 / 1024) });
 }
 
 /** Why a file did not open, in words for the person, from the status the
  * server answered. Retrying asks again for the file; it never starts a
  * turn, so it is safe to offer whatever went wrong. */
 export function openFailure(status: number, said?: string): string {
-  if (status === 404) return said?.trim() || "This file was moved or deleted.";
-  if (status === 401 || status === 403) return "This device can't open that file.";
-  if (status === 413) return said?.trim() || "This file is too large to open here.";
-  if (status === 0) return "Can't reach the computer running Bloks. Check that it's on and online.";
-  return said?.trim() || `Couldn't open the file (${status}).`;
+  if (status === 404) return said?.trim() || t("sharedFile.gone");
+  if (status === 401 || status === 403) return t("sharedFile.notAllowed");
+  if (status === 413) return said?.trim() || t("sharedFile.tooLarge");
+  if (status === 0) return t("sharedFile.unreachable");
+  return said?.trim() || t("sharedFile.failed", { status: String(status) });
 }

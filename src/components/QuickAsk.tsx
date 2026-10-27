@@ -45,7 +45,7 @@ export function QuickAsk() {
         setBots(list);
         setChosen((current) => (list.some((b) => b.id === current) ? current : (list[0]?.id ?? "")));
       })
-      .catch(() => setError("Bloks is not running."));
+      .catch(() => setError(t("quickAsk.notRunning")));
   useEffect(() => {
     void loadBots();
   }, []);
@@ -101,7 +101,7 @@ export function QuickAsk() {
         hideTimer.current = setTimeout(() => window.bloks?.quickHide(), 900);
       })
       .catch((e) => {
-        const why = `Not sent: ${e instanceof Error ? e.message : String(e)}`;
+        const why = t("quickAsk.notSent", { error: e instanceof Error ? e.message : String(e) });
         if (visit.current !== mine) {
           // the words from the visit before, back only into an empty box
           setText((now) => (now.trim() ? now : body));
@@ -130,7 +130,7 @@ export function QuickAsk() {
         {sent ? (
           <div className="flex items-center gap-3 px-4 py-5">
             {bot && <AgentAvatar bot={bot as never} size={30} />}
-            <div className="flex-1 text-ui text-foreground">Sent to {sent}</div>
+            <div className="flex-1 text-ui text-foreground">{t("quickAsk.sentTo", { name: sent })}</div>
             <button
               onClick={() => window.bloks?.quickOpenMain()}
               className="rounded-lg px-2 py-1 text-body text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -160,7 +160,7 @@ export function QuickAsk() {
                     send();
                   }
                 }}
-                placeholder={bot ? `Ask ${bot.name}…` : t("quickAsk.noAgentsYet")}
+                placeholder={bot ? t("quickAsk.askAgent", { name: bot.name }) : t("quickAsk.noAgentsYet")}
                 className="min-h-[46px] w-full resize-none bg-transparent text-lead leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
               />
             </div>

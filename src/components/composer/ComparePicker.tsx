@@ -51,7 +51,13 @@ export function ComparePicker({
   const toggle = (id: string) =>
     onChange(chosen.includes(id) ? chosen.filter((c) => c !== id) : full ? chosen : [...chosen, id]);
 
-  const label = picked.length ? picked.map((b) => b.name).join(" and ") : "Compare with";
+  // at most two (MAX_COMPARE), said as a pair
+  const label =
+    picked.length > 1
+      ? t("comparePicker.pair", { a: picked[0].name, b: picked[1].name })
+      : picked.length
+        ? picked[0].name
+        : t("comparePicker.compareWith");
 
   return (
     <div ref={ref} className="relative">

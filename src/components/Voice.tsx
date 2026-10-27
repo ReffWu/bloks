@@ -32,7 +32,8 @@ interface VoiceOption {
 }
 
 /** Each vendor as the picker names it, in the order the server lists
- * them: the ones somebody set up first, the Mac's own last. */
+ * them: the ones somebody set up first, the Mac's own last. Product
+ * names, the same in every language. */
 const PROVIDERS: Array<[VoiceProvider, string]> = [
   ["elevenlabs", "ElevenLabs"],
   ["openai", "OpenAI"],
@@ -42,7 +43,6 @@ const PROVIDERS: Array<[VoiceProvider, string]> = [
   ["system", "Mac"],
 ];
 
-const PREVIEW_LINE = "Hi, this is how I sound. Ready when you are.";
 
 async function fetchSpeech(botId: string, text?: string): Promise<HTMLAudioElement> {
   const res = await fetch(`/api/bots/${botId}/speak`, {
@@ -50,7 +50,7 @@ async function fetchSpeech(botId: string, text?: string): Promise<HTMLAudioEleme
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ text }),
   });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "speech failed");
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? t("voice.speechFailed"));
   const url = URL.createObjectURL(await res.blob());
   const audio = new Audio(url);
   audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
@@ -151,7 +151,8 @@ export function VoiceCard({ bot }: { bot: Bot }) {
   const preview = () => {
     if (previewing) return;
     setPreviewing(true);
-    fetchSpeech(bot.id, PREVIEW_LINE)
+    // heard in the reader's own language, like everything else they read
+    fetchSpeech(bot.id, t("voice.previewLine"))
       .then((audio) => {
         audio.addEventListener("ended", () => setPreviewing(false), { once: true });
         return audio.play();
@@ -171,7 +172,7 @@ export function VoiceCard({ bot }: { bot: Bot }) {
             {!configured
               ? t("voice.addAVoiceKeyOr")
               : bot.voice
-                ? `Speaks as ${bot.voice.name ?? bot.voice.id} · calls enabled`
+                ? t("voice.speaksAs", { voice: bot.voice.name ?? bot.voice.id })
                 : t("voice.pickAVoiceToCall")}
           </div>
         </div>
@@ -201,7 +202,7 @@ export function VoiceCard({ bot }: { bot: Bot }) {
                   }
                   className="accent-(--brand)"
                 />
-                Read replies aloud
+                {t("voice.readRepliesAloud")}
               </label>
             </div>
           )}
@@ -300,7 +301,7 @@ function startRecognition(handlers: {
     };
     recog.onerror = (event: any) => {
       if (event.error === "no-speech") handlers.onSilence();
-      else handlers.onError(`microphone: ${event.error}`);
+      else handlers.onError(t("voice.micError", { error: event.error }));
     };
     recog.start();
     return { stop: () => recog.stop(), needsManualFinish: false };
@@ -318,7 +319,7 @@ function startRecognition(handlers: {
       needsManualFinish: true,
     };
   }
-  handlers.onError("No microphone available.");
+  handlers.onError(t("voice.noMicrophone"));
   return null;
 }
 
@@ -435,11 +436,11 @@ export function CallOverlay({ bot, onClose }: { bot: Bot; onClose: () => void })
 
   const stateLabel =
     callState === "listening"
-      ? heard || "Listening…"
+      ? heard || t("voice.state.listening")
       : callState === "thinking"
-        ? "Thinking…"
+        ? t("voice.state.thinking")
         : callState === "speaking"
-          ? "Speaking"
+          ? t("voice.state.speaking")
           : "";
 
   return (
@@ -508,8 +509,8 @@ export function CallButton({ bot }: { bot: Bot }) {
       <Button
         variant="ghost"
         size="icon"
-        title={`Call ${bot.name}`}
-        aria-label={`Call ${bot.name}`}
+        title={t("voice.call", { name: bot.name })}
+        aria-label={t("voice.call", { name: bot.name })}
         onClick={() => setCalling(true)}
       >
         <Phone size={16} />
@@ -620,7 +621,7 @@ export function GroupCallOverlay({
           setCallState("speaking");
           callStateRef.current = "speaking";
           setSpeakingId(speaker?.id ?? null);
-          setCaption(`${speaker?.name ?? "Agent"}: ${message.text!.slice(0, 120)}`);
+          setCaption(t("voice.caption", { name: speaker?.name ?? t("common.agent"), text: message.text!.slice(0, 120) }));
           if (speaker?.voice) {
             try {
               const audio = await fetchSpeech(speaker.id, message.text!);
@@ -701,9 +702,9 @@ export function GroupCallOverlay({
 
   const stateLabel =
     callState === "listening"
-      ? heard || "Listening. Say a name or start talking."
+      ? heard || t("voice.state.roomListening")
       : callState === "thinking"
-        ? "The room is thinking…"
+        ? t("voice.state.roomThinking")
         : caption;
 
   return (
@@ -792,10 +793,10 @@ export function GroupCallButton({
         size="icon"
         title={
           voiced === members.length
-            ? `Call ${blok.name}`
-            : `Call ${blok.name} (${members.length - voiced} without a voice will reply in text)`
+            ? t("voice.call", { name: blok.name })
+            : t("voice.callSomeInText", { name: blok.name, count: members.length - voiced })
         }
-        aria-label={`Call ${blok.name}`}
+        aria-label={t("voice.call", { name: blok.name })}
         onClick={() => setCalling(true)}
       >
         <Phone size={16} />

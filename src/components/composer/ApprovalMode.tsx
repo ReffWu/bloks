@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { quietButton } from "./Shell";
+import { t } from "@/lib/i18n";
 
 export function ApprovalModeMenu({ bot, onRefused }: { bot: Bot; onRefused: (refused: boolean) => void }) {
   const { dispatch } = useStore();
@@ -38,8 +39,8 @@ export function ApprovalModeMenu({ bot, onRefused }: { bot: Bot; onRefused: (ref
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          title={`How much ${bot.name} asks: ${current.label}`}
-          aria-label={`How much ${bot.name} asks: ${current.label}`}
+          title={t("approvalMode.current", { name: bot.name, mode: current.label })}
+          aria-label={t("approvalMode.current", { name: bot.name, mode: current.label })}
           className={cn(quietButton, full && "text-warning hover:text-warning aria-expanded:text-warning")}
         >
           {full && <ShieldAlert size={14} className="shrink-0" />}
@@ -52,7 +53,7 @@ export function ApprovalModeMenu({ bot, onRefused }: { bot: Bot; onRefused: (ref
         sideOffset={6}
         className="w-[300px] max-w-[calc(100vw-24px)]"
       >
-        <DropdownMenuLabel>How much {bot.name} asks</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("approvalMode.howMuch", { name: bot.name })}</DropdownMenuLabel>
         {APPROVAL_MODES.map((m) => {
           const on = m.id === mode;
           const risky = m.id === "full";

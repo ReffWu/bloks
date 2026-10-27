@@ -237,7 +237,7 @@ export function RoomComposer({
   // a picture is a chip from the moment it lands, as in a chat
   const images = usePendingImages({
     onReady: (ready) => setAttachments((current) => [...current, ...ready]),
-    onFailed: (name, error) => setAttachNotice(`${name}: ${error}`),
+    onFailed: (name, error) => setAttachNotice(t("roomComposer.imageFailed", { name, error })),
   });
   const [sendHeld, setSendHeld] = useState(false);
   const heldBy = heldLine(images.items);
@@ -301,7 +301,7 @@ export function RoomComposer({
   // to the name they gave, which is what the server reads a mention by.
   const mentionable: Array<{ id: string; name: string; label?: string; title?: string; bot?: Bot }> = [
     ...answering.map((b) => ({ id: b.id, name: b.name, title: b.title, bot: b })),
-    ...people.map((p) => ({ id: p.id, name: p.name, label: nameOf?.(p.id), title: p.role === "viewer" ? "Viewer" : "Collaborator" })),
+    ...people.map((p) => ({ id: p.id, name: p.name, label: nameOf?.(p.id), title: p.role === "viewer" ? t("roomComposer.viewer") : t("roomComposer.collaborator") })),
   ];
   const query = mentionAt === null ? null : text.slice(mentionAt + 1, inputRef.current?.selectionStart ?? text.length);
   const matches =
@@ -358,7 +358,7 @@ export function RoomComposer({
       // a path from here is no use to a server elsewhere: the file goes
       uploadFile: (file) => uploadFileAttachment(file),
       sameComputer: async () => (await destination()).sameComputer,
-      onSending: (file) => setAttachNotice(`Sending ${file.name || "the file"}…`),
+      onSending: (file) => setAttachNotice(file.name ? t("roomComposer.sendingFile", { name: file.name }) : t("roomComposer.sendingTheFile")),
       onImage: (file) => images.add([file]),
     }).then(({ attachments: added, refused }) => {
       if (added.length) setAttachments((current) => [...current, ...added]);
@@ -506,8 +506,8 @@ export function RoomComposer({
         tone: "warn",
         rank: RANK.unsent,
         icon: <Undo2 size={14} />,
-        title: "A message didn't send.",
-        detail: blockedRecovery === item.id ? "Finish or clear the current draft first." : "Check the room before sending again.",
+        title: t("roomComposer.unsent.title"),
+        detail: blockedRecovery === item.id ? t("roomComposer.unsent.finishDraftFirst") : t("roomComposer.unsent.checkRoom"),
         actions: (
           <>
             <TrayButton
@@ -572,7 +572,7 @@ export function RoomComposer({
         dropping && (
           <div className="pointer-events-none fixed inset-2 z-50 flex animate-pop-in items-center justify-center rounded-2xl border-2 border-dashed border-brand/50 bg-background/70">
             <span className="rounded-xl bg-popover px-3.5 py-2 text-body text-foreground shadow-lg shadow-(color:--shadow-color)">
-              Drop to share with {blok.name}
+              {t("roomComposer.dropToShare", { name: blok.name })}
             </span>
           </div>
         )
@@ -645,7 +645,7 @@ export function RoomComposer({
           </BoxButton>
           <SendStop
             mode={canSend ? "send" : busy ? "stop" : "idle"}
-            sendLabel={busy ? `Send, ${modKey()}Enter stops the room first` : "Send"}
+            sendLabel={busy ? t("roomComposer.sendStopsRoomFirst", { key: modKey() }) : t("roomComposer.send")}
             stopLabel={t("roomComposer.stopTheRoomEsc")}
             onSend={() => send()}
             onStop={stopAll}
@@ -692,7 +692,7 @@ export function RoomComposer({
           ref={inputRef}
           rows={1}
           value={text}
-          aria-label={`Message ${blok.name}`}
+          aria-label={t("roomComposer.messageTo", { name: blok.name })}
           onChange={(e) => {
             setText(e.target.value);
             readMention(e.target);
@@ -760,8 +760,8 @@ export function RoomComposer({
             dictation.recording
               ? t("roomComposer.listening")
               : replyTo
-                ? `Reply to ${replyTo.author}`
-                : `Message ${blok.name}, or @name someone`
+                ? t("roomComposer.replyTo", { name: replyTo.author })
+                : t("roomComposer.placeholder", { name: blok.name })
           }
           className="relative block w-full min-w-0 resize-none bg-transparent px-1 py-1 text-lead text-foreground outline-none placeholder:truncate placeholder:text-muted-foreground placeholder-shown:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]"
         />

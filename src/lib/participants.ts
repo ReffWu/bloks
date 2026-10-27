@@ -10,6 +10,7 @@
 //
 // Plain functions over plain data, so the rule and its edge cases can be
 // walked in a test (test/participants.test.ts).
+import { formatList, t } from "./i18n.ts";
 
 /** The people and agents in a conversation, by id. "owner" is the owner. */
 export interface Participants {
@@ -139,5 +140,5 @@ export function receiptsAt(
 
 /** "Seen by Sam", "Seen by Sam, Ana". */
 export function seenLine(names: readonly string[]): string {
-  return `Seen by ${names.join(", ")}`;
+  return t("participants.seenBy", { names: formatList(names, { type: "unit" }) });
 }

@@ -49,16 +49,18 @@ export function ReachMenu({
   const named = reach.kind === "named" ? reach.ids.map((id) => members.find((m) => m.id === id)).filter(Boolean) as Bot[] : [];
   const line =
     reach.kind === "named"
-      ? `To ${namesLine(named.map((m) => m.name))}`
+      ? t("reachMenu.to", { names: namesLine(named.map((m) => m.name)) })
       : reach.kind === "lead"
-        ? `${lead?.name ?? "The lead"} answers`
+        ? lead
+          ? t("reachMenu.answers", { name: lead.name })
+          : t("reachMenu.theLeadAnswers")
         : reach.kind === "auto"
-          ? "Auto picks who answers"
+          ? t("reachMenu.autoPicks")
           : reach.kind === "people"
-          ? "No agent answers"
+          ? t("reachMenu.noAgentAnswers")
           : answering.length === 1
-            ? `${answering[0].name} answers`
-            : "Everyone answers";
+            ? t("reachMenu.answers", { name: answering[0].name })
+            : t("reachMenu.everyoneAnswers");
   const icon =
     reach.kind === "named" ? (
       <span className="flex shrink-0 -space-x-1">
@@ -79,6 +81,7 @@ export function ReachMenu({
     api(`/api/bloks/${blok.id}`, { method: "PATCH", body: JSON.stringify({ answers: next }) }).catch(() => {});
   };
   const choices = ROOM_ANSWERS.map((value) => ({
+    value,
     on: answers === value,
     ...answersWords(value, lead?.name ?? null),
     pick: () => setAnswers(value),
@@ -87,7 +90,7 @@ export function ReachMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" title={`Who answers: ${line}`} aria-label={`Who answers: ${line}`} className={quietButton}>
+        <button type="button" title={t("reachMenu.whoAnswersIs", { line })} aria-label={t("reachMenu.whoAnswersIs", { line })} className={quietButton}>
           {icon}
           <span className="truncate">{line}</span>
         </button>
@@ -98,7 +101,7 @@ export function ReachMenu({
             <DropdownMenuLabel>{t("reachMenu.whoAnswers")}</DropdownMenuLabel>
             {choices.map((c) => (
               <DropdownMenuItem
-                key={c.label}
+                key={c.value}
                 onSelect={c.pick}
                 role="menuitemradio"
                 aria-checked={c.on}

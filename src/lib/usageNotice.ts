@@ -6,6 +6,10 @@
 //
 // Kept apart from the component so the wording and the remembering can
 // be tested without a DOM.
+//
+// The title is the server's own words; what this adds around it is in
+// the reader's language.
+import { formatLocale, t } from "./i18n.ts";
 
 /** How much a notice asks for: worth knowing, near a limit, at one. */
 export type UsageLevel = "info" | "warn" | "stop";
@@ -52,13 +56,14 @@ export function noticeToShow(notices: UsageNotice[], dismissed: readonly string[
 
 /** Name only the reported source, not the conversation's selected engine. */
 export function noticeSource(notice: Pick<UsageNotice, "source" | "kind">, engines: readonly { instanceId: string; displayName: string }[]): string {
-  if (notice.source === "bloks-ai") return "Bloks AI allowance";
-  const name = engines.find((engine) => engine.instanceId === notice.source)?.displayName?.trim() || "Unknown engine";
-  return `${name} ${notice.kind === "spend" ? "spending limit" : "plan usage"}`;
+  if (notice.source === "bloks-ai") return t("libUsageNotice.bloksAllowance");
+  const name = engines.find((engine) => engine.instanceId === notice.source)?.displayName?.trim() || t("libUsageNotice.unknownEngine");
+  return notice.kind === "spend" ? t("libUsageNotice.spendingLimit", { name }) : t("libUsageNotice.planUsage", { name });
 }
 
 /** A day as a count, for telling today from tomorrow in one time zone. */
 function dayNumber(at: number, timeZone?: string): number {
+  // read as numbers, never shown, so the locale here is fixed
   const parts = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "numeric", day: "numeric", ...(timeZone ? { timeZone } : {}) }).formatToParts(new Date(at));
   const part = (type: string) => Number(parts.find((p) => p.type === type)?.value);
   return Date.UTC(part("year"), part("month") - 1, part("day")) / (24 * 60 * 60_000);
@@ -74,30 +79,32 @@ export function resetLine(resetsAt: number | null, now: number, format: { locale
   if (resetsAt === null || !Number.isFinite(resetsAt) || resetsAt <= now || !Number.isFinite(new Date(resetsAt).getTime())) return null;
   if (resetsAt - now < 24 * 60 * 60_000) {
     const days = dayNumber(resetsAt, format.timeZone) - dayNumber(now, format.timeZone);
-    if (days === 0) return "Resets today";
-    if (days === 1) return "Resets tomorrow";
+    if (days === 0) return t("libUsageNotice.resetsToday");
+    if (days === 1) return t("libUsageNotice.resetsTomorrow");
   }
-  const date = new Intl.DateTimeFormat(format.locale, {
+  const date = new Intl.DateTimeFormat(format.locale ?? formatLocale(), {
     month: "short",
     day: "numeric",
     ...(format.timeZone ? { timeZone: format.timeZone } : {}),
   }).format(new Date(resetsAt));
-  return `Resets ${date}`;
+  return t("libUsageNotice.resetsOn", { date });
 }
 
 /** Reported usage and reset/top-up timing; never invent an unavailable value. */
 export function noticeLine(notice: Pick<UsageNotice, "kind" | "usedPercent" | "resetsAt">, now: number, format: { locale?: string; timeZone?: string } = {}): string {
   const used = Number.isFinite(notice.usedPercent) && notice.usedPercent >= 0 && notice.usedPercent <= 100
-    ? `${Math.round(notice.usedPercent)}% used`
-    : "Usage unknown";
-  if (notice.kind !== "spend") return `${used} · ${resetLine(notice.resetsAt, now, format) ?? "Reset time unknown"}`;
-  if (notice.resetsAt === null || !Number.isFinite(notice.resetsAt) || notice.resetsAt <= now || !Number.isFinite(new Date(notice.resetsAt).getTime())) return `${used} · Top-up time unknown`;
-  const date = new Intl.DateTimeFormat(format.locale, {
+    ? t("libUsageNotice.percentUsed", { percent: Math.round(notice.usedPercent) })
+    : t("libUsageNotice.usageUnknown");
+  if (notice.kind !== "spend") return t("libUsageNotice.line", { used, when: resetLine(notice.resetsAt, now, format) ?? t("libUsageNotice.resetUnknown") });
+  if (notice.resetsAt === null || !Number.isFinite(notice.resetsAt) || notice.resetsAt <= now || !Number.isFinite(new Date(notice.resetsAt).getTime())) {
+    return t("libUsageNotice.line", { used, when: t("libUsageNotice.topUpUnknown") });
+  }
+  const date = new Intl.DateTimeFormat(format.locale ?? formatLocale(), {
     month: "short",
     day: "numeric",
     ...(format.timeZone ? { timeZone: format.timeZone } : {}),
   }).format(new Date(notice.resetsAt));
-  return `${used} · Tops up ${date}`;
+  return t("libUsageNotice.line", { used, when: t("libUsageNotice.topsUpOn", { date }) });
 }
 
 // ── put away ───────────────────────────────────────────────────────────

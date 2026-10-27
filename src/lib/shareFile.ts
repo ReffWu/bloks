@@ -2,6 +2,7 @@
 // catalogue's own format with secrets and personal details taken out
 // (server/catalog.ts), saved where the person keeps downloads. It saves
 // rather than opens, because the point is to leave with it.
+import { t } from "./i18n.ts";
 
 /** Fetches a shareable file and saves it under a name. Rejects with the
  * server's own words when it refuses. */
@@ -9,7 +10,7 @@ export async function shareAsFile(path: string, filename: string): Promise<void>
   const res = await fetch(path);
   if (!res.ok) {
     const said = await res.json().catch(() => null);
-    throw new Error(said?.error ?? `That could not be saved (${res.status}).`);
+    throw new Error(said?.error ?? t("shareFile.notSaved", { status: String(res.status) }));
   }
   const text = await res.text();
   const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));

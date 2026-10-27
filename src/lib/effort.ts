@@ -9,18 +9,30 @@
 // A picker offers the levels the agent's engine and model have. A saved
 // level they do not have is shown as the one its turns are sent, with a
 // line saying so, because that is what the agent is really doing.
+import { t } from "./i18n.ts";
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 /** Every level, from the least thinking to the most. */
 export const EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
 
-export const EFFORT_LABELS: Record<Effort, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Max",
+/** Each level's name, read when it is drawn so it follows the language. */
+export const EFFORT_LABELS: Readonly<Record<Effort, string>> = {
+  get low() {
+    return t("effort.low");
+  },
+  get medium() {
+    return t("effort.medium");
+  },
+  get high() {
+    return t("effort.high");
+  },
+  get xhigh() {
+    return t("effort.xhigh");
+  },
+  get max() {
+    return t("effort.max");
+  },
 };
 
 /** What a server from before the levels were per engine took for every
@@ -58,7 +70,7 @@ export function effortLevels(instance: EffortEngine | undefined, model?: string)
 
 /** A picker's choices: the engine's own, then each level it has. */
 export function effortOptions(levels: readonly Effort[]): Array<{ value: Effort | undefined; label: string }> {
-  return [{ value: undefined, label: "Use engine setting" }, ...levels.map((value) => ({ value, label: EFFORT_LABELS[value] }))];
+  return [{ value: undefined, label: t("effort.useEngineSetting") }, ...levels.map((value) => ({ value, label: EFFORT_LABELS[value] }))];
 }
 
 /**
@@ -70,10 +82,10 @@ export function effortOptions(levels: readonly Effort[]): Array<{ value: Effort 
 export function effortNote(saved: unknown, levels: readonly Effort[], who: string): string | null {
   const label = isEffort(saved) ? EFFORT_LABELS[saved] : null;
   if (!levels.length) {
-    return `${who} has no reasoning effort setting.${label ? ` ${label} is kept for an engine that has one.` : ""}`;
+    return label ? t("effort.noSettingKept", { who, label }) : t("effort.noSetting", { who });
   }
   if (!label || levels.includes(saved as Effort)) return null;
-  return `Saved as ${label}. ${who} has no ${label}, so it runs at ${EFFORT_LABELS[clampEffort(saved, levels)!]}.`;
+  return t("effort.runsAt", { who, label, runs: EFFORT_LABELS[clampEffort(saved, levels)!] });
 }
 
 /**

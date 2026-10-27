@@ -84,7 +84,7 @@ import { onAsk, peekRoomAsk, takeAsk } from "@/lib/chatAsk";
 import { freshStartPreset } from "@/lib/roomEdit";
 import { RoomRename } from "./room/RoomRename";
 import { RoomAgentsDialog } from "./room/RoomAgentsDialog";
-import { t } from "@/lib/i18n";
+import { formatList, t } from "@/lib/i18n";
 
 /** A reaction in a room is the cheapest thing anyone can say, and often
  * the right thing: agreeing with a plan should not wake six agents. */
@@ -100,6 +100,7 @@ function reactTo(roomId: string, messageId: string, emoji: string) {
 }
 
 /** Where a room message said in a linked chat came from, for the strip. */
+// product names, the same in every language
 const CHANNEL_NAMES: Partial<Record<NonNullable<Message["via"]>, string>> = {
   slack: "Slack",
   discord: "Discord",
@@ -191,7 +192,15 @@ function RoomPresence({
               <TooltipTrigger asChild>
                 <span
                   role="img"
-                  aria-label={`${m.name}${crowned ? ", lead" : ""}${live ? ", working" : ""}`}
+                  aria-label={
+                    crowned && live
+                      ? t("roomView.presence.leadWorking", { name: m.name })
+                      : crowned
+                        ? t("roomView.presence.lead", { name: m.name })
+                        : live
+                          ? t("roomView.presence.working", { name: m.name })
+                          : m.name
+                  }
                   className="relative flex shrink-0"
                 >
                   <AnimatePresence initial={false}>
@@ -226,7 +235,7 @@ function RoomPresence({
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[240px] text-center">
-                {crowned ? `${m.name} leads and has the final call` : m.name}
+                {crowned ? t("roomView.leadsWithFinalCall", { name: m.name }) : m.name}
                 {crowned && answers !== "everyone" && (
                   <span className="block font-normal opacity-75">
                     {answers === "auto" ? t("roomView.answersWhenAutoCantPick") : t("roomView.answersUnlessYouNameSomeone")}
@@ -239,7 +248,7 @@ function RoomPresence({
         })}
         {more > 0 && (
           <span
-            title={ordered.slice(shown.length).map((m) => m.name).join(", ")}
+            title={formatList(ordered.slice(shown.length).map((m) => m.name), { type: "unit" })}
             className="flex h-[26px] min-w-[26px] items-center justify-center rounded-[9px] bg-muted px-1 text-caption font-medium tabular-nums text-muted-foreground"
           >
             +{more}
@@ -368,7 +377,7 @@ function WorkingLine({ bots }: { bots: Bot[] }) {
         ))}
       </span>
       <span className="min-w-0 truncate">
-        {namesLine(bots.map((b) => b.name))} {bots.length === 1 ? "is" : "are"} working
+        {t("roomView.working", { count: bots.length, names: namesLine(bots.map((b) => b.name)) })}
       </span>
     </div>
   );
@@ -419,8 +428,8 @@ function RoomWelcome({
       <h2 className="mt-5 text-title font-semibold text-foreground">{name}</h2>
       <p className="mt-1 max-w-[360px] text-pretty text-body leading-relaxed text-muted-foreground">
         {lead
-          ? `${lead.name} leads, with ${namesLine(others)}.`
-          : `${namesLine(members.map((m) => m.name))} ${members.length === 1 ? "is" : "are"} here.`}
+          ? t("roomView.welcome.leadsWith", { lead: lead.name, others: namesLine(others) })
+          : t("roomView.welcome.here", { count: members.length, names: namesLine(members.map((m) => m.name)) })}
       </p>
       <div className="mt-5 flex max-w-[420px] flex-wrap justify-center gap-1.5">
         {members.map((m) => (
@@ -435,9 +444,9 @@ function RoomWelcome({
       </div>
       <p className="mt-3 max-w-[360px] text-pretty text-caption text-muted-foreground">
         {answers === "auto" && lead && members.length > 1
-          ? `Auto picks who fits each message, and ${lead.name} answers when it can't. Name someone with @ to choose yourself.`
+          ? t("roomView.welcome.auto", { lead: lead.name })
           : answers !== "everyone" && lead
-            ? `${lead.name} answers unless you name someone with @.`
+            ? t("roomView.welcome.leadAnswers", { lead: lead.name })
             : t("roomView.everyoneCanAnswerNameSomeone")}
       </p>
     </div>
@@ -480,7 +489,7 @@ function RoomMessage({
   const names = [...members.map((m) => m.name), ...people.map((p) => p.name), ...(ownerName ? [ownerName] : [])];
   const speaker = message.from ? members.find((m) => m.id === message.from) : null;
   const nameOfReactor = (id: string) =>
-    id === "user" ? "You" : (members.find((m) => m.id === id)?.name ?? "An agent");
+    id === "user" ? t("roomView.you") : (members.find((m) => m.id === id)?.name ?? t("common.anAgent"));
   // where nothing hovers, a tap on the words shows the row
   const tap = useTapToShow();
 
@@ -519,7 +528,7 @@ function RoomMessage({
 
   // somebody else in the room: on the left, named, with their face
   if (message.role === "user" && message.author) {
-    const who = memberName?.(message.author) ?? people.find((p) => p.id === message.author)?.name ?? "A former member";
+    const who = memberName?.(message.author) ?? people.find((p) => p.id === message.author)?.name ?? t("roomView.aFormerMember");
     return (
       <GroupMessage
         mine={false}
@@ -574,7 +583,7 @@ function RoomMessage({
             )}
           </>
         }
-        actions={verbs("You")}
+        actions={verbs(t("roomView.you"))}
         receipts={receipts}
       />
     );
@@ -776,7 +785,7 @@ export function RoomView({ blok }: { blok: Blok }) {
   // everyone by the name the room calls them, guests included, told apart
   // where two share a first name (src/lib/names.ts)
   const nameOf = useNamer(roomPeople);
-  const personName = (id: string) => nameOf(id, "A former member");
+  const personName = (id: string) => nameOf(id, t("roomView.aFormerMember"));
   const isBubble = (m: Message) =>
     !m.deleted && (m.role === "user" || (Boolean(m.from) && (m.kind === "text" || m.kind === "component")));
   const roomRuns = useMemo(() => runs(said, isBubble), [said]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -802,7 +811,7 @@ export function RoomView({ blok }: { blok: Blok }) {
     [withPeople, said, roomRuns, reads],
   );
   const readerName = (id: string) =>
-    id === "owner" ? (ownerName ?? roster.owner ?? "You") : personName(id);
+    id === "owner" ? (ownerName ?? roster.owner ?? t("roomView.you")) : personName(id);
   const receiptsFor = (id: string) => {
     const who = receiptRows.get(id);
     return who?.length ? <SeenBy people={who.map((p) => ({ id: p, name: readerName(p) }))} /> : undefined;
@@ -917,8 +926,8 @@ export function RoomView({ blok }: { blok: Blok }) {
   const handoffLine = (handoff: Handoff) => (
     <HandoffLine
       key={`handoff:${handoff.sourceId}:${handoff.toId}`}
-      from={members.find((b) => b.id === handoff.fromId)?.name ?? "An agent"}
-      to={members.find((b) => b.id === handoff.toId)?.name ?? "an agent"}
+      from={members.find((b) => b.id === handoff.fromId)?.name ?? t("common.anAgent")}
+      to={members.find((b) => b.id === handoff.toId)?.name ?? t("roomView.anAgentLower")}
       ask={handoff.ask}
       onOpen={() => openHandoff(handoff)}
     />
@@ -1009,7 +1018,7 @@ export function RoomView({ blok }: { blok: Blok }) {
     // (server/catalog.ts), with this workspace's secrets, addresses and
     // the hire's project brief taken out by the server.
     shareAsFile(`/api/bloks/${blok.id}/team.md`, teamFilename(blok.name))
-      .then(() => toast("Saved the team file", { description: "Anyone can install it with Install from a file." }))
+      .then(() => toast(t("roomView.savedTeamFile"), { description: t("roomView.savedTeamFileHint") }))
       .catch((e: Error) => toast.error(e.message));
   };
 
@@ -1101,7 +1110,7 @@ export function RoomView({ blok }: { blok: Blok }) {
           {m.route && !m.deleted && (
             <RouteLine
               route={m.route}
-              nameOf={(id) => members.find((b) => b.id === id)?.name ?? "An agent"}
+              nameOf={(id) => members.find((b) => b.id === id)?.name ?? t("common.anAgent")}
               others={answering.filter((b) => !m.route!.to.includes(b.id))}
               onMention={mention}
             />
@@ -1136,9 +1145,9 @@ export function RoomView({ blok }: { blok: Blok }) {
             <span className="flex min-w-0 items-center gap-1 text-small text-muted-foreground">
               {lead && answering.length > 1 && <Crown size={11} className="shrink-0 text-brand-ink" aria-label={t("roomView.lead")} />}
               <span className="truncate">
-                {byLead(answering, lead).map((m) => m.name).join(", ")}
+                {formatList(byLead(answering, lead).map((m) => m.name), { type: "unit" })}
                 {answering.length < members.length &&
-                  ` · ${members.length - answering.length} archived`}
+                  ` · ${t("roomView.archivedCount", { count: members.length - answering.length })}`}
               </span>
             </span>
           </span>
@@ -1150,8 +1159,8 @@ export function RoomView({ blok }: { blok: Blok }) {
             size="icon"
             onClick={() => setSharingOpen(true)}
             className={cn("relative", blok.sharing && "text-foreground")}
-            title={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : t("roomView.shareRoom")}
-            aria-label={blok.sharing ? `Shared with ${roomPeople.length} ${roomPeople.length === 1 ? "person" : "people"}` : t("roomView.shareRoom")}
+            title={blok.sharing ? t("roomView.sharedWith", { count: roomPeople.length }) : t("roomView.shareRoom")}
+            aria-label={blok.sharing ? t("roomView.sharedWith", { count: roomPeople.length }) : t("roomView.shareRoom")}
           >
             <UserPlus size={16} />
             {knocking > 0 && (
@@ -1212,7 +1221,7 @@ export function RoomView({ blok }: { blok: Blok }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-lead font-semibold text-foreground">
-              Close {blok.name}?
+              {t("roomView.closeRoom", { name: blok.name })}
             </div>
             <p className="mt-1 text-body leading-relaxed text-muted-foreground">
               {t("roomView.archivingKeepsEverythingAndYou")}
@@ -1232,9 +1241,9 @@ export function RoomView({ blok }: { blok: Blok }) {
                 onClick={() => {
                   // the second decision, in its own words, naming the room
                   void confirm({
-                    title: `Delete ${blok.name} and its whole transcript?`,
-                    body: "This cannot be undone. Archive it instead to keep it.",
-                    confirmLabel: "Delete",
+                    title: t("roomView.deleteConfirm.title", { name: blok.name }),
+                    body: t("roomView.deleteConfirm.body"),
+                    confirmLabel: t("common.delete"),
                     destructive: true,
                   }).then((yes) => yes && dispatch({ type: "deleteRoom", blokId: blok.id }));
                 }}
@@ -1285,7 +1294,7 @@ export function RoomView({ blok }: { blok: Blok }) {
               className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-small text-muted-foreground transition-colors duration-150 hover:border-foreground/25 hover:text-foreground disabled:opacity-60"
             >
               {earlier.loading && <Loader2 size={12} className="animate-spin" />}
-              Show earlier messages ({start + earlier.remaining} more)
+              {t("roomView.showEarlier", { count: start + earlier.remaining })}
             </button>
           )}
           {visibleRows.flatMap((row) =>
@@ -1328,7 +1337,7 @@ export function RoomView({ blok }: { blok: Blok }) {
           {typingNow && (
             <div className="flex items-center gap-2.5 pl-9 text-small text-muted-foreground">
               <span className="size-1.5 rounded-full bg-muted-foreground motion-safe:animate-pulse" />
-              {typingNow} is typing
+              {t("roomView.isTyping", { name: typingNow })}
             </div>
           )}
         </div>
@@ -1350,11 +1359,11 @@ export function RoomView({ blok }: { blok: Blok }) {
         waiting={waiting}
         senderOf={(m) =>
           m.role === "bot"
-            ? (members.find((b) => b.id === m.from)?.name ?? "An agent")
+            ? (members.find((b) => b.id === m.from)?.name ?? t("common.anAgent"))
             : m.author
               ? personName(m.author)
               : m.via
-                ? (CHANNEL_NAMES[m.via] ?? "the linked chat")
+                ? (CHANNEL_NAMES[m.via] ?? t("roomView.theLinkedChat"))
                 : null
         }
         replyTo={replyTo}
@@ -1411,7 +1420,7 @@ function RoomFolderButton({ blok }: { blok: Blok }) {
         variant="ghost"
         size="icon"
         onClick={() => setOpen(!open)}
-        title={shown ? `Shared folder: ${shown}` : t("roomView.sharedWorkingFolder")}
+        title={shown ? t("roomView.sharedFolderIs", { path: shown }) : t("roomView.sharedWorkingFolder")}
       >
         <FolderOpen size={16} className={shown ? "text-brand-ink" : undefined} />
       </Button>
@@ -1437,7 +1446,7 @@ function RoomFolderButton({ blok }: { blok: Blok }) {
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && save()}
-                  placeholder="/Users/you/Projects/launch  (empty = own folders)"
+                  placeholder={t("roomView.folderPlaceholder", { path: "/Users/you/Projects/launch" })}
                   className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-body text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
                 />
                 <BrowseFolderButton onPick={setDraft} />
@@ -1541,7 +1550,7 @@ function RoomMenu({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onSave}>
           {justSaved ? <Check size={15} className="text-success" /> : <BookmarkPlus size={15} />}
-          Save this team
+          {t("roomView.saveThisTeam")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onExport}>
           <Download size={15} />
