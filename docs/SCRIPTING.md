@@ -201,6 +201,46 @@ Ada, in "General". Type a message, or /help.
 Ada: Four commits today, all on the importer.
 ```
 
+## bloks-server export-runs
+
+```
+bloks-server export-runs [--format openai|sharegpt|trajectory] [--per turn|conversation] [--dry-run]
+```
+
+The same export as Settings, Data, Export for training: agents' runs
+written to a JSONL file on this computer, to fine-tune a model on. It
+reads the data folder itself, as `backup` does, so it works with Bloks
+running or stopped, and nothing is sent anywhere.
+
+```
+$ bloks-server export-runs --dry-run --agent Ada --uncorrected
+$ bloks-server export-runs --format sharegpt --per conversation --out ~/ada.jsonl
+Exported 2 records (3 turns) to ~/ada.jsonl, 4 KB.
+```
+
+A dry run says what would be written, what was left out and why, what
+was taken out, and shows the first record, and writes nothing. Without
+`--out` the file is new in the exports folder beside the data folder
+(`~/.bloks-exports`), and never over a file that is there.
+
+Keys, tokens and passwords are always taken out, and by default email
+addresses, phone numbers, home folder paths and people's names too
+(`--keep` leaves those in). Other people's words, members' private
+conversations, agent descriptions and memory stay out unless `--include`
+names them. `--uncorrected`, `--thumbs-up` and `--complete-results` keep
+only the turns that pass; `--any-outcome` keeps failed and stopped ones
+too. `--no-metadata` leaves out the `metadata` key the OpenAI and
+ShareGPT shapes carry, for a trainer that refuses keys it does not know.
+`--help` lists every flag.
+
+| Exit code | |
+| --- | --- |
+| `0` | Written, or the dry run found records. |
+| `1` | Something failed reading or writing. |
+| `2` | A flag is wrong, or the file named is already there. |
+| `3` | Nothing matched these choices. |
+| `7` | Refused: run from inside an agent's turn. |
+
 ## GitHub Actions
 
 On a self-hosted runner on the computer `bloks-server` runs on, the job

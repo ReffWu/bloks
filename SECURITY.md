@@ -487,6 +487,33 @@ handled as a stranger's words (`server/app-watch.ts`):
   Composio, to make and remove triggers and to authorise the realtime
   channel events arrive on; it never reaches a turn.
 
+## Your runs, exported for training
+
+Export for training (Settings, Data, and `bloks-server export-runs`)
+writes every conversation it is pointed at into one file, which is the
+point of it and also why it is held close (`server/run-export.ts`):
+
+- **The owner's, on this computer.** The routes answer Bloks on this
+  computer alone: never an agent's credential, never a member, never a
+  paired phone or a remote window. The command refuses to run inside an
+  agent's turn (a shell with `BLOKS_TOKEN` set). Nothing is sent
+  anywhere; the file is written beside the data folder and shown,
+  downloaded or deleted only by its own name.
+- **Keys are always taken out.** Anything shaped like a key, token or
+  password, and every value this workspace has saved as one, is removed
+  before a result is shortened, so a key is never cut in two and left
+  half recognisable. Email addresses, phone numbers, home folder paths
+  and the names of the people the workspace knows (members, guests,
+  people on Telegram and Signal, the owner) go too unless you keep them.
+  The scrubber matches shapes and known values: a secret with neither,
+  typed into a conversation in plain words, can survive it. Read the
+  preview before you share a file.
+- **Other people's words stay out.** A member's words, a Telegram
+  stranger's, a person's on Signal, mail and chat apps, and members'
+  private conversations are left out unless you turn them on, and turning
+  either on asks first. Private conversations are not even counted unless
+  reading them is on in Members.
+
 **The macOS builds are signed and notarized.** Everything on the
 Releases page is built by CI from a tag. The macOS `.dmg` and `.zip` are
 signed with a Developer ID certificate and notarized by Apple, so they

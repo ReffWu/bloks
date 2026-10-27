@@ -422,6 +422,30 @@ sessions over as conversations and carry one on. Your workspace is
 backed up every day, and a whole workspace can be written out to one
 file and taken into an empty one elsewhere. Keys never travel in either.
 
+### Your runs, for training
+
+Settings, Data, Export for training writes your agents' runs to a JSONL
+file on your computer, to fine-tune a model on: OpenAI's chat format with
+tools and tool calls, ShareGPT, or Bloks's own trajectory with every step
+timed. Pick the agents, conversations, dates and engines; keep only turns
+that finished well, that you did not correct, or that you gave a thumbs
+up. Keys, tokens and passwords are always taken out, and by default so
+are email addresses, phone numbers, your home folder and people's names.
+Other people's words (members, guests, people on Telegram and Signal,
+email and chat apps) stay out unless you ask for them. You preview the
+counts and the first record before anything is written, and nothing is
+sent anywhere. `bloks-server export-runs` does the same from a terminal.
+
+### In your language
+
+Bloks speaks English, Español, Français, Deutsch, Português (Brasil),
+日本語 and 简体中文. It follows your system's language, or the one you
+pick in Settings, General, Language, and so does the menu bar. Agents
+answer in whatever language you write to them. A few things the server
+writes, such as notices, errors and the morning brief, are still in
+English. Each language is one file in `src/locales`, and
+[src/locales/README.md](src/locales/README.md) says how to improve one.
+
 ## Install
 
 Download it from [bloks.dev](https://bloks.dev) or the
@@ -597,6 +621,7 @@ Inside each workspace's folder:
 | `events/`, `native/` | The canonical event stream, and raw provider traffic |
 
 Backups go beside the folder, never in it: `~/.bloks-backups` for Personal.
+Exports for training go beside it too: `~/.bloks-exports`.
 
 ## Privacy
 

@@ -2988,6 +2988,59 @@ conversation was had. Recall reaches imported lanes like any other; a
 hit says the conversation was had in that engine before Bloks, and its
 replies are said by the engine's name.
 
+## Training export
+
+`server/run-export.ts` writes agents' runs to one JSONL file, on the
+owner's say, to fine-tune a model on. A run lives in three places and
+none holds all of it: the transcript (`messages-<lane>.json`) has the
+person's words, who said them and what they thought of the answer; the
+events file (`events/<lane>.ndjson`) has the turn as it ran, timed, with
+the engine, model, tokens and price; and the native log
+(`native/<lane>.ndjson`) is the only place a tool's full input and
+output exist, for the engines that send them. A record is the
+transcript's turn (read the way Redo reads one, `transcriptTurns`),
+ordered by its events, with each call filled in from the native log
+where it can be. Every record says which of its calls are whole, so a
+file never claims results an engine never sent.
+
+Three shapes: OpenAI's chat format with `tools` and `tool_calls`,
+ShareGPT with calls and results as `<tool_call>` and `<tool_response>`
+blocks, and `bloks.trajectory`, every step with its timing. The first two
+carry a `metadata` key (source, engine, model, cost, how the record was
+shortened) unless the choice says `metadata: false`, for trainers that
+refuse a key they do not know. One record per turn or per conversation.
+
+What is chosen is an `ExportChoice` (`readChoice` checks a request body
+or the command line's flags against it; anything left out keeps the safe
+default). Turns can be held to agents, conversations, dates and engines,
+and to ones that finished well, that the owner did not correct (stop,
+steer, edit, Redo, thumbs down) or gave a thumbs up. Other people's words
+stay out unless asked for: a member's, a Telegram stranger's or
+delegate's, a person on Signal's (`fromSignal.personId`), and mail and
+chat apps; a guest's mail lane and the lane a Signal person is answered
+in count as theirs whole. Members' private conversations are not even
+counted unless reading them is on in Members. Cleaning comes before
+shortening, so a key is never cut in two: anything shaped like a key
+always (setup-import's scrubber, with every value this workspace has
+saved), and by default email addresses, phone numbers, the home folder
+and the names the workspace knows (its people, the Telegram and Signal
+people, the owner). Long tool results keep their head and tail with the
+gap marked, a repeated identical result points back at the first, and a
+cap shortens further, then drops a conversation's earliest turns.
+
+The module only reads, so the same code runs in the server
+(`GET /api/training-export` lists what can be exported, `POST
+/api/training-export/preview` runs it dry and returns the counts and the
+first record, `POST /api/training-export` writes it, one at a time) and
+from `bloks-server export-runs` with the app stopped
+(`server/run-export-cli.ts`, see [SCRIPTING.md](SCRIPTING.md)). Files go
+in the exports folder beside the data folder (`~/.bloks-exports` for
+Personal), named `bloks-training-<format>-<unit>-<time>.jsonl`, and are
+served, revealed and deleted only by that name. Every route answers Bloks
+on this computer alone: never an agent's credential, a member, or a
+paired device. A written export is recorded in the ledger as
+`runs.exported`.
+
 ## Engine scout
 
 `server/engine-report.ts` logs every finished turn with the engine and
@@ -3799,3 +3852,31 @@ in `x-bloks-passphrase` if it is sealed), takes one into a workspace with
 nothing said in it, no rooms and no standing work, from this computer or
 the owner's paired device, and restarts through the restore path; the
 machine it lands on keeps its own machine sections and keys.
+
+## The interface's words
+
+Every sentence the app shows lives in a catalogue under `src/locales`,
+keyed by what it means: `en.json` is the source, and `es`, `fr`, `de`,
+`pt-BR`, `ja` and `zh-CN` say the same keys (the folder's README is the
+translators' guide). `src/lib/i18n.ts` reads them: `t(key, params)` for
+a sentence, `tr` for one with an element drawn inside it, and a sentence
+with a count is one key per plural form, chosen by `Intl.PluralRules` in
+the reader's language. The keys' type is read from `en.json`, so a
+misspelled or removed key fails the typecheck. A language that lacks a
+word says the English one, never the key. Numbers, dates and lists go
+through `Intl` in the same locale.
+
+The choice is the person's, like the theme: `src/lib/language.ts` keeps
+it in the page's storage and with the desktop app (`prefs:language`),
+which hands it to each workspace's page before it draws. "System", the
+default, is the first of the system's languages Bloks speaks. Only the
+reader's catalogue is downloaded, and a change re-renders from the root.
+The macOS menu bar reads the same catalogues' `menu.` keys
+(`electron/menu-words.mjs`), so the menus never word a thing differently
+from the window.
+
+`test/i18n.test.ts` holds the catalogues to their rules (no key English
+lacks, no invented placeholder, no forbidden dash, sorted keys, nothing
+unused) and scans every component for English written inline, with
+`test/i18n-allowlist.json` for the few words never translated. Words the
+server writes (notices, errors, the brief, checkups) are still English.
