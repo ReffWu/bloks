@@ -92,7 +92,7 @@ mac:
   # truth stays one file generated from the brand mark by
   # scripts/render-icon.mjs. The hand-made .icns is what let the icon drift
   # out of sync with the mark in the first place.
-  icon: build/icon.png
+  icon: build/icon-mac.png
   category: public.app-category.productivity
   hardenedRuntime: true
   gatekeeperAssess: false

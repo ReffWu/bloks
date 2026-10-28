@@ -5,14 +5,14 @@
 // the old art for weeks. Nobody noticed until the app was installed on a
 // second Mac. Deriving the icon from the mark means that cannot recur.
 //
-// Two outputs, and both matter:
-//   build/icon.png                   electron-builder converts this to
-//                                    the .icns inside the bundle
-//   electron/resources/app-icon.png  main.mjs passes this to
-//                                    app.dock.setIcon() on every launch,
-//                                    which overrides the bundle icon in
-//                                    the Dock. Miss it and the Dock keeps
-//                                    showing the old art forever.
+// Keep both the packaged icon and the runtime icon in sync:
+//   build/icon.png                   Linux and Windows artwork
+//   electron/resources/app-icon.png  runtime artwork outside macOS
+//   build/icon-mac.png               electron-builder converts this to
+//                                    the .icns inside the Mac bundle
+//   electron/resources/app-icon-mac.png
+//                                    app.dock.setIcon() overrides the
+//                                    bundle icon on every Mac launch
 //
 // Run after any change to the mark:  node scripts/render-icon.mjs
 import { chromium } from "playwright-core";
@@ -23,6 +23,8 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(root, "build", "icon.png");
 const DOCK = path.join(root, "electron", "resources", "app-icon.png");
+const MAC = path.join(root, "build", "icon-mac.png");
+const MAC_DOCK = path.join(root, "electron", "resources", "app-icon-mac.png");
 
 const mark = readFileSync(path.join(root, "public", "brand", "bloks-mark.svg"), "utf8");
 const markData = `data:image/svg+xml;base64,${Buffer.from(mark).toString("base64")}`;
@@ -53,7 +55,13 @@ await page.waitForTimeout(150);
 // omitBackground keeps the corners outside the rounded rect transparent,
 // which is what macOS expects of an icon.
 await page.screenshot({ path: OUT, omitBackground: true });
+// A full-bleed tile looks oversized beside other apps in the Mac Dock.
+// Scale the whole tile to 848px, keeping its artwork and ring in proportion
+// and leaving 88px transparent on each side of the 1024px canvas.
+await page.addStyleTag({ content: ".tile{transform:scale(0.828125)}" });
+await page.screenshot({ path: MAC, omitBackground: true });
 await browser.close();
 
 copyFileSync(OUT, DOCK);
-console.log(`wrote ${path.relative(root, OUT)} and ${path.relative(root, DOCK)}`);
+copyFileSync(MAC, MAC_DOCK);
+console.log(`wrote ${[OUT, DOCK, MAC, MAC_DOCK].map(file => path.relative(root, file)).join(", ")}`);
