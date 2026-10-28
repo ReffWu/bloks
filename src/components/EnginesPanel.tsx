@@ -14,6 +14,7 @@ import { CustomEndpoints } from "./CustomEndpoints";
 import { ProviderMark } from "./ProviderIcons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { CREDITS_ENGINE } from "@/lib/credits";
 import { CodexSpeedControl } from "./CodexSpeed";
@@ -84,6 +85,7 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
   const [open, setOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
 
   // an engine can be connected and still be down: no CLI on PATH, a key
   // the provider rejected, a local server that is not running
@@ -98,6 +100,22 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
       .catch(() => {});
   };
   const down = instance && instance.snapshot.state !== "available";
+  // Switched off starts no turns, however installed and signed in it is,
+  // so it is said ahead of all of that (GitHub 421).
+  const off = instance?.enabled === false;
+
+  const switchTo = (on: boolean) => {
+    if (!instance) return;
+    setSwitching(true);
+    setError(null);
+    api(`/api/instances/${encodeURIComponent(instance.instanceId)}/enabled`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled: on }),
+    })
+      .then(({ instances }) => dispatch({ type: "instances", instances }))
+      .catch((e) => setError(e.message))
+      .finally(() => setSwitching(false));
+  };
 
   const signIn = () => {
     setSigningIn(true);
@@ -131,24 +149,39 @@ function EngineRow({ provider }: { provider: ProviderRow }) {
           <div
             className={cn(
               "truncate text-small",
-              down || provider.needsSignIn
-                ? "text-warning"
-                : provider.connected
-                  ? "text-success"
-                  : "text-muted-foreground",
+              off
+                ? "text-muted-foreground"
+                : down || provider.needsSignIn
+                  ? "text-warning"
+                  : provider.connected
+                    ? "text-success"
+                    : "text-muted-foreground",
             )}
           >
             {/* installed without a login cannot answer, so it is not
                 "Connected", however green that would look */}
-            {down
-              ? (instance!.snapshot.reason ?? t("enginesPanel.unavailable"))
-              : provider.needsSignIn
-                ? t("enginesPanel.installedNotSignedIn")
-                : provider.connected
-                  ? t("common.connected")
-                  : t(AUTH_NOTE[provider.auth])}
+            {off
+              ? t("enginesPanel.switchedOff")
+              : down
+                ? (instance!.snapshot.reason ?? t("enginesPanel.unavailable"))
+                : provider.needsSignIn
+                  ? t("enginesPanel.installedNotSignedIn")
+                  : provider.connected
+                    ? t("common.connected")
+                    : t(AUTH_NOTE[provider.auth])}
           </div>
         </div>
+
+        {/* only once there is something to switch: an engine that is set
+            up, or one switched off, which has to be able to come back */}
+        {instance && (off || provider.connected) && (
+          <Switch
+            checked={!off}
+            disabled={switching}
+            aria-label={t("enginesPanel.useEngine", { name: provider.name })}
+            onCheckedChange={switchTo}
+          />
+        )}
 
         {provider.auth === "cli" ? (
           <span className="shrink-0 text-small text-muted-foreground">
@@ -262,8 +295,10 @@ export function EnginesPanel() {
   const providers = state.providers;
   if (!providers.length) return null;
 
-  // counted the way the rows read: installed without a login is not ready
-  const connected = providers.filter((p) => p.connected && !p.needsSignIn).length;
+  // counted the way the rows read: installed without a login is not
+  // ready, and neither is one switched off
+  const off = (p: ProviderRow) => state.instances.find((i) => i.driverKind === p.kind)?.enabled === false;
+  const connected = providers.filter((p) => p.connected && !p.needsSignIn && !off(p)).length;
   // Twelve flat rows is a list you scan past. The split is the one that
   // actually changes what an agent can do.
   const agents = providers.filter((p) => p.agentic);

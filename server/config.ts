@@ -288,6 +288,11 @@ export interface AppConfig {
    * the one on PATH: a second install, a build of one's own. Applied to
    * every instance of that driver whose own config does not name one. */
   enginePaths?: Record<string, string>;
+  /** The switch on each engine in Settings, by instance id. It wins over
+   * an `enabled` written into `instances`, since it is the later word,
+   * and it reaches the engines a connected key or a custom host makes,
+   * which have no entry there to write it in. None set is as configured. */
+  engineSwitches?: Record<string, boolean>;
   instances?: InstanceConfigMap;
 }
 
@@ -437,6 +442,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
     "spendPrices",
     "cliPlugins",
     "enginePaths",
+    "engineSwitches",
   ] as const) {
     if (patch[key] && typeof patch[key] === "object") {
       // The migrated Telegram section is a complete private record. A
@@ -447,7 +453,7 @@ export function saveConfig(patch: Partial<AppConfig>, beforeWrite?: () => void):
       // credits forgets by null: a token from an old licence must be gone
       // from the file, not kept beside a newer one; a limit taken off is
       // gone the same way, not kept as a zero that reads like one
-      if (key === "credits" || key === "spendLimits" || key === "spendPrices" || key === "enginePaths") {
+      if (key === "credits" || key === "spendLimits" || key === "spendPrices" || key === "enginePaths" || key === "engineSwitches") {
         const merged = disk[key] as Record<string, unknown>;
         for (const name of Object.keys(merged)) if (merged[name] === null || merged[name] === undefined) delete merged[name];
       }
@@ -584,6 +590,11 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
   // renewed while the engine stays loaded.
   if (creditsOffered(cfg) && !map[CREDITS_KIND]) {
     map[CREDITS_KIND] = { driver: CREDITS_SPEC.kind, displayName: CREDITS_SPEC.name, config: { url: creditsCompatUrl() } };
+  }
+  // A copy, not the entry itself: an entry spelled out in `instances` is
+  // the saved config's own object, and the switch is not written there.
+  for (const [id, on] of Object.entries(cfg.engineSwitches ?? {})) {
+    if (map[id] && typeof on === "boolean") map[id] = { ...map[id], enabled: on };
   }
   for (const entry of Object.values(map)) {
     const path = cfg.enginePaths?.[entry.driver];

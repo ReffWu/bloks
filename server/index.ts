@@ -2369,7 +2369,7 @@ function preferredEngine(bot: BotRecord, fallback: boolean, laneId?: string): Mo
 
 function unavailableEngineMessage(instanceId: string, instance?: ProviderInstance): string {
   if (instance?.enabled === false) {
-    return `${instance.displayName ?? instanceId} is switched off in Settings, so it starts no turns. Switch it back on, or pick another model in settings`;
+    return `${instance.displayName ?? instanceId} is switched off in Settings, so it starts no turns. Switch it back on in Settings, Engines and keys, or pick another model for this agent`;
   }
   // only there while Cloud is active, which is the thing to say
   if (!instance && instanceId === CREDITS_KIND) {
@@ -25861,6 +25861,37 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     // ── provider instances (model picker) ──
     if (method === "GET" && path === "/api/instances") {
       return json(res, 200, { instances: await registry.describe() });
+    }
+    // The switch on an engine in Settings, which is where a turn refused
+    // on one that is off sends the person (GitHub 421). The owner's,
+    // here or on a device they paired, and never an agent's: an agent
+    // that could switch engines on could undo the person saying no. Off
+    // rebuilds the engine, which cuts off a turn running on it, as any
+    // change to an engine's config does; one picked up afterwards is
+    // refused like any other.
+    m = path.match(/^\/api\/instances\/([\w-]+)\/enabled$/);
+    if (m && method === "PUT") {
+      if (asAgent || (local ? namesMember() : !ownerDevice)) {
+        return json(res, 403, { error: "switching an engine on or off is the owner's" });
+      }
+      const instanceId = m[1];
+      const configs = instanceConfigs(cfg);
+      if (!configs[instanceId]) return json(res, 404, { error: "no such engine" });
+      const body = await readBody(req);
+      if (typeof body.enabled !== "boolean") return json(res, 400, { error: "enabled must be true or false" });
+      // Kept only where it differs from the config underneath, so
+      // switching back leaves the file as it was.
+      const underneath = instanceConfigs({ ...cfg, engineSwitches: {} })[instanceId]?.enabled !== false;
+      Object.assign(cfg, saveConfig({
+        engineSwitches: { [instanceId]: body.enabled === underneath ? null : body.enabled } as unknown as Record<string, boolean>,
+      }));
+      const name = registry.get(instanceId)?.displayName ?? configs[instanceId].displayName ?? instanceId;
+      record({ at: Date.now(), kind: "settings.changed", actor: "you", summary: `${name}: switched ${body.enabled ? "on" : "off"}` });
+      await reloadProviders();
+      const instances = await registry.describe();
+      broadcast({ kind: "instances", instances });
+      broadcast({ kind: "providers", ...(await providerCatalog()) });
+      return json(res, 200, { instances });
     }
     // What each engine's plan has left, as it last said, for the card on
     // the composer's ring (server/plan-usage.ts). The person's to read,

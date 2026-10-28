@@ -26,6 +26,8 @@ export interface ShadowInstance {
   instanceId: InstanceId;
   driverKind: string;
   displayName: string | undefined;
+  /** As configured, so a switch in Settings still reads true to it. */
+  enabled: boolean;
   shadow: true;
   reason: string;
 }
@@ -39,6 +41,10 @@ interface InstanceReport {
   instanceId: InstanceId;
   driverKind: string;
   displayName: string;
+  /** Switched on in Settings. An engine that is off can still be
+   * installed and signed in, and its snapshot says so; this is the one
+   * thing that says it starts no turns (GitHub 421). */
+  enabled: boolean;
   snapshot: ProviderSnapshot;
   models: import("../contracts.ts").ModelCatalog;
   /** The effort levels the engine takes, least first; empty for one
@@ -63,7 +69,7 @@ export class ProviderRegistry {
       const driver = this.drivers.get(entry.driver);
 
       if (!driver) {
-        this.shadow(instanceId, entry.driver, entry.displayName, {
+        this.shadow(instanceId, entry.driver, entry.displayName, entry.enabled ?? true, {
           reason: `unknown driver "${entry.driver}", kept as configured, unavailable here`,
         });
         continue;
@@ -86,7 +92,7 @@ export class ProviderRegistry {
           }),
         });
       } catch (error) {
-        this.shadow(instanceId, entry.driver, entry.displayName ?? driver.metadata.displayName, {
+        this.shadow(instanceId, entry.driver, entry.displayName ?? driver.metadata.displayName, entry.enabled ?? true, {
           reason: describe(error),
         });
       }
@@ -161,11 +167,12 @@ export class ProviderRegistry {
     instanceId: InstanceId,
     driverKind: string,
     displayName: string | undefined,
+    enabled: boolean,
     { reason }: { reason: string },
   ) {
     this.entries_.set(instanceId, {
       instanceId,
-      shadow: { instanceId, driverKind, displayName, shadow: true, reason },
+      shadow: { instanceId, driverKind, displayName, enabled, shadow: true, reason },
     });
   }
 }
@@ -178,6 +185,7 @@ async function report(entry: RegistryEntry): Promise<InstanceReport> {
       instanceId: entry.instanceId,
       driverKind: entry.shadow.driverKind,
       displayName: entry.shadow.displayName ?? entry.shadow.driverKind,
+      enabled: entry.shadow.enabled,
       snapshot: { state: "unavailable", reason: entry.shadow.reason },
       models: { default: "", options: [] },
       efforts: [],
@@ -196,6 +204,8 @@ async function report(entry: RegistryEntry): Promise<InstanceReport> {
     instanceId: instance.instanceId,
     driverKind: instance.driverKind,
     displayName: instance.displayName ?? instance.driverKind,
+    // read the way a turn's start reads it, so the two never disagree
+    enabled: instance.enabled !== false,
     snapshot,
     models: instance.models,
     efforts: instance.adapter.capabilities.efforts ?? [],

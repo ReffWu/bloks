@@ -672,6 +672,10 @@ export interface InstanceInfo {
   instanceId: string;
   driverKind: string;
   displayName: string;
+  /** Switched on in Settings. Off starts no turns, however installed and
+   * signed in the snapshot says it is. Absent from an older server, where
+   * it reads as on. */
+  enabled?: boolean;
   snapshot: {
     state: "available" | "unavailable";
     reason?: string;
