@@ -3737,6 +3737,7 @@
   "messageActions.rewindTitle": "Revenir à avant ce message ?",
   "messageActions.rewindToHere": "Revenir ici",
   "messageActions.sent": "Envoyé",
+  "messageGuard.couldNotShow": "Ce message n'a pas pu être affiché.",
   "mobileNav.openSidebar": "Ouvrir la barre latérale",
   "mobileNav.openSidebarUnreadMessages": "Ouvrir la barre latérale, messages non lus",
   "mobileNav.sidebar": "Barre latérale",

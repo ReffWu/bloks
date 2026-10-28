@@ -5,6 +5,7 @@ import { useSettingsObservation } from "@/lib/useSettingsObservation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
 import { AlertTriangle } from "@/components/icons";
+import { MessageGuard } from "./chat/MessageGuard";
 import { BookmarkPlus } from "@/components/icons";
 import { FolderOpen } from "@/components/icons";
 import { CalendarClock } from "@/components/icons";
@@ -1085,45 +1086,58 @@ export function RoomView({ blok }: { blok: Blok }) {
           if (next.kind !== "activity" || next.from !== m.from || next.deleted || !next.tool) break;
           run.push(next);
         }
-        return [...handoffsBefore(indices[i]), <ToolRun key={m.id} messages={run} className="pl-9" />];
+        return [
+          ...handoffsBefore(indices[i]),
+          <MessageGuard key={m.id} id={m.id} resetKey={m} className="ml-9" render={() => <ToolRun messages={run} className="pl-9" />} />,
+        ];
       }
       const showSpeaker = !prev || prev.from !== m.from || prev.role !== m.role;
       const answers = replyLabel(counts.get(m.id) ?? 0);
       const lit = flashId === m.id;
+      // each message is drawn inside its own guard, so one that cannot be
+      // drawn costs that message and not the room (src/lib/rowGuard.ts)
       return [
         ...handoffsBefore(indices[i]),
-        <div key={m.id} data-room-msg={m.id} className={cn("relative isolate", roomRuns.get(m.id)?.first === false && "-mt-1.5")}>
-          <LandMark on={lit} />
-          <RoomMessage
-            message={m}
-            members={members}
-            people={roomPeople}
-            ownerName={blok.sharing ? ownerName : undefined}
-            showSpeaker={showSpeaker}
-            place={roomRuns.get(m.id) ?? { first: showSpeaker, last: true }}
-            receipts={receiptsFor(m.id)}
-            memberName={personName}
-            roomId={blok.id}
-            onReply={setReplyTo}
-            onForward={(message, author) => setForwarding({ message, author })}
-          />
-          {m.route && !m.deleted && (
-            <RouteLine
-              route={m.route}
-              nameOf={(id) => members.find((b) => b.id === id)?.name ?? t("common.anAgent")}
-              others={answering.filter((b) => !m.route!.to.includes(b.id))}
-              onMention={mention}
-            />
+        <MessageGuard
+          key={m.id}
+          id={m.id}
+          resetKey={m}
+          className="ml-9"
+          render={() => (
+            <div data-room-msg={m.id} className={cn("relative isolate", roomRuns.get(m.id)?.first === false && "-mt-1.5")}>
+              <LandMark on={lit} />
+              <RoomMessage
+                message={m}
+                members={members}
+                people={roomPeople}
+                ownerName={blok.sharing ? ownerName : undefined}
+                showSpeaker={showSpeaker}
+                place={roomRuns.get(m.id) ?? { first: showSpeaker, last: true }}
+                receipts={receiptsFor(m.id)}
+                memberName={personName}
+                roomId={blok.id}
+                onReply={setReplyTo}
+                onForward={(message, author) => setForwarding({ message, author })}
+              />
+              {m.route && !m.deleted && (
+                <RouteLine
+                  route={m.route}
+                  nameOf={(id) => members.find((b) => b.id === id)?.name ?? t("common.anAgent")}
+                  others={answering.filter((b) => !m.route!.to.includes(b.id))}
+                  onMention={mention}
+                />
+              )}
+              {answers && (
+                <button
+                  onClick={() => setLensAnd("forum")}
+                  className="ml-9 mt-0.5 rounded-md px-1.5 py-0.5 text-small text-brand-ink transition-colors duration-150 hover:bg-accent"
+                >
+                  {answers}
+                </button>
+              )}
+            </div>
           )}
-          {answers && (
-            <button
-              onClick={() => setLensAnd("forum")}
-              className="ml-9 mt-0.5 rounded-md px-1.5 py-0.5 text-small text-brand-ink transition-colors duration-150 hover:bg-accent"
-            >
-              {answers}
-            </button>
-          )}
-        </div>,
+        />,
       ];
     });
 

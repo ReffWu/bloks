@@ -3598,6 +3598,7 @@
   "messageActions.rewindTitle": "このメッセージより前に巻き戻しますか？",
   "messageActions.rewindToHere": "ここまで巻き戻す",
   "messageActions.sent": "送信済み",
+  "messageGuard.couldNotShow": "このメッセージを表示できませんでした。",
   "mobileNav.openSidebar": "サイドバーを開く",
   "mobileNav.openSidebarUnreadMessages": "サイドバーを開く、未読メッセージあり",
   "mobileNav.sidebar": "サイドバー",

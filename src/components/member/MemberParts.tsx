@@ -18,6 +18,7 @@ import { receiptsAt, runs, senderOf, type Said } from "@/lib/participants";
 import { useReadPosition, useReads } from "@/lib/readReceipts";
 import { GroupMessage, PersonAvatar, SeenBy } from "@/components/chat/Group";
 import { QuietCheckIns, richText } from "@/components/chat/Bubble";
+import { MessageGuard } from "@/components/chat/MessageGuard";
 import { formatTime } from "@/state/store";
 import { quietRunAt } from "@/lib/transcript";
 import { t } from "@/lib/i18n";
@@ -126,32 +127,35 @@ export function Transcript({ messages, me, people, owner, shared, agentName, str
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5 px-6 pb-6 pt-6">
         {header}
         {!shown.length && !streaming && empty}
-        {shown.map((m, i) => {
-          if (m.quiet) {
-            const run = quietRunAt(shown, i);
-            return run ? <QuietCheckIns key={m.id} messages={run} /> : null;
-          }
-          const fresh = !first.current && !seen.current.has(m.id);
-          const prev = shown[i - 1];
-          const sameSpeaker = prev && !prev.quiet && prev.role === "user" && m.role === "user" && prev.author === m.author && m.at - prev.at < 5 * 60_000;
-          return (
-            <Line
-              key={m.id}
-              message={m}
-              fresh={fresh}
-              me={me}
-              people={people}
-              owner={owner}
-              shared={shared}
-              agentName={agentName}
-              compact={Boolean(sameSpeaker)}
-              onAnswer={onAnswer}
-              place={place?.get(m.id)}
-              receipts={receiptsFor(m.id)}
-              agentFace={agentFace}
-            />
-          );
-        })}
+        {/* each message inside its own guard: one that cannot be drawn
+            costs that message, not the conversation (src/lib/rowGuard.ts) */}
+        {shown.map((m, i) => (
+          <MessageGuard key={m.id} id={m.id} resetKey={m} render={() => {
+            if (m.quiet) {
+              const run = quietRunAt(shown, i);
+              return run ? <QuietCheckIns messages={run} /> : null;
+            }
+            const fresh = !first.current && !seen.current.has(m.id);
+            const prev = shown[i - 1];
+            const sameSpeaker = prev && !prev.quiet && prev.role === "user" && m.role === "user" && prev.author === m.author && m.at - prev.at < 5 * 60_000;
+            return (
+              <Line
+                message={m}
+                fresh={fresh}
+                me={me}
+                people={people}
+                owner={owner}
+                shared={shared}
+                agentName={agentName}
+                compact={Boolean(sameSpeaker)}
+                onAnswer={onAnswer}
+                place={place?.get(m.id)}
+                receipts={receiptsFor(m.id)}
+                agentFace={agentFace}
+              />
+            );
+          }} />
+        ))}
         {streaming && shared ? (
           <div aria-live="polite">
             <GroupMessage

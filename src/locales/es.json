@@ -3737,6 +3737,7 @@
   "messageActions.rewindTitle": "¿Rebobinar hasta antes de este mensaje?",
   "messageActions.rewindToHere": "Rebobinar hasta aquí",
   "messageActions.sent": "Enviado",
+  "messageGuard.couldNotShow": "No se pudo mostrar este mensaje.",
   "mobileNav.openSidebar": "Abrir barra lateral",
   "mobileNav.openSidebarUnreadMessages": "Abrir barra lateral, mensajes sin leer",
   "mobileNav.sidebar": "Barra lateral",

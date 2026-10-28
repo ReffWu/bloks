@@ -3737,6 +3737,7 @@
   "messageActions.rewindTitle": "Voltar no tempo até antes desta mensagem?",
   "messageActions.rewindToHere": "Voltar no tempo até aqui",
   "messageActions.sent": "Enviada",
+  "messageGuard.couldNotShow": "Não foi possível mostrar esta mensagem.",
   "mobileNav.openSidebar": "Abrir barra lateral",
   "mobileNav.openSidebarUnreadMessages": "Abrir barra lateral, mensagens não lidas",
   "mobileNav.sidebar": "Barra lateral",

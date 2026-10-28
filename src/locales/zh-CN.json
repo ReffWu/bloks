@@ -3598,6 +3598,7 @@
   "messageActions.rewindTitle": "回退到此消息之前？",
   "messageActions.rewindToHere": "回退到此处",
   "messageActions.sent": "已发送",
+  "messageGuard.couldNotShow": "无法显示这条消息。",
   "mobileNav.openSidebar": "打开侧边栏",
   "mobileNav.openSidebarUnreadMessages": "打开侧边栏，有未读消息",
   "mobileNav.sidebar": "侧边栏",

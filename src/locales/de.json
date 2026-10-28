@@ -3737,6 +3737,7 @@
   "messageActions.rewindTitle": "Auf die Zeit vor dieser Nachricht zurückspulen?",
   "messageActions.rewindToHere": "Bis hierher zurückspulen",
   "messageActions.sent": "Gesendet",
+  "messageGuard.couldNotShow": "Diese Nachricht konnte nicht angezeigt werden.",
   "mobileNav.openSidebar": "Seitenleiste öffnen",
   "mobileNav.openSidebarUnreadMessages": "Seitenleiste öffnen, ungelesene Nachrichten",
   "mobileNav.sidebar": "Seitenleiste",

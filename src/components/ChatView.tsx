@@ -55,6 +55,7 @@ import { foldHolding, foldTurns, lastFoldKey, rowsFrom, turnRunning } from "@/li
 import { type RedoPreview } from "@/lib/redo";
 
 import { Bubble, Notice, QuietCheckIns, Rewound, TakenBack } from "./chat/Bubble";
+import { MessageGuard } from "./chat/MessageGuard";
 import { GroupMessage, PersonAvatar, SeenBy } from "./chat/Group";
 import { Markdownish } from "./Markdown";
 import { LiveBrowser, ScreenFrame, StreamingBubble, WorkingClock, WorkingLine } from "./chat/Live";
@@ -695,8 +696,13 @@ export function ChatView({ bot }: { bot: Bot }) {
   // or a fold's work once it is opened. A run (a rewind, quiet check-ins,
   // tool calls) is counted within its stretch, since rows with a fold
   // between them are not next to each other on the page.
+  // Each message is drawn inside its own guard, so one that cannot be
+  // drawn costs that message and not the conversation (src/lib/rowGuard.ts).
   const rowsOf = (list: readonly Message[], indexOf: (offset: number) => number) =>
-    list.map((m, offset) => {
+    list.map((m, offset) => (
+      <MessageGuard key={m.id} id={m.id} resetKey={m} className={group ? "ml-9" : undefined} render={() => rowOf(list, indexOf, m, offset)} />
+    ));
+  const rowOf = (list: readonly Message[], indexOf: (offset: number) => number, m: Message, offset: number) => {
       const fresh = arrivals.has(m.id);
       const absolute = indexOf(offset);
       if (m.deleted && m.rewound) {
@@ -857,7 +863,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           );
         }
       }
-    });
+  };
 
   return (
     <main ref={mainRef} className="@container/chat relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
