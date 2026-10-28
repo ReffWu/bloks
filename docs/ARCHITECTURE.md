@@ -2050,8 +2050,16 @@ its own files, its own workspace or the folder its turns work in, judged
 as the open file (`openUnder`: links followed and judged inside, nothing
 hidden on the way), with a caption of up to 1024 characters, and at most
 `MAX_TELEGRAM_SENDS_PER_HOUR` an hour. The answer says whether it went,
-and why not in the words a turn's files use. A paired agent is told the
-command alongside `bloks share`.
+and why not in the words a turn's files use. With `--text "..."` (or
+`--text -` for stdin) it sends words instead of a file (GitHub 420), to
+the same chat under the same checks and the same hourly count: up to
+`MAX_TELEGRAM_SEND_TEXT_CHARS`, secrets hidden as in an answer, and sent
+the way an answer is (`telegram.send` with Markdown, so `<code>` and
+`<pre>` stay tap-to-copy and a long text is split), each message only
+while the pairing holds. An answer that stopped partway says how many
+messages went, so the agent does not send it all again. `--silent` sends
+either without a sound (`disable_notification`), for a batch. A paired
+agent is told the command alongside `bloks share`.
 
 While a Telegram turn runs the chat shows "typing" (`keepTyping`).
 Completed visible notes from its consuming turn go out as new silent messages

@@ -643,14 +643,16 @@ function confirmReply(value: unknown): void {
  * only if Telegram refuses that do its lines go like any others. Each
  * message is sent only after the one before it, so they arrive in order,
  * and a failure stops the rest rather than leaving a gap nobody can see.
+ * With silent, none of them rings the phone.
  */
-export async function send(token: string, chatId: number, text: string, markdown = false, accepted?: () => void, canSend?: () => boolean): Promise<void> {
+export async function send(token: string, chatId: number, text: string, markdown = false, accepted?: () => void, canSend?: () => boolean, silent = false): Promise<void> {
+  const quiet = silent ? { disable_notification: true } : {};
   for (const delivery of deliveries(text, markdown)) {
     if (delivery.richHtml !== undefined) {
       let fallback = false;
       let result: unknown;
       try {
-        result = await sendOne(token, { chat_id: chatId, rich_message: { html: delivery.richHtml } }, canSend, "sendRichMessage");
+        result = await sendOne(token, { chat_id: chatId, rich_message: { html: delivery.richHtml }, ...quiet }, canSend, "sendRichMessage");
       } catch (error) {
         // Only a no to the table itself sends its lines instead: 400 for
         // HTML Telegram would not read, 404 from a Bot API without rich
@@ -670,18 +672,32 @@ export async function send(token: string, chatId: number, text: string, markdown
     for (const chunk of delivery.chunks) {
       let result: unknown;
       if (chunk.html === undefined) {
-        result = await sendOne(token, { chat_id: chatId, text: chunk.plain }, canSend);
+        result = await sendOne(token, { chat_id: chatId, text: chunk.plain, ...quiet }, canSend);
       } else {
         try {
-          result = await sendOne(token, { chat_id: chatId, text: chunk.html, parse_mode: "HTML" }, canSend);
+          result = await sendOne(token, { chat_id: chatId, text: chunk.html, parse_mode: "HTML", ...quiet }, canSend);
         } catch (error) {
           if (!(error instanceof TelegramError) || error.status !== 400) throw error;
-          result = await sendOne(token, { chat_id: chatId, text: chunk.plain }, canSend);
+          result = await sendOne(token, { chat_id: chatId, text: chunk.plain, ...quiet }, canSend);
         }
       }
       if (delivery.richHtml !== undefined) confirmReply(result);
       accepted?.();
     }
+  }
+}
+
+/** Words an agent sends on its own, formatted and split the way its
+ * answers are, with how many messages Telegram took and why the rest did
+ * not go ("" when all of it did): a long text that stopped partway is not
+ * one that never went, and saying so keeps it from being sent twice. */
+export async function trySendText(token: string, chatId: number, text: string, silent = false, canSend?: () => boolean): Promise<{ messages: number; why: string }> {
+  let messages = 0;
+  try {
+    await send(token, chatId, text, true, () => messages++, canSend, silent);
+    return { messages, why: "" };
+  } catch (error) {
+    return { messages, why: reason(error) };
   }
 }
 
@@ -705,12 +721,14 @@ export const TOO_BIG = "over Telegram's 50 MB";
 
 /** A file to send: what it is called, what it is, how big, and its bytes
  * when asked for, so nothing is read that is not going to be sent. A
- * caption, when there is one, goes under it as plain text. */
+ * caption, when there is one, goes under it as plain text. A silent one
+ * arrives without ringing the phone. */
 export interface Deliverable {
   name: string;
   mime: string;
   size: number;
   caption?: string;
+  silent?: boolean;
   blob(): Promise<Blob>;
 }
 
@@ -722,6 +740,7 @@ async function upload(token: string, method: string, field: string, chatId: numb
     form.set("chat_id", String(chatId));
     form.set(field, await file.blob(), file.name);
     if (file.caption) form.set("caption", file.caption);
+    if (file.silent) form.set("disable_notification", "true");
     if (canSend && !canSend()) throw new Error("the Telegram connection changed");
     const response = await fetch(`${API}/bot${token}/${method}`, {
       method: "POST",

@@ -644,19 +644,33 @@ const COMMANDS = {
     },
   },
   telegram: {
-    use: 'telegram connect @<your bot\'s username> | telegram send <file> [--caption "<words>"]',
+    use: 'telegram connect @<your bot\'s username> | telegram send <file> [--caption "<words>"] [--silent] | telegram send --text "<words>" [--silent]',
     about:
       "connect: ask the person to connect a Telegram bot you made for yourself with BotFather: a card in the chat names you and the bot, " +
       "they paste its token there, and it goes to your own Telegram settings without ever being shown to you. Pairing stays theirs. End your turn after asking. " +
       "send: send one file from your working folder or your own files to the person's Telegram chat with your bot, whatever started this turn, " +
-      "up to 50 MB, with an optional caption of up to 1024 characters. Only while your bot is paired with them. A turn they started on Telegram " +
-      "already sends the files it saved back there, so do not send those again. The answer says whether it went",
+      "up to 50 MB, with an optional caption of up to 1024 characters, or with --text a message of its own, formatted like your answers " +
+      "(Markdown: a `code` span or block is one tap to copy there), up to 12000 characters; --text - reads it from stdin. " +
+      "--silent sends either without ringing their phone, for a batch. Only while your bot is paired with them, and 20 files and texts an hour at most. " +
+      "A turn they started on Telegram already sends its answer and the files it saved back there, so do not send those again. The answer says whether it went",
     run: async (args) => {
       const [action, ...rest] = args;
       if (action === "send") {
-        const flags = parseFlags(rest);
-        const files = positional(rest);
-        if (files.length !== 1) throw new Error('telegram send takes one file, like telegram send chart.png --caption "The Q3 chart"');
+        // a switch: read as a flag with a value it would take the file
+        // after it for its own
+        const silent = rest.includes("--silent");
+        const given = rest.filter((arg) => arg !== "--silent");
+        const flags = parseFlags(given);
+        const files = positional(given);
+        const quiet = silent ? { silent: true } : {};
+        if (flags.text !== undefined) {
+          if (files.length) throw new Error('telegram send takes a file or --text, not both. Put the text in quotes, like telegram send --text "Ready for review"');
+          const text = flags.text === "-" ? await pipedText() : flags.text === "true" ? "" : flags.text;
+          if (!text.trim()) throw new Error('telegram send --text needs the words, like telegram send --text "Ready for review"');
+          const me = await request("GET", "/api/agent/whoami");
+          return request("POST", `/api/bots/${me.botId}/telegram/send`, { text, ...quiet });
+        }
+        if (files.length !== 1) throw new Error('telegram send takes one file, like telegram send chart.png --caption "The Q3 chart", or a text, like telegram send --text "Ready for review"');
         // the path as the agent sees it, judged again by the workspace,
         // which opens only a file in the agent's own folders
         const at = resolve(files[0]);
@@ -669,11 +683,11 @@ const COMMANDS = {
         if (!statSync(real).isFile()) throw new Error("telegram send takes one file, not a folder. Send the files in it one at a time");
         const caption = flags.caption !== undefined && flags.caption !== "true" ? flags.caption : undefined;
         const me = await request("GET", "/api/agent/whoami");
-        return request("POST", `/api/bots/${me.botId}/telegram/send`, { path: at, ...(caption ? { caption } : {}) });
+        return request("POST", `/api/bots/${me.botId}/telegram/send`, { path: at, ...(caption ? { caption } : {}), ...quiet });
       }
       const [name, ...more] = rest;
       if (action !== "connect" || !name || more.length) {
-        throw new Error('telegram takes connect and your bot\'s username, like telegram connect @PlanningBot, or send and a file, like telegram send chart.png');
+        throw new Error('telegram takes connect and your bot\'s username, like telegram connect @PlanningBot, or send and a file or a text, like telegram send chart.png or telegram send --text "Ready for review"');
       }
       const me = await request("GET", "/api/agent/whoami");
       return request("POST", `/api/bots/${me.botId}/secrets`, { telegramBot: name });
@@ -1154,6 +1168,20 @@ async function revisionText(file) {
     if (text.length > 100_000) throw new Error("that is too much text to be a skill");
   }
   if (!text.trim()) throw new Error("revise needs the new text: pass --file <path>, or pipe it in");
+  return text;
+}
+
+/** The words of `telegram send --text -`, piped in. Never a terminal
+ * waiting for typing, which would hang the turn, and never more than one
+ * send could take: the workspace says exactly how much that is. */
+async function pipedText() {
+  if (process.stdin.isTTY) throw new Error("telegram send --text - reads the text from stdin: pipe it in, or put it after --text in quotes");
+  process.stdin.setEncoding("utf8");
+  let text = "";
+  for await (const chunk of process.stdin) {
+    text += chunk;
+    if (text.length > 100_000) throw new Error("that is too much text for one telegram send. Send it as a file");
+  }
   return text;
 }
 

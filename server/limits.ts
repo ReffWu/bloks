@@ -28,11 +28,16 @@ export const MAX_TELEGRAM_REPLY_CHARS = 4096;
  * group is told once and the rest is dropped before any download. */
 export const MAX_TELEGRAM_GROUP_REQUESTS_PER_HOUR = 30;
 
-/** Files one agent sends to its own Telegram chat in an hour with
- * `bloks telegram send`, whatever started its turns. A turn's twelve
- * changes already bound one turn; this bounds a routine or a watcher that
- * runs every few minutes, so the person's chat does not fill with them. */
+/** Files and texts one agent sends to its own Telegram chat in an hour
+ * with `bloks telegram send`, whatever started its turns, counted
+ * together. A turn's twelve changes already bound one turn; this bounds a
+ * routine or a watcher that runs every few minutes, so the person's chat
+ * does not fill with them. */
 export const MAX_TELEGRAM_SENDS_PER_HOUR = 20;
+
+/** One text an agent sends there itself. It goes the way an answer does,
+ * a few Telegram messages at most, and something longer is a file. */
+export const MAX_TELEGRAM_SEND_TEXT_CHARS = 12_000;
 
 /** Project instruction text in an isolated person's Claude session. */
 export const MAX_PERSON_PROJECT_BYTES = 100_000;
