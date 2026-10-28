@@ -80,7 +80,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for i in $(seq 1 80); do
+          for i in $(seq 1 140); do
             id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
                    --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | first | .id // empty")
             if [ -n "$id" ]; then
@@ -110,7 +110,7 @@ jobs:
               done
               exit 0
             fi
-            echo "waiting for the draft release ($i/80)"
+            echo "waiting for the draft release ($i/140)"
             sleep 30
           done
           echo "The draft release never appeared. The build is still on this run as an artifact."
@@ -162,7 +162,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for i in $(seq 1 80); do
+          for i in $(seq 1 140); do
             id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
                    --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | first | .id // empty")
             if [ -n "$id" ]; then
@@ -192,7 +192,7 @@ jobs:
               done
               exit 0
             fi
-            echo "waiting for the draft release ($i/80)"
+            echo "waiting for the draft release ($i/140)"
             sleep 30
           done
           echo "The draft release never appeared. The build is still on this run as an artifact."

@@ -21,10 +21,11 @@ jobs:
   macos:
     name: Build, sign and notarize
     # arm64, with an Xcode that can cross-compile the x86_64 slice of the
-    # Swift helpers. Notarization is a network round trip to Apple and is
-    # usually the slowest step by a wide margin.
+    # Swift helpers. The tests run here first and now take close to fifty
+    # minutes, then notarization is a network round trip to Apple, so an
+    # hour stopped being enough with 3.1.1.
     runs-on: macos-14
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v7
