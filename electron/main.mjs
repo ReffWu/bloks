@@ -117,7 +117,8 @@ import { startMeeting, startSpeech, stopMeeting, stopSpeech } from "./speech.mjs
 import { createAttentionSayer } from "./attention-said.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const APP_ICON = path.join(HERE, "resources/app-icon.png");
+const APP_ICON = path.join(HERE, process.platform === "darwin"
+  ? "resources/app-icon-mac.png" : "resources/app-icon.png");
 
 // Spelled as an IPv4 literal, not "localhost": Vite binds v4, and the name
 // can resolve to ::1 first, which paints an empty window.
