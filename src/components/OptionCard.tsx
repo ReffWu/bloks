@@ -10,6 +10,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle } from "@/components/icons";
+import { ArrowDown } from "@/components/icons";
 import { ArrowUp } from "@/components/icons";
 import { Ban } from "@/components/icons";
 import { Check } from "@/components/icons";
@@ -67,12 +68,17 @@ export function OptionCard({
   botId,
   message,
   roomId,
+  dock,
 }: {
   botId: string;
   message: Message;
   /** Set when the card is being shown inside a room, so an answer goes to
    * the room rather than to the agent alone. */
   roomId?: string;
+  /** For a question waiting above the composer (chat/QuestionDock.tsx):
+   * "card" is the card there, and "line" is where it was asked, which
+   * keeps its place in the conversation and points down to it. */
+  dock?: "card" | "line";
 }) {
   const { state, dispatch } = useStore();
   const card = message.card;
@@ -132,7 +138,18 @@ export function OptionCard({
       />
     );
   }
-  return <QuestionCard card={card} at={message.at} name={name} face={face} onAnswer={answer} onDismiss={dismiss} />;
+  return (
+    <QuestionCard
+      messageId={message.id}
+      card={card}
+      at={message.at}
+      name={name}
+      face={face}
+      dock={dock}
+      onAnswer={answer}
+      onDismiss={dismiss}
+    />
+  );
 }
 
 // ── approvals ──────────────────────────────────────────────────────────
@@ -724,22 +741,38 @@ function CopyButton({ text }: { text: string }) {
 
 // ── questions ──────────────────────────────────────────────────────────
 
+/** An answer being typed, by card, for as long as this window is open.
+ * Kept outside the card for the same reason as savedRules: the card is
+ * drawn afresh when it goes up to wait above the composer, and when its
+ * conversation is left and come back to, and a half typed answer should
+ * not go with it. */
+const drafts = new Map<string, string>();
+
 function QuestionCard({
+  messageId,
   card,
   at,
   name,
   face,
+  dock,
   onAnswer,
   onDismiss,
 }: {
+  messageId: string;
   card: OptionCardData;
   at: number;
   name: string;
   face: ReactNode;
+  dock?: "card" | "line";
   onAnswer: (text: string) => void;
   onDismiss: () => void;
 }) {
-  const [custom, setCustom] = useState("");
+  const [custom, setTyped] = useState(() => drafts.get(messageId) ?? "");
+  const setCustom = (text: string) => {
+    if (text) drafts.set(messageId, text);
+    else drafts.delete(messageId);
+    setTyped(text);
+  };
   const workflow = Boolean(card.runId);
   // An engine's question arrives under a generic title, with the question
   // in the subtitle and, for someone else's turn, who it is for in
@@ -780,6 +813,12 @@ function QuestionCard({
     }
   };
 
+  // Waiting above the composer, the question keeps its place here as one
+  // line, which takes you down to it.
+  if (dock === "line" && !card.answered) {
+    return <WaitingQuestionLine messageId={messageId} at={at} question={question} />;
+  }
+
   return (
     <AnimatePresence mode="wait" initial={false}>
       {card.answered ? (
@@ -787,7 +826,9 @@ function QuestionCard({
           <SettledQuestion card={card} at={at} question={question} hint={hint} forWhom={forWhom} />
         </motion.div>
       ) : (
-        <motion.div key="open" exit={leave} className="w-full max-w-[560px]">
+        // Above the composer it takes the composer's width, edge to edge,
+        // so the two read as one column.
+        <motion.div key="open" exit={leave} className={cn("w-full", dock !== "card" && "max-w-[560px]")}>
           <div
             role="group"
             aria-label={workflow ? t("optionCard.workflowWaiting") : t("optionCard.asks", { agent: name })}
@@ -895,6 +936,31 @@ function QuestionCard({
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/** Where a question waiting above the composer was asked. Pressing it
+ * brings the card into view and gives it the keyboard. */
+function WaitingQuestionLine({ messageId, at, question }: { messageId: string; at: number; question: string }) {
+  const toCard = () => {
+    const card = document.querySelector<HTMLElement>(`[data-question-dock="${CSS.escape(messageId)}"] [role="group"]`);
+    if (!card) return;
+    card.scrollIntoView({ block: "nearest" });
+    card.focus({ preventScroll: true });
+  };
+  return (
+    <div className="min-w-0 max-w-full px-1.5">
+      <button
+        type="button"
+        onClick={toCard}
+        className="flex min-w-0 max-w-full items-center gap-2 rounded-md py-0.5 text-left text-small text-muted-foreground transition-colors duration-150 hover:text-foreground"
+      >
+        <ArrowDown size={12} className="shrink-0 text-brand-ink" />
+        <span className="shrink-0 font-medium text-foreground/80">{t("optionCard.waitingBelow")}</span>
+        <span className="min-w-0 truncate">{question}</span>
+        <span className="shrink-0 tabular-nums opacity-80">{stamp(at)}</span>
+      </button>
+    </div>
   );
 }
 

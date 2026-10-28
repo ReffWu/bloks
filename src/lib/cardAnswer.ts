@@ -20,6 +20,41 @@ export function isApproval(card: { requestId?: string; tool?: string; title?: st
   return Boolean(card.requestId) && (Boolean(card.tool) || card.title === "Approval needed");
 }
 
+/** A card as the transcript carries it, as far as waitingQuestions reads. */
+interface CardMessage {
+  id: string;
+  kind?: string;
+  card?: {
+    requestId?: string;
+    tool?: string;
+    title?: string;
+    runId?: string;
+    answered?: string;
+    dismissed?: boolean;
+    closed?: string;
+    cutOff?: boolean;
+  };
+}
+
+/**
+ * The questions an engine has asked and is still owed an answer for, the
+ * oldest first: what sits above the composer while the transcript goes on
+ * under it (GitHub 415). Codex asks some of them without stopping, and
+ * one left where it was asked scrolled away as the work went on.
+ *
+ * Only an engine's own live ask. An approval has the composer's tray. A
+ * workflow's gate waits on disk and an agent's setup question is safe to
+ * leave, so either could sit over the box for days; both stay in the
+ * conversation where they were asked.
+ */
+export function waitingQuestions<M extends CardMessage>(messages: readonly M[]): M[] {
+  return messages.filter((m) => {
+    const card = m.kind === "options" ? m.card : undefined;
+    if (!card?.requestId || card.runId || isApproval(card)) return false;
+    return !card.answered && !card.dismissed && !card.closed && !card.cutOff;
+  });
+}
+
 export interface CardAnswer {
   botId: string;
   messageId: string;

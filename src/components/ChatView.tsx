@@ -28,7 +28,7 @@ import { lastEditable, quietRunAt, splitWaiting } from "@/lib/transcript";
 import { useHistoryPaging } from "@/lib/useHistoryPaging";
 import { useLanesInSidebar } from "@/lib/conversationsView";
 import { findHits, stepHit } from "@/lib/find";
-import { isApproval } from "@/lib/cardAnswer";
+import { isApproval, waitingQuestions } from "@/lib/cardAnswer";
 import { AnimatePresence, motion } from "motion/react";
 import { dayLine, timeSaidBelow } from "@/lib/when";
 import { MAX_TASKS, TaskStrip } from "./TaskStrip";
@@ -62,6 +62,7 @@ import { LiveBrowser, ScreenFrame, StreamingBubble, WorkingClock, WorkingLine } 
 import { EmptyState } from "./chat/EmptyState";
 import { JumpToLatest } from "./chat/JumpToLatest";
 import { HeldSends } from "./chat/HeldSends";
+import { QuestionDock } from "./chat/QuestionDock";
 import { onAsk, peekAsk, takeAsk } from "@/lib/chatAsk";
 import { keysFor, platformOf } from "@/lib/shortcuts";
 import { confirm } from "@/components/ui/confirm";
@@ -366,6 +367,11 @@ export function ChatView({ bot }: { bot: Bot }) {
       ),
     [bot.messages],
   );
+  // Questions the agent is still owed an answer for wait above the
+  // composer, not up in the transcript where the work after them would
+  // push them out of view (chat/QuestionDock.tsx).
+  const questions = useMemo(() => waitingQuestions(said), [said]);
+  const docked = useMemo(() => new Set(questions.map((m) => m.id)), [questions]);
   const currentHit = hits.length ? hits[Math.min(hitAt, hits.length - 1)] : -1;
 
   useEffect(() => {
@@ -747,7 +753,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           return (
             <div key={m.id} data-msg-index={absolute} data-message-id={m.id} className={cn("relative", group && "pl-9")}>
               <LandMark on={lit === m.id} />
-              <OptionCard botId={bot.id} message={m} />
+              <OptionCard botId={bot.id} message={m} dock={docked.has(m.id) ? "line" : undefined} />
             </div>
           );
         case "activity": {
@@ -1141,6 +1147,7 @@ export function ChatView({ bot }: { bot: Bot }) {
       <BrowsingOnMac botId={bot.id} name={bot.name} />
       {terminal.slot("bottom")}
       <GoalDialog />
+      <QuestionDock botId={bot.id} questions={questions} />
       {/* approvals, other conversations, the engine, what waits, guest
           mail and the goal all speak through the composer's one tray */}
       <Composer

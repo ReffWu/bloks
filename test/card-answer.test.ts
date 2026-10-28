@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { isApproval, sendCardAnswer } from "../src/lib/cardAnswer.ts";
+import { isApproval, sendCardAnswer, waitingQuestions } from "../src/lib/cardAnswer.ts";
 import { initialState, reducer, type AppState, type Bot } from "../src/state/reducer.ts";
 
 const withCard = (card: Record<string, unknown>): AppState => ({
@@ -122,4 +122,41 @@ test("a workflow question that had already closed stays as the server left it", 
     (e) => errors.push(e),
   );
   assert.equal(errors.length, 1);
+});
+
+// A question Codex asks without stopping waits above the composer while
+// the work goes on (GitHub 415). Only a live engine question goes there.
+const asked = (id: string, card: Record<string, unknown>) => ({
+  id,
+  kind: "options",
+  card: { title: "Your agent has a question", subtitle: "Which one?", options: [], requestId: `r-${id}`, ...card },
+});
+
+test("only an engine's own question still owed an answer waits above the composer, oldest first", () => {
+  const messages = [
+    { id: "words", kind: "text" },
+    asked("first", {}),
+    asked("approval", { title: "Approval needed" }),
+    asked("tool", { tool: "Bash" }),
+    asked("answered", { answered: "B" }),
+    asked("dismissed", { dismissed: true }),
+    asked("closed", { closed: "The agent stopped" }),
+    asked("cut", { cutOff: true }),
+    asked("gate", { runId: "run-1" }),
+    asked("setup", { requestId: undefined }),
+    asked("second", { options: ["A", "B"] }),
+  ];
+  assert.deepEqual(
+    waitingQuestions(messages).map((m) => m.id),
+    ["first", "second"],
+  );
+});
+
+test("an answer takes the question out of the dock at once, and a refused one puts it back", () => {
+  const live = withCard({ title: "Your agent has a question", subtitle: "Which?", requestId: "r1" });
+  assert.equal(waitingQuestions(live.bots[0].messages).length, 1);
+  const pressed = reducer(live, { type: "answerCard", botId: "a", messageId: "c1", answer: "A" });
+  assert.equal(waitingQuestions(pressed.bots[0].messages).length, 0);
+  const reopened = reducer(pressed, { type: "cardReopened", botId: "a", messageId: "c1" });
+  assert.equal(waitingQuestions(reopened.bots[0].messages).length, 1);
 });
